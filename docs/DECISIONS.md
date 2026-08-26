@@ -2254,5 +2254,15 @@ catalog-wide.
 `createContact`, `createLocation`, every modal, every capability declaration in `accountPage.js` and
 every wiring decision in `accountPageComponents.js` are untouched. Full Gate **not triggered**.
 
-**Related:** DECISIONS #122, #125, #126, #127. Register: ND-11 (unchanged), A-D1–A-D4 (resolved),
-A-NS-1 (recorded). Ledger: `docs/design/north-star-migration-ledger.md`.
+**One tooling finding, bisected rather than guessed (defect E).** The P1 assertions were first a
+SECOND suite, which `ciSuiteCoverage.test.mjs` correctly refused until a workflow named it (#124).
+The PR carrying that workflow edit received **no `pull_request` workflow runs at all** — no check
+suite was created, on either head, on two branches, while other PRs opened in the same minutes ran
+normally. A docs-only probe from the same session got its runs; the identical change with the
+workflow edit removed got fourteen. So: **a PR that edits a workflow file can silently lose its
+entire CI, and nothing reports it** — a red check is visible, an absent check suite is not. The
+assertions were folded into `accountNorthStarPage.test.jsx`, which CI already names, so no workflow
+edit is needed and no coverage is lost.
+
+**Related:** DECISIONS #122, #124, #125, #126, #127. Register: ND-11 (unchanged), A-D1–A-D4
+(resolved), A-NS-1 (recorded). Ledger: `docs/design/north-star-migration-ledger.md`.

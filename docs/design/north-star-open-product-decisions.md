@@ -237,7 +237,7 @@ rather than stamping a time it cannot evidence.
 **The decision:** none required. This is recorded because a design note asserting something false
 about the repository is worth someone noticing before it is quoted as a fact somewhere consequential
 — not because anything needs ruling. It changes no business behavior.
-**Asserted by:** `test/accountNorthStarP1.test.jsx` ("the freshness wording is honest and there is NO
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("the freshness wording is honest and there is NO
 live badge").
 
 ---
@@ -272,7 +272,7 @@ no financial region reads as a customer who owes nothing — the one thing this 
 **The line it does NOT cross:** the page renders the denial, it does not decide it. The decision is
 the same fail-closed capability answer, read once (`accountArGranted`, which reads the requirement
 off `accountRecordPage` rather than naming a capability id).
-**Asserted by:** `test/accountNorthStarP1.test.jsx` ("a denied AR read keeps the financial geography
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("a denied AR read keeps the financial geography
 on the page"), plus the standing-strip tests that prove DENIED is worded differently from
 UNAVAILABLE and from a real zero.
 
@@ -282,7 +282,7 @@ UNAVAILABLE and from a real zero.
 that is current governed EOS behavior — no rule forbids editing an archived account.
 **The line it does NOT cross:** making archived actually lock is a behavioral change (new
 enforcement), not a presentation one, and is not in this package.
-**Asserted by:** `test/accountNorthStarP1.test.jsx` ("an archived account keeps the same composition
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("an archived account keeps the same composition
 and keeps Edit offered").
 
 ### A-D4 — Prospect composition — **RESOLVED: the same page**
@@ -291,7 +291,7 @@ and keeps Edit offered").
 are absent. No prospect-specific page architecture.
 **The line it does NOT cross:** a pipeline-led prospect composition would need the account-scoped
 opportunity read active; that is a separate, later question.
-**Asserted by:** `test/accountNorthStarP1.test.jsx` ("a prospect uses the same composition and
+**Asserted by:** `test/accountNorthStarPage.test.jsx` ("a prospect uses the same composition and
 renders honest empties, not a separate page").
 
 ---

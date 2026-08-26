@@ -179,7 +179,7 @@ README states that #1511 was inspected as behavioral evidence only, never as vis
 |---|---|
 | **Visual authority** | `North Star - Account P1.dc.html` — 1a desktop 1440, 1b tablet 768, 1c phone 375 |
 | **Nature** | Presentation/composition reconciliation. Not a rebuild, not new product. |
-| **Proof** | `test/accountNorthStarP1.test.jsx` (33), `test/accountAttentionSection.test.jsx` (11, reconciled), `test/accountNorthStarPage.test.jsx` (14), `test/accountNorthStar.test.mjs` (22), `test/phoneLink.test.mjs` (5), `test/accountArView.test.mjs` (11) |
+| **Proof** | `test/accountNorthStarPage.test.jsx` (47), `test/accountAttentionSection.test.jsx` (11, reconciled), `test/accountNorthStar.test.mjs` (22), `test/phoneLink.test.mjs` (5), `test/accountArView.test.mjs` (11) |
 | **Named decisions** | A-D1–A-D4 **resolved**; A-NS-1 **recorded**; ND-11 unchanged |
 | **Authority change** | none |
 | **Full Gate** | not triggered |
@@ -244,6 +244,28 @@ timeline renders nowhere it has not been separately activated.
 Account's own tables and rows. The shared `MetadataListGrid` still scrolls horizontally at handheld
 widths; converting it is a change to cross-family list infrastructure and is deliberately outside a
 single family's reconciliation.
+
+### The CI finding this pass turned up (defect E)
+
+The P1 assertions were first written as a SECOND suite beside `accountNorthStarPage.test.jsx`, which
+`test/ciSuiteCoverage.test.mjs` correctly refused until a workflow named it — the DECISIONS #124
+rule. Naming it meant editing `composition-conformance-tests.yml`, and **the PR carrying that edit
+received no `pull_request` workflow runs at all.** Not a slow queue and not a red check: GitHub
+created no check suite for the `pull_request` event on either head, on two different branches, while
+other PRs opened in the same minutes got theirs normally.
+
+It was bisected rather than guessed. A docs-only probe PR from this same session and worktree got
+its three runs; the identical Account change with the workflow edit **removed** got fourteen. The
+workflow-file edit is the cause — the push is accepted and the runs are then withheld, so the failure
+mode is a PR that looks merely idle.
+
+The finding matters beyond this change: **a PR that edits a workflow file can silently lose its
+entire CI, and nothing reports it.** A red check is visible; an absent check suite is not. Whoever
+next needs to register a suite should expect this and check for it explicitly rather than waiting.
+
+The assertions were folded into `accountNorthStarPage.test.jsx` — already CI-named — so no workflow
+edit is needed and no coverage is lost. That is where they belonged anyway: one page, one suite, one
+mock block.
 
 ---
 
