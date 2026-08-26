@@ -24,7 +24,7 @@
 // Usage:  node certifyDynamic.mjs [accountKey] [widths]
 //   CERT_BASE=https://eos-platform-sandbox.web.app node certifyDynamic.mjs admin 1440,375
 import { chromium } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBE } from "./probe.mjs";
@@ -139,6 +139,40 @@ if (findings.length === 0) console.log("FINDINGS: none");
 else {
   console.log("\nFINDINGS BY KIND:");
   for (const [kind, n] of Object.entries(byKind).sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(5)}  ${kind}`);
+
+  // ════════════════════ AND BY ENTITY, WHICH IS THE QUESTION ACTUALLY BEING ASKED
+  //
+  // A kind-only tally says 23 tiny targets and cannot say WHERE, so nobody can tell a
+  // pre-existing cluster from one a change just introduced. The migration ledger recorded that
+  // limitation twice -- "certifyDynamic.mjs reports its findings by KIND rather than per entity,
+  // so the tolerated findings cannot be attributed to a specific record page from this run" --
+  // and both times the answer was to go and run the full gate instead.
+  //
+  // Nothing was missing but the printing. `findings` has carried entity, label, width and detail
+  // since it was written (see the push above); only the aggregation was ever shown. A tolerated
+  // finding is still a finding somebody may want to fix, and one that cannot be located will not
+  // be fixed.
+  console.log("\nFINDINGS BY ENTITY:");
+  const byEntity = {};
+  for (const f of findings) (byEntity[f.entity] ??= []).push(f);
+  for (const [entity, list] of Object.entries(byEntity).sort((a, b) => b[1].length - a[1].length)) {
+    console.log(`  ${String(list.length).padStart(5)}  ${entity}`);
+    const seen = new Map();
+    for (const f of list) {
+      const key = `${f.kind}|${f.width}|${f.detail}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    for (const [key, n] of seen) {
+      const [kind, width, detail] = key.split("|");
+      console.log(`         ${kind} @${width}${n > 1 ? ` x${n}` : ""}  ${detail}`);
+    }
+  }
+
+  // PERSISTED, so two runs can be DIFFED rather than eyeballed. The sweep half already writes
+  // findings-<persona>.json; this is the same contract for the half that visits record pages.
+  const out = join(APP_ROOT, ".certification", `findings-dynamic-${accountKey}.json`);
+  writeFileSync(out, JSON.stringify(findings, null, 1));
+  console.log(`\n  written: .certification/findings-dynamic-${accountKey}.json`);
 }
 
 // THE TOLERATED CLASSES ARE THE SAME ONES, and they are tolerated for the same reasons certify.mjs

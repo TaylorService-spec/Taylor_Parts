@@ -26,6 +26,8 @@ import { useAccount } from "../src/hooks/useAccount";
 import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 import { ACCOUNT_AR_STATE } from "../src/domain/accountArView.js";
 import { opportunityRelatedList } from "../src/metadata/definitions/opportunity.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 vi.mock("../src/hooks/useAccount", () => ({ useAccount: vi.fn() }));
 vi.mock("../src/hooks/useLocationsForAccount", () => ({
@@ -613,5 +615,75 @@ describe("Account — North Star composition", () => {
     expect(container.querySelector(".ns-rail")).toBeTruthy();
     // Two shells would double the chrome and give the page two competing h1 claims (ND-4).
     expect(container.querySelectorAll("h1")).toHaveLength(1);
+  });
+});
+
+// ═════════════════════════════════════════ THE TOUCH FLOOR
+
+// jsdom does not do layout, so a rendered height cannot be measured here -- the live measurement is
+// the deployed certification, and its numbers are in the PR. What this defends is the RULE that
+// produces those numbers, the same contract test/workOrderTouchTargets.test.jsx defends for family 1.
+//
+// process.cwd(), not import.meta.url: vitest transforms this module and import.meta.url is not a
+// file: URL by the time it runs. The runner always starts in field-ops-app-vite.
+const CSS = readFileSync(join(process.cwd(), "src", "index.css"), "utf8");
+
+/** The declaration block a selector introduces, as written. */
+function ruleFor(selector) {
+  const at = CSS.indexOf(selector);
+  if (at < 0) return null;
+  const open = CSS.indexOf("{", at);
+  const close = CSS.indexOf("}", open);
+  return CSS.slice(open + 1, close);
+}
+
+describe("Account North Star P1 — the touch floor covers link-style controls too", () => {
+  // WHY THIS EXISTS. The dynamic certification against platform-sandbox at 19b34835 measured five
+  // controls between 12 and 16 pixels tall on this page at 375 -- the Refresh button, the three
+  // rail actions, and the Equipment workspace link. Four arrived with this reconciliation.
+  //
+  // The gate did not stop it: TINY_TARGET_DESKTOP_SURFACE is tolerated, on the reasoning that "a
+  // desktop workspace never promised a 44px target at 375px". This page re-composes for the phone,
+  // so it did promise exactly that. The tolerance was written for a different surface.
+  const FLOORED = [
+    ".ns-page__freshness .fo-link-btn",
+    ".ns-rail__actions .fo-link-btn",
+    ".ns-identity__actions .fo-link-btn",
+    ".ns-table__note a",
+    ".ns-section__meta a",
+  ];
+
+  it("every link-style control on the record page carries the 44px floor BY DEFAULT", () => {
+    // The selector list is written as one rule; find the block that grants the floor.
+    const at = CSS.indexOf(".ns-page__freshness .fo-link-btn,");
+    expect(at, "the floor rule must exist").toBeGreaterThan(-1);
+    const open = CSS.indexOf("{", at);
+    const head = CSS.slice(at, open);
+    const body = CSS.slice(open + 1, CSS.indexOf("}", open));
+    for (const sel of FLOORED) {
+      expect(head, `${sel} must be inside the floor rule`).toContain(sel);
+    }
+    expect(body).toMatch(/min-height:\s*44px/);
+    // A floor on an inline element does nothing; it has to be a box.
+    expect(body).toMatch(/display:\s*inline-flex/);
+  });
+
+  it("density is earned by a wide AND pointer-driven screen, never by width alone", () => {
+    // The mutation this proves: relaxing on width alone makes a tablet -- which is a thumb --
+    // non-compliant, which is the exact regression family 1 already suffered and fixed.
+    const relax = CSS.lastIndexOf(".ns-page__freshness .fo-link-btn,");
+    const guard = CSS.slice(Math.max(0, relax - 220), relax);
+    expect(guard).toMatch(/min-width:\s*1200px/);
+    expect(guard).toMatch(/hover:\s*hover/);
+    expect(guard).toMatch(/pointer:\s*fine/);
+    expect(guard, "no bare width breakpoint may relax the floor").not.toMatch(/min-width:\s*(768|1024)px/);
+  });
+
+  it("the Call affordance keeps its own floor, independently of the rule above", () => {
+    // It is the one control on the phone stack that exists TO be tapped; it must not depend on a
+    // shared rule someone could narrow later.
+    const rule = ruleFor(".ns-primary__call {");
+    expect(rule).toBeTruthy();
+    expect(rule).toMatch(/min-height:\s*44px/);
   });
 });

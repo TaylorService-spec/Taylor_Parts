@@ -5765,3 +5765,47 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .ns-page:not(.ns-page--phone) .ns-record-body > div > *:first-child { grid-column: 1; grid-row: 1; }
   .ns-page:not(.ns-page--phone) .ns-record-body > .ns-rail { grid-column: 2; grid-row: 1; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   THE TOUCH FLOOR APPLIES TO EVERY CONTROL, not only the ones drawn as buttons.
+
+   MEASURED, NOT GUESSED. The dynamic certification against platform-sandbox at 19b34835 reported,
+   on the account record page at 375:
+
+       BUTTON.fo-link-btn h=12      the utility line's Refresh
+       BUTTON.fo-link-btn h=15 x4   Back to Customers, and the rail's Add contact / Import /
+                                    Add location
+       A. h=16                      Service activity's "Equipment workspace" link
+
+   Five controls between 12 and 16 pixels tall, on a page that ships a phone answer stack. Four of
+   them arrived with the Account North Star P1 reconciliation: `.fo-link-btn` is 13px text with
+   `padding: 0`, so anything wearing it is about a sixth of the 44px floor.
+
+   WHY THE GATE DID NOT STOP IT, AND WHY THAT IS NOT A DEFENCE. TINY_TARGET_DESKTOP_SURFACE is one
+   of the gate's two tolerated kinds, tolerated on the stated reasoning that "a desktop workspace
+   never promised a 44px target at 375px". That reasoning does not reach this page: the record
+   deliberately RE-COMPOSES for the phone -- identity, attention, standing, primary contact, Call --
+   so it has promised exactly that. A tolerated finding is still a finding, and the tolerance was
+   written for a different surface.
+
+   The rule shape is the family's own, already used by `.ns-page__crumb a` and
+   `.ns-identity__actions .fo-button`: the floor is the DEFAULT, and density is earned by a wide,
+   genuinely pointer-driven screen -- never by width alone, which is what made 768 non-compliant
+   and 767 fine. Enforced here, in the classes, rather than patched per control (Grammar R16).
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+.ns-page__freshness .fo-link-btn,
+.ns-rail__actions .fo-link-btn,
+.ns-identity__actions .fo-link-btn,
+.ns-table__note a,
+.ns-section__meta a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .ns-page__freshness .fo-link-btn,
+  .ns-rail__actions .fo-link-btn,
+  .ns-identity__actions .fo-link-btn,
+  .ns-table__note a,
+  .ns-section__meta a { min-height: 0; }
+}
