@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   workOrderSpine,
   workOrderStatusWords,
+  workOrderStatusSentence,
   workOrderStatusTone,
   workOrderAttention,
   workOrderPartsPlan,
@@ -292,15 +293,22 @@ test("the timeline is RECORDED events only, newest first", () => {
   const rows = workOrderTimeline(wo({
     createdAt: ts(AUG21),
     dispatchedAt: ts(AUG22),
-    // never recorded:
+    // neither recorded nor planned:
+    scheduledStart: null,
     completedAt: null,
   }));
   assert.deepEqual(rows.map((r) => r.key), ["dispatched", "created"]);
 });
 
-test("THE SCHEDULED WINDOW IS A PLAN, NOT AN EVENT — it never enters the timeline", () => {
+test("THE SCHEDULED WINDOW IS MARKED AS A PLAN, so nothing downstream can read it as an event", () => {
+  // It appears — the approved composition carries it, under a heading that labels the whole list
+  // milestones rather than an audit trail. What must never happen is it arriving UNMARKED, because
+  // then a consumer has to re-derive which key means "planned" and one of them will get it wrong.
   const rows = workOrderTimeline(wo({ createdAt: ts(AUG21), scheduledStart: ts(AUG22) }));
-  assert.deepEqual(rows.map((r) => r.key), ["created"]);
+  assert.deepEqual(rows.map((r) => r.key), ["scheduled", "created"]);
+  assert.equal(rows.find((r) => r.key === "scheduled").planned, true);
+  assert.ok(rows.filter((r) => r.key !== "scheduled").every((r) => !r.planned),
+    "a recorded event must never be marked planned");
 });
 
 test("a work order with nothing recorded yields an empty list, not a row of unknowns", () => {
@@ -328,7 +336,38 @@ test("THE TIMELINE NEVER INVENTS A MOMENT — no two events may share one borrow
 });
 
 test("AN INFERRED STAGE IS NOT AN EVENT — a status never reached contributes no row", () => {
-  // buildTimeline infers WORK_ORDER_READY from field phase. Nothing here is inferred.
-  const rows = workOrderTimeline(wo({ status: "DISPATCHED", createdAt: ts(AUG21), dispatchedAt: ts(AUG22) }));
+  // buildTimeline infers WORK_ORDER_READY from field phase. Nothing here is inferred: a work order
+  // with no scheduledStart and no acceptedAt yields neither row, however far along its status is.
+  const rows = workOrderTimeline(wo({ status: "DISPATCHED", createdAt: ts(AUG21), dispatchedAt: ts(AUG22), scheduledStart: null }));
   assert.deepEqual(rows.map((r) => r.key), ["dispatched", "created"]);
+});
+
+// ═════ STATUS AS A SENTENCE (P1v2)
+
+test("the sentence EXTENDS the one vocabulary rather than forking it", () => {
+  for (const status of ALL_STATUSES) {
+    const words = workOrderStatusWords(status);
+    const sentence = workOrderStatusSentence(status);
+    assert.ok(sentence, status + " has no sentence");
+    assert.ok(sentence.startsWith(words),
+      status + ": the sentence must begin with the governed word, or the two can drift");
+  }
+});
+
+test("an unrecognised status has NO sentence — it is not padded into one", () => {
+  assert.equal(workOrderStatusSentence("SOMETHING_LEGACY"), null);
+  assert.equal(workOrderStatusSentence(null), null);
+});
+
+test("a sentence carries its meaning in WORDS, so colour is emphasis and never the carrier", () => {
+  // The clause is what makes the plain-text treatment safe. A status whose sentence is just the
+  // word is fine; a status whose sentence is ONLY a colour would not be, and cannot occur here.
+  assert.match(workOrderStatusSentence("DISPATCHED"), /awaiting technician acceptance/);
+  assert.equal(workOrderStatusSentence("CLOSED"), "Closed");
+});
+
+test("THE HEADER CARRIES BOTH, so no surface re-derives the sentence from the word", () => {
+  const h = workOrderHeader(wo({ status: "DISPATCHED" }));
+  assert.equal(h.statusWords, workOrderStatusWords("DISPATCHED"));
+  assert.equal(h.statusSentence, workOrderStatusSentence("DISPATCHED"));
 });

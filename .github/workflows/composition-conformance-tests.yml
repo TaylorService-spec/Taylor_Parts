@@ -40,6 +40,10 @@ on:
       # The North Star lifecycle band (Work Order design handoff, family 1).
       - "field-ops-app-vite/src/shared/ui/LifecycleBand.jsx"
       - "field-ops-app-vite/test/lifecycleBand.test.jsx"
+      - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
+      - "field-ops-app-vite/test/workOrderActionEmphasis.test.jsx"
+      - "field-ops-app-vite/src/metadata/listPresentation.js"
       # The Work Order record surface, its action-emphasis rule, and the shared enum display.
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/src/modules/controlTower/WorkOrderActions.jsx"
@@ -111,6 +115,10 @@ on:
       # The North Star lifecycle band (Work Order design handoff, family 1).
       - "field-ops-app-vite/src/shared/ui/LifecycleBand.jsx"
       - "field-ops-app-vite/test/lifecycleBand.test.jsx"
+      - "field-ops-app-vite/test/workOrderNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/workOrderNorthStarAuthority.test.jsx"
+      - "field-ops-app-vite/test/workOrderActionEmphasis.test.jsx"
+      - "field-ops-app-vite/src/metadata/listPresentation.js"
       # The Work Order record surface, its action-emphasis rule, and the shared enum display.
       - "field-ops-app-vite/src/modules/workOrders/WorkOrderDetailPage.jsx"
       - "field-ops-app-vite/src/modules/controlTower/WorkOrderActions.jsx"
@@ -171,7 +179,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Conformance gates + Truck workspace regression
-        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx test/lifecycleBand.test.jsx test/workOrderNorthStarPage.test.jsx test/workOrderNorthStarAuthority.test.jsx test/workOrderActionEmphasisRule.test.jsx
+        run: npx vitest run test/compositionConformance.test.jsx test/truckInventory.test.jsx test/rawIdPresentationGuard.test.jsx test/workOrderNorthStarSurface.test.jsx test/lifecycleBand.test.jsx test/workOrderNorthStarPage.test.jsx test/workOrderNorthStarAuthority.test.jsx test/workOrderActionEmphasis.test.jsx test/workOrderNorthStarPage.test.jsx test/workOrderNorthStarAuthority.test.jsx test/workOrderActionEmphasisRule.test.jsx
         # MISSING working-directory, pre-existing: this step ran from the repo root, so its
         # tests were never actually executing in this lane. Adding it makes them run.
         working-directory: field-ops-app-vite

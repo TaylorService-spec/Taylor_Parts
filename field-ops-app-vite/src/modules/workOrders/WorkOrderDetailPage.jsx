@@ -20,6 +20,7 @@ import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objec
 import { savedListState } from "../../navigation/listStateMemory.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
+import { formatAddress } from "../../domain/address";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
 import { workOrderTypeLabel } from "../../domain/workOrderType.js";
 import { formatClockTime, formatMoment } from "../../domain/displayTimestamp";
@@ -120,6 +121,19 @@ export default function WorkOrderDetailPage() {
   // stating the absence, and never as the document id.
   const lineage = useMemo(() => workOrderLineage(workOrder, { salesOrderReference: null }), [workOrder]);
 
+  // The lifecycle tail, from that ONE lineage derivation. Three states, three sentences — a
+  // resolvable reference would read "from SO-…", and until a naming read exists the other two say
+  // which of "not linked" and "linked but unreadable" is true, because those are different facts
+  // about the record and a dispatcher acts differently on each.
+  const salesOrderEdge = lineage.find((e) => e.key === "salesOrder") ?? null;
+  const lineageTail = !salesOrderEdge
+    ? null
+    : salesOrderEdge.state === EDGE.RESOLVED
+      ? `from ${salesOrderEdge.reference}`
+      : salesOrderEdge.state === EDGE.UNRESOLVED
+        ? "Linked to a sales order — reference unavailable."
+        : "Lineage isn’t linked on this record yet.";
+
   if (loading) {
     return <div className="ns-page"><HonestState state={HONEST_STATE.LOADING} subject="work order" /></div>;
   }
@@ -178,6 +192,7 @@ export default function WorkOrderDetailPage() {
     ? [equipmentDisplayName(equipment), equipmentSummary(equipment)].filter(Boolean).join(" · ")
     : null;
   const window = formatWindow(workOrder.scheduledStart, workOrder.scheduledEnd);
+  const siteAddress = formatAddress(location?.address ?? location ?? null);
 
   // THE KICKER: object type · governed reference. Priority rides here because the concept puts
   // "Work Order · Repair · P2 High" above the title.
@@ -194,13 +209,23 @@ export default function WorkOrderDetailPage() {
 
   return (
     <div className="ns-page">
-      <div className="ns-page__crumb">
-        <span>Enterprise Operations OS</span>
-        <span className="ns-page__crumb-right">
+      {/* THE UTILITY LINE (P1v2). Context left, live indicator right — the concept's arrangement,
+          which also puts the trail where a reader looks for it first.
+
+          THE LIVE CLAIM IS TRUE, which is why it is the one intelligence affordance on the concept
+          that shipped whole. useWorkOrder is an onSnapshot subscription: this record really does
+          update without a reload. The concept's ⌘K hint has no command palette behind it and is
+          NOT rendered — an affordance for a shortcut that does nothing is worse than its absence. */}
+      <div className="ns-page__utility">
+        <span className="ns-page__context">
           <Link to={objectListPathWithState(OBJECT_LIST_KEY.WORK_ORDERS, savedListState(OBJECT_LIST_KEY.WORK_ORDERS))}>
             Service → Work Orders
           </Link>
           {header.reference ? ` → ${header.reference}` : null}
+        </span>
+        <span className="ns-live">
+          <span className="ns-live__dot" aria-hidden="true" />
+          Live — this record updates in real time
         </span>
       </div>
       <div className="ns-rulepair" />
@@ -209,27 +234,72 @@ export default function WorkOrderDetailPage() {
         kicker={kicker}
         reference={header.reference}
         fallbackName="Work Order"
-        statusWords={header.statusWords}
+        // THE STATE AS A CLAUSE (P1v2), from the SAME vocabulary the spine uses. The pill became a
+        // sentence because the concept writes one, and a sentence is the one status treatment that
+        // is safe without a glyph: the meaning is in the words, not the colour.
+        statusWords={header.statusSentence ?? header.statusWords}
         statusTone={header.statusTone}
+        statusVariant="sentence"
         facts={[
           { key: "customer", label: null, value: account?.name ?? (accountError ? "Customer — not available to you" : "Customer — reference unavailable") },
           { key: "site", label: null, value: location?.name ?? (locationError ? "Site — not available to you" : "Site — reference unavailable") },
           { key: "tech", label: "Tech", value: techName ?? (workOrder.scheduledTechId ? "reference unavailable" : "Unassigned") },
           { key: "window", label: "Window", value: window },
+          // GAP 8 — the concept puts a first-visit-fix likelihood here. There is no predictor, so
+          // the slot states that rather than showing a percentage. A number here would be read as
+          // computed, and acted on.
+          {
+            key: "fvf",
+            label: null,
+            value: <span className="ns-gap-note">First-visit fix — not computed</span>,
+            title: "Requires a prediction engine — a post-pilot governance item",
+          },
         ]}
         actions={
           // The governed action cluster, unchanged. Legality is decided by getAllowedActions and the
           // engine; this file neither widens nor narrows it.
-          <WorkOrderActions
-            workOrder={workOrder}
-            role={role}
-            technicians={technicians}
-            showStatus={false}
-            // The concept fills exactly one button: the transition the dispatcher almost always
-            // wants next. orderWorkflowActions already orders them; this only reweights the
-            // rendering of that same list.
-            emphasizeFirst
-          />
+          //
+          // ─────────── THE TWO DISABLED BUTTONS ARE NOT ACTIONS ───────────
+          //
+          // The concept's header carries Reschedule and Message technician. The engine grants a
+          // dispatcher NEITHER at DISPATCHED — Reschedule is not a transition that exists, and
+          // there is no notification channel to message down. Owner ruling (P1v2): render them as
+          // truthful disabled placeholders so the action architecture matches the approved source
+          // now and lights up when the behaviour ships, with the behaviour itself as separate,
+          // separately-approved work (B1, B2).
+          //
+          // They carry NO onClick, NO handler, NO command, NO capability check — there is nothing
+          // to check, because there is nothing behind them. `disabled` is not a permission decision
+          // here and must never be mistaken for one: a permission-disabled button means "not you",
+          // and these mean "not yet, for anyone". The tooltip says which, in those words.
+          <>
+            <button
+              type="button"
+              className="fo-button ns-btn-pending"
+              disabled
+              title="Not available yet — rescheduling a dispatched work order needs a transition the engine does not have (backlog B1). Not a permission limit."
+            >
+              Reschedule
+            </button>
+            <button
+              type="button"
+              className="fo-button ns-btn-pending ns-btn-pending--primary"
+              disabled
+              title="Not available yet — there is no technician notification channel to send to (backlog B2). Not a permission limit."
+            >
+              Message technician
+            </button>
+            <WorkOrderActions
+              workOrder={workOrder}
+              role={role}
+              technicians={technicians}
+              showStatus={false}
+              // The concept fills exactly one button: the transition the dispatcher almost always
+              // wants next. orderWorkflowActions already orders them; this only reweights the
+              // rendering of that same list.
+              emphasizeFirst
+            />
+          </>
         }
       />
 
@@ -239,14 +309,17 @@ export default function WorkOrderDetailPage() {
           concept shows beneath it. Both renderings consume workOrderSpine, so they cannot
           disagree about where the record is.
 
-          No lineage tail. The concept trails the band with "from SO-2026-000141"; that reference
-          is not resolvable from this page (see `lineage` above), and the rail already states its
-          absence once. Saying it twice is the NS-P4 defect this page exists to remove. */}
+          LINEAGE RIDES HERE (P1v2), not in the rail. The concept trails the band with
+          "from SO-2026-000141"; the reference is not resolvable from this page (see `lineage`),
+          so the tail states the absence instead. It is stated in ONE place — the rail's separate
+          Lineage section is gone, because the same sentence in both is the NS-P4 defect this
+          composition exists to remove. */}
       <LifecycleBand
         steps={spine.steps}
         terminal={spine.terminal}
         ariaLabel="Work order lifecycle"
         detailFor={(stepKey) => workOrderStageDetail(workOrder, stepKey, (v) => formatMoment(v, { unknown: "" }))}
+        tail={lineageTail}
       />
       {spine.unrecognised ? (
         <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This work order's state is not one the lifecycle recognises." />
@@ -262,6 +335,20 @@ export default function WorkOrderDetailPage() {
           detail="You don’t have access to the technician list. Some assignment info may be missing."
         />
       ) : null}
+
+      {/* GAP 5 — THE SUGGESTION SLOT, KEPT EMPTY AND SAID SO.
+          The approved concept puts a suggestion band here. No engine is connected: #1493 wired the
+          governed intelligence contract, and it returns speak:false until a trusted readiness
+          assembler exists, so nothing is proposed.
+
+          The slot renders anyway, holding its geometry, stating the absence. It is deliberately
+          NOT bronze while empty — bronze is this system's "pay attention" colour, and an empty
+          slot dressed as advice is exactly the fabrication the whole composition refuses.
+          .ns-suggest--active restores it the day something real has something to say. */}
+      <div className="ns-suggest" aria-label="Suggested">
+        <span className="ns-suggest__label">Suggested</span>
+        <span>No suggestion engine is connected yet — nothing is proposed for this job.</span>
+      </div>
 
       <div className="ns-record-body">
         <div>
@@ -286,50 +373,48 @@ export default function WorkOrderDetailPage() {
             </div>
           </RuledSection>
 
+          {/* GAP 2 — ONE PARTS TABLE, and the caveat rides with the HEADING.
+              The concept carries its "verified against truck stock" note beside the title, and
+              P1v2 keeps the honest version there: under the table it can be scrolled away from the
+              numbers it qualifies; beside the title it cannot.
+
+              This section used to render a READ-ONLY table and then mount the editor below it in a
+              second panel — the same plan, twice, in two typographies, free to disagree. That is
+              the NS-P4 defect the whole composition exists to remove, reintroduced while removing
+              it. The approved source shows one table, so the editor supplies it: it already renders
+              every planned line, already owns the governed write and its capability gate, and
+              already has an honest empty state. .ns-embed strips its card chrome so the table reads
+              in the North Star geometry rather than as a nested panel.
+
+              The readiness COLUMN stays absent rather than fabricated (Gap 2): no truck-stock read
+              exists, and a green tick this system cannot substantiate would send a technician to a
+              job without the part. */}
           <RuledSection
-            title="Parts plan"
-            meta={plan.length > 0 ? `${plan.length} part${plan.length === 1 ? "" : "s"} planned` : null}
+            title="Parts"
+            meta={
+              <span className="ns-section__note">
+                · readiness by source (truck / warehouse) isn’t recorded yet — quantities are
+                planned demand{plan.length > 0 ? ` · ${plan.length} part${plan.length === 1 ? "" : "s"} planned` : ""}
+              </span>
+            }
           >
-            {plan.length === 0 ? (
-              <HonestState state={HONEST_STATE.EMPTY} detail="No parts have been planned for this visit." />
-            ) : (
-              <>
-                <div className="ns-table-wrap">
-                  <table className="ns-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Part</th>
-                        <th scope="col" className="ns-num">Planned</th>
-                        <th scope="col">Readiness</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plan.map((line, i) => (
-                        <tr key={line.partId ?? `line-${i}`}>
-                          <td>
-                            {line.name ?? <span className="ns-state--na">Part — reference unavailable</span>}
-                            {line.sku && line.sku !== line.name ? <span className="ns-lineage__label"> · {line.sku}</span> : null}
-                          </td>
-                          <td className="ns-num">{line.qtyPlanned ?? "—"}</td>
-                          <td><span className="ns-state--na">Not available</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="ns-table__note">
-                  Planning demand only — never reserves stock or records usage. Truck and staging
-                  readiness aren&rsquo;t available yet, so this shows what was planned, not what is on hand.
-                </p>
-              </>
-            )}
+            <div className="ns-embed">
+              <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
+            </div>
           </RuledSection>
 
-          <RuledSection title="Edit parts plan" panel>
-            <WorkOrderPartsPlanEditor workOrder={workOrder} capability={partsPlanCapability} />
-          </RuledSection>
-
-          <RuledSection title="Timeline">
+          {/* The concept annotates its timeline as reconstructed rather than audited, and that
+              annotation is what makes the scheduled WINDOW admissible as a row: labelled this way
+              the list is explicitly milestones, not an audit trail, so a planned time sitting
+              among recorded ones is not a claim that it happened. Without the label it would be. */}
+          <RuledSection
+            title="Timeline"
+            meta={
+              <span className="ns-section__note">
+                · reconstructed from Work Order milestones — approximate, not a recorded audit trail
+              </span>
+            }
+          >
             <WorkOrderTimeline workOrder={workOrder} />
           </RuledSection>
         </div>
@@ -341,32 +426,41 @@ export default function WorkOrderDetailPage() {
               : workOrder.equipmentId
                 ? <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="Equipment — reference unavailable." />
                 : <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="No unit is recorded on this work order." />}
+            {/* GAP 6 — the concept puts a repair-history insight box here (repeat repairs, spend
+                against replacement cost). Those need an equipment-history read this route does not
+                perform. The slot states that; it does not guess at a repair count. */}
+            <p className="ns-gap-note">
+              Repair-history insight (repeat repairs, spend against replacement) needs an
+              equipment-history read this page doesn’t perform yet.
+            </p>
           </RuledSection>
 
           <RuledSection title="Site">
             {location?.name ? <p>{location.name}</p> : null}
+            {/* The address the concept puts under the site name — a technician reads it to get
+                there. Rendered only when the location record actually carries one; formatAddress
+                returns null rather than a partial line, and a blank address line is worse than
+                none. */}
+            {siteAddress ? <p className="ns-rail__meta">{siteAddress}</p> : null}
             {locationError
               ? <HonestState state={HONEST_STATE.DENIED} subject="The site record" />
               : !location?.name
                 ? <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="Site — reference unavailable." />
                 : null}
+            {/* GAP 3 — site contact and access notes have no fields on Location. Omitted entirely
+                rather than rendered as an empty label: a blank "Access:" invites someone to
+                believe the site has none. */}
           </RuledSection>
 
-          <RuledSection title="Lineage">
-            <ul className="ns-lineage">
-              {lineage.map((edge) => (
-                <li className="ns-lineage__row" key={edge.key}>
-                  <span className="ns-lineage__label">{edge.label}</span>
-                  {edge.state === EDGE.RESOLVED ? (
-                    <span>{edge.reference}</span>
-                  ) : edge.state === EDGE.UNRESOLVED ? (
-                    <span className="ns-lineage__unresolved">Linked — reference unavailable</span>
-                  ) : (
-                    <span className="ns-lineage__unresolved">Not linked</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+          {/* GAP 7 — the concept's dispatcher-context section: the technician's day load, how far
+              this job can slip, sibling work orders at the same site. All three need scheduling
+              reads this route does not perform, and #1494 adds no read. The section keeps its
+              place in the rail and says so once. */}
+          <RuledSection title="Dispatcher context">
+            <p className="ns-gap-note">
+              Technician day load, slip windows and sibling work orders require scheduling reads
+              this route doesn’t perform yet.
+            </p>
           </RuledSection>
 
           <RuledSection title="Record">

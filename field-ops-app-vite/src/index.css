@@ -5168,7 +5168,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* ── Record identity (pattern 1) */
 .ns-identity { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
   padding: 26px 0 18px; flex-wrap: wrap; }
-.ns-identity__main { min-width: 0; }
+/* THE ACTIONS STAY BESIDE THE TITLE. The identity block grows and shrinks; the action cluster does
+   neither. Without the basis, a fact row long enough to wrap (P1v2 added a fifth fact) claimed the
+   whole line and pushed the cluster underneath, which is a different composition from the approved
+   one — the actions read as page-level rather than record-level down there. */
+.ns-identity__main { min-width: 0; flex: 1 1 26rem; }
+.ns-identity__actions { flex: 0 0 auto; }
+/* BELOW THE SPLIT, THE CLUSTER TAKES ITS OWN ROW AND WRAPS INSIDE IT.
+   Holding `flex: 0 0 auto` down here kept three buttons on one unbreakable line and pushed the
+   whole document 71px wider than a 320px viewport — a page that scrolls sideways on a phone,
+   caused by a rule that is right at desktop width. The concept wraps the cluster under the title
+   at narrow widths; this is that. */
+@media (max-width: 899.98px) {
+  .ns-identity__actions { flex: 1 1 100%; }
+}
 .ns-identity__kicker { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--verenward-bronze); font-weight: 600; margin: 0 0 6px; }
 /* The serif title, step 1 of the three-step header scale (40 / 30–34 / 22). */
@@ -5427,3 +5440,94 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-rail .fo-record-fields { font-size: 13px; display: grid; gap: 8px; margin: 0; }
 .ns-rail .fo-record-field dt { font-size: 12px; color: var(--color-text-muted); }
 .ns-rail .fo-record-field dd { margin: 0; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   P1v2 — the structural slots of the approved North Star composition.
+
+   The visual source is now North Star - Work Order.dc.html, whose surfaces assume
+   services this system does not have: a suggestion engine, live truck-stock reads,
+   an equipment-history read, dispatcher scheduling reads, a first-visit-fix
+   predictor. The handoff's rule, and the Owner ruling that accepted it:
+
+       KEEP THE DESIGNED SLOT. RENDER A TRUTHFUL STATE. NEVER FABRICATE THE NUMBER.
+
+   So each class below styles a REAL region of the page whose content today is an
+   honest sentence about what is missing. When a capability ships, the sentence is
+   replaced by the thing — the geometry does not move.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The utility line. Context left, live indicator right. */
+.ns-page__utility { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 16px; padding: 14px 0 10px; flex-wrap: wrap; }
+.ns-page__context { font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-page__context a { color: var(--color-text-secondary); text-decoration: none;
+  display: inline-flex; align-items: center; min-height: 44px; }
+@media (min-width: 768px) { .ns-page__context a { min-height: 0; } }
+.ns-page__context a:hover { color: var(--color-text-primary); text-decoration: underline; }
+
+/* THE LIVE INDICATOR IS A CLAIM, and it is one this page can actually make: useWorkOrder is an
+   onSnapshot subscription, so the record really does update without a reload. It is the one
+   "intelligence" affordance on the concept that needed no new capability at all. */
+.ns-live { font-size: 11.5px; color: var(--color-text-secondary); white-space: nowrap; }
+.ns-live__dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-success); animation: ns-live 2s infinite; vertical-align: 1px;
+  margin-right: 4px; }
+@keyframes ns-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .ns-live__dot { animation: none; } }
+
+/* ── The status sentence. Plain weighted text, as the concept draws it; safe without a glyph
+   because a sentence carries its meaning in words rather than in its colour. */
+.ns-identity__status-sentence { font-weight: 600; color: var(--color-info); }
+
+/* ── A fact the page cannot compute. Muted, and it says what is missing rather than showing a
+   dash — "First-visit fix — not computed" is information; "—" is not. */
+.ns-gap-note { font-size: 12.5px; color: var(--color-text-muted); }
+
+/* ── Backlog actions. The concept's action architecture, present and visibly not yet available.
+   These are NOT wired to anything: no handler, no command, no capability. They hold their
+   positions so the header does not reflow when the behaviour ships. */
+.ns-btn-pending { border-radius: 0; font-weight: 600; font-size: 13px; padding: 9px 16px;
+  background: none; border: 1px solid var(--verenward-border-strong);
+  color: var(--verenward-guardian); opacity: 0.45; cursor: not-allowed; font-family: var(--font-interface); }
+.ns-btn-pending--primary { background: var(--verenward-evergreen);
+  border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
+@media (max-width: 767.98px) { .ns-btn-pending { min-height: 44px; } }
+
+/* ── The suggestion slot. Structure now, engine later. */
+.ns-suggest { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px;
+  align-items: center; background: var(--verenward-stone-card);
+  border: 1px solid var(--color-border); padding: 12px 16px; margin-bottom: 26px;
+  font-size: 13.5px; color: var(--color-text-secondary); }
+.ns-suggest__label { font-weight: 700; font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-muted); }
+/* Reserved for the day an engine speaks: bronze is this system's "pay attention" colour, and it
+   is deliberately NOT used while the slot is empty. An empty slot must not look like advice. */
+.ns-suggest--active { border-color: var(--verenward-bronze); color: var(--color-text-primary); }
+.ns-suggest--active .ns-suggest__label { color: var(--verenward-bronze); }
+
+/* ── Section-heading annotation: the honest caveat rides with the title it qualifies, so it
+   cannot be scrolled away from the table it is about. */
+.ns-section__note { font-weight: 600; font-size: 12px; color: var(--color-text-secondary); }
+
+/* ── Rail supporting text. */
+.ns-rail__meta { color: var(--color-text-secondary); font-size: 12.5px; }
+.ns-rail .ns-gap-note { margin: 8px 0 0; }
+
+/* ── .ns-embed: an existing panel component, mounted inside a ruled section.
+   The parts-plan editor owns the governed write and its capability gate, so it is mounted
+   UNCHANGED; only its card chrome is stripped and its table brought to the North Star geometry.
+   Its own <h3> is hidden because the section already carries the title — two headings for one
+   region is how a nested panel announces itself as a second page. */
+/* The embedded table is the widest thing in the main column; this is what stops it pushing the
+   whole page sideways on a narrow viewport. */
+.ns-embed { overflow-x: auto; }
+.ns-embed .fo-card { border: 0; background: none; box-shadow: none; padding: 0; border-radius: 0; }
+.ns-embed .fo-card > h3 { display: none; }
+.ns-embed .fo-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.ns-embed .fo-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-secondary); font-weight: 600;
+  padding: 6px 14px 6px 0; border-bottom: 2px solid var(--color-text-primary); }
+.ns-embed .fo-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--color-border);
+  font-variant-numeric: tabular-nums; }
+.ns-embed .fo-table td:first-child { color: var(--color-text-primary); font-weight: 500; }

@@ -78,6 +78,43 @@ export function workOrderStatusWords(status) {
   return STATUS_WORDS[status] ?? null;
 }
 
+/**
+ * STATUS AS A SENTENCE (P1v2).
+ *
+ * The approved composition writes the state as a clause, not a label: "Dispatched — awaiting
+ * technician acceptance" rather than "Dispatched". The extra half answers the question a dispatcher
+ * actually has, which is not *what state is this* but *what is it waiting on*.
+ *
+ * This is the SAME vocabulary, extended — not a second one. The sentence is built from the governed
+ * word plus a clause, so a status can never be worded one way here and another way in the spine:
+ * change STATUS_WORDS and both move together. A status with nothing useful to add returns the word
+ * unchanged rather than padding it into a sentence for symmetry.
+ *
+ * It also removes the "colour alone" hazard the pill was carrying: a sentence carries its meaning
+ * in words whatever the reader can see, so the concept's plain coloured text is safe here in a way
+ * a bare coloured label would not be.
+ */
+const STATUS_CLAUSE = Object.freeze({
+  CREATED: "not yet ready to dispatch",
+  READY_TO_DISPATCH: "waiting to be scheduled",
+  SCHEDULED: "awaiting dispatch",
+  DISPATCHED: "awaiting technician acceptance",
+  ACCEPTED: "technician preparing",
+  EN_ROUTE: "technician on the way",
+  ARRIVED: "technician on site",
+  WORK_IN_PROGRESS: null,
+  COMPLETED: "awaiting closeout",
+  CLOSED: null,
+  CANCELLED: null,
+});
+
+export function workOrderStatusSentence(status) {
+  const words = workOrderStatusWords(status);
+  if (!words) return null;
+  const clause = STATUS_CLAUSE[status];
+  return clause ? words + " \u2014 " + clause : words;
+}
+
 /** Tone for the status, so colour and word always agree. Never colour alone (NS R04). */
 export function workOrderStatusTone(status) {
   if (status === "CANCELLED") return "negative";
@@ -243,6 +280,16 @@ export function workOrderStageDetail(workOrder, stepKey, formatWhen) {
 export function workOrderTimeline(workOrder) {
   return [
     { key: "created", label: "Created", at: workOrder?.createdAt },
+    // THE SCHEDULED WINDOW IS A PLAN, and it is here on the approved composition's terms.
+    //
+    // It was excluded at first, on the reasoning that a future time sorted among past ones reads
+    // as something that already happened. That reasoning was right about the risk and wrong about
+    // the fix: P1v2 labels the whole list "reconstructed from Work Order milestones — approximate,
+    // not a recorded audit trail", and under that heading a milestone list legitimately carries
+    // the window. `planned` marks it so, so a consumer that needs the distinction has it without
+    // re-deriving which key means what — and so this row can never be mistaken for an audit event
+    // by anything downstream.
+    { key: "scheduled", label: "Scheduled", at: workOrder?.scheduledStart, planned: true },
     { key: "dispatched", label: "Dispatched", at: workOrder?.dispatchedAt },
     { key: "accepted", label: "Accepted by technician", at: workOrder?.acceptedAt },
     { key: "enRoute", label: "En route", at: workOrder?.enRouteAt },
@@ -408,6 +455,7 @@ export function workOrderHeader(workOrder) {
     kind: workOrder.type ?? null,
     priority: workOrder.priority ?? null,
     statusWords: workOrderStatusWords(status),
+    statusSentence: workOrderStatusSentence(status),
     statusTone: workOrderStatusTone(status),
     rawStatus: status,
     isClosed: status === "COMPLETED" || status === "CLOSED" || status === "CANCELLED",

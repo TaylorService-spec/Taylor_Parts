@@ -26,12 +26,23 @@ import StatusPill from "./StatusPill.jsx";
 // `statusWords` is a rendered sentence fragment supplied by the caller's domain layer, never an enum
 // this component prettifies. A component that formats status has become a second derivation of it
 // (NS-P4), and the two will disagree the first time one of them is updated.
+// `statusVariant` — how the state is written, never WHAT it says.
+//
+//   "pill"     the product's established treatment: a tone-coloured chip carrying a glyph, so the
+//              state is never signalled by colour alone. Right for a short label.
+//   "sentence" the approved North Star treatment: plain weighted text reading as a clause
+//              ("Dispatched — awaiting technician acceptance"). Safe without a glyph precisely
+//              BECAUSE it is a sentence: the meaning is in the words, and the colour is emphasis
+//              rather than the carrier. A bare coloured word would not clear that bar.
+//
+// Defaults to "pill" so any future consumer keeps the older, stricter treatment unless it opts in.
 export default function RecordIdentity({
   kicker,
   reference,
   fallbackName,
   statusWords = null,
   statusTone = "neutral",
+  statusVariant = "pill",
   facts = [],
   actions = null,
 }) {
@@ -44,7 +55,9 @@ export default function RecordIdentity({
         {kicker ? <p className="ns-identity__kicker">{kicker}</p> : null}
         <h1 className="ns-identity__title">{title}</h1>
         <div className="ns-identity__facts">
-          {statusWords ? (
+          {statusWords && statusVariant === "sentence" ? (
+            <span className="ns-identity__status-sentence">{statusWords}</span>
+          ) : statusWords ? (
             <StatusPill tone={statusTone}>{statusWords}</StatusPill>
           ) : (
             // An unrecognised status is stated, not hidden. A blank where the state belongs reads as
@@ -52,7 +65,7 @@ export default function RecordIdentity({
             <span className="ns-identity__unknown">State not recognised</span>
           )}
           {shown.map((f) => (
-            <span className="ns-identity__fact" key={f.key ?? f.label}>
+            <span className="ns-identity__fact" key={f.key ?? f.label} title={f.title ?? undefined}>
               {f.label ? <span className="ns-identity__fact-label">{f.label}</span> : null}
               <span className="ns-identity__fact-value">{f.value}</span>
             </span>

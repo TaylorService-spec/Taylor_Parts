@@ -127,9 +127,16 @@ describe("one fact, one rendering (NS-P4)", () => {
     // reached, and the timeline names a dispatch that happened, and neither is a second rendering
     // of "what state is this record in". A status PILL is that rendering, and there may be one.
     const { container } = render(<WorkOrderDetailPage />);
-    expect(container.querySelectorAll(".fo-status-pill, .fo-status-text")).toHaveLength(1);
+    // P1v2 writes the state as a CLAUSE rather than a pill, so the selector follows the treatment.
+    // The count that is being defended is unchanged: exactly one.
+    const treatments = container.querySelectorAll(
+      ".fo-status-pill, .fo-status-text, .ns-identity__status-sentence",
+    );
+    expect(treatments).toHaveLength(1);
     // And it lives in the record header, not scattered through the body.
-    expect(container.querySelector(".ns-identity .fo-status-pill, .ns-identity .fo-status-text")).toBeTruthy();
+    expect(container.querySelector(".ns-identity .ns-identity__status-sentence")).toBeTruthy();
+    // The clause is present, which is what makes plain coloured text safe without a glyph.
+    expect(treatments[0].textContent).toBe("Dispatched \u2014 awaiting technician acceptance");
   });
 
   it("the status word is not repeated inside the record body", () => {
@@ -190,7 +197,9 @@ describe("the timeline shows only what was recorded", () => {
   it("one row per RECORDED timestamp, each with its own distinct time", () => {
     const { container } = render(<WorkOrderDetailPage />);
     const rows = [...container.querySelectorAll(".ns-timeline__row")];
-    expect(rows).toHaveLength(2);
+    // Created, Dispatched, and the scheduled WINDOW — admissible because the section heading
+    // labels the whole list "reconstructed from Work Order milestones", not an audit trail.
+    expect(rows).toHaveLength(3);
     const times = rows.map((r) => r.querySelector(".ns-timeline__when").textContent);
     expect(new Set(times).size).toBe(times.length);
     expect(times.every((t) => t && t !== "—" && t !== "Unknown")).toBe(true);
@@ -203,7 +212,7 @@ describe("the timeline shows only what was recorded", () => {
   });
 
   it("a record with nothing recorded says so rather than rendering an empty list", () => {
-    state.workOrder = baseWo({ createdAt: null, dispatchedAt: null });
+    state.workOrder = baseWo({ createdAt: null, dispatchedAt: null, scheduledStart: null, scheduledEnd: null });
     const { container } = render(<WorkOrderDetailPage />);
     expect(container.textContent).toMatch(/No recorded events yet/i);
   });
@@ -240,17 +249,34 @@ describe("honest states survive rendering", () => {
     expect(within(rail).getByText(/role|available/i)).toBeTruthy();
   });
 
-  it("a parts plan nobody has filled in is EMPTY, in words", () => {
-    state.workOrder = baseWo({ inventorySnapshot: [] });
+  it("THE PLAN IS RENDERED ONCE, by the component that owns the governed write", () => {
+    // This page used to draw a read-only table AND mount the editor below it: the same plan twice,
+    // in two typographies, free to disagree. The editor already renders every planned line, owns
+    // the capability gate, and has its own empty state -- so it supplies the one table, and its
+    // own suite covers the rows. What is asserted here is that there is exactly one.
     const { container } = render(<WorkOrderDetailPage />);
-    expect(container.textContent).toMatch(/No parts have been planned/i);
+    expect(container.querySelectorAll('[data-testid="parts-editor"]')).toHaveLength(1);
+    expect(container.querySelector(".ns-embed [data-testid='parts-editor']")).toBeTruthy();
+    // No second, page-local rendering of the same rows.
+    expect(container.querySelector(".ns-table")).toBeNull();
   });
 
-  it("READINESS IS NOT AVAILABLE, and never a tick this system cannot substantiate", () => {
+  it("the parts caveat is present whether or not anything is planned", () => {
+    for (const snapshot of [[], baseWo().inventorySnapshot]) {
+      state.workOrder = baseWo({ inventorySnapshot: snapshot });
+      const { container, unmount } = render(<WorkOrderDetailPage />);
+      expect(container.textContent).toMatch(/readiness by source \(truck \/ warehouse\) isn/i);
+      unmount();
+    }
+  });
+
+  it("READINESS IS NEVER CLAIMED -- no tick this system cannot substantiate, anywhere", () => {
     const { container } = render(<WorkOrderDetailPage />);
-    const table = container.querySelector(".ns-table");
-    expect(table.textContent).toMatch(/Not available/i);
-    expect(table.textContent).not.toMatch(/On truck|Staged/i);
+    // The concept shows "✓ On truck" / "Staged — not picked up". EOS cannot see a truck, and a
+    // fabricated tick would send a technician to a job without the part.
+    expect(container.textContent).not.toMatch(/On truck|Staged|In stock|Ready to pick/i);
+    // The absence is stated instead, beside the heading it qualifies.
+    expect(container.textContent).toMatch(/readiness by source \(truck \/ warehouse\) isn/i);
   });
 });
 
@@ -295,9 +321,11 @@ describe("accessibility of the composition", () => {
     expect(pulse.textContent).toBe("");
   });
 
-  it("a wide table scrolls inside its own container rather than widening the page", () => {
+  it("a wide embedded table scrolls inside its own container rather than widening the page", () => {
     const { container } = render(<WorkOrderDetailPage />);
-    expect(container.querySelector(".ns-table-wrap")).toBeTruthy();
+    // The editor's table is the widest thing in the main column; .ns-embed is what stops it
+    // pushing the page sideways on a narrow viewport.
+    expect(container.querySelector(".ns-embed")).toBeTruthy();
   });
 });
 
@@ -314,7 +342,10 @@ describe("hostile data does not break the composition", () => {
     });
     const { container } = render(<WorkOrderDetailPage />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("WO-2026-000873");
-    expect(container.querySelectorAll(".ns-table tbody tr")).toHaveLength(120);
+    // Every region still renders, and the long strings have not displaced any of them.
+    for (const sel of [".ns-identity", ".ns-lifecycle", ".ns-suggest", ".ns-record-body", ".ns-rail", ".ns-embed"]) {
+      expect(container.querySelector(sel), sel + " was displaced by hostile data").toBeTruthy();
+    }
   });
 
   it("an unscheduled, unassigned record still renders every region", () => {
@@ -330,7 +361,11 @@ describe("hostile data does not break the composition", () => {
     const { container } = render(<WorkOrderDetailPage />);
     expect(container.querySelector(".ns-chip--terminal").textContent).toBe("Cancelled");
     expect(container.querySelector(".ns-chip__pulse")).toBeNull();
-    expect(container.querySelector(".ns-identity__actions .fo-button")).toBeNull();
+    // The B1/B2 placeholders hold their positions on every status (P1v2), so the assertion is that
+    // no ENABLED action is offered -- which is the thing that actually matters.
+    const live = [...container.querySelectorAll(".ns-identity__actions .fo-button")]
+      .filter((b) => !b.disabled);
+    expect(live).toHaveLength(0);
   });
 
   it("a status the spine does not recognise is STATED, never drawn as a fresh record", () => {
@@ -428,5 +463,90 @@ describe("data ownership did not change", () => {
       expect(code.split(hook).length - 1, hook + " must have exactly one call site").toBe(1);
     }
     expect(/\.map\([^)]*use[A-Z]/.test(code), "a read inside a map is an N+1").toBe(false);
+  });
+});
+
+describe("P1v2 structural slots: present, and truthful about what is missing", () => {
+  it("THE LIVE CLAIM IS ONE THIS PAGE CAN MAKE -- useWorkOrder is a subscription", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    expect(container.querySelector(".ns-live")).toBeTruthy();
+    expect(container.querySelector(".ns-live__dot").getAttribute("aria-hidden")).toBe("true");
+    expect(container.textContent).toMatch(/updates in real time/i);
+  });
+
+  it("the command-palette hint is NOT rendered -- there is no command palette", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    expect(container.textContent).not.toMatch(/\u2318K|Ctrl\+K/i);
+  });
+
+  it("THE SUGGESTION SLOT EXISTS AND SAYS NOTHING IS PROPOSED", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    const slot = container.querySelector(".ns-suggest");
+    expect(slot).toBeTruthy();
+    expect(slot.textContent).toMatch(/No suggestion engine is connected yet/i);
+    // An empty slot must never be dressed as advice.
+    expect(slot.classList.contains("ns-suggest--active")).toBe(false);
+  });
+
+  it("NO FABRICATED INTELLIGENCE ANYWHERE -- no percentage, confidence, ETA or repair count", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    const text = container.textContent;
+    expect(text).not.toMatch(/\d+\s?%/);
+    expect(text).not.toMatch(/confidence/i);
+    expect(text).not.toMatch(/\bETA\b/);
+    expect(text).not.toMatch(/\d+\s+repairs?\s+in\b/i);
+    expect(text).not.toMatch(/viewing\b/i);
+    // The slots are there, stating their absence.
+    expect(text).toMatch(/First-visit fix \u2014 not computed/);
+    expect(text).toMatch(/Repair-history insight/i);
+    expect(text).toMatch(/Technician day load, slip windows/i);
+  });
+
+  it("THE BACKLOG BUTTONS ARE INERT: disabled, no handler, and honest about why", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    const pending = [...container.querySelectorAll(".ns-btn-pending")];
+    expect(pending).toHaveLength(2);
+    for (const b of pending) {
+      expect(b.disabled).toBe(true);
+      // "Not yet, for anyone" -- never mistakable for "not you".
+      expect(b.getAttribute("title")).toMatch(/Not a permission limit/);
+      expect(b.getAttribute("title")).toMatch(/Not available yet/);
+    }
+    expect(pending.map((b) => b.textContent)).toEqual(["Reschedule", "Message technician"]);
+  });
+
+  it("the backlog buttons hold their positions on EVERY status, so the header never reflows", () => {
+    const statuses = ["CREATED", "SCHEDULED", "DISPATCHED", "COMPLETED", "CLOSED", "CANCELLED"];
+    for (const status of statuses) {
+      state.workOrder = baseWo({ status });
+      const { container, unmount } = render(<WorkOrderDetailPage />);
+      expect(container.querySelectorAll(".ns-btn-pending"), status).toHaveLength(2);
+      unmount();
+    }
+  });
+
+  it("LINEAGE IS STATED ONCE, on the spine, and never as a document id", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    const tail = container.querySelector(".ns-lifecycle__tail");
+    expect(tail.textContent).toMatch(/Lineage isn/);
+    // The rail's separate Lineage section is gone -- one fact, one rendering.
+    expect(container.textContent.split("Lineage isn").length - 1).toBe(1);
+    expect(container.textContent).not.toMatch(RAW_ID);
+  });
+
+  it("a work order that IS linked says so differently from one that is not", () => {
+    state.workOrder = baseWo({ salesOrderId: "sodocidaaaaaaaaaaaaa" });
+    const { container } = render(<WorkOrderDetailPage />);
+    const tail = container.querySelector(".ns-lifecycle__tail").textContent;
+    expect(tail).toMatch(/reference unavailable/i);
+    expect(tail).not.toMatch(/isn/);
+    expect(container.textContent).not.toMatch(RAW_ID);
+  });
+
+  it("the honest caveats ride with the headings they qualify", () => {
+    const { container } = render(<WorkOrderDetailPage />);
+    const notes = [...container.querySelectorAll(".ns-section__note")].map((n) => n.textContent);
+    expect(notes.some((n) => /readiness by source/i.test(n))).toBe(true);
+    expect(notes.some((n) => /not a recorded audit trail/i.test(n))).toBe(true);
   });
 });
