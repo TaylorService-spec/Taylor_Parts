@@ -138,5 +138,11 @@ export function buildWorkOrderPartsReadiness({ workOrder = {}, plannedParts = []
     counts,
     rows,
     degraded,
+    // Trusted action eligibility is carried alongside readiness, not derived from readiness. The
+    // server mirrors the existing READY reorder-create Rules branch and the eventual write rechecks
+    // authorization independently. This boolean never changes any readiness fact.
+    actionEligibility: {
+      requestReorder: capabilities.requestReorder === true,
+    },
   };
 }
