@@ -183,6 +183,8 @@ README states that #1511 was inspected as behavioral evidence only, never as vis
 | **Named decisions** | A-D1–A-D4 **resolved**; A-NS-1 **recorded**; ND-11 unchanged |
 | **Authority change** | none |
 | **Full Gate** | not triggered |
+| **Merged** | `7b6eaf14` (#1520), 2026-08-26, 16/16 checks green |
+| **Gate** | *pending.* The Quick Gate recorded above certified `1c8095d3`, which predates this pass -- it says nothing about it. A refresh from merged `7b6eaf14` and a fresh Quick Gate are owed, and `scripts/_sandboxRefresh.run.sh` is human-triggered by design (`releaseRoot.mjs` refuses an agent worktree outright). |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
 
 **What the design changed, and what it confirmed.** The design's own comparison called nine things
