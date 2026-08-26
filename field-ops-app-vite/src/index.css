@@ -2854,6 +2854,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    flips (capability grant + callable deploy). */
 
 /* Section header carries the title + its contextual edit affordance on one scan line. */
+/* The link out of the pipeline pane into the Opportunity RECORD page (North Star family 4).
+   Sits above the ContextBand, so the way to the full record is the first thing in the pane
+   rather than something found by scrolling past the facts it summarises. */
+.fo-sales-detail__open-record { margin: 0 0 8px; font-size: 13px; }
 .fo-sales-detail__block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .fo-sales-detail__block-head h4 { margin: 0; }
 .fo-sales-detail__edit { font-size: 12px; padding: 2px 8px; }
@@ -5504,6 +5508,115 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* ── A fact the page cannot compute. Muted, and it says what is missing rather than showing a
    dash — "First-visit fix — not computed" is information; "—" is not. */
 .ns-gap-note { font-size: 12.5px; color: var(--color-text-muted); }
+
+/* ═══════════════════ OPPORTUNITY RECORD PAGE — North Star P1v2 ═══════════════════
+   Visual authority: North Star - Opportunity P1v2.dc.html (design_handoff_opportunity).
+   Structure is whitespace + rules, per the grammar: no cards for read-only layout. The one
+   bordered surface is the agreement card, which the expansion report admits for suggestion-style
+   bands, and the attention strip, which the artifact draws with a brass hairline. */
+
+.ns-opportunity { }
+
+/* The serif subtitle: `need`, the nearest thing to a human name an opportunity has. Sits between
+   the reference title and the fact row, at the artifact's 17px. */
+.ns-identity__subtitle { font-family: var(--font-record-title); font-size: 17px; margin: 0 0 10px;
+  color: var(--color-text-secondary); line-height: 1.35; max-width: 66ch; overflow-wrap: anywhere; }
+
+/* Inline figures in running text. Tabular so a column of them lines up and a changing value does
+   not shift the words around it — the expansion report's rule that data sets in Inter, not serif. */
+.ns-num-inline { font-variant-numeric: tabular-nums; }
+
+/* ── The stage row. Desktop shows the chevrons; the phone shows the SAME position in words
+   ("Decision · stage 6 of 6"). Exactly one is in the DOM's layout at a time — display:none also
+   removes the other from the accessibility tree, so nothing is announced twice. */
+.ns-stage-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 8px 0 6px; }
+.ns-stage-row__label { font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-muted); white-space: nowrap; }
+.ns-stage-row__chevrons { display: none; min-width: 0; }
+.ns-stage-row__words { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+.ns-stage-row__note { font-size: 12px; color: var(--color-text-muted); }
+/* The chevron row needs real width before it is worth drawing; below that the words carry it.
+   Container-scoped for the same reason the record body is: the application rail takes 250-300px
+   before this page gets any width, so a viewport query measures the wrong box. */
+@container ns-record (min-width: 760px) {
+  .ns-stage-row__chevrons { display: block; }
+  .ns-stage-row__words { display: none; }
+}
+@supports not (container-type: inline-size) {
+  @media (min-width: 1060px) {
+    .ns-stage-row__chevrons { display: block; }
+    .ns-stage-row__words { display: none; }
+  }
+}
+/* The chevrons scroll inside their own box rather than pushing the page sideways — the artifact's
+   own overflow-x, and the reason the page body never scrolls horizontally. */
+.ns-stage-row__chevrons > .fo-sales-detail__lifecycle { overflow-x: auto; }
+
+/* ── The attention strip. Brass hairline on paper, one line, the update link at the right end.
+   Renders only when deriveAttention raised something or a next action exists. */
+.ns-attention-strip { display: grid; grid-template-columns: auto 1fr auto; gap: 16px;
+  align-items: center; border: 1px solid var(--verenward-bronze);
+  background: var(--color-surface-raised, #FCFAF6); padding: 12px 16px; margin: 8px 0 24px;
+  font-size: 13.5px; }
+.ns-attention-strip__label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--verenward-bronze); white-space: nowrap; }
+.ns-attention-strip__body { min-width: 0; line-height: 1.5; }
+.ns-attention-strip__action { white-space: nowrap; font-weight: 600; }
+@media (max-width: 700px) {
+  /* Stacked rather than truncated: the reason and the action are both load-bearing. */
+  .ns-attention-strip { grid-template-columns: 1fr; gap: 6px; }
+  .ns-attention-strip__action { justify-self: start; }
+}
+
+/* ── The Sales Agreement card. A related record, never a stage. */
+.ns-agreement { display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  flex-wrap: wrap; border: 1px solid var(--color-border, #D9D3C6);
+  background: var(--color-surface-raised, #FCFAF6); padding: 12px 16px; }
+.ns-agreement--none { color: var(--color-text-secondary); }
+.ns-agreement__facts { min-width: 0; font-size: 13.5px; line-height: 1.6; }
+.ns-agreement__ref { font-weight: 700; }
+.ns-agreement__state { font-weight: 600; }
+.ns-agreement__state.is-positive { color: var(--color-positive, #237A45); }
+.ns-agreement__state.is-negative { color: var(--color-negative, #B23B3B); }
+.ns-agreement__state.is-info { color: var(--color-info, #2B5B7A); }
+.ns-agreement__detail { color: var(--color-text-secondary); }
+.ns-agreement__action { white-space: nowrap; text-decoration: none; }
+
+/* The one-line disclosure under Solution: why lines carry no prices, and that Quoting is a stage
+   rather than a document. */
+.ns-solution-note { margin: -18px 0 34px; max-width: 72ch; }
+
+/* Rail section headings — step 3 of the type scale, set in the interface face because they label
+   data rather than title a record. */
+.ns-rail__title { font-family: var(--font-interface); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-secondary);
+  margin: 0 0 10px; border-bottom: 2px solid var(--color-text-primary); padding-bottom: 6px; }
+
+/* The rail's definition lists (Record, and anything else stating stored facts). */
+.ns-deflist { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px;
+  font-size: 13px; }
+.ns-deflist dt { color: var(--color-text-muted); }
+.ns-deflist dd { margin: 0; overflow-wrap: anywhere; }
+
+/* A command that failed, stated where it was invoked. */
+.ns-state--error { color: var(--color-negative, #B23B3B); }
+
+/* ── THE 44px TOUCH FLOOR, on the two controls that are inline text rather than buttons.
+   Measured at 375: "Refresh" and "Update next action" rendered 31px tall, because a link-styled
+   button inherits the line box of the sentence it sits in. The North Star handheld model puts the
+   floor at 44px and does not exempt controls for being typographically quiet -- a link you must
+   hit with a thumb is a target like any other. The padding is applied ONLY at phone widths so the
+   desktop composition keeps the tight inline rhythm the artifact draws. */
+@media (max-width: 700px) {
+  .ns-page__utility .fo-link-button,
+  .ns-attention-strip__action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 
 /* ── Backlog actions. The concept's action architecture, present and visibly not yet available.
    These are NOT wired to anything: no handler, no command, no capability. They hold their

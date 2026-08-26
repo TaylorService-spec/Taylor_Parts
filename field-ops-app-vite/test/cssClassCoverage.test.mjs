@@ -177,7 +177,6 @@ const KNOWN_UNSTYLED = new Set([
   "fo-job__state",
   "fo-kv",
   "fo-landing",
-  "fo-link-button",
   "fo-list-grid-truncation",
   "fo-location-save-error",
   "fo-modal-overlay",

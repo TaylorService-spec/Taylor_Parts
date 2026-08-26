@@ -33,7 +33,15 @@ on:
       - "field-ops-app-vite/src/hooks/useOpportunityCreate.js"
       - "field-ops-app-vite/src/hooks/useOpportunityTransitions.js"
       - "field-ops-app-vite/src/hooks/useSalesOrder.js"
+      - "field-ops-app-vite/src/hooks/useOpportunity.js"
+      - "field-ops-app-vite/src/domain/opportunityView.js"
+      - "field-ops-app-vite/src/domain/opportunityNorthStar.js"
+      - "field-ops-app-vite/test/opportunityNorthStar.test.mjs"
       - "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
+      - "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
+      - "field-ops-app-vite/src/hooks/useOpportunitySectionSave.js"
+      - "field-ops-app-vite/src/hooks/useSalesAgreement.js"
+      - "field-ops-app-vite/src/domain/salesAgreementView.js"
       - "field-ops-app-vite/src/services/opportunityCommandClient.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
       - "field-ops-app-vite/src/shared/ui/LifecycleChevrons.jsx"
@@ -87,7 +95,15 @@ on:
       - "field-ops-app-vite/src/hooks/useOpportunityCreate.js"
       - "field-ops-app-vite/src/hooks/useOpportunityTransitions.js"
       - "field-ops-app-vite/src/hooks/useSalesOrder.js"
+      - "field-ops-app-vite/src/hooks/useOpportunity.js"
+      - "field-ops-app-vite/src/domain/opportunityView.js"
+      - "field-ops-app-vite/src/domain/opportunityNorthStar.js"
+      - "field-ops-app-vite/test/opportunityNorthStar.test.mjs"
       - "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
+      - "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
+      - "field-ops-app-vite/src/hooks/useOpportunitySectionSave.js"
+      - "field-ops-app-vite/src/hooks/useSalesAgreement.js"
+      - "field-ops-app-vite/src/domain/salesAgreementView.js"
       - "field-ops-app-vite/src/services/opportunityCommandClient.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
       - "field-ops-app-vite/src/shared/ui/LifecycleChevrons.jsx"
@@ -145,7 +161,10 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Opportunity + Sales Order domain unit tests (node:test)
-        run: node test/opportunityLifecycle.test.mjs && node test/opportunityLifecycleDrift.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs && node test/opportunityCreateForm.test.mjs && node test/opportunityCommandOutcome.test.mjs && node test/opportunityCapabilityAccess.test.mjs && node test/salesOrderView.test.mjs
+        # opportunityNorthStar covers the record page's derivation layer + the honest read states
+        # (domain/opportunityView.js). It is ALSO registered in test/suites.json so `npm test` runs
+        # it; both, deliberately, because this lane is the one path-filtered to Opportunity work.
+        run: node test/opportunityLifecycle.test.mjs && node test/opportunityLifecycleDrift.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs && node test/opportunityCreateForm.test.mjs && node test/opportunityCommandOutcome.test.mjs && node test/opportunityCapabilityAccess.test.mjs && node --test test/opportunityNorthStar.test.mjs && node test/salesOrderView.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Nav parity pins (crmSalesNav + equipmentRegister)
@@ -165,5 +184,5 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Lint the Sales slice (oxlint)
-        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/domain/opportunityCreateForm.js src/domain/opportunityCommandOutcome.js src/domain/localDateInput.js src/domain/salesOrderView.js src/access/opportunitySource.js src/access/opportunityWriteReadiness.js src/access/opportunityCapabilityAccess.js src/access/useOpportunityCapabilities.js src/hooks/useOpportunities.js src/hooks/useOpportunityCreate.js src/hooks/useOpportunityTransitions.js src/hooks/useSalesOrder.js src/services/salesOrderReadCallableClient.js src/services/opportunityCommandClient.js src/data/opportunityScenarioFixtures.js src/shared/ui/LifecycleChevrons.jsx
+        run: npx oxlint src/modules/sales src/domain/opportunityNorthStar.js src/domain/opportunityView.js src/hooks/useOpportunity.js src/services/opportunityReadCallableClient.js src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/domain/opportunityCreateForm.js src/domain/opportunityCommandOutcome.js src/domain/localDateInput.js src/domain/salesOrderView.js src/access/opportunitySource.js src/access/opportunityWriteReadiness.js src/access/opportunityCapabilityAccess.js src/access/useOpportunityCapabilities.js src/hooks/useOpportunities.js src/hooks/useOpportunityCreate.js src/hooks/useOpportunityTransitions.js src/hooks/useSalesOrder.js src/services/salesOrderReadCallableClient.js src/services/opportunityCommandClient.js src/data/opportunityScenarioFixtures.js src/shared/ui/LifecycleChevrons.jsx
         working-directory: field-ops-app-vite

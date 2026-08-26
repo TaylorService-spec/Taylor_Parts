@@ -16,7 +16,26 @@ import { allowedActions, stageProgress } from "../../domain/opportunityLifecycle
 // { pending, runTransition, ... }). `readiness` is the write-readiness seam's result. `onChanged` is called
 // after ANY applied/replayed transition so the caller re-reads authoritatively (App-level refetch) — this
 // component never patches row state itself.
-export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged }) {
+//
+// ════════════════════ `slot` -- WHERE EACH CONTROL RENDERS, NEVER WHAT IS LEGAL ════════════════════
+//
+//   "all" (default)  the workspace detail pane: chevrons and outcome buttons together, exactly as
+//                    this component has always rendered them.
+//   "chevrons"       the North Star P1v2 record page's stage row. P1v2 puts the chevrons directly
+//                    under the header and the outcome actions IN the header cluster, so the page
+//                    mounts this component twice, once per slot.
+//   "actions"        that header cluster: Mark Won / Mark Lost, the Won acknowledgement, and the
+//                    write-readiness reason.
+//
+// TWO MOUNTS, ONE COMMAND PATH. The page owns the `transitions` object (useOpportunityTransitions)
+// and passes the SAME one into both slots, so both share a single idempotency cache and a single
+// invocation of the governed command. Nothing about legality is per-slot: `allowedActions` decides
+// what may be offered, and it is consulted identically in both.
+//
+// At earlier stages the ADVANCE chevron is itself the primary action -- P1v2: "the advance chevron
+// IS the primary" -- so the actions slot offers no advance button. Mark Won appears only at
+// Decision, because that is the only place the engine permits it.
+export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged, slot = "all" }) {
   const [error, setError] = useState(null);
   // What the Won actually PRODUCED. Marking an Opportunity Won creates a Sales Order in the same
   // transaction, and until now the control discarded that fact entirely: the chevrons flipped to
@@ -106,24 +125,34 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
     );
   });
 
+  const showChevrons = slot === "all" || slot === "chevrons";
+  const showActions = slot === "all" || slot === "actions";
+
   return (
-    <div className="fo-sales-detail__lifecycle">
-      <LifecycleChevrons steps={steps} terminal={terminal} ariaLabel="Opportunity stage" />
-      {won && (
+    <div className="fo-sales-detail__lifecycle" data-slot={slot}>
+      {showChevrons ? (
+        <LifecycleChevrons steps={steps} terminal={terminal} ariaLabel="Opportunity stage" />
+      ) : null}
+      {showActions && won && (
         <p className="fo-sales-lifecycle-won" role="status">
           {won.recovered ? "This Opportunity was already won. Its Sales Order is " : "Won. Sales Order "}
+          {/* THE REFERENCE, OR THE ABSENCE OF ONE -- never the document id (DECISIONS #106, R03).
+              This read `won.salesOrderNumber ?? won.salesOrderId`, so an order created from an
+              Opportunity whose numbering had not resolved printed a raw Firestore id as the link
+              text of the most consequential message in the sales process. The link still works;
+              only the label changes, because a routing key is not a name. */}
           <Link to={`/customers/opportunities/sales-order/${won.salesOrderId}`}>
-            {won.salesOrderNumber ?? won.salesOrderId}
+            {won.salesOrderNumber ?? "the new order (reference unavailable)"}
           </Link>
           {won.recovered ? "." : " was created."}
         </p>
       )}
-      {closed ? (
+      {showActions && (closed ? (
         <p className="fo-muted">Closed — no further lifecycle actions.</p>
       ) : (
         outcomeButtons.length > 0 && <ActionRail secondary={<>{outcomeButtons}</>} />
-      )}
-      {!closed && writeDisabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
+      ))}
+      {showActions && !closed && writeDisabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
       {error && (
         <p className="fo-sales-lifecycle-error" role="alert">
           {error}

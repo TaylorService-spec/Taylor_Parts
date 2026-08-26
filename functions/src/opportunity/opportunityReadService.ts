@@ -80,10 +80,32 @@ export interface OpportunityProjection {
   // was actually given -- the null is honest about the record, not a lock on it.
   createdAtMillis: number | null;
   updatedAtMillis: number | null;
+  // WHEN THE DEAL CLOSED -- the ONE stage time an Opportunity actually records.
+  //
+  // transitionOpportunity writes `closedAt` as a serverTimestamp on any OUTCOME transition
+  // (opportunityCallables.ts strips the pure command's `closedAtMillis` and writes the server
+  // clock instead), so the fact is on the document and was projected to nobody. Converted here
+  // at the boundary because a Firestore Timestamp does not survive a JSON callable unchanged.
+  //
+  // Null on every OPEN Opportunity, which is honest rather than missing: an open deal has not
+  // closed. Also null on a closed record written before `closedAt` existed -- never backfilled,
+  // and never substituted with `updatedAt`, which moves on any write at all.
+  closedAtMillis: number | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+// A Firestore Timestamp, or a plain number, reduced to epoch millis. Duck-typed rather than
+// instanceof-checked so this stays usable against the plain objects unit tests hand it.
+const millis = (v: unknown): number | null => {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const t = v as { toMillis?: () => number } | null;
+  if (t && typeof t.toMillis === "function") {
+    const ms = t.toMillis();
+    return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+  }
+  return null;
+};
 
 // Pure projection of one canonical opportunity doc → the minimal shape. Returns null if the doc cannot yield
 // a usable projection (missing id) so the caller can count it as a `degraded` skip rather than emit garbage.
@@ -119,6 +141,9 @@ export function projectOpportunity(id: string, data: Record<string, unknown> | u
     salesAgreementId: str(data.salesAgreementId),
     createdAtMillis: num(data.createdAtMillis),
     updatedAtMillis: num(data.updatedAtMillis),
+    // `closedAtMillis` first only because a future write path may store it directly; `closedAt`
+    // (the serverTimestamp the transition actually writes today) is what resolves in practice.
+    closedAtMillis: millis(data.closedAtMillis) ?? millis(data.closedAt),
   };
 }
 
@@ -336,6 +361,139 @@ export const listOpportunityContext = onCall({ region: "us-central1" }, async (r
   } catch {
     // A read failure is UNAVAILABLE, distinct from denied/empty — surfaced as internal so the client seam
     // can render an honest "not connected / unavailable" state rather than "you have zero opportunities".
+    throw new HttpsError("internal", "The opportunity read is temporarily unavailable.");
+  }
+});
+
+// ═══════════════════════════ ONE OPPORTUNITY, BY ID (North Star family 4) ═══════════════════════
+//
+// THE ABSENCE THIS CLOSES. Until now `opportunities` had exactly two governed reads and both were
+// LIST reads: listOpportunityContext (the caller's whole authorized scope) and
+// listOpportunitiesForAccount (one account's). There was no way to ask for ONE Opportunity, so the
+// record had no per-id read, and therefore no URL: an Opportunity could only be seen as the
+// selected row of a pipeline someone had already loaded. Deep-linking to a deal, sending a
+// colleague its address, or reaching it from the Sales Order lineage link were all impossible.
+//
+// The North Star migration ledger stopped family 4 on exactly this fact and asked for a decision,
+// because adding a callable is a product build rather than a recomposition. This is that build.
+//
+// NO NEW AUTHORITY. The capability is the SAME `opportunity.read` the two list reads already use:
+// the authorization question ("may this principal read Opportunities?") is unchanged and only the
+// query shape differs -- the identical reasoning listOpportunitiesForAccount recorded when it
+// reused the capability rather than minting a second. No Rules change: `opportunities` stays
+// Admin-SDK-only and this callable remains the only way in.
+//
+// FAIL-CLOSED AND HONEST, in the same order as getSalesOrderContext: unauthenticated ->
+// unauthenticated; missing/blank id -> invalid-argument (checked BEFORE authorization, so a
+// malformed call never probes the capability); ungranted -> permission-denied; read failure ->
+// internal. A document that does not exist is NOT an error -- it is a "not-found" result, which
+// is a real answer and must never be rendered as a read failure.
+
+export interface OpportunityContextResult {
+  status: "ready" | "not-found";
+  opportunity: OpportunityProjection | null;
+  // THE CUSTOMER, NAMED WHERE THE AUTHORITY IS. Resolved server-side for exactly the reason
+  // resolveAccountNames records above: firestore.rules grants `accounts` read to admin/dispatcher
+  // only, so resolving on the client would tell the SALESPERSON -- whose record this is -- that
+  // they may not see the name of their own customer. Null when unresolved; never the accountId.
+  accountName: string | null;
+  // THE SALES ORDER THIS DEAL BECAME, as a REFERENCE rather than a routing key.
+  //
+  // The Opportunity document stores `salesOrderId` and nothing else, so a lineage row built from
+  // the projection alone could only print a document id (forbidden, DECISIONS #106) or say
+  // "unavailable" about an order that plainly exists. One narrow read emits the one display field,
+  // exactly as accountDisplayName does. Null when there is no order, or when its reference cannot
+  // be resolved -- and the two are told apart by `salesOrderId` itself, not by this.
+  salesOrderNumber: string | null;
+}
+
+const SALES_ORDERS_COLLECTION_FOR_LINEAGE = "salesOrders";
+
+/**
+ * The one display field a linked Sales Order may contribute to an Opportunity page.
+ *
+ * FAIL-SOFT, deliberately: a failed lineage read must never fail the Opportunity read. Losing the
+ * label must not lose the record -- the page then renders the honest "reference unavailable", which
+ * is what it would render for an order that predates numbering anyway.
+ */
+export async function resolveSalesOrderNumber(
+  db: FirebaseFirestore.Firestore,
+  salesOrderId: string | null
+): Promise<string | null> {
+  if (!salesOrderId) return null;
+  try {
+    const snap = await db.collection(SALES_ORDERS_COLLECTION_FOR_LINEAGE).doc(salesOrderId).get();
+    if (!snap.exists) return null;
+    return str((snap.data() ?? {}).salesOrderNumber);
+  } catch (err) {
+    console.error("[resolveSalesOrderNumber] lineage label read failed; returning the record unlabelled", err);
+    return null;
+  }
+}
+
+/**
+ * Core per-id read, factored out of the onCall adapter so it is directly testable without a live
+ * `opportunity.read` grant -- the same factoring readOpportunitiesForAccount already uses.
+ */
+export async function readOpportunityContext(
+  db: FirebaseFirestore.Firestore,
+  opportunityId: string
+): Promise<OpportunityContextResult> {
+  const snap = await db.collection(OPPORTUNITIES_COLLECTION).doc(opportunityId).get();
+  if (!snap.exists) {
+    return { status: "not-found", opportunity: null, accountName: null, salesOrderNumber: null };
+  }
+  const opportunity = projectOpportunity(snap.id, snap.data() as Record<string, unknown>);
+  if (!opportunity) {
+    // A document that exists but cannot be honestly projected is NOT "not-found": the record is
+    // there and the reader would be told it never existed. It is a read that cannot be served,
+    // which is what `internal` means -- so this throws and the adapter maps it to "unavailable".
+    throw new Error(`opportunity ${opportunityId} could not be projected`);
+  }
+  // The two lineage/label resolutions are independent and both fail-soft, so they run together
+  // rather than serially; neither can reject.
+  const [names, salesOrderNumber] = await Promise.all([
+    resolveAccountNames(db, [opportunity]),
+    resolveSalesOrderNumber(db, opportunity.salesOrderId),
+  ]);
+  return {
+    status: "ready",
+    opportunity,
+    accountName: opportunity.accountId ? (names[opportunity.accountId] ?? null) : null,
+    salesOrderNumber,
+  };
+}
+
+export const getOpportunityContext = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+
+  const data = (request.data ?? {}) as { opportunityId?: unknown };
+  if (typeof data.opportunityId !== "string" || data.opportunityId.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "opportunityId is required.");
+  }
+  const opportunityId = data.opportunityId.trim();
+
+  let allowed = false;
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid: request.auth.uid,
+      permissionIds: [OPPORTUNITY_READ_CAPABILITY],
+    });
+    allowed = decisions[OPPORTUNITY_READ_CAPABILITY] === true;
+  } catch (err) {
+    console.error(`[getOpportunityContext] capability resolution failed for ${OPPORTUNITY_READ_CAPABILITY}`, err);
+    allowed = false; // fail closed
+  }
+  if (!allowed) throw new HttpsError("permission-denied", "You are not authorized to read Opportunities.");
+
+  try {
+    const db = getFirestore();
+    return await readOpportunityContext(db, opportunityId);
+  } catch (err) {
+    // Logged server-side only; the client still receives the generic "unavailable". Without this
+    // a read failure here is undiagnosable in production -- the same defect listSalesOrdersForAccount
+    // records against itself.
+    console.error("getOpportunityContext: read failed", err);
     throw new HttpsError("internal", "The opportunity read is temporarily unavailable.");
   }
 });

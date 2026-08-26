@@ -36,10 +36,21 @@ import StatusPill from "./StatusPill.jsx";
 //              rather than the carrier. A bare coloured word would not clear that bar.
 //
 // Defaults to "pill" so any future consumer keeps the older, stricter treatment unless it opts in.
+// `subtitle` — the record's own words, under the reference.
+//
+// Added for the Opportunity (North Star P1v2), whose artifact sets `need` in the serif face beneath
+// the title: an opportunity's reference identifies it but says nothing about what the deal IS, and
+// `need` is the nearest thing to a human name the entity has. Optional and rendered only when
+// supplied, so the three families that shipped without one are untouched.
+//
+// It is NOT a fallback for the title. A record with no governed reference still renders
+// `fallbackName` as its h1 — a subtitle standing in for identity is how a document id ends up in a
+// heading, which is the one thing this component exists to prevent.
 export default function RecordIdentity({
   kicker,
   reference,
   fallbackName,
+  subtitle = null,
   statusWords = null,
   statusTone = "neutral",
   statusVariant = "pill",
@@ -54,6 +65,7 @@ export default function RecordIdentity({
       <div className="ns-identity__main">
         {kicker ? <p className="ns-identity__kicker">{kicker}</p> : null}
         <h1 className="ns-identity__title">{title}</h1>
+        {subtitle ? <p className="ns-identity__subtitle">{subtitle}</p> : null}
         <div className="ns-identity__facts">
           {statusWords && statusVariant === "sentence" ? (
             <span className="ns-identity__status-sentence">{statusWords}</span>

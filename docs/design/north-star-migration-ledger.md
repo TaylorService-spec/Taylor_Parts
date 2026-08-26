@@ -294,49 +294,160 @@ reading it.
 
 ---
 
-## Family 4 — Opportunity: STOPPED, and why
+## Family 4 — Opportunity
 
-**Status: NOT STARTED. Needs an Owner decision, not more engineering.**
+**The stop was answered.** The row below replaces nothing: the previous entry (*"STOPPED, and why"*,
+2026-08-26) recorded that this family needed an Owner decision rather than more engineering, and it
+was right. The decision came back **build it**, and this is the build. The original entry is
+preserved verbatim at the end of this section, because a ledger that rewrites its own stops loses
+the record of having stopped.
 
-Opportunity is the next surface in the sources table after the Account. It is the point where the
-migration stops being a migration.
+| | |
+|---|---|
+| **Composition** | `src/modules/sales/OpportunityDetail.jsx` over `src/domain/opportunityNorthStar.js` and `src/domain/opportunityView.js` |
+| **Read** | **NEW:** `getOpportunityContext` in `functions/src/opportunity/opportunityReadService.ts` |
+| **Route** | **NEW:** `/customers/opportunities/:opportunityId` |
+| **Visual authority** | **`North Star - Opportunity P1v2.dc.html`** — received 2026-08-26 (`Claude Design Docs/Opportunity North Star P1v2.zip`, folder `design_handoff_opportunity`, with a README mapping every element to repository authority). **The first family in this programme built against its real design source rather than from the grammar.** P1v2 supersedes P1v1 by adding the Sales Agreement relationship. |
+| **Proof** | `test/opportunityNorthStar.test.mjs` (23), `test/opportunityNorthStarPage.test.jsx` (39 — Opportunity · Agreement · Sales Order · responsive · authority), plus the reconciled `test/opportunityLifecycleControl.test.jsx` (16), `test/salesWorkspace.test.jsx` (25) and `test/compositionConformance.test.jsx` (7) |
+| **Visual validation** | Real browser, real stylesheet, fixture data, three widths — 1440 / 768 / 375. Zero horizontal overflow at every width; body resolves 964px + 340px at 1440 (the artifact's 1fr/340); chevrons at ≥760px container, the same position in words below it; all 10 controls ≥44px at 375. |
+| **Named decisions** | ND-12 **withdrawn** (see below), ND-13 (the Opportunity has two compositions — now narrowed by P1v2), plus the design's own O1–O6 carried forward |
+| **Gate** | **NONE YET.** Not deployed, not swept. See below. |
+| **Acceptance** | `AWAITING_SANDBOX_REFRESH_THEN_OWNER_VISUAL_ACCEPTANCE` |
 
-Verified against the repo on 2026-08-26 (the design grammar's standing-gaps table had already proved
-stale once tonight, so this was checked rather than quoted):
+### Built blind first, then rebuilt against the real design
 
-- **No per-record route.** `App.jsx` has `opportunities/sales-order/:salesOrderId` and nothing for an
-  Opportunity itself. An Opportunity has no URL.
-- **No per-id governed read.** `functions/src/opportunity/opportunityReadService.ts` exposes
-  `listOpportunitiesForAccount` and `listOpportunityContext` — both LIST reads. There is no
-  `getOpportunityContext`.
+This family was implemented once from the ratified grammar, before any Opportunity artifact existed
+in this repository — and the ledger row said so. The design package then arrived, and the blind
+build turned out to be wrong in ways that matter. **That is the whole argument for the three-authority
+model, demonstrated rather than asserted.**
 
-The first three families each took a page that already existed, already had its data, and already had
-its authority, and recomposed it. Family 4 has no page to recompose. Building it means a new trusted
-callable and a new route — a **product build** that adds backend surface and would need a deploy this
-session cannot perform. The design grammar classifies it the same way: *"Opportunity has a URL → No
-per-record route; no per-id governed read → **Requires product build** (small)."*
+What the design changed:
 
-That is a change of scope, not a change of difficulty, so it is surfaced rather than absorbed.
+| The blind build | P1v2 |
+|---|---|
+| A `LifecycleBand` with the chevrons deliberately suppressed | **Chevrons** — "this family legally gets chevrons" |
+| `DECISION_PENDING` dropped from attention on NS-P4 grounds | `deriveAttention` **verbatim**, all four reasons |
+| Kicker "Opportunity"; no subtitle | Kicker `Opportunity · {channel}`; serif subtitle = `need` |
+| Lineage + Milestones rail | **Customer · Commercial details · Qualification · Record** |
+| No Sales Agreement composition at all | A first-class **agreement card** with six honest states |
+| No "When this closes"; no Activity slot | Both, stating the two governed paths and the O3 gap |
+| Value with a tooltip | Bare number + **"(no currency recorded)"** (O1) |
 
-### What the alternatives cost
+The attention reversal is the sharpest of these. The blind build argued NS-P4 — the header already
+says "awaiting customer decision", so the strip should not repeat it — and suppressed the reason.
+P1v2 keeps both, because the header states WHERE the deal is and the strip states WHAT IS OWED.
+Under the three rules, a conflict that changes only how an already-permitted fact is drawn is
+**Design's to decide**, so the design was followed and the earlier call reversed in the code and in
+the register.
 
-| Candidate | Archetype | Why it is not a drop-in continuation |
-|---|---|---|
-| Opportunity | Record detail | Needs a new callable + route (above). |
-| Parts workspace | Operational queue | Different archetype; the grammar's readiness column needs a live truck-stock read that does not exist. |
-| Dispatch board | Board/scheduler | Densest surface in the set; drag-scheduling with refusal reasons. |
-| Sales Agreement | Create/edit | "Hardest commercial surface" — and already the ONE surface distinguishing all four honest states, so it has the least to gain. |
-| Technician / Warehouse mobile | Handheld flow | Explicitly "language inherited, composition rebuilt" — not a desktop migration at all. |
+### ND-12 is withdrawn — the design did not ask for stage times
+
+ND-12 recorded that an Opportunity stores no per-stage timestamps, and the blind build wrote that
+absence into a lifecycle band that opened one line of recorded fact per stage. **P1v2 draws no such
+band.** Chevrons state position, not history, so there is no slot for a stage time and no gap for
+the decision to describe. The underlying data fact is unchanged and still true; it simply stopped
+being a product question the moment the real composition arrived.
+
+`closedAtMillis` — added to the projection during the blind build — is kept. It is a real fact the
+transition writes, it was projected to nobody, and the Activity section's honest note is the better
+place for it than a fabricated stage row.
+
+### What P1v2 composes, and from where
+
+| Element | Existing authority composed |
+|---|---|
+| Identity, facts | `getOpportunityContext` via `useOpportunity`, shared `RecordIdentity` |
+| Stage chevrons | `stageProgress` — the SAME derivation the pipeline row draws |
+| One legal advance | `allowedActions` |
+| Won / Lost | `useOpportunityTransitions` → `transitionOpportunity` / `closeOpportunityAsWon` |
+| Section editing | `useOpportunitySectionSave` → `updateOpportunity`, version-checked |
+| Attention strip | `deriveAttention`, worded by `opportunityNorthStar.js` |
+| Sales agreement | `useSalesAgreement`, `salesAgreementView`, `agreementAcceptability` |
+
+**No capability, command, Rules change, state machine, numbering or pricing was added.** The
+lifecycle control gained a `slot` prop that decides only WHERE a control renders; the page mounts it
+twice and passes ONE `transitions` object, so both slots share a single idempotency cache and a
+single invocation path.
+
+### Two defects the design surfaced
+
+- **A fabricated currency, on the pipeline surface.** The shared value formatter hardcoded
+  `style: "currency", currency: "USD"` on `expectedValue` — a field stored as a bare number with no
+  currency anywhere. Every Opportunity ever shown in the workspace carried a `$` nothing justified.
+  This is decision O1's exact prohibition, and it was live. Now grouped digits, with the
+  "(no currency recorded)" annotation stated once in the header.
+- **Two renderings of one fact.** The record page's rail fell back to the model's bare defaults and
+  rendered `41000` and `2026-08-31` beside a header saying `41,000` and `Aug 31`. The page now
+  injects the same formatters the workspace uses.
+
+Also corrected: a raw Firestore id printed as the link text of the WON acknowledgement — **with a
+test pinning it in place**, titled "falls back to the id — a reachable order beats a pretty label".
+The trade-off is false: the id is in the `href`, so the link works either way. Only the label
+changed, and the test now asserts the rule.
+
+### Known visual deviation, reported rather than absorbed
+
+**The Solution table.** P1v2 draws Line / Kind / Qty as a three-column table with a thick head rule.
+The shipped page renders the existing `LineSummary` list ("Taylor C712 ×2"), because that renderer
+is shared with the workspace detail pane, where a three-column table in a ~340px column would be
+worse than the list. Changing it is a shared-component decision affecting a surface this run was
+told not to redesign. Content is complete — kind, reference and quantity all render — and the
+deviation is structural only.
+
+**One artifact detail is illustrative, not a rule.** The P1v2 attention strip reads "expected close
+is in 9 days", but `deriveAttention` raises `CLOSE_SOON` only within **seven**. The threshold is
+domain authority and stands; the wording follows the engine.
+
+### Gate state — deliberately not claimed
+
+This work is **repo-complete and green offline. It has not been deployed and no gate has been run
+against it.** Refreshing the sandbox from merged main is an Owner-run action; this session does not
+deploy. Running the Quick Gate before that refresh would certify the build already deployed, which
+is a green result about the wrong commit.
+
+**This family additionally needs a Functions deploy that families 1–3 did not.**
+`getOpportunityContext` is a new callable, and until it exists in the environment the page renders
+its honest `unavailable` state. That is the one genuinely new operator step this build introduces,
+and it is why this row's acceptance value names the refresh explicitly rather than jumping straight
+to `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
+
+The visual validation above was run against a temporary local harness — the real component tree and
+the real stylesheet over fixture data, in a real browser at three widths — and the harness was
+removed afterwards. It proves the COMPOSITION: geometry, the responsive swap, overflow and touch
+targets. It does not prove the LIVE DATA PATH, which needs the deploy. Both halves are required, and
+only one of them is done.
+
+So the honest state is: behavioral work complete and proved offline, **awaiting a Functions deploy
+and a sandbox refresh from merged main, then the Quick Gate, then Owner visual acceptance.**
+
+---
+
+### The original stop, preserved (2026-08-26, before the decision)
+
+> **Status: NOT STARTED. Needs an Owner decision, not more engineering.**
+>
+> Opportunity is the next surface in the sources table after the Account. It is the point where the
+> migration stops being a migration. Verified against the repo on 2026-08-26:
+>
+> - **No per-record route.** `App.jsx` has `opportunities/sales-order/:salesOrderId` and nothing for
+>   an Opportunity itself. An Opportunity has no URL.
+> - **No per-id governed read.** `opportunityReadService.ts` exposes `listOpportunitiesForAccount`
+>   and `listOpportunityContext` — both LIST reads. There is no `getOpportunityContext`.
+>
+> The first three families each took a page that already existed, already had its data, and already
+> had its authority, and recomposed it. Family 4 has no page to recompose. Building it means a new
+> trusted callable and a new route — a **product build** that adds backend surface and would need a
+> deploy this session cannot perform. The design grammar classifies it the same way. That is a
+> change of scope, not a change of difficulty, so it is surfaced rather than absorbed.
+
+**Both bullets are now false, and that is exactly what this row records.** The candidate table in
+that entry — Parts workspace, Dispatch board, Sales Agreement, handheld — is unchanged and still
+describes the surfaces after this one.
 
 ### Sandbox and gate state for families 2 and 3
 
-Both are **merged and green in CI, and neither has been through a sandbox gate.** Refreshing the
-sandbox from merged main is an Owner-run action (`.\sandbox-refresh.ps1`); this session does not
-deploy. Running the Quick Gate before that refresh would certify the build already deployed, which is
-a green result about the wrong commit.
-
-So the honest state of both rows is: behavioral work complete and proved offline, **awaiting a
-sandbox refresh from merged main, then the Quick Gate, then Owner visual acceptance.**
+Both are **merged and green in CI**; both went through the Quick Gate against `1c8095d3` recorded
+below, and both remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
 
 ---
 

@@ -23,6 +23,11 @@ export { createOpportunity, transitionOpportunity, updateOpportunity } from "./o
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
+// The PER-ID Opportunity read (North Star family 4). Same governed capability as the two list reads
+// above -- `opportunity.read` -- because the authorization question is identical and only the query
+// shape differs; no Rules change, no new capability. It is what gives an Opportunity a URL.
+// EXPORT != DEPLOY.
+export { getOpportunityContext } from "./opportunity/opportunityReadService";
 // P1.3 -- governed, human-invoked WON -> Create Sales Order action (decision #3: no Firestore trigger).
 // EXPORT != DEPLOY; capability `opportunity.createSalesOrder` registered active:false (REGISTER != GRANT).
 export { createSalesOrderFromOpportunity } from "./opportunity/createSalesOrderFromOpportunity";

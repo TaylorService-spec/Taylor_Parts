@@ -2266,3 +2266,143 @@ edit is needed and no coverage is lost.
 
 **Related:** DECISIONS #122, #124, #125, #126, #127. Register: ND-11 (unchanged), A-D1–A-D4
 (resolved), A-NS-1 (recorded). Ledger: `docs/design/north-star-migration-ledger.md`.
+
+## #129 — The Opportunity gets a governed per-id read and a URL; family 4 is a product build, and the workspace pane stays
+
+**Date:** 2026-08-26
+**Decision:** Build the Opportunity record page (North Star family 4) on a **new** trusted callable
+`getOpportunityContext` and a **new** route `/customers/opportunities/:opportunityId`, reusing the
+**existing** `opportunity.read` capability rather than minting a second. The Sales workspace's
+master-detail pane is **kept**, not retired, and links to the new page.
+
+**Reason.** The migration ledger stopped this family and asked for a decision rather than absorbing
+a scope change, and it was right to: families 1–3 each recomposed a page that already existed, while
+an Opportunity had **no page**, because it had no per-id read and therefore no URL. It was reachable
+only as the selected row of a pipeline someone had already loaded — so deep-linking to a deal,
+sending a colleague its address, and following the Sales Order's own lineage link back to its origin
+were all impossible. The decision came back *build it*.
+
+**Why the capability is reused, not minted.** The authorization question — "may this principal read
+Opportunities?" — is identical for a list read and a per-id read; only the server-side query shape
+differs. This is the same reasoning `listOpportunitiesForAccount` recorded when it reused
+`opportunity.read`. **No Rules change:** `opportunities` stays deny-all to clients and Admin-SDK-only,
+and the trusted callable remains the only way in.
+
+**Why the pane stays (ND-13).** The pane is not a duplicate page — it is where an Opportunity is
+**edited** (`opportunityDetailModel`'s editable-by-design sections, the Sales Agreement panel, the
+create flow), and none of that moved. The record page is a **read** surface carrying the governed
+lifecycle actions. Both consume ONE derivation: the same `stageProgress`, the same
+`deriveAttention`, the same `allowedActions`. Retiring the pane would mean rehoming the editing
+surface onto the record page — a create/edit archetype question and materially larger work than
+family 4 — so it is a named open decision rather than something settled by a side effect.
+
+**Authority unchanged on the write side.** Every transition still resolves through the same governed
+`transitionOpportunity`, reached through the same `OpportunityLifecycleControl` and the same
+`useOpportunityTransitions`. That control gained a `variant` prop that decides only WHERE the
+progression is drawn — `allowedActions` still decides what is legal, and there is exactly one
+invocation path in either variant. No capability grant, no role change, no new write path.
+
+**Two facts the system was storing and showing nobody.** `closedAt` (written by every outcome
+transition, projected to no one) is now projected as `closedAtMillis`; and the linked Sales Order's
+reference is now resolved server-side by one narrow fail-soft read, so the lineage row can name the
+order instead of printing its document id. This is the third generation of the same defect in this
+domain after `salesOrderId` and `salesAgreementId` — being persisted is not being visible.
+
+**A raw id corrected, and a test that was pinning it.** `OpportunityLifecycleControl` rendered
+`won.salesOrderNumber ?? won.salesOrderId` as the link text of the WON acknowledgement — a raw
+Firestore id at the most consequential moment in the sales process — and a test asserted that
+behaviour under the title *"falls back to the id — a reachable order beats a pretty label"*. The
+trade-off is false: the id is in the `href`, so the link is reachable either way. Only the label
+changed; the test now asserts the rule instead of the defect.
+
+**Alternatives rejected.**
+- *Mint an `opportunity.readOne` capability* — a second authorization for an identical question,
+  and a second thing to grant, activate and keep in step.
+- *Widen firestore.rules so the client reads `opportunities` directly* — hands the whole document to
+  a role that needs a projection, and undoes the reason the trusted read exists.
+- *Resolve the customer name and the Sales Order reference on the client* — `accounts` is
+  admin/dispatcher-only in Rules, so the SALESPERSON would be told they may not see the name of the
+  customer on their own deal.
+- *Retire the workspace pane in the same change* — silently converts a read migration into an
+  editing-surface rebuild.
+- *Ship an empty AI suggestion slot for symmetry with the Work Order* — §8's prohibition is
+  explicit: if the capability does not exist, do not fabricate a place for it.
+
+**Not claimed.** This is repo-complete and green offline; **nothing is deployed and no gate has been
+run.** Unlike families 1–3 this family needs a **Functions deploy** (`getOpportunityContext` is a new
+callable) before a sandbox refresh and the Quick Gate mean anything — until it exists in the
+environment the page renders its honest `unavailable` state. Both are Owner-run actions.
+
+**Related:** DECISIONS #122, #125, #126, #127, #128. Register: ND-12, ND-13. Ledger:
+`docs/design/north-star-migration-ledger.md`.
+
+
+## #130 — Opportunity North Star P1v2 is implemented against its real design source, and the blind build is reversed where they disagreed
+
+**Date:** 2026-08-26
+**Decision:** Implement the Opportunity page family from `North Star - Opportunity P1v2.dc.html`
+(received 2026-08-26). Where the design and the earlier from-the-grammar build disagreed, **the
+design decides**, because every disagreement was about how an already-permitted fact is drawn.
+
+**Why this entry exists at all.** #129 built this family with **no design artifact** — the ledger
+row said so, and the sources register recorded that no Opportunity artifact had ever reached this
+repository. The package then arrived, and the blind build was wrong in ways that matter: it drew a
+lifecycle band where the design draws chevrons, suppressed an attention reason the design keeps,
+omitted the Sales Agreement relationship entirely, and had no "When this closes" or Activity slot.
+**That is the three-authority model demonstrated rather than asserted** — Design owns visual
+composition, and a build that composes without it is Code doing Design's job.
+
+**The reversal, named.** The blind build dropped `DECISION_PENDING` from the attention strip on
+NS-P4 grounds (the header sentence already says "awaiting customer decision"). P1v2 keeps both: the
+header states WHERE the deal is, the strip states WHAT IS OWED. Per the three rules, a conflict
+changing only how a permitted fact is drawn is Design's call, so the reason is restored and
+`deriveAttention` is now presented **verbatim** — all four reasons, none added, none suppressed.
+
+**ND-12 is withdrawn, not resolved.** It recorded that an Opportunity stores no per-stage
+timestamps, which was only a *question* because the blind build drew a band with a per-stage fact
+slot. Chevrons state position, not history. The data fact is unchanged and still recorded.
+
+**Authority is unchanged.** No capability, command, Rules change, state machine, numbering or
+pricing was added. Every transition still resolves through `useOpportunityTransitions`, every edit
+through the version-checked `useOpportunitySectionSave`, and the agreement through the existing
+`useSalesAgreement`. The lifecycle control gained a `slot` prop that decides only WHERE a control
+renders; the page mounts it twice and passes ONE `transitions` object, so both slots share a single
+idempotency cache and a single invocation path.
+
+**Two live defects the design surfaced.**
+1. **A fabricated currency.** The shared value formatter hardcoded `style: "currency", currency:
+   "USD"` on `expectedValue` — a field stored as a bare number with no currency anywhere. Every
+   Opportunity in the workspace carried a `$` nothing justified. This is decision O1's exact
+   prohibition and it was shipping. Now grouped digits, with "(no currency recorded)" stated once.
+2. **Two renderings of one fact.** The record page's rail fell back to the model's defaults and
+   rendered `41000` / `2026-08-31` beside a header saying `41,000` / `Aug 31`.
+
+**A shared component extracted rather than duplicated.** The section read/edit subtree was private
+to `SalesWorkspace.jsx`. Two surfaces needing the same deliberate read → Edit → Save/Cancel over the
+same version-checked command is how a concurrency check comes to be enforced on one screen and not
+the other, so the subtree MOVED to `modules/sales/opportunitySections.jsx` unchanged and both import
+it. `RecordIdentity` likewise gained the serif `subtitle` P1v2 needs rather than being forked.
+
+**Alternatives rejected.**
+- *Keep the blind composition and note the design as a variant* — inverts the authority model.
+- *Render `SalesAgreementPanel` on the Opportunity* — pulls acceptance, pricing and terms onto a
+  page whose design says none of that happens there.
+- *Retire the workspace detail pane in this run* — converts a read migration into an editing-surface
+  rebuild; left as ND-13.
+- *Change `deriveAttention`'s 7-day CLOSE_SOON threshold to match the artifact's illustrative
+  "9 days"* — the threshold is domain authority; the artifact's number is sample data.
+
+**Visual validation.** Real browser, real stylesheet, fixture data, three widths (1440 / 768 / 375)
+via a temporary local harness, removed afterwards. Zero horizontal overflow at every width; the body
+resolves 964px + 340px at 1440; chevrons above a 760px container and the same position in words
+below it; all 10 controls ≥44px at 375. **This proves the composition, not the live data path** —
+that still needs the `getOpportunityContext` deploy.
+
+**Reported, not absorbed.** P1v2 draws Solution as a three-column table; the shipped page renders the
+existing shared `LineSummary` list, because that renderer belongs to the workspace pane too and a
+three-column table in a 340px column would be worse there. Content is complete; the deviation is
+structural.
+
+**Related:** DECISIONS #122, #125, #126, #127, #128, #129. Register: ND-12 (withdrawn), ND-13, plus
+Design's O1–O6. Sources: `docs/design/eos-north-star-sources.md`. Ledger:
+`docs/design/north-star-migration-ledger.md`.

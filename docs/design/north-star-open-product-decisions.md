@@ -294,6 +294,61 @@ opportunity read active; that is a separate, later question.
 **Asserted by:** `test/accountNorthStarPage.test.jsx` ("a prospect uses the same composition and
 renders honest empties, not a separate page").
 
+### ND-12 — An Opportunity records no stage times except the close — **WITHDRAWN 2026-08-26**
+
+**Withdrawn, not resolved.** This decision was raised while the Opportunity family was being built
+*blind* — before any design artifact for it existed in this repository. The blind build drew a
+lifecycle **band** that opened one line of recorded fact per stage, which created a slot that needed
+a time, which made the absence of stage timestamps a product question.
+
+`North Star - Opportunity P1v2.dc.html` draws **chevrons**, not a band. Chevrons state position, not
+history. There is no per-stage fact slot, so there is nothing for a stage time to be missing from,
+and the question the decision was asking stopped existing.
+
+The underlying data fact is unchanged and still true: an Opportunity stores `createdAt`, `updatedAt`
+and — on an outcome transition only — `closedAt`, and nothing about when it entered Qualifying. If a
+future surface ever wants stage durations, this entry is the record that the data is not there.
+
+`closedAtMillis`, added to the governed projection during the blind build, is kept: it is a real
+fact the transition writes that was projected to nobody, and the Activity section states it honestly.
+
+### ND-13 — The Opportunity has two compositions, and only one of them is the record
+
+**Raised:** 2026-08-26 · **Narrowed by P1v2 the same day**
+**Design holds:** one record, one record page.
+**Behavioral holds:** the workspace's master-detail pane is where an Opportunity is **edited**, and
+the record page is the **read** surface with the governed lifecycle actions.
+**What P1v2 changed:** the design's own decision O5 asks for the per-record route precisely so the
+Account related-lists and the Sales Order back-link can navigate to it, and the README describes the
+P1v2 composition as the one that "currently lives as the workspace's detail pane". So the two are
+explicitly the same composition in two places, not two competing designs — and both now consume one
+derivation, one section model and one editing component (`opportunitySections.jsx`, extracted for
+exactly this reason).
+**Shipped meanwhile:** both, with the pane linking to the record page and the record page offering
+the same version-checked section editing.
+**The decision:** whether the pane is retired in favour of the record page once the Sales Agreement
+North Star run gives the agreement its own surface. Still open, and still the question that decides
+whether EOS workspaces keep detail panes at all.
+**Asserted by:** `test/opportunityNorthStarPage.test.jsx` and `test/salesWorkspace.test.jsx`, which
+between them prove the two surfaces read one derivation and one save path.
+
+---
+
+## The Opportunity design's own product decisions (O1–O6, from the P1v2 handoff)
+
+These are **Design's** register, carried here so they are visible alongside the programme's. They
+are not implementation gaps to be closed by code — each is a question for the Owner, and each has a
+truthful rendering shipping meanwhile.
+
+| # | Question | What ships today |
+|---|---|---|
+| **O1** | `expectedValue` has no governed currency. Ratify one and store it, or keep the annotation? | A bare grouped number + "(no currency recorded)". A fabricated `$` was **found live on the pipeline surface** and removed. |
+| **O2** | Resolve the customer name in the governed read, or denormalise at write? | **Addressed for this surface:** `getOpportunityContext` resolves the name server-side via the existing `resolveAccountNames`. Where it still cannot resolve, "Customer — name unavailable" renders with the account link live. |
+| **O3** | Expose a bounded Opportunity activity read (stage changes, edits, Won/Lost)? | The Activity section states the gap in words and fabricates nothing. |
+| **O4** | Compose the Account's primary contact into the rail? It adds a read to this surface. | Not composed. The rail states where contact facts would come from. |
+| **O5** | Give the family a real per-record route. | **Done** — `/customers/opportunities/:opportunityId` over a new per-id governed read. |
+| **O6** | Should the two Sales Order creation paths converge? Is multi-agreement ever a requirement? | Neither converged nor pre-decided. "When this closes" states both paths as fact; the card reads the one governed agreement per opportunity. |
+
 ---
 
 ## Resolved

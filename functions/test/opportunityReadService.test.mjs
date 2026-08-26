@@ -45,8 +45,20 @@ test("projectOpportunity returns only the minimal Sales-workspace fields", () =>
   // Neither is customer data, neither is an internal key, and both are already visible to any
   // caller authorized to read the record at all. This is the same allow-list discipline, not
   // an exception to it.
+  //
+  // closedAtMillis is the FIFTH, and it is argued for on the same narrow ground. transitionOpportunity
+  // writes `closedAt` as a serverTimestamp on every OUTCOME transition and the projection returned it
+  // to nobody -- so the one lifecycle time an Opportunity genuinely records was invisible to every
+  // reader, exactly as salesOrderId and salesAgreementId were before it. Third generation of one
+  // defect in this domain: being persisted is not being visible.
+  //
+  // It is derived from the stored Timestamp at the boundary because a Firestore Timestamp does not
+  // survive a JSON callable unchanged. Null on every OPEN opportunity, which is honest rather than
+  // missing: an open deal has not closed. Not customer data, not an internal key, already visible to
+  // any caller authorized to read the record.
   assert.deepEqual(Object.keys(p).sort(), [
-    "accountId", "createdAtMillis", "expectedCloseAt", "expectedValue", "id", "lines", "name",
+    "accountId",
+    "closedAtMillis", "createdAtMillis", "expectedCloseAt", "expectedValue", "id", "lines", "name",
     "need", "nextAction", "opportunityNumber", "outcome", "ownerEmployeeId", "salesAgreementId", "salesChannel",
     "salesOrderId", "stage", "updatedAtMillis",
   ]);
