@@ -92,6 +92,14 @@ echo "== [2/6] repo guards (css coverage, create-reach invariant, identity, dete
 echo "== [3/6] create -> reach =="
 ( cd field-ops-app-vite && node ".claude/skills/run-field-ops-app-vite/createReach.mjs" admin )
 
+# THE ROUTE LIST IS DERIVED BEFORE IT IS SWEPT.
+#
+# .certification/routes.json is a required input of certify.mjs and reachability.mjs, is written by
+# nothing in the repository, and is excluded by .gitignore -- so this gate died with ENOENT on a
+# fresh worktree, three steps in, after everything before it had passed. Deriving it here means the
+# gate runs from a clean checkout and the sweep cannot drift out of step with the nav it certifies.
+node "${REPO_ROOT:-.}/scripts/_certificationRoutes.mjs"
+
 # 4. STRUCTURAL + RESPONSIVE SWEEP against the deployed build. certify.mjs exits non-zero if any
 #    visit went unmeasured, so a partial sweep cannot pass this gate.
 echo "== [4/6] structural + responsive sweep (5 widths) =="
