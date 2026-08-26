@@ -301,3 +301,5 @@ against this same `1c8095d3` build — see the family-2 row. **Family 3 — Acco
 remains `AWAITING_OWNER_VISUAL_ACCEPTANCE`.** The presentation-migration rule in DECISIONS #128 says
 which gate family 3 must clear; it does not clear it. Acceptance was granted for one family, and
 this ledger does not widen it to the other.
+
+<!-- ci trigger probe -->
