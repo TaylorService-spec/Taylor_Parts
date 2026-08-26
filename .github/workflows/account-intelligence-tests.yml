@@ -1,0 +1,47 @@
+name: Account Intelligence Tests
+
+# Bounded North Star Account intelligence. EOS supplies already-established Account Attention facts;
+# model interpretation may explain them but may not invent amounts, dates, evidence, actions or authority.
+# Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/accountAttentionProjection.js"
+      - "field-ops-app-vite/src/domain/accountIntelligence.js"
+      - "field-ops-app-vite/test/accountIntelligence.test.mjs"
+      - "functions/src/ai/accountModelInterpretation.ts"
+      - "functions/test/aiAccountModelInterpretation.test.mjs"
+      - ".github/workflows/account-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-intelligence:
+    name: North Star Account intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Deterministic Account intelligence and model-payload boundary
+        run: node --test test/accountIntelligence.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Account model verifier fail-closed contract
+        run: node --test test/aiAccountModelInterpretation.test.mjs
+        working-directory: functions
