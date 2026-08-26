@@ -230,7 +230,7 @@ Each carries provenance and a test that can fail. A check incapable of failing i
 | --- | --- | --- |
 | Honest states everywhere | Sales Agreement distinguishes all four; it is the only surface that does | **Foundation exists** — extract as a shared primitive |
 | Lifecycle band on every record | Lineage exists in Firestore; two fields were written and projected to nobody until 2026-08-25 | **Foundation exists** — audit every chain edge for both directions |
-| Account shows commercial life | `opportunity.read`, `salesOrder.read`, `finance.read`, `crm.activity.read` registered inactive catalog-wide | **Governance decision required** |
+| Account shows commercial life | ~~registered inactive catalog-wide~~ — **CORRECTED 2026-08-26**: all four (`opportunity.read`, `salesOrder.read`, `finance.read`, `crm.activity.read`) are ACTIVATED for `eos-platform-sandbox` in `functions/src/access/environmentCapabilityOverrides.ts`. The catalog-wide default is still `active:false`; per-environment activation is what decides. | **Resolved for sandbox** — governance decision remains for production |
 | Opportunity has a URL | No per-record route; no per-id governed read | **Requires product build** (small) |
 | SO lineage names its Work Orders | No WO naming service | **Requires product build** |
 | Parts readiness (truck / staged / missing) | No live truck-stock read | **Requires product build** |

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { objectListPathWithState, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { accountRecordPage } from "../../metadata/definitions/accountPage.js";
 import { ACCOUNT_GOVERNED_FIELD_IDS } from "../../metadata/definitions/account.js";
@@ -9,11 +9,9 @@ import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../../hooks/useContactsForAccount";
 import { updateAccount } from "../../domain/accounts";
-import { accountStatusTone, accountRelationshipTone, accountLineOfBusinessTone } from "../../domain/accountPortfolio";
 import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
-import { ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, accountStatusLabel } from "../../domain/constants";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
@@ -29,11 +27,10 @@ import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "
 import IdentityLine from "./IdentityLine";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
-import ContextBand from "../../shared/ui/ContextBand.jsx";
-import StatusPill from "../../shared/ui/StatusPill.jsx";
+import { accountHeader, accountClassification, accountLifecycle } from "../../domain/accountNorthStar.js";
 import { useAuth } from "../../auth/AuthContext";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
@@ -92,44 +89,29 @@ import {
 // deferred to PR 3/PR 4. Reuses the ported address/contact domain layer
 // (formatAddress, primaryContactState, AddressFields) rather than
 // re-implementing it.
-const RELATIONSHIP_LABEL = {
-  [ACCOUNT_RELATIONSHIP_TYPE.CUSTOMER]: "Customer",
-  [ACCOUNT_RELATIONSHIP_TYPE.VENDOR]: "Vendor",
-};
+// ════════════════════ THE LABEL MAPS THAT USED TO LIVE HERE ════════════════════
+//
+// `RELATIONSHIP_LABEL` and `LINE_OF_BUSINESS_LABEL` were declared in this file, and
+// `metadata/definitions/account.js` already declared exactly the same two maps as `enumLabels` on
+// the same two fields. Two copies of "CUSTOMER means Customer", free to drift, is the NS-P4 defect
+// the whole migration exists to remove — and there was a third in `wholeUnitAssetDisplay.js`.
+//
+// `accountClassification()` in domain/accountNorthStar.js now reads the CANONICAL definition, and
+// preserves both rules these components carried: an Account with no values renders nothing (never a
+// silent default to "Customer" or "Taylor"), and the order follows the vocabulary rather than
+// however the stored array happens to be sorted.
+//
+// The badges themselves are gone with them. The classification is identity — it belongs in the
+// record header's fact row, in words, not as a row of pills above it.
 
-const LINE_OF_BUSINESS_LABEL = {
-  [ACCOUNT_LINE_OF_BUSINESS.TAYLOR]: "Taylor",
-  [ACCOUNT_LINE_OF_BUSINESS.VENTANA]: "Ventana",
-};
-
-// Renders relationship-type badges inline. An Account with no
-// relationshipTypes renders nothing (never a silent default to "Customer").
-function RelationshipBadges({ relationshipTypes }) {
-  const types = relationshipTypes ?? [];
-  const ordered = Object.values(ACCOUNT_RELATIONSHIP_TYPE).filter((t) => types.includes(t));
-  if (ordered.length === 0) return null;
-  return (
-    <>
-      {ordered.map((t) => (
-        <StatusPill key={t} tone={accountRelationshipTone(t)} label={RELATIONSHIP_LABEL[t] ?? t} />
-      ))}
-    </>
-  );
-}
-
-// Renders line-of-business badges inline (W1, LOB wireframe §3.8). An Account
-// with no lineOfBusiness renders nothing (never a silent default to "Taylor").
-function LineOfBusinessBadges({ lineOfBusiness }) {
-  const values = lineOfBusiness ?? [];
-  const ordered = Object.values(ACCOUNT_LINE_OF_BUSINESS).filter((c) => values.includes(c));
-  if (ordered.length === 0) return null;
-  return (
-    <>
-      {ordered.map((c) => (
-        <StatusPill key={c} tone={accountLineOfBusinessTone(c)} label={LINE_OF_BUSINESS_LABEL[c] ?? c} />
-      ))}
-    </>
-  );
+// The classification carries no tone at all now, and does not need one: `accountRelationshipTone`
+// and `accountLineOfBusinessTone` both return the constant "info" for every value, so the pills
+// they coloured were conveying nothing that the words do not. The STATUS tone is still delegated to
+// accountPortfolio.js (through accountNorthStar's header), so the record and the portfolio list
+// cannot disagree about the one classification where colour does carry meaning.
+function ClassificationWords({ items }) {
+  if (!items || items.length === 0) return null;
+  return <>{items.map((i) => i.label).join(" · ")}</>;
 }
 
 // Issue #214 PR-2 -- the inline ContactForm / LocationForm that used to render
@@ -471,6 +453,10 @@ export default function AccountDetail() {
   const hasIdentifiers =
     account.customerNumber || account.erpId || account.accountingId || account.legacyId;
 
+  const header = accountHeader(account);
+  const classification = accountClassification(account);
+  const lifecycle = accountLifecycle();
+
   const actions = (
     <ActionRail
       start={<button type="button" onClick={() => navigate(backToCustomers())} className="fo-link-btn">&larr; Back to Customers</button>}
@@ -479,7 +465,17 @@ export default function AccountDetail() {
   );
 
   return (
-    <WorkspaceShell title={account.name} actions={actions}>
+    <div className="ns-page">
+      {/* THE UTILITY LINE. Context left; on the right, what is TRUE about this read.
+          No live badge: `useAccount` is not a subscription this page can claim liveness from. */}
+      <div className="ns-page__utility">
+        <span className="ns-page__context">
+          <Link to={backToCustomers()}>Customers</Link>
+          {header.name ? ` → ${header.name}` : null}
+        </span>
+      </div>
+      <div className="ns-rulepair" />
+
       {isEditing ? (
         <AccountForm
           initialValues={account}
@@ -493,27 +489,65 @@ export default function AccountDetail() {
         />
       ) : (
         <>
-          {/* HEADER -- identity and relationship metadata in the shared ContextBand primitive
-              (previously imported here but never rendered). Only authoritative values appear;
-              ContextBand itself drops any item whose label is null. */}
-          <section className="fo-account-summary">
-            <div className="fo-pill-row">
-              {account.status && (
-                <StatusPill tone={accountStatusTone(account.status)} label={accountStatusLabel(account.status)} />
-              )}
-              <RelationshipBadges relationshipTypes={account.relationshipTypes} />
-              <LineOfBusinessBadges lineOfBusiness={account.lineOfBusiness} />
-            </div>
+          {/* THE RECORD HEADER. The status pill row and the ContextBand are gone: the status is
+              stated ONCE, as a sentence, and the classification is stated in words in the fact row
+              rather than as a row of pills above it (NS-P4, R04).
 
-            <ContextBand
-              items={[
-                account.customerNumber ? { key: "customerNumber", label: "Customer #", value: account.customerNumber } : null,
-                billingLine ? { key: "billing", label: "Billing", value: billingLine } : null,
-                (account.tags ?? []).length > 0 ? { key: "tags", label: "Tags", value: account.tags.join(", ") } : null,
-              ].filter(Boolean)}
-            />
-            <PrimaryContactSummary contacts={contacts} />
-          </section>
+              THE TITLE IS THE NAME. An Account has no governed reference — customerNumber, erpId,
+              accountingId and legacyId are all EXTERNAL identifiers from other systems, and none of
+              them is what anybody here calls the customer. The document id is never a fallback
+              (DECISIONS #106). */}
+          <RecordIdentity
+            kicker="Customer"
+            reference={header.name}
+            fallbackName="Account — no name recorded"
+            statusWords={header.statusSentence ?? header.statusWords}
+            statusTone={header.statusTone}
+            statusVariant="sentence"
+            facts={[
+              {
+                key: "relationship",
+                label: null,
+                value: classification.relationships.length > 0
+                  ? <ClassificationWords items={classification.relationships} />
+                  : null,
+              },
+              {
+                key: "lob",
+                label: "Line of business",
+                value: classification.linesOfBusiness.length > 0
+                  ? <ClassificationWords items={classification.linesOfBusiness} />
+                  : null,
+              },
+              account.customerNumber ? { key: "customerNumber", label: "Customer #", value: account.customerNumber } : null,
+              billingLine ? { key: "billing", label: "Billing", value: billingLine } : null,
+              (account.tags ?? []).length > 0 ? { key: "tags", label: "Tags", value: account.tags.join(", ") } : null,
+            ].filter(Boolean)}
+            actions={actions}
+          />
+
+          {/* ND-11 — WHY THERE IS NO LIFECYCLE BAND HERE.
+              NS-P1 asks every record page for a visible lifecycle spine. This record does not have
+              one: `status` is an ordinary editable field written through `updateAccount`, with no
+              transition command anywhere and nothing enforcing an order. ACTIVE / INACTIVE /
+              PROSPECT / ARCHIVED look like a progression, and drawing them as four chevrons would
+              assert a rule the engine does not hold.
+              Stated in words rather than left as an unexplained difference from the other two
+              record families. */}
+          <p className="ns-gap-note">{lifecycle.reason}</p>
+
+          {/* ATTENTION, IN ITS CORRECT PLACE (NS-P2: kicker → header → lifecycle → ATTENTION →
+              work → rail).
+              This is the whole of the Account's attention defect. The section itself was already
+              right — bounded, account-scoped, composed from existing authorities, honest per source,
+              silent when there is nothing to say. It simply rendered at the BOTTOM of the page,
+              below every related list, in the secondary column. A reader reached it after
+              everything it should have warned them about.
+              Nothing about what it says has changed, and it is deliberately NOT flattened into the
+              shared AttentionBand: accountAttentionProjection.js states that AR and Work-Order
+              past-due are never merged into one ranked list, and a flat band has nowhere to put its
+              per-source honest notes. */}
+          <AccountAttentionSection accountId={account.id} />
 
           {/* HEALTH STRIP -- only metrics with a real account-scoped authority behind them.
               See domain/accountHealthStrip.js for what is deliberately absent and why. */}
@@ -522,8 +556,8 @@ export default function AccountDetail() {
               single column on narrow viewports (see .fo-account-layout in index.css).
               PRIMARY holds the operational record surfaces; SECONDARY holds profile and
               relationship context. */}
-          <div className="fo-account-layout">
-            <div className="fo-account-primary">
+          <div className="ns-record-body">
+            <div>
 
           {/* Wave 7 completion, PARTS 2/3 -- account-scoped Opportunity + Sales Order reads now
               exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
@@ -631,7 +665,7 @@ export default function AccountDetail() {
           )}
 
             </div>
-            <aside className="fo-account-secondary" aria-label="Account context">
+            <aside className="ns-rail" aria-label="Account context">
 
           {/* Commercial Profile -- informational fields + current-name identity (PR 1)
               X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
@@ -654,27 +688,33 @@ export default function AccountDetail() {
             directoryError={directoryError}
           />
 
-          {/* Account Attention -- bounded and account-scoped, composed from existing
-              authorities (AR overdue + Work Order past due). Renders nothing when there
-              is nothing to say. The Marketing seam mounts alongside and stays absent
-              while no provider exists: an optional section with nothing to say should
-              contribute nothing, not a permanent apology.
-              X-ACCOUNT-PAGE-WIRING-COMPLETE: still NOT routed through MetadataRecordPage,
-              re-evaluated after `embedded` (GAP 3) shipped. `embedded` fixes the REGION-level
-              symptom (a zero-section plan no longer becomes a page-level FailureState) but not
-              the SECTION-level cause: accountPage.js declares ONE capability
-              (finance.read) for this section, while AccountAttentionSection internally
-              composes TWO sources at different authority levels -- AR via useAccountAr
-              (finance.read-gated) and Work-Order-past-due via useAccountAttentionWorkOrders
-              (UNGATED, Rules-by-role only). A section-level capabilityRequirement can only
-              honor the coarser of the two, so wiring this through metadata would hide the
-              entire panel -- including the ungated Work-Order half -- whenever finance.read
-              is denied. finance.read is registered catalog-wide active:false today, i.e.
-              denied for every current viewer, so that is not a theoretical edge case: it
-              would blank this panel for 100% of users right now. Hand-rendered to keep
-              AccountAttentionSection's real per-source degrade; see accountPageComponents.js's
-              WIRING SCOPE note and test/accountPageComponents.test.jsx for the full case. */}
-          <AccountAttentionSection accountId={account.id} />
+          {/* THE PRIMARY CONTACT, which used to sit inside the old summary section under the header.
+              It is context, not identity — the header answers "which customer is this", and this
+              answers "who do I call" — so it belongs in the rail beside the commercial profile
+              rather than in the fact row. Its three states (none / one / several) are unchanged:
+              primaryContactState() still owns them, and the MULTIPLE case still surfaces the
+              ambiguity rather than silently picking one. */}
+          <PrimaryContactSummary contacts={contacts} />
+
+          {/* ACCOUNT ATTENTION HAS MOVED UP, to its NS-P2 position directly beneath the header.
+              It rendered here, at the bottom of the secondary column below every related list, so a
+              reader reached it after everything it should have warned them about. Nothing about
+              what it says changed.
+
+              IT IS STILL NOT ROUTED THROUGH MetadataRecordPage, and that reasoning is unchanged:
+              accountPage.js declares ONE capability (finance.read) for the section, while
+              AccountAttentionSection internally composes TWO sources at different authority levels
+              -- AR via useAccountAr (finance.read-gated) and Work-Order-past-due via
+              useAccountAttentionWorkOrders (UNGATED, Rules-by-role only). A section-level
+              capabilityRequirement can only honour the coarser of the two, so wiring it through
+              metadata would hide the ungated Work-Order half whenever finance.read is denied.
+
+              ONE CLAIM IN THE OLD COMMENT WAS STALE. It said finance.read is "registered
+              catalog-wide active:false today, i.e. denied for every current viewer". The first half
+              is still true; the second is not. access/environmentCapabilityOverrides.ts activates
+              finance.read -- along with opportunity.read, salesOrder.read and crm.activity.read --
+              for eos-platform-sandbox. The argument above does not depend on that, but a comment
+              asserting 100% denial would have been read as current. */}
 
           {/* ACTIVITY & NOTES -- the durable, attributed CRM interaction history. Primary
               column: it is a record surface a salesperson works in, not sidebar context. */}
@@ -708,6 +748,6 @@ export default function AccountDetail() {
           </div>
         </>
       )}
-    </WorkspaceShell>
+    </div>
   );
 }
