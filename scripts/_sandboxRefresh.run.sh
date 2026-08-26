@@ -39,7 +39,19 @@ for tool in node npm firebase; do
   fi
 done
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# THE RELEASE ROOT IS DECIDED ONCE, EXPLICITLY, AND PROVEN.
+#
+# This was `dirname "$0"` alone, which makes WHICHEVER COPY OF THIS SCRIPT YOU RAN the release
+# root. There are 125 worktrees in this repository and every one of them carries a copy. The
+# PowerShell launcher then invoked bash as `-lc './scripts/_sandboxRefresh.run.sh'` -- a RELATIVE
+# path resolved by a LOGIN shell whose profile is free to change directory -- so the answer to
+# "which repository is being released" depended on which copy was clicked and what a shell profile
+# did on the way past.
+#
+# scripts/releaseRoot.mjs now decides it from --release-root, then EOS_RELEASE_ROOT, then the script
+# location, validates the result is a real EOS checkout, and REFUSES an agent worktree outright.
+SCRIPT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(node "$SCRIPT_ROOT/scripts/releaseRoot.mjs" "$@" --fallback "$SCRIPT_ROOT")" || exit 4
 cd "$REPO_ROOT"
 
 echo "== [0/5] structural safety guard =="
@@ -48,6 +60,16 @@ node scripts/_sandboxDeployGuard.mjs   # asserts role!=production, projectId==eo
 # from an unmerged branch head whose tree happened to be byte-identical to the main commit that
 # followed -- safe by luck, unprovable by process. See scripts/releaseProvenance.mjs.
 node scripts/_releaseProvenanceGuard.mjs "$@"
+# THE APPROVED COMMIT IS NAMED ONCE and carried to every later check, rather than each step asking
+# git again -- "ask git again" is what let the approved commit and the built commit diverge.
+APPROVED_COMMIT="$(git rev-parse HEAD)"
+
+echo
+echo "Release root:   ${REPO_ROOT}"
+echo "Release commit: ${APPROVED_COMMIT}"
+echo "origin/main:    $(git rev-parse origin/main)"
+echo "Target:         eos-platform-sandbox"
+echo
 
 echo "== [1/5] build functions lib =="
 ( cd functions && npm run build )
@@ -104,18 +126,27 @@ echo "== [3c/5] verify the ARTIFACT belongs to this project =="
 # Those are different questions, and on 2026-08-19 only the first was being asked.
 node scripts/verifyDeployArtifact.mjs --projectId eos-platform-sandbox
 
+# NOTHING BETWEEN STEP 0 AND HERE LOOKED AGAIN. The provenance guard ran before Functions were
+# built, Functions were deployed, and the frontend was built -- three long steps in which HEAD can
+# move, a branch can be switched, or another agent can commit into the same checkout. This proves
+# the tree that produced the artifact is still the tree that was approved, and that the artifact
+# itself is stamped with it.
+echo "== [3d/5] release identity (approved = HEAD = origin/main = artifact) =="
+node scripts/_releaseIdentityGate.mjs --root "${REPO_ROOT}" --approved "${APPROVED_COMMIT}" --artifact ""
+
 echo "== [4/5] deploy Hosting -> eos-platform-sandbox =="
 node scripts/_sandboxDeployGuard.mjs
 firebase deploy --only hosting --project eos-platform-sandbox
 
 echo "== [5/5] verify deployed revision (D2) =="
-EXPECTED="$(git rev-parse --short HEAD)"
-echo "expected commit: ${EXPECTED}"
-echo "deployed version.json:"
-curl -s https://eos-platform-sandbox.web.app/version.json
-echo
-echo "Compare 'commit' above to expected -- the ENVIRONMENT is the authority here, not this"
-echo "script's exit code. A clean exit does not mean the artifact is live."
+# THE ENVIRONMENT IS THE AUTHORITY, and now it is also a GATE. This printed the deployed
+# version.json beside an expected commit and asked the reader to compare, while saying in its own
+# words that "a clean exit does not mean the artifact is live". That is documentation, not a check:
+# it could not fail, so it never did.
+node scripts/_releaseIdentityGate.mjs \
+  --root "${REPO_ROOT}" \
+  --approved "${APPROVED_COMMIT}" \
+  --remote https://eos-platform-sandbox.web.app
 
 echo
 echo "== [5b/5] verify the scanner callables (read-only) =="
