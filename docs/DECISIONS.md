@@ -2224,3 +2224,74 @@ environment the page renders its honest `unavailable` state. Both are Owner-run 
 
 **Related:** DECISIONS #122, #125, #126, #127. Register: ND-12, ND-13. Ledger:
 `docs/design/north-star-migration-ledger.md`.
+
+
+## #129 — Opportunity North Star P1v2 is implemented against its real design source, and the blind build is reversed where they disagreed
+
+**Date:** 2026-08-26
+**Decision:** Implement the Opportunity page family from `North Star - Opportunity P1v2.dc.html`
+(received 2026-08-26). Where the design and the earlier from-the-grammar build disagreed, **the
+design decides**, because every disagreement was about how an already-permitted fact is drawn.
+
+**Why this entry exists at all.** #128 built this family with **no design artifact** — the ledger
+row said so, and the sources register recorded that no Opportunity artifact had ever reached this
+repository. The package then arrived, and the blind build was wrong in ways that matter: it drew a
+lifecycle band where the design draws chevrons, suppressed an attention reason the design keeps,
+omitted the Sales Agreement relationship entirely, and had no "When this closes" or Activity slot.
+**That is the three-authority model demonstrated rather than asserted** — Design owns visual
+composition, and a build that composes without it is Code doing Design's job.
+
+**The reversal, named.** The blind build dropped `DECISION_PENDING` from the attention strip on
+NS-P4 grounds (the header sentence already says "awaiting customer decision"). P1v2 keeps both: the
+header states WHERE the deal is, the strip states WHAT IS OWED. Per the three rules, a conflict
+changing only how a permitted fact is drawn is Design's call, so the reason is restored and
+`deriveAttention` is now presented **verbatim** — all four reasons, none added, none suppressed.
+
+**ND-12 is withdrawn, not resolved.** It recorded that an Opportunity stores no per-stage
+timestamps, which was only a *question* because the blind build drew a band with a per-stage fact
+slot. Chevrons state position, not history. The data fact is unchanged and still recorded.
+
+**Authority is unchanged.** No capability, command, Rules change, state machine, numbering or
+pricing was added. Every transition still resolves through `useOpportunityTransitions`, every edit
+through the version-checked `useOpportunitySectionSave`, and the agreement through the existing
+`useSalesAgreement`. The lifecycle control gained a `slot` prop that decides only WHERE a control
+renders; the page mounts it twice and passes ONE `transitions` object, so both slots share a single
+idempotency cache and a single invocation path.
+
+**Two live defects the design surfaced.**
+1. **A fabricated currency.** The shared value formatter hardcoded `style: "currency", currency:
+   "USD"` on `expectedValue` — a field stored as a bare number with no currency anywhere. Every
+   Opportunity in the workspace carried a `$` nothing justified. This is decision O1's exact
+   prohibition and it was shipping. Now grouped digits, with "(no currency recorded)" stated once.
+2. **Two renderings of one fact.** The record page's rail fell back to the model's defaults and
+   rendered `41000` / `2026-08-31` beside a header saying `41,000` / `Aug 31`.
+
+**A shared component extracted rather than duplicated.** The section read/edit subtree was private
+to `SalesWorkspace.jsx`. Two surfaces needing the same deliberate read → Edit → Save/Cancel over the
+same version-checked command is how a concurrency check comes to be enforced on one screen and not
+the other, so the subtree MOVED to `modules/sales/opportunitySections.jsx` unchanged and both import
+it. `RecordIdentity` likewise gained the serif `subtitle` P1v2 needs rather than being forked.
+
+**Alternatives rejected.**
+- *Keep the blind composition and note the design as a variant* — inverts the authority model.
+- *Render `SalesAgreementPanel` on the Opportunity* — pulls acceptance, pricing and terms onto a
+  page whose design says none of that happens there.
+- *Retire the workspace detail pane in this run* — converts a read migration into an editing-surface
+  rebuild; left as ND-13.
+- *Change `deriveAttention`'s 7-day CLOSE_SOON threshold to match the artifact's illustrative
+  "9 days"* — the threshold is domain authority; the artifact's number is sample data.
+
+**Visual validation.** Real browser, real stylesheet, fixture data, three widths (1440 / 768 / 375)
+via a temporary local harness, removed afterwards. Zero horizontal overflow at every width; the body
+resolves 964px + 340px at 1440; chevrons above a 760px container and the same position in words
+below it; all 10 controls ≥44px at 375. **This proves the composition, not the live data path** —
+that still needs the `getOpportunityContext` deploy.
+
+**Reported, not absorbed.** P1v2 draws Solution as a three-column table; the shipped page renders the
+existing shared `LineSummary` list, because that renderer belongs to the workspace pane too and a
+three-column table in a 340px column would be worse there. Content is complete; the deviation is
+structural.
+
+**Related:** DECISIONS #122, #125, #126, #127, #128. Register: ND-12 (withdrawn), ND-13, plus
+Design's O1–O6. Sources: `docs/design/eos-north-star-sources.md`. Ledger:
+`docs/design/north-star-migration-ledger.md`.

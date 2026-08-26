@@ -8,48 +8,40 @@ import {
   deriveAttention,
 } from "./opportunityLifecycle.js";
 
-// THE OPPORTUNITY, DERIVED ONCE.
+// THE OPPORTUNITY RECORD PAGE, DERIVED ONCE — North Star P1v2.
 //
-// ════════════════════ WHY THIS FILE EXISTS (NS-P4) ════════════════════
+// Visual authority: `North Star - Opportunity P1v2.dc.html` (design_handoff_opportunity).
+// Behavioral authority: this repository. Acceptance: the running sandbox + the Owner.
 //
-// Fourth family in the North Star migration, and the first that is not a recomposition. The first
-// three took a page that already existed, already had its data and already had its authority, and
-// re-composed it. An Opportunity had no page: it existed only as the selected row of a pipeline
-// somebody had already loaded, with no per-id read and therefore no URL. The migration ledger
-// stopped here and asked for a decision rather than absorbing the scope change.
+// ════════════════════ THIS FILE ADDS NO VOCABULARY ════════════════════
 //
-// So this layer sits over a NEW governed read (`getOpportunityContext`) and an existing, unchanged
-// commercial lifecycle. It adds no vocabulary of its own: stage words, channel words, outcome
-// words, legality and attention all come from `opportunityLifecycle.js`, which the pipeline already
-// consumes. That is the entire point — if this file re-derived "which stage is current" the record
-// page and the pipeline row would be free to disagree about one deal, which is the NS-P4 defect
-// this whole programme exists to remove.
+// Stage words, channel words, outcome words, transition legality and attention reasons ALL come
+// from `opportunityLifecycle.js`, which the pipeline already consumes. Nothing here re-derives any
+// of them. That is the entire point: if the record page computed "which stage is current" itself,
+// it and the pipeline row would be free to disagree about one deal.
 //
-// PURE. No React, no Firestore, no clock beyond an injected `nowMillis`.
+// What this file DOES own is the P1v2 presentation of those facts — the header fact row, the
+// attention strip's wording, days-open/days-to-close, and the honest rendering of a value that has
+// no currency. Presentation only. No read, no write, no clock (`nowMillis` is injected).
 //
-// ════════════════════ WHAT IS DELIBERATELY ABSENT, AND WHY ════════════════════
+// ════════════════════ WHAT IS DELIBERATELY ABSENT ════════════════════
 //
-// NO PROBABILITY, NO WEIGHTED VALUE, NO FORECAST. `expectedValue` is a plain number the salesperson
-// typed, with no currency field beside it and no stage-probability anywhere in the engine. A
-// weighted pipeline figure is the single most tempting number to invent on a sales record and there
-// is nothing behind it: multiplying a typed number by a probability nobody stored would produce a
-// forecast presented with the authority of a system that computed it. The metadata definition
-// already records the narrower half of this ("do not render a currency symbol the data does not
-// justify") and it is honoured here.
-//
-// NO STAGE TIMES EXCEPT CLOSE (ND-12). An Opportunity document stores `createdAt`, `updatedAt` and
-// — on an outcome transition only — `closedAt`. It records nothing about when it entered
-// Qualifying, or how long it sat in Quoting. So the band states a time at exactly two stages, and
-// says so in words at the others rather than borrowing `updatedAt`, which moves on any write of any
-// kind. This is the same rule ND-8 established for the Sales Order, reached from the same evidence.
+// NO PROBABILITY, NO WEIGHTED VALUE, NO FORECAST, NO QUOTE. `expectedValue` is a plain number the
+// salesperson typed, with no currency field beside it and no stage-probability anywhere in the
+// engine. "Quoting" is a STAGE of this lifecycle, not a document — EOS has no quote object, so the
+// page shows no quote list and fakes no quote card. The design's do-not-invent list is explicit on
+// all of it.
 
 export const OPPORTUNITY_STAGE_LABEL = STAGE_LABEL;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
 /**
- * STATE IN WORDS (NS R04). The composition never prints `CUSTOMER_REVIEW`.
+ * STATE IN WORDS (R04). The composition never prints `CUSTOMER_REVIEW`.
  *
  * A closed Opportunity reads by OUTCOME and an open one by STAGE — the reading `commercialState()`
- * already applies for every pipeline row. Returns null on a value neither vocabulary recognises, so
+ * already applies to every pipeline row. Returns null on a value neither vocabulary recognises, so
  * an unplaceable state is reported as unplaceable rather than echoed back as though it were a word.
  */
 export function opportunityStateWords(opportunity) {
@@ -60,28 +52,29 @@ export function opportunityStateWords(opportunity) {
 }
 
 /**
- * STATE AS A SENTENCE — the treatment P1v2 ruled for the Work Order and family 2 followed.
+ * STATE AS A SENTENCE — P1v2 writes the header state as a clause, not a label.
  *
- * Every clause is DERIVED FROM THE ENGINE'S OWN GUARDS rather than written as copy:
+ * The artifact reads "Decision — awaiting customer decision". Every clause is DERIVED FROM THE
+ * ENGINE'S OWN GUARDS rather than written as copy:
  *
- *   open, not DECISION — `allowedActions` offers exactly one forward stage, so the sentence names
- *                        the stage the record can actually reach next. Nothing else is legal.
  *   DECISION           — `allowedActions` offers WON and LOST here and only here; the deal is
  *                        waiting on the customer, which is what the stage means.
- *   WON / LOST         — terminal. A closed deal is not waiting on anything, and padding it into a
- *                        clause for symmetry would be writing prose rather than stating fact.
+ *   open, not DECISION — `allowedActions` offers exactly one forward stage, so the clause names
+ *                        the stage the record can actually reach next. Nothing else is legal.
+ *   WON / LOST         — terminal. A closed deal waits on nothing, and padding it into a clause
+ *                        for symmetry would be writing prose rather than stating fact.
  */
 export function opportunityStateSentence(opportunity) {
   const words = opportunityStateWords(opportunity);
   if (!words) return null;
   if (opportunity?.outcome) return words;
-  if (opportunity?.stage === "DECISION") return `${words} — awaiting the customer's decision`;
+  if (opportunity?.stage === "DECISION") return `${words} — awaiting customer decision`;
   const { advanceTo } = allowedActions(opportunity);
   if (advanceTo) return `${words} — next stage ${STAGE_LABEL[advanceTo] ?? advanceTo}`;
   return words;
 }
 
-/** Tone, so colour and word always agree. Never colour alone (NS R04). */
+/** Tone, so colour and word always agree. Never colour alone (R04). */
 export function opportunityStateTone(opportunity) {
   if (opportunity?.outcome === "WON") return "positive";
   if (opportunity?.outcome === "LOST") return "negative";
@@ -90,284 +83,153 @@ export function opportunityStateTone(opportunity) {
 }
 
 /**
- * THE LIFECYCLE SPINE (NS-P1).
+ * THE LIFECYCLE SPINE — and this family legally gets CHEVRONS.
  *
- * A pass-through to `stageProgress`, and that is the whole design. `stageProgress` already returns
- * the exact shape `LifecycleBand` consumes — ordered steps carrying complete/current/future, plus
- * an optional terminal badge — because `LifecycleChevrons` (the pipeline-row rendering of the same
- * progression) was built against it first. Adding a second Opportunity-specific spine function here
- * would create precisely the drift NS-P4 forbids: two answers to "where is this deal".
+ * A pass-through to `stageProgress`, deliberately. It already returns the exact shape
+ * `LifecycleChevrons` consumes, because the pipeline row was built against it first. Adding a
+ * second Opportunity-specific progression here would create precisely the drift the grammar
+ * forbids: two answers to "where is this deal".
  *
- * `unrecognised` is the one thing added, and it is a REPORT rather than a rule: a stage the
- * vocabulary cannot place must be visible as unplaceable, not silently drawn as step one.
+ * The Account family draws no spine because its four statuses are an editable field with no
+ * transition command (ND-11). An Opportunity has six governed stages, a legality graph and a
+ * transition command, so the chevrons assert a rule the engine actually holds.
+ *
+ * `unrecognised` is a REPORT rather than a rule: a stage the vocabulary cannot place must be
+ * visible as unplaceable, not silently drawn as step one.
  */
 export function opportunitySpine(opportunity) {
   const { stages, terminal } = stageProgress(opportunity);
   const stage = opportunity?.stage ?? null;
+  const reachedIndex = OPPORTUNITY_STAGES.indexOf(stage);
   return {
     steps: stages,
     terminal,
-    unrecognised: stage != null && !OPPORTUNITY_STAGES.includes(stage),
+    unrecognised: stage != null && reachedIndex < 0,
+    // P1v2 mobile renders the chevron row as words — "stage 6 of 6". Derived here so the phone
+    // and desktop compositions cannot disagree about which stage that is.
+    positionWords: reachedIndex >= 0 ? `stage ${reachedIndex + 1} of ${OPPORTUNITY_STAGES.length}` : null,
+    isLastStage: reachedIndex === OPPORTUNITY_STAGES.length - 1,
   };
 }
 
-const NO_STAGE_TIME =
-  "No time is recorded for this stage — an Opportunity stores when it was created, when it was last changed, and when it closed.";
+// ═════════════════════════════════════════ TIME, DERIVED FROM WHAT IS STORED
 
 /**
- * ONE LINE OF FACT for whichever spine stage the reader opened.
+ * How long this deal has been open — P1v2's "open 47 days" in the header.
  *
- * ════════════════════ THE HONEST PART (ND-12) ════════════════════
- *
- * Exactly TWO stages can state a time, and neither is borrowed:
- *
- *   Identified — `createdAtMillis`. An Opportunity is created AT Identified, always; the pure
- *                builder admits no other starting stage, so the creation time IS this stage's time.
- *   Decision   — `closedAtMillis`, and ONLY once the deal has closed. WON and LOST are both reached
- *                from Decision, so the close time is the time this stage ended. On an open deal the
- *                stage has not ended and no time is claimed.
- *
- * Every other stage says so in words. What those stages CAN say is deal fact the record genuinely
- * holds — what is being sold — and that is what a reader opening a stage actually wants. Stated as
- * counts, never as a percentage complete: a percentage implies a schedule, and there is none here.
- *
- * @param opportunity the READY view model from opportunityView
- * @param stepKey     one of OPPORTUNITY_STAGES
- * @param formatWhen  injected formatter (this file stays pure and unaware of display formatting)
- * @returns { tone, lead, fact } — tone is "complete" | "current" | "future"
+ * From `createdAtMillis`, which the record genuinely stores. Null when the creation time is
+ * absent, and the header simply omits the phrase rather than printing "open 0 days", which would
+ * read as a deal created today.
  */
-export function opportunityStageDetail(opportunity, stepKey, formatWhen) {
-  const label = STAGE_LABEL[stepKey] ?? null;
-  if (!label) return null;
-
-  const spine = opportunitySpine(opportunity);
-  const step = spine.steps.find((s) => s.key === stepKey) ?? null;
-  const tone = step?.status === "complete" ? "complete" : step?.status === "current" ? "current" : "future";
-  const when = (v) => (typeof formatWhen === "function" ? formatWhen(v ?? null) : null);
-  const lineCount = Array.isArray(opportunity?.lines) ? opportunity.lines.length : 0;
-  const linePhrase = lineCount === 0
-    ? "No solution lines have been recorded."
-    : `${lineCount} solution line${lineCount === 1 ? "" : "s"} recorded.`;
-
-  if (stepKey === "IDENTIFIED") {
-    const created = when(opportunity?.createdAtMillis);
-    return {
-      tone,
-      lead: label,
-      fact: created
-        ? `Opportunity created ${created}. ${linePhrase}`
-        : `No creation time is recorded. ${linePhrase}`,
-    };
-  }
-
-  if (stepKey === "DECISION") {
-    const outcomeWords = opportunity?.outcome ? (OUTCOME_LABEL[opportunity.outcome] ?? null) : null;
-    if (outcomeWords) {
-      const closed = when(opportunity?.closedAtMillis);
-      return {
-        tone,
-        lead: label,
-        fact: closed
-          ? `${outcomeWords} ${closed}. ${linePhrase}`
-          : `${outcomeWords}, but no close time is recorded. ${linePhrase}`,
-      };
-    }
-    return { tone, lead: label, fact: `The customer's decision is outstanding. ${NO_STAGE_TIME}` };
-  }
-
-  if (stepKey === "SOLUTION" || stepKey === "QUOTING") {
-    return { tone, lead: label, fact: `${linePhrase} ${NO_STAGE_TIME}` };
-  }
-
-  // IDENTIFIED and DECISION are handled above; QUALIFYING and CUSTOMER_REVIEW land here. Neither
-  // has a stored fact of its own, so the honest answer is the whole answer.
-  return { tone, lead: label, fact: NO_STAGE_TIME };
+export function opportunityDaysOpen(opportunity, nowMillis) {
+  const created = num(opportunity?.createdAtMillis);
+  const now = num(nowMillis);
+  if (created == null || now == null) return null;
+  return Math.max(0, Math.floor((now - created) / DAY_MS));
 }
 
-// ═════════════════════════════════════════ ATTENTION (NS pattern 3)
+/**
+ * Days until the expected close — negative once it has passed.
+ *
+ * Only ever used to WORD an attention reason the domain already raised; it never decides whether
+ * the reason fires. `deriveAttention` owns that.
+ */
+export function opportunityDaysToClose(opportunity, nowMillis) {
+  const close = num(opportunity?.expectedCloseAt);
+  const now = num(nowMillis);
+  if (close == null || now == null) return null;
+  return Math.round((close - now) / DAY_MS);
+}
 
-export const SEVERITY = Object.freeze({ BLOCKING: "BLOCKING", ATTENTION: "ATTENTION" });
-
-// The plain-language rendering of each reason `deriveAttention` already produces. The KINDS are
-// that authority's, not this file's; an unmapped kind still renders, using the reason's own label,
-// so a reason added upstream can never silently vanish from the band.
-const ATTENTION_FACT = Object.freeze({
-  NO_NEXT_ACTION: "No next action is recorded. Nobody knows what happens next on this deal.",
-  CLOSE_OVERDUE: "The expected close date has passed.",
-});
-
-// ALREADY STATED ONCE, HIGHER UP THE PAGE (NS-P4).
-//
-// `deriveAttention` raises DECISION_PENDING for exactly one condition — stage === "DECISION" — and
-// the record header's state sentence says "Decision — awaiting the customer's decision" for exactly
-// the same condition. On this page the two would ALWAYS fire together, so admitting it to the band
-// would state one fact twice within a hundred pixels: the deduplication the grammar calls "most of
-// the perceived calm".
-//
-// It stays in `deriveAttention` untouched, because the PIPELINE ROW has no state sentence and there
-// the reason is the only thing carrying it. This is a composition rule about one surface, not a
-// change to the derivation — which is why it is expressed as a filter here rather than an edit
-// there.
-const STATED_IN_THE_HEADER = new Set(["DECISION_PENDING"]);
+// ═════════════════════════════════════════ THE ATTENTION STRIP (P1v2)
 
 /**
- * THE ATTENTION BLOCK — "renders nothing when clean" (NS pattern 3).
+ * THE ATTENTION STRIP — `deriveAttention` VERBATIM, worded for this page.
  *
- * ════════════════════ IT DOES NOT RE-DERIVE ════════════════════
+ * ════════════════════ IT DOES NOT DECIDE, IT ONLY WORDS ════════════════════
  *
  * `deriveAttention` in opportunityLifecycle.js is the existing authority on what needs attention on
- * an Opportunity, and the pipeline already sorts by it. This function CONSUMES it and adds only the
- * facts a record page can state that a table row cannot — it does not compute "overdue" a second
- * time. A second derivation is how two screens come to disagree about one deal.
+ * an Opportunity, and the pipeline already sorts by it. This function consumes ALL FOUR of its
+ * reasons and re-words them in the artifact's own voice. It never adds a reason, never suppresses
+ * one, and never recomputes "overdue" — a second derivation is how two screens come to disagree.
  *
- * ════════════════════ INFORMATIONAL ITEMS ARE DROPPED, ON PURPOSE ════════════════════
+ * P1v2 calls this out as presentation of an existing derivation, NOT a recommendation engine, and
+ * the page must not label it as one. deriveAttention's four reasons are the entire "next best
+ * action" vocabulary this product has.
  *
- * `deriveAttention` returns tone "attention" and tone "info"; the only "info" item is "Closing
- * within a week", which is true and is not a call to act. The grammar is explicit that the
- * attention block is not for informational status — "the moment it carries things that are merely
- * true, it stops meaning something needs you". So info-toned items do not enter the band. The fact
- * is not lost: the expected close date is stated in the record header, where it belongs.
+ * ════════════════════ A REVERSAL, RECORDED ════════════════════
  *
- * ════════════════════ THE BLOCKERS COME FROM THE ENGINE'S OWN GUARDS ════════════════════
+ * An earlier build of this page dropped DECISION_PENDING here, on the NS-P4 argument that the
+ * header sentence already says "awaiting customer decision". P1v2 keeps both: the header states
+ * WHERE the deal is, the strip states WHAT IS OWED, and the artifact shows them together. Under the
+ * three-authority model a conflict that changes only how an already-permitted fact is drawn is
+ * Design's to decide, so the design is followed and the earlier call reversed.
  *
- * `buildTransitionPatch` refuses WON when there are no lines (NO_LINES) or when any line lacks a
- * positive integer qty (LINE_QTY_REQUIRED_FOR_WON). Those are BLOCKING here because they are
- * blocking there — the page states a refusal the engine will make, rather than inventing a rule of
- * its own or letting a reader discover it by pressing a button.
- *
- * A CLOSED OPPORTUNITY RAISES NOTHING. `deriveAttention` already returns [] for WON/LOST, and the
- * blockers below are gated on the same fact: attention on a closed deal is noise that trains people
- * to ignore the band.
+ * `nextAction` rides along because the strip is where P1v2 states it — the stored text when there
+ * is one, and the absence when there is not, which is itself the NO_NEXT_ACTION reason.
  */
-export function opportunityAttention(opportunity, nowMillis = null) {
-  if (!opportunity) return [];
-  if (opportunity.outcome === "WON" || opportunity.outcome === "LOST") return [];
+export function opportunityAttentionStrip(opportunity, nowMillis) {
+  if (!opportunity) return { present: false, reasons: [], nextAction: null };
 
-  const items = [];
-  const lines = Array.isArray(opportunity.lines) ? opportunity.lines : [];
+  const toClose = opportunityDaysToClose(opportunity, nowMillis);
+  const days = (n) => `${Math.abs(n)} day${Math.abs(n) === 1 ? "" : "s"}`;
 
-  // A qty is a positive integer to the engine, and anything else blocks WON forever — there is no
-  // reopen path once a deal closes, and createSalesOrderFromOpportunity fails closed on such a line.
-  const qtyless = lines.filter((l) => !(Number.isInteger(l?.qty) && l.qty > 0)).length;
+  // The KINDS are the domain's; only the wording is this page's.
+  const WORDS = {
+    DECISION_PENDING: () => "Awaiting customer decision",
+    NO_NEXT_ACTION: () => "No next action on file",
+    CLOSE_OVERDUE: () => (toClose == null ? "Expected close has passed" : `expected close was ${days(toClose)} ago`),
+    CLOSE_SOON: () => (toClose == null ? "Closing soon" : `expected close is in ${days(toClose)}`),
+  };
 
-  if (lines.length === 0) {
-    items.push({
-      key: "no-lines",
-      severity: SEVERITY.BLOCKING,
-      fact: "This opportunity has no solution lines. It cannot be won until it says what is being sold.",
-    });
-  } else if (qtyless > 0) {
-    items.push({
-      key: "line-qty-missing",
-      severity: SEVERITY.BLOCKING,
-      fact: `${qtyless} solution line${qtyless === 1 ? " carries" : "s carry"} no quantity. A line without a quantity cannot be won, and winning is irreversible.`,
-    });
-  }
+  const derived = deriveAttention(opportunity, nowMillis);
+  const reasons = derived.map((r) => ({
+    kind: r.kind,
+    tone: r.tone,
+    // An unmapped kind still renders, using the domain's own label, so a reason added upstream can
+    // never silently vanish from this strip.
+    text: WORDS[r.kind] ? WORDS[r.kind]() : r.label,
+  }));
 
-  for (const reason of deriveAttention(opportunity, nowMillis)) {
-    if (reason.tone !== "attention") continue; // informational status does not belong here
-    if (STATED_IN_THE_HEADER.has(reason.kind)) continue; // one fact, one rendering
-    items.push({
-      key: reason.kind,
-      severity: SEVERITY.ATTENTION,
-      fact: ATTENTION_FACT[reason.kind] ?? reason.label,
-    });
-  }
+  // P1v2 leads the strip with the decision/no-next-action reason and trails with the timing one,
+  // which is how the artifact reads: "Awaiting customer decision · expected close is in 9 days."
+  const RANK = { DECISION_PENDING: 0, NO_NEXT_ACTION: 1, CLOSE_OVERDUE: 2, CLOSE_SOON: 3 };
+  reasons.sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9));
 
-  return items;
+  const nextAction = typeof opportunity.nextAction === "string" && opportunity.nextAction.trim()
+    ? opportunity.nextAction.trim()
+    : null;
+
+  return { present: reasons.length > 0, reasons, nextAction };
 }
 
-// ═════════════════════════════════════════ LINEAGE (NS-P1, R09)
+// ═════════════════════════════════════════ THE HEADER (P1v2 identity)
 
 /**
- * The chain edges this Opportunity genuinely has.
- *
- * Same honest-reference contract as families 1 and 2: RESOLVED carries a governed reference,
- * UNRESOLVED means the relationship is real and its reference could not be resolved, ABSENT means
- * there is no relationship. The document id is NEVER returned as a label under any of the three
- * (DECISIONS #106, R03).
- *
- * THE ACCOUNT EDGE IS A NAME rather than a coded reference: an Account's identity is its name, and
- * the read resolves it server-side under the server's authority. UNRESOLVED here is a real and
- * ordinary outcome, not an error — and it still never degrades to the accountId.
- *
- * THE AGREEMENT EDGE IS ALWAYS UNRESOLVED OR ABSENT, exactly as it is on the Sales Order (ND-9):
- * `salesAgreementId` is projected and no read resolves a Sales Agreement to a reference. Naming the
- * entity and stating the absence is the contract; printing the id is the defect the rule forbids.
- */
-export const EDGE = Object.freeze({ RESOLVED: "RESOLVED", UNRESOLVED: "UNRESOLVED", ABSENT: "ABSENT" });
-
-const SALES_ORDER_REFERENCE = /^SO-\d{4}-\d{6}$/;
-
-export function opportunityLineage(opportunity) {
-  const edges = [];
-
-  const accountId = opportunity?.accountId ?? null;
-  const accountName = opportunity?.accountName ?? null;
-  if (!accountId) {
-    edges.push({ key: "account", label: "Customer", state: EDGE.ABSENT });
-  } else if (accountName) {
-    edges.push({ key: "account", label: "Customer", state: EDGE.RESOLVED, reference: accountName, targetId: accountId });
-  } else {
-    edges.push({ key: "account", label: "Customer", state: EDGE.UNRESOLVED, targetId: accountId });
-  }
-
-  const salesOrderId = opportunity?.salesOrderId ?? null;
-  const salesOrderNumber = opportunity?.salesOrderNumber ?? null;
-  if (!salesOrderId) {
-    edges.push({ key: "salesOrder", label: "Sales order", state: EDGE.ABSENT });
-  } else if (typeof salesOrderNumber === "string" && SALES_ORDER_REFERENCE.test(salesOrderNumber)) {
-    edges.push({ key: "salesOrder", label: "Sales order", state: EDGE.RESOLVED, reference: salesOrderNumber, targetId: salesOrderId });
-  } else {
-    edges.push({ key: "salesOrder", label: "Sales order", state: EDGE.UNRESOLVED, targetId: salesOrderId });
-  }
-
-  const agreementId = opportunity?.salesAgreementId ?? null;
-  edges.push(
-    agreementId
-      ? { key: "agreement", label: "Sales agreement", state: EDGE.UNRESOLVED, targetId: agreementId }
-      : { key: "agreement", label: "Sales agreement", state: EDGE.ABSENT },
-  );
-
-  return edges;
-}
-
-/**
- * THE MILESTONE LIST — what the record actually records, and nothing else.
- *
- * Shape matches `workOrderTimeline` and `salesOrderTimeline` so the shared renderer can consume any
- * of the three without knowing which family it is drawing.
- */
-export function opportunityTimeline(opportunity) {
-  return [
-    { key: "created", label: "Opportunity created", at: opportunity?.createdAtMillis ?? null },
-    // A REAL lifecycle event, unlike the other two: `closedAt` is written by the outcome transition
-    // and by nothing else, so it means what it says. Gated on the outcome as well as on the value,
-    // so a stray timestamp on an open record can never present itself as a close.
-    {
-      key: "closed",
-      label: opportunity?.outcome === "WON" ? "Won" : opportunity?.outcome === "LOST" ? "Lost" : "Closed",
-      at: opportunity?.outcome ? (opportunity?.closedAtMillis ?? null) : null,
-    },
-    // NOT a lifecycle event, and labelled so. `updatedAt` moves on ANY write — a stage advance, a
-    // field correction, a line edit. Calling it "Last changed" is the whole truth about it.
-    { key: "updated", label: "Last changed", at: opportunity?.updatedAtMillis ?? null },
-  ].filter((e) => e.at != null);
-}
-
-/**
- * The single header derivation — everything the record header states, in one object.
+ * The single header derivation — everything the P1v2 identity block states, in one object.
  *
  * Assembled here rather than in the component so that "the state" is one value used by the header,
- * the spine and the attention rules, and cannot drift between them.
+ * the chevrons and the attention strip, and cannot drift between them.
+ *
+ * THE KICKER carries the channel: the artifact reads `Opportunity · National Accounts`. An
+ * unrecognised channel degrades to the bare object type rather than leaking the stored enum.
+ *
+ * THE TITLE is the governed reference. A record written before numbering existed renders
+ * "Opportunity — not numbered", which is the artifact's own words, and NEVER the document id
+ * (DECISIONS #106) — the id is not even carried on this object.
+ *
+ * THE SUBTITLE is `need`, the nearest thing to a human name this entity has. Omitted entirely when
+ * absent; never fabricated, and never replaced by something else standing in for it.
  */
 export function opportunityHeader(opportunity) {
   if (!opportunity) return null;
+  const channelWords = opportunity.salesChannel ? (CHANNEL_LABEL[opportunity.salesChannel] ?? null) : null;
   return {
+    kicker: channelWords ? `Opportunity · ${channelWords}` : "Opportunity",
+    channelWords,
     reference: opportunity.opportunityNumber ?? null,
-    // Channel in WORDS. `CHANNEL_LABEL` is the one vocabulary; an unrecognised channel returns null
-    // rather than leaking `STRATEGIC_ACCOUNTS` into a sentence (R04).
-    channelWords: opportunity.salesChannel ? (CHANNEL_LABEL[opportunity.salesChannel] ?? null) : null,
+    title: opportunity.opportunityNumber ?? "Opportunity — not numbered",
+    subtitle: typeof opportunity.need === "string" && opportunity.need.trim() ? opportunity.need.trim() : null,
     stateWords: opportunityStateWords(opportunity),
     stateSentence: opportunityStateSentence(opportunity),
     stateTone: opportunityStateTone(opportunity),
@@ -377,25 +239,64 @@ export function opportunityHeader(opportunity) {
 }
 
 /**
- * THE EXPECTED VALUE, RENDERED HONESTLY — a number with no currency, said as such.
+ * THE EXPECTED VALUE — a number with no currency, said as such (decision O1).
  *
- * `expectedValue` is stored as a plain number and the document has NO currency field. Rendering it
- * with a "$" would assert a unit nobody stored, and rendering it as minor units would be worse
- * still: the metadata definition says so in as many words. So the figure is grouped for legibility
- * and carries a title explaining exactly what it is and is not. NULL IS NOT ZERO: an opportunity
- * with no expected value shows no number at all, because a zero would read as a worthless deal
- * rather than an unestimated one.
+ * `expectedValue` is stored as a plain number and the document has NO currency field. P1v2 renders
+ * it as a bare grouped figure followed by "(no currency recorded)", and a "$" appears only when the
+ * data justifies one — which on this record it never does. The Sales Agreement card is the
+ * exception on this page, and only because the agreement genuinely stores a currency.
+ *
+ * NULL IS NOT ZERO. An opportunity with no expected value shows no number at all: a zero would read
+ * as a worthless deal rather than an unestimated one.
  *
  * @param formatNumber injected group-formatter, so this file holds no locale knowledge
  */
+export const NO_CURRENCY_NOTE = "(no currency recorded)";
+export const NO_CURRENCY_TITLE =
+  "expectedValue is stored as a plain number with no currency field — a symbol the data does not justify is never rendered.";
+
 export function opportunityValueDisplay(opportunity, formatNumber) {
-  const value = opportunity?.expectedValue ?? null;
+  const value = num(opportunity?.expectedValue);
   if (value == null) {
-    return { text: null, title: "No expected value has been recorded for this opportunity." };
+    return { amount: null, note: null, title: "No expected value has been recorded for this opportunity." };
   }
-  const shown = typeof formatNumber === "function" ? formatNumber(value) : String(value);
   return {
-    text: `Expected value ${shown}`,
-    title: "Stored as a plain number with no currency recorded. It is an estimate entered by the owner, not a quoted or committed price.",
+    amount: typeof formatNumber === "function" ? formatNumber(value) : String(value),
+    note: NO_CURRENCY_NOTE,
+    title: NO_CURRENCY_TITLE,
+  };
+}
+
+// ═════════════════════════════════════════ THE GOVERNED CONVERSION ("When this closes")
+
+/**
+ * The two real commercial paths, stated as fact rather than as a workflow this page enforces.
+ *
+ * REPOSITORY TRUTH, and P1v2 decision O6 records it as such:
+ *   • `closeOpportunityAsWon` creates a Sales Order atomically from the opportunity's own lines.
+ *   • `agreementToSalesOrder` creates a PRICED Sales Order from an accepted agreement's lines.
+ *   • An agreement is NOT a prerequisite for Won, and nothing enforces a sequence.
+ *
+ * This returns which chain TRULY exists for this record so the page can state it without implying
+ * the other. It converges nothing: normalising the two paths is an open product decision, and a
+ * page that described them as one would be pre-deciding it.
+ *
+ * @param agreementView the READY-or-not view from `salesAgreementView`, or null when not read
+ */
+export function opportunityConversion(opportunity, agreementView) {
+  const salesOrderId = opportunity?.salesOrderId ?? null;
+  const agreementReady = agreementView?.kind === "READY";
+  const agreementAccepted = agreementReady && agreementView.state === "ACCEPTED";
+  const agreementOrderId = agreementReady ? (agreementView.salesOrderId ?? null) : null;
+  return {
+    hasOrder: salesOrderId != null,
+    salesOrderId,
+    salesOrderNumber: opportunity?.salesOrderNumber ?? null,
+    hasAgreement: agreementReady,
+    agreementAccepted,
+    // The agreement's own order, which may exist independently of the opportunity's back-link.
+    agreementOrderId,
+    isClosed: opportunity?.outcome === "WON" || opportunity?.outcome === "LOST",
+    isWon: opportunity?.outcome === "WON",
   };
 }

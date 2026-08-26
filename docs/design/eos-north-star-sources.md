@@ -101,7 +101,7 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 | `Proposed - Work Order.dc.html` | Work Order detail | ~~Pilot 1 primary source.~~ **SUPERSEDED 2026-08-25** — the approved source is now `North Star - Work Order.dc.html` (see below). Technician run sheet still reference for a later family. |
 | `Proposed - Sales Order.dc.html` | Sales Order detail | Pilot 2. **NEVER HANDED TO THIS REPOSITORY.** The family was migrated 2026-08-26 from the ratified grammar and the shipped family-1 pattern instead, which makes Owner visual acceptance load-bearing rather than confirmatory (DECISIONS #125). If this artifact exists, it has not been seen here. |
 | `Proposed - Account.dc.html` | Customer 360 | Ceiling set by capability activation. |
-| `Proposed - Opportunity.dc.html` | Opportunity detail | Requires a per-record route. |
+| `Proposed - Opportunity.dc.html` | Opportunity detail | **SUPERSEDED 2026-08-26** by `North Star - Opportunity P1v2.dc.html` (see below). Its note — "requires a per-record route" — was answered: the route and its governed per-id read shipped with the P1v2 build. |
 | `Proposed - Parts.dc.html` | Parts workspace | Persona-scoped queues. |
 | `Proposed - Dispatch Board.dc.html` · `Proposed - Dispatch Map.html` | Dispatch | Densest board; drag-scheduling with refusal reasons. |
 | `Proposed - Technician Mobile.dc.html` | Handheld, technician | Four moments of a field day. |
@@ -109,6 +109,33 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 | `Subpages - Commercial.dc.html` | Sales Agreement edit / accepted / states | Hardest commercial surface. |
 | `Subpages - Operations.dc.html` | Receiving, scheduling, exception, balances | Cross-object consequence. |
 | `Subpages - Lists and States.dc.html` | 142-row list + 12 honest states | The density floor and the state vocabulary. |
+
+### `North Star - Opportunity P1v2.dc.html` — the CURRENT approved Opportunity visual source
+
+**Received 2026-08-26**, as `Claude Design Docs/Opportunity North Star P1v2.zip` → folder
+`design_handoff_opportunity`, containing:
+
+| File | What it is |
+| --- | --- |
+| `North Star - Opportunity P1v2.dc.html` | **The visual authority.** 1a desktop 1440 · 1b phone 375 · 1c representative states. |
+| `North Star - Opportunity P1.dc.html` | P1v1, retained for provenance. Superseded. |
+| `README.md` | The handoff: authority map, composition walk-through, action architecture, an implementation-reality matrix, decisions O1–O6, a do-not-invent list and an acceptance checklist. |
+
+**P1v2 supersedes P1v1** by adding the Sales Agreement relationship — a main-column section, a
+header fact, a mobile row, the agreement states, and decision O6. All P1v1 decisions are preserved.
+
+**This is the first family in the programme to be implemented against its real design source.**
+Families 2 and 3 were composed from the ratified grammar because no artifact had been handed over,
+and family 4 was built that way once too, before this package arrived. Rebuilding it against P1v2
+changed the composition materially — see the migration ledger's family 4 row for the table of what
+the design decided differently.
+
+**The artifacts still live outside this repository.** A `find` for `*.dc.html` across the tree
+returns nothing: this file remains a register of what exists, not the thing itself. That is the
+condition this document's own opening paragraph warns about — "a design direction that lives only in
+a conversation is one cleared cache away from being lost" — and it applies to the artifacts as
+squarely as to the direction. **Open question for Design and the Owner: should the approved `.dc.html`
+sources be committed here?**
 
 ### `North Star - Work Order.dc.html` — the CURRENT approved Work Order visual source
 

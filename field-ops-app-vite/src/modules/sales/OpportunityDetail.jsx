@@ -1,111 +1,134 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useOpportunity } from "../../hooks/useOpportunity.js";
 import { useOpportunityTransitions } from "../../hooks/useOpportunityTransitions.js";
+import { useOpportunitySectionSave } from "../../hooks/useOpportunitySectionSave.js";
+import { useSalesAgreement } from "../../hooks/useSalesAgreement.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { opportunityView, OPPORTUNITY_VIEW_STATE } from "../../domain/opportunityView.js";
-import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
-import AttentionBand from "../../shared/ui/AttentionBand.jsx";
-import LifecycleBand from "../../shared/ui/LifecycleBand.jsx";
-import RuledSection from "../../shared/ui/RuledSection.jsx";
-import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
-import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
-import { formatMoment } from "../../domain/displayTimestamp";
+import { opportunityDetailModel } from "../../domain/opportunityFieldModel.js";
+import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
+import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
+import OpportunityLifecycleControl from "./OpportunityLifecycleControl.jsx";
+import OpportunityAgreementCard from "./OpportunityAgreementCard.jsx";
+import { DetailSection, ownerName as resolveOwnerName, currency as formatValue, shortDate } from "./opportunitySections.jsx";
+import { formatDateOnly } from "../../domain/displayTimestamp";
 import {
   opportunityHeader,
   opportunitySpine,
-  opportunityAttention,
-  opportunityStageDetail,
-  opportunityTimeline,
-  opportunityLineage,
+  opportunityAttentionStrip,
+  opportunityDaysOpen,
   opportunityValueDisplay,
-  EDGE,
+  opportunityConversion,
 } from "../../domain/opportunityNorthStar.js";
 
-// THE OPPORTUNITY, COMPOSED IN THE NORTH STAR GRAMMAR.
+// THE OPPORTUNITY RECORD PAGE — North Star P1v2.
 //
-// Translation contract: docs/design/eos-north-star-design-grammar.md.
-// Three-authority model: DECISIONS #122. Design owns the composition, this file owns the
-// implementation, and the running sandbox plus the Owner own acceptance. Where the two disagreed,
-// the conflict is recorded as a NAMED product decision in
-// docs/design/north-star-open-product-decisions.md rather than silently resolved here.
+// Visual authority:   `North Star - Opportunity P1v2.dc.html` (design_handoff_opportunity).
+// Behavioral authority: this repository, unchanged.
+// Acceptance:         the running sandbox + the Owner.
 //
-// ════════════════════ THIS FAMILY IS NOT A RECOMPOSITION ════════════════════
+// ════════════════════ PRESENTATION-LAYER MIGRATION ════════════════════
 //
-// Families 1–3 each took a page that already existed and re-composed it. This one had no page to
-// re-compose. An Opportunity had no per-id governed read and therefore no URL: it could be seen
-// only as the selected row of a pipeline someone had already loaded. Deep-linking to a deal,
-// sending a colleague its address, or arriving from the Sales Order's own lineage link were all
-// impossible. The migration ledger stopped here and asked for a decision rather than absorbing a
-// change of scope.
+// Every fact on this page is READ from an existing governed projection and every action is COMPOSED
+// from an existing governed command. This file adds no capability, no command, no Rules change, no
+// state machine, no numbering and no pricing. Where authority is absent, the truthful gap renders
+// instead — the design names five such gaps (O1–O5) and each has a visible, honest slot rather than
+// a fabricated value.
 //
-// So this page ships on a NEW trusted read — `getOpportunityContext` — which reuses the EXISTING
-// `opportunity.read` capability. No Rules change, no new capability, no widened access: the
-// `opportunities` collection stays Admin-SDK-only and the authorization question ("may this
-// principal read Opportunities?") is the one the two list reads already ask.
+// ════════════════════ THE SEVEN THINGS IT COMPOSES, AND WHERE THEY COME FROM ════════════════════
 //
-// ════════════════════ AUTHORITY IS UNCHANGED ON THE WRITE SIDE TOO ════════════════════
+//   identity + facts     `getOpportunityContext` (per-id governed read) via useOpportunity
+//   stage chevrons       `stageProgress` — the SAME derivation the pipeline row draws
+//   one legal advance    `allowedActions` — the engine decides, never this file
+//   Won / Lost           `useOpportunityTransitions` → transitionOpportunity / closeOpportunityAsWon
+//   section editing      `useOpportunitySectionSave` → updateOpportunity, version-checked
+//   attention strip      `deriveAttention` verbatim, worded by opportunityNorthStar.js
+//   sales agreement      `useSalesAgreement` → the existing agreement read/create authority
 //
-// Every transition still resolves through the same governed `transitionOpportunity` command, reached
-// through the same `OpportunityLifecycleControl` and the same `useOpportunityTransitions` hook the
-// workspace uses. This file adds NO second way to move a deal. The control is asked to render its
-// `actions` variant — the page draws the spine itself, from the same `stageProgress` derivation, so
-// drawing the chevrons too would put two progressions for one deal on one page (NS-P4).
+// ════════════════════ THE LIFECYCLE CONTROL IS MOUNTED TWICE, ON PURPOSE ════════════════════
 //
-// ════════════════════ THE HONEST DIFFERENCES FROM FAMILIES 1 AND 2 ════════════════════
+// P1v2 puts the chevrons under the header and Mark Won / Mark Lost IN the header cluster. Both come
+// from `OpportunityLifecycleControl`, in its `chevrons` and `actions` slots, and BOTH RECEIVE THE
+// SAME `transitions` OBJECT — one idempotency cache, one invocation of the governed command. That
+// is why the transitions hook lives here rather than inside the control.
 //
-// 1. NO LIVE INDICATOR. `useOpportunity` is a one-shot read with an explicit refetch, exactly like
-//    `useSalesOrder`. The same badge the Work Order carries would be a false claim here, so the
-//    utility line says what is actually true instead (ND-10 applies unchanged).
+// ════════════════════ WHY THE CHEVRONS ARE LEGITIMATE HERE ════════════════════
 //
-// 2. TWO STAGES CAN STATE A TIME, not one. An Opportunity records `createdAt`, `updatedAt` and —
-//    on an outcome transition only — `closedAt`. So "Identified" can say when the deal began and
-//    "Decision" can say when it ended; every other stage says no time is recorded, rather than
-//    borrowing `updatedAt` (ND-12).
+// The Account family draws no lifecycle spine because its four statuses are an editable field with
+// no transition command (ND-11). An Opportunity has six governed stages, a legality graph and a
+// transition command, so chevrons assert a rule the engine genuinely holds. The design says so in
+// as many words: "this family legally gets chevrons".
 //
-// 3. THE SUGGESTION SLOT IS ABSENT, not empty. There is no governed Opportunity recommendation in
-//    this build. The Work Order leaves the slot visible and silent because a slot was designed for
-//    it; inventing one here to hold "nothing is proposed" would be composition for its own sake.
-//    §8's prohibition is explicit: if the AI capability does not exist, do not fabricate it.
+// ════════════════════ AND WHY THE SALES AGREEMENT IS NOT ONE OF THEM ════════════════════
+//
+// The agreement is a RELATED COMMERCIAL RECORD, never a stage. It must never appear in the chevron
+// row, acceptance never moves the opportunity's stage, and an agreement is never a prerequisite for
+// Won — all four are repository truth (decision O6), and all four are asserted by the test suite.
 
-// `readiness` is the write seam (NOT a raw capability flag — the workspace's own connected mount
-// derives it from the trusted resolveEffectiveAccessCallable decision and this page takes the same
-// value, so the two surfaces can never disagree about whether a transition is offerable).
-// `actionDeps` injects a mocked command client for tests, exactly as it does for SalesOrderDetail.
-export default function OpportunityDetail({ readiness, actionDeps } = {}) {
+export default function OpportunityDetail({ readiness, hasCapability = () => false, actionDeps, saveDeps } = {}) {
   const { opportunityId } = useParams();
   const { loading, errorStatus, result, refetch } = useOpportunity(opportunityId);
   const view = opportunityView({ loading, errorStatus, result });
   const ready = view.kind === OPPORTUNITY_VIEW_STATE.READY;
 
-  // ONE DIRECTORY READ FOR THE PAGE, resolving the owner to a person. An employee id is a routing
-  // key and never content. The directory is admin/dispatcher-only, so "cannot resolve" is a normal
-  // outcome for a legitimate caller (a salesperson reading their own deal) rather than an error —
-  // which is why the absence is stated in words instead of falling back to the id.
-  const directory = useEmployeeDirectory();
-  const ownerName = useMemo(() => {
-    if (!ready || !view.ownerEmployeeId || directory.loading) return null;
-    const employee = directory.byEmployeeId?.get(view.ownerEmployeeId);
-    return employee?.displayName ?? employee?.name ?? null;
-  }, [ready, view.ownerEmployeeId, directory]);
+  // ─────────────────────────── seams, all called unconditionally (rules of hooks)
 
-  // THE WRITE SEAM, FAIL-CLOSED BY DEFAULT. `opportunityWriteReadiness()` called with no arguments
-  // is a hard refusal, so a caller that injects nothing (every unit test, and any future mount that
-  // forgets) gets protected controls carrying their reason — never live ones. The production mount
-  // (App.jsx) passes the real trusted resolveEffectiveAccessCallable decision.
+  // THE WRITE SEAM, FAIL-CLOSED BY DEFAULT. `opportunityWriteReadiness()` with no arguments is a
+  // hard refusal, so a mount that injects nothing — every unit test, and any future mount that
+  // forgets — gets protected controls carrying their reason rather than live ones.
   const effectiveReadiness = readiness ?? opportunityWriteReadiness();
   const transitions = useOpportunityTransitions(opportunityId, actionDeps);
+  const sectionSave = useOpportunitySectionSave(opportunityId, saveDeps);
+  // Gated on the READ capability exactly as the workspace gates it: an ungranted caller issues no
+  // request at all, so a feature that is not deployed cannot fill the console with failed round
+  // trips — and NOT_ENABLED stays a distinct state rather than arriving as a failure.
+  const agreement = useSalesAgreement(opportunityId, {
+    enabled: hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true,
+  });
+  const directory = useEmployeeDirectory();
+  const [editingSection, setEditingSection] = useState(null);
+
+  const nowMillis = Date.now();
 
   // ─────────────────────────── every fact, derived ONCE
   const header = useMemo(() => (ready ? opportunityHeader(view) : null), [ready, view]);
-  const spine = useMemo(() => (ready ? opportunitySpine(view) : { steps: [], terminal: null, unrecognised: false }), [ready, view]);
-  // `Date.now()` is read HERE and injected, so the derivation stays pure and testable against a
-  // fixed clock. "Overdue" is a comparison against now; a domain layer that reads the clock itself
-  // cannot be asserted deterministically.
-  const attention = useMemo(() => (ready ? opportunityAttention(view, Date.now()) : []), [ready, view]);
-  const lineage = useMemo(() => (ready ? opportunityLineage(view) : []), [ready, view]);
-  const timeline = useMemo(() => (ready ? opportunityTimeline(view) : []), [ready, view]);
+  const spine = useMemo(() => opportunitySpine(ready ? view : null), [ready, view]);
+  const attention = useMemo(
+    () => (ready ? opportunityAttentionStrip(view, nowMillis) : { present: false, reasons: [], nextAction: null }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nowMillis is read per render on purpose; "overdue" is relative to now
+    [ready, view],
+  );
+  const daysOpen = ready ? opportunityDaysOpen(view, nowMillis) : null;
+  const conversion = useMemo(
+    () => (ready ? opportunityConversion(view, agreement?.view) : null),
+    [ready, view, agreement],
+  );
+
+  const ownerDisplay = ready
+    ? resolveOwnerName(view.ownerEmployeeId, directory)
+    : null;
+
+  // The section model the workspace pane already uses, so both surfaces offer the same fields,
+  // the same four data classes and the same edit affordances.
+  const model = useMemo(
+    () => (ready
+      // THE SAME FORMATTERS THE WORKSPACE INJECTS. Without them the rail fell back to the model's
+      // bare defaults and rendered "41000" and "2026-08-31" beside a header saying "41,000" and
+      // "Aug 31" — one fact, two renderings, on one page.
+      ? opportunityDetailModel(commandRow(view), {
+        resolveOwnerName: (id) => resolveOwnerName(id, directory),
+        format: { currency: formatValue, date: shortDate },
+      })
+      : { sections: [] }),
+    [ready, view, directory],
+  );
+  const bySlot = useMemo(() => Object.fromEntries((model.sections ?? []).map((s) => [s.id, s])), [model]);
+
+  // ─────────────────────────── the honest read states (P1v2 1c)
 
   if (view.kind === OPPORTUNITY_VIEW_STATE.LOADING) {
     return <div className="ns-page"><HonestState state={HONEST_STATE.LOADING} subject="opportunity" /></div>;
@@ -113,26 +136,23 @@ export default function OpportunityDetail({ readiness, actionDeps } = {}) {
   if (view.kind === OPPORTUNITY_VIEW_STATE.DENIED) {
     return (
       <div className="ns-page">
-        <HonestState state={HONEST_STATE.DENIED} subject="This opportunity" detail="You are not authorized to view Opportunities." />
+        <HonestState state={HONEST_STATE.DENIED} subject="Opportunities" detail="Opportunities are not available to you." />
       </div>
     );
   }
   if (view.kind === OPPORTUNITY_VIEW_STATE.NOT_FOUND) {
     return (
       <div className="ns-page">
-        <HonestState state={HONEST_STATE.EMPTY} detail="No Opportunity exists for this address." />
+        <HonestState state={HONEST_STATE.EMPTY} detail="No opportunity exists for this address." />
       </div>
     );
   }
   if (!ready) {
     return (
       <div className="ns-page">
-        {/* The retry is an `action` node, not an `onRetry` prop: HonestState's UNAVAILABLE branch
-            renders `action` and ignores `onRetry`, so passing the latter would produce a dead-end
-            failure state that merely looked recoverable. */}
         <HonestState
           state={HONEST_STATE.UNAVAILABLE}
-          detail="This Opportunity is currently unavailable."
+          detail="Couldn’t load this opportunity."
           action={<button type="button" className="fo-button" onClick={refetch}>Try again</button>}
         />
       </div>
@@ -140,28 +160,69 @@ export default function OpportunityDetail({ readiness, actionDeps } = {}) {
   }
 
   const value = opportunityValueDisplay(view, (n) => n.toLocaleString());
+  const recordEditable = isOpportunityEditable(view);
+  const row = commandRow(view);
+
+  const renderSection = (id) => {
+    const section = bySlot[id];
+    if (!section) return null;
+    return (
+      <DetailSection
+        key={id}
+        section={section}
+        editing={editingSection === id}
+        onEnterEdit={setEditingSection}
+        onCancelEdit={() => setEditingSection(null)}
+        readiness={effectiveReadiness}
+        editable={recordEditable}
+        saving={!!sectionSave.pending[id]}
+        outcome={sectionSave.outcome?.sectionId === id ? sectionSave.outcome : null}
+        directory={directory}
+        onSave={async (sectionId, draft) => {
+          // THE GOVERNED, VERSION-CHECKED SAVE. `view.updatedAtMillis` is the token the caller must
+          // prove it loaded; the command rejects anything else. The section closes only on a save
+          // that actually happened, and the page then RE-READS rather than patching locally — a
+          // locally-invented version token would fail the next save with a conflict nobody could
+          // explain.
+          const result = await sectionSave.saveSection(sectionId, draft, view.updatedAtMillis);
+          if (result?.kind === "applied" || result?.kind === "replayed") {
+            setEditingSection(null);
+            refetch();
+          }
+          return result;
+        }}
+      />
+    );
+  };
 
   return (
-    <div className="ns-page">
-      {/* THE UTILITY LINE. Context left; on the right, what is TRUE about this read. There is no
-          live badge here — see the file header, difference 1. */}
+    <div className="ns-page ns-opportunity">
+      {/* Utility line: context left, what is TRUE about this read right. There is no live badge —
+          useOpportunity is a one-shot callable read, and refetch() is the refresh the design names. */}
       <div className="ns-page__utility">
         <span className="ns-page__context">
-          <Link to="/customers/opportunities">Customers → Opportunities</Link>
+          <Link to="/customers/opportunities">CRM/Sales → Opportunities</Link>
           {header.reference ? ` → ${header.reference}` : null}
         </span>
-        <span className="ns-gap-note" title="This page reads the opportunity once. A governed action refreshes it; another user's change does not.">
-          Read once — refreshed when you act
+        <span className="ns-gap-note">
+          Read-checked ·{" "}
+          <button type="button" className="fo-link-button" onClick={refetch}>Refresh</button>
         </span>
       </div>
       <div className="ns-rulepair" />
 
+      {/* ─────────────── IDENTITY (P1v2 §2).
+          The SHARED RecordIdentity, not a second header. It already enforces the rules this page
+          must obey — the governed reference is the one h1, an absent reference renders the truthful
+          fallback, and the document id is not even accepted as a prop — so hand-rolling the block
+          would have been a second implementation of the invariant families 1-3 depend on. The one
+          thing P1v2 needed that it lacked was the serif subtitle, which was added to the shared
+          component rather than forked here. */}
       <RecordIdentity
-        kicker="Opportunity"
+        kicker={header.kicker}
         reference={header.reference}
-        // An Opportunity created before numbering existed has no reference. That is stated, never
-        // patched over with the document id (DECISIONS #106).
-        fallbackName="Opportunity — reference unavailable"
+        fallbackName="Opportunity — not numbered"
+        subtitle={header.subtitle}
         statusWords={header.stateSentence ?? header.stateWords}
         statusTone={header.stateTone}
         statusVariant="sentence"
@@ -169,156 +230,231 @@ export default function OpportunityDetail({ readiness, actionDeps } = {}) {
           {
             key: "customer",
             label: null,
-            // The customer is NAMED, not keyed — resolved server-side by the read, because
-            // firestore.rules grants `accounts` to admin/dispatcher only and a client-side
-            // resolution would tell the salesperson they may not see their own customer's name.
             value: view.accountName
-              ? <Link to={`/customers/${view.accountId}`}>{view.accountName}</Link>
-              : view.accountId ? "Customer — name unavailable" : null,
+              ? <Link to={`/customers/${view.accountId}`}><strong>{view.accountName}</strong></Link>
+              : view.accountId
+                // O2: the account link stays live even when the name does not resolve. Never the id.
+                ? <Link to={`/customers/${view.accountId}`}>Customer — name unavailable</Link>
+                : null,
           },
           {
-            key: "owner",
-            label: "Owner",
-            value: ownerName ?? (view.ownerEmployeeId ? "reference unavailable" : "Unassigned"),
+            key: "value",
+            label: null,
+            title: value.title,
+            value: value.amount
+              ? <>Worth <strong className="ns-num-inline">{value.amount}</strong> <span className="ns-gap-note">{value.note}</span></>
+              : null,
           },
-          { key: "channel", label: "Channel", value: header.channelWords },
           {
-            key: "expectedClose",
-            label: "Expected close",
-            // The DATE, stated plainly. Whether it has PASSED is a different fact and lives in the
-            // attention band; stating both here would be one fact rendered twice.
-            value: view.expectedCloseAt != null ? formatMoment(view.expectedCloseAt, { unknown: "—" }) : null,
+            key: "close",
+            label: null,
+            value: view.expectedCloseAt != null
+              ? <>Closes <strong>{formatDateOnly(view.expectedCloseAt, { unknown: "—" })}</strong>{daysOpen != null ? ` · open ${daysOpen} day${daysOpen === 1 ? "" : "s"}` : null}</>
+              : null,
           },
-          { key: "value", label: null, value: value.text, title: value.title },
+          { key: "owner", label: "Owner", value: <strong>{ownerDisplay}</strong> },
+          {
+            key: "agreement",
+            label: null,
+            // THE AGREEMENT FACT APPEARS ONLY WHEN ONE EXISTS. P1v2 is explicit: never
+            // "Agreement: —". Absence is stated by the section below, not by a placeholder here.
+            // RecordIdentity drops a fact whose value is null, so returning null IS the absence.
+            value: agreement?.view?.kind === "READY"
+              ? <>Agreement <strong><Link to={`/customers/opportunities?opportunity=${encodeURIComponent(view.id)}`}>{agreement.view.salesAgreementNumber ?? "Sales Agreement"}</Link></strong></>
+              : null,
+          },
         ]}
         actions={
-          // The governed action cluster. Legality is decided by `allowedActions` and by the
-          // caller's real capability; this file neither widens nor narrows it, and adds no second
-          // invocation path.
+          // The governed action cluster. Mark Won is legal only at Decision; Mark Lost from any
+          // open stage. Legality is `allowedActions`', not this file's.
           <OpportunityLifecycleControl
-            row={opportunityCommandRow(view)}
+            row={row}
             readiness={effectiveReadiness}
             transitions={transitions}
             onChanged={refetch}
-            variant="actions"
+            slot="actions"
           />
         }
       />
 
-      {/* THE LIFECYCLE SPINE (NS-P1), drawn from the SAME stageProgress derivation the pipeline
-          row's chevrons use. Clicking any stage opens the one line of recorded fact behind it; at
-          every stage but Identified and a closed Decision that line says no time is recorded,
-          because none is (ND-12). */}
-      <LifecycleBand
-        steps={spine.steps}
-        terminal={spine.terminal}
-        ariaLabel="Opportunity lifecycle"
-        detailFor={(stepKey) => opportunityStageDetail(view, stepKey, (v) => formatMoment(v, { unknown: "" }))}
-        tail={lineageSentence(lineage)}
-      />
+      {/* ─────────────── STAGE (P1v2 §3). Desktop draws chevrons; the phone draws the same
+          position in words. Only one is in the DOM at a time (display:none removes the other from
+          the accessibility tree), so nothing is announced twice. */}
+      <div className="ns-stage-row">
+        <span className="ns-stage-row__label">Stage</span>
+        <div className="ns-stage-row__chevrons">
+          <OpportunityLifecycleControl
+            row={row}
+            readiness={effectiveReadiness}
+            transitions={transitions}
+            onChanged={refetch}
+            slot="chevrons"
+          />
+        </div>
+        <span className="ns-stage-row__words">
+          {header.stateWords}
+          {spine.positionWords ? ` · ${spine.positionWords}` : null}
+        </span>
+        {spine.isLastStage && !header.isClosed ? (
+          <span className="ns-stage-row__note">Last stage — the way forward is Won or Lost, above.</span>
+        ) : null}
+      </div>
       {spine.unrecognised ? (
-        <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This opportunity's stage is not one the lifecycle recognises." />
+        <HonestState state={HONEST_STATE.NOT_APPLICABLE} detail="This opportunity’s stage is not one the lifecycle recognises." />
       ) : null}
 
-      <AttentionBand items={attention} />
+      {/* ─────────────── ATTENTION (P1v2 §5). Presentation of deriveAttention's four reasons —
+          not a recommendation engine, and never labelled as one. Renders nothing when clean. */}
+      {/* A CLOSED DEAL RAISES NOTHING. `deriveAttention` already returns [] for WON/LOST, and the
+          strip is gated on the same fact so a stale stored next action cannot resurrect it: an
+          attention band on a closed opportunity is noise that trains people to ignore the band. */}
+      {!header.isClosed && (attention.present || attention.nextAction) ? (
+        <section className="ns-attention-strip" aria-label="Attention">
+          <span className="ns-attention-strip__label">Attention</span>
+          <span className="ns-attention-strip__body">
+            {attention.reasons.map((r, i) => (
+              <span key={r.kind}>
+                {i === 0 ? <strong>{r.text}</strong> : <> · {r.text}</>}
+              </span>
+            ))}
+            {attention.nextAction
+              ? <> · Next action on file: <strong>“{attention.nextAction}”</strong></>
+              : null}
+          </span>
+          <button
+            type="button"
+            className="fo-link-button ns-attention-strip__action"
+            onClick={() => setEditingSection("nextAction")}
+          >
+            Update next action →
+          </button>
+        </section>
+      ) : null}
 
+      {/* ─────────────── BODY: 1fr / 340 (P1v2 §6) */}
       <div className="ns-record-body">
         <div>
-          {/* THE SOLUTION LEADS. This is the deal — what is being sold. A line references a
-              product, model or part and NEVER a serialized asset: an Opportunity is
-              pre-commitment, and nothing here creates warehouse demand, inventory movement, a Work
-              Order or an invoice. */}
-          <RuledSection
-            title="Solution"
-            meta={view.lines.length > 0 ? <span className="ns-section__note">{view.lines.length} line{view.lines.length === 1 ? "" : "s"}</span> : null}
-          >
-            {view.lines.length === 0 ? (
-              <HonestState state={HONEST_STATE.EMPTY} detail="No solution lines have been recorded on this opportunity yet." />
-            ) : (
-              <div className="ns-table-wrap">
-                <table className="ns-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Item</th>
-                      <th scope="col">Kind</th>
-                      <th scope="col" className="ns-num">Quantity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {view.lines.map((l) => (
-                      <tr key={l.key}>
-                        <td>{l.ref ?? <span className="ns-state--na">Item — reference unavailable</span>}</td>
-                        <td>{l.kind ?? <span className="ns-state--na">—</span>}</td>
-                        <td className="ns-num">
-                          {/* A missing quantity is NOT rendered as a dash and left at that: it is
-                              the thing that blocks WON forever, and the attention band above says
-                              so. Here it is named so the reader can see WHICH line. */}
-                          {l.qty != null ? l.qty : <span className="ns-state--na">not recorded</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </RuledSection>
+          {renderSection("need")}
+          {renderSection("solution")}
+          <p className="ns-gap-note ns-solution-note">
+            Lines carry no prices — pricing on an opportunity is the single estimated value above.
+            Committed prices arrive with the accepted agreement and the Sales Order. “Quoting” is a
+            stage of this lifecycle, not a document: EOS has no quote object, so there is no quote
+            list to show.
+          </p>
+          {/* The next-action section is editable from the attention strip's link as well as here. */}
+          {renderSection("nextAction")}
 
-          {view.need ? (
-            <RuledSection title="Need">
-              {/* Prose, read as sentences rather than scanned as data — which is why the need is
-                  not a field in the rail grid. */}
-              <div className="ns-prose"><p>{view.need}</p></div>
-            </RuledSection>
-          ) : null}
+          <OpportunityAgreementCard
+            agreement={agreement}
+            opportunityId={view.id}
+            hasCapability={hasCapability}
+            formatWhen={(v) => formatDateOnly(v, { unknown: "" })}
+          />
 
-          <RuledSection title="Next action">
-            {view.nextAction ? (
-              <div className="ns-prose"><p>{view.nextAction}</p></div>
-            ) : (
-              // Its ABSENCE is already a ranked attention item above, so this states the fact
-              // without repeating the warning — the band is where "this needs you" is said.
-              <HonestState state={HONEST_STATE.EMPTY} detail="No next action is recorded." />
-            )}
-          </RuledSection>
+          {/* ─────────────── WHEN THIS CLOSES (P1v2 §6). Both governed paths stated as fact.
+              An agreement is NEVER a prerequisite and this page never implies the sequence is
+              mandatory — repository truth, decision O6. */}
+          <section className="ns-section" aria-label="When this closes">
+            <div className="ns-section__head">
+              <h2 className="ns-section__title">
+                When this closes <span className="ns-section__note">· the governed conversion</span>
+              </h2>
+            </div>
+            <div className="ns-section__body ns-prose">
+              <p>
+                Two real paths, both governed. An <strong>accepted agreement</strong> produces a
+                priced Sales Order from its committed lines, or <strong>Mark Won</strong> runs the
+                atomic close directly — the order is created in the same transaction from this
+                opportunity’s own lines. An agreement is never a prerequisite.
+                {" "}
+                {conversion.hasOrder ? (
+                  <>
+                    This opportunity’s Sales Order is{" "}
+                    <Link to={`/customers/opportunities/sales-order/${conversion.salesOrderId}`}>
+                      {conversion.salesOrderNumber ?? "the linked order"}
+                    </Link>.
+                  </>
+                ) : conversion.agreementOrderId ? (
+                  <>
+                    No order was created from this opportunity directly; its agreement produced{" "}
+                    <Link to={`/customers/opportunities/sales-order/${conversion.agreementOrderId}`}>
+                      a Sales Order
+                    </Link>.
+                  </>
+                ) : (
+                  <>No order exists for this opportunity yet.</>
+                )}
+                {" "}
+                <strong>Mark Lost</strong> closes it with nothing created.
+              </p>
+            </div>
+          </section>
+
+          {/* ─────────────── ACTIVITY — the honest gap (O3). Audits exist server-side; no read
+              serves them here, and CRM activity is not an active capability. Nothing is invented,
+              and no timeline is reconstructed from audit data it was not designed to serve. */}
+          <section className="ns-section" aria-label="Activity">
+            <div className="ns-section__head">
+              <h2 className="ns-section__title">
+                Activity <span className="ns-section__note">· what happened, who did it, when</span>
+              </h2>
+            </div>
+            <div className="ns-section__body">
+              <p className="ns-gap-note">
+                No activity history can be shown yet. Stage changes and edits are audited
+                server-side, but no read serves them to this page, and notes, calls and emails have
+                no home on an opportunity — the CRM activity capability is not active. The record’s
+                own facts remain the timeline:{" "}
+                created {formatDateOnly(view.createdAtMillis, { unknown: "not recorded" })}, last
+                updated {formatDateOnly(view.updatedAtMillis, { unknown: "not recorded" })}.
+              </p>
+            </div>
+          </section>
         </div>
 
         <aside className="ns-rail">
-          <RuledSection title="Lineage">
-            <ul className="ns-lineage">
-              {lineage.map((edge) => (
-                <li className="ns-lineage__row" key={edge.key}>
-                  <span className="ns-lineage__label">{edge.label}</span>{" "}
-                  {edge.state === EDGE.RESOLVED
-                    ? <LineageLink edge={edge} />
-                    : edge.state === EDGE.UNRESOLVED
-                      ? <span className="ns-lineage__unresolved">reference unavailable</span>
-                      : <span className="ns-lineage__unresolved">none</span>}
-                </li>
-              ))}
-            </ul>
-          </RuledSection>
+          {/* CUSTOMER. The account link and status only — the primary contact (O4) is an existing
+              read that is deliberately NOT composed here: the design flags it as a confirmed
+              addition because it adds a read to this surface, and the brief forbids broadening
+              this migration into CRM architecture work. */}
+          <section className="ns-section" aria-label="Customer">
+            <div className="ns-section__head"><h3 className="ns-rail__title">Customer</h3></div>
+            <div className="ns-section__body">
+              {view.accountId ? (
+                <>
+                  <Link to={`/customers/${view.accountId}`}>
+                    <strong>{view.accountName ?? "Customer — name unavailable"}</strong>
+                  </Link>
+                  <p className="ns-gap-note">
+                    Contact facts come from the Account’s own contacts — an opportunity stores no
+                    contact of its own, and none is composed here yet.
+                  </p>
+                </>
+              ) : (
+                <HonestState state={HONEST_STATE.EMPTY} detail="No customer is recorded on this opportunity." />
+              )}
+            </div>
+          </section>
 
-          <RuledSection
-            title="Milestones"
-            meta={<span className="ns-section__note">only what the record records</span>}
-          >
-            {timeline.length === 0 ? (
-              <HonestState state={HONEST_STATE.EMPTY} detail="No times are recorded on this opportunity." />
-            ) : (
-              <ul className="ns-timeline">
-                {timeline.map((e) => (
-                  <li className="ns-timeline__row" key={e.key}>
-                    <span className="ns-timeline__when">{formatMoment(e.at, { unknown: "—" })}</span>
-                    <span>{e.label}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="ns-gap-note">
-              An Opportunity stores when it was created, when it closed, and when it was last
-              changed. There are no recorded times for the stages in between.
-            </p>
-          </RuledSection>
+          {renderSection("commercial")}
+
+          {/* QUALIFICATION — the ratified seam, empty until Product ratifies a schema. */}
+          {renderSection("qualification")}
+
+          <section className="ns-section" aria-label="Record">
+            <div className="ns-section__head"><h3 className="ns-rail__title">Record</h3></div>
+            <div className="ns-section__body">
+              <dl className="ns-deflist">
+                <dt>Opportunity</dt>
+                <dd>{header.reference ?? "not numbered"}</dd>
+                <dt>Created</dt>
+                <dd>{formatDateOnly(view.createdAtMillis, { unknown: "not recorded" })}</dd>
+                <dt>Updated</dt>
+                <dd>{formatDateOnly(view.updatedAtMillis, { unknown: "not recorded" })}</dd>
+              </dl>
+            </div>
+          </section>
         </aside>
       </div>
     </div>
@@ -326,59 +462,32 @@ export default function OpportunityDetail({ readiness, actionDeps } = {}) {
 }
 
 /**
- * The shape `OpportunityLifecycleControl` was built against.
+ * The shape the governed controls and the section model were built against.
  *
- * That control reads a PIPELINE ROW (`buildPipelineRow`), and this page holds a record view. Rather
- * than widen the control to understand two shapes — which is how one component quietly becomes two
- * — the record view is adapted to the row contract at the single point of use. Only the four fields
- * the control actually reads are supplied: `allowedActions` needs stage and outcome, and the WON
- * intent carries owner and channel onto the Sales Order it creates.
+ * `OpportunityLifecycleControl` and `opportunityDetailModel` both read a PIPELINE ROW
+ * (`buildPipelineRow`), and this page holds a record view. Rather than widen either to understand
+ * two shapes — which is how one component quietly becomes two — the record view is adapted to the
+ * row contract at the single point of use.
  *
- * `channel` deliberately carries the RAW `salesChannel`, not the display word: it is a command
- * payload, and the server validates it against SALES_CHANNELS.
+ * `channel` deliberately carries the RAW `salesChannel` rather than the display word: it is a
+ * command payload, and the server validates it against SALES_CHANNELS.
  */
-function opportunityCommandRow(view) {
+function commandRow(view) {
   return {
     id: view.id,
+    opportunityNumber: view.opportunityNumber,
     stage: view.stage,
     outcome: view.outcome,
     ownerEmployeeId: view.ownerEmployeeId,
     channel: view.salesChannel,
+    need: view.need,
+    nextAction: view.nextAction,
+    expectedValue: view.expectedValue,
+    expectedCloseAt: view.expectedCloseAt,
+    lines: view.lines,
+    salesOrderId: view.salesOrderId,
+    createdAt: view.createdAtMillis,
+    updatedAt: view.updatedAtMillis,
+    updatedAtMillis: view.updatedAtMillis,
   };
-}
-
-/**
- * A resolved edge, linked where the app can actually route to it.
- *
- * Offering a link into a page that does not exist is a dead end, and a dead end is worse than plain
- * text — so a resolved Sales Agreement (which has no per-record destination in this build) would
- * render as its reference alone. It never gets that far today: the agreement edge is always
- * UNRESOLVED or ABSENT (ND-9).
- */
-function LineageLink({ edge }) {
-  if (edge.key === "account") {
-    return <Link to={`/customers/${edge.targetId}`}>{edge.reference}</Link>;
-  }
-  if (edge.key === "salesOrder") {
-    return <Link to={`/customers/opportunities/sales-order/${edge.targetId}`}>{edge.reference}</Link>;
-  }
-  return <span>{edge.reference}</span>;
-}
-
-/**
- * The one sentence trailing the lifecycle band.
- *
- * Names the customer where it is resolvable and the order this deal became where there is one, and
- * NEVER prints a document id in any branch. Returns null rather than padding the band with a
- * sentence that says nothing.
- */
-function lineageSentence(edges) {
-  const account = edges.find((e) => e.key === "account");
-  const salesOrder = edges.find((e) => e.key === "salesOrder");
-  const parts = [];
-  if (account?.state === EDGE.RESOLVED) parts.push(`for ${account.reference}`);
-  else if (account?.state === EDGE.UNRESOLVED) parts.push("for a customer whose name is unavailable");
-  if (salesOrder?.state === EDGE.RESOLVED) parts.push(`became ${salesOrder.reference}`);
-  else if (salesOrder?.state === EDGE.UNRESOLVED) parts.push("became an order whose reference is unavailable");
-  return parts.length > 0 ? parts.join(" · ") : null;
 }

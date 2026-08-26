@@ -17,21 +17,25 @@ import { allowedActions, stageProgress } from "../../domain/opportunityLifecycle
 // after ANY applied/replayed transition so the caller re-reads authoritatively (App-level refetch) — this
 // component never patches row state itself.
 //
-// ════════════════════ `variant` -- WHERE THE PROGRESSION IS DRAWN, NEVER WHAT IS LEGAL ════════════════════
+// ════════════════════ `slot` -- WHERE EACH CONTROL RENDERS, NEVER WHAT IS LEGAL ════════════════════
 //
-//   "chevrons" (default) the workspace detail pane. This component draws the progression itself, because
-//                        nothing else on that surface does.
-//   "actions"            the North Star record page, which draws the spine as a LifecycleBand from the SAME
-//                        stageProgress derivation. Rendering the chevrons there too would put two
-//                        progressions for one deal on one page -- the NS-P4 defect the migration exists to
-//                        remove -- so the chevrons are suppressed and the one legal advance becomes a
-//                        button in the header action cluster (North Star pattern 6: actions belong at the
-//                        right end of the header, never scattered through body sections).
+//   "all" (default)  the workspace detail pane: chevrons and outcome buttons together, exactly as
+//                    this component has always rendered them.
+//   "chevrons"       the North Star P1v2 record page's stage row. P1v2 puts the chevrons directly
+//                    under the header and the outcome actions IN the header cluster, so the page
+//                    mounts this component twice, once per slot.
+//   "actions"        that header cluster: Mark Won / Mark Lost, the Won acknowledgement, and the
+//                    write-readiness reason.
 //
-// It changes RENDERING ONLY. `allowedActions` still decides what is legal, the same single `fire()` path
-// still invokes the same governed command, and the capability/readiness gate is untouched: there is exactly
-// one way to transition an Opportunity from the UI in either variant.
-export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged, variant = "chevrons" }) {
+// TWO MOUNTS, ONE COMMAND PATH. The page owns the `transitions` object (useOpportunityTransitions)
+// and passes the SAME one into both slots, so both share a single idempotency cache and a single
+// invocation of the governed command. Nothing about legality is per-slot: `allowedActions` decides
+// what may be offered, and it is consulted identically in both.
+//
+// At earlier stages the ADVANCE chevron is itself the primary action -- P1v2: "the advance chevron
+// IS the primary" -- so the actions slot offers no advance button. Mark Won appears only at
+// Decision, because that is the only place the engine permits it.
+export default function OpportunityLifecycleControl({ row, readiness, transitions, onChanged, slot = "all" }) {
   const [error, setError] = useState(null);
   // What the Won actually PRODUCED. Marking an Opportunity Won creates a Sales Order in the same
   // transaction, and until now the control discarded that fact entirely: the chevrons flipped to
@@ -121,29 +125,15 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
     );
   });
 
-  // The one legal advance, as a BUTTON rather than a chevron step. Built from the same `steps`
-  // entry so the label, the pending state and the disabled reason are the ones the chevron would
-  // have carried -- not a second reading of the same rules.
-  const advanceStep = steps.find((s) => s.actionable != null) ?? null;
-  const advanceButton = advanceStep ? (
-    <Button
-      type="button"
-      variant={advanceStep.actionable ? "primary" : "protected"}
-      disabled={!advanceStep.actionable}
-      title={advanceStep.disabledReason}
-      reason={advanceStep.disabledReason}
-      onClick={advanceStep.actionable ? advanceStep.onActivate : undefined}
-    >
-      {advanceStep.label}
-    </Button>
-  ) : null;
+  const showChevrons = slot === "all" || slot === "chevrons";
+  const showActions = slot === "all" || slot === "actions";
 
   return (
-    <div className="fo-sales-detail__lifecycle">
-      {variant === "actions" ? null : (
+    <div className="fo-sales-detail__lifecycle" data-slot={slot}>
+      {showChevrons ? (
         <LifecycleChevrons steps={steps} terminal={terminal} ariaLabel="Opportunity stage" />
-      )}
-      {won && (
+      ) : null}
+      {showActions && won && (
         <p className="fo-sales-lifecycle-won" role="status">
           {won.recovered ? "This Opportunity was already won. Its Sales Order is " : "Won. Sales Order "}
           {/* THE REFERENCE, OR THE ABSENCE OF ONE -- never the document id (DECISIONS #106, R03).
@@ -157,21 +147,12 @@ export default function OpportunityLifecycleControl({ row, readiness, transition
           {won.recovered ? "." : " was created."}
         </p>
       )}
-      {closed ? (
+      {showActions && (closed ? (
         <p className="fo-muted">Closed — no further lifecycle actions.</p>
       ) : (
-        (outcomeButtons.length > 0 || (variant === "actions" && advanceButton)) && (
-          <ActionRail
-            // ONE FILLED PRIMARY = the likeliest next state transition (North Star action
-            // architecture). Advancing a stage is that; WON and LOST are decisions and stay
-            // outlined. In the chevron variant the advance is the chevron, so the rail carries
-            // secondaries only, exactly as it did before.
-            primary={variant === "actions" ? advanceButton : undefined}
-            secondary={outcomeButtons.length > 0 ? <>{outcomeButtons}</> : undefined}
-          />
-        )
-      )}
-      {!closed && writeDisabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
+        outcomeButtons.length > 0 && <ActionRail secondary={<>{outcomeButtons}</>} />
+      ))}
+      {showActions && !closed && writeDisabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
       {error && (
         <p className="fo-sales-lifecycle-error" role="alert">
           {error}
