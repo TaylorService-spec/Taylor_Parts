@@ -75,7 +75,7 @@ const ACTION_LABEL = {
   Cancel: "Cancel",
 };
 
-export default function WorkOrderActions({ workOrder, role, technicians, showStatus = true }) {
+export default function WorkOrderActions({ workOrder, role, technicians, showStatus = true, emphasizeFirst = false }) {
   const [submitting, setSubmitting] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
@@ -152,10 +152,16 @@ const statusPill = (status) =>
       {showStatus ? statusPill(workOrder.status) : null}
 
       <div className="fo-btn-row wo-action-row">
-        {primaryActions.map((action) => (
+        {primaryActions.map((action, i) => (
           <Button
             key={action}
-            variant="secondary"
+            // ONE FILLED BUTTON, OPT-IN. orderWorkflowActions already returns the actions in
+            // likelihood order, so the first is the transition a dispatcher almost always wants.
+            // The North Star record header asks for exactly one filled button and outlines for the
+            // rest; every other caller (ControlTower, the dispatcher board) keeps today-s uniform
+            // secondaries by not passing the flag. LEGALITY IS UNCHANGED — this reweights the
+            // rendering of the SAME allowed list, and adds no action to it.
+            variant={emphasizeFirst && i === 0 ? "primary" : "secondary"}
             disabled={submitting}
             onClick={() => handleActionClick(action)}
           >

@@ -96,11 +96,15 @@ test("#1093 — an enum cell renders its label, never its stored value", () => {
   assert.equal(status.value, "Active", "ACTIVE is a machine value; a user should never see it");
 });
 
-test("#1093 — an unmapped enum value is shown verbatim rather than blanked", () => {
-  // An unrecognized status is a data question. Hiding it answers nothing and makes the
-  // row look complete when it is not.
+test("#1093 — an unmapped enum value is NAMED as unknown, neither blanked nor shown verbatim", () => {
+  // An unrecognized status is a data question, and hiding it answers nothing — that half of the
+  // original reasoning stands, and the cell still renders. What changed is the word: "SOMETHING_NEW"
+  // told the reader a database constant and let it pass for a business term. The row still does not
+  // look complete; it says so in the vocabulary a reader can act on.
   const p = buildListPresentation({ def: def(), entity: entity(), page: page([{ id: "a1", name: "X", status: "SOMETHING_NEW" }]) });
-  assert.equal(p.rows[0].cells.find((c) => c.fieldId === "status").value, "SOMETHING_NEW");
+  const cell = p.rows[0].cells.find((c) => c.fieldId === "status");
+  assert.equal(cell.value, "Not known");
+  assert.ok(!String(cell.value).includes("SOMETHING_NEW"), "the stored constant must not reach the screen");
 });
 
 // --- TIMESTAMP/DATE cells resolve through the shared formatter, never as raw epoch ---
@@ -243,10 +247,32 @@ test("an ENUM_SET cell resolves EVERY member through the label map", () => {
   assert.equal(cellValue(column, { relationshipTypes: ["CUSTOMER", "VENDOR"] }), "Customer, Vendor");
 });
 
-test("an unmapped ENUM_SET member is shown verbatim, not dropped", () => {
-  // A value the enum does not know is a data question; hiding it answers nothing.
+test("AN UNMAPPED ENUM_SET MEMBER IS NAMED AS UNKNOWN, never printed as its machine value", () => {
+  // This asserted the member came through VERBATIM ("Customer, PARTNER"), on the reasoning that a
+  // value the enum does not know is a data question and hiding it answers nothing. Right that it
+  // must not be dropped; wrong that the remedy is the stored constant. It is still shown — as the
+  // absence vocabulary this codebase settled on, so a reader can tell a business term from a
+  // database one. The member keeps its position in the list; only the word changes.
   const column = { fieldId: "relationshipTypes", type: "ENUM_SET", enumLabels: { CUSTOMER: "Customer" } };
-  assert.equal(cellValue(column, { relationshipTypes: ["CUSTOMER", "PARTNER"] }), "Customer, PARTNER");
+  assert.equal(cellValue(column, { relationshipTypes: ["CUSTOMER", "PARTNER"] }), "Customer, Not known");
+});
+
+test("AN UNMAPPED ENUM IS NAMED AS UNKNOWN, never printed as its machine value (R04)", () => {
+  // The Work Order rail rendered "REPAIR" for a record carrying a type outside the governed five.
+  // A legacy or newly-introduced value must not be indistinguishable from a governed one.
+  const column = { fieldId: "type", type: "ENUM", enumLabels: { SERVICE_CALL: "Service Call" } };
+  assert.equal(cellValue(column, { type: "SERVICE_CALL" }), "Service Call");
+  assert.equal(cellValue(column, { type: "REPAIR" }), "Not known");
+  assert.equal(cellValue(column, { type: "WORK_IN_PROGRESS" }), "Not known");
+});
+
+test("a governed enum still renders its label — the guard did not blanket every enum", () => {
+  const column = { fieldId: "status", type: "ENUM", enumLabels: { CREATED: "Created", CLOSED: "Closed" } };
+  assert.equal(cellValue(column, { status: "CREATED" }), "Created");
+  assert.equal(cellValue(column, { status: "CLOSED" }), "Closed");
+  // Absent stays absent — "Not known" is for a value that IS stored and cannot be named.
+  assert.equal(cellValue(column, { status: null }), null);
+  assert.equal(cellValue(column, {}), null);
 });
 
 test("an empty ENUM_SET is absent, not an empty string", () => {

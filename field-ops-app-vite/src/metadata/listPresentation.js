@@ -1,4 +1,5 @@
 import { normalizeReferenceResult } from "./referenceResolution.js";
+import { ABSENCE, ABSENCE_TEXT } from "./absence.js";
 // EOS Metadata — list presentation model.
 //
 // GOVERNANCE: docs/governance/metadata-architecture-ip-boundary.md §4, §5, §6, §8.
@@ -150,12 +151,27 @@ export function cellValue(column, row, { resolveReference, resolveMoneyCell } = 
   // A CURRENCY_MINOR field travels with its own sibling `currency` by contract, and that stays the
   // default for every entity that has one.
   if (column.type === "CURRENCY_MINOR") return formatMinor(raw, row?.currency ?? null);
-  if (column.type === "ENUM" && column.enumLabels) return column.enumLabels[raw] ?? raw;
+  // AN ENUM THIS BUILD CANNOT NAME IS "NOT KNOWN", NEVER ITS MACHINE VALUE.
+  //
+  // This returned `?? raw`, and the ENUM_SET branch below did the same. The reasoning recorded at
+  // the time was that "a value the enum does not know is a data question; hiding it answers
+  // nothing" — right about not hiding it, wrong about the remedy. Printing the stored value is the
+  // exact defect R04 exists to prevent: the reader is shown WORK_IN_PROGRESS / SERVICE_CALL /
+  // REPAIR and has no way to tell a real business term from a database constant, and a legacy
+  // record carrying a value this build has never heard of looks identical to a governed one.
+  //
+  // ABSENCE.UNKNOWN already says this in the vocabulary this codebase settled on — "the platform
+  // cannot determine it", rendered "Not known". The field is still there and still says something
+  // is stored; what it stops doing is dressing an implementation detail up as a business fact.
+  // The stored value remains recoverable where it belongs: in the record, in audit, and to anyone
+  // reading the document — not on the screen of someone who cannot act on it.
+  const unnamed = ABSENCE_TEXT[ABSENCE.UNKNOWN];
+  if (column.type === "ENUM" && column.enumLabels) return column.enumLabels[raw] ?? unnamed;
   // A multi-valued enum resolves EVERY member. Rendering the array as-is would print
   // "CUSTOMERVENDOR" — machine values, concatenated, in front of a user.
   if (column.type === "ENUM_SET" && Array.isArray(raw)) {
     if (raw.length === 0) return null;
-    return raw.map((v) => column.enumLabels?.[v] ?? v).join(", ");
+    return raw.map((v) => column.enumLabels?.[v] ?? unnamed).join(", ");
   }
   // A DATE, not a full timestamp. A list answers "when, roughly"; the record answers "exactly
   // when". "8/12/2025, 5:00:00 AM" spends a whole line of a phone card on seconds nobody reads.

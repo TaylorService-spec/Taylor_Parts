@@ -6,15 +6,17 @@
 // Run: node --test test/workOrderNorthStar.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync as fsReadFileSync } from "node:fs";
 import {
   workOrderSpine,
   workOrderStatusWords,
+  workOrderStatusSentence,
   workOrderStatusTone,
   workOrderAttention,
   workOrderPartsPlan,
   workOrderLineage,
   workOrderHeader,
+  workOrderStageDetail,
+  workOrderTimeline,
   WO_SPINE_STEPS,
   READINESS,
   SEVERITY,
@@ -250,15 +252,122 @@ test("NO DERIVATION ANYWHERE EMITS A DOCUMENT-ID-SHAPED STRING AS CONTENT", () =
   assert.doesNotMatch(JSON.stringify(rendered), RAW, "a document id reached a rendered value");
 });
 
-// ═════════════════════════════════════════ the timeline reads the right field
+// ═════════════════════════════════════════ STAGE DETAIL (the lifecycle band)
 
-// The runtime shape assertion lives in the VITEST suite: timelineBuilder imports extensionless
-// module paths that Vite resolves and node:test cannot. The static guard below stays here.
-test("the detail page reads timestamp, not at", () => {
-  // A static guard, because the runtime symptom of getting this wrong is a plausible-looking word
-  // rather than a crash.
-  const readFileSync = fsReadFileSync;
-  const src = readFileSync(new URL("../src/modules/workOrders/WorkOrderDetailPage.jsx", import.meta.url), "utf8");
-  assert.match(src, /formatClockTime\(e\.timestamp\)/);
-  assert.doesNotMatch(src, /formatClockTime\(e\.at\)/);
+const ts = (ms) => ({ toMillis: () => ms, toDate: () => new Date(ms) });
+const AUG21 = Date.UTC(2026, 7, 21, 15, 12);
+const AUG22 = Date.UTC(2026, 7, 22, 9, 0);
+const when = (v) => (v ? "AT" : null);
+
+test("the CURRENT stage says where you are, and carries its own recorded time", () => {
+  const d = workOrderStageDetail(wo({ status: "DISPATCHED", dispatchedAt: ts(AUG21) }), "dispatched", when);
+  assert.equal(d.tone, "current");
+  assert.equal(d.lead, "You are here.");
+  assert.match(d.fact, /Awaiting technician acceptance/);
+});
+
+test("a REACHED stage with no recorded time SAYS SO rather than rendering blank", () => {
+  const d = workOrderStageDetail(wo({ status: "DISPATCHED" }), "created", () => null);
+  assert.equal(d.tone, "complete");
+  assert.equal(d.lead, "Reached.");
+  assert.match(d.fact, /No time was recorded/);
+});
+
+test("an UNREACHED stage explains the stage and never borrows another stage-s time", () => {
+  const d = workOrderStageDetail(wo({ status: "DISPATCHED", dispatchedAt: ts(AUG21) }), "closed", when);
+  assert.equal(d.tone, "future");
+  assert.equal(d.lead, "Not reached.");
+  assert.ok(d.fact && !d.fact.includes("AT"), "a future stage must not show a recorded time");
+});
+
+test("every spine step resolves to a detail — no step renders undefined", () => {
+  for (const step of WO_SPINE_STEPS) {
+    const d = workOrderStageDetail(wo({ status: "ARRIVED" }), step.key, when);
+    assert.ok(d && typeof d.lead === "string" && d.lead.length > 0, step.key);
+  }
+});
+
+// ═════════════════════════════════════════ TIMELINE
+
+test("the timeline is RECORDED events only, newest first", () => {
+  const rows = workOrderTimeline(wo({
+    createdAt: ts(AUG21),
+    dispatchedAt: ts(AUG22),
+    // neither recorded nor planned:
+    scheduledStart: null,
+    completedAt: null,
+  }));
+  assert.deepEqual(rows.map((r) => r.key), ["dispatched", "created"]);
+});
+
+test("THE SCHEDULED WINDOW IS MARKED AS A PLAN, so nothing downstream can read it as an event", () => {
+  // It appears — the approved composition carries it, under a heading that labels the whole list
+  // milestones rather than an audit trail. What must never happen is it arriving UNMARKED, because
+  // then a consumer has to re-derive which key means "planned" and one of them will get it wrong.
+  const rows = workOrderTimeline(wo({ createdAt: ts(AUG21), scheduledStart: ts(AUG22) }));
+  assert.deepEqual(rows.map((r) => r.key), ["scheduled", "created"]);
+  assert.equal(rows.find((r) => r.key === "scheduled").planned, true);
+  assert.ok(rows.filter((r) => r.key !== "scheduled").every((r) => !r.planned),
+    "a recorded event must never be marked planned");
+});
+
+test("a work order with nothing recorded yields an empty list, not a row of unknowns", () => {
+  assert.deepEqual(workOrderTimeline({}), []);
+  assert.deepEqual(workOrderTimeline(null), []);
+});
+
+// ═════ THE WORK ORDER TIMELINE IS NOT THE JOB FEED
+
+// #1491 added a static guard here asserting the page renders formatClockTime(e.timestamp). Its
+// finding — the canonical event carries `timestamp`, not `at` — is real, and it is still asserted
+// at RUNTIME in workOrderNorthStarSurface.test.jsx. The guard itself could not survive, because
+// this page no longer renders job events at all: buildTimeline stamps every event it derives for
+// a work order with createdAt, so the fixed rendering showed four different events at one time,
+// one of which (READY) the record never reached. See the comment on WorkOrderTimeline.
+//
+// This is the guard that replaces it, and it is BEHAVIOURAL rather than a source-text match: the
+// page's timeline derivation must never invent a moment.
+test("THE TIMELINE NEVER INVENTS A MOMENT — no two events may share one borrowed timestamp", () => {
+  const rows = workOrderTimeline(wo({ status: "DISPATCHED", createdAt: ts(AUG21), dispatchedAt: ts(AUG22) }));
+  const times = rows.map((r) => r.at);
+  assert.equal(new Set(times).size, times.length, "two events resolved to the same recorded moment");
+  // And every row's time is a field the DOCUMENT carries, never one borrowed from another row.
+  assert.ok(rows.every((r) => r.at != null));
+});
+
+test("AN INFERRED STAGE IS NOT AN EVENT — a status never reached contributes no row", () => {
+  // buildTimeline infers WORK_ORDER_READY from field phase. Nothing here is inferred: a work order
+  // with no scheduledStart and no acceptedAt yields neither row, however far along its status is.
+  const rows = workOrderTimeline(wo({ status: "DISPATCHED", createdAt: ts(AUG21), dispatchedAt: ts(AUG22), scheduledStart: null }));
+  assert.deepEqual(rows.map((r) => r.key), ["dispatched", "created"]);
+});
+
+// ═════ STATUS AS A SENTENCE (P1v2)
+
+test("the sentence EXTENDS the one vocabulary rather than forking it", () => {
+  for (const status of ALL_STATUSES) {
+    const words = workOrderStatusWords(status);
+    const sentence = workOrderStatusSentence(status);
+    assert.ok(sentence, status + " has no sentence");
+    assert.ok(sentence.startsWith(words),
+      status + ": the sentence must begin with the governed word, or the two can drift");
+  }
+});
+
+test("an unrecognised status has NO sentence — it is not padded into one", () => {
+  assert.equal(workOrderStatusSentence("SOMETHING_LEGACY"), null);
+  assert.equal(workOrderStatusSentence(null), null);
+});
+
+test("a sentence carries its meaning in WORDS, so colour is emphasis and never the carrier", () => {
+  // The clause is what makes the plain-text treatment safe. A status whose sentence is just the
+  // word is fine; a status whose sentence is ONLY a colour would not be, and cannot occur here.
+  assert.match(workOrderStatusSentence("DISPATCHED"), /awaiting technician acceptance/);
+  assert.equal(workOrderStatusSentence("CLOSED"), "Closed");
+});
+
+test("THE HEADER CARRIES BOTH, so no surface re-derives the sentence from the word", () => {
+  const h = workOrderHeader(wo({ status: "DISPATCHED" }));
+  assert.equal(h.statusWords, workOrderStatusWords("DISPATCHED"));
+  assert.equal(h.statusSentence, workOrderStatusSentence("DISPATCHED"));
 });

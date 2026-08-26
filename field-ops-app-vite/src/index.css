@@ -122,10 +122,13 @@
      the contrast between the two IS the identity of the page. Pointing the title at --font-display
      rendered it in Barlow Condensed, a condensed SANS, which reads as the current product rather
      than the concept.
-     Source Serif 4 is not vendored here (fonts are self-hosted with no CDN dependency, and adding a
-     face is an asset decision, not a CSS one), so this carries a real serif stack today and becomes
-     one token to repoint when the face is vendored. Stated rather than silently approximated. */
-  --font-record-title: Georgia, "Times New Roman", "Source Serif 4", serif;
+     The face is now vendored: ./assets/fonts/source-serif-4-variable.woff2 (SIL OFL 1.1, latin
+     subset, variable 400-700), self-hosted alongside Inter and Barlow with no CDN dependency, per
+     the Work Order design handoff. Georgia stays in the stack so a failed load still renders a
+     serif rather than dropping to the interface sans.
+     --font-display-serif is the handoff name for this same token; both resolve to one stack. */
+  --font-record-title: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-display-serif: var(--font-record-title);
   --font-interface: "Inter", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 
   /* --- Type scale. Interface font unless noted; line-heights tuned for
@@ -210,6 +213,15 @@
    under ./assets/fonts. font-display: swap so first paint is never blocked
    on the font request; the fallback stacks above (--font-display/--font-interface)
    already cover the swap period acceptably. */
+@font-face {
+  /* Variable face: ONE file carries 400-700, so the record title (700) and the section titles
+     (600/700) cost a single ~50 KB request rather than one file per weight. */
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./assets/fonts/source-serif-4-variable.woff2") format("woff2-variations");
+}
 @font-face {
   font-family: "Inter";
   font-style: normal;
@@ -5135,7 +5147,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-page__crumb { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
   flex-wrap: wrap; padding: 14px 0 10px; font-size: 11px; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--color-text-secondary); }
-.ns-page__crumb-right { letter-spacing: 0.08em; color: var(--verenward-moon); }
+/* MOON IS A COLOUR FOR THE DARK RAIL, NOT FOR PAPER.
+   --verenward-moon (#B9C1BE) is the restrained neutral used on the evergreen application rail,
+   where it has real contrast. Six North Star classes had picked it up on the light ground, where
+   it measures 1.61:1 against the page -- text that is present in the DOM and effectively invisible
+   on screen, on both the record and the workspace. The approved compositions specify the grey-green
+   family here, not moon; --color-text-secondary is that family at 6.32:1. One step darker than the
+   #6B7A74 the mock draws, because #6B7A74 measures 3.96:1 and these labels are 10.5-13px, which is
+   not large text under AA. */
+.ns-page__crumb-right { letter-spacing: 0.08em; color: var(--color-text-secondary); }
 /* THE CRUMB IS A REAL TARGET, so it meets the handheld floor.
    It failed the 44px sweep at 375 and 320 as a 15px anchor -- small type in a tight strip is still
    something a thumb has to hit, and "it is only a breadcrumb" is how a touch floor becomes advisory.
@@ -5148,7 +5168,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* ── Record identity (pattern 1) */
 .ns-identity { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
   padding: 26px 0 18px; flex-wrap: wrap; }
-.ns-identity__main { min-width: 0; }
+/* THE ACTIONS STAY BESIDE THE TITLE. The identity block grows and shrinks; the action cluster does
+   neither. Without the basis, a fact row long enough to wrap (P1v2 added a fifth fact) claimed the
+   whole line and pushed the cluster underneath, which is a different composition from the approved
+   one — the actions read as page-level rather than record-level down there. */
+.ns-identity__main { min-width: 0; flex: 1 1 26rem; }
+.ns-identity__actions { flex: 0 0 auto; }
+/* BELOW THE SPLIT, THE CLUSTER TAKES ITS OWN ROW AND WRAPS INSIDE IT.
+   Holding `flex: 0 0 auto` down here kept three buttons on one unbreakable line and pushed the
+   whole document 71px wider than a 320px viewport — a page that scrolls sideways on a phone,
+   caused by a rule that is right at desktop width. The concept wraps the cluster under the title
+   at narrow widths; this is that. */
+@media (max-width: 899.98px) {
+  .ns-identity__actions { flex: 1 1 100%; }
+}
 .ns-identity__kicker { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--verenward-bronze); font-weight: 600; margin: 0 0 6px; }
 /* The serif title, step 1 of the three-step header scale (40 / 30–34 / 22). */
@@ -5157,7 +5190,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-identity__facts { display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: center;
   font-size: 13px; color: var(--color-text-secondary); }
 .ns-identity__fact { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; }
-.ns-identity__fact-label { color: var(--verenward-moon); }
+.ns-identity__fact-label { color: var(--color-text-secondary); }
 .ns-identity__fact-value { color: var(--color-text-primary); font-weight: 500;
   /* Long customer and equipment names are the norm in this domain. Clamp with a route to the full
      value (title attribute), never a silent cut. */
@@ -5214,7 +5247,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-table-wrap { overflow-x: auto; }
 .ns-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 .ns-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--verenward-moon); font-weight: 600; padding: 8px 14px 8px 0; white-space: nowrap;
+  color: var(--color-text-secondary); font-weight: 600; padding: 8px 14px 8px 0; white-space: nowrap;
   border-bottom: 2px solid var(--color-text-primary); }
 .ns-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--color-border);
   color: var(--color-text-secondary); vertical-align: top; }
@@ -5229,15 +5262,32 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-lineage { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .ns-lineage__row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
 .ns-lineage__label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--verenward-moon); font-weight: 600; min-width: 11ch; }
+  color: var(--color-text-secondary); font-weight: 600; min-width: 11ch; }
 /* An unresolved reference is stated. It is never the document id (DECISIONS #106). */
 .ns-lineage__unresolved { color: var(--color-text-secondary); font-style: italic; }
 
 /* ── The two-column record body. The master/detail split EOS never had:
    zero module files used grid-template-columns for a split before this. */
-.ns-record-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 40px; }
-@media (min-width: 1024px) {
-  .ns-record-body { grid-template-columns: minmax(0, 1fr) 320px; }
+.ns-record-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 56px; }
+
+/* THE SPLIT IS DECIDED BY THE SPACE THE PAGE HAS, NOT BY THE SIZE OF THE WINDOW.
+   This was a viewport media query at 900px, and measured in the real shell that was wrong in a way
+   a mockup cannot show: the application rail takes ~250-300px before this page gets any width at
+   all, so a 900px window gave the record body 656px, and 1fr/340px resolved to a 196px column of
+   WORK beside a 340px column of REFERENCE. The rail was wider than the job. At 1024 it was still
+   320px against 340px.
+   A container query asks the right question -- how much room does the composition actually have --
+   and 900px of CONTAINER is the width at which 1fr finally exceeds the rail. */
+.ns-page { container-type: inline-size; container-name: ns-record; }
+@container ns-record (min-width: 900px) {
+  .ns-record-body { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+/* Fallback where container queries are unavailable: a viewport breakpoint high enough that the
+   shell rail cannot invert the split. Scoped so it never fights the container query above. */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1200px) {
+    .ns-record-body { grid-template-columns: minmax(0, 1fr) 340px; }
+  }
 }
 .ns-rail { min-width: 0; }
 
@@ -5251,7 +5301,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Step 2 of the header scale: 34px workspace, against the record page's 40px. */
 .ns-workspace__title { font-family: var(--font-record-title); font-size: 34px; line-height: 1.08;
   font-weight: 700; margin: 0; }
-.ns-workspace__count { font-size: 14px; font-weight: 600; color: var(--verenward-moon);
+.ns-workspace__count { font-size: 14px; font-weight: 600; color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums; }
 .ns-workspace__count-label { font-weight: 400; }
 .ns-workspace__summary { font-size: 13px; color: var(--color-text-secondary); margin: 6px 0 0; }
@@ -5262,7 +5312,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    farm: "the North Star at working density is rules + type, not cards + whitespace." */
 .ns-workspace .fo-table, .ns-workspace table { border-collapse: collapse; width: 100%; }
 .ns-workspace .fo-table th, .ns-workspace table th { font-size: 10.5px; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--verenward-moon); font-weight: 600;
+  text-transform: uppercase; color: var(--color-text-secondary); font-weight: 600;
   border-bottom: 2px solid var(--color-text-primary); padding: 8px 12px 8px 0; background: none; }
 .ns-workspace .fo-table td, .ns-workspace table td { padding: 7px 12px 7px 0;
   border-bottom: 1px solid var(--color-border); font-size: 13.5px; }
@@ -5273,3 +5323,211 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* The views row: ghost buttons under a small-caps label, as the concept draws them. */
 .ns-workspace .fo-filterbar { padding: 12px 0 4px; border: 0; background: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE LIFECYCLE BAND (Work Order design handoff, family 1).
+
+   The generic .fo-chevrons row is deliberately quiet -- it was built for a table
+   row, which is scanned. A record page is READ, and the concept draws the spine
+   as the loudest horizontal element on the page: notched chevrons, the current
+   stage filled in evergreen with a pulsing bronze dot, and a click on any stage
+   opening one line of recorded fact beneath the band.
+
+   This is a second RENDERING of the same derivation, never a second state
+   machine: both consume domain/workOrderNorthStar.js workOrderSpine().
+   ══════════════════════════════════════════════════════════════════════════ */
+.ns-lifecycle { display: flex; gap: 14px; align-items: center; padding: 12px 0 10px;
+  flex-wrap: nowrap; overflow-x: auto; margin: 0; list-style: none; }
+.ns-lifecycle__label { letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+  font-size: 11px; color: var(--color-text-secondary); margin-right: 4px; white-space: nowrap; }
+.ns-chip { font-family: var(--font-interface); font-weight: 600; font-size: 12.5px;
+  padding: 8px 20px; border: none; cursor: pointer; white-space: nowrap;
+  /* THE HANDHELD TOUCH FLOOR. Measured in the browser the chips were 31-32px tall at every width,
+     including 375 and 320 -- under the 44px floor the crumb was already fixed to meet (#1489).
+     Relaxed above 768px, where the concept-s tighter band is a pointer target, not a thumb one. */
+  min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  transition: background var(--duration-fast, 140ms);
+  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); }
+/* The first chip has no left notch and the last no right point: the band reads as one
+   continuous run rather than a row of detached arrows. */
+.ns-chip--first { clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+  padding-left: 14px; }
+.ns-chip--last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 11px 50%); padding-right: 14px; }
+.ns-chip--complete { background: var(--verenward-stone-sunken); color: var(--color-success); }
+.ns-chip--complete:hover { background: var(--verenward-border-strong); }
+.ns-chip--current { background: var(--verenward-evergreen); color: #fff; }
+.ns-chip--current:hover { background: var(--verenward-guardian); }
+/* --color-text-muted on stone-card measures 4.32:1 at 12.5px, a hair under AA. One step darker
+   keeps the chip visibly quieter than the reached ones and clears the floor. */
+.ns-chip--future { background: var(--verenward-stone-card); color: var(--color-text-secondary);
+  outline: 1px solid var(--verenward-border); outline-offset: -1px; }
+.ns-chip--future:hover { background: var(--verenward-stone-sunken); }
+.ns-chip--terminal { background: var(--color-danger-surface); color: var(--color-danger); cursor: default; }
+.ns-chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ns-chip__pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--verenward-bronze); margin-left: 5px; animation: ns-pulse 2s ease-in-out infinite; }
+@keyframes ns-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .ns-chip__pulse { animation: none; } }
+@media (min-width: 768px) { .ns-chip { min-height: 0; } }
+.ns-lifecycle__tail { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
+
+/* One line of recorded fact for whichever stage is open. Reserved height, so opening and
+   closing a stage never reflows the page beneath it. */
+.ns-stage-detail { min-height: 34px; margin-bottom: 16px; }
+.ns-stage-detail__row { display: flex; gap: 18px; align-items: baseline; font-size: 13px;
+  color: var(--color-text-secondary); border-left: 3px solid var(--verenward-evergreen);
+  padding: 6px 0 6px 12px; flex-wrap: wrap; }
+.ns-stage-detail__row.is-complete { border-left-color: var(--color-success); }
+.ns-stage-detail__row.is-future { border-left-color: var(--verenward-bronze); }
+.ns-stage-detail__lead { font-weight: 700; color: var(--color-text-primary); }
+
+/* ── Prose. "The job" is the one place on a record page that is read as sentences,
+   so it gets a measure and a line-height, not the data-table treatment. */
+.ns-prose { font-size: 14px; line-height: 1.65; max-width: 66ch; }
+.ns-prose p { margin: 0 0 10px; }
+.ns-prose p:last-child { margin-bottom: 0; }
+.ns-prose strong { font-weight: 700; color: var(--color-text-primary); }
+
+/* ── Timeline rows: when on the left in a fixed column, what happened on the right. */
+.ns-timeline { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--color-border); }
+.ns-timeline__row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px;
+  padding: 10px 0; border-bottom: 1px solid var(--color-border); font-size: 13.5px; }
+/* The when-column is deliberately quieter than the event, but 3.96:1 is under AA at 12.5px. */
+.ns-timeline__when { color: var(--color-text-secondary); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+@media (max-width: 599.98px) { .ns-timeline__row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* ── The header action cluster, in the concept-s weights: exactly one filled button
+   (the most likely next transition), outlines for the rest, and Cancel as red text.
+   Scoped to the record header so no other surface-s buttons change. */
+.ns-identity__actions .fo-button { border-radius: 0; font-weight: 600; font-size: 13px; padding: 9px 16px; }
+/* The shared Button primitive comes out 40px tall -- four short of the handheld touch floor. Raised
+   here for the record header only; the primitive is app-wide and its floor is REPORTED, not changed
+   from inside a page-family PR. */
+@media (max-width: 767.98px) {
+  .ns-identity__actions .fo-button { min-height: 44px; }
+}
+.ns-identity__actions .fo-button--primary { background: var(--verenward-evergreen);
+  border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
+.ns-identity__actions .fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--verenward-guardian); border-color: var(--verenward-guardian); }
+.ns-identity__actions .fo-button--secondary { background: none;
+  border: 1px solid var(--verenward-border-strong); color: var(--verenward-guardian); }
+.ns-identity__actions .fo-button--secondary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--verenward-stone-sunken); border-color: var(--verenward-bronze);
+  color: var(--verenward-evergreen); }
+.ns-identity__actions .fo-button--destructive { background: none; border-color: transparent;
+  color: var(--color-danger); }
+.ns-identity__actions .fo-button--destructive:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--color-danger-surface); border-color: transparent; color: var(--color-danger); }
+
+/* THE RAIL IS REFERENCE MATERIAL, NOT A STACK OF CARDS.
+   The shared metadata shell renders its groups as .fo-card panels — right on a full metadata page,
+   wrong in a 340px rail, where three nested bordered boxes reproduce exactly the card farm the
+   composition removed from the main column. Scoped to .ns-rail so the shell keeps its panels
+   everywhere else. */
+.ns-rail .fo-panel, .ns-rail .fo-card { border: 0; background: none; box-shadow: none;
+  padding: 0; border-radius: 0; }
+/* The shell stacks its regions as sibling divs with no gap of their own; without this the next
+   group-s heading lands directly on the previous group-s last value. */
+.ns-rail .fo-record-page { display: grid; gap: 16px; }
+.ns-rail .fo-record-section { margin: 0; }
+/* Its group headings become rail headings — small caps, not a third title scale competing with the
+   ruled section title above them. */
+.ns-rail .fo-section-header { margin: 0 0 6px; padding: 0; border: 0; }
+.ns-rail .fo-section-header__title { font-family: var(--font-interface); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary);
+  margin: 0; font-weight: 700; }
+.ns-rail .fo-record-fields { font-size: 13px; display: grid; gap: 8px; margin: 0; }
+.ns-rail .fo-record-field dt { font-size: 12px; color: var(--color-text-muted); }
+.ns-rail .fo-record-field dd { margin: 0; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   P1v2 — the structural slots of the approved North Star composition.
+
+   The visual source is now North Star - Work Order.dc.html, whose surfaces assume
+   services this system does not have: a suggestion engine, live truck-stock reads,
+   an equipment-history read, dispatcher scheduling reads, a first-visit-fix
+   predictor. The handoff's rule, and the Owner ruling that accepted it:
+
+       KEEP THE DESIGNED SLOT. RENDER A TRUTHFUL STATE. NEVER FABRICATE THE NUMBER.
+
+   So each class below styles a REAL region of the page whose content today is an
+   honest sentence about what is missing. When a capability ships, the sentence is
+   replaced by the thing — the geometry does not move.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The utility line. Context left, live indicator right. */
+.ns-page__utility { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 16px; padding: 14px 0 10px; flex-wrap: wrap; }
+.ns-page__context { font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-page__context a { color: var(--color-text-secondary); text-decoration: none;
+  display: inline-flex; align-items: center; min-height: 44px; }
+@media (min-width: 768px) { .ns-page__context a { min-height: 0; } }
+.ns-page__context a:hover { color: var(--color-text-primary); text-decoration: underline; }
+
+/* THE LIVE INDICATOR IS A CLAIM, and it is one this page can actually make: useWorkOrder is an
+   onSnapshot subscription, so the record really does update without a reload. It is the one
+   "intelligence" affordance on the concept that needed no new capability at all. */
+.ns-live { font-size: 11.5px; color: var(--color-text-secondary); white-space: nowrap; }
+.ns-live__dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-success); animation: ns-live 2s infinite; vertical-align: 1px;
+  margin-right: 4px; }
+@keyframes ns-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .ns-live__dot { animation: none; } }
+
+/* ── The status sentence. Plain weighted text, as the concept draws it; safe without a glyph
+   because a sentence carries its meaning in words rather than in its colour. */
+.ns-identity__status-sentence { font-weight: 600; color: var(--color-info); }
+
+/* ── A fact the page cannot compute. Muted, and it says what is missing rather than showing a
+   dash — "First-visit fix — not computed" is information; "—" is not. */
+.ns-gap-note { font-size: 12.5px; color: var(--color-text-muted); }
+
+/* ── Backlog actions. The concept's action architecture, present and visibly not yet available.
+   These are NOT wired to anything: no handler, no command, no capability. They hold their
+   positions so the header does not reflow when the behaviour ships. */
+.ns-btn-pending { border-radius: 0; font-weight: 600; font-size: 13px; padding: 9px 16px;
+  background: none; border: 1px solid var(--verenward-border-strong);
+  color: var(--verenward-guardian); opacity: 0.45; cursor: not-allowed; font-family: var(--font-interface); }
+.ns-btn-pending--primary { background: var(--verenward-evergreen);
+  border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
+@media (max-width: 767.98px) { .ns-btn-pending { min-height: 44px; } }
+
+/* ── The suggestion slot. Structure now, engine later. */
+.ns-suggest { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px;
+  align-items: center; background: var(--verenward-stone-card);
+  border: 1px solid var(--color-border); padding: 12px 16px; margin-bottom: 26px;
+  font-size: 13.5px; color: var(--color-text-secondary); }
+.ns-suggest__label { font-weight: 700; font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-muted); }
+/* Reserved for the day an engine speaks: bronze is this system's "pay attention" colour, and it
+   is deliberately NOT used while the slot is empty. An empty slot must not look like advice. */
+.ns-suggest--active { border-color: var(--verenward-bronze); color: var(--color-text-primary); }
+.ns-suggest--active .ns-suggest__label { color: var(--verenward-bronze); }
+
+/* ── Section-heading annotation: the honest caveat rides with the title it qualifies, so it
+   cannot be scrolled away from the table it is about. */
+.ns-section__note { font-weight: 600; font-size: 12px; color: var(--color-text-secondary); }
+
+/* ── Rail supporting text. */
+.ns-rail__meta { color: var(--color-text-secondary); font-size: 12.5px; }
+.ns-rail .ns-gap-note { margin: 8px 0 0; }
+
+/* ── .ns-embed: an existing panel component, mounted inside a ruled section.
+   The parts-plan editor owns the governed write and its capability gate, so it is mounted
+   UNCHANGED; only its card chrome is stripped and its table brought to the North Star geometry.
+   Its own <h3> is hidden because the section already carries the title — two headings for one
+   region is how a nested panel announces itself as a second page. */
+/* The embedded table is the widest thing in the main column; this is what stops it pushing the
+   whole page sideways on a narrow viewport. */
+.ns-embed { overflow-x: auto; }
+.ns-embed .fo-card { border: 0; background: none; box-shadow: none; padding: 0; border-radius: 0; }
+.ns-embed .fo-card > h3 { display: none; }
+.ns-embed .fo-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.ns-embed .fo-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-secondary); font-weight: 600;
+  padding: 6px 14px 6px 0; border-bottom: 2px solid var(--color-text-primary); }
+.ns-embed .fo-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--color-border);
+  font-variant-numeric: tabular-nums; }
+.ns-embed .fo-table td:first-child { color: var(--color-text-primary); font-weight: 500; }

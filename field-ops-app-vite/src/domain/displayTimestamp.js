@@ -65,6 +65,32 @@ const IMPLAUSIBLE_AGE_DAYS = 400;
  * Relative age for display. Returns a coarse phrase rather than a precise
  * number once the value stops being plausible, and never a negative age.
  */
+/**
+ * A MOMENT: date and time of day, with no year and no seconds — "Aug 21, 3:12 PM".
+ *
+ * formatTimestamp gives the full locale string ("8/21/2026, 3:12:00 PM"), which is right when the
+ * exact instant matters and wrong in a lifecycle strip or a timeline column, where the seconds and
+ * the year carry no information anybody reads and cost a whole line on a narrow rail. The approved
+ * compositions write moments this way throughout.
+ *
+ * Same refusal as every other formatter here: an unusable value is UNKNOWN, never "Invalid Date".
+ *
+ * @param weekday include the weekday ("Tue Aug 26, 8:00 AM") — for a scheduled window, where which
+ *   DAY of the week it falls on is the fact a dispatcher is actually checking.
+ */
+export function formatMoment(value, { unknown = "Unknown", weekday = false } = {}) {
+  const ms = toMillis(value);
+  if (ms === null) return unknown;
+  const text = new Date(ms).toLocaleString(undefined, {
+    ...(weekday ? { weekday: "short" } : {}),
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return text === "Invalid Date" ? unknown : text;
+}
+
 export function formatAge(value, nowMs = Date.now(), { unknown = "Unknown" } = {}) {
   const ms = toMillis(value);
   if (ms === null) return unknown;
