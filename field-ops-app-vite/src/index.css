@@ -5749,8 +5749,24 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
 
 /* 1024-CLASS: the split holds, but the rail narrows and the gutter closes — at this width 340px of
-   reference is taking room the work needs. */
-@container ns-record (min-width: 900px) and (max-width: 1119.98px) {
+   reference is taking room the work needs.
+
+   THE UPPER BOUND IS MEASURED, NOT CHOSEN. It was 1119.98px, and that swallowed the design's own
+   reference width: the application rail and the page's 32px gutters mean a 1440 SCREEN gives this
+   container 1076px, so 1440 was rendering the 220px rail the approved composition draws at 340px.
+   Measured against the deployed build:
+
+       screen 1600 -> container 1216 -> rail 340   (correct then and now)
+       screen 1440 -> container 1076 -> rail 220 BEFORE, 340 after   <- the defect
+       screen 1280 -> container  916 -> rail 220   (correct: genuinely tighter)
+       screen 1024 -> container  716 -> two equal columns, below this band entirely
+
+   This is the trap the .ns-record-body block above already warns about, walked into from the other
+   side: a container query asks the right question, and it still has to be asked with the right
+   number. A viewport-shaped guess ("1024-ish means about 1120") is off by the width of the shell.
+   1023.98 is the container width a 1280 screen has just under, which is the last width where the
+   work column genuinely needs the room back. */
+@container ns-record (min-width: 900px) and (max-width: 1023.98px) {
   .ns-record-body { grid-template-columns: minmax(0, 1fr) 220px; gap: 0 40px; }
 }
 
@@ -5808,4 +5824,80 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .ns-identity__actions .fo-link-btn,
   .ns-table__note a,
   .ns-section__meta a { min-height: 0; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   THE PAGE HAD TWO HEADINGS FOR EVERY SECTION, AND A RAIL OF THE WRONG WIDTH.
+
+   Measured against the deployed build at 19b34835, not inferred. The account record page emitted:
+
+       H3.fo-section-header__title  Contacts          H3.ns-rail__title  Contacts (0)
+       H3.fo-section-header__title  Locations         H3.ns-rail__title  Locations (0)
+       H3.fo-section-header__title  Financials        H2.ns-section__title  Accounts receivable
+       H3.fo-section-header__title  Service Activity  H2.ns-section__title  Service activity
+       H3.fo-section-header__title  Activity And Notes  H4  Activity & Notes
+
+   MetadataRecordPage wraps every section in RecordSection, which renders the section's own label as
+   a heading. That is right when the metadata layer is the only thing naming the section. It is
+   wrong here, because each of these sections is rendered by a component -- or by this page's own
+   injected listRenderer -- that already carries its title, in the record grammar, with its live
+   count. The result was the section name twice, in two different typographic systems, one of them
+   a humanized id ("Activity And Notes").
+
+   The metadata heading is SUPPRESSED, never the component's: the component's is the one that says
+   "Contacts (0)" rather than "Contacts", and the one drawn in the family's own grammar. Targeted by
+   section id -- RecordSection now emits `data-section-id` -- so this names exactly the five
+   sections whose renderer owns the title, and a sixth section added later gets the metadata
+   heading, correctly, until someone decides otherwise.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+/* (The suppression rule that stood here is gone. Hiding a duplicate heading left it in the DOM
+   and in the accessibility tree -- the fix belongs at the cause, in MetadataRecordPage, which no
+   longer invents a heading for a section whose definition declared none.) */
+
+/* OPPORTUNITIES AND SALES ORDERS KEEP THEIRS, because nothing else names them -- they are the two
+   halves of "Commercial activity" and their metadata heading is the only label those rows have.
+   What changes is WEIGHT. They rendered at the same serif scale as the section title above them,
+   so the page read as three competing headings where the composition intends one section with two
+   labelled groups. This is the rail's label grammar: small, spaced, quiet. */
+.ns-page [data-section-id="opportunities"] > .fo-section-header .fo-section-header__title,
+.ns-page [data-section-id="salesOrders"] > .fo-section-header .fo-section-header__title {
+  font-family: var(--font-interface);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+.ns-page [data-section-id="opportunities"] > .fo-section-header,
+.ns-page [data-section-id="salesOrders"] > .fo-section-header {
+  border: 0;
+  padding: 0;
+  margin: 14px 0 6px;
+}
+
+/* ── AN EMPTY RELATED LIST IS ONE LINE, NOT A POSTER ──────────────────────────────────────────
+   The shared EmptyState is an ICONIC treatment: an icon, a title, and a message, sized for a
+   workspace that has nothing in it. Four of them rendered on one account record -- opportunities,
+   orders, contacts, locations -- each saying "Nothing here yet" above "No contacts yet.", the same
+   fact twice, stacked taller than the section it was reporting on. On a record page an empty
+   related list is a detail, not an event.
+
+   The icon and the redundant title go; the specific sentence stays, because that is the half that
+   says WHICH thing is empty. */
+.ns-page .fo-record-section .fo-state.fo-empty-state {
+  display: block;
+  padding: 6px 0;
+  text-align: left;
+  border: 0;
+  background: none;
+  min-height: 0;
+}
+.ns-page .fo-record-section .fo-state.fo-empty-state .fo-icon,
+.ns-page .fo-record-section .fo-state.fo-empty-state svg,
+.ns-page .fo-record-section .fo-state.fo-empty-state .fo-state-title { display: none; }
+.ns-page .fo-record-section .fo-state.fo-empty-state .fo-state-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
