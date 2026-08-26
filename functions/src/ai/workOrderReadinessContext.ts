@@ -1,7 +1,7 @@
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getCallerContext } from "../callerContext";
-import { WORK_ORDERS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections";
+import { WORK_ORDERS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import {
   INVENTORY_BALANCE_READ_CAPABILITY,
@@ -42,6 +42,9 @@ export interface WorkOrderReadinessContextResult {
     warehouse: boolean;
     truckInventory: false;
     purchasing: boolean;
+    // Mirrors ONLY the existing READY reorder-create branch in firestore.rules. It creates no
+    // capability and grants nothing; the eventual client write is still independently rechecked.
+    requestReorder: boolean;
   }>;
   readonly limitations: readonly string[];
 }
@@ -102,6 +105,13 @@ export async function assembleWorkOrderReadinessContext(
   // dedicated governed procurement read exists, only this exact broad Rules branch is mirrored.
   const procurementReadable = caller.role === "admin" || caller.role === "dispatcher";
 
+  // EXISTING ACTION ELIGIBILITY, NOT A NEW AUTHORITY. The READY reorder-request create branch in
+  // firestore.rules is admin/dispatcher-only. Exposing that boolean lets intelligence decide whether
+  // the already-existing requestReorderForRecommendation action may be PROPOSED. If a human accepts,
+  // firestore.rules evaluates the write again from current user state; this boolean is never trusted
+  // as authorization by the write path.
+  const requestReorderEligible = caller.role === "admin" || caller.role === "dispatcher";
+
   const internalPlan = plannedLines(workOrder);
   const canonicalPartIds = [...new Set(internalPlan
     .map((line) => line.partId)
@@ -161,6 +171,7 @@ export async function assembleWorkOrderReadinessContext(
       warehouse: access.inventoryBalanceReadable,
       truckInventory: false as const,
       purchasing: procurementReadable,
+      requestReorder: requestReorderEligible,
     }),
     limitations: Object.freeze(limitations),
   });

@@ -68,7 +68,12 @@ test("dispatcher context joins governed balance, this-WO reservation and procure
   );
 
   assert.equal(result.subject.reference, "WO-2026-000873");
-  assert.deepEqual(result.capabilities, { warehouse: true, truckInventory: false, purchasing: true });
+  assert.deepEqual(result.capabilities, {
+    warehouse: true,
+    truckInventory: false,
+    purchasing: true,
+    requestReorder: true,
+  });
   assert.equal(result.plannedParts.length, 2);
   assert.deepEqual(result.plannedParts[0], {
     name: "Scraper Blade Kit",
@@ -104,7 +109,7 @@ test("inventory balance denial does not read balance or reservation sources and 
   assert.ok(result.limitations.includes("INVENTORY_BALANCE_NOT_AUTHORIZED"));
 });
 
-test("technician own-WO read does not widen procurement authority", async () => {
+test("technician own-WO read does not widen procurement or reorder authority", async () => {
   const d = deps({
     loadCaller: async () => ({ role: "technician", technicianId: "tech-1" }),
   });
@@ -114,6 +119,7 @@ test("technician own-WO read does not widen procurement authority", async () => 
   );
 
   assert.equal(result.capabilities.purchasing, false);
+  assert.equal(result.capabilities.requestReorder, false);
   assert.equal(d.calls.reorders, 0);
   assert.deepEqual(result.plannedParts[1].procurement, { status: "NONE" });
   assert.ok(result.limitations.includes("PROCUREMENT_READ_NOT_AUTHORIZED"));

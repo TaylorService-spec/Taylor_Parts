@@ -1,4 +1,5 @@
 import { workOrderPartsPlan } from "./workOrderNorthStar.js";
+import { deriveGovernedWorkOrderPartsRecommendation } from "./workOrderGovernedRecommendation.js";
 
 // NORTH STAR WORK ORDER INTELLIGENCE CONTRACT
 //
@@ -86,7 +87,9 @@ export function buildWorkOrderIntelligenceContext(
  * missing capability into noise. The intelligence layer speaks only when the canonical projection
  * proves an actionable ATTENTION condition. READY and UNKNOWN are deliberately quiet.
  *
- * This remains deterministic and must never be labelled as AI in the UI.
+ * This remains deterministic and must never be labelled as AI in the UI. A model may later interpret
+ * this contract, but it can only repeat the already-selected governed recommendation after the server
+ * verifier accepts it.
  */
 export function deriveWorkOrderIntelligence(
   workOrder,
@@ -105,7 +108,14 @@ export function deriveWorkOrderIntelligence(
   if (!projection) return noInsight(NO_INSIGHT_REASON.READINESS_NOT_ASSEMBLED, context);
   if (projection.jobReadiness === "READY") return noInsight(NO_INSIGHT_REASON.PARTS_READY, context);
   if (projection.jobReadiness === "UNKNOWN") return noInsight(NO_INSIGHT_REASON.READINESS_UNKNOWN, context);
-  if (projection.jobReadiness === "ATTENTION") return readinessAttentionSignal(context, projection);
+  if (projection.jobReadiness === "ATTENTION") {
+    // The selector reads the UNSANITIZED canonical projection only long enough to decide whether the
+    // model-safe action descriptor may exist. Its EOS-only execution ids are deliberately NOT retained
+    // on the intelligence object. A human-acceptance controller must derive the governed action again
+    // from the current projection immediately before calling the existing reorder seam.
+    const governedRecommendation = deriveGovernedWorkOrderPartsRecommendation(partsReadiness);
+    return readinessAttentionSignal(context, projection, governedRecommendation);
+  }
 
   // NO_PLAN should already be impossible when the governed plan has lines. Any future/unknown value
   // stays silent rather than being interpreted optimistically.
@@ -129,7 +139,7 @@ export function mergeWorkOrderAttention(existingItems = [], intelligence = null)
   return [...items, candidate];
 }
 
-function readinessAttentionSignal(context, projection) {
+function readinessAttentionSignal(context, projection, governedRecommendation) {
   const attentionCount = projection.counts?.ATTENTION ?? 0;
   const unknownCount = projection.counts?.UNKNOWN ?? 0;
   const readyCount = projection.counts?.READY ?? 0;
@@ -138,6 +148,27 @@ function readinessAttentionSignal(context, projection) {
     readyCount > 0 ? `${readyCount} ready` : null,
     unknownCount > 0 ? `${unknownCount} still unknown` : null,
   ].filter(Boolean).join("; ");
+
+  const recommendedAction = governedRecommendation?.speak
+    ? governedRecommendation.recommendation
+    : null;
+  const authority = recommendedAction
+    ? {
+        state: AUTHORITY_STATE.ALLOWED,
+        action: recommendedAction.actionId,
+        reason: "EOS mapped a confirmed SHORT condition to the existing reorder action. The eventual Firestore write rechecks current authority independently.",
+      }
+    : governedRecommendation?.authority === "DENIED"
+      ? {
+          state: AUTHORITY_STATE.DENIED,
+          action: null,
+          reason: "The existing READY reorder-create path is not eligible for this caller; no recommendation is exposed to the model.",
+        }
+      : {
+          state: AUTHORITY_STATE.NOT_APPLICABLE,
+          action: null,
+          reason: "No single confirmed shortage maps to an eligible existing governed action.",
+        };
 
   return {
     speak: true,
@@ -151,18 +182,16 @@ function readinessAttentionSignal(context, projection) {
       level: CONFIDENCE.HIGH,
       basis: "The signal is a direct explanation of the canonical readiness projection; it does not infer availability independently.",
     },
-    recommendedAction: null,
-    authority: {
-      state: AUTHORITY_STATE.NOT_APPLICABLE,
-      action: null,
-      reason: "A specific governed action is not proposed until the readiness reason is mapped to an existing EOS command and actor authority is checked.",
-    },
-    evidence: evidenceFor(context, projection),
+    recommendedAction,
+    authority,
+    evidence: evidenceFor(context, projection, governedRecommendation),
     outcome: null,
     attentionItem: {
       key: "parts-readiness-attention",
       severity: "ATTENTION",
-      fact: `Parts readiness needs attention — ${detail}.`,
+      fact: recommendedAction
+        ? `Parts readiness needs attention — ${detail}. Recommended next step: ${recommendedAction.label}.`
+        : `Parts readiness needs attention — ${detail}.`,
     },
   };
 }
@@ -195,8 +224,8 @@ function sanitizeReadinessProjection(projection) {
   };
 }
 
-function evidenceFor(context, projection) {
-  return [
+function evidenceFor(context, projection, governedRecommendation) {
+  const evidence = [
     {
       kind: "WORK_ORDER_PARTS_PLAN",
       subjectReference: context.subject.reference,
@@ -217,6 +246,19 @@ function evidenceFor(context, projection) {
       },
     },
   ];
+  if (governedRecommendation?.speak) {
+    evidence.push({
+      kind: "WORK_ORDER_CONFIRMED_PART_SHORTAGE",
+      subjectReference: context.subject.reference,
+      source: "workOrderPartsReadiness",
+      facts: {
+        readiness: governedRecommendation.evidence.readiness,
+        reason: governedRecommendation.evidence.reason,
+        knownShortfall: governedRecommendation.evidence.knownShortfall,
+      },
+    });
+  }
+  return evidence;
 }
 
 function noInsight(reason, context) {
