@@ -61,8 +61,8 @@ test("model cannot recommend an action EOS did not pre-authorize", () => {
 
 test("an existing governed action may be repeated but never created by the model", () => {
   const allowed = {
-    actionId: "existing-governed-action",
-    label: "Existing governed action",
+    actionId: "requestReorderForRecommendation",
+    label: "Request reorder",
     authority: "ALLOWED",
   };
   const result = verifyWorkOrderModelInterpretation(
@@ -71,6 +71,24 @@ test("an existing governed action may be repeated but never created by the model
   );
   assert.equal(result.speak, true);
   assert.deepEqual(result.recommendedAction, allowed);
+});
+
+test("a DENIED existing action is not recommendation authority", () => {
+  const denied = {
+    actionId: "requestReorderForRecommendation",
+    label: "Request reorder",
+    authority: "DENIED",
+  };
+  const result = verifyWorkOrderModelInterpretation(
+    input({ allowedRecommendation: denied }),
+    candidate({ recommendedActionId: denied.actionId }),
+  );
+  assert.deepEqual(result, {
+    speak: false,
+    origin: "MODEL",
+    reason: "MODEL_OUTPUT_ACTION_NOT_ALLOWED",
+  });
+  assert.equal(buildWorkOrderInterpretationPromptPayload(input({ allowedRecommendation: denied })).allowedRecommendation, null);
 });
 
 test("unsupported confidence, blank prose and evidence-free output all fail closed", () => {
