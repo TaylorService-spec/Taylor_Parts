@@ -42,6 +42,27 @@ export function arPositionTone(position) {
   return AR_POSITION_TONE[position] ?? "unknown";
 }
 
+// AN AR POSITION IN WORDS, not the stored token.
+//
+// The rows below used to hand the raw enum straight to the pill ("OVERDUE"), which is the same
+// NS-P4 defect the Account header had with its status: a machine value shown to a human as if it
+// were the word for the thing. The vocabulary lives here, beside the tone it travels with, so a
+// position can never be worded one way in the AR table and another way anywhere else.
+//
+// An unrecognised position returns null rather than being echoed. A position this vocabulary
+// cannot place is a real fact about the data and must read as unplaceable, not as a word.
+const AR_POSITION_WORDS = {
+  OVERDUE: "Overdue",
+  CURRENT: "Current",
+  SETTLED: "Settled",
+  VOID: "Void",
+  UNKNOWN: "Position not recorded",
+};
+
+export function arPositionWords(position) {
+  return AR_POSITION_WORDS[position] ?? null;
+}
+
 // Integer minor units -> a display string. Never divides/rounds lossily; multi-currency
 // balances are listed per-currency, never summed across currencies.
 //
@@ -95,6 +116,9 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
       invoiceNumber: inv.invoiceNumber ?? inv.invoiceId,
       salesOrderId: inv.salesOrderId,
       position: inv.arPosition,
+      // The words a reader sees. `position` (the stored token) stays on the row because
+      // accountAttentionProjection.js filters on it -- it is a discriminant, not display.
+      positionWords: arPositionWords(inv.arPosition),
       tone: arPositionTone(inv.arPosition),
       outstandingText: formatMinor(inv.outstandingMinor, inv.currency),
       // Only OVERDUE carries a meaningful day count -- deriveArPosition sets daysOverdue: 0

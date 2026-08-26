@@ -10,7 +10,7 @@
 //   * NO LIFECYCLE IS ASSERTED (ND-11). An Account's status is an editable field with no transition
 //     command; four chevrons would claim a progression nothing enforces.
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import AccountDetail from "../src/modules/accounts/AccountDetail.jsx";
 import { useAccount } from "../src/hooks/useAccount";
@@ -82,13 +82,17 @@ function mount(overrides = {}) {
 }
 
 describe("Account — North Star composition", () => {
+  // The mocked AR read resolves to UNAVAILABLE, so the attention surface is present with its
+  // honest per-source note -- a source that could not be confirmed never earns silence.
+  const at = (container, selector) =>
+    Array.from(container.querySelectorAll("*")).findIndex((n) => n.matches?.(selector));
+
   // ─────────────── NS-P2: attention comes BEFORE the work
 
   it("the attention section renders BEFORE the record body, not after it", () => {
     const { container } = mount();
-    const nodes = Array.from(container.querySelectorAll("*"));
-    const attentionAt = nodes.findIndex((n) => /Account Attention/.test(n.textContent ?? "") && n.tagName === "H3");
-    const bodyAt = nodes.findIndex((n) => n.classList?.contains("ns-record-body"));
+    const attentionAt = at(container, ".ns-attn");
+    const bodyAt = at(container, ".ns-record-body");
     expect(attentionAt, "the attention section must be present").toBeGreaterThan(-1);
     expect(bodyAt, "the record body must be present").toBeGreaterThan(-1);
     expect(
@@ -100,17 +104,22 @@ describe("Account — North Star composition", () => {
   it("the attention section renders exactly once", () => {
     // It was MOVED, not copied. Two mounts would double every account-scoped read behind it.
     const { container } = mount();
-    const headings = Array.from(container.querySelectorAll("h3")).filter((h) => /Account Attention/.test(h.textContent));
-    expect(headings).toHaveLength(1);
+    expect(container.querySelectorAll(".ns-attn")).toHaveLength(1);
   });
 
   it("the record identity renders before the attention section", () => {
     const { container } = mount();
-    const nodes = Array.from(container.querySelectorAll("*"));
-    const identityAt = nodes.findIndex((n) => n.classList?.contains("ns-identity"));
-    const attentionAt = nodes.findIndex((n) => /Account Attention/.test(n.textContent ?? "") && n.tagName === "H3");
-    expect(identityAt).toBeGreaterThan(-1);
-    expect(identityAt).toBeLessThan(attentionAt);
+    expect(at(container, ".ns-identity")).toBeGreaterThan(-1);
+    expect(at(container, ".ns-identity")).toBeLessThan(at(container, ".ns-attn"));
+  });
+
+  it("standing comes before attention, and attention before the work it warns about", () => {
+    // The approved composition order: the three real numbers, then what needs a person, then the
+    // sections those warnings point at.
+    const { container } = mount();
+    expect(at(container, ".ns-standing")).toBeGreaterThan(-1);
+    expect(at(container, ".ns-standing")).toBeLessThan(at(container, ".ns-attn"));
+    expect(at(container, ".ns-attn")).toBeLessThan(at(container, ".ns-record-body"));
   });
 
   // ─────────────── ND-11: no lifecycle may be drawn
@@ -176,16 +185,25 @@ describe("Account — North Star composition", () => {
 
   // ─────────────── classification
 
-  it("the classification renders as words, and an account with none renders nothing", () => {
+  it("the classification renders as words IN THE KICKER, and an account with none renders nothing", () => {
     const withBoth = mount({ relationshipTypes: ["CUSTOMER", "VENDOR"], lineOfBusiness: ["TAYLOR", "VENTANA"] });
-    expect(screen.getByText("Customer · Vendor")).toBeTruthy();
-    expect(screen.getByText("Taylor · Ventana")).toBeTruthy();
+    // Account North Star P1 moves the classification out of the fact row and into the kicker:
+    // it is identity ("what kind of account is this"), not a detail about the record.
+    expect(withBoth.container.querySelector(".ns-identity__kicker").textContent)
+      .toBe("Customer · Vendor · Taylor · Ventana");
     withBoth.unmount();
 
     const withNone = mount({ relationshipTypes: [], lineOfBusiness: [] });
     expect(withNone.container.textContent).not.toMatch(/Vendor|Ventana/);
-    // Never a silent default to the first value of either vocabulary.
+    // Never a silent default to the first value of either vocabulary. The record-family word
+    // stands alone; no line of business is invented for an account that declares none.
+    expect(withNone.container.querySelector(".ns-identity__kicker").textContent).toBe("Customer");
     expect(withNone.container.querySelector(".ns-identity").textContent).not.toMatch(/\bTaylor\b/);
+  });
+
+  it("the record-family word is never printed twice when it is also the relationship", () => {
+    const { container } = mount({ relationshipTypes: ["CUSTOMER"], lineOfBusiness: ["TAYLOR"] });
+    expect(container.querySelector(".ns-identity__kicker").textContent).toBe("Customer · Taylor");
   });
 
   // ─────────────── the shell obligation

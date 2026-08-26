@@ -4,6 +4,7 @@ import {
   accountArView,
   mapAccountArErrorToStatus,
   arPositionTone,
+  arPositionWords,
   formatMinor,
   ACCOUNT_AR_STATE,
 } from "../src/domain/accountArView.js";
@@ -98,4 +99,32 @@ test("formatMinor is exponent-aware for a non-2-exponent currency (JPY) -- no lo
   assert.equal(formatMinor(1000, "JPY").includes("."), false);
   assert.equal(formatMinor(0, "JPY"), "¥0"); // zero still renders as zero, not blank
   assert.equal(formatMinor(-9, "JPY"), "-¥9"); // and a negative stays visibly negative
+});
+
+// ═══════════════════════════ AR POSITION IN WORDS (Account North Star P1)
+
+test("every governed AR position has a word, and an unknown one is reported as unplaceable", () => {
+  assert.equal(arPositionWords("OVERDUE"), "Overdue");
+  assert.equal(arPositionWords("CURRENT"), "Current");
+  assert.equal(arPositionWords("SETTLED"), "Settled");
+  assert.equal(arPositionWords("VOID"), "Void");
+  assert.equal(arPositionWords("UNKNOWN"), "Position not recorded");
+  // The mutation this guards: echoing an unrecognised token would show a machine value to a
+  // human as though it were the word for the thing.
+  assert.equal(arPositionWords("SOMETHING_NEW"), null);
+  assert.equal(arPositionWords(undefined), null);
+});
+
+test("a row carries the words beside the token it is derived from", () => {
+  const view = accountArView({
+    result: {
+      status: "ready",
+      invoices: [{ invoiceId: "i1", invoiceNumber: "INV-1", arPosition: "OVERDUE", outstandingMinor: 100, currency: "USD", daysOverdue: 4 }],
+      summary: { count: 1, openCount: 1, overdueCount: 1, outstandingByCurrency: { USD: 100 } },
+    },
+  });
+  // The token stays because accountAttentionProjection filters on it -- it is a discriminant,
+  // not display. The WORDS are what a surface renders.
+  assert.equal(view.rows[0].position, "OVERDUE");
+  assert.equal(view.rows[0].positionWords, "Overdue");
 });

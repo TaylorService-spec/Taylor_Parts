@@ -2157,43 +2157,102 @@ the design grammar's standing-gaps table, which still classifies "Account shows 
 
 ---
 
-## #128 — A presentation-only migration clears on the Quick Gate; the Sales Order family is ACCEPTED
+## #128 — The Account is reconciled against its approved design, not rebuilt; four Owner rulings close with it
 
 **Date:** 2026-08-26
-**Decision (Owner):** the Sales Order page family (family 2) **PASSES Owner visual acceptance**
-against the deployed sandbox build `1c8095d3`, and **no Full Sandbox Regression Gate is required**
-for it. The Owner named the governing rule as the **North Star presentation-migration rule**: a page
-family that changes only presentation — no command, no capability, no write path, no `firestore.rules`
-change — clears on the Quick Gate rather than the full regression gate.
+**Tier:** 1 (presentation/composition; no authority, no backend, no Rules)
+**Supersedes nothing.** #127 stands: the Account states its status and draws no lifecycle.
 
-**Reason:** the Full Sandbox Regression Gate that family 1 ran exists to catch behavioral regression
-across the platform. A family whose diff introduces no behavioral surface has nothing for that gate
-to catch that CI and the Quick Gate do not already cover, and running it would spend hours certifying
-the absence of a change class the diff does not contain. Family 2's authority-unchanged claim is not
-an assertion: `SalesOrderActions` is untouched, every write still resolves through
-`transitionSalesOrder`, `allocateSalesOrder` and `createServiceForSalesOrder`, and all 13
-pre-existing authority and capability-gating tests pass unmodified (DECISIONS #125).
+**What happened.** #127 (PR #1511) migrated the Account to the North Star grammar with **no Owner
+approved Account artifact in hand** — it composed from the ratified family grammar and the shipped
+family-1/2 pattern, and said so. One now exists: `design_handoff_account/North Star - Account P1.dc.html`,
+supplied with a README that states plainly, *"#1511 was inspected as behavioral evidence only, never
+as visual truth."* This change is the reconciliation of the merged page against that authority.
 
-**This is a ruling about WHICH gate is owed, not a waiver of one.** The Quick Gate is still required,
-it still ran, and it still passed against the accepted build: 12/12 sweep visits, 7/7 dynamic
-entities resolved, zero RAW_ID findings, zero blocking findings. The rule does not apply to a family
-that touches a command, a capability, a write path or Rules — that family owes the full gate, and the
-presentation-migration rule is the test for telling the two apart.
+It is a **presentation pass**. Every read, write, capability gate, honest state and derivation on the
+page is the one that was already there. Nine things moved:
 
-**What acceptance settles, and what it does not.** Family 2 shipped with **no Design artifact in
-hand**; the ledger recorded that this made Owner acceptance *load-bearing rather than confirmatory*.
-That authority has now spoken, so a grammar-derived composition is confirmed correct by the one
-authority a build cannot grant itself — which is the evidence the remaining families need. It settles
-nothing else: **ND-8** (a Sales Order records no lifecycle stage times), **ND-9** (nothing resolves a
-Sales Agreement to a reference) and **ND-10** (`useSalesOrder` is a one-shot read, so no live
-indicator) all remain open. Accepting a composition is not resolving the facts it is honest about.
+1. **Contacts lead the rail.** They rendered at the bottom of the main column — "who do I call" was
+   the last thing on the page. This is the load-bearing change, and it is the one the design named
+   as such.
+2. **Standing is one ruled row**, not a grid of metric cards. Three cards for three numbers was a
+   card habit, not a hierarchy.
+3. **Attention and its explanation share one bordered surface**, with the explanation beneath the
+   governed facts it explains.
+4. **The classification moved into the kicker.** It is identity, not a fact about the record.
+5. **The terms digest joined the header facts** (`accountTermsDigest`), reading the same vocabulary
+   the rail reads — not a second copy of it.
+6. **Receivables got their own main-column section**, titled in the words a person would use,
+   instead of living inside a generic financials block.
+7. **Standing now precedes Attention.** Attention still comes before everything it warns about.
+8. **Opportunities and Sales Orders render as one "Commercial activity" section** — while remaining
+   two metadata sections underneath, because they are gated by two different capabilities. A section
+   that shares a heading is a layout fact; a section answering to another section's capability would
+   be an authority change.
+9. **Real tablet and phone compositions.** The page was a stacked desktop.
 
-**Scope is literal.** Acceptance was granted for family 2. **Family 3 — Account remains
-`AWAITING_OWNER_VISUAL_ACCEPTANCE`**, on the same `1c8095d3` build and with the same Quick Gate
-result behind it. The presentation-migration rule tells family 3 which gate it owes; it does not
-accept it. Family 4 — Opportunity is unaffected: it is stopped on a product-build decision (a new
-trusted callable and a route), not on a gate.
+**Four Owner decisions closed with this package.**
 
-**Related:** DECISIONS #122 (the three authorities — Acceptance is the one a build cannot grant
-itself), #125 (the Sales Order composition and its named gaps), #123, #126, #127. Ledger:
-`docs/design/north-star-migration-ledger.md`, family-2 row and the `1c8095d3` refresh section.
+- **A-D1 — attention silence.** When both sources are READY and empty, the surface is **absent
+  entirely**. The "Nothing needs attention on this account right now." receipt is removed. Silence is
+  the healthy state; a source that could not be *confirmed* still speaks, in its own note.
+- **A-D2 — denied AR.** `finance.read` denial preserves the financial geography and renders
+  "Not available to you" in place. `MetadataRecordPage` hides a gated section by rendering nothing,
+  which on this page would remove the financial region entirely — and a customer record with no
+  financial region reads as a customer who owes nothing. That is the one thing this page must never
+  imply, so the denial is rendered by the page over the same fail-closed decision. It is a
+  presentation of that decision, not a second gate.
+- **A-D3 — archived accounts.** Edit stays offered. No rule forbids editing an archived account, and
+  adding one would be a behavioral change, not a presentation one.
+- **A-D4 — prospects.** Same composition, honest empties. No prospect-specific page architecture.
+
+**The mobile Call affordance (Owner addendum, same date).** The phone answer stack's Call control is
+**functional**: a `tel:` URI built from the governed primary contact's own stored phone value
+(`domain/phoneLink.js`). EOS hands the number to the device; the operating system opens the dialer,
+shows the number and asks the person whether to place the call. There is **no write, no callable, no
+command, no telephony service and no second phone-number authority**. The selection rule is the whole
+of it, and it is mutation-proven: with two reachable contacts on the account and only one marked
+primary, dialling the other one fails a test. A primary with no stored number gets **no** active Call
+control — never an account-level number, never a different contact who happens to have one. MULTIPLE
+primaries keep the ambiguity and offer no Call; NONE fabricates nothing. The displayed number is the
+stored string, unchanged, and nothing is persisted back.
+
+**A-NS-1 — a premise the design and the repository disagree on, recorded rather than resolved.** The
+approved design's note says *"useAccount is not a subscription"*. It is one — `hooks/useAccount.js`
+uses `onSnapshot`. The design's **conclusion** is implemented exactly as written (no live badge;
+honest "Read-checked *time* · Refresh" wording), because that wording is true under either premise:
+the data is at least as fresh as the stamp. It changes no business behavior, so it needed no ruling —
+but it is written down rather than smoothed over, because a design note asserting something false
+about the repository is worth someone noticing.
+
+**One defect this change caused, found and fixed before merge.** Splitting the main column into three
+`MetadataRecordPage` calls made each fully-denied group render the **page-level** "You do not have
+access to any part of this record" box — a page-level sentence about a section, beside a page that
+was plainly still rendering. Two of them, on an ordinary denied view. All three fragment calls now
+pass `embedded`, which is what that flag is for, and the AR denial is rendered by the page instead
+(A-D2 above).
+
+**Two vocabularies extracted, neither invented.** `arPositionWords` gives an AR position its word
+("Overdue") instead of handing the stored token to a pill — the same NS-P4 defect the header had with
+its status. `workOrderStatusWords`, the governed Work Order vocabulary, is now what Service activity
+reads, so the account's view of a job and the job's own page cannot word the same state differently.
+
+**Two facts newly projected, from documents already fetched.** Service activity states each job's
+schedule and technician. Both come off the same documents the timeline query already reads — no
+second read, no new query shape, no new index, no new authority. The technician name resolves through
+`resolveTechnicianIdentity` against the same directory seven other dispatch surfaces already use; an
+id that does not resolve is reported as unresolved, never rendered as if it were a name.
+
+**Product gaps preserved and recorded, not filled:** no Opportunity record route (rows stay honestly
+non-navigable, and the definition carries no `rowNavigationTo` — asserted); no account-scoped
+Equipment read (the absence is stated with a route to the workspace that can answer, and no count is
+invented); no pipeline, backlog or equipment metric (the standing strip names them as absent in one
+sentence rather than showing six tiles where three are real); `crm.activity.read` still inactive
+catalog-wide.
+
+**Authority unchanged.** No command, capability, write path, Function or Rules change. `updateAccount`,
+`createContact`, `createLocation`, every modal, every capability declaration in `accountPage.js` and
+every wiring decision in `accountPageComponents.js` are untouched. Full Gate **not triggered**.
+
+**Related:** DECISIONS #122, #125, #126, #127. Register: ND-11 (unchanged), A-D1–A-D4 (resolved),
+A-NS-1 (recorded). Ledger: `docs/design/north-star-migration-ledger.md`.

@@ -45,7 +45,7 @@ describe("AccountFinancialsSection", () => {
   it("keeps the real AR surface present and prominent", () => {
     render(<AccountFinancialsSection accountId="acc-1" />);
     // AR renders regardless of the provider state -- it has its own governed read.
-    expect(screen.getByLabelText(/accounts receivable and financials/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^accounts receivable$/i)).toBeTruthy();
   });
 
   it("renders the provider surfaces when a provider IS configured", () => {
@@ -57,7 +57,7 @@ describe("AccountFinancialsSection", () => {
   it("an AR read failure does not suppress the section or fabricate figures", () => {
     arState.current = { loading: false, errorStatus: "UNAVAILABLE", result: null };
     render(<AccountFinancialsSection accountId="acc-1" />);
-    expect(screen.getByLabelText(/accounts receivable and financials/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^accounts receivable$/i)).toBeTruthy();
     expect(countOccurrences(UNCONFIGURED_COPY)).toBeLessThanOrEqual(1);
   });
 });
