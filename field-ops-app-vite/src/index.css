@@ -5564,3 +5564,204 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-embed .fo-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--color-border);
   font-variant-numeric: tabular-nums; }
 .ns-embed .fo-table td:first-child { color: var(--color-text-primary); font-weight: 500; }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   ACCOUNT NORTH STAR P1 — the composition classes the approved Account design adds to the family.
+
+   NO NEW COLOUR, NO NEW TOKEN, NO CARD. Everything below is built from the palette the North Star
+   block above already established (--verenward-bronze, --color-text-primary/secondary/muted,
+   --color-border, --color-danger) and from the same two structural devices the family uses:
+   whitespace and rules. The ONE bordered box on this page is the Attention surface, and it is
+   bordered because it is the one region whose boundary carries meaning — everything inside it is
+   something a person has to deal with.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── The utility line's right half. Honest freshness, never a live badge. */
+.ns-page__freshness { font-size: 11.5px; color: var(--color-text-secondary); white-space: nowrap; }
+.ns-page__freshness .fo-link-btn { font-size: 11.5px; }
+
+/* ── STANDING: three real numbers on ONE ruled row, between two hairlines. Not three cards.
+   The metrics wrap; the label does not leave them. */
+.ns-standing { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 26px;
+  padding: 10px 0 12px; margin: 0 0 14px;
+  border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border);
+  font-size: 13px; }
+.ns-standing__label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 600; color: var(--color-text-secondary); }
+.ns-standing__metric { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; }
+.ns-standing__metric-label { color: var(--color-text-secondary); }
+.ns-standing__metric-value { color: var(--color-text-primary); font-weight: 600;
+  font-variant-numeric: tabular-nums; }
+/* A count that is genuinely a problem is weighted, and the WORD beside it ("Past due") is what
+   carries the meaning — the colour is emphasis, never the only signal. */
+.ns-standing__metric-value.is-warn { color: var(--color-danger, #B23B3B); }
+/* The two non-numeric answers read as prose rather than as a value, so nobody mistakes one for
+   a number. */
+.ns-standing__absent { font-weight: 400; font-style: italic; color: var(--color-text-secondary); }
+.ns-standing__pending { color: var(--color-text-secondary); }
+/* The stated omission. Quiet, but present at every width — it is the sentence that stops an
+   absent read reading as an absent fact. */
+.ns-standing__note { flex: 1 1 30ch; min-width: 0; font-size: 12px;
+  color: var(--color-text-secondary); }
+
+/* ── ATTENTION + its explanation: ONE bordered surface. */
+.ns-attn { border: 1px solid var(--verenward-bronze); background: var(--verenward-stone-card);
+  padding: 14px 16px; margin: 0 0 18px; }
+.ns-attn__head { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.ns-attn__kicker { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 700; color: var(--verenward-bronze); }
+.ns-attn__aside { font-size: 12px; color: var(--color-text-secondary); }
+/* A source that could not be confirmed says so in its own line, above the sections — never a
+   silent contribution of a fake zero. */
+.ns-attn__note { margin: 0 0 6px; font-size: 12.5px; color: var(--color-text-secondary); }
+/* TWO SECTIONS, SIDE BY SIDE, NEVER MERGED. The grid is what makes the separation visible: a
+   collections concern and a scheduling concern share no scale, so they never share a list. */
+.ns-attn__sections { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+.ns-attn__section { min-width: 0; }
+.ns-attn__section-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-weight: 600; color: var(--color-text-secondary); margin: 0 0 6px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--color-border); }
+.ns-attn__list { list-style: none; margin: 0; padding: 0; }
+.ns-attn__row { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; flex-wrap: wrap; padding: 4px 0; font-size: 13px; }
+.ns-attn__fact { flex: 1 1 20ch; min-width: 0; }
+.ns-attn__emph { color: var(--color-danger, #B23B3B); font-weight: 600; }
+.ns-attn__link { white-space: nowrap; }
+/* THE EXPLANATION SITS BENEATH THE FACTS IT EXPLAINS, inside the same surface, divided by a rule
+   rather than moved into a box of its own. It is prose, not a callout: nothing here is an action,
+   and nothing here may look like one. */
+.ns-attn__intel { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--color-border);
+  font-size: 12.5px; color: var(--color-text-secondary); }
+.ns-attn__intel-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 700; color: var(--color-text-secondary); margin-right: 8px; }
+.ns-attn__intel-bound { color: var(--color-text-muted); }
+@media (max-width: 767px) {
+  .ns-attn__sections { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── AR position words carry a tone as EMPHASIS. The word is the signal. */
+.ns-tone--critical { color: var(--color-danger, #B23B3B); font-weight: 600; }
+.ns-tone--info { color: var(--color-info); font-weight: 600; }
+.ns-tone--positive { color: var(--color-success); font-weight: 600; }
+.ns-tone--muted, .ns-tone--unknown { color: var(--color-text-secondary); font-weight: 600; }
+
+/* ── SERVICE ACTIVITY rows. A ruled list, not a table: four facts per job, and at narrow widths
+   the row becomes a stacked card rather than four squeezed columns. */
+.ns-svc__counts { display: inline-flex; gap: 18px; flex-wrap: wrap; }
+.ns-svc__count { color: var(--color-text-secondary); }
+.ns-svc__count strong { color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+.ns-svc__list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--color-border); }
+.ns-svc__row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 150px 150px; gap: 16px;
+  padding: 10px 0; border-bottom: 1px solid var(--color-border); font-size: 13.5px;
+  align-items: baseline; }
+.ns-svc__ref { font-weight: 600; }
+.ns-svc__status { font-weight: 600; color: var(--color-text-primary); }
+.ns-svc__when, .ns-svc__who { color: var(--color-text-secondary); }
+/* NEVER A SQUEEZED DESKTOP ROW. Below the tablet split the four columns become a stacked card. */
+@media (max-width: 744px) {
+  .ns-svc__row { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 12px 0; }
+}
+
+/* ── A NORTH STAR TABLE THAT BECOMES CARDS rather than scrolling sideways at handheld widths.
+   Opt-in (`.ns-table--cards`) so a table only converts where its cells carry the `data-label`
+   the card layout needs to keep each value named — a converted table with unlabelled cells is a
+   column of bare values, which is worse than the scroll it replaced. */
+@media (max-width: 744px) {
+  .ns-table--cards, .ns-table--cards tbody, .ns-table--cards tr, .ns-table--cards td { display: block; }
+  .ns-table--cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .ns-table--cards tr { padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+  .ns-table--cards td { border: 0; padding: 2px 0; display: flex; justify-content: space-between;
+    gap: 16px; }
+  .ns-table--cards td::before { content: attr(data-label); color: var(--color-text-secondary);
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+  .ns-table--cards td.ns-num { text-align: left; }
+}
+
+/* ── THE RAIL, which now leads with Contacts. Reference context, set quieter than the work
+   beside it — one label rule per section, then plain rows. */
+.ns-rail__section { margin: 0 0 26px; }
+.ns-rail__title { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 700; color: var(--color-text-secondary); margin: 0 0 10px;
+  padding-bottom: 6px; border-bottom: 2px solid var(--color-text-primary); }
+.ns-rail__dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 14px; font-size: 13px; }
+.ns-rail__dl dt { color: var(--color-text-secondary); }
+.ns-rail__dl dd { margin: 0; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.ns-rail__actions { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 8px; font-size: 13px; }
+.ns-rail__details > summary { cursor: pointer; }
+
+/* ── THE PRIMARY CONTACT. "Who do I call", answered or honestly unanswered. */
+.ns-primary { margin: 0 0 14px; }
+.ns-primary__label { display: block; font-size: 11px; letter-spacing: 0.1em;
+  text-transform: uppercase; font-weight: 600; color: var(--color-text-secondary);
+  margin-bottom: 4px; }
+.ns-primary__body { display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.ns-primary__who { min-width: 0; }
+.ns-primary__role, .ns-primary__phone { color: var(--color-text-secondary); }
+.ns-primary__phone { display: block; }
+/* The ambiguity is stated in words and weighted — never resolved by the page picking one. */
+.ns-primary__ambiguous { border-left: 3px solid var(--verenward-bronze); padding-left: 12px;
+  color: var(--color-text-primary); }
+/* THE CALL AFFORDANCE. A tel: link and nothing else — the device owns the dialer. It meets the
+   handheld touch floor because it is a control a thumb has to hit, and the floor is enforced here,
+   in the class, rather than left to the page (Grammar R16). */
+.ns-primary__call { display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; min-width: 88px; padding: 9px 18px; font-weight: 600; font-size: 13px;
+  border: 1px solid var(--color-border-strong); color: var(--color-text-primary);
+  text-decoration: none; }
+.ns-primary__call:hover { background: var(--verenward-stone-sunken); }
+.ns-primary__call:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* A primary contact with no stored number gets this, never a link to nothing and never another
+   contact's number. */
+.ns-primary__nocall { font-size: 12.5px; color: var(--color-text-secondary); font-style: italic; }
+
+/* ── THE PHONE ANSWER STACK's "More". Everything that is reference rather than answer. */
+.ns-more { border-top: 2px solid var(--color-text-primary); padding-top: 8px; }
+.ns-more__summary { cursor: pointer; font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; font-weight: 700; color: var(--color-text-secondary);
+  min-height: 44px; display: flex; align-items: center; }
+
+/* ── STANDING BECOMES TILES ON A PHONE, and one column on the smallest handset.
+   The same three metrics, the same three states — a tile is the phone's row. */
+@media (max-width: 639.98px) {
+  .ns-standing { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+    border: 0; padding: 0; text-align: center; }
+  .ns-standing__label { grid-column: 1 / -1; text-align: left; }
+  .ns-standing__metric { display: flex; flex-direction: column; align-items: center; gap: 2px;
+    border: 1px solid var(--color-border); background: var(--verenward-stone-card);
+    padding: 8px 4px; font-size: 11.5px; }
+  .ns-standing__metric-label { order: 2; }
+  .ns-standing__metric-value { order: 1; font-size: 15px; }
+  .ns-standing__note { grid-column: 1 / -1; text-align: left; }
+}
+@media (max-width: 380px) {
+  .ns-standing { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   THE RESPONSIVE BODY. Three compositions, decided by the space the page ACTUALLY has (a container
+   query), not by the size of the window — the application rail takes 250-300px before this page
+   gets any width at all, so a viewport breakpoint here would give the record a 196px column of
+   work beside a 340px column of reference. See the .ns-record-body block above.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* 1024-CLASS: the split holds, but the rail narrows and the gutter closes — at this width 340px of
+   reference is taking room the work needs. */
+@container ns-record (min-width: 900px) and (max-width: 1119.98px) {
+  .ns-record-body { grid-template-columns: minmax(0, 1fr) 220px; gap: 0 40px; }
+}
+
+/* TABLET: two equal columns. The rail PAIRS beside the first main section rather than waiting
+   below all of them — on a tablet, contacts and profile are readable beside the work, and the
+   tables that need width take the whole body underneath. `display: contents` on the main column
+   is what lets its sections become body-level grid items so they can span. */
+@container ns-record (min-width: 620px) and (max-width: 899.98px) {
+  .ns-page:not(.ns-page--phone) .ns-record-body { grid-template-columns: 1fr 1fr; gap: 0 32px; }
+  .ns-page:not(.ns-page--phone) .ns-record-body > div { display: contents; }
+  .ns-page:not(.ns-page--phone) .ns-record-body > div > * { grid-column: 1 / -1; }
+  .ns-page:not(.ns-page--phone) .ns-record-body > div > *:first-child { grid-column: 1; grid-row: 1; }
+  .ns-page:not(.ns-page--phone) .ns-record-body > .ns-rail { grid-column: 2; grid-row: 1; }
+}

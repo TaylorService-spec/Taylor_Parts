@@ -9,20 +9,20 @@ describe("AccountArSection", () => {
   it("renders a loading state", () => {
     useAccountAr.mockReturnValue({ loading: true, errorStatus: null, result: null });
     render(<AccountArSection accountId="acc-1" />);
-    expect(screen.getByText(/Loading AR/)).toBeTruthy();
+    expect(screen.getByText(/Loading receivables/)).toBeTruthy();
   });
 
   it("renders a denied state distinctly, never as empty", () => {
     useAccountAr.mockReturnValue({ loading: false, errorStatus: "denied", result: null });
     render(<AccountArSection accountId="acc-1" />);
-    expect(screen.getByText(/not authorized to view AR/)).toBeTruthy();
+    expect(screen.getByText(/Not available to you/)).toBeTruthy();
     expect(screen.queryByText(/No invoices/)).toBeNull();
   });
 
   it("renders an unavailable state on a failed read", () => {
     useAccountAr.mockReturnValue({ loading: false, errorStatus: "unavailable", result: null });
     render(<AccountArSection accountId="acc-1" />);
-    expect(screen.getByText(/currently unavailable/)).toBeTruthy();
+    expect(screen.getByText(/Receivables could/)).toBeTruthy();
   });
 
   it("renders empty honestly when the account genuinely has zero invoices", () => {
@@ -49,7 +49,9 @@ describe("AccountArSection", () => {
     });
     render(<AccountArSection accountId="acc-1" />);
     expect(screen.getByText("INV-1001")).toBeTruthy();
-    expect(screen.getByText("OVERDUE")).toBeTruthy();
+    // The POSITION IN WORDS, never the stored token -- arPositionWords owns the vocabulary.
+    expect(screen.getByText(/Overdue/)).toBeTruthy();
+    expect(screen.queryByText(/OVERDUE/)).toBeNull();
     // X-SALES-ORDER-USD-DISPLAY: normal currency presentation replaced the ISO-code prefix. The
     // assertion's point is unchanged — the real outstanding amount reaches the screen.
     expect(screen.getAllByText(/\$150\.00/).length).toBeGreaterThan(0);

@@ -12,6 +12,7 @@ import { updateAccount } from "../../domain/accounts";
 import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
+import { telHref } from "../../domain/phoneLink.js";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
@@ -30,65 +31,71 @@ import FailureState from "../../shared/ui/FailureState";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
-import { accountHeader, accountClassification, accountLifecycle } from "../../domain/accountNorthStar.js";
+import {
+  accountHeader,
+  accountClassification,
+  accountLifecycle,
+  accountTermsDigest,
+} from "../../domain/accountNorthStar.js";
+import { formatClockTime } from "../../domain/displayTimestamp.js";
+import { useIsPhone } from "../../navigation/useIsPhone.js";
 import { useAuth } from "../../auth/AuthContext";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
-  accountRecordPageMainSubset,
+  accountRecordPageCommercialSubset,
+  accountRecordPageArSubset,
+  accountRecordPageServiceSubset,
   accountRecordPageContactsLocationsSubset,
+  accountArGranted,
+  accountCommercialGranted,
   accountPageListResolver,
   accountPageEntityResolver,
   useAccountPageCapabilityDecisions,
   buildAccountRelatedListPresentation,
 } from "../../metadata/definitions/accountPageComponents.js";
 
-// X-ACCOUNT-PAGE-WIRING -- Financials / Activity & Notes / Service Activity (the MAIN-column
-// componentId sections, in accountPage.js's own order) now render through MetadataRecordPage
-// against the real accountRecordPage definition (definitions/accountPage.js), using a subset of
-// its sections -- see accountPageComponents.js's WIRING SCOPE note for exactly what remains
-// hand-rendered below and why (the header identity, health strip, Account Attention, the
-// Contacts/Locations RELATED_LIST sections, and the two FIELD_GROUP sections). Capability
-// decisions come from useAccountPageCapabilityDecisions, the same trusted
-// resolveEffectiveAccessCallable-backed, fail-closed gate access/useReportCapabilities.js
-// already uses, requesting exactly the ids accountRecordPage declares.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE CUSTOMER RECORD, AGAINST THE APPROVED ACCOUNT NORTH STAR P1 COMPOSITION.
 //
-// X-ACCOUNT-PAGE-WIRING-COMPLETE -- re-evaluated after MetadataRecordPage's three renderer gaps
-// closed (commit 27b109bb: FIELD_GROUP entityResolver, RELATED_LIST default binding, `embedded`).
-// Closing those gaps made every remaining section mechanically renderable; it did not make any of
-// them SAFE to render here. Each was checked against what it would actually replace and found to
-// render measurably worse -- see accountPageComponents.js's WIRING SCOPE block for the full,
-// per-section evidence (a section-level finance.read gate hiding Account Attention's ungated
-// Work-Order half for every current viewer; a forced duplicate live read plus lost Add/Import
-// CRUD and lost post-add focus-handoff for Contacts/Locations; raw unresolved reference ids and a
-// lost taxStatus safe-default for Commercial Profile; a lost collapsed-by-default layout for
-// Notes & Identifiers). No section below was moved. Locked in by test/accountPageComponents.test.jsx.
+// This page was migrated to the North Star grammar once already (#1511) using the FAMILY grammar,
+// because no Owner-approved Account composition existed yet. One now does
+// (design_handoff_account/North Star - Account P1.dc.html), and this file is the reconciliation
+// against it -- a PRESENTATION pass, not a rebuild. Every read, write, capability gate, honest
+// state and derivation on this page is the one that was already here. What moved is where facts
+// sit and how they are drawn.
 //
-// A-ACCOUNT-WIRE-CALLABLE-LISTS-2 -- Opportunities and Sales Orders (both RELATED_LIST,
-// CALLABLE-readVia) are now ALSO wired through the same MetadataRecordPage call, as the first
-// two sections of accountRecordPageMainSubset (accountPage.js's own order: opportunities ->
-// salesOrders -> financials -> activityAndNotes -> serviceActivity). Their two prior blockers
-// (a raw-epoch-millisecond TIMESTAMP column; DefaultRelatedList wiring no row navigation) closed
-// with commit 6998306f -- see accountPageComponents.js's WIRING SCOPE note for the full
-// re-verification and the one new REGISTRATION_PENDING finding (opportunity.js's own
-// rowNavigationTo names a route that does not exist; handled inside accountPageComponents.js's
-// listResolver, not here). AccountOpportunitiesSection.jsx / AccountSalesOrdersSection.jsx are no
-// longer mounted here -- their own account-scoped hooks/components remain unmodified and
-// available for other callers, but this page reads both through the metadata RELATED_LIST path.
+// WHAT THE APPROVED DESIGN CHANGED, IN ORDER:
+//
+//   1. CONTACTS LEAD THE RAIL. They rendered at the bottom of the main column, below every related
+//      list -- "who do I call" was the last thing on the page. This is the load-bearing change.
+//   2. STANDING IS ONE RULED ROW, not a grid of metric cards (AccountHealthStrip.jsx).
+//   3. ATTENTION AND ITS EXPLANATION SHARE ONE BORDERED SURFACE, and the explanation sits BELOW
+//      the governed facts it explains (AccountAttentionSection.jsx).
+//   4. CLASSIFICATION MOVED INTO THE KICKER. It is identity, not a fact in the row beneath it.
+//   5. THE TERMS DIGEST JOINED THE HEADER FACTS (accountTermsDigest).
+//   6. RECEIVABLES GOT THEIR OWN MAIN-COLUMN SECTION rather than living inside a generic
+//      financials block (AccountArSection.jsx).
+//   7. STANDING NOW PRECEDES ATTENTION. Attention still comes before everything it warns about;
+//      the three real numbers come first, as the approved composition draws them.
+//   8. OPPORTUNITIES AND SALES ORDERS ARE ONE SECTION -- "Commercial activity" -- rather than two
+//      sibling related lists. See the note on that section for why they remain TWO metadata
+//      sections underneath (their capability gates are not the same gate).
+//   9. REAL TABLET AND PHONE COMPOSITIONS. The page used to be a stacked desktop.
+//
+// WHAT DID NOT CHANGE, AND MUST NOT: the writes (updateAccount / createContact / createLocation),
+// the capability decisions, the fail-closed gates, the distinct unavailable-vs-not-found states,
+// the no-lifecycle rule (ND-11), the name-is-identity rule (DECISIONS #106), and the two-section
+// attention rule.
+//
+// ── A-NS-1, a premise the design and the repository disagree on ──────────────────────────────
+// The approved design's note says "useAccount is not a subscription". It is one -- hooks/
+// useAccount.js uses onSnapshot. The design's CONCLUSION is implemented exactly as written (no
+// live badge; honest "Read-checked <time> · Refresh" wording), because that wording is true under
+// either premise: the data is at least as fresh as the stamp. Recorded rather than silently
+// resolved, and it changes no business behavior, so it needed no ruling.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
 
-// Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
-// rendered UI says "Customer Detail" throughout.
-//
-// Customer/Account Business Model -- Customer PR 2 (docs/specifications/
-// customer-account-business-model.md). Reworked from a flat panel into the
-// approved SIX-SECTION layout (not tabs, per the Owner's direction), in
-// reading order: Account Summary -> Financial Summary -> Contacts ->
-// Locations -> Service Activity -> Notes/Identifiers. Financial Summary and
-// Service Activity are INERT mount points only in this PR -- their live
-// behavior (provider states, Work Order counts/timeline) is deliberately
-// deferred to PR 3/PR 4. Reuses the ported address/contact domain layer
-// (formatAddress, primaryContactState, AddressFields) rather than
-// re-implementing it.
 // ════════════════════ THE LABEL MAPS THAT USED TO LIVE HERE ════════════════════
 //
 // `RELATIONSHIP_LABEL` and `LINE_OF_BUSINESS_LABEL` were declared in this file, and
@@ -100,40 +107,120 @@ import {
 // preserves both rules these components carried: an Account with no values renders nothing (never a
 // silent default to "Customer" or "Taylor"), and the order follows the vocabulary rather than
 // however the stored array happens to be sorted.
-//
-// The badges themselves are gone with them. The classification is identity — it belongs in the
-// record header's fact row, in words, not as a row of pills above it.
 
-// The classification carries no tone at all now, and does not need one: `accountRelationshipTone`
-// and `accountLineOfBusinessTone` both return the constant "info" for every value, so the pills
-// they coloured were conveying nothing that the words do not. The STATUS tone is still delegated to
-// accountPortfolio.js (through accountNorthStar's header), so the record and the portfolio list
-// cannot disagree about the one classification where colour does carry meaning.
-function ClassificationWords({ items }) {
-  if (!items || items.length === 0) return null;
-  return <>{items.map((i) => i.label).join(" · ")}</>;
+// THE KICKER, which is where the classification now lives.
+//
+// The record family word comes first ("Customer" — this is a customer record), then the account's
+// own classification in the vocabulary's order. A relationship whose label IS the family word is
+// not printed twice: an ordinary customer reads "Customer", not "Customer · Customer". An account
+// with no classification at all renders the family word alone — never a silent default to
+// "Taylor", which is the rule accountClassification() exists to keep.
+function accountKicker(classification) {
+  const words = ["Customer"];
+  for (const item of [...classification.relationships, ...classification.linesOfBusiness]) {
+    if (!words.includes(item.label)) words.push(item.label);
+  }
+  return words.join(" · ");
 }
 
 // Issue #214 PR-2 -- the inline ContactForm / LocationForm that used to render
 // below the live lists have been replaced by ContactCreateModal /
 // LocationCreateModal (shared Modal + System-A form primitives). See those files.
 
-// Primary-contact summary for the Account Summary section -- reuses
-// primaryContactState()'s three states; the MULTIPLE case surfaces the
-// same non-silent warning the source derivation was built for.
-function PrimaryContactSummary({ contacts }) {
-  const primary = primaryContactState(contacts);
-  if (primary.state === "ONE") {
-    return <div className="fo-muted">Primary contact: {primary.contact.name}</div>;
-  }
-  if (primary.state === "MULTIPLE") {
+// THE PRIMARY CONTACT — "who do I call", answered honestly or not at all.
+//
+// ════════════════════ THE SELECTION RULE IS THE WHOLE COMPONENT ════════════════════
+//
+// primaryContactState() owns the answer and this component never second-guesses it. Its three
+// states stay three states:
+//
+//   ONE       the governed primary. Its name, and — where a Call affordance is offered — a `tel:`
+//             built from THAT contact's own stored phone and nothing else.
+//   MULTIPLE  the ambiguity is surfaced, exactly as it always was. No contact is silently chosen,
+//             and no Call is offered: picking one merely to have something to dial would be the
+//             page inventing an answer the data does not hold.
+//   NONE      stated. No contact is fabricated and no Call target is invented.
+//
+// A primary contact with no stored phone gets NO active Call control — never an account-level
+// number, never a different contact who happens to have one. "This contact has no phone number" is
+// the true answer; substituting a reachable number for an unreachable person is not a fallback,
+// it is a different fact.
+//
+// ════════════════════ WHAT "CALL" IS ════════════════════
+//
+// A `tel:` URI over an already-stored value (domain/phoneLink.js). EOS hands the number to the
+// device; the operating system opens the dialer, shows the number and asks the person whether to
+// place the call. There is no write, no callable, no command, no telephony service and no
+// automation here — and no contact prioritisation: the number dialled is the number of the ONE
+// contact the record itself marks primary.
+//
+// The displayed number is the stored string, unchanged. Nothing is reformatted back into the
+// record, and no Contact document is touched.
+function PrimaryContactPanel({ contacts, loading, error, withCall = false }) {
+  if (error) {
     return (
-      <div className="fo-warning">
-        Warning: {primary.contacts.length} contacts are marked primary — resolve to a single primary contact.
+      <div className="ns-primary">
+        <span className="ns-primary__label">Primary contact</span>
+        <p className="ns-state">Contacts couldn’t be read, so the primary contact is unknown.</p>
       </div>
     );
   }
-  return null; // NONE -> omit, never fabricate a primary
+  if (loading) {
+    return (
+      <div className="ns-primary">
+        <span className="ns-primary__label">Primary contact</span>
+        <p className="ns-state">Loading contacts…</p>
+      </div>
+    );
+  }
+
+  const primary = primaryContactState(contacts);
+
+  if (primary.state === "MULTIPLE") {
+    return (
+      <div className="ns-primary">
+        <span className="ns-primary__label">Primary contact</span>
+        <p className="ns-state ns-primary__ambiguous">
+          {primary.contacts.length} contacts are marked primary — resolve to a single primary
+          contact. No one of them is treated as the primary until that is settled.
+        </p>
+      </div>
+    );
+  }
+
+  if (primary.state === "NONE") {
+    return (
+      <div className="ns-primary">
+        <span className="ns-primary__label">Primary contact</span>
+        <p className="ns-state">No contact on this customer is marked primary.</p>
+      </div>
+    );
+  }
+
+  const contact = primary.contact;
+  const href = telHref(contact.phone);
+
+  return (
+    <div className="ns-primary">
+      <span className="ns-primary__label">Primary contact</span>
+      <div className="ns-primary__body">
+        <span className="ns-primary__who">
+          <strong>{contact.name}</strong>
+          {contact.role ? <span className="ns-primary__role"> · {contact.role}</span> : null}
+          {/* The stored value, rendered as stored. */}
+          {contact.phone ? <span className="ns-primary__phone">{contact.phone}</span> : null}
+        </span>
+        {withCall &&
+          (href ? (
+            <a className="ns-primary__call" href={href}>
+              Call
+            </a>
+          ) : (
+            <span className="ns-primary__nocall">No phone number recorded</span>
+          ))}
+      </div>
+    </div>
+  );
 }
 
 // Account Commercial Profile -- PR 1. Renders the informational fields. Every
@@ -141,16 +228,16 @@ function PrimaryContactSummary({ contacts }) {
 // the stored snapshot), so loading/resolved/unknown/error stay distinct.
 // PO-required only renders when a real boolean is stored (a malformed stored
 // value is surfaced in the edit form, not silently shown as Yes/No here).
+//
+// It is a rail dl in the approved composition rather than a stack of lines, and tax status is
+// ALWAYS stated — an absent value resolves to Unknown, NEVER silently to Taxable. That safe
+// default is domain/commercialProfile.js's, applied here and in the header's terms digest, which
+// is the same derivation read twice, not two derivations.
 function CommercialProfileSection({ account, contacts, contactsLoading, contactsError, byUserId, directoryLoading, directoryError }) {
   const currency = account.defaultCurrency || null;
   const invoiceMethod = account.invoiceDeliveryMethod || null;
   const hasPo = account.purchaseOrderRequired === true || account.purchaseOrderRequired === false;
 
-  // Governed enum fields (PR 2). paymentTerms is shown only when set; tax
-  // status is ALWAYS resolved (absent => UNKNOWN safe default, never silently
-  // TAXABLE) and shown whenever the profile section renders. `hasTaxStatus`
-  // (an explicitly stored value) is one of the signals that the section has
-  // content, so a stored UNKNOWN still surfaces the section.
   const paymentTerms = account.paymentTerms || null;
   const hasTaxStatus = typeof account.taxStatus === "string" && account.taxStatus !== "";
   const taxStatus = resolveTaxStatus(account.taxStatus);
@@ -176,41 +263,63 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
     billingIdentity.state !== "unset";
 
   return (
-    <section className="wo-history">
-      <h4>Commercial Profile</h4>
+    <section className="ns-rail__section" aria-label="Commercial profile">
+      <h3 className="ns-rail__title">Commercial profile</h3>
       {hasAny ? (
-        <div className="fo-muted">
-          <IdentityLine label="Owner" identity={ownerIdentity} />
-          {currency && <div>Default currency: {currency}</div>}
-          {paymentTerms && <div>Payment terms: {paymentTerms}</div>}
-          {hasPo && <div>Purchase order required: {account.purchaseOrderRequired ? "Yes" : "No"}</div>}
-          {invoiceMethod && <div>Invoice delivery: {invoiceMethod}</div>}
-          {/* Safe default made visible: an Account with a profile always shows
-              a tax status, resolving an absent value to UNKNOWN. */}
-          <div>Tax status: {taxStatus}</div>
-          <IdentityLine label="Billing contact" identity={billingIdentity} />
-        </div>
+        <dl className="ns-rail__dl">
+          <IdentityLine label="Owner" identity={ownerIdentity} variant="definition" />
+          {paymentTerms && (
+            <>
+              <dt>Terms</dt>
+              <dd>{paymentTerms}</dd>
+            </>
+          )}
+          {/* Safe default made visible: an Account with a profile always shows a tax status,
+              resolving an absent value to UNKNOWN. */}
+          <dt>Tax status</dt>
+          <dd>{taxStatus}</dd>
+          {hasPo && (
+            <>
+              <dt>PO required</dt>
+              <dd>{account.purchaseOrderRequired ? "Yes" : "No"}</dd>
+            </>
+          )}
+          {invoiceMethod && (
+            <>
+              <dt>Invoicing</dt>
+              <dd>{invoiceMethod}</dd>
+            </>
+          )}
+          <IdentityLine label="Billing contact" identity={billingIdentity} variant="definition" />
+          {currency && (
+            <>
+              <dt>Currency</dt>
+              <dd>{currency}</dd>
+            </>
+          )}
+        </dl>
       ) : (
-        <p className="fo-muted">No commercial profile set yet.</p>
+        <p className="ns-state">No commercial profile set yet.</p>
       )}
     </section>
   );
 }
 
-// X-RELATED-LIST-ACTIONS wiring for the Contacts/Locations sections below --
-// A-ACCOUNT-WIRE-CONTACTS-LOCATIONS. The section HEADING (with its live row count) and the
-// "+ Add ..." / "Import ..." affordances stay hand-rendered here -- MetadataListGrid /
-// DefaultRelatedList have no equivalent -- while the row grid itself, the four
-// EMPTY/DENIED/UNAVAILABLE/READY states, and the post-create keyboard-focus handoff all
-// route through the real metadata list runtime (buildAccountRelatedListPresentation +
-// MetadataListGrid's own focusRowKey/onFocusHandled). See accountPageComponents.js's WIRING
-// SCOPE note for the full case (why a separate MetadataRecordPage call, why NOT
-// DefaultRelatedList, the Location-address-flattening and Contact-isPrimary fixes).
-function RelatedListSection({ heading, presentation, onRetry, focusRowKey, onFocusHandled, announcement, actions }) {
+// X-RELATED-LIST-ACTIONS wiring for the Contacts/Locations sections -- A-ACCOUNT-WIRE-CONTACTS-
+// LOCATIONS. The section HEADING (with its live row count) and the "+ Add ..." / "Import ..."
+// affordances stay hand-rendered here -- MetadataListGrid / DefaultRelatedList have no equivalent
+// -- while the row grid itself, the four EMPTY/DENIED/UNAVAILABLE/READY states, and the
+// post-create keyboard-focus handoff all route through the real metadata list runtime
+// (buildAccountRelatedListPresentation + MetadataListGrid's own focusRowKey/onFocusHandled).
+//
+// It renders in the RAIL now rather than the main column, which is the approved composition's one
+// load-bearing move. Nothing about the list, its reads or its writes changed with it.
+function RelatedListSection({ heading, presentation, onRetry, focusRowKey, onFocusHandled, announcement, actions, children }) {
   return (
-    <>
-      <h4>{heading}</h4>
+    <section className="ns-rail__section">
+      <h3 className="ns-rail__title">{heading}</h3>
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
+      {children}
       <MetadataListGrid
         presentation={presentation}
         onRetry={onRetry}
@@ -219,15 +328,15 @@ function RelatedListSection({ heading, presentation, onRetry, focusRowKey, onFoc
         onFocusHandled={onFocusHandled}
       />
       {actions && actions.length > 0 && (
-        <div className="fo-btn-row">
+        <div className="ns-rail__actions">
           {actions.map((action) => (
-            <button key={action.label} type="button" onClick={action.onClick}>
+            <button key={action.label} type="button" className="fo-link-btn" onClick={action.onClick}>
               {action.label}
             </button>
           ))}
         </div>
       )}
-    </>
+    </section>
   );
 }
 
@@ -247,6 +356,14 @@ export default function AccountDetail() {
   // {} keeps `user` undefined/null in that case, which useAccountPageCapabilityDecisions already
   // treats as signed-out (fail-closed, denies every capability) -- never a permissive default.
   const { user, role } = useAuth() ?? {};
+
+  // WIDTH CHOOSES COMPOSITION, NEVER AUTHORITY (see navigation/useIsPhone.js). The phone renders a
+  // different ANSWER STACK -- identity, attention, standing, primary contact, activity, with
+  // profile/receivables/notes behind "More" -- because a customer record read on a phone is being
+  // read to answer one question, not to be surveyed. Every capability gate, every read and every
+  // write below is identical at every width; rotating a phone changes nothing about what a person
+  // may see or do.
+  const isPhone = useIsPhone();
 
   // THE TWO GOVERNED FIELDS, AND WHO MAY CHANGE THEM.
   //
@@ -272,7 +389,7 @@ export default function AccountDetail() {
     setFocusFieldId(fieldId);
     setIsEditing(true);
   }, []);
-  const { account, loading, error: accountError, retry: retryAccount } = useAccount(accountId);
+  const { account, loading, error: accountError, retry: retryAccount, checkedAt } = useAccount(accountId);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
@@ -303,12 +420,6 @@ export default function AccountDetail() {
   const [locationAnnouncement, setLocationAnnouncement] = useState("");
   // The contact/location id to move focus to once the live subscription renders
   // its row (matched by id internally; the id is never rendered/announced).
-  // X-RELATED-LIST-ACTIONS: the post-create focus handoff itself (waiting for the live
-  // subscription to deliver the new row, then moving DOM focus onto it) is now
-  // MetadataListGrid's own concern (focusRowKey/onFocusHandled, wired through
-  // accountRelatedListRenderer below) -- this state is only the id to hand off and the
-  // handler that clears it once MetadataListGrid reports the handoff done, matching the
-  // contract every other caller of that prop already follows.
   const [pendingContactFocus, setPendingContactFocus] = useState(null);
   const [pendingLocationFocus, setPendingLocationFocus] = useState(null);
 
@@ -401,11 +512,13 @@ export default function AccountDetail() {
     );
   }
 
-  // X-RELATED-LIST-ACTIONS wiring -- the RELATED_LIST binding for accountRecordPage's
-  // "contacts" / "locations" sections. `listRenderer` (MetadataRecordPage's own injection
-  // point) always wins over the default binding for every RELATED_LIST section that call
-  // touches -- see accountRecordPageContactsLocationsSubset's own comment for why this is a
-  // SEPARATE MetadataRecordPage call rather than folded into accountRecordPageMainSubset.
+  // The RELATED_LIST binding for accountRecordPage's "contacts" / "locations" sections.
+  // `listRenderer` (MetadataRecordPage's own injection point) always wins over the default binding
+  // for every RELATED_LIST section that call touches -- which is why this stays a SEPARATE
+  // MetadataRecordPage call from the commercial one.
+  //
+  // Contacts leads, and it carries the governed primary-contact state above its rows: the count,
+  // the ONE primary, or the MULTIPLE ambiguity, never a silently chosen one.
   function accountRelatedListRenderer({ listId }) {
     if (listId === "account.contacts") {
       return (
@@ -422,10 +535,20 @@ export default function AccountDetail() {
           onFocusHandled={() => setPendingContactFocus(null)}
           announcement={contactAnnouncement}
           actions={[
-            { label: "+ Add Contact", onClick: () => setShowContactModal(true) },
-            { label: "Import Contacts", onClick: () => setShowImport(true) },
+            { label: "+ Add contact", onClick: () => setShowContactModal(true) },
+            { label: "Import", onClick: () => setShowImport(true) },
           ]}
-        />
+        >
+          {/* No Call affordance in the rail: the prominent Call control belongs to the phone
+              answer stack, and a second desktop calling surface is not something the approved
+              composition asks for. The primary-contact STATE is stated at every width. */}
+          <PrimaryContactPanel
+            contacts={contacts}
+            loading={contactsLoading}
+            error={contactsError}
+            withCall={false}
+          />
+        </RelatedListSection>
       );
     }
     if (listId === "account.locations") {
@@ -442,7 +565,7 @@ export default function AccountDetail() {
           focusRowKey={pendingLocationFocus}
           onFocusHandled={() => setPendingLocationFocus(null)}
           announcement={locationAnnouncement}
-          actions={[{ label: "+ Add Location", onClick: () => setShowLocationModal(true) }]}
+          actions={[{ label: "+ Add location", onClick: () => setShowLocationModal(true) }]}
         />
       );
     }
@@ -456,22 +579,187 @@ export default function AccountDetail() {
   const header = accountHeader(account);
   const classification = accountClassification(account);
   const lifecycle = accountLifecycle();
+  // Read once, at the granularity this page composes at -- see accountPageComponents.js.
+  const arGranted = accountArGranted(capabilityDecisions);
+  const commercialGranted = accountCommercialGranted(capabilityDecisions);
+  const termsDigest = accountTermsDigest(account);
+  // The owner, resolved to a CURRENT name, never the stored id or a stale snapshot. Absent and
+  // still-resolving both render nothing in the header rather than a placeholder fact.
+  const ownerIdentity = resolveOwnerIdentity(account.accountOwner, {
+    byUserId,
+    loading: directoryLoading,
+    error: directoryError,
+  });
+  const ownerFact =
+    ownerIdentity.state === "unset" || ownerIdentity.state === "loading" ? null : ownerIdentity.name;
 
   const actions = (
     <ActionRail
       start={<button type="button" onClick={() => navigate(backToCustomers())} className="fo-link-btn">&larr; Back to Customers</button>}
-      primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit</Button> : null}
+      primary={!isEditing ? <Button variant="primary" onClick={() => setIsEditing(true)}>Edit customer</Button> : null}
     />
   );
 
+  // ── The composed pieces, defined once and ordered per composition below ────────────────────
+
+  // COMMERCIAL ACTIVITY -- ONE section, TWO governed reads.
+  //
+  // The approved composition draws opportunities and orders as a single section in one row
+  // grammar, and that is what renders. Underneath they remain two metadata RELATED_LIST sections
+  // on purpose: they are gated by DIFFERENT capabilities (opportunity.read / salesOrder.read), and
+  // collapsing them into one metadata section would force one gate to answer for both -- a
+  // fail-closed granularity loss, to satisfy a visual. Two declarations, one section on the page.
+  //
+  // Opportunity rows stay honestly non-navigable: no opportunity record page exists anywhere in
+  // App.jsx, so a row that looked clickable would 404. The reason is stated rather than left as an
+  // unexplained dead row, and no route is invented here to fix it.
+  const commercialActivity = (
+    <section className="ns-section" aria-label="Commercial activity">
+      <div className="ns-section__head">
+        <h2 className="ns-section__title">Commercial activity</h2>
+        <span className="ns-section__meta">· opportunities and orders for this account</span>
+      </div>
+      {/* `embedded`: this render is a FRAGMENT of a hand-composed page, not the page. Without it
+          a fully-denied subset claims "you do not have access to any part of this record" -- a
+          page-level sentence about a section, beside a page that is plainly still rendering. */}
+      <MetadataRecordPage
+        definition={accountRecordPageCommercialSubset}
+        record={account}
+        onEditField={editField}
+        editability={accountEditability}
+        capabilityDecisions={capabilityDecisions}
+        listResolver={accountPageListResolver}
+        entityResolver={accountPageEntityResolver}
+        embedded
+      />
+      {commercialGranted ? (
+        <p className="ns-table__note">
+          Opportunity rows can’t open yet — no opportunity page exists. Orders link to their records.
+        </p>
+      ) : (
+        // The section keeps its place and says why it is empty. An empty commercial section with
+        // no explanation reads as "this customer has no orders", which is a different fact.
+        <p className="ns-state ns-state--denied">Not available to you.</p>
+      )}
+    </section>
+  );
+
+  // ACCOUNTS RECEIVABLE -- its own main-column section (AccountArSection carries the heading), and
+  // still gated on finance.read exactly as accountPage.js declares it.
+  //
+  // A-D2 -- WHEN finance.read DENIES AR, THE FINANCIAL GEOGRAPHY STAYS. MetadataRecordPage hides a
+  // gated section by rendering nothing, which on this page would remove the financial region
+  // entirely for a salesperson -- and a customer record with no financial region reads as a
+  // customer who owes nothing. That is the one thing this page must never imply. So the section
+  // keeps its title and states the denial in the approved words. It is a presentation of the SAME
+  // fail-closed decision, not a second gate: nothing below reaches a read.
+  const receivables = arGranted ? (
+    <MetadataRecordPage
+      definition={accountRecordPageArSubset}
+      record={account}
+      onEditField={editField}
+      editability={accountEditability}
+      capabilityDecisions={capabilityDecisions}
+      listResolver={accountPageListResolver}
+      entityResolver={accountPageEntityResolver}
+      embedded
+    />
+  ) : (
+    <section className="ns-section" aria-label="Accounts receivable">
+      <div className="ns-section__head">
+        <h2 className="ns-section__title">Accounts receivable</h2>
+      </div>
+      {/* Not zero, not empty, not absent — a different answer from all three. */}
+      <p className="ns-state ns-state--denied">Not available to you.</p>
+    </section>
+  );
+
+  // SERVICE ACTIVITY, then Activity & Notes. crm.activity.read is registered active:false
+  // catalog-wide, so Activity & Notes renders nowhere it is not separately activated -- the
+  // correct fail-closed reading of accountPage.js's own declaration, not a regression. It sits
+  // last because the approved composition names three main-column sections and this is not one of
+  // them; where it IS activated it appends rather than displacing them.
+  const serviceActivity = (
+    <MetadataRecordPage
+      definition={accountRecordPageServiceSubset}
+      record={account}
+      onEditField={editField}
+      editability={accountEditability}
+      capabilityDecisions={capabilityDecisions}
+      listResolver={accountPageListResolver}
+      entityResolver={accountPageEntityResolver}
+      embedded
+    />
+  );
+
+  // CONTACTS FIRST, then Locations -- accountRecordPageContactsLocationsSubset's own order.
+  const contactsAndLocations = (
+    <MetadataRecordPage
+      definition={accountRecordPageContactsLocationsSubset}
+      record={account}
+      capabilityDecisions={capabilityDecisions}
+      listResolver={accountPageListResolver}
+      entityResolver={accountPageEntityResolver}
+      listRenderer={accountRelatedListRenderer}
+      embedded
+    />
+  );
+
+  const commercialProfile = (
+    <CommercialProfileSection
+      account={account}
+      contacts={contacts}
+      contactsLoading={contactsLoading}
+      contactsError={contactsError}
+      byUserId={byUserId}
+      directoryLoading={directoryLoading}
+      directoryError={directoryError}
+    />
+  );
+
+  // NOTES & IDENTIFIERS -- collapsed by default, matching accountPage.js's own
+  // collapsedByDefault: true. Low-value metadata stays secondary; it is not promoted into the
+  // primary hierarchy because it happens to be easy to render.
+  const notesAndIdentifiers = (
+    <section className="ns-rail__section">
+      <details className="ns-rail__details">
+        <summary className="ns-rail__title">Notes &amp; identifiers</summary>
+        {account.notes ? (
+          <p className="ns-rail__meta">{account.notes}</p>
+        ) : (
+          <p className="ns-state">No notes.</p>
+        )}
+        {hasIdentifiers ? (
+          <div className="ns-rail__meta">
+            {account.customerNumber && <div>Customer #: {account.customerNumber}</div>}
+            {account.erpId && <div>ERP ID: {account.erpId}</div>}
+            {account.accountingId && <div>Accounting ID: {account.accountingId}</div>}
+            {account.legacyId && <div>Legacy ID: {account.legacyId}</div>}
+          </div>
+        ) : (
+          <p className="ns-state">No external identifiers.</p>
+        )}
+      </details>
+    </section>
+  );
+
+  const standing = <AccountHealthStrip workOrderCount={workOrderCount} arView={accountArView(arState)} />;
+  const attention = <AccountAttentionSection accountId={account.id} />;
+
   return (
-    <div className="ns-page">
+    <div className={isPhone ? "ns-page ns-page--phone" : "ns-page"}>
       {/* THE UTILITY LINE. Context left; on the right, what is TRUE about this read.
-          No live badge: `useAccount` is not a subscription this page can claim liveness from. */}
+          No live badge -- the approved composition asks for honest freshness wording instead, and
+          Refresh re-subscribes through useAccount's own retry (no new read path). A page with no
+          answer yet says nothing rather than stamping a time it cannot evidence. */}
       <div className="ns-page__utility">
         <span className="ns-page__context">
-          <Link to={backToCustomers()}>Customers</Link>
+          <Link to={backToCustomers()}>CRM/Sales → Customers</Link>
           {header.name ? ` → ${header.name}` : null}
+        </span>
+        <span className="ns-page__freshness">
+          {checkedAt ? `Read-checked ${formatClockTime(checkedAt)} · ` : null}
+          <button type="button" className="fo-link-btn" onClick={retryAccount}>Refresh</button>
         </span>
       </div>
       <div className="ns-rulepair" />
@@ -489,39 +777,26 @@ export default function AccountDetail() {
         />
       ) : (
         <>
-          {/* THE RECORD HEADER. The status pill row and the ContextBand are gone: the status is
-              stated ONCE, as a sentence, and the classification is stated in words in the fact row
-              rather than as a row of pills above it (NS-P4, R04).
+          {/* THE RECORD HEADER. The status is stated ONCE, as a sentence, and the classification
+              is stated in words in the KICKER rather than as facts beneath the title — it is
+              identity, not a detail about the record.
 
               THE TITLE IS THE NAME. An Account has no governed reference — customerNumber, erpId,
               accountingId and legacyId are all EXTERNAL identifiers from other systems, and none of
               them is what anybody here calls the customer. The document id is never a fallback
               (DECISIONS #106). */}
           <RecordIdentity
-            kicker="Customer"
+            kicker={accountKicker(classification)}
             reference={header.name}
             fallbackName="Account — no name recorded"
             statusWords={header.statusSentence ?? header.statusWords}
             statusTone={header.statusTone}
             statusVariant="sentence"
             facts={[
-              {
-                key: "relationship",
-                label: null,
-                value: classification.relationships.length > 0
-                  ? <ClassificationWords items={classification.relationships} />
-                  : null,
-              },
-              {
-                key: "lob",
-                label: "Line of business",
-                value: classification.linesOfBusiness.length > 0
-                  ? <ClassificationWords items={classification.linesOfBusiness} />
-                  : null,
-              },
-              account.customerNumber ? { key: "customerNumber", label: "Customer #", value: account.customerNumber } : null,
+              ownerFact ? { key: "owner", label: "Owner", value: ownerFact } : null,
               billingLine ? { key: "billing", label: "Billing", value: billingLine } : null,
-              (account.tags ?? []).length > 0 ? { key: "tags", label: "Tags", value: account.tags.join(", ") } : null,
+              account.customerNumber ? { key: "customerNumber", label: "Customer #", value: account.customerNumber } : null,
+              termsDigest ? { key: "terms", label: null, value: termsDigest } : null,
             ].filter(Boolean)}
             actions={actions}
           />
@@ -531,109 +806,71 @@ export default function AccountDetail() {
               one: `status` is an ordinary editable field written through `updateAccount`, with no
               transition command anywhere and nothing enforcing an order. ACTIVE / INACTIVE /
               PROSPECT / ARCHIVED look like a progression, and drawing them as four chevrons would
-              assert a rule the engine does not hold.
-              Stated in words rather than left as an unexplained difference from the other two
-              record families. */}
+              assert a rule the engine does not hold. Stated in words rather than left as an
+              unexplained difference from the other two record families. */}
           <p className="ns-gap-note">{lifecycle.reason}</p>
 
-          {/* ATTENTION, IN ITS CORRECT PLACE (NS-P2: kicker → header → lifecycle → ATTENTION →
-              work → rail).
-              This is the whole of the Account's attention defect. The section itself was already
-              right — bounded, account-scoped, composed from existing authorities, honest per source,
-              silent when there is nothing to say. It simply rendered at the BOTTOM of the page,
-              below every related list, in the secondary column. A reader reached it after
-              everything it should have warned them about.
-              Nothing about what it says has changed, and it is deliberately NOT flattened into the
-              shared AttentionBand: accountAttentionProjection.js states that AR and Work-Order
-              past-due are never merged into one ranked list, and a flat band has nowhere to put its
-              per-source honest notes. */}
-          <AccountAttentionSection accountId={account.id} />
+          {isPhone ? (
+            /* THE PHONE ANSWER STACK. Not a squeezed desktop: identity → attention → standing →
+               primary contact → activity, with profile, receivables and notes behind "More".
+               The order is the order the questions are asked in on a phone. */
+            <>
+              {attention}
+              {standing}
+              <PrimaryContactPanel
+                contacts={contacts}
+                loading={contactsLoading}
+                error={contactsError}
+                withCall
+              />
+              <div className="ns-record-body">
+                <div>
+                  {commercialActivity}
+                  {serviceActivity}
+                </div>
+                <aside className="ns-rail" aria-label="Account context">
+                  <details className="ns-more">
+                    <summary className="ns-more__summary">More</summary>
+                    {contactsAndLocations}
+                    {commercialProfile}
+                    {receivables}
+                    {notesAndIdentifiers}
+                  </details>
+                </aside>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* STANDING -- only metrics with a real account-scoped authority behind them.
+                  See domain/accountHealthStrip.js for what is deliberately absent and why. */}
+              {standing}
 
-          {/* HEALTH STRIP -- only metrics with a real account-scoped authority behind them.
-              See domain/accountHealthStrip.js for what is deliberately absent and why. */}
-          <AccountHealthStrip workOrderCount={workOrderCount} arView={accountArView(arState)} />
-          {/* MAIN BODY -- roughly 2/3 primary + 1/3 secondary on desktop, collapsing to a
-              single column on narrow viewports (see .fo-account-layout in index.css).
-              PRIMARY holds the operational record surfaces; SECONDARY holds profile and
-              relationship context. */}
-          <div className="ns-record-body">
-            <div>
+              {/* ATTENTION, IN ITS CORRECT PLACE (NS-P2): after the three real numbers, and
+                  BEFORE everything it warns about. It is deliberately NOT flattened into the
+                  shared AttentionBand: accountAttentionProjection.js states that AR and
+                  Work-Order past-due are never merged into one ranked list, and a flat band has
+                  nowhere to put its per-source honest notes. */}
+              {attention}
 
-          {/* Wave 7 completion, PARTS 2/3 -- account-scoped Opportunity + Sales Order reads now
-              exist (listOpportunitiesForAccount / listSalesOrdersForAccount), so these sections are
-              real record surfaces, not an empty shell implying "this account has none." Ordered
-              Opportunities, then Sales Orders, above Financials in the PRIMARY column -- same
-              order as always, now produced by accountRecordPageMainSubset (accountPage.js's own
-              section order) rather than hand-sequenced here.
+              <div className="ns-record-body">
+                <div>
+                  {commercialActivity}
+                  {receivables}
+                  {serviceActivity}
+                </div>
+                <aside className="ns-rail" aria-label="Account context">
+                  {/* CONTACTS LEAD THE RAIL. "Who do I call" no longer lives at the bottom of the
+                      page — this is the approved composition's load-bearing change from #1511. */}
+                  {contactsAndLocations}
+                  {commercialProfile}
+                  {notesAndIdentifiers}
+                </aside>
+              </div>
+            </>
+          )}
 
-              A-ACCOUNT-WIRE-CALLABLE-LISTS-2: both sections now render through the single
-              MetadataRecordPage call below (RELATED_LIST, CALLABLE readVia via
-              callableListSource.js) rather than AccountOpportunitiesSection/
-              AccountSalesOrdersSection directly. The two blockers that kept them hand-rendered
-              (opportunity.js's expectedCloseAt TIMESTAMP column rendering as a raw epoch number;
-              DefaultRelatedList wiring no row navigation) both closed with commit 6998306f --
-              cellValue() now formats TIMESTAMP/DATE, and DefaultRelatedList now builds onRowClick
-              from a resolved list definition's rowNavigationTo. Sales Orders keeps its real
-              per-order route (opportunities/sales-order/:salesOrderId -> SalesOrderDetail.jsx,
-              App.jsx) via salesOrderRelatedList's own rowNavigationTo, wired through unmodified.
-              Opportunities has no equivalent per-record route anywhere in App.jsx today --
-              opportunity.js's own rowNavigationTo names one that does not exist, a pre-existing
-              defect outside this file's/accountPageComponents.js's writeScope for that specific
-              file (definitions/opportunity.js) -- so accountPageComponents.js's listResolver
-              strips it, and Opportunities rows render honestly non-focusable (no onClick, no
-              tabIndex) rather than link to a page that would 404. See accountPageComponents.js's
-              WIRING SCOPE note for the full evidence and the REGISTRATION_PENDING finding. */}
-
-          {/* Accounts Receivable + the provider-dependent financial surfaces, ACTIVITY & NOTES,
-              and Service Activity -- X-ACCOUNT-PAGE-WIRING: these three are exactly
-              accountRecordPage's MAIN-column componentId sections (financials, activityAndNotes,
-              serviceActivity), in the same order accountPage.js and this file already agreed on,
-              now rendered through MetadataRecordPage against the real definition + the real
-              capability decisions rather than called directly. Section-level behavior is
-              unchanged (same components, same accountId), and financials/activityAndNotes stay
-              gated on finance.read/crm.activity.read exactly as accountPage.js declares --
-              crm.activity.read is registered active:false catalog-wide, so Activity & Notes will
-              not render here until that capability is separately activated, which is the correct
-              fail-closed reading of accountPage.js's own declaration, not a regression. Same
-              fail-closed reading now applies to opportunity.read/salesOrder.read, both also
-              registered active:false catalog-wide -- Opportunities/Sales Orders will not render
-              here until either is separately activated, matching the already-accepted
-              financials/activityAndNotes precedent, not a new regression. */}
-          <MetadataRecordPage
-            definition={accountRecordPageMainSubset}
-            record={account}
-            onEditField={editField}
-            editability={accountEditability}
-            capabilityDecisions={capabilityDecisions}
-            listResolver={accountPageListResolver}
-            entityResolver={accountPageEntityResolver}
-          />
-
-          {/* 3. Contacts / 4. Locations -- X-RELATED-LIST-ACTIONS (#1211) unblocked wiring
-              these through the metadata list runtime: MetadataListGrid gained
-              focusRowKey/onFocusHandled (the post-create keyboard-focus handoff
-              pendingContactFocus/pendingLocationFocus need) and this lane
-              (A-ACCOUNT-WIRE-CONTACTS-LOCATIONS) closed the remaining double-read concern by
-              reusing useContactsForAccount/useLocationsForAccount's OWN live data
-              (buildAccountRelatedListPresentation, accountPageComponents.js) instead of
-              DefaultRelatedList's independent read. `accountRelatedListRenderer` above supplies
-              a `listRenderer` for this call ONLY -- accountRecordPageContactsLocationsSubset is
-              a SEPARATE MetadataRecordPage call from the one above precisely so `listRenderer`
-              (which wins for every RELATED_LIST section it touches) cannot also intercept
-              Opportunities/Sales Orders. "+ Add Contact" / "Import Contacts" / "+ Add Location"
-              and their modals have no equivalent inside MetadataListGrid/DefaultRelatedList and
-              stay hand-mounted here, unchanged. See accountPageComponents.js's WIRING SCOPE note
-              for the full case. */}
-          <MetadataRecordPage
-            definition={accountRecordPageContactsLocationsSubset}
-            record={account}
-            capabilityDecisions={capabilityDecisions}
-            listResolver={accountPageListResolver}
-            entityResolver={accountPageEntityResolver}
-            listRenderer={accountRelatedListRenderer}
-            embedded
-          />
-
+          {/* The create/import modals mount at PAGE level, never inside the rail: a modal nested
+              in the phone composition's collapsed "More" disclosure would not render at all. */}
           {showContactModal && (
             <ContactCreateModal
               accountName={account.name}
@@ -652,10 +889,6 @@ export default function AccountDetail() {
             />
           )}
 
-          {/* 4. Locations -- add-only (no Location edit action exists). Rendered by the same
-              MetadataRecordPage call above (accountRecordPageContactsLocationsSubset carries
-              both "contacts" and "locations"). */}
-
           {showLocationModal && (
             <LocationCreateModal
               accountName={account.name}
@@ -663,89 +896,6 @@ export default function AccountDetail() {
               onClose={() => setShowLocationModal(false)}
             />
           )}
-
-            </div>
-            <aside className="ns-rail" aria-label="Account context">
-
-          {/* Commercial Profile -- informational fields + current-name identity (PR 1)
-              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
-              renderer (accountPage.js: commercialProfile, GAP 1's `entityResolver`) and left
-              hand-rendered. The generic renderer's cellValue() has no REFERENCE-field
-              resolution -- accountOwnerEmployeeId/billingContactId would show the raw stored
-              employee/contact id where CommercialProfileSection shows the CURRENT resolved name
-              via IdentityLine -- and no taxStatus safe default, so an absent taxStatus would
-              render "—" instead of the required "Unknown" (domain/commercialProfile.js's
-              resolveTaxStatus(), see account.js's own field comment). Both are data-correctness
-              regressions, not formatting ones. See accountPageComponents.js's WIRING SCOPE
-              note. */}
-          <CommercialProfileSection
-            account={account}
-            contacts={contacts}
-            contactsLoading={contactsLoading}
-            contactsError={contactsError}
-            byUserId={byUserId}
-            directoryLoading={directoryLoading}
-            directoryError={directoryError}
-          />
-
-          {/* THE PRIMARY CONTACT, which used to sit inside the old summary section under the header.
-              It is context, not identity — the header answers "which customer is this", and this
-              answers "who do I call" — so it belongs in the rail beside the commercial profile
-              rather than in the fact row. Its three states (none / one / several) are unchanged:
-              primaryContactState() still owns them, and the MULTIPLE case still surfaces the
-              ambiguity rather than silently picking one. */}
-          <PrimaryContactSummary contacts={contacts} />
-
-          {/* ACCOUNT ATTENTION HAS MOVED UP, to its NS-P2 position directly beneath the header.
-              It rendered here, at the bottom of the secondary column below every related list, so a
-              reader reached it after everything it should have warned them about. Nothing about
-              what it says changed.
-
-              IT IS STILL NOT ROUTED THROUGH MetadataRecordPage, and that reasoning is unchanged:
-              accountPage.js declares ONE capability (finance.read) for the section, while
-              AccountAttentionSection internally composes TWO sources at different authority levels
-              -- AR via useAccountAr (finance.read-gated) and Work-Order-past-due via
-              useAccountAttentionWorkOrders (UNGATED, Rules-by-role only). A section-level
-              capabilityRequirement can only honour the coarser of the two, so wiring it through
-              metadata would hide the ungated Work-Order half whenever finance.read is denied.
-
-              ONE CLAIM IN THE OLD COMMENT WAS STALE. It said finance.read is "registered
-              catalog-wide active:false today, i.e. denied for every current viewer". The first half
-              is still true; the second is not. access/environmentCapabilityOverrides.ts activates
-              finance.read -- along with opportunity.read, salesOrder.read and crm.activity.read --
-              for eos-platform-sandbox. The argument above does not depend on that, but a comment
-              asserting 100% denial would have been read as current. */}
-
-          {/* ACTIVITY & NOTES -- the durable, attributed CRM interaction history. Primary
-              column: it is a record surface a salesperson works in, not sidebar context. */}
-          {/* 6. Notes / Identifiers -- collapsed by default
-              X-ACCOUNT-PAGE-WIRING-COMPLETE: evaluated for the metadata FIELD_GROUP generic
-              renderer (accountPage.js: notesAndIdentifiers) and left hand-rendered. No data
-              gap this time (every field is plain STRING/TEXT) -- but this section is declared
-              collapsedByDefault: true and MetadataRecordPage's <Section> has no collapse
-              concept, so wiring it would silently change the page from collapsed to always
-              expanded, a confirmed layout change. See accountPageComponents.js's WIRING
-              SCOPE note. */}
-          <details className="fo-account-collapsible">
-            <summary>Notes &amp; Identifiers</summary>
-            {account.notes ? (
-              <div className="wo-inventory"><strong>Notes:</strong> {account.notes}</div>
-            ) : (
-              <p className="fo-muted">No notes.</p>
-            )}
-            {hasIdentifiers ? (
-              <div className="fo-muted">
-                {account.customerNumber && <div>Customer #: {account.customerNumber}</div>}
-                {account.erpId && <div>ERP ID: {account.erpId}</div>}
-                {account.accountingId && <div>Accounting ID: {account.accountingId}</div>}
-                {account.legacyId && <div>Legacy ID: {account.legacyId}</div>}
-              </div>
-            ) : (
-              <p className="fo-muted">No external identifiers.</p>
-            )}
-          </details>
-            </aside>
-          </div>
         </>
       )}
     </div>

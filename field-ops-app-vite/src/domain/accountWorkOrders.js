@@ -95,6 +95,15 @@ export async function fetchAccountWorkOrderTimelinePage(
       woNumber: data.woNumber ?? null,
       status: data.status ?? null,
       createdAt: data.createdAt ?? null, // Firestore Timestamp | null
+      // Account North Star P1: the approved Service activity composition states each job's
+      // SCHEDULE and TECHNICIAN beside its status. Both are projected off the SAME documents this
+      // query already fetched -- no second read, no new query shape, no new index, and no new
+      // authority. Absent on a document means absent on the row: an unscheduled Work Order has no
+      // scheduledStart at all (see workOrder.js's own gap note), and an unassigned one has no
+      // assignedTechId. Neither is defaulted, and the display resolution of the technician id
+      // belongs to the employee/technician entity, never to this projection.
+      scheduledStart: data.scheduledStart ?? null, // Firestore Timestamp | number | null
+      assignedTechId: data.assignedTechId ?? null, // fieldops_technicians doc id | null
     };
   });
   const lastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;

@@ -1,24 +1,46 @@
 import { Link } from "react-router-dom";
-import { buildAccountHealthStrip, HEALTH_METRIC_STATE } from "../../domain/accountHealthStrip";
+import {
+  buildAccountHealthStrip,
+  HEALTH_METRIC_STATE,
+  HEALTH_STRIP_ABSENCE_NOTE,
+} from "../../domain/accountHealthStrip";
 
-// The Account workspace's top-line health metrics. Presentational only -- every value comes from
-// domain/accountHealthStrip.js, which projects ONLY metrics with a real account-scoped authority
-// behind them (see that file for what is deliberately absent and why).
+// THE STANDING STRIP — the Account's three real numbers, on one ruled line.
 //
-// Each metric navigates to the records behind it where that is meaningful. A metric whose count is
-// zero is a real answer and renders as such, but it does not link anywhere -- there is nothing to
-// look at.
+// ════════════════════ WHAT CHANGED, AND WHY IT IS NOT A REDESIGN ════════════════════
+//
+// The metrics, their sources and their states are untouched: domain/accountHealthStrip.js still
+// projects ONLY facts with a real account-scoped authority behind them, and this file still
+// computes nothing. What changed is the GRAMMAR. This rendered as `.fo-stat-grid` — a row of
+// metric cards — and the approved Account North Star P1 composition draws it as ONE ruled row
+// between two hairlines, the same way the record's other structure is made of whitespace and
+// rules rather than boxes. Three cards for three numbers is a card habit, not a hierarchy.
+//
+// ════════════════════ THE THREE ANSWERS THAT ARE NOT NUMBERS ════════════════════
+//
+// A metric has four honest outcomes and each gets its OWN words, because collapsing any two of
+// them is how a salesperson comes to believe a false zero:
+//
+//   DENIED       "Not available to you"   — there IS an answer; it is not yours to see.
+//   UNAVAILABLE  "Couldn't be read"       — the source exists and could not answer right now.
+//   ZERO         the number 0             — a real, authoritative answer, rendered as one.
+//   READY        the value                — with a link where there is something to go look at.
+//
+// The DENIED and UNAVAILABLE wordings are the approved design's own, replacing "Not visible to
+// you" / "Unavailable". Same three states, same fail-closed derivation; only the words moved.
+//
+// A DENIED metric keeps its slot rather than disappearing (design decision A-D2): a page whose
+// financial geography quietly vanishes for a salesperson reads as "this customer owes nothing",
+// which is the one thing it must never say.
 
 function MetricValue({ metric }) {
   switch (metric.state) {
     case HEALTH_METRIC_STATE.LOADING:
-      return <span className="fo-muted">…</span>;
+      return <span className="ns-standing__pending">…</span>;
     case HEALTH_METRIC_STATE.DENIED:
-      // Never collapsed into "0" or an empty state: the caller cannot see this, which is a
-      // different fact from "there is none".
-      return <span className="fo-muted">Not visible to you</span>;
+      return <span className="ns-standing__absent">Not available to you</span>;
     case HEALTH_METRIC_STATE.UNAVAILABLE:
-      return <span className="fo-muted">Unavailable</span>;
+      return <span className="ns-standing__absent">Couldn&rsquo;t be read</span>;
     default:
       break;
   }
@@ -35,17 +57,24 @@ export default function AccountHealthStrip({ workOrderCount, arView }) {
   const metrics = buildAccountHealthStrip({ workOrderCount, arView });
   if (metrics.length === 0) return null;
   return (
-    <section className="fo-account-health" aria-label="Account health">
-      <div className="fo-stat-grid">
-        {metrics.map((metric) => (
-          <div key={metric.id} className="fo-stat">
-            <div className="fo-muted fo-stat-label">{metric.label}</div>
-            <div className={metric.tone === "warn" ? "fo-stat-value fo-stat-warn" : "fo-stat-value"}>
-              <MetricValue metric={metric} />
-            </div>
-          </div>
-        ))}
-      </div>
+    <section className="ns-standing" aria-label="Standing">
+      <span className="ns-standing__label">Standing</span>
+      {metrics.map((metric) => (
+        <span key={metric.id} className="ns-standing__metric">
+          <span className="ns-standing__metric-label">{metric.label}</span>
+          <span
+            className={
+              metric.tone === "warn"
+                ? "ns-standing__metric-value is-warn"
+                : "ns-standing__metric-value"
+            }
+          >
+            <MetricValue metric={metric} />
+          </span>
+        </span>
+      ))}
+      {/* The gap, stated once — see HEALTH_STRIP_ABSENCE_NOTE for why it is owned in the domain. */}
+      <span className="ns-standing__note">{HEALTH_STRIP_ABSENCE_NOTE}</span>
     </section>
   );
 }

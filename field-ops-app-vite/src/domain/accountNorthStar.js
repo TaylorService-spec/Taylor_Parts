@@ -1,5 +1,6 @@
 import { accountEntity } from "../metadata/definitions/account.js";
 import { accountStatusTone } from "./accountPortfolio.js";
+import { resolveTaxStatus } from "./commercialProfile.js";
 
 // THE ACCOUNT, DERIVED ONCE.
 //
@@ -124,6 +125,37 @@ export function accountClassification(account) {
       ...(Array.isArray(account?.lineOfBusiness) ? account.lineOfBusiness : []),
     ].filter((v) => !enumLabel("relationshipTypes", v) && !enumLabel("lineOfBusiness", v)),
   };
+}
+
+/**
+ * THE TERMS DIGEST — the commercial terms, as one header fact.
+ *
+ * Account North Star P1 puts the commercial terms in the record header's fact row, beside the
+ * status and the owner, because "Net 30 · Taxable · PO required" is part of who this customer is
+ * to the business, not a detail to go hunting for in the rail. The rail's Commercial profile still
+ * states each field on its own; this is the SAME derivation read once for the header, not a second
+ * one — every word comes from accountCommercialVocabulary.js through the metadata definition's own
+ * enumLabels, which is the same place the rail reads.
+ *
+ * THREE RULES IT KEEPS, all of them pre-existing:
+ *   * Tax status is ALWAYS stated. An absent value resolves to Unknown (resolveTaxStatus), NEVER
+ *     silently to Taxable — the safe default commercialProfile.js exists to protect.
+ *   * PO required only appears when a REAL boolean is stored. A malformed stored value is left to
+ *     the edit form to surface; it is never shown here as a confident Yes or No.
+ *   * Payment terms only appear when set. There is no default term to imply.
+ *
+ * @returns {string|null} the digest, or null when the account carries none of these facts.
+ */
+export function accountTermsDigest(account) {
+  const parts = [];
+  const terms = enumLabel("paymentTerms", account?.paymentTerms ?? null);
+  if (terms) parts.push(terms);
+  // Always stated, and resolved through the SAME safe default the rail applies.
+  const tax = enumLabel("taxStatus", resolveTaxStatus(account?.taxStatus));
+  if (tax) parts.push(tax);
+  if (account?.purchaseOrderRequired === true) parts.push("PO required");
+  else if (account?.purchaseOrderRequired === false) parts.push("No PO required");
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 // ═════════════════════════════════════════ IDENTITY
