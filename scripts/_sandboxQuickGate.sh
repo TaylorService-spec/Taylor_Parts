@@ -30,12 +30,36 @@
 # On Windows run it under GIT BASH, which inherits the Windows PATH -- a bare `bash` usually starts
 # WSL, which is a different machine without node/npx on PATH:
 #
-#     & "D:/Git/usr/bin/bash.exe" scripts/_sandboxQuickGate.sh
+#     & "D:/Git/bin/bash.exe" scripts/_sandboxQuickGate.sh
+#
+# bin/bash.exe, NOT usr/bin/bash.exe: the first is a wrapper that sets up the MSYS environment
+# (so /usr/bin and its coreutils are on PATH); the second is the raw binary, which from
+# PowerShell inherits PowerShell's PATH and has no `dirname`. This comment named the wrong one
+# and cost a live gate run on 2026-08-26.
 #
 set -euo pipefail
 
 ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# RESOLVED WITHOUT `dirname`, DELIBERATELY. This was `$(dirname "$0")`, and `dirname` is an
+# external coreutils binary that does not exist when this file is run by D:/Git/usr/bin/bash.exe
+# from PowerShell. The command substitution then yields an EMPTY string, the root silently
+# becomes nothing, and the first thing to notice is a module-not-found several lines later.
+# Parameter expansion is a shell builtin: it cannot be missing.
+_gate_src="${BASH_SOURCE[0]}"
+# BOTH SEPARATORS, because $0 does not arrive in one shape. It is Windows-native
+# (D:\repo\scripts\x.sh) as often as POSIX -- node's path.join hands the gate suite exactly that
+# shape -- and a forward-slash-only strip resolves such a path to ".", which is how the first
+# version of this fix broke test/sandboxGatePhases.test.mjs. `dirname` handled both; so must this.
+#
+# The backslash lives in a variable rather than inline: quoting a literal backslash inside a
+# ${var%pattern} expansion is where this goes wrong, and a named variable is unambiguous.
+_EOS_BS='\'
+case "$_gate_src" in
+  *"$_EOS_BS"*) _EOS_DIR="${_gate_src%"$_EOS_BS"*}" ;;
+  */*)          _EOS_DIR="${_gate_src%/*}" ;;
+  *)            _EOS_DIR="." ;;
+esac
+REPO_ROOT="$(cd "$_EOS_DIR/.." && pwd)"
 # THE ROOT MUST BE REAL, AND SAYING SO BEATS A MYSTERY PATH.
 #
 # The first live quick-gate run failed resolving a path whose ROOT WAS EMPTY -- the error named
@@ -53,10 +77,10 @@ EOS_GATE_ROOT_CHECKED=1
 APP_DIR="${REPO_ROOT}/field-ops-app-vite"
 SKILL_DIR="${APP_DIR}/.claude/skills/run-field-ops-app-vite"
 
-for tool in node npx curl; do
+for tool in node npx curl dirname; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "ABORT: '$tool' is not on PATH in this shell." >&2
-    echo "       On Windows use Git Bash: & \"D:/Git/usr/bin/bash.exe\" $0" >&2
+    echo "       On Windows use Git Bash: & \"D:/Git/bin/bash.exe\" $0" >&2
     exit 2
   fi
 done

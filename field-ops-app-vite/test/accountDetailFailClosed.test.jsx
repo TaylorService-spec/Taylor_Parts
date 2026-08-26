@@ -202,7 +202,7 @@ describe("AccountDetail -- Edit save fail-closed on a blocked write", () => {
     mockUpdateAccount.mockResolvedValue({ blocked: true });
     renderDetail();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
@@ -216,7 +216,7 @@ describe("AccountDetail -- Edit save fail-closed on a blocked write", () => {
     );
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeTruthy();
     // The read-only Account Summary (rendered only when NOT editing) never appears.
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit customer" })).toBeNull();
   });
 
   it("a successful save closes the edit form as before", async () => {
@@ -224,11 +224,11 @@ describe("AccountDetail -- Edit save fail-closed on a blocked write", () => {
     mockUpdateAccount.mockResolvedValue({ id: "acct-1" });
     renderDetail();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => expect(mockUpdateAccount).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit customer" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Save Changes" })).toBeNull();
   });
 });

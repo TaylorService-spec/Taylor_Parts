@@ -20,6 +20,16 @@ import { ACCOUNT_AR_STATE } from "./accountArView.js";
 // Each of those needs a backend read that does not exist. They are recorded here so the omission is a
 // documented decision rather than an oversight, and so whoever adds the read knows where the tile goes.
 
+// THE OMISSION, SAID OUT LOUD. Account North Star P1's standing strip states in one muted
+// sentence why it carries three metrics and not six -- because a reader who cannot see a pipeline
+// figure has no way to tell "this account has none" from "nobody built the read". The list of what
+// is absent, and the evidence for each, is the DELIBERATELY ABSENT block above; this is the one
+// sentence that block earns on screen. Owned here, beside the reasons, so the page cannot state a
+// different account of the same gap.
+export const HEALTH_STRIP_ABSENCE_NOTE =
+  "Only facts with an account-scoped authority appear here — pipeline, order backlog and " +
+  "equipment counts have no per-account read yet, so no tile pretends otherwise.";
+
 export const HEALTH_METRIC_STATE = Object.freeze({
   LOADING: "LOADING",
   READY: "READY",

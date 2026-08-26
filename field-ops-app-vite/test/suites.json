@@ -1008,6 +1008,10 @@
     {
       "file": "test/opportunityNorthStar.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/phoneLink.test.mjs",
+      "runner": "node"
     }
   ]
 }

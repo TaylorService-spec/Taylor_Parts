@@ -18,12 +18,37 @@ set -euo pipefail
 # several steps into a deploy and then dies on "node: command not found" -- long after it has
 # already started doing work, and with a message that blames the wrong thing.
 #
-# Run this under GIT BASH, which inherits the Windows PATH:
+# From PowerShell, use the launcher -- it finds the right bash and passes the release root:
 #
-#     & "D:/Git/usr/bin/bash.exe" scripts/_sandboxRefresh.run.sh
+#     .\scripts\Invoke-SandboxRefresh.ps1
+#
+# To run this script directly, use Git's bin/ WRAPPER:
+#
+#     & "D:/Git/bin/bash.exe" scripts/_sandboxRefresh.run.sh
+#
+# ============================ bin/bash.exe, NOT usr/bin/bash.exe ============================
+#
+# THIS DISTINCTION IS NOT COSMETIC, and this comment used to get it wrong -- it named
+# usr/bin/bash.exe, which cost a live refresh attempt on 2026-08-26.
+#
+#   D:/Git/bin/bash.exe      a WRAPPER. It sets up the MSYS environment, so /usr/bin is on PATH
+#                            and the coreutils every shell script assumes actually exist.
+#   D:/Git/usr/bin/bash.exe  the RAW binary. Launched from PowerShell it inherits PowerShell's
+#                            PATH and nothing else -- no /usr/bin, so no `dirname`, no `uname`.
+#
+# The failure that produces is misleading rather than obvious: `dirname: command not found`,
+# then a root that resolved to nothing, then a module-not-found naming a path with an empty
+# root (`\\scripts\\releaseRoot.mjs`). Every message blames the path; none names the shell.
+#
+# Root resolution below no longer depends on `dirname` at all, and the preflight now probes for
+# coreutils so a wrong-shell invocation is REFUSED BY NAME instead of failing four lines later.
 #
 # (adjust the path if Git is installed elsewhere; `where.exe bash` lists every candidate).
-for tool in node npm firebase; do
+# `dirname` is the CANARY, not a dependency -- nothing below calls it any more. It is the
+# cheapest proof that this shell has /usr/bin on PATH, i.e. that it is a real Git Bash and not
+# the raw usr/bin/bash.exe binary carrying PowerShell's PATH. Probing it here turns a confusing
+# mid-script failure into a named refusal before anything is built.
+for tool in node npm firebase dirname; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "ABORT: '$tool' is not on PATH in this shell." >&2
     echo "" >&2
@@ -32,7 +57,7 @@ for tool in node npm firebase; do
     echo "  On Windows, a bare 'bash' usually starts WSL, which does not share the Windows PATH." >&2
     echo "  Use Git Bash instead -- from PowerShell:" >&2
     echo "" >&2
-    echo "      & \"D:/Git/usr/bin/bash.exe\" $0" >&2
+    echo "      & \"D:/Git/bin/bash.exe\" $0" >&2
     echo "" >&2
     echo "  Nothing has been built, deployed or changed." >&2
     exit 2
@@ -50,7 +75,25 @@ done
 #
 # scripts/releaseRoot.mjs now decides it from --release-root, then EOS_RELEASE_ROOT, then the script
 # location, validates the result is a real EOS checkout, and REFUSES an agent worktree outright.
-SCRIPT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# RESOLVED WITHOUT `dirname`, DELIBERATELY. This was `$(dirname "$0")`, and `dirname` is an
+# external coreutils binary that does not exist when this file is run by D:/Git/usr/bin/bash.exe
+# from PowerShell. The command substitution then yields an EMPTY string, the root silently
+# becomes nothing, and the first thing to notice is a module-not-found several lines later.
+# Parameter expansion is a shell builtin: it cannot be missing.
+# BOTH SEPARATORS, because $0 does not arrive in one shape. It is Windows-native
+# (D:\repo\scripts\x.sh) as often as POSIX -- node's path.join hands the gate suite exactly that
+# shape -- and a forward-slash-only strip resolves such a path to ".", which is how the first
+# version of this fix broke test/sandboxGatePhases.test.mjs. `dirname` handled both; so must this.
+#
+# The backslash lives in a variable rather than inline: quoting a literal backslash inside a
+# ${var%pattern} expansion is where this goes wrong, and a named variable is unambiguous.
+_EOS_BS='\'
+case "$0" in
+  *"$_EOS_BS"*) _EOS_DIR="${0%"$_EOS_BS"*}" ;;
+  */*)          _EOS_DIR="${0%/*}" ;;
+  *)            _EOS_DIR="." ;;
+esac
+SCRIPT_ROOT="$(cd "$_EOS_DIR/.." && pwd)"
 REPO_ROOT="$(node "$SCRIPT_ROOT/scripts/releaseRoot.mjs" "$@" --fallback "$SCRIPT_ROOT")" || exit 4
 cd "$REPO_ROOT"
 

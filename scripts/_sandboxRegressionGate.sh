@@ -99,7 +99,25 @@ ORIGIN="${1:-https://eos-platform-sandbox.web.app}"
 # The deployed artifact SELF-DESCRIBES its base in version.json, so ask it rather than assume.
 DEPLOYED_BASE="$(curl -fsS "${ORIGIN}/version.json" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{let b=JSON.parse(d).base||"/";if(b==="/")b="";else if(b.endsWith("/"))b=b.slice(0,-1);process.stdout.write(b)})')"
 export CERT_BASE="${ORIGIN}${DEPLOYED_BASE}"
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# RESOLVED WITHOUT `dirname`, DELIBERATELY. This was `$(dirname "$0")`, and `dirname` is an
+# external coreutils binary that does not exist when this file is run by D:/Git/usr/bin/bash.exe
+# from PowerShell. The command substitution then yields an EMPTY string, the root silently
+# becomes nothing, and the first thing to notice is a module-not-found several lines later.
+# Parameter expansion is a shell builtin: it cannot be missing.
+# BOTH SEPARATORS, because $0 does not arrive in one shape. It is Windows-native
+# (D:\repo\scripts\x.sh) as often as POSIX -- node's path.join hands the gate suite exactly that
+# shape -- and a forward-slash-only strip resolves such a path to ".", which is how the first
+# version of this fix broke test/sandboxGatePhases.test.mjs. `dirname` handled both; so must this.
+#
+# The backslash lives in a variable rather than inline: quoting a literal backslash inside a
+# ${var%pattern} expansion is where this goes wrong, and a named variable is unambiguous.
+_EOS_BS='\'
+case "$0" in
+  *"$_EOS_BS"*) _EOS_DIR="${0%"$_EOS_BS"*}" ;;
+  */*)          _EOS_DIR="${0%/*}" ;;
+  *)            _EOS_DIR="." ;;
+esac
+REPO_ROOT="$(cd "$_EOS_DIR/.." && pwd)"
 # THE ROOT MUST BE REAL, AND SAYING SO BEATS A MYSTERY PATH.
 #
 # The first live quick-gate run failed resolving a path whose ROOT WAS EMPTY -- the error named
