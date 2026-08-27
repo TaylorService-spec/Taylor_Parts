@@ -47,20 +47,70 @@ export function startOfDayMillis(millis) {
   return d.getTime();
 }
 
-/** The [start, end) instants of the drawn hour band for the local day containing `millis`. */
-export function dayBand(millis) {
+/**
+ * The [start, end) instants of the drawn hour band for the local day containing `millis`.
+ *
+ * `occupancy` — placements and blocked time on that day — WIDENS the band when something falls
+ * outside 7a–5p. That is not a cosmetic nicety, it is a correctness requirement:
+ *
+ * ND-20 deliberately allows work outside recorded hours, because field service legitimately
+ * schedules an emergency at 02:00 and a system that refused would be refusing real business. A board
+ * with a fixed 7a–5p window would accept that placement, commit it, and then draw NOTHING — the job
+ * would exist, be billable, and be invisible on the surface built to see it. Found by the live Quick
+ * Gate against real sandbox data, where every scheduled job sat outside the fixed band and the day
+ * board rendered empty while insisting it was fine.
+ *
+ * So the band is 7a–5p by DEFAULT and stretches to whole hours around anything the day actually
+ * holds. It never shrinks below the default: a quiet day still reads as a working day.
+ */
+export function dayBand(millis, occupancy = []) {
   const dayStart = startOfDayMillis(millis);
-  const start = new Date(dayStart);
-  start.setHours(DAY_BAND_START_HOUR, 0, 0, 0);
-  const end = new Date(dayStart);
-  end.setHours(DAY_BAND_END_HOUR, 0, 0, 0);
-  return { startMillis: start.getTime(), endMillis: end.getTime() };
+  const at = (hour) => {
+    const d = new Date(dayStart);
+    d.setHours(hour, 0, 0, 0);
+    return d.getTime();
+  };
+
+  let startHour = DAY_BAND_START_HOUR;
+  let endHour = DAY_BAND_END_HOUR;
+  const dayEnd = dayStart + MS_PER_DAY;
+
+  for (const span of occupancy) {
+    if (span?.startMillis == null || span?.endMillis == null) continue;
+    // Only what falls on THIS day moves the band; a job running past midnight stretches today to
+    // midnight rather than dragging tomorrow's hours onto today's grid.
+    if (span.endMillis <= dayStart || span.startMillis >= dayEnd) continue;
+    const from = new Date(Math.max(span.startMillis, dayStart));
+    const to = new Date(Math.min(span.endMillis, dayEnd));
+    startHour = Math.min(startHour, from.getHours());
+    // Round the end UP to the next whole hour so a job ending at 17:30 is fully drawn.
+    const toHour = to.getHours() + (to.getMinutes() > 0 || to.getSeconds() > 0 ? 1 : 0);
+    endHour = Math.max(endHour, Math.min(toHour, 24));
+  }
+
+  return { startMillis: at(startHour), endMillis: startHour === 0 && endHour === 24 ? dayEnd : at(endHour) };
 }
 
-/** The hour labels the grid header renders: 7a, 8a, … 4p. */
-export function bandHours() {
+/** Every span the day board must be able to draw, for `dayBand`'s occupancy argument. */
+export function dayOccupancy(workOrders, availabilityViews = []) {
+  const spans = [];
+  for (const wo of workOrders ?? []) {
+    const w = placementWindow(wo);
+    if (w) spans.push(w);
+  }
+  for (const view of availabilityViews) {
+    for (const b of view?.blockedTime ?? []) spans.push({ startMillis: b.startMillis, endMillis: b.endMillis });
+  }
+  return spans;
+}
+
+/** The hour labels the grid header renders across whatever band is in force. */
+export function bandHours(band) {
+  const startHour = new Date(band.startMillis).getHours();
+  const span = Math.max(1, Math.round((band.endMillis - band.startMillis) / MS_PER_HOUR));
   const hours = [];
-  for (let h = DAY_BAND_START_HOUR; h < DAY_BAND_END_HOUR; h += 1) {
+  for (let i = 0; i < span; i += 1) {
+    const h = (startHour + i) % 24;
     const suffix = h < 12 ? "a" : "p";
     const display = h % 12 === 0 ? 12 : h % 12;
     hours.push({ hour: h, label: `${display}${suffix}` });
