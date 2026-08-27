@@ -661,7 +661,9 @@ eventually round differently or disagree about which price shapes are acceptable
 renders the P1v4 collection. The retirement is **behavioral** — the module and its tests remain in
 the tree, because several of those tests still guard shared domain behaviour that has no other home
 yet, and deleting them to make a directory tidier would remove coverage this family is still using.
-That deletion is a separate, named cleanup.
+That deletion is **ND-17**, with the order that matters written down: enumerate what those suites
+uniquely cover, rehome each assertion on a surface that still exists and prove the new home fails
+when the behaviour breaks, and only then remove the module.
 
 **Workspace P1v3 did not complete; it was superseded.** The sequence above anticipated
 "Workspace P1v3 completes". It did not, and the reason is worth recording because it changed the
