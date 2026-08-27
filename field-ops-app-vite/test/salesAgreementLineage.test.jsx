@@ -209,10 +209,16 @@ describe("nothing else moved", () => {
   const app = src("App.jsx");
 
   it("introduces no alternate or duplicate Agreement route", () => {
+    // Counted by ELEMENT, not by path spelling. An alias route need not contain the literal
+    // "sales-agreement" — `opportunities/agreement/:id` would be a duplicate address that a
+    // path-shaped assertion cannot see. This was found by mutation proof, not by review.
+    const mounts = app.match(/<Route[^>]*element=\{<SalesAgreementDetailConnected \/>\}/g) ?? [];
+    expect(mounts.length).toBe(1);
     const declarations = app.match(/path="[^"]*sales-agreement[^"]*"/g) ?? [];
     expect(declarations).toEqual(['path="opportunities/sales-agreement/:salesAgreementId"']);
     // No redirect, alias or Navigate wired to the agreement address.
     expect(app).not.toMatch(/<Navigate[^>]*sales-agreement/);
+    expect(app).not.toMatch(/<Navigate[^>]*SalesAgreement/);
   });
 
   it("every lineage link points at the one approved address", () => {

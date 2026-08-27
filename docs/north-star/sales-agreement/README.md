@@ -384,6 +384,14 @@ Named, and kept as gaps. A gap is not a design brief.
   removed. **Do not invent revise / supersede / duplicate / reopen / replace-agreement /
   create-a-second-Agreement affordances.** Later Owner/product question, per the decision section.
 
+- **SA-G7 — line pricing is not on the record page.** *(Found during implementation, PR 4.)* The
+  page’s Draft editor covers the six scalar commercial terms; it does not price lines, so an
+  acceptance blocked by an unpriced line cannot be cleared from this page. **A migration gap, not a
+  functional one:** `SalesAgreementPanel` in the Opportunity workspace ships a full line editor
+  today and remains mounted. Two surfaces, one record, one editor — the same question ND-13 asks
+  about the Opportunity’s pane. Needs deliberate product-picker and per-line pricing work; **not**
+  a presentation-layer closeout task and not solved.
+
 **Gap vs. recommendation.** SA-G1/G2/G3/G5/G6 are product gaps — the system cannot currently do the
 thing. SA-G4 is a design recommendation about a gap that already has an honest fallback. SA-G1 now
 has an approved direction; a decided gap is still a gap until it is built.

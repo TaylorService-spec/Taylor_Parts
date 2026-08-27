@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Complete
 date: 2026-08-26
 owner: Claude Code
 related_adrs: []
@@ -57,12 +57,12 @@ are listed in the design README and must be asserted by test, not left to review
 
 | # | PR title | Architectural concern | Depends on | Status |
 |---|---|---|---|---|
-| 1 | Sales Agreement North Star derivation + contract suite | One derivation owns the composition's truth, testable under `node --test` before any JSX exists | — | Not started |
-| 2 | The by-id read seam | A routed record page needs a by-id read; the callable exists, the hook does not use it | — | Not started |
-| 3 | The record page and its route | `ns-page` + `RecordIdentity`, no `WorkspaceShell`; the route the Owner authorized | 1, 2 | Not started |
-| 4 | Governed actions: accept, edit draft, and the state × permission split | Two commands, four capabilities, and the distinction P1v1 was built to protect | 3 | Not started |
-| 5 | Lineage in both directions | The Opportunity card and the Sales Order back-link learn the new address | 3 | Not started |
-| 6 | Mutation proofs, user guide, ledger row | The family's proof that its tests can fail, and its closeout record | 1–5 | Not started |
+| 1 | Sales Agreement North Star derivation + contract suite | One derivation owns the composition's truth, testable under `node --test` before any JSX exists | — | Merged #1536 |
+| 2 | The by-id read seam | A routed record page needs a by-id read; the callable exists, the hook does not use it | — | Merged #1537 |
+| 3 | The record page and its route | `ns-page` + `RecordIdentity`, no `WorkspaceShell`; the route the Owner authorized | 1, 2 | Merged #1538 |
+| 4 | Governed actions: accept, edit draft, and the state × permission split | Two commands, four capabilities, and the distinction P1v1 was built to protect | 3 | Merged #1539 |
+| 5 | Lineage in both directions | The Opportunity card and the Sales Order back-link learn the new address | 3 | Merged #1540 |
+| 6 | Mutation proofs, user guide, ledger row | The family's proof that its tests can fail, and its closeout record | 1–5 | This PR |
 
 ### PR 1 — Derivation + contract suite
 
@@ -236,3 +236,44 @@ The design README's acceptance checklist is the comparison list.
 
 Update the PR breakdown's Status column as each merges. This document is the running source of truth
 for what is left in this family until PR 6 closes it.
+
+---
+
+## Closeout (PR 6, 2026-08-27)
+
+All six PRs merged. The family's ledger row is in
+[`north-star-migration-ledger.md`](../design/north-star-migration-ledger.md) with
+`Acceptance: AWAITING_OWNER_VISUAL_ACCEPTANCE` — merged, tested and green is not acceptance, and
+only the Owner moves that column.
+
+### Implemented
+
+- a first-class routed record page at `/customers/opportunities/sales-agreement/:salesAgreementId`
+- one derivation owning every displayed fact, node-testable without a DOM
+- the by-id read seam over the **existing** `getSalesAgreementContext`
+- honest read states, with NOT_FOUND kept distinct from NONE_YET
+- the two existing governed commands, with authoritative post-command re-read and a synchronous
+  double-submit guard
+- upstream and downstream lineage, navigable in both directions without becoming resolvable
+- the acceptance-evidence boundary, held by test rather than by review
+- responsive composition on the shipped grammar, measured at 1440 / 768 / 375
+
+### Not implemented, and not claimed
+
+| | |
+|---|---|
+| **SA-G2** external presentation / acceptance evidence | nonblocking product gap |
+| **SA-G3** agreement list / index read | nonblocking product gap |
+| **SA-G4** human-readable line display-name resolution | design recommendation; `ref` fallback stands, nothing persisted |
+| **SA-G5 / ND-14** `DECLINED` has no producing command | nonblocking product gap |
+| **SA-G6 / ND-15** no post-acceptance revision path | nonblocking, important domain gap |
+| **SA-G7** line pricing not on the record page | migration gap — the workspace panel still owns the line editor |
+| **ND-16** shared record grammar widths | open; built to the shipped 252 / 340 / 56 |
+
+Also untouched, deliberately: the Opportunity P1v2 dimensional artifact (blocked on ND-16), and the
+`ApprovalRequests.jsx` unguarded-setState defect found while reading a flaky CI lane during PR 4.
+
+### What happens next
+
+merge → sandbox refresh/deploy → Quick Gate → Owner visual acceptance → ledger acceptance update.
+Nothing in these six PRs deployed anything, and none of them may mark visual acceptance.
