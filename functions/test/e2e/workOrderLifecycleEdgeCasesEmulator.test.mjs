@@ -22,7 +22,7 @@ import {
   makeCheckRunner,
   seedAdmin,
   seedDispatcher,
-  seedTechnician,
+  seedTechnicianWithRecord,
   seedPart,
   grantWorkOrderPartsPlanRole,
   callReq,
@@ -48,7 +48,7 @@ async function createBareWorkOrder(adminUid) {
 await check("EMPTY case: no planned parts -- Dispatch and Complete are clean no-ops on the ledger", async () => {
   const adminUid = await seedAdmin();
   const dispatcherUid = await seedDispatcher();
-  const { uid: techUid, technicianId } = await seedTechnician();
+  const { uid: techUid, technicianId } = await seedTechnicianWithRecord();
 
   const workOrderId = await createBareWorkOrder(adminUid);
   let wo = await getWorkOrder(workOrderId);
@@ -76,7 +76,7 @@ await check("EMPTY case: no planned parts -- Dispatch and Complete are clean no-
 await check("TERMINAL case: a CLOSED Work Order fails closed on every mutating path", async () => {
   const adminUid = await seedAdmin();
   const dispatcherUid = await seedDispatcher();
-  const { uid: techUid, technicianId } = await seedTechnician();
+  const { uid: techUid, technicianId } = await seedTechnicianWithRecord();
   const plannerUid = await seedAdmin();
   await grantWorkOrderPartsPlanRole(plannerUid);
   const partId = await seedPart(CATALOG_SKUS.COMPRESSOR);
@@ -119,7 +119,7 @@ await check("TERMINAL case: a CLOSED Work Order fails closed on every mutating p
 await check("CANCELLED case (exceptional/partial record): cancelling AFTER Dispatch releases the outstanding reservation", async () => {
   const adminUid = await seedAdmin();
   const dispatcherUid = await seedDispatcher();
-  const { technicianId } = await seedTechnician();
+  const { technicianId } = await seedTechnicianWithRecord();
   const plannerUid = await seedAdmin();
   await grantWorkOrderPartsPlanRole(plannerUid);
   const partId = await seedPart(CATALOG_SKUS.COMPRESSOR);

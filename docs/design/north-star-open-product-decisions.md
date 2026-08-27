@@ -633,7 +633,47 @@ Agreement packages arrived through, and not in the published-artifact gallery. I
 over in any form. ND-23 therefore still stands open in its original terms, and its blocking effect on
 composition is unchanged.
 
-### ND-24 — The collision policy is enforced on one placement path and not the other
+### ND-24 — The collision policy is enforced on one placement path and not the other — **RESOLVED 2026-08-27: ratified, and closed structurally**
+
+**Owner ruling:** initial `Schedule` MUST enforce the same governed placement policy Reschedule
+already enforces. Explicitly *not* a new product decision — ND-20 established the policy for the
+scheduling domain, and this was a defect in how completely it was implemented. The Owner also
+directed the *shape* of the fix: **do not implement a second copy of the validation table inside
+`transitionWorkOrder`** — find the shared validation and make the existing path consume it.
+
+**What shipped:** the policy moved out of `schedulingCommands.ts`, where it had been a private
+function, into `functions/src/scheduling/placementPolicy.ts`. Both placement paths import and call
+it. The sanitized `SchedulingError → HttpsError` table moved to `scheduling/errorMapping.ts` for the
+same reason — `transitionWorkOrder` now raises those refusals and must not import a module whose top
+level defines seven `onCall` handlers to reach an error table.
+
+`Schedule` now refuses a past start, blocked time, an ineligible technician and an unknown one;
+overlap is unchanged; outside-working-hours **warns and commits**, with the warnings returned on the
+response as they already were for reschedule. The lifecycle meaning of `Schedule` is untouched —
+`READY_TO_DISPATCH → SCHEDULED`, still a transition. Only its placement validation changed.
+
+**Why it is closed structurally rather than merely fixed.** Nobody had written a disagreeing policy.
+`checkPlacement` was private to one module, so it was reachable only by the callers that happened to
+live there — the policy and the path that needed it were each correct and were never introduced to
+each other. A behavioural test would have caught the symptom and not the shape, so
+`test/schedulingPlacementAuthorityContract.test.mjs` reads the source and fails if a second
+definition of the policy appears, if a placement path stops calling it, if one starts raising a
+refusal the policy owns, or if `Schedule` discards the warnings. Adding a placement path means adding
+one line to that suite's list; forgetting is a red test rather than a defect a live gate finds later.
+
+**One behavioural consequence worth recording.** Two pre-existing emulator suites began failing on
+the fix, because their fixtures seeded a technician *persona* without a governed
+`fieldops_technicians` record and then scheduled onto it. `testKit.mjs`'s own comment described that
+asymmetry as deliberate; it was not, it was the defect. The fixtures were corrected and the comment
+rewritten. Placement now requires a governed technician record — a real narrowing, and the intended one.
+
+Evidence: emulator E2E suite 50/50 (12 new symmetry checks), scheduling domain lane 40/40, transition
+emulator suites 16/16, and the
+live Scheduling Functional Gate rerun after the redeploy.
+
+<details>
+<summary>The finding as originally raised (2026-08-27)</summary>
+
 
 **Raised:** 2026-08-27, first run of the live Scheduling Functional Gate
 (`scripts/schedulingFunctionalGate.mjs`, 29/32 against the deployed sandbox).
@@ -667,6 +707,11 @@ implementation detail to absorb.
 **Blocked on it:** the Scheduling Functional Gate passing, and therefore — together with ND-23 —
 the North Star Dispatch composition. Full evidence:
 [`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
+
+</details>
+
+**Composition remains blocked, on ND-23 alone.** The Scheduling authority is certified; the design
+source still has not been transferred.
 
 ---
 

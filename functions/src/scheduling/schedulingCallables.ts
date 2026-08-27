@@ -7,7 +7,7 @@
 //
 // Authorization is admin/dispatcher, enforced inside the service (Owner ruling 2026-08-27) -- the
 // same bucket ACTION_PERMISSIONS already uses for Schedule and Dispatch. No new capability.
-import { onCall, HttpsError, type FunctionsErrorCode } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import {
   createTechnicianBlockedTime,
   deleteTechnicianBlockedTime,
@@ -17,61 +17,14 @@ import {
   setWorkOrderEstimatedDuration,
 } from "./schedulingCommands";
 import { readTechnicianAvailability } from "./schedulingReadService";
-import { SchedulingError, type SchedulingFailureCode } from "./types";
+import { mapError } from "./errorMapping";
+import { SchedulingError } from "./types";
 
-// One generic message per code. The service's own messages name technician ids, Work Order ids and
-// stored windows -- useful in logs, and none of a caller's business past the trust boundary. The
-// stable `code` is what a client acts on, and it is the only thing that crosses.
-//
-// The three warning-vs-refusal outcomes of ND-20 are visible in this table: BLOCKED_TIME_CONFLICT,
-// START_IN_PAST, TECHNICIAN_INELIGIBLE and SCHEDULE_CONFLICT are all failed-precondition refusals.
-// "Outside working hours" appears nowhere here, because it is not a refusal -- it comes back on a
-// SUCCESSFUL response as a warning.
-const FAILURE_MAP: Record<SchedulingFailureCode, { code: FunctionsErrorCode; message: string }> = {
-  INVALID_INPUT: { code: "invalid-argument", message: "The request is missing or has invalid fields." },
-  PERMISSION_DENIED: { code: "permission-denied", message: "You are not authorized to change a schedule." },
-  WORK_ORDER_NOT_FOUND: { code: "not-found", message: "No Work Order exists at that id." },
-  NOT_SCHEDULED: { code: "failed-precondition", message: "That Work Order is not scheduled, so its schedule cannot be changed." },
-  REASON_REQUIRED: { code: "invalid-argument", message: "A reason is required for this change." },
-  TECHNICIAN_NOT_FOUND: { code: "not-found", message: "No technician exists at that id." },
-  TECHNICIAN_INELIGIBLE: { code: "failed-precondition", message: "That technician cannot be scheduled." },
-  SCHEDULE_CONFLICT: { code: "failed-precondition", message: "That technician is already scheduled for overlapping work." },
-  BLOCKED_TIME_CONFLICT: { code: "failed-precondition", message: "That technician has blocked time overlapping that window." },
-  START_IN_PAST: { code: "failed-precondition", message: "A Work Order cannot be scheduled to start in the past." },
-  STALE_WORK_ORDER: { code: "aborted", message: "The schedule changed since it was loaded. Reload and try again." },
-};
-
-// gRPC status codes that mean "this did not happen, and trying again may work" rather than "this is
-// broken". Firestore raises them when a transaction loses a contention race or runs out of time --
-// which these commands provoke ON PURPOSE, by serializing every schedule-touching write for one
-// technician on a single sentinel document.
-//
-// Found by the emulator suite (see docs/design/governed-scheduling-domain.md): a transaction lock
-// timeout was reaching the caller as `internal`. That is a 500 -- it tells a dispatcher the system is
-// broken, when the truthful answer is "somebody else was moving this, try again". The distinction is
-// not cosmetic: one is a bug report and the other is a button press.
-const RETRYABLE_FIRESTORE_CODES = new Set([
-  4, // DEADLINE_EXCEEDED
-  10, // ABORTED -- contention, including the emulator's transaction lock timeout
-  14, // UNAVAILABLE
-]);
-
-/** Exported for direct sanitization tests: a known failure surfaces ONLY its generic per-code message. */
-export function mapError(err: unknown): HttpsError {
-  if (err instanceof SchedulingError) {
-    const mapped = FAILURE_MAP[err.code] ?? { code: "internal" as FunctionsErrorCode, message: "The request could not be completed." };
-    return new HttpsError(mapped.code, mapped.message, { code: err.code });
-  }
-  if (err instanceof HttpsError) return err;
-  // Same sanitization posture as everything else here -- the code crosses, the detail does not. The
-  // reused STALE_WORK_ORDER code is deliberate: from the caller's side a lost contention race and a
-  // stale board are the same situation and have the same remedy.
-  const grpcCode = (err as { code?: unknown } | null)?.code;
-  if (typeof grpcCode === "number" && RETRYABLE_FIRESTORE_CODES.has(grpcCode)) {
-    return new HttpsError("aborted", FAILURE_MAP.STALE_WORK_ORDER.message, { code: "STALE_WORK_ORDER" });
-  }
-  return new HttpsError("internal", "The request could not be completed.");
-}
+// The SchedulingError -> HttpsError table moved to ./errorMapping.ts (ND-24), because
+// transitionWorkOrder now raises SchedulingErrors too and must not import this module -- whose top
+// level defines seven onCall handlers -- merely to reach an error table. Re-exported here so every
+// existing importer, including the direct sanitization tests, is unaffected.
+export { mapError } from "./errorMapping";
 
 type Handler<T> = (actorUid: string, data: unknown) => Promise<T>;
 

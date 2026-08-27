@@ -1,12 +1,14 @@
 # The governed Scheduling domain
 
-Status: **Implemented and DEPLOYED to the sandbox. Certified with two open defects (ND-24).**
-The eight callables are `ACTIVE` on `nodejs22` in `eos-platform-sandbox`, both Rules blocks are live
-(a client ID token gets `403` on either collection), and the live Scheduling Functional Gate scores
-**29/32** — see [`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
-The three failures are one root cause: the collision policy below is enforced by the *change* paths
-and not by the initial `Schedule` path. Read the collision table with that caveat until ND-24 closes.
-Built from the Dispatch & Scheduler handoff
+Status: **Implemented and DEPLOYED to the sandbox. Certification pending the ND-24 redeploy.** The eight callables are `ACTIVE` on
+`nodejs22` in `eos-platform-sandbox`, both Rules blocks are live (a client ID token gets `403` on
+either collection), and the live Scheduling Functional Gate is at 29/32 pending the ND-24 redeploy — see
+[`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
+
+**ND-24 is closed.** The gate found the collision policy enforced by the *change* paths and not by
+the initial `Schedule` path. Both placement entry points now run the same policy, out of the same
+module — [`placementPolicy.ts`](../../functions/src/scheduling/placementPolicy.ts). Built from the
+Dispatch & Scheduler handoff
 (2026-08-27) and the six decisions it produced (ND-18 – ND-23, recorded in
 [`north-star-open-product-decisions.md`](./north-star-open-product-decisions.md)). The
 reconnaissance that preceded it is
@@ -95,29 +97,40 @@ a fact about our data entry as though it were a fact about the business.
 
 ## Collision policy (ND-20)
 
-| Condition | Outcome | Enforced live by |
-|---|---|---|
-| Same technician, overlapping window | **REFUSE** — already shipped, unchanged | `Schedule` **and** the change commands |
-| Blocked time | **REFUSE** | change commands only — **ND-24** |
-| Start in the past (60s clock-skew tolerance) | **REFUSE** | change commands only — **ND-24** |
-| Ineligible technician | **REFUSE** | change commands only — **ND-24** |
-| Outside recorded working hours | **WARN** — returned on a successful response | change commands only — **ND-24** |
-| No working hours recorded | **WARN** | change commands only — **ND-24** |
+| Condition | Outcome |
+|---|---|
+| Same technician, overlapping window | **REFUSE** |
+| Blocked time | **REFUSE** |
+| Start in the past (60s clock-skew tolerance) | **REFUSE** |
+| Ineligible technician | **REFUSE** |
+| Outside recorded working hours | **WARN** — returned on a successful response |
+| No working hours recorded | **WARN** |
 
 Working hours warn rather than refuse because field service legitimately schedules emergency work at
 02:00. A system that refused would be refusing real business.
 
-**The third column is a defect report, not a design.** ND-20 decided this table for the domain, and
-`checkPlacement` implements all of it — but `checkPlacement` is wired into `rescheduleWorkOrder` and
-`reassignScheduledWorkOrder` only. `transitionWorkOrder` action `Schedule`, the *initial* placement
-path, still validates overlap alone, exactly as it did before this domain existed. The live gate
-proved a dispatcher can Schedule into the past and into blocked time and be refused for the same
-windows on reschedule. Closing that is ND-24; the column comes out when it does.
+**This table has no per-path column, and that is the point (ND-24).** It briefly had one. ND-20
+decided the policy for the *domain*, but it shipped implemented as a private function inside
+`schedulingCommands.ts` — reachable only by the callers that happened to live in that module. The
+initial `Schedule` transition did not, and went on validating overlap alone. The live gate found the
+result: a dispatcher could Schedule into the past or into a technician's PTO and be refused for the
+identical window on Reschedule.
+
+The policy now lives in its own module, `scheduling/placementPolicy.ts`, and **every placement path
+imports it**. Not a shared copy of the table — the function itself, so the paths cannot drift.
+`test/schedulingPlacementAuthorityContract.test.mjs` reads the source and fails if a second
+definition appears, if a path stops calling it, or if a path starts raising a refusal the policy
+owns; `test/e2e/schedulingPlacementSymmetryEmulator.test.mjs` puts each condition to both paths and
+compares their outcomes to each other rather than to a hardcoded expectation.
+
+Nobody wrote a disagreeing policy. The policy and the path that needed it were each correct and were
+never introduced to each other — which is why the fix is structural and not a patch.
 
 **"Ineligible" means what this repository can actually see.** There is no skill, certification or
 territory model here, so eligibility is: a governed technician record exists and carries a recognised
 `TECH_STATUS`. Inventing more would be inventing business policy. When a real eligibility authority
-exists it belongs on that one line in `checkPlacement` and nowhere else.
+exists it belongs on that one line in `checkPlacement` and nowhere else — and since ND-24 that is
+literally one line, reached by every placement path, rather than one per entry point.
 
 Blocked time is **not** checked against existing scheduled work when it is recorded. Someone going on
 PTO must never be refused because a job was already placed there — the absence is the fact and the

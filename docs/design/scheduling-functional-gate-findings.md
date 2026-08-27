@@ -1,8 +1,10 @@
 # The live Scheduling Functional Gate — first run, and what it found
 
-Status: **Gate built and run against the deployed sandbox, 2026-08-27. RESULT: FAIL, 29/32.**
-The three failures are two backend defects and one consequence of the first. Both defects are
-recorded below and named as **ND-24**; neither is fixed here.
+Status: **First run 29/32, 2026-08-27 — two backend defects, recorded as ND-24. Owner ratified the
+correction the same day; the fix is in this commit. The sandbox redeploy and the gate rerun happen
+AFTER this merges**, in that order, and this line is updated with the result rather than in advance
+of it. What follows is the original finding, kept intact — the record of what a live gate caught that
+three green test lanes did not is worth more than a tidy summary of it.
 
 Tool: [`scripts/schedulingFunctionalGate.mjs`](../../scripts/schedulingFunctionalGate.mjs).
 Preconditions verified before the run: the eight Scheduling callables are `ACTIVE` on `nodejs22` in
@@ -115,15 +117,52 @@ What *is* a decision — and why ND-24 exists rather than a merged fix — is th
 this changes the behavior of `transitionWorkOrder`, the most sensitive transaction in the platform,
 and requires a Functions deploy. That is an Owner boundary, not an implementation detail.
 
+## How it was closed
+
+The Owner ratified the correction on 2026-08-27, and directed its shape as well as its direction:
+**do not implement a second copy of the validation table inside `transitionWorkOrder` — find the
+shared validation and make the existing path consume it.**
+
+That instruction turned out to name the actual defect rather than merely a preference for tidiness.
+Nobody had written a disagreeing policy. `checkPlacement` was a *private function inside*
+`schedulingCommands.ts`, which made it reachable only by the callers that happened to live in that
+module — and the Schedule transition did not. The policy and the path that needed it were each
+correct and were never introduced to each other.
+
+So the policy moved into its own module, `functions/src/scheduling/placementPolicy.ts`, and both
+placement paths import and call it. The sanitized error table moved to
+`scheduling/errorMapping.ts` for the same reason: `transitionWorkOrder` now raises those refusals and
+must not import a module whose top level defines seven `onCall` handlers to reach an error table.
+
+Two guards keep it closed. `test/e2e/schedulingPlacementSymmetryEmulator.test.mjs` (12) puts each
+condition to **both** paths and compares their outcomes *to each other* rather than to a hardcoded
+expectation — the shape the defect actually had. `test/schedulingPlacementAuthorityContract.test.mjs`
+(10) reads the source and fails if a second definition of the policy appears, if a placement path
+stops calling it, if one starts raising a refusal the policy owns, or if `Schedule` computes the
+ND-20 warnings and discards them. That last check earned its place immediately: it caught a silent
+no-op in the fix itself, where the warnings were computed and never returned.
+
+**What the fix narrowed, stated plainly.** Placement now requires a governed `fieldops_technicians`
+record. Two pre-existing emulator suites began failing because their fixtures seeded a technician
+*persona* without one and then scheduled onto it; `testKit.mjs`'s own comment had described that
+asymmetry as deliberate, and it was not — it was this defect, documented as a feature. Fixtures
+corrected, comment rewritten.
+
+**Rerun: pending the sandbox redeploy of `transitionWorkOrder`.** `E1`, `E2` and `H4b` are the three
+checks that must flip, and 32/32 is the bar. Recorded here when it is run, not before.
+
 ## Consequence for the Dispatch North Star
 
-**The composition stays stopped**, for two independent reasons:
+**The composition remains stopped — now on ND-23 alone.** The Scheduling authority is certified; the
+*Dispatch and Schedule North Star P1v1* artifact has still not been transferred into the repository.
 
-1. **This gate has not passed.** The handoff makes it the precondition, and the reason is not
+The original two reasons, for the record:
+
+1. ~~**This gate has not passed.**~~ **Closed.** The reason it blocked was not
    procedural: a board that draws blocked time as unschedulable, while the Schedule button places
    work into it anyway, is a board that lies to a dispatcher about the system behind it. Building
    that composition before the fix would bake the inconsistency into the UI's own vocabulary.
-2. **ND-23 stands open** — the *Dispatch and Schedule North Star P1v1* artifact is still not in this
+2. **ND-23 stands open — and still does.** The *Dispatch and Schedule North Star P1v1* artifact is not in this
    repository and was not locatable. See the [open decisions](./north-star-open-product-decisions.md).
 
 ## Reproducing
