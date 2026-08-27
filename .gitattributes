@@ -10,6 +10,22 @@
 # checkout, so this is not a preference -- it is the only working setting.
 *.sh text eol=lf
 
+# FIRESTORE RULES ARE LF, ALWAYS -- BECAUSE THE DEPLOYED BYTES ARE THESE BYTES.
+#
+# `firebase deploy --only firestore:rules` uploads the file exactly as it sits on disk. A Windows
+# checkout materializes CRLF, so a Windows-originated deploy publishes a CRLF ruleset while the
+# governed SHA pins Git's LF bytes -- and the deployment verifier then reports LIVE != GOVERNED for
+# a ruleset that is character-for-character correct. Measured on eos-platform-sandbox 2026-08-27:
+# zero line-by-line differences, and the verifier still refused.
+#
+# The verifier now normalizes newlines before comparing (firestoreDeploymentVerificationShared.js's
+# normalizeRulesNewlines), which fixes the comparison. This forces the other half: what gets
+# deployed IS the governed byte sequence, so live and governed agree without needing to be forgiven
+# for anything. Both governed copies are covered -- they are required to stay byte-identical, and a
+# rule covering only one would make that impossible on a Windows checkout.
+firestore.rules text eol=lf
+field-ops-app-vite/firestore.rules text eol=lf
+
 # Evidence-integrity byte stability (INV-1 PR 1.10): the migration-readiness
 # package is checksum-verified continuously by functions/test/
 # migrationEvidence.test.mjs, and the fixture's SHA-256 is pinned inside the

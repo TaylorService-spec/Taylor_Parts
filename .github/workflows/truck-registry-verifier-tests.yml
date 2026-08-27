@@ -12,6 +12,7 @@ on:
     paths:
       - "functions/scripts/truckRegistryVerificationMatrix.js"
       - "functions/scripts/verifyTruckRegistryDeployment.js"
+      - "functions/scripts/firestoreDeploymentVerificationShared.js"
       - "functions/scripts/truckRegistryVerifierCli.js"
       - "functions/test/verifyTruckRegistryDeployment.test.js"
       - "config/truck-registry-deployment-verification.example.json"
@@ -23,6 +24,7 @@ on:
     paths:
       - "functions/scripts/truckRegistryVerificationMatrix.js"
       - "functions/scripts/verifyTruckRegistryDeployment.js"
+      - "functions/scripts/firestoreDeploymentVerificationShared.js"
       - "functions/scripts/truckRegistryVerifierCli.js"
       - "functions/test/verifyTruckRegistryDeployment.test.js"
       - "config/truck-registry-deployment-verification.example.json"
