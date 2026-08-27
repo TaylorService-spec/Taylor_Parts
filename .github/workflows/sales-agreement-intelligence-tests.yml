@@ -1,0 +1,44 @@
+name: Sales Agreement Intelligence Tests
+
+# Commercial-commitment AI boundary. Offline only: no emulator, provider call, deploy or secret.
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/salesAgreementIntelligence.js"
+      - "field-ops-app-vite/src/domain/salesAgreementView.js"
+      - "field-ops-app-vite/test/salesAgreementIntelligence.test.mjs"
+      - "functions/src/ai/salesAgreementModelInterpretation.ts"
+      - "functions/test/aiSalesAgreementModelInterpretation.test.mjs"
+      - ".github/workflows/sales-agreement-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sales-agreement-intelligence:
+    name: North Star Sales Agreement intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Deterministic Sales Agreement intelligence and model-payload boundary
+        run: node --test test/salesAgreementIntelligence.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Fail-closed Sales Agreement model-output verification
+        run: node --test test/aiSalesAgreementModelInterpretation.test.mjs
+        working-directory: functions
