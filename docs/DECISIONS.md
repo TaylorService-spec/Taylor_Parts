@@ -2693,3 +2693,182 @@ docs-only diff.
 (the three authorities), #125 (a family composed without its design source), #129/#130 (the
 Opportunity's route and its design-source rebuild — the available precedent for SA-G1), ND-9,
 ND-14, ND-15.
+
+---
+
+## #135 — The Opportunity collection replaces the workspace pane, and the list read already knew more than its design assumed
+
+**Date:** 2026-08-27 · **Scope:** presentation + one projection passthrough · **PR:** Opportunity North Star P1v4
+
+**Decision.** `/customers/opportunities` renders a **collection**, not a master-detail workspace.
+Its only job is finding one opportunity; the record is reached at
+`/customers/opportunities/:opportunityId`, where it has lived since #130. `SalesWorkspace` is
+mounted nowhere in the product. The navigation the Owner specified now exists end to end:
+
+```
+Opportunities list → Opportunity record → Sales Agreement → Sales Order
+```
+
+**Workspace P1v3 is SUPERSEDED, unbuilt.** P1v3 was a revision of the workspace shape. By the time
+the pane was free to retire, the record had had its own route for two families, so a full-width
+workspace would still have been a surface whose job was previewing a page that already exists.
+Two pure domain slices were lifted from the parked branch (`NEEDS_ATTENTION`, `AT_DECISION`, both
+also named by P1v4); `claude/opportunity-workspace-p1` was abandoned rather than merged, and no
+P1v3 presentation reached `main`.
+
+### The decision that needed taking: G2
+
+P1v4 states as a design gap that *"the agreement reference is not on the opportunity list read"* and
+instructs the Agreement/Order column to render `No agreement` truthfully until list-level resolution
+exists.
+
+**Verified against `main` rather than accepted.** `projectOpportunity` is shared by the list read
+and the per-id read, and it returns both `salesAgreementId` and `salesOrderId`. **Existence is
+knowable at list level for free.** The design's premise was one generation out of date;
+`buildPipelineRow` was dropping `salesAgreementId` on the floor — the identical defect
+`salesOrderId` had one generation earlier, and the third "written to Firestore, projected to nobody"
+finding in this family.
+
+The read still carries **no reference and no state** for either. So:
+
+| P1v4 draws | Implemented | Why |
+| --- | --- | --- |
+| `SA-2026-000003` / `Accepted` | `Agreement` | No reference, no state on the list read. A document id is not a label (#106). |
+| `SO-2026-000015` | `Order created` | Same. |
+| `No agreement`, `Order not created` | unchanged | Matches. |
+
+This is **more than the design's fallback and less than its full treatment**, which under #122 makes
+it a **named product decision, not a silent win**. Populating references requires list-level
+resolution or denormalisation — a *read* change, not a presentation change, and therefore not
+something a presentation migration may take on its own.
+
+**Explicitly forbidden, and tested:** resolving each row's agreement on demand. That is one round
+trip per visible opportunity on a surface built for scanning. A test renders 25 rows and asserts the
+governed source was invoked exactly once.
+
+### What the pane was still holding, checked before removal
+
+SA-G7 was the same failure one family earlier, found *after* the record page shipped: a pane
+retained one activated governed capability and retiring it would have deleted that capability from
+the product. So the check ran first this time, against the governed write commands rather than the
+components. Exactly one was trapped — `opportunity.write` create, reachable only through
+`NewOpportunityForm`, which only `SalesWorkspace` mounted. The collection mounts it. Section save
+and lifecycle transitions were already on the record.
+
+**Pane-only Sales Agreement capabilities are now zero** (SA-G7, #1544). `create` was never trapped:
+it belongs on the Opportunity, because creating an agreement *for* an opportunity is performed from
+the opportunity and there is no agreement yet to open.
+
+### A second link was still addressing the pane
+
+The P1v2 record's header fact linked the agreement to
+`/customers/opportunities?opportunity=<opportunityId>` — the pane's row selection — while the
+Sales agreement section directly beneath it linked to the agreement record. **One fact, two
+destinations** (NS-P4), and the header also passed the *opportunity* id where the *agreement's*
+belongs, so it was wrong independently of the route. Both now point at the agreement record.
+
+### Deferred from the artifact, with reasons
+
+- **`+ Save as view`** — needs persistence authority for user-scoped list state. New authority, not
+  presentation.
+- **Sort control, `Columns`** — the pipeline's order (attention first, then closing soonest) is a
+  governed derivation this page does not own; an arbitrary column sort replaces the queue's meaning
+  with a spreadsheet's.
+- **Pagination** — the governed read is unpaged. Previous/Next would imply a boundary that does not
+  exist.
+- **`Updated moments ago · Refresh`** — no trustworthy "as of" timestamp exists to print, and a
+  relative time the page invents is the exact fabrication class this family keeps catching.
+
+### One view is viewer-scoped, and admits when it cannot be
+
+`My opportunities` resolves the viewer's employee id from the directory subscription already open
+for owner names — no extra read. An account with **no linked Employee record** gets a stated reason
+rather than an empty queue, and its tab renders **no count** rather than `0`: *"we can't tell which
+are yours"* is true, *"you have no opportunities"* is a confident false claim about somebody's work.
+An empty collection outranks both — telling a new tenant their sign-in is unlinked describes the
+wrong problem.
+
+### Narrowing may never re-read
+
+Search and stage filtering run over rows the governed read already returned, so the toolbar cannot
+widen what a caller may see, and the result line names the **view** as the denominator rather than
+the collection — claiming "of 59 total" would imply the search reached records the page never read.
+Document ids are deliberately **unsearchable**: making them findable is how they end up quoted as if
+they were references (#106).
+
+### Method note
+
+Nineteen mutations were run against the load-bearing claims; all were caught but one equivalent
+mutant. Three survived a first pass and each exposed a weak **test**, not weak code — an assertion
+matching a phrase that a bare `0` slipped past, a navigation claim made against a harness with no
+route table to navigate in, and slices whose coverage lived in a different suite than the one being
+mutated. Recorded because "all tests pass" was the same evidence that missed the blank-Owner defect
+under #130, and a first-run green on a brand-new suite is not evidence of anything.
+
+**Related:** #106 (a document id is never a label), #122 (the three authorities — the source of the
+G2 ruling above), #125, #129 (the Opportunity's route), #130 (the P1v2 record and the blind build it
+reversed), #131 (a new suite runs in CI only where a workflow names it — this one is named in
+`composition-conformance-tests.yml`), #134 (the Sales Agreement record that made this retirement
+possible), ND-13.
+
+---
+
+## #136 — OWNER RULING: the tablet drops columns instead of folding them, overriding P1v4's 1b frame
+
+**Date:** 2026-08-27 · **Scope:** presentation only · **Authority:** Owner (acceptance)
+
+**The conflict.** P1v4's 1b frame specifies that at 768 *"owner + channel + attention fold into
+identity; Stage, Value survive; Close and the commercial chain share the last column as two lines."*
+It was built exactly that way, then rendered against the artifact and shown to the Owner alongside
+the 1440 and 375 frames.
+
+**Owner ruling, verbatim:** *"i like 1 and 3 because they are exactly what i would expect to see in
+a list. the middle one goes into detail that consumes more space."*
+
+**Decision.** The tablet band **drops** what will not fit rather than **folding** it, which is what
+the desktop already does as it narrows. Recorded here rather than applied quietly because it
+reverses a specific instruction in an approved design artifact — #122's rule is that Design and
+Acceptance disagreeing produces a named decision, and the Owner is the acceptance authority.
+
+**Why the ruling is right, in the terms the design uses.** Folding does not remove content; it moves
+it *downward*. Every row gained a third and often a fourth line at exactly the width where vertical
+space is scarcest, so a list of six deals filled a screen that had comfortably held them one
+breakpoint earlier. The surface stopped answering *"which of these needs me?"* and started answering
+*"tell me about each of these"*, which is the record's question and the reason the record has its
+own route.
+
+**Measured, because the complaint was about space and an opinion about a screenshot is not
+evidence.** Average row height across the designed widths, before and after:
+
+| Width | Before | After | |
+| --- | --- | --- | --- |
+| 1440 desktop | 56px | 56px | unchanged — the Owner accepted this frame |
+| 1024 | 62px | 58px | was briefly the worst band: drops had not started, columns already tight |
+| 900 | 58px | 56px | |
+| 768 tablet | **68px** (max 83) | **58px** (max 70) | the frame that was rejected |
+| 375 phone | 249px | 249px | unchanged — the Owner accepted this frame |
+
+**What is dropped at 900 and below, and why it is safe here and only here:**
+
+- **channel** — secondary context, never a reason to act. Present on the record.
+- **the stage ordinal ("2 of 6")** — the stage WORD survives, which is the fact; the ordinal
+  refines it.
+
+**What is NOT dropped:** attention keeps its own column at every table width, worded exactly as
+`deriveAttention` produced it. It is the reason to open a row at all, so it survives every fold.
+
+**Two findings that came out of measuring rather than looking.** The clamp that holds rows to two
+lines had to start at **1200**, not at the drop breakpoint — wrapping begins as soon as the table
+narrows, while dropping is only needed once columns stop fitting, and treating them as one
+breakpoint left 1024 as the worst band on the page. And the clamp had to be bounded **below** at 601
+as well: below that the row is a card, where a one-line clamp is simply wrong, and leaving it
+unbounded cost 30px per card on the phone — a regression in the one frame the Owner had explicitly
+approved.
+
+**Guarded, not just fixed.** All four row sub-lines previously shared one class, so no stylesheet
+could drop one without dropping all of them — which is *why* folding was the only lever available.
+They are now named for the fact each carries, and three tests pin those names, because merging them
+back would silently restore the rejected behaviour with every test still green. Mutation-proved.
+
+**Related:** #122 (the three authorities — the rule this entry follows), #135 (the collection this
+amends), and the family README, which records the departure beside the artifact it departs from.

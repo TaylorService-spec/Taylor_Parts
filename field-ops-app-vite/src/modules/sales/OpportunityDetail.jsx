@@ -280,8 +280,20 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
             // THE AGREEMENT FACT APPEARS ONLY WHEN ONE EXISTS. P1v2 is explicit: never
             // "Agreement: —". Absence is stated by the section below, not by a placeholder here.
             // RecordIdentity drops a fact whose value is null, so returning null IS the absence.
-            value: agreement?.view?.kind === "READY"
-              ? <>Agreement <strong><Link to={`/customers/opportunities?opportunity=${encodeURIComponent(view.id)}`}>{agreement.view.salesAgreementNumber ?? "Sales Agreement"}</Link></strong></>
+            //
+            // POINTS AT THE AGREEMENT RECORD, not at the retired workspace pane.
+            //
+            // This link read `/customers/opportunities?opportunity=<opportunityId>`, which addressed
+            // the pane's row selection -- so the header fact and the Sales agreement section
+            // directly below it sent a reader to two different places for ONE fact (NS-P4), and the
+            // header's destination was a surface P1v4 retires. It also passed the OPPORTUNITY id
+            // where the agreement's own id belongs.
+            //
+            // Same href builder shape as OpportunityAgreementCard: the document id is the ROUTE KEY
+            // and the visible text is the governed number, or the truthful generic when a record
+            // predates numbering. A routing key is never a name (DECISIONS #106).
+            value: agreement?.view?.kind === "READY" && agreement.view.id
+              ? <>Agreement <strong><Link to={`/customers/opportunities/sales-agreement/${encodeURIComponent(agreement.view.id)}`}>{agreement.view.salesAgreementNumber ?? "Sales Agreement"}</Link></strong></>
               : null,
           },
         ]}

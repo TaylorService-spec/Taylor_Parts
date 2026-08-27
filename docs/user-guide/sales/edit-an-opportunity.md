@@ -21,7 +21,7 @@ disagreeing with no record of which is right.
 ## Steps
 
 1. Go to **Sales > Opportunities**.
-2. Click the opportunity in the pipeline table. Its details open in the panel on the right.
+2. Click the opportunity's row. That opens its record page.
 3. Find the section you want to change and click its **Edit** button. Sections are:
    - **Commercial details** — channel, estimated value, expected close date, owner
    - **Customer need** — the free-text description of what they're trying to solve
@@ -31,7 +31,7 @@ disagreeing with no record of which is right.
    readable, so you keep your context.
 5. Click **Save**.
 
-That's it. The panel returns to the read view and the pipeline refreshes with your change.
+That's it. The section returns to its read view with your change in place.
 
 ## Changing the owner
 

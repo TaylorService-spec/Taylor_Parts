@@ -37,7 +37,12 @@ const Operations = lazy(() => import("./modules/operations/Operations"));
 const DispatcherBoard = lazy(() => import("./modules/dispatcherBoard/DispatcherBoard"));
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 const AccountsList = lazy(() => import("./modules/accounts/AccountsList"));
-const SalesWorkspace = lazy(() => import("./modules/sales/SalesWorkspace"));
+// The Opportunity collection (North Star P1v4). SalesWorkspace -- the master-detail pipeline that
+// used to render here -- is NO LONGER ROUTED anywhere in the app as of this change. Its file and
+// tests remain in the tree: the pane's retirement is behavioral, and deleting the module is a
+// separate cleanup because several of its tests still guard shared domain behaviour that has no
+// other home yet. It is unreachable from the product either way.
+const OpportunityList = lazy(() => import("./modules/sales/OpportunityList.jsx"));
 // The Opportunity RECORD page (North Star family 4). Until it existed an Opportunity had no URL at
 // all -- it was reachable only as the selected row of a pipeline someone had already loaded.
 const OpportunityDetail = lazy(() => import("./modules/sales/OpportunityDetail"));
@@ -266,15 +271,22 @@ function CrashTrailRecorder() {
   return null;
 }
 
-function OpportunityWorkspaceConnected() {
+// The Opportunity COLLECTION mount (North Star P1v4). Replaces OpportunityWorkspaceConnected, which
+// mounted the master-detail SalesWorkspace here.
+//
+// `hasCapability` is deliberately NOT threaded: the collection reads no Sales Agreement data. The
+// workspace needed it because its pane embedded the agreement panel; a list that shows only whether
+// an agreement EXISTS -- from a field the Opportunity read already returns -- needs no agreement
+// capability at all, and asking for one would imply a read this page never performs.
+function OpportunityListConnected() {
   const { user } = useAuth();
   const { hasCapability } = useOpportunityCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
   const readiness = opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted });
-  // The SAME trusted feed answers the Sales Agreement capabilities (one request, one accessVersion
-  // -- see OPPORTUNITY_CAPABILITY_REQUEST). Threaded rather than resolved inside the panel so the
-  // fail-closed default still holds for every test that injects nothing.
-  return <SalesWorkspace source={governedOpportunitySource} readiness={readiness} hasCapability={hasCapability} />;
+  // The viewer's uid is threaded so "My opportunities" can resolve WHO is looking, from the
+  // employee directory the page already subscribes to for owner names. No extra read, and an
+  // account with no linked employee record gets that view's honest unresolved state.
+  return <OpportunityList source={governedOpportunitySource} readiness={readiness} viewerUid={user?.uid ?? null} />;
 }
 
 // Fixes the known defect (SalesOrderActions.jsx) where the Sales Order Advance/Cancel/Allocate/
@@ -353,6 +365,15 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "customers" && item.key === "customers") {
     return <AccountsList />;
   }
+  // Sales -- the Opportunity COLLECTION (North Star P1v4). Was the master-detail operating
+  // workspace; it is now a list whose only job is finding one opportunity, because the record it
+  // used to preview in a pane has had its own certified route since P1v2. Reads the same governed
+  // listOpportunityContext callable through the same source seam, and carries the governed create
+  // form (NewOpportunityForm) that the retiring workspace was the only mount for.
+  //
+  // Historical note kept because it still explains the branch: this is dispatched HERE rather than
+  // as a <Route>, like AccountsList/PartMasterList, because the generic subnav loop emits a route
+  // for every visible nav item and would otherwise win the match.
   // Sales Cycle 2 -- the Opportunity Operating Workspace. Same brand-new-screen pattern as
   // AccountsList/PartMasterList: no legacyKey, explicit branch; admin/dispatcher via
   // PLACEHOLDER_DEFAULT_ROLES. Post-Wave-5: reads the real governed listOpportunityContext
@@ -363,7 +384,7 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // OpportunityWorkspaceConnected, which feeds SalesWorkspace's readiness seam the real
   // resolveEffectiveAccessCallable decision for opportunity.write instead of a hardcoded fail-closed value.
   if (domain.key === "customers" && item.key === "opportunities") {
-    return <OpportunityWorkspaceConnected />;
+    return <OpportunityListConnected />;
   }
   // The Sales Order INDEX must be dispatched HERE, not by a separate <Route>. The generic
   // subnav loop below emits a route for EVERY visible nav item and renders whatever this

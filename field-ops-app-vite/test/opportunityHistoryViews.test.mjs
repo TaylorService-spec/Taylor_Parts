@@ -40,6 +40,14 @@ const SANDBOX = [
   ...Array.from({ length: 7 }, (_, i) => opp(`won-${i}`, { outcome: "WON" })),
   opp("lost-1", { outcome: "LOST" }),
 ];
+// Open work alongside closed, so the P1v4 slices can be shown NOT to reach into history. One deal
+// is deliberately overdue with no next action, which is what `deriveAttention` flags.
+const MIXED = [
+  ...SANDBOX,
+  opp("open-decision", { stage: "DECISION", expectedCloseAt: 1_755_000_000_000, nextAction: "Present" }),
+  opp("open-quoting", { stage: "QUOTING", expectedCloseAt: 1_755_000_000_000, nextAction: "Send quote" }),
+  opp("open-overdue", { stage: "SOLUTION", expectedCloseAt: 1_754_000_000_000, nextAction: null }),
+];
 const build = (list) => buildOpportunityPipeline(list, { nowMillis: 1_754_600_000_000, accountNameById: {} });
 
 // ═════════════════════════════════════════ the sandbox case, exactly
@@ -123,8 +131,66 @@ test("EACH EMPTY STATE NAMES ITS OWN FACT", () => {
 });
 
 test("every view has a label, and the vocabulary is closed", () => {
-  assert.deepEqual(Object.keys(OPPORTUNITY_VIEW_LABEL).sort(), ["all", "lost", "open", "won"]);
+  // EXTENDED by North Star P1v4 with the two operational slices its state view names. The list is
+  // still exhaustive on purpose: a view added without a label renders a blank tab, and a view added
+  // without a thought about `OPPORTUNITY_EMPTY_TEXT` renders somebody else's empty sentence.
+  assert.deepEqual(
+    Object.keys(OPPORTUNITY_VIEW_LABEL).sort(),
+    ["all", "at_decision", "lost", "mine", "needs_attention", "open", "won"],
+  );
   for (const v of Object.values(OPPORTUNITY_VIEW)) assert.ok(OPPORTUNITY_VIEW_LABEL[v], `${v} needs a label`);
+  // Every view must also own an empty sentence, or an empty slice borrows another view's words.
+  for (const v of Object.values(OPPORTUNITY_VIEW)) assert.ok(OPPORTUNITY_EMPTY_TEXT[v], `${v} needs empty text`);
+  // The viewer-scoped view has a SECOND reason -- unresolved identity -- which is not a view name
+  // and so is easy to add without copy. It must never fall through to another view's sentence.
+  assert.ok(OPPORTUNITY_EMPTY_TEXT.mine_unresolved);
+  assert.notEqual(OPPORTUNITY_EMPTY_TEXT.mine_unresolved, OPPORTUNITY_EMPTY_TEXT.mine);
+});
+
+test("MINE is viewer-scoped, and an unresolved viewer is not an empty queue", () => {
+  const p = build([...MIXED, opp("mine-1", { ownerEmployeeId: "emp-me", stage: "QUOTING" })]);
+  // Known viewer: only their open work.
+  const mine = selectOpportunityView(p, OPPORTUNITY_VIEW.MINE, { viewerEmployeeId: "emp-me" });
+  assert.deepEqual(mine.rows.map((r) => r.id), ["mine-1"]);
+
+  // Unknown viewer: NOT zero rows silently. A real account can have no linked employee record, and
+  // "you have no opportunities" would be a confident false statement about their work.
+  const unknown = selectOpportunityView(p, OPPORTUNITY_VIEW.MINE, { viewerEmployeeId: null });
+  assert.equal(unknown.rows.length, 0);
+  assert.equal(unknown.emptyReason, "mine_unresolved");
+
+  // But an empty COLLECTION still outranks it — that is a different, larger fact.
+  assert.equal(selectOpportunityView(build([]), OPPORTUNITY_VIEW.MINE).emptyReason, "none");
+});
+
+// ═════════════════════════════════════════ the two operational slices (P1v4)
+
+test("NEEDS ATTENTION and AT DECISION are slices of the OPEN queue, never of history", () => {
+  // A won or lost deal cannot need attention and is not awaiting a decision. Drawing these from
+  // `all` would put closed work in front of a salesperson under a heading saying it is outstanding.
+  const p = build(MIXED);
+  const open = new Set(p.rows.map((r) => r.id));
+  for (const view of [OPPORTUNITY_VIEW.NEEDS_ATTENTION, OPPORTUNITY_VIEW.AT_DECISION]) {
+    // NOT VACUOUS: a loop over an empty slice passes without asserting anything, so the fixture is
+    // required to actually populate both slices before the containment check means a thing.
+    assert.ok(selectOpportunityView(p, view).rows.length > 0, `${view} must be populated to be tested`);
+    for (const row of selectOpportunityView(p, view).rows) {
+      assert.ok(open.has(row.id), `${row.id} in ${view} is not an open opportunity`);
+      assert.equal(row.commercial.closed, false);
+    }
+  }
+});
+
+test("the slices RE-DERIVE NOTHING — they filter on facts the pipeline already decided", () => {
+  const p = build(MIXED);
+  const attention = selectOpportunityView(p, OPPORTUNITY_VIEW.NEEDS_ATTENTION).rows;
+  const decision = selectOpportunityView(p, OPPORTUNITY_VIEW.AT_DECISION).rows;
+  assert.ok(attention.length > 0 && decision.length > 0, "fixture must populate both slices");
+  // Same row OBJECTS, not equal copies: identity is what proves no second derivation happened.
+  for (const row of attention) assert.ok(p.rows.includes(row));
+  for (const row of decision) assert.ok(p.rows.includes(row));
+  assert.deepEqual(attention.map((r) => r.id), p.rows.filter((r) => r.attentionTone === "attention").map((r) => r.id));
+  assert.deepEqual(decision.map((r) => r.id), p.rows.filter((r) => r.stage === "DECISION").map((r) => r.id));
 });
 
 // ═════════════════════════════════════════ closed stays closed

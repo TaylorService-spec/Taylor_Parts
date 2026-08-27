@@ -92,6 +92,18 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
     // lineage visibly"). Was previously written server-side but never projected through to the UI --
     // the exact "coordination invisibility" finding from the gap audit.
     salesOrderId: opp.salesOrderId ?? null,
+    // The Sales Agreement forward-link — THE SAME DEFECT AS salesOrderId ABOVE, one layer up.
+    //
+    // opportunityReadService projects `salesAgreementId` (projectOpportunity, shared by both the
+    // list read and the per-id read), and opportunitySource passes whole projections through
+    // untouched. This builder was the only place it was lost, so every client of the pipeline
+    // believed the Opportunity -> Agreement link did not exist in list data and would have had to
+    // re-read each row to discover it -- one round trip per visible deal, to learn something the
+    // first read already returned.
+    //
+    // Carried as an EXISTENCE fact only. It is a document id: it routes, it is never a label
+    // (DECISIONS #106), and the list read returns no agreement reference to show in its place.
+    salesAgreementId: opp.salesAgreementId ?? null,
     // THE VERSION, carried so an edit can prove which copy it started from. updateOpportunity
     // rejects any caller that cannot; without this the governed edit command is unreachable
     // from this surface no matter what else is wired.
@@ -199,8 +211,20 @@ export function buildOpportunityPipeline(opportunities = [], { nowMillis = null,
 //
 // OPEN STAYS THE DEFAULT. The pipeline is a work queue first; history is somewhere you go.
 
+// NEEDS_ATTENTION and AT_DECISION are SLICES OF THE OPEN QUEUE, not new pipelines. Both filter the
+// already-sorted `rows` on facts `deriveAttention` and the stage spine already decided, so a tab
+// cannot disagree with the rows it shows or with the record page those rows open.
+//
+// They are views rather than component-local filters because the collection header states the same
+// two counts in a sentence. A tab and a sentence computing "needs attention" separately is exactly
+// how a screen comes to say "3 need attention" above a list of four.
 export const OPPORTUNITY_VIEW = Object.freeze({
   OPEN: "open",
+  // VIEWER-SCOPED. The only view whose membership depends on who is looking, which is why
+  // `selectOpportunityView` takes a viewer and why this one has an honest unresolved state.
+  MINE: "mine",
+  NEEDS_ATTENTION: "needs_attention",
+  AT_DECISION: "at_decision",
   WON: "won",
   LOST: "lost",
   ALL: "all",
@@ -208,6 +232,9 @@ export const OPPORTUNITY_VIEW = Object.freeze({
 
 export const OPPORTUNITY_VIEW_LABEL = Object.freeze({
   open: "Open",
+  mine: "My opportunities",
+  needs_attention: "Needs attention",
+  at_decision: "At decision",
   won: "Won",
   lost: "Lost",
   all: "All",
@@ -227,11 +254,33 @@ export function normalizeOpportunityView(value) {
  * into "nothing here" tells a new tenant their data failed to load and tells an established one
  * their pipeline is broken.
  */
-export function selectOpportunityView(pipeline, view) {
+export function selectOpportunityView(pipeline, view, { viewerEmployeeId = null } = {}) {
   const v = normalizeOpportunityView(view);
   const all = pipeline?.all ?? [];
+
+  // "MINE" WITHOUT A KNOWN VIEWER IS NOT AN EMPTY QUEUE.
+  //
+  // The viewer's employee id comes from the directory entry linked to their sign-in, and a real
+  // account can have none -- a plain admin or dispatcher login with no Employee record. Filtering on
+  // `null` would match nothing and the page would say "you have no opportunities", which is a
+  // confident false statement about their work. Unresolved identity gets its own reason instead.
+  //
+  // `all.length > 0` guard: "there are no opportunities at all" OUTRANKS this, the same way it
+  // outranks every other per-view reason below. Telling a brand-new tenant that their sign-in is
+  // not linked to an employee record describes the wrong problem entirely.
+  if (v === OPPORTUNITY_VIEW.MINE && !viewerEmployeeId && all.length > 0) {
+    return { view: v, rows: [], emptyReason: "mine_unresolved" };
+  }
   const rows =
     v === OPPORTUNITY_VIEW.OPEN ? (pipeline?.rows ?? [])
+    // Mine draws from the OPEN queue too: it answers "what am I working on", and a salesperson's
+    // closed history is reached through Won/Lost like anyone else's.
+    : v === OPPORTUNITY_VIEW.MINE ? (pipeline?.rows ?? []).filter((r) => r.ownerEmployeeId === viewerEmployeeId)
+    // Both slices read the OPEN queue, never `all`: a deal that was already won or lost cannot
+    // need attention and is not awaiting a decision, so drawing them from `all` would put closed
+    // work back in front of a salesperson under a heading that says it is outstanding.
+    : v === OPPORTUNITY_VIEW.NEEDS_ATTENTION ? (pipeline?.rows ?? []).filter((r) => r.attentionTone === "attention")
+    : v === OPPORTUNITY_VIEW.AT_DECISION ? (pipeline?.rows ?? []).filter((r) => r.stage === "DECISION")
     : v === OPPORTUNITY_VIEW.WON ? all.filter((r) => r.outcome === "WON")
     : v === OPPORTUNITY_VIEW.LOST ? all.filter((r) => r.outcome === "LOST")
     : all;
@@ -246,6 +295,14 @@ export function selectOpportunityView(pipeline, view) {
 export const OPPORTUNITY_EMPTY_TEXT = Object.freeze({
   none: "No opportunities yet.",
   open: "No open opportunities. Switch to Won or Lost to see closed ones.",
+  mine: "Nothing is assigned to you right now.",
+  // Says WHOSE fact is missing. "You have no opportunities" would be a confident false statement
+  // about somebody's work when the truth is that their sign-in is not linked to an employee record.
+  mine_unresolved: "We can't tell which opportunities are yours — your sign-in isn't linked to an employee record.",
+  // Both of these are GOOD NEWS, and say so. "No results" would read as a broken filter on a queue
+  // that is simply clear -- the same mistake as reporting an empty pipeline to a new tenant.
+  needs_attention: "Nothing needs attention. Every open opportunity has a next step and a close date.",
+  at_decision: "No opportunities are awaiting a decision.",
   won: "No opportunities have been won yet.",
   lost: "No opportunities have been lost.",
   all: "No opportunities yet.",

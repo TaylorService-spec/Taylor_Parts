@@ -312,7 +312,7 @@ future surface ever wants stage durations, this entry is the record that the dat
 `closedAtMillis`, added to the governed projection during the blind build, is kept: it is a real
 fact the transition writes that was projected to nobody, and the Activity section states it honestly.
 
-### ND-13 — The Opportunity has two compositions, and only one of them is the record
+### ND-13 — The Opportunity has two compositions, and only one of them is the record — **RESOLVED 2026-08-27: the pane is retired**
 
 **Raised:** 2026-08-26 · **Narrowed by P1v2 the same day**
 **Design holds:** one record, one record page.
@@ -331,6 +331,51 @@ North Star run gives the agreement its own surface. Still open, and still the qu
 whether EOS workspaces keep detail panes at all.
 **Asserted by:** `test/opportunityNorthStarPage.test.jsx` and `test/salesWorkspace.test.jsx`, which
 between them prove the two surfaces read one derivation and one save path.
+
+**RESOLVED 2026-08-27 (Owner, PR #1545 — North Star P1v4).** The pane is retired. `/customers/opportunities`
+renders a collection whose only job is finding one opportunity; the record is reached, not embedded.
+
+The general question this entry says it decides — *"whether EOS workspaces keep detail panes at
+all"* — is answered for this family and, on the reasoning, for any family whose record has its own
+route: **a pane that previews a page which already exists is a second, lesser copy of it.** The
+constraint was never the composition, it was the capability. Retiring a surface deletes whatever only
+that surface offered, which is why the sequence ran Sales Agreement record (family 5) → SA-G7 line
+pricing (#1544) → collection (#1545), and why the create form moved onto the collection in the same
+change. The lesson generalises even where the ruling does not: **check what only the pane offers
+before removing it, not after.**
+
+Answered by DECISIONS #135. Superseded design: Workspace P1v3, which was never built.
+
+---
+
+### ND-17 — The retired workspace is unrouted but still in the tree
+
+**Raised:** 2026-08-27, by the Owner's scope ruling on PR #1545
+**Owner ruling:** *"The Opportunity P1v4 acceptance condition is that the legacy workspace is no
+longer routed as the Opportunity entry experience. Physical deletion is not required."*
+
+**State:** `SalesWorkspace.jsx` is mounted nowhere in the app and is unreachable from the product.
+Its module and its tests remain in the tree.
+
+**Why it was not deleted with the migration, and this is the substance of the item rather than
+housekeeping:** `test/salesWorkspace.test.jsx` and `test/salesWorkspaceDate.test.jsx` still assert
+shared domain behaviour that has **no other coverage home** — among them the derivation and save
+path ND-13 above cites as proof the two surfaces agreed. Deleting the component and its tests during
+a presentation migration would have bundled unrelated cleanup into an accepted change and traded
+away real regression coverage for a tidier directory.
+
+**What closing this actually requires**, in order:
+
+1. Enumerate what those suites uniquely cover — not what they *run*, but what would stop being
+   asserted anywhere if they were deleted.
+2. Give each surviving assertion a home on a surface that still exists (the record, the collection,
+   or a domain suite), and prove the new home fails when the behaviour breaks.
+3. Only then remove the module and its tests.
+
+**Not urgent, and deliberately so.** An unrouted module costs a little bundle weight and some
+reader confusion; deleting it early costs coverage. The order matters more than the timing.
+
+**Related:** DECISIONS #135, ND-13.
 
 ---
 

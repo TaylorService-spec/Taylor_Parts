@@ -14,6 +14,8 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Record a Sales Agreement](./sales/record-a-sales-agreement.md) — writing down what the customer
   agreed to, pricing the lines, editing the draft while you negotiate, and accepting it. An accepted
   agreement is what a Sales Order gets its prices from.
+- [Find an opportunity](./sales/find-an-opportunity.md) — the Opportunities list: the views along
+  the top, searching and filtering, what each column means, and opening a deal.
 - [Edit an opportunity](./sales/edit-an-opportunity.md)
 - [Mark an opportunity won](./sales/mark-an-opportunity-won.md)
 
