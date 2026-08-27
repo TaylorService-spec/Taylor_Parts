@@ -12,7 +12,8 @@ const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 const SURFACES = {
   "control tower detail": "../src/modules/controlTower/WorkOrderDetail.jsx",
   "dispatcher preview": "../src/modules/dispatcherBoard/WorkOrderPreview.jsx",
-  "dispatcher queue": "../src/modules/dispatcherBoard/WorkOrderQueue.jsx",
+  // The Dispatch North Star P1 queue REPLACED WorkOrderQueue.jsx. Same rule, new surface.
+  "dispatcher queue": "../src/modules/dispatcherBoard/ReadyToScheduleQueue.jsx",
   "technician card": "../src/modules/technicianDashboard/TechnicianWorkOrderCard.jsx",
   "technician detail": "../src/modules/technicianDashboard/TechnicianWorkOrderDetail.jsx",
   "scheduling": "../src/modules/scheduling/SchedulingWorkspace.jsx",

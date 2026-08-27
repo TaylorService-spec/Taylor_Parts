@@ -68,25 +68,40 @@ check("WorkOrderPreview.jsx (Control Tower dispatcher preview pane): uses workOr
   assert.doesNotMatch(text, /[^(]\{workOrder\.status\}/, "raw {workOrder.status} render survived");
 });
 
-check("WorkOrderQueue.jsx: both the status chip and the aria-label use workOrderStatusLabel", () => {
-  const text = read("modules/dispatcherBoard/WorkOrderQueue.jsx");
-  assert.match(text, /import \{ workOrderStatusLabel \} from "\.\.\/\.\.\/domain\/workOrderStatus"/);
-  assert.match(text, /\{workOrderStatusLabel\(wo\.status\)\}/, "status chip text");
-  assert.match(text, /status \$\{workOrderStatusLabel\(wo\.status\)\}/, "aria-label sentence");
-  assert.doesNotMatch(text, /status \$\{wo\.status\}/, "aria-label still reads the raw enum");
+// ── Dispatch North Star P1 (2026-08-27) ──────────────────────────────────────────────────────────
+//
+// Three checks used to live here, against WorkOrderQueue.jsx, TechnicianBoard.jsx and the board's
+// status-filter dropdown. All three surfaces were REPLACED by the North Star composition: the queue
+// became ReadyToScheduleQueue, the technician columns became the lane grid, and the status filter
+// became the Day/Week/2-week view switcher.
+//
+// The RULE they defended is unchanged and is re-asserted below against what replaced them. Deleting
+// them without a replacement would have quietly reduced this gate's coverage at exactly the moment a
+// surface was rewritten — which is when a raw enum is most likely to reappear.
+
+check("ReadyToScheduleQueue.jsx: no raw Work Order status enum reaches the card", () => {
+  // It renders no status CHIP at all now, because every card in this queue is READY_TO_DISPATCH and
+  // a column repeating one word on every row is noise. So the assertion is the ABSENCE of the enum
+  // rather than the presence of the label.
+  const text = read("modules/dispatcherBoard/ReadyToScheduleQueue.jsx");
+  assert.doesNotMatch(text, /\{wo\.status\}/, "raw {wo.status} render");
+  assert.doesNotMatch(text, /status \$\{wo\.status\}/, "raw enum in a sentence");
 });
 
-check("DispatcherBoard.jsx: status-filter dropdown options render workOrderStatusLabel, not the bare enum", () => {
+check("DispatcherBoard.jsx: a refusal names the status through workOrderStatusLabel", () => {
+  // The board tells a dispatcher why a chip cannot move — "it is Dispatched". That sentence must use
+  // the governed label: a locally humanised enum is a SECOND status vocabulary, it drifts the moment
+  // a label is reworded, and it puts the raw value on screen for anything the local transform does
+  // not recognise.
   const text = read("modules/dispatcherBoard/DispatcherBoard.jsx");
-  assert.match(text, /import \{ WORK_ORDER_STATUS_VALUES, workOrderStatusLabel \} from "\.\.\/\.\.\/domain\/workOrderStatus"/);
-  assert.match(text, /WORK_ORDER_STATUS_VALUES\.map/, "dropdown built from the canonical value list, not a hand-copied array");
-  assert.match(text, /<option key=\{s\} value=\{s\}>\s*\{workOrderStatusLabel\(s\)\}/);
+  assert.match(text, /import \{ workOrderStatusLabel \} from "\.\.\/\.\.\/domain\/workOrderStatus"/);
+  assert.match(text, /workOrderStatusLabel\(status\)/, "the governed label");
+  assert.doesNotMatch(text, /toLowerCase\(\)\.replace\(\/_\/g/, "a hand-rolled status humaniser");
 });
 
-check("TechnicianBoard.jsx: the 'is <status> --' sentence uses workOrderStatusLabel", () => {
-  const text = read("modules/dispatcherBoard/TechnicianBoard.jsx");
-  assert.match(text, /import \{ workOrderStatusLabel \} from "\.\.\/\.\.\/domain\/workOrderStatus"/);
-  assert.match(text, /is \{workOrderStatusLabel\(selectedWorkOrder\.status\)\}/);
+check("DispatchLaneGrid.jsx: a lane chip carries no raw status enum", () => {
+  const text = read("modules/dispatcherBoard/DispatchLaneGrid.jsx");
+  assert.doesNotMatch(text, /\{wo\.status\}/, "raw {wo.status} render");
 });
 
 check("DispatchSchedulingWorkspace.jsx: technician status text is unified on dispatcherBoard/technicianStatusLabel", () => {
@@ -155,8 +170,11 @@ check("GATE -- the M20-fixed sites are actually off the allowlist (burn-down pro
   const fixed = [
     "modules/workOrders/WorkOrdersList.jsx",
     "modules/dispatcherBoard/WorkOrderPreview.jsx",
-    "modules/dispatcherBoard/WorkOrderQueue.jsx",
-    "modules/dispatcherBoard/TechnicianBoard.jsx",
+    // WorkOrderQueue.jsx and TechnicianBoard.jsx were DELETED by the Dispatch North Star P1
+    // composition, not un-fixed. Their successors carry the burn-down instead: a file that no longer
+    // exists cannot be proved off an allowlist, and leaving the names here would fail the read.
+    "modules/dispatcherBoard/ReadyToScheduleQueue.jsx",
+    "modules/dispatcherBoard/DispatchLaneGrid.jsx",
   ];
   const stillFlagged = fixed.filter((r) => findRawWorkOrderStatusRenders().has(r));
   assert.deepEqual(stillFlagged, [], `Fixed file(s) still trigger the raw-status detector:\n${stillFlagged.join("\n")}`);
