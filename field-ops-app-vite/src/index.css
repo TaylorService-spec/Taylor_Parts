@@ -6070,3 +6070,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   color: inherit; width: 100%; }
 .ns-terms-edit__field input[type="checkbox"] { justify-self: start; width: 18px; height: 18px; }
 .ns-terms-edit__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+/* Commercial provenance, one line: where a Sales Order's committed prices came from (PR 5).
+   Additive; no shared primitive touched. */
+.ns-provenance { margin: 4px 0 18px; font-size: 13px; }

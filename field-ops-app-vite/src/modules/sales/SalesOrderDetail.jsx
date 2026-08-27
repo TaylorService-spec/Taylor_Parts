@@ -176,6 +176,7 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
   // THE LINEAGE TAIL beneath the band, stated in ONE place. The rail carries no second copy — the
   // same sentence in both is the NS-P4 defect this composition exists to remove.
   const lineageTail = lineageSentence(lineage, view);
+  const agreementEdge = lineage.find((edge) => edge.key === "agreement") ?? null;
 
   return (
     <div className="ns-page">
@@ -250,6 +251,23 @@ export default function SalesOrderDetail({ actionDeps, hasCapability } = {}) {
       ) : null}
 
       <AttentionBand items={attention} />
+
+      {/* COMMERCIAL PROVENANCE — where this order's committed prices came from.
+          `salesOrderLineage` already computes this edge and has always reported it UNRESOLVED:
+          `sourceAgreementId` is projected and no read resolves an agreement to a reference (ND-9).
+          What changed is that the agreement now HAS an address (DECISIONS #134), so the
+          relationship becomes navigable without becoming resolvable.
+          The id is the route key and never the label — "the sales agreement" is honest neutral
+          wording; printing the document id is the defect DECISIONS #106 exists to forbid. */}
+      {agreementEdge?.state === EDGE.UNRESOLVED && agreementEdge.targetId ? (
+        <p className="ns-provenance">
+          Priced from{" "}
+          <Link to={`/customers/opportunities/sales-agreement/${encodeURIComponent(agreementEdge.targetId)}`}>
+            the sales agreement
+          </Link>{" "}
+          <span className="ns-section__note">— the commercial commitment these lines and prices came from.</span>
+        </p>
+      ) : null}
 
       {/* THE SUGGESTION SLOT — and here it genuinely speaks.
           The recommendation is DETERMINISTIC and says so: it compares two quantities the order

@@ -79,11 +79,16 @@ export default function OpportunityAgreementCard({
   const view = agreement?.view ?? { kind: SALES_AGREEMENT_VIEW_STATE.LOADING };
   const canCreate = hasCapability(SALES_AGREEMENT_CREATE_CAPABILITY) === true;
 
-  // The agreement's own surface is the workspace detail pane — there is no per-agreement route in
-  // this build, and the Sales Agreement North Star run is what will give it one. Linking to the
-  // workspace with this opportunity selected lands the reader on the real panel rather than on a
-  // route that does not exist. §20: navigation either works, is truthfully disabled, or is absent.
-  const agreementHref = `/customers/opportunities?opportunity=${encodeURIComponent(opportunityId ?? "")}`;
+  // THE AGREEMENT NOW HAS ITS OWN ADDRESS.
+  //
+  // This used to link to the workspace pane with the opportunity selected, because no per-agreement
+  // route existed and §20 says navigation either works, is truthfully disabled, or is absent. The
+  // Sales Agreement North Star run gave it one (DECISIONS #134), so the link goes to the record
+  // itself.
+  //
+  // The document id is the ROUTE KEY and nothing else — the visible text is `salesAgreementLabel`,
+  // the governed number or the truthful generic. A routing key is not a name (DECISIONS #106).
+  const agreementHref = (id) => `/customers/opportunities/sales-agreement/${encodeURIComponent(id)}`;
 
   const heading = (
     <h2 className="ns-section__title">
@@ -143,6 +148,9 @@ export default function OpportunityAgreementCard({
 
   function readyCard() {
     const label = salesAgreementLabel(view);
+    // READY implies the record was read, so its routing id is present. Absent it, no link renders
+    // at all rather than one that goes nowhere.
+    const href = view.id ? agreementHref(view.id) : null;
     const sentence = stateSentence(view, formatWhen);
     const acceptability = agreementAcceptability(view);
     const lineCount = view.lines?.length ?? 0;
@@ -172,7 +180,7 @@ export default function OpportunityAgreementCard({
       <>
         <div className="ns-agreement">
           <div className="ns-agreement__facts">
-            <Link to={agreementHref} className="ns-agreement__ref">{label}</Link>
+            {href ? <Link to={href} className="ns-agreement__ref">{label}</Link> : <span className="ns-agreement__ref">{label}</span>}
             {sentence ? (
               <>
                 {" · "}
@@ -189,7 +197,7 @@ export default function OpportunityAgreementCard({
               )}
             </div>
           </div>
-          <Link to={agreementHref} className="fo-button ns-agreement__action">View agreement</Link>
+          {href ? <Link to={href} className="fo-button ns-agreement__action">View agreement</Link> : null}
         </div>
         <p className="ns-gap-note">
           The agreement carries its own currency, so its money renders as money — unlike the
