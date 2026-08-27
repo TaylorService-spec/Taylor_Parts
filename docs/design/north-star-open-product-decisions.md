@@ -626,6 +626,48 @@ confirmatory.
 **Blocked on it:** step 14 onward (North Star Dispatch composition). Backend scheduling authority is
 not blocked by it.
 
+**Update, 2026-08-27 (live Scheduling Functional Gate):** the artifact was searched for again before
+composition and was **not found anywhere reachable** — not in `docs/north-star/` (which holds
+`lists`, `opportunity` and `sales-agreement`), not in the delivery folders the Opportunity and Sales
+Agreement packages arrived through, and not in the published-artifact gallery. It has not been handed
+over in any form. ND-23 therefore still stands open in its original terms, and its blocking effect on
+composition is unchanged.
+
+### ND-24 — The collision policy is enforced on one placement path and not the other
+
+**Raised:** 2026-08-27, first run of the live Scheduling Functional Gate
+(`scripts/schedulingFunctionalGate.mjs`, 29/32 against the deployed sandbox).
+
+**What the gate found:** `transitionWorkOrder` action `Schedule` — the initial placement path —
+validates overlap only. `rescheduleWorkOrder` and `reassignScheduledWorkOrder` validate the full
+ND-20 table through `checkPlacement`. Live in the sandbox, a dispatcher can **Schedule** a Work Order
+to start in the past (gate `E1`) or into a technician's blocked time (gate `H4b`), and be refused for
+both if they instead **Reschedule** into the same window. Eligibility falls out of the same gap.
+
+**Why this is recorded rather than fixed in place:** two halves that point different ways.
+
+*Not a product question.* ND-20 already decided the policy, for the domain rather than for one entry
+point, and `checkPlacement`'s own comment asserts the symmetry that turns out to be missing — *"a
+window this command accepts is one Schedule would have accepted and vice versa"* is true for overlap
+and false in the reverse direction for everything else. Completing an existing ruling is not making a
+new one, so the direction of the fix is not in doubt.
+
+*But the blast radius is an Owner boundary.* Closing it changes the behavior of `transitionWorkOrder`
+— the platform's most sensitive transaction — and needs a Functions deploy. It also **narrows what a
+dispatcher can do today**: back-dating a placement and scheduling over PTO both stop working. Neither
+is obviously a loss, and ND-20 says both should already be refused, but withdrawing a capability that
+currently exists in a running environment is the Owner's call to make knowingly rather than an
+implementation detail to absorb.
+
+**Decisions actually needed:**
+1. Confirm `Schedule` should enforce the full ND-20 table (past start, blocked time, eligibility) —
+   or record the exception and narrow ND-20's table to say it applies to changes only.
+2. Authorize the Functions deploy that makes it live.
+
+**Blocked on it:** the Scheduling Functional Gate passing, and therefore — together with ND-23 —
+the North Star Dispatch composition. Full evidence:
+[`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
+
 ---
 
 ## Resolved by the Dispatch & Scheduler build direction (Owner ruling, 2026-08-27)

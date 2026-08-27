@@ -1,6 +1,12 @@
 # The governed Scheduling domain
 
-Status: **Implemented, repo-only. Not deployed.** Built from the Dispatch & Scheduler handoff
+Status: **Implemented and DEPLOYED to the sandbox. Certified with two open defects (ND-24).**
+The eight callables are `ACTIVE` on `nodejs22` in `eos-platform-sandbox`, both Rules blocks are live
+(a client ID token gets `403` on either collection), and the live Scheduling Functional Gate scores
+**29/32** — see [`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
+The three failures are one root cause: the collision policy below is enforced by the *change* paths
+and not by the initial `Schedule` path. Read the collision table with that caveat until ND-24 closes.
+Built from the Dispatch & Scheduler handoff
 (2026-08-27) and the six decisions it produced (ND-18 – ND-23, recorded in
 [`north-star-open-product-decisions.md`](./north-star-open-product-decisions.md)). The
 reconnaissance that preceded it is
@@ -89,17 +95,24 @@ a fact about our data entry as though it were a fact about the business.
 
 ## Collision policy (ND-20)
 
-| Condition | Outcome |
-|---|---|
-| Same technician, overlapping window | **REFUSE** — already shipped, unchanged |
-| Blocked time | **REFUSE** |
-| Start in the past (60s clock-skew tolerance) | **REFUSE** |
-| Ineligible technician | **REFUSE** |
-| Outside recorded working hours | **WARN** — returned on a successful response |
-| No working hours recorded | **WARN** |
+| Condition | Outcome | Enforced live by |
+|---|---|---|
+| Same technician, overlapping window | **REFUSE** — already shipped, unchanged | `Schedule` **and** the change commands |
+| Blocked time | **REFUSE** | change commands only — **ND-24** |
+| Start in the past (60s clock-skew tolerance) | **REFUSE** | change commands only — **ND-24** |
+| Ineligible technician | **REFUSE** | change commands only — **ND-24** |
+| Outside recorded working hours | **WARN** — returned on a successful response | change commands only — **ND-24** |
+| No working hours recorded | **WARN** | change commands only — **ND-24** |
 
 Working hours warn rather than refuse because field service legitimately schedules emergency work at
 02:00. A system that refused would be refusing real business.
+
+**The third column is a defect report, not a design.** ND-20 decided this table for the domain, and
+`checkPlacement` implements all of it — but `checkPlacement` is wired into `rescheduleWorkOrder` and
+`reassignScheduledWorkOrder` only. `transitionWorkOrder` action `Schedule`, the *initial* placement
+path, still validates overlap alone, exactly as it did before this domain existed. The live gate
+proved a dispatcher can Schedule into the past and into blocked time and be refused for the same
+windows on reschedule. Closing that is ND-24; the column comes out when it does.
 
 **"Ineligible" means what this repository can actually see.** There is no skill, certification or
 territory model here, so eligibility is: a governed technician record exists and carries a recognised
@@ -166,10 +179,15 @@ serializes on one document per technician should retry more than one that does n
   `functions/test/technicianAvailabilityRules.test.js` (77) in the Rules regression lane — deliberately
   separate, because the callables run on the Admin SDK and the Admin SDK bypasses Rules by design, so
   a "a client cannot read this" assertion made through the callable harness would prove nothing.
-- **Nothing is deployed.** Export is not deploy. The callables are exported for build and test only.
-- **The Rules blocks are authored, not live.** `firestore.rules` has no CI deploy in this repository.
+- ~~**Nothing is deployed.**~~ **Closed.** All eight callables are ACTIVE on nodejs22 in `eos-platform-sandbox`, verified read-only through `scripts/verifySandboxFunctions.mjs`.
+- ~~**The Rules blocks are authored, not live.**~~ **Closed for the sandbox.** A dispatcher ID token now gets `403 PERMISSION_DENIED` reading either collection directly, proved live by gate check `B1`. Production is unchanged and still carries the caveat below.
+- **(Original caveat, retained for production.)** `firestore.rules` has no CI deploy in this repository.
   Until `firebase deploy --only firestore:rules` is run, the two new collections are protected only
   by Firestore's undeclared-collection default — which is fail-closed, but is the absence of a
   decision rather than the decision.
-- **No North Star composition.** The Dispatch design package is not in this repository (ND-23), and
-  the board has not been rewired onto any of this.
+- **No North Star composition.** The Dispatch design package is still not in this repository — it was
+  searched for again on 2026-08-27, across the delivery folders the Opportunity and Sales Agreement
+  packages arrived through and the published-artifact gallery, and was not found (ND-23). The board
+  has not been rewired onto any of this, and composition is now blocked by ND-24 as well: a board
+  that draws blocked time as unschedulable while the Schedule button places work into it anyway would
+  be lying to a dispatcher about the system behind it.

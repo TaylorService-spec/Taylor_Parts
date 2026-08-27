@@ -22,6 +22,8 @@ on:
       - "functions/src/types/workOrder.ts"
       - "functions/test/schedulingAvailabilityModel.test.mjs"
       - "functions/test/transitionEngine.test.mjs"
+      - "scripts/schedulingFunctionalGate.mjs"
+      - "scripts/schedulingFunctionalGate.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/dispatch-scheduling-domain-tests.yml"
@@ -34,6 +36,8 @@ on:
       - "functions/src/types/workOrder.ts"
       - "functions/test/schedulingAvailabilityModel.test.mjs"
       - "functions/test/transitionEngine.test.mjs"
+      - "scripts/schedulingFunctionalGate.mjs"
+      - "scripts/schedulingFunctionalGate.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/dispatch-scheduling-domain-tests.yml"
@@ -64,3 +68,25 @@ jobs:
       - name: Scheduling domain tests (build + run)
         run: npm run test:schedulingDomain
         working-directory: functions
+
+  scheduling-functional-gate-helpers:
+    name: Live Scheduling Functional Gate -- pure helpers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The gate itself needs sandbox persona credentials and a live estate, and it mutates data, so
+      # it cannot run here and must not. What runs here is everything the gate would get quietly
+      # wrong: the project-confirmation guard, the timestamp/millis normalisation, and the zone
+      # arithmetic that decides whether a probe lands inside or outside recorded working hours.
+      #
+      # This is not ceremony. The first run of that gate reported two failures that were the
+      # helpers, not the estate -- and a gate that cries wolf gets argued with instead of fixed.
+      - name: Gate helper tests
+        run: node --test scripts/schedulingFunctionalGate.test.mjs
