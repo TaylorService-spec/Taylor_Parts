@@ -1,3 +1,5 @@
+// Dedicated Opportunity intelligence contract proof. This file intentionally runs in its own
+// path-filtered lane so a commercial AI boundary cannot disappear inside a broader suite.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -68,9 +70,7 @@ test("model payload contains bounded semantic evidence only", () => {
   }
 });
 
-test("unknown upstream attention reasons fail closed rather than disappearing", () => {
-  // This invariant is primarily structural: opportunityIntelligence only accepts the reviewed
-  // reason vocabulary. Invalid inputs must not become an explanation.
+test("invalid input fails closed rather than becoming an explanation", () => {
   assert.equal(deriveOpportunityIntelligence(null, NOW).reason, REASON.INPUT_INVALID);
   assert.equal(toOpportunityModelInput({ speak: true, reason: REASON.READY, evidence: [], allowedRecommendation: null }), null);
 });
