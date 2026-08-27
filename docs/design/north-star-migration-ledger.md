@@ -398,6 +398,37 @@ deviation is structural only.
 is in 9 days", but `deriveAttention` raises `CLOSE_SOON` only within **seven**. The threshold is
 domain authority and stands; the wording follows the engine.
 
+### CORRECTION — a Quick Gate PASS that was not evidence (2026-08-27)
+
+The Quick Gate run against `c45979b7` reported, and this build reported onward:
+
+> **Agreement — permission state · PASS** — "Sales agreements aren't enabled in this environment
+> yet." NOT_ENABLED rendering honestly on real config.
+
+**That was wrong, and the error was mine rather than the gate's.** The environment was never the
+reason. `salesAgreement.read`, `.create`, `.updateDraft` and `.accept` are all **ACTIVATED** for
+`platform-sandbox` in `access/environmentCapabilityOverrides.ts`.
+
+The real cause: `OpportunityDetailConnected` in `App.jsx` resolved `hasCapability` from the trusted
+feed, used it for write-readiness, and **never passed it to `OpportunityDetail`**. The page fell
+back to its own fail-closed default (`() => false`), so `useSalesAgreement` was called with
+`enabled: false` and returned `NOT_ENABLED` on every record, permanently. "Create Sales Agreement"
+could never render either.
+
+**Why it survived a gate and a reviewer.** The sentence was honest about what the component had
+been told; the component had been told something false. A truthful-looking `NOT_ENABLED` reads as a
+deliberate environment gate — so nothing about it invites investigation. The Quick Gate asserts no
+text and could not have caught it. I looked at it, saw the state I expected, and stopped.
+
+It was found only when the Workspace P1v3 package required knowing whether the Agreement layer was
+live, and the override file said it was.
+
+**What the earlier row does and does not now claim.** The Quick Gate's route resolution, RAW_ID
+result, currency correction and customer-name resolution stand — each was read from rendered output.
+The Agreement permission-state line is **withdrawn**: it was a statement about a disconnected seam,
+not about environment configuration. Fixed in PR #1529, guarded by a test that fails if a seam is
+resolved without being threaded.
+
 ### Gate state — deliberately not claimed
 
 This work is **repo-complete and green offline. It has not been deployed and no gate has been run
@@ -448,6 +479,42 @@ describes the surfaces after this one.
 
 Both are **merged and green in CI**; both went through the Quick Gate against `1c8095d3` recorded
 below, and both remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
+
+---
+
+## Cross-family — the Opportunity workspace cannot retire its pane yet (2026-08-27)
+
+**Owner ruling, 2026-08-27.** Opportunity Workspace P1v3 is DESIGN APPROVED and its architecture is
+final: a full-width workspace, no master-detail pane, no preview. **The deployed retirement is
+blocked**, and the reason is repository truth rather than a design disagreement.
+
+`SalesAgreementPanel` lives inside the workspace's legacy pane, and it is the **only UI in the
+product** through which a governed Sales Agreement can be drafted, priced/edited and **accepted**.
+Those capabilities — `salesAgreement.create`, `.updateDraft`, `.accept`, `.read` — are ACTIVATED for
+`platform-sandbox`.
+
+The workspace design's premise for retirement is stated in its README: *"nothing from the pane needs
+a new home; the record already carries all of it."* That holds for six of the seven pane sections —
+Overview, Commercial Terms, Pricing, Instructions, Provenance and Items all exist on the approved
+P1v2 record. It does **not** hold for the Agreement panel: P1v2's Agreement composition is
+read + Create, and P1v2 itself assigns acceptance to "the agreement itself", which has no surface.
+
+Retiring the pane now would delete an activated governed business capability. That is not a
+presentation migration, and no workaround is acceptable: not a temporary Agreement page, not
+duplicating the panel onto the record, not disabling the capabilities.
+
+**This is not a new Opportunity product gap.** It is a cross-family presentation dependency:
+
+```
+Opportunity legacy pane  ──hosts──▶  Sales Agreement governed UI  ──belongs in──▶  Sales Agreement North Star
+```
+
+**Sequence:** Sales Agreement North Star P1v1 provides the replacement governed surface → then the
+legacy pane is retired and Workspace P1v3 completes → focused tests → sandbox refresh → Quick Gate →
+live-render validation → Owner visual acceptance.
+
+The domain half of the workspace package (two governed pipeline views) is parked, tested and
+unmerged on `claude/opportunity-workspace-p1`. It touches no pane code.
 
 ---
 
