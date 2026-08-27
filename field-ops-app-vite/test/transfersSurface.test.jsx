@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { UNRESOLVED_REFERENCE_LABEL } from "../src/metadata/referenceResolution.js";
 
 const readState = { loading: true, error: null, transferOrderDocs: [], warehouses: [], transferOrdersTruncated: false, warehousesTruncated: false };
 const actionsState = {
@@ -132,7 +133,20 @@ describe("Transfers surface -- row rendering and identity display", () => {
     const table = screen.getByRole("table", { name: /transfers/i });
     const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent);
     expect(headers).toEqual(expect.arrayContaining(["Part", "From", "To", "Status", "Actions"]));
-    expect(within(table).getByText("PART-100")).toBeTruthy();
+    // THIS ASSERTION USED TO REQUIRE THE DOCUMENT ID ON SCREEN, and it is the reason R3 survived
+    // this long: `partId` is `type: "REFERENCE" → part`, a routing key, and the fixture value
+    // "PART-100" LOOKS like a catalogue number. A test written against a fixture that flatters the
+    // defect will pin the defect in place — the id was rendered as the link's own visible text, a
+    // test asserted it, and both looked right.
+    //
+    // The transfer document carries no part number and no part name, and every way to resolve one
+    // required adding a read. So the cell states the absence in the platform's shared vocabulary.
+    expect(within(table).queryByText("PART-100")).toBeNull();
+    expect(within(table).getByText(UNRESOLVED_REFERENCE_LABEL)).toBeTruthy();
+    // The id survives ONLY in the href, where it is governed: the row still opens the part record,
+    // which is where the name this cell cannot supply is written down.
+    expect(within(table).getByRole("link", { name: UNRESOLVED_REFERENCE_LABEL }).getAttribute("href"))
+      .toBe("/inventory/PART-100");
     expect(within(table).getByText("North DC")).toBeTruthy();
     expect(within(table).getByText("South DC")).toBeTruthy();
     expect(within(table).getByText("Requested")).toBeTruthy();

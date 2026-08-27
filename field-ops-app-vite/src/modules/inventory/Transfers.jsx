@@ -14,7 +14,10 @@ import {
   transferStatusLabel,
   transferStatusTone,
 } from "../../domain/transfersView";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import { UNRESOLVED_REFERENCE_LABEL } from "../../metadata/referenceResolution.js";
+import { buildRowHref } from "../../metadata/listPresentation.js";
+import { partIndexList } from "../../metadata/definitions/part.js";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
@@ -115,20 +118,18 @@ export default function Transfers({ accessVersion }) {
 
   if (read.loading) {
     return (
-      <div className="fo-panel">
-        <WorkspaceHeader title="Transfers" />
+      <WorkspaceIdentity crumb="Inventory → Transfers" title="Transfers">
         {intro}
         <LoadingState>Loading transfers…</LoadingState>
-      </div>
+      </WorkspaceIdentity>
     );
   }
   if (read.error) {
     return (
-      <div className="fo-panel">
-        <WorkspaceHeader title="Transfers" />
+      <WorkspaceIdentity crumb="Inventory → Transfers" title="Transfers">
         {intro}
         <FailureState title="Transfers unavailable" message={loadErrorMessage({ code: read.error }, { entity: "transfers" })} />
-      </div>
+      </WorkspaceIdentity>
     );
   }
 
@@ -136,14 +137,23 @@ export default function Transfers({ accessVersion }) {
   const filterOptions = TRANSFER_FILTERS.map((f) => ({ key: f.key, label: f.label, count: countForFilter(rows, f.key) }));
 
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Transfers">
-        {!showForm && (
-          <Button variant="primary" onClick={() => setShowForm(true)}>
-            New transfer
-          </Button>
-        )}
-      </WorkspaceHeader>
+    <WorkspaceIdentity
+      crumb="Inventory → Transfers"
+      title="Transfers"
+      // EXACT, because this read is not paged: useTransferOrders returns the governed transfer set
+      // in one call, so a count over the rows IS the collection count. `rows` is that set and
+      // `visibleRows` is what the filter chips leave of it — two numbers, reported in two places.
+      count={rows.length}
+      countLabel={rows.length === 1 ? "transfer" : "transfers"}
+      // In transit is the operational fact this page exists to answer. Omitted entirely when there
+      // is none — never rendered as a zero, which reads as a reassurance rather than an absence.
+      summaryItems={summary?.byStatus?.IN_TRANSIT > 0 ? [{ key: "transit", label: `${summary.byStatus.IN_TRANSIT} in transit` }] : []}
+      action={!showForm ? (
+        <Button variant="primary" onClick={() => setShowForm(true)}>
+          New transfer
+        </Button>
+      ) : null}
+    >
       {intro}
       {authorityNotice}
       {status && (
@@ -223,7 +233,36 @@ export default function Transfers({ accessVersion }) {
                 const rowBusy = busyId === row.transferOrderId;
                 return (
                   <tr key={row.transferOrderId}>
-                    <td>{row.partId ? <Link to={`/inventory/${row.partId}`}>{row.partId}</Link> : <span className="fo-muted">—</span>}</td>
+                    {/* R3 — A DOCUMENT ID WAS THE LABEL, AND NOW NOTHING IS.
+                        `partId` is `type: "REFERENCE" → part` (definitions/transferOrder.js): a
+                        routing key, not content. It was rendered as the link's own visible text, so
+                        every Transfer row put a Firestore id in front of an operator — the exact
+                        defect DECISIONS #106 and the raw-id guard exist to stop, on the one surface
+                        neither of them covered.
+
+                        NO LABEL RESOLUTION IS AVAILABLE HERE, and that is stated rather than worked
+                        around. The transfer document carries no part number and no part name; the
+                        only resolver that could supply one (`useCanonicalPartNames`) issues
+                        `fetchPartMasterList()` — a whole-catalogue read — and the Owner ruling for
+                        this tranche forbids widening the read, adding a resolver callable, adding a
+                        client read, or fabricating a name. So the reference is BLOCKED on a
+                        list-level part-name projection, and it says so in the shared vocabulary
+                        every other unresolved reference on the platform uses.
+
+                        THE ID SURVIVES WHERE IT IS GOVERNED: in the href. The ruling permits it for
+                        identity and navigation, and the destination is real — `/inventory/:partId`
+                        is a mounted route — so the row still opens the part record, where the name
+                        this cell cannot name is written down. An honest link to the answer beats a
+                        confident label that is a database key. */}
+                    <td>
+                      {row.partId ? (
+                        <Link to={buildRowHref(partIndexList.rowNavigationTo, row.partId)} className="ns-state--na">
+                          {UNRESOLVED_REFERENCE_LABEL}
+                        </Link>
+                      ) : (
+                        <span className="fo-muted">—</span>
+                      )}
+                    </td>
                     <td><Endpoint end={row.origin} /></td>
                     <td className="fo-transfer-arrow" aria-hidden="true">→</td>
                     <td><Endpoint end={row.destination} /></td>
@@ -257,6 +296,6 @@ export default function Transfers({ accessVersion }) {
           </table>
         </div>
       )}
-    </div>
+    </WorkspaceIdentity>
   );
 }

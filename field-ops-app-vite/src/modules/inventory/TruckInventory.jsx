@@ -19,7 +19,12 @@ import { inertTruckInventorySource, readTruckInventorySource } from "../../acces
 import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView, buildTruckInventoryOptions, truckAssetStatusTone, truckReorderTone, truckFleetStatusTone } from "../../domain/truckInventoryView";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+// STILL USED, and still the right primitive. The collection header carries the fleet count and the
+// discrepancy signal; the band underneath carries the per-truck facts (status, technician, location,
+// home warehouse) that a header count cannot express. They answer different questions, so the header
+// replaced the SHELL and not the band.
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -86,30 +91,49 @@ export default function TruckInventory({
   const options = buildTruckInventoryOptions(read);
   const fleet = buildTruckFleetView(read);
 
+  // THE SHELL SURVIVES EVERY STATE (Lists P2 board 2d), and for two of these it did not: DENIED and
+  // ERROR returned a bare FailureState with no crumb, no title and no rule pair, so a denial read as
+  // a broken screen rather than as a permission boundary. Loading and Unavailable already kept their
+  // frame; now all four do, through the same header.
   if (fleet.state === TRUCK_FLEET_STATE.DENIED) {
-    return <FailureState title="Truck Inventory unavailable" message="You are not able to view Truck Inventory." />;
+    return (
+      <WorkspaceIdentity crumb="Inventory → Trucks" title="Truck Inventory">
+        <HonestState
+          state={HONEST_STATE.DENIED}
+          subject="Truck Inventory"
+          detail="You are not able to view Truck Inventory."
+        />
+      </WorkspaceIdentity>
+    );
   }
   if (fleet.state === TRUCK_FLEET_STATE.ERROR) {
     // Sanitized, generic failure -- never a raw error object/message.
-    return <FailureState title="Truck Inventory couldn’t be loaded" message="Something went wrong loading Truck Inventory. Please try again." />;
+    return (
+      <WorkspaceIdentity crumb="Inventory → Trucks" title="Truck Inventory">
+        <HonestState
+          state={HONEST_STATE.UNAVAILABLE}
+          detail="Something went wrong loading Truck Inventory. Please try again."
+        />
+      </WorkspaceIdentity>
+    );
   }
   if (fleet.state === TRUCK_FLEET_STATE.LOADING) {
     return (
-      <WorkspaceShell title="Truck Inventory">
-        <p className="fo-muted" role="status" aria-live="polite">Loading truck inventory…</p>
-      </WorkspaceShell>
+      <WorkspaceIdentity crumb="Inventory → Trucks" title="Truck Inventory">
+        <HonestState state={HONEST_STATE.LOADING} subject="truck inventory" />
+      </WorkspaceIdentity>
     );
   }
   if (fleet.state === TRUCK_FLEET_STATE.UNAVAILABLE) {
     return (
-      <WorkspaceShell title="Truck Inventory">
+      <WorkspaceIdentity crumb="Inventory → Trucks" title="Truck Inventory">
         <p className="fo-muted" role="status">
           Truck Inventory shows the serialized equipment and parts carried on each service truck, with load
           manifests and warehouse&nbsp;→&nbsp;truck&nbsp;→&nbsp;customer reconciliation. This workspace is
           connected to the governed Truck Inventory view, which is not available yet — no trucks or inventory
           are shown until that backend ships and is verified. Nothing here is simulated.
         </p>
-      </WorkspaceShell>
+      </WorkspaceIdentity>
     );
   }
 
@@ -136,12 +160,13 @@ export default function TruckInventory({
     const detail = buildTruckDetailView(read, selectedId);
     if (!detail.truck) {
       return (
-        <WorkspaceShell
+        <WorkspaceIdentity
+          crumb="Inventory → Trucks"
           title="Truck Inventory"
-          actions={<ActionRail start={<button type="button" className="fo-back-link" onClick={() => setSelectedId(null)}>← All trucks</button>} />}
+          action={<ActionRail start={<button type="button" className="fo-back-link" onClick={() => setSelectedId(null)}>← All trucks</button>} />}
         >
           <EmptyState title="Truck not available" message="This truck is no longer in the connected view." />
-        </WorkspaceShell>
+        </WorkspaceIdentity>
       );
     }
     // Management (admin/dispatcher) can open the Manage drawer for this truck, provided a
@@ -211,7 +236,23 @@ export default function TruckInventory({
   );
 
   return (
-    <WorkspaceShell title="Truck Inventory" actions={actions} context={context}>
+    <WorkspaceIdentity
+      crumb="Inventory → Trucks"
+      title="Truck Inventory"
+      // EXACT, because this read is complete. The truck registry is read whole rather than paged,
+      // so a count over the rows IS the fleet count — the same licence Manufacturers has, for the
+      // same reason. `fleet.trucks` is the governed fleet and `rows` is what the on-screen filters
+      // leave of it: two different numbers, reported in two different places, deliberately.
+      count={fleet.trucks.length}
+      countLabel={fleet.trucks.length === 1 ? "truck" : "trucks"}
+      // The reason somebody opens this page. Omitted entirely when there are none — never
+      // "0 with discrepancies", which reads as a reassurance rather than as an absence.
+      summaryItems={discrepancyTrucks > 0
+        ? [{ key: "disc", label: `${discrepancyTrucks} with discrepancies`, tone: "attention" }]
+        : []}
+      action={actions}
+    >
+      {context}
       <p className="fo-muted">Serialized equipment and parts carried on each service truck. Read-only. Values shown are provided by the governed view — nothing is calculated here.</p>
 
       <div className="fo-filters" role="group" aria-label="Truck filters">
@@ -246,7 +287,7 @@ export default function TruckInventory({
           onCreated={() => setShowCreate(false)}
         />
       )}
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }
 
@@ -275,8 +316,16 @@ function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, o
       ]}
     />
   );
+  // THE TRUCK RECORD, IN A PANE — and the pane stays, which is the one place this programme
+  // deliberately does not follow its own rule. Lists P2 retires master-detail panes because the
+  // record has its own route; a Truck has NO record route, and the Owner ruling for this tranche is
+  // explicit that a missing record page is not a List defect and is not authorisation to invent
+  // one. So the pane remains the record surface until a Truck record page is decided as its own
+  // product question. Recorded in the disposition rather than left to be rediscovered later as an
+  // inconsistency somebody "fixes" by adding a route.
   return (
-    <WorkspaceShell title={truck.id} actions={actions} context={context}>
+    <WorkspaceIdentity crumb="Inventory → Trucks" title={truck.id} action={actions}>
+      {context}
       <div role="tablist" aria-label="Truck views" className="fo-tablist">
         {TABS.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} className="fo-btn-secondary" style={tab === t.id ? { fontWeight: 700 } : undefined} onClick={() => setTab(t.id)}>{t.label}</button>
@@ -290,7 +339,7 @@ function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, o
         {tab === "reconciliation" && <ReconciliationTab reconciliation={truck.reconciliation} />}
       </div>
       {scanModal}
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }
 

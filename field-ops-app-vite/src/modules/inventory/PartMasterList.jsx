@@ -35,8 +35,10 @@ import {
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormStatus } from "../../shared/ui/form";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
-import ActionRail from "../../shared/ui/ActionRail.jsx";
+import { Link, useNavigate } from "react-router-dom";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import { buildRowHref } from "../../metadata/listPresentation.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 
 // Governed-outcome banner: maps the domain outcome.kind to a StatusPill tone + keeps the governed
@@ -140,6 +142,7 @@ const PART_FILTER_VALUES = Object.freeze({
 });
 
 export default function PartMasterList(props) {
+  const navigate = useNavigate();
   const [state, setState] = useState({ phase: "loading" });
   const [panel, setPanel] = useState(null); // {mode:"create"} | {mode:"edit", part} | {mode:"status", part}
   const [form, setForm] = useState({});
@@ -237,19 +240,63 @@ export default function PartMasterList(props) {
   const submitEdit = async () => { setBusy(true); afterWrite(await runUpdate(panel.part.partId, panel.part.version, form, panel.part)); setBusy(false); };
   const submitStatus = async (newStatus) => { setBusy(true); afterWrite(await runChangeStatus(panel.part.partId, panel.part.version, newStatus)); setBusy(false); };
 
-  if (state.phase === "loading") return <p>Loading Part Master…</p>;
-  if (state.phase === "denied") return <p>You do not have access to the Part Master. Contact an administrator if you believe this is an error.</p>;
-  if (state.phase === "error") return <p>The Part Master is currently unavailable. Try again later.</p>;
-
   const parts = state.parts ?? [];
   const actions = (
-    <ActionRail
-      primary={<Button variant="primary" onClick={openCreate} disabled={busy}>New part</Button>}
-    />
+    <Button variant="primary" onClick={openCreate} disabled={busy}>New part</Button>
   );
 
+  // THE SHELL SURVIVES EVERY STATE (Lists P2 board 2d), and it did not.
+  //
+  // Loading, denied and unavailable each returned a BARE PARAGRAPH — no crumb, no title, no rule
+  // pair. The page did not merely lack content; it stopped being a page, so a slow read looked like
+  // a routing accident and a denial looked like a broken screen. The three sentences were already
+  // correct and distinct; what they were missing was the frame around them.
+  //
+  // Rendered as a settled/unsettled split rather than as three early returns, because an early
+  // return is what dropped the frame in the first place.
+  const unsettled =
+    state.phase === "loading" ? <HonestState state={HONEST_STATE.LOADING} subject="the Part Master" />
+    : state.phase === "denied" ? (
+      <HonestState
+        state={HONEST_STATE.DENIED}
+        subject="The Part Master"
+        detail="You do not have access to the Part Master."
+      />
+    )
+    : state.phase === "error" ? (
+      <HonestState state={HONEST_STATE.UNAVAILABLE} detail="The Part Master is currently unavailable. Try again later." />
+    ) : null;
+
+  if (unsettled) {
+    return (
+      <WorkspaceIdentity
+        crumb="Inventory → Part Master"
+        title="Part Master"
+        // NO COUNT AND NO ACTION ON AN UNSETTLED READ. A count would be a claim about the catalogue
+        // drawn from a read that has not answered; a create button over a denial offers a write to
+        // somebody who cannot even read.
+      >
+        {unsettled}
+      </WorkspaceIdentity>
+    );
+  }
+
   return (
-    <WorkspaceShell title="Part Master" actions={actions}>
+    <WorkspaceIdentity
+      crumb="Inventory → Part Master"
+      title="Part Master"
+      // The governed aggregate over the same filters the list uses — null on failure, never 0.
+      count={typeof total === "number" ? total : null}
+      countLabel={total === 1 ? "part" : "parts"}
+      // Malformed records are excluded by the read, so their number is a fact about what is NOT
+      // below and the reason somebody would act. Omitted entirely when there are none.
+      summaryItems={
+        state.invalidCount > 0
+          ? [{ key: "invalid", label: `${state.invalidCount} malformed record${state.invalidCount === 1 ? "" : "s"} excluded`, tone: "attention" }]
+          : []
+      }
+      action={actions}
+    >
       <p className="fo-muted">
         Governed canonical part registry. Create and edit parts here; stock levels live in the inventory ledger.
         Every change goes through the catalog administration service and is authorized server-side.
@@ -359,8 +406,36 @@ export default function PartMasterList(props) {
             </thead>
             <tbody>
               {parts.map((part) => (
-                <tr key={part.partId}>
-                  <td className="fo-pml__part-number" data-label={LABEL.internalPartNumber}>{part.internalPartNumber}</td>
+                // THE ROW REACHES THE RECORD, and this list is the reason the route check exists.
+                //
+                // Part Master had NO row navigation at all — the one MIGRATE family with a real
+                // record page and no way to reach it from its own collection. `partIndexList`
+                // declared `/parts/:id`, which this application does not mount; the record is
+                // `/inventory/:partId`. Both halves of that were wrong and neither could be seen,
+                // because nothing navigated and nothing read the declaration.
+                //
+                // The identity cell is a REAL anchor, so cmd/middle-click and "open in new tab"
+                // work without any of them being reimplemented, and the row defers to it — the
+                // Opportunity pattern, for the reason recorded there: wrapping a <tr> in an <a> is
+                // not valid table markup, and giving the row its own tabIndex would announce every
+                // row twice.
+                <tr
+                  key={part.partId}
+                  className="ns-row"
+                  onClick={(e) => {
+                    // A click that began on a link or a control belongs to it. The Edit and Status
+                    // buttons sit in the last cell, and a row-level navigation that fired through
+                    // them would take somebody to the record instead of the dialog they pressed.
+                    if (e.target.closest("a, button")) return;
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                    navigate(buildRowHref(partIndexList.rowNavigationTo, part.partId));
+                  }}
+                >
+                  <td className="fo-pml__part-number" data-label={LABEL.internalPartNumber}>
+                    <Link to={buildRowHref(partIndexList.rowNavigationTo, part.partId)} className="ns-row__ref">
+                      {part.internalPartNumber}
+                    </Link>
+                  </td>
                   <td data-label={LABEL.name}>{part.name}</td>
                   <td data-label={LABEL.category}>{part.category || "—"}</td>
                   {/* BUSINESS-READABLE wording, with the canonical value kept on the element so a
@@ -397,6 +472,6 @@ export default function PartMasterList(props) {
           </Button>
         </div>
       )}
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }

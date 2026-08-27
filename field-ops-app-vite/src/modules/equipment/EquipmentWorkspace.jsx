@@ -19,7 +19,7 @@
 // legacyKey defaults to PLACEHOLDER_DEFAULT_ROLES), so this tab inherits that gate
 // exactly like the other two.
 import { useRef, useState } from "react";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import CustomerEquipment from "./CustomerEquipment";
 import AvailableEquipment from "./AvailableEquipment";
 import EquipmentRegister from "./EquipmentRegister";
@@ -55,7 +55,15 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
 
   return (
     <div className="fo-panel">
-      <WorkspaceHeader title="Equipment" />
+      {/* THE COLLECTION HEADER, WITH NO COUNT — and the omission is the honest answer rather than
+          a gap. This page hosts THREE tabs that answer three different questions: the business-wide
+          installed register, the not-yet-connected serialized-asset surface, and an Account-scoped
+          create flow. One number beside one title would have to mean one of them, and a reader has
+          no way to tell which. Lists P2 is explicit that the workload line is "omitted entirely when
+          nothing can be counted", and the same rule reaches the count itself.
+          The Customer Equipment tab carries its OWN governed aggregate through ListViewHeader,
+          where it is unambiguous because it sits over the rows it counts. */}
+      <WorkspaceIdentity crumb="Equipment" title="Equipment" />
 
       <div role="tablist" aria-label="Equipment views" onKeyDown={onKeyDown}>
         {TABS.map((t) => {

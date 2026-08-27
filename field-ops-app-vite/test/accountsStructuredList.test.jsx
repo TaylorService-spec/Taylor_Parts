@@ -422,3 +422,68 @@ describe("Customers on a 320px phone", () => {
     expect(css).toMatch(/\.fo-listctl__step select[^}]*min-height: 44px/);
   });
 });
+
+// ═════════════════════════════════════════ Lists P2 conformance (Phase 4)
+
+describe("Lists P2 — Customers on the shared collection grammar", () => {
+  const SCREEN = readFileSync(path.resolve(process.cwd(), "src/modules/accounts/AccountsList.jsx"), "utf8");
+
+  it("wears the COLLECTION header, not the workspace shell", () => {
+    // The first page to cross the line the third membership list was added to make crossable.
+    // WorkspaceShell and WorkspaceIdentity are mutually exclusive: run together they double the
+    // chrome and both claim the h1 (ND-4).
+    expect(SCREEN).toMatch(/import WorkspaceIdentity from/);
+    expect(SCREEN).not.toMatch(/^import WorkspaceShell from/m);
+    expect(SCREEN).not.toMatch(/^import ActionRail from/m);
+    expect(SCREEN).toMatch(/<WorkspaceIdentity/);
+  });
+
+  it("the header count is the FILTERED aggregate, and the portfolio total stays with its cards", () => {
+    // Two governed counts exist on this page and they answer different questions. The aggregate
+    // follows the current filters, so it describes the rows below it; the portfolio total describes
+    // the whole book of business. Printing the portfolio total above a filtered list would be a
+    // collection-wide number sitting directly over a subset — true, and read as a lie.
+    expect(SCREEN).toMatch(/count=\{typeof total === "number" \? total : null\}/);
+    expect(SCREEN).not.toMatch(/count=\{summary/);
+  });
+
+  it("the summary line is EMPTY, because the portfolio cards already are the summary", () => {
+    // Repeating four governed counts as a summary line is the duplicated lifecycle state the
+    // density rule names — in a smaller font.
+    expect(SCREEN).toMatch(/summaryItems=\{\[\]\}/);
+  });
+
+  it("an unavailable portfolio count is a dash, never a zero", () => {
+    // Unchanged, and re-asserted because a shared header is exactly when somebody normalises a
+    // dash into a 0 "for consistency". "0 Active" is a claim about the business; "—" is a claim
+    // about the read.
+    expect(SCREEN).toMatch(/count === null \? "—" : count/);
+  });
+
+  it("the row destination comes from the definition", () => {
+    expect(SCREEN).toMatch(/buildRowHref\(accountIndexList\.rowNavigationTo, id\)/);
+    expect(SCREEN).not.toMatch(/navigate\(`\/customers\/\$\{id\}`\)/);
+  });
+
+  it("DEGRADED covers a failed owner-name read, and only on a populated one", () => {
+    expect(SCREEN).toMatch(/directory\.error/);
+    expect(SCREEN).toMatch(/HONEST_STATE\.DEGRADED/);
+    expect(SCREEN).toMatch(/degraded && presentation\?\.state === "READY"/);
+  });
+
+  it("PROSPECT is still a status card, not a family", () => {
+    // A-D4: a prospect is an Account with a status, composed on the same page. A Lists migration is
+    // exactly where somebody might promote it to its own collection because the design board shows
+    // families as tabs.
+    expect(SCREEN).toMatch(/ACCOUNT_STATUS\.PROSPECT/);
+    expect(SCREEN).not.toMatch(/prospectIndexList|prospectEntity/);
+  });
+
+  it("the silent-truncation guard survives the header change", () => {
+    // The defect it exists for: the default sort is `updatedAt DESC`, Firestore's orderBy silently
+    // excludes documents missing the field, and 101 of 103 customers vanished while the header
+    // still read "103 Total". Re-checked because this migration moved the header that printed it.
+    expect(SCREEN).toMatch(/cannot appear here/);
+    expect(SCREEN).toMatch(/presentation\.rows\.length < summary\.total/);
+  });
+});

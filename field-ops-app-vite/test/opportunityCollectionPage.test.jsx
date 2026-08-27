@@ -296,6 +296,24 @@ describe("each unsettled read gets its OWN sentence", () => {
     // And it offers the way out — the absence of which is what made the original defect invisible.
     expect(screen.getByRole("button", { name: /Show all/i })).toBeTruthy();
   });
+
+  it("AN UNRESOLVED VIEWER IS NOT AN EMPTY VIEW — nothing was counted, so nothing is reported", () => {
+    // Lists P2's UNKNOWN state. My-opportunities with no resolvable viewer identity used to render
+    // through the same component as an empty view, which framed a RESOLUTION FAILURE as a RESULT:
+    // the sentence was right and the container said "we looked and found none".
+    //
+    // The sentence is unchanged and still says whose fact is missing. What changed is that the page
+    // now says it in the state that means "we could not determine this" — and that state has no
+    // count slot at all, so a 0 cannot appear beside it.
+    render(<OpportunityList source={countingSource([opp("a"), opp("b")])} viewerUid={null} />);
+    fireEvent.click(screen.getByRole("radio", { name: /My opportunities/i }));
+    expect(screen.getByText(/can't tell which opportunities are yours/i)).toBeTruthy();
+    // Not an emptiness: no empty-state container, and therefore none of its vocabulary.
+    expect(document.querySelector(".fo-empty-state")).toBeNull();
+    // Still offers a way out — an unresolvable identity is exactly when a person most needs a view
+    // that does not depend on one.
+    expect(screen.getByRole("button", { name: /Show all/i })).toBeTruthy();
+  });
 });
 
 // ════════════════════════════════════════════ the state view
@@ -490,13 +508,32 @@ describe("search and stage filtering narrow the view, and say so", () => {
     expect(screen.getByText(/narrowed by a search/i)).toBeTruthy();
   });
 
-  it("a FILTERED-EMPTY result blames the filters, not the pipeline, and offers the way out", () => {
+  it("a SEARCH that finds nothing echoes the term and says how far it reached", () => {
+    // The failure mode this has always prevented: the screen reporting an empty pipeline while the
+    // cause is a search box two inches above it. Lists P2 splits that one sentence into two states,
+    // so this now asserts the SEARCH half specifically — the term is echoed (a typo is invisible
+    // once it has scrolled out of the box) and the scope is stated, because this search runs over
+    // the rows already loaded and "no results" must not read as a claim about the collection.
     render(<OpportunityList source={countingSource(LIST, NAMES)} />);
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzzz-no-match" } });
-    // The failure mode this prevents: the screen reporting an empty pipeline while the cause is a
-    // search box two inches above it.
-    expect(screen.getByText(/No opportunities match this view/i)).toBeTruthy();
+    expect(screen.getByText(/No results for/i)).toBeTruthy();
+    expect(screen.getByText(/zzzz-no-match/)).toBeTruthy();
+    expect(screen.getByText(/loaded in this view/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Clear filters/i }));
+    expect(screen.getByText("Sonoran Partners")).toBeTruthy();
+  });
+
+  it("a STAGE FILTER that empties the view says how many rows it is eating, and is a DIFFERENT sentence", () => {
+    // The second half of the split. A filter that ate everything wants the count beside the
+    // checkboxes still visible above it; it has no term to echo, and printing one would be a lie.
+    render(<OpportunityList source={countingSource(LIST, NAMES)} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    // A stage no row in the fixture is in.
+    fireEvent.click(screen.getByLabelText(/Decision/i));
+    expect(screen.getByText(/No opportunities match these stages/i)).toBeTruthy();
     expect(screen.getByText(/being narrowed to none/i)).toBeTruthy();
+    // ...and it is NOT the search sentence.
+    expect(screen.queryByText(/No results for/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Clear filters/i }));
     expect(screen.getByText("Sonoran Partners")).toBeTruthy();
   });
@@ -515,7 +552,23 @@ describe("search and stage filtering narrow the view, and say so", () => {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "secret-doc-id" } });
     // Making ids searchable is how they end up quoted as if they were references (#106). The
     // governed reference is already searchable, and it is what people actually quote.
-    expect(screen.getByText(/No opportunities match/i)).toBeTruthy();
+    expect(screen.getByText(/No results for/i)).toBeTruthy();
+  });
+
+  it("the SEARCH PLACEHOLDER names exactly the fields the search reaches", () => {
+    // Lists P2 §7. The placeholder is a promise about scope, and the only place a person learns
+    // what the box does before typing into it. It named three things and matched four; naming the
+    // OBJECT ("Search opportunities") rather than the fields implied stage, value and close date
+    // were searchable, which would make a correct search look broken.
+    render(<OpportunityList source={countingSource(LIST, NAMES)} />);
+    const placeholder = screen.getByRole("searchbox").getAttribute("placeholder").toLowerCase();
+    for (const field of ["reference", "need", "customer", "owner"]) {
+      expect(placeholder, `placeholder must name ${field}`).toContain(field);
+    }
+    // And must not promise a field the filter does not match.
+    for (const notSearched of ["stage", "value", "close"]) {
+      expect(placeholder, `placeholder must not promise ${notSearched}`).not.toContain(notSearched);
+    }
   });
 
   it("filterOpportunityRows matches on the STAGE KEY, not on the label", () => {

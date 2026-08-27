@@ -138,10 +138,23 @@ describe("Suppliers surface", () => {
     expect(screen.queryByText("Acme Parts Co")).toBeNull();
   });
 
-  it("hasMore qualifies the summary as loaded-so-far rather than asserting a hard total", () => {
+  it("A PARTIAL READ ASSERTS NOTHING — the counts are withheld, not hedged", () => {
     listState.presentation = listOf([{ id: "s1", name: "Acme Parts Co", status: "Active" }], { hasMore: true });
     renderPage();
-    expect(screen.getByText(/loaded so far/i)).toBeTruthy();
+    // THIS ASSERTION USED TO REQUIRE THE HEDGE "loaded so far", and Lists P2 removed the hedge by
+    // removing the numbers it was apologising for. A sentence that has to explain that its own
+    // figures might be partial is a sentence carrying figures it should not have -- so on a partial
+    // read there is now no summary line and no per-bucket count at all.
+    //
+    // The property is unchanged and held more strongly: a partial read must never assert a total.
+    expect(screen.queryByText(/loaded so far/i)).toBeNull();
+    // No summary line at all. On a complete read it renders "N active · M inactive".
+    expect(screen.queryByText(/^\s*\d+ active/i)).toBeNull();
+    // ...and the tab counts go with it, rather than showing a tally of one page.
+    for (const tab of screen.getAllByRole("button")) {
+      expect(tab.textContent).not.toMatch(/^(All|Active|Inactive|Ungoverned)\s*\d/);
+    }
+    // Load more is what states the truth instead -- asserted in the next test.
   });
 
   it("offers Load more when more rows exist, rather than silently truncating", () => {

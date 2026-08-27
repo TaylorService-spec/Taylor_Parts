@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supplierEntity, supplierIndexList } from "../../metadata/definitions/supplier.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 
 // Purchasing > Suppliers -- S-INV-SUPPLIERS. Migrated onto the metadata list runtime
@@ -132,11 +132,29 @@ export default function Suppliers({ accessVersion }) {
     return { ...presentation, rows };
   }, [presentation, filterKey]);
 
+  // THE READ IS COMPLETE, OR IT IS NOT — and every count on this page turns on that one fact.
+  //
+  // These four numbers are tallied from the LOADED rows. While there are more pages outstanding
+  // that is a claim about a screenful presented as a claim about the business, which is precisely
+  // the reason the Work Order status chips gave up their counts (Lists P2 §3, board 2k: per-bucket
+  // counts on a bounded list need a governed aggregate, and suppliers has none).
+  //
+  // But `hasMore === false` is not a guess. It means the cursor is exhausted: the loaded rows ARE
+  // every row the query returns, so a tally over them is exact. So the counts are not deleted, they
+  // are CONDITIONAL — present and true on a complete read, absent rather than approximate on a
+  // partial one. That is a better answer than the blanket removal Work Orders needed, and it is
+  // available here only because this collection is small enough to finish.
+  //
+  // No aggregate query was added to rescue the partial case. That would be creating a read to make
+  // the family look complete.
+  const complete = presentation.state === "READY" && !presentation.hasMore;
+  const bucketCount = (n) => (complete ? n : undefined);
+
   const filterOptions = [
-    { key: "all", label: "All", count: summary?.total },
-    { key: "active", label: "Active", count: summary?.active },
-    { key: "inactive", label: "Inactive", count: summary?.inactive },
-    { key: "ungoverned", label: "Ungoverned", count: summary?.ungoverned },
+    { key: "all", label: "All", count: bucketCount(summary?.total) },
+    { key: "active", label: "Active", count: bucketCount(summary?.active) },
+    { key: "inactive", label: "Inactive", count: bucketCount(summary?.inactive) },
+    { key: "ungoverned", label: "Ungoverned", count: bucketCount(summary?.ungoverned) },
   ];
 
   const intro = (
@@ -147,22 +165,43 @@ export default function Suppliers({ accessVersion }) {
   );
 
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Suppliers" />
+    <WorkspaceIdentity
+      crumb="Purchasing → Suppliers"
+      title="Suppliers"
+      // The header count is the SAME conditional truth the tabs use: exact when the cursor is
+      // exhausted, absent while pages are outstanding. The primitive renders nothing for a null.
+      count={complete ? summary?.total ?? null : null}
+      countLabel={summary?.total === 1 ? "supplier" : "suppliers"}
+      // The one fact worth acting on, when it is knowable. Ungoverned suppliers are legacy records
+      // that cannot be selected for governed purchasing, so their number is the reason somebody
+      // opens this page rather than a decoration — and it is omitted entirely, never zeroed, when
+      // the read cannot support it.
+      summaryItems={
+        complete && summary?.ungoverned > 0
+          ? [{ key: "ungoverned", label: `${summary.ungoverned} without governed status`, tone: "attention" }]
+          : []
+      }
+      // NO CREATE ACTION, and it is P2's third treatment rather than an omission: `suppliers` is
+      // Admin-SDK-write-only, so there is no client write path to offer. A disabled button would
+      // describe a permission boundary; the truth is that this object is not created from the app.
+    >
       {intro}
 
-      {summary && summary.total > 0 && (
+      {/* THE SUMMARY LINE, WITHOUT ITS "loaded so far" HEDGE — because it now only renders when
+          there is nothing left to load. The hedge was honest and it was also the tell: a sentence
+          that has to explain that its own numbers might be partial is a sentence carrying numbers
+          it should not have. On a partial read the line is absent, and the grid's Load more says
+          what is true instead. */}
+      {complete && summary && summary.total > 0 && (
         <p className="fo-muted" role="status">
-          {summary.total} supplier{summary.total === 1 ? "" : "s"}
-          {presentation.hasMore ? " loaded so far" : ""} · {summary.active} active
+          {summary.active} active
           {summary.inactive > 0 ? ` · ${summary.inactive} inactive` : ""}.
         </p>
       )}
-      {summary && filterKey === "all" && summary.ungoverned > 0 && (
+      {complete && filterKey === "all" && summary.ungoverned > 0 && (
         <p className="fo-warning" role="alert">
           {summary.ungoverned} supplier{summary.ungoverned === 1 ? "" : "s"}{" "}
-          {summary.ungoverned === 1 ? "has" : "have"} no governed status
-          {presentation.hasMore ? " among those loaded so far" : ""} (legacy record
+          {summary.ungoverned === 1 ? "has" : "have"} no governed status (legacy record
           {summary.ungoverned === 1 ? "" : "s"} predating Supplier Master) — not selectable for governed purchasing
           until governed. Use the "Ungoverned" filter to review.
         </p>
@@ -175,6 +214,6 @@ export default function Suppliers({ accessVersion }) {
       <p className="fo-muted fo-sup-footnote">
         Purchase orders placed with these suppliers appear under <Link to="/purchasing">Purchase Orders</Link>.
       </p>
-    </div>
+    </WorkspaceIdentity>
   );
 }

@@ -16,6 +16,7 @@ import {
   addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
 import { OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
+import { buildRowHref } from "../../metadata/listPresentation.js";
 
 // THE BUSINESS-WIDE INSTALLED EQUIPMENT LIST.
 //
@@ -151,7 +152,11 @@ export default function CustomerEquipment() {
         <MetadataListGrid
           presentation={presentation}
           caption="Installed equipment"
-          onRowClick={(id) => navigate(`/equipment/${id}`)}
+          // THE DESTINATION THE DEFINITION NAMES. equipmentIndexList.rowNavigationTo is
+          // "/equipment/:equipmentId" and agreed with the literal this replaces -- which was luck,
+          // not a property: the same pair disagreed on Work Orders and Part Master and named routes
+          // this application does not mount. Reading it puts this path under the route check.
+          onRowClick={(id) => navigate(buildRowHref(equipmentIndexList.rowNavigationTo, id))}
           onLoadMore={loadMore}
           onRetry={retry}
         />

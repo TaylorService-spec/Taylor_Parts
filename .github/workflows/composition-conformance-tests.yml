@@ -83,6 +83,46 @@ on:
       - "field-ops-app-vite/src/modules/sales/OpportunityList.jsx"
       - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
       - "field-ops-app-vite/test/opportunityCollectionPage.test.jsx"
+      # LISTS P2 (docs/north-star/lists/) - the SHARED collection grammar, Phase 1.
+      # The state contract, the collection conformance gate and the row-to-record route check are
+      # cross-family: every list migration lands on them, so a change to any of them must run the
+      # whole conformance lane rather than only one family suite.
+      - "field-ops-app-vite/src/shared/ui/collectionPageState.js"
+      - "field-ops-app-vite/src/shared/ui/HonestState.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/listsP2StateContract.test.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/part.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/account.js"
+      - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
+      - "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
+      # Lists P2 tranche 1 — the catalog / reference families.
+      - "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentWorkspace.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/supplier.js"
+      - "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
+      - "field-ops-app-vite/test/listsP2Tranche1.test.jsx"
+      # Lists P2 tranche 2 — organization / location families. No record route exists for any of
+      # them, and the ruling under test is that this is not authorization to create one.
+      - "field-ops-app-vite/src/modules/administration/EmployeesList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/employee.js"
+      - "field-ops-app-vite/src/metadata/definitions/warehouse.js"
+      - "field-ops-app-vite/src/metadata/definitions/truck.js"
+      - "field-ops-app-vite/test/listsP2Tranche2.test.jsx"
+      # Lists P2 tranche 3 — operational movement families. Two rulings about resisting a helpful
+      # join: PO money that belongs to another collection, and a part name no read here can supply.
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/transferOrder.js"
+      - "field-ops-app-vite/src/metadata/referenceResolution.js"
+      - "field-ops-app-vite/test/listsP2Tranche3.test.jsx"
+      # The COMPOSE pass — related lists stay subordinate to the record that owns them.
+      - "field-ops-app-vite/src/metadata/definitions/contact.js"
+      - "field-ops-app-vite/src/metadata/definitions/location.js"
+      - "field-ops-app-vite/test/listsP2Compose.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -202,6 +242,46 @@ on:
       - "field-ops-app-vite/src/modules/sales/OpportunityList.jsx"
       - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
       - "field-ops-app-vite/test/opportunityCollectionPage.test.jsx"
+      # LISTS P2 (docs/north-star/lists/) - the SHARED collection grammar, Phase 1.
+      # The state contract, the collection conformance gate and the row-to-record route check are
+      # cross-family: every list migration lands on them, so a change to any of them must run the
+      # whole conformance lane rather than only one family suite.
+      - "field-ops-app-vite/src/shared/ui/collectionPageState.js"
+      - "field-ops-app-vite/src/shared/ui/HonestState.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/listsP2StateContract.test.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/part.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/account.js"
+      - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
+      - "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
+      # Lists P2 tranche 1 — the catalog / reference families.
+      - "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentWorkspace.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/supplier.js"
+      - "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
+      - "field-ops-app-vite/test/listsP2Tranche1.test.jsx"
+      # Lists P2 tranche 2 — organization / location families. No record route exists for any of
+      # them, and the ruling under test is that this is not authorization to create one.
+      - "field-ops-app-vite/src/modules/administration/EmployeesList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/employee.js"
+      - "field-ops-app-vite/src/metadata/definitions/warehouse.js"
+      - "field-ops-app-vite/src/metadata/definitions/truck.js"
+      - "field-ops-app-vite/test/listsP2Tranche2.test.jsx"
+      # Lists P2 tranche 3 — operational movement families. Two rulings about resisting a helpful
+      # join: PO money that belongs to another collection, and a part name no read here can supply.
+      - "field-ops-app-vite/src/modules/inventory/Transfers.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/transferOrder.js"
+      - "field-ops-app-vite/src/metadata/referenceResolution.js"
+      - "field-ops-app-vite/test/listsP2Tranche3.test.jsx"
+      # The COMPOSE pass — related lists stay subordinate to the record that owns them.
+      - "field-ops-app-vite/src/metadata/definitions/contact.js"
+      - "field-ops-app-vite/src/metadata/definitions/location.js"
+      - "field-ops-app-vite/test/listsP2Compose.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -293,6 +373,55 @@ jobs:
       # surface broke: they are two pages with different authority, not one suite.
       - name: Opportunity collection (no pane, no per-row reads, no fabricated currency)
         run: npx vitest run test/opportunityCollectionPage.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LISTS P2 PHASE 1 - the shared collection contract every family migration stands on: the
+      # seventeen page states are seventeen distinct sentences, and a declared rowNavigationTo names
+      # a route this application actually mounts. Named here for the reason family 2 recorded: a
+      # vitest suite runs in CI only where a workflow names it (test/ciSuiteCoverage.test.mjs
+      # enforces it).
+      - name: Lists P2 shared contract (17 states, seven empties, live record routes)
+        run: npx vitest run test/listsP2StateContract.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Customers on the shared collection grammar (Lists P2 Phase 4) — the first page to move
+      # between the shell lists, so its conformance and its silent-truncation guard run together.
+      - name: Customers collection (Lists P2 grammar + truncation guard)
+        run: npx vitest run test/accountsStructuredList.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Lists P2 tranche 1 — Part Master, Equipment, Suppliers, Manufacturers. The Owner ruling
+      # under test here is the pagination one: a list may not render a boundary its read does not
+      # have, and Manufacturers reads the whole collection unbounded.
+      # QUOTED, and it has to be. An unquoted YAML scalar containing ": " is a parse error, and a
+      # workflow that does not parse does not fail loudly -- it produces a run with ZERO jobs and
+      # disappears from the pull request's checks entirely. This lane is the primary gate for the
+      # whole Lists programme, and for three commits it was absent from the PR while every other
+      # check stayed green. That is precisely the CI-INCOMPLETE condition the programme documents:
+      # a green PR whose expected lane was never created is not passing, and the only tell was that
+      # the run's `name` had fallen back to the file path.
+      - name: "Lists P2 tranche 1 (catalog/reference: no invented boundaries, no invented routes)"
+        run: npx vitest run test/listsP2Tranche1.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Lists P2 tranche 2 — Employees, Warehouses, Trucks. Most of this suite asserts something was
+      # NOT built: the failure it exists to catch is somebody making rows clickable because every
+      # other family s rows are.
+      - name: Lists P2 tranche 2 (no invented record routes, exact-or-absent counts)
+        run: npx vitest run test/listsP2Tranche2.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Lists P2 tranche 3 — Purchase Orders and Transfers. Money that belongs to a different
+      # collection stays there, and a part name nothing here can resolve is stated as unresolved
+      # rather than filled in with a document id.
+      - name: Lists P2 tranche 3 (no borrowed money, no raw id as a label)
+        run: npx vitest run test/listsP2Tranche3.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The COMPOSE boundary. A related list must not become a collection page embedded inside a
+      # record -- and a page is assembled from parts a section could acquire one at a time.
+      - name: Lists P2 COMPOSE (related lists stay subordinate)
+        run: npx vitest run test/listsP2Compose.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the

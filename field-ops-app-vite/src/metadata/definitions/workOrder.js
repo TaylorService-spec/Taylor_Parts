@@ -296,5 +296,19 @@ export const workOrderIndexList = makeListViewDefinition({
       sort: [makeSort({ fieldId: "createdAt", direction: "DESC" })],
     }),
   ],
-  rowNavigationTo: "/work-orders/:id",
+  // THE ROUTE THIS NAMES MUST EXIST. It read "/work-orders/:id" until the Lists P2 reconciliation
+  // checked it against App.jsx: there is no `/work-orders` route in this application. The Work Order
+  // record lives under the `service` domain, at `/service/work-orders/:workOrderId`, and a URL
+  // matching nothing falls through to the catch-all — which is the Dashboard. So a row click driven
+  // by this template would have silently landed a user on a page they did not ask for, exactly the
+  // defect navigation/objectRoutes.js was written to end for "Back to Work Orders".
+  //
+  // It never fired only because nothing consumed it: WorkOrdersList.jsx passes its own
+  // `onRowClick` with the correct path, and no RELATED section renders this list. Lists P2 makes
+  // row-to-record navigation the shared rule, so a dead template stops being harmless the moment
+  // one more surface trusts the declaration instead of hand-writing the path.
+  //
+  // test/listsP2StateContract.test.jsx now derives the real record routes from App.jsx and fails on
+  // any `rowNavigationTo` that names one which does not exist, so this cannot rot again.
+  rowNavigationTo: "/service/work-orders/:workOrderId",
 });

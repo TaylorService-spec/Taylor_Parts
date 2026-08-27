@@ -54,6 +54,7 @@ import { manufacturerEntity, manufacturerIndexList } from "../../metadata/defini
 import { buildListPresentation } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 
 const STATUS_TONE_CLASS = {
   ACTIVE: "fo-mfr__badge--active",
@@ -183,12 +184,35 @@ export default function Manufacturers(props) {
     },
   ];
 
+  // THE COUNT IS EXACT HERE, AND ONLY BECAUSE THE READ IS COMPLETE.
+  //
+  // getManufacturerCatalog returns the WHOLE collection in one call — no `limit`, no cursor, no
+  // `truncated` flag. That is a scale problem recorded elsewhere (R7), and on this one question it
+  // is a licence: a count over every row IS the collection count, so it is a governed total rather
+  // than a page tally dressed up as one. Every other list on this grammar must earn its header
+  // count from a server-side aggregate for exactly the reason this one does not need to.
+  //
+  // Null on any unsettled read. A "0 manufacturers" printed over a denial states that the business
+  // has no manufacturers when the truth is that this reader may not see them.
+  const total = state.phase === "ready" ? (state.manufacturers?.length ?? null) : null;
+
   return (
-    <div>
-      <div className="fo-mfr__header">
-        <h2 className="fo-mfr__title">Manufacturers</h2>
-        <Button variant="primary" onClick={openCreate} disabled={busy}>New manufacturer</Button>
-      </div>
+    <WorkspaceIdentity
+      crumb="Inventory → Manufacturers"
+      title="Manufacturers"
+      count={total}
+      countLabel={total === 1 ? "manufacturer" : "manufacturers"}
+      // The malformed-record count is the one operational fact this page can state truthfully, and
+      // it belongs here rather than buried in the paragraph below: it is the reason somebody would
+      // act. Omitted entirely when there are none — never "0 excluded", which would read as a
+      // reassurance the page has not earned on a denied or failed read.
+      summaryItems={
+        state.phase === "ready" && state.invalidCount > 0
+          ? [{ key: "invalid", label: `${state.invalidCount} malformed record${state.invalidCount === 1 ? "" : "s"} excluded`, tone: "attention" }]
+          : []
+      }
+      action={<Button variant="primary" onClick={openCreate} disabled={busy}>New manufacturer</Button>}
+    >
       <p className="fo-mfr__hint">
         Governed manufacturer reference records that Parts link to. Create, rename, and activate/deactivate
         here; every change goes through the catalog administration service and is authorized server-side.
@@ -233,7 +257,16 @@ export default function Manufacturers(props) {
         </div>
       )}
 
+      {/* NO onLoadMore, AND NO FOOTER — Owner ruling, Lists P2 tranche 1.
+          getManufacturerCatalog reads the whole collection in one unbounded call. There is no
+          cursor, no page boundary and no total-pages, so any control implying one would be a
+          boundary invented by the interface. `buildManufacturersPresentation` already pins
+          `hasMore: false`, and the grid renders Load more only when hasMore AND onLoadMore are
+          both present — so this is guarded in two places rather than by this line alone.
+          NO ROW NAVIGATION either: there is no Manufacturer record route, and one is not invented
+          to make rows clickable. The rows carry governed row ACTIONS (rename, status) instead,
+          which is the affordance this object genuinely has. */}
       <MetadataListGrid presentation={presentation} rowActions={rowActions} caption="Manufacturers" onRetry={load} />
-    </div>
+    </WorkspaceIdentity>
   );
 }

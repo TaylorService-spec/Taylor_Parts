@@ -10,6 +10,8 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
+import { ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
+import { buildRowHref } from "../../metadata/listPresentation.js";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
@@ -21,6 +23,7 @@ import {
 } from "../../metadata/listUrlState.js";
 import { OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { Button } from "../../shared/ui/primitives";
 import {
@@ -103,7 +106,7 @@ export default function WorkOrdersList() {
   // rows point at, and those rows come from the list hook — so the resolver cannot exist
   // before the call that produces them. Rows land, state updates, names resolve.
   const [resolvableRows, setResolvableRows] = useState([]);
-  const { resolveReference: resolveAccount } = useAccountReferenceResolver(resolvableRows);
+  const { resolveReference: resolveAccount, status: accountNamesStatus } = useAccountReferenceResolver(resolvableRows);
 
   // THE CUSTOMER FILTER IS A PICKER OF NAMES.
   //
@@ -176,6 +179,32 @@ export default function WorkOrdersList() {
   const summaryItems = [
     { key: "view", label: WORK_ORDER_STATUS_GROUPS.find((g) => g.key === groupKey)?.label ?? "All" },
   ];
+
+  // DEGRADED — the list works, a SECONDARY fact did not (Lists P2 board 2d).
+  //
+  // The rows are fine. Customer and Technician are resolved by separate reads, and either can fail
+  // on its own while every work order loads perfectly. Each affected CELL already says so in the
+  // place the name would have been (REFERENCE_STATE, resolved above) — and a reader scanning a
+  // column of "Name unavailable" has no way to tell one bad record from one failed read.
+  //
+  // So: one quiet line, once, above the table. Deliberately not a failure box — a failure box over a
+  // list that loaded would report a broken page, which is the opposite of true, and is the mirror of
+  // the fail-blank defect HonestState exists to remove.
+  //
+  // DENIED AND FAILED ARE NOT THE SAME LINE. A name withheld by permission is a fact about the
+  // reader's role that no retry changes; a name that failed to load may work next time. Collapsing
+  // them would send somebody to chase a data problem that is really an access one.
+  const degraded = (() => {
+    const denied = accountNamesStatus === ACCOUNT_NAMES_STATUS.DENIED;
+    const failed = accountNamesStatus === ACCOUNT_NAMES_STATUS.ERROR;
+    // `techError` is the technician directory's own read failure. There is no "denied" shape for it
+    // — the collection is bounded reference data every principal here can read — so it only ever
+    // contributes to the failed half.
+    if (!denied && !failed && !techError) return null;
+    if (denied && !failed && !techError) return "Customer names aren't available to your role. Every other detail below is complete.";
+    const affected = [failed || denied ? "Customer" : null, techError ? "Technician" : null].filter(Boolean).join(" and ");
+    return `${affected} names couldn't be loaded. The work orders below are complete otherwise.`;
+  })();
 
   return (
     <WorkspaceIdentity
@@ -266,13 +295,30 @@ export default function WorkOrdersList() {
         </p>
       )}
 
+      {/* Rendered ONLY on a settled, populated read: a degraded note over a skeleton or over a
+          denial would be describing a secondary failure while the primary one is unresolved. */}
+      {degraded && presentation?.state === "READY" ? (
+        <HonestState state={HONEST_STATE.DEGRADED} detail={degraded} />
+      ) : null}
+
       {presentation?.state === "FILTERED" ? (
         <ListEmptyState criteria={criteria} onClear={() => apply(clearFilters(criteria))} />
       ) : (
         <MetadataListGrid
           presentation={presentation}
           caption="Work Orders"
-          onRowClick={(id) => navigate(`/service/work-orders/${id}`)}
+          // THE DESTINATION THE DEFINITION NAMES, not a path typed here.
+          //
+          // This read `/service/work-orders/${id}` — correct, and correct in ONE of the two places
+          // that claimed to know the answer: `workOrderIndexList.rowNavigationTo` said
+          // "/work-orders/:id", a route this application does not mount, and the disagreement was
+          // invisible because the screen never asked the definition. Two sources of truth where one
+          // is unread is how the unread one rots.
+          //
+          // Reading it here makes the declaration consumed, so
+          // test/listsP2StateContract.test.jsx's route check now guards the path this screen
+          // actually navigates to rather than a string nothing used.
+          onRowClick={(id) => navigate(buildRowHref(workOrderIndexList.rowNavigationTo, id))}
           onLoadMore={loadMore}
           onRetry={retry}
         />

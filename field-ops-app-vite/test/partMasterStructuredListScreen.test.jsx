@@ -10,6 +10,7 @@
 // are faked — so a failure here means the metadata and the screen actually disagree.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -61,7 +62,16 @@ function setup({ page, search = "" } = {}) {
   h.setSearchParams = vi.fn();
   h.fetchPartMasterPage.mockClear();
   h.fetchPartMasterPage.mockImplementation(() => Promise.resolve(h.page));
-  return render(<PartMasterList />);
+  // INSIDE A ROUTER, because the list now reaches its record. Part Master was the one MIGRATE
+  // family with a real record page and no way to open it from its own collection; wiring the row
+  // anchor made `useNavigate` and `<Link>` real dependencies, and a component rendered outside a
+  // Router throws on the first of them. The harness follows the component rather than the component
+  // being kept navigation-free to suit the harness.
+  return render(
+    <MemoryRouter>
+      <PartMasterList />
+    </MemoryRouter>,
+  );
 }
 
 afterEach(cleanup);

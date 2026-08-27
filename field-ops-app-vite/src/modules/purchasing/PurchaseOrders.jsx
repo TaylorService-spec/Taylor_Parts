@@ -11,7 +11,7 @@ import {
   PURCHASE_ORDERS_STATUS,
   PURCHASE_ORDER_VIEW_STATUS,
 } from "../../domain/purchaseOrdersView";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
@@ -117,11 +117,10 @@ export default function PurchaseOrders() {
   if (view.status === PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION || view.status === PURCHASE_ORDERS_STATUS.BLOCKED_UNAVAILABLE) {
     const code = view.status === PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION ? "permission-denied" : "unavailable";
     return (
-      <div className="fo-panel">
-        <WorkspaceHeader title="Purchase Orders" />
+      <WorkspaceIdentity crumb="Purchasing → Purchase Orders" title="Purchase Orders">
         {intro}
         <FailureState title="Purchase Orders unavailable" message={loadErrorMessage({ code }, { entity: "purchase orders" })} />
-      </div>
+      </WorkspaceIdentity>
     );
   }
   // The view-model owns the load ladder: LOADING while EITHER the reorder-request
@@ -129,11 +128,10 @@ export default function PurchaseOrders() {
   // while their PO docs are still resolving), BLOCKED on either read's error.
   if (view.status === PURCHASE_ORDERS_STATUS.LOADING) {
     return (
-      <div className="fo-panel">
-        <WorkspaceHeader title="Purchase Orders" />
+      <WorkspaceIdentity crumb="Purchasing → Purchase Orders" title="Purchase Orders">
         {intro}
         <LoadingState>Loading purchase orders…</LoadingState>
-      </div>
+      </WorkspaceIdentity>
     );
   }
 
@@ -152,15 +150,35 @@ export default function PurchaseOrders() {
     }));
 
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Purchase Orders" />
+    <WorkspaceIdentity
+      crumb="Purchasing → Purchase Orders"
+      title="Purchase Orders"
+      // EXACT, because this read is not paged: the reorder-request read and the PO read both
+      // resolve in full before the view leaves LOADING, so a count over the rows IS the set.
+      count={view.rows.length}
+      countLabel={view.rows.length === 1 ? "purchase order" : "purchase orders"}
+      // Receipt candidates are what somebody opens this page to act on. Omitted entirely when there
+      // are none — never a zero.
+      summaryItems={view.summary.receiptCandidates > 0
+        ? [{ key: "receipt", label: `${view.summary.receiptCandidates} eligible for receiving` }]
+        : []}
+      // NO MONEY IN THIS HEADER, AND NONE ANYWHERE ON THIS PAGE — Owner ruling, tranche 3.
+      //
+      // The reachable list reads `reorder_purchase_orders`, whose definition states it holds no
+      // price, amount or total of any kind. `totalCost` is written by procurementService into
+      // `purchase_orders` — a DIFFERENT collection this screen never reads, over a different set of
+      // documents. Joining, deriving, fanning out or borrowing that number so the list could show a
+      // total would attach a GENUINE figure to unrelated rows, which is worse than showing nothing
+      // because it would be believed.
+      //
+      // The existence of financial truth elsewhere does not make it a Purchase Order list fact.
+      // This stays CONTRACT_ONLY on money until the two-collections-one-name split is resolved,
+      // which is a product decision rather than a rendering one.
+      //
+      // NO CREATE ACTION either: a purchase order is placed from the reorder workflow, not from
+      // this read-only screen. P2's third treatment — absent, not disabled.
+    >
       {intro}
-      {view.summary.receiptCandidates > 0 && (
-        <p className="fo-muted" role="status">
-          {view.summary.receiptCandidates} open purchase order
-          {view.summary.receiptCandidates === 1 ? "" : "s"} eligible for receiving.
-        </p>
-      )}
       <FilterBar options={filterOptions} activeKey={filterKey} onChange={setFilterKey} />
 
       {view.rows.length === 0 ? (
@@ -248,6 +266,6 @@ export default function PurchaseOrders() {
           </table>
         </div>
       )}
-    </div>
+    </WorkspaceIdentity>
   );
 }

@@ -677,5 +677,18 @@ export const partIndexList = makeListViewDefinition({
       sort: [makeSort({ fieldId: "internalPartNumber", direction: "ASC" })],
     }),
   ],
-  rowNavigationTo: "/parts/:id",
+  // THE ROUTE THIS NAMES MUST EXIST. It read "/parts/:id" until the Lists P2 reconciliation checked
+  // it against App.jsx: there is no `/parts` route. The Part record is `/inventory/:partId`, mounted
+  // under the `inventory` domain, and a URL matching nothing falls through to the catch-all — the
+  // Dashboard. Same class of defect as workOrder.js's, and dormant for the same reason: nothing
+  // consumes this template yet (PartMasterList.jsx has no row navigation at all today).
+  //
+  // THE KEY SUBSTITUTED HERE IS THE DOCUMENT ID, AND THAT IS CORRECT HERE — checked rather than
+  // assumed, because `/inventory/:partId` resolves its param by SKU. In the canonical `parts` model
+  // the three are one value: this file's own `partId` field is "the Firestore document id"
+  // (partFromFirestore throws when the stored partId disagrees with it), and
+  // domain/partDetailView.js resolves the route param as "key === sku === canonical partId". A row
+  // key therefore addresses the record. Had they been different values, the honest move would have
+  // been to declare no template rather than one that builds a plausible URL for the wrong record.
+  rowNavigationTo: "/inventory/:partId",
 });

@@ -14,8 +14,11 @@ import {
   addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
 } from "../../metadata/listUrlState.js";
 import { useListCriteria } from "../../hooks/useListCriteria.js";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import { buildRowHref } from "../../metadata/listPresentation.js";
 import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
+import { ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
 
 // SALES ORDERS -- the global index, mounted on the metadata list runtime.
 //
@@ -63,7 +66,7 @@ import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceReso
 export default function SalesOrdersList() {
   const navigate = useNavigate();
   const [resolvableRows, setResolvableRows] = useState([]);
-  const { resolveReference } = useAccountReferenceResolver(resolvableRows);
+  const { resolveReference, status: accountNamesStatus } = useAccountReferenceResolver(resolvableRows);
   // The list view declares its OWN readCallable ("listSalesOrderIndex"), which
   // useMetadataList resolves ahead of the entity's account-scoped one. The unscoped index
   // and the account-scoped related list are different reads with different authority
@@ -107,8 +110,44 @@ export default function SalesOrdersList() {
   // `rows` is hook state, so its identity is stable between fetches and this cannot loop.
   useEffect(() => { setResolvableRows(rows ?? []); }, [rows]);
 
+  // DEGRADED — the orders are fine, the CUSTOMER NAMES are not (Lists P2 board 2d).
+  //
+  // Customer is resolved by a separate batched read, and it can fail or be withheld while every
+  // sales order loads perfectly. Each affected cell already says so where the name would have been;
+  // this is the one quiet line above the table, because a reader scanning a column of them cannot
+  // otherwise tell one bad reference from one failed read.
+  //
+  // WITHHELD IS NOT FAILED. A name your role may not see is a fact no retry changes; giving it the
+  // words of a transient failure sends somebody to chase a data problem that is really an access one.
+  const degraded = (() => {
+    if (accountNamesStatus === ACCOUNT_NAMES_STATUS.DENIED) {
+      return "Customer names aren’t available to your role. Every other detail below is complete.";
+    }
+    if (accountNamesStatus === ACCOUNT_NAMES_STATUS.ERROR) {
+      return "Customer names couldn’t be loaded. The sales orders below are complete otherwise.";
+    }
+    return null;
+  })();
+
   return (
-    <WorkspaceShell title="Sales Orders">
+    <WorkspaceIdentity
+      crumb="CRM / Sales"
+      title="Sales Orders"
+      // The governed aggregate over the SAME filters the list uses — null on any failure, never 0.
+      count={typeof total === "number" ? total : null}
+      countLabel={total === 1 ? "sales order" : "sales orders"}
+      // NOTHING TO SUMMARISE, TRUTHFULLY. Lists P2 asks for the facts the read can count and says to
+      // omit the line entirely when there are none. There is no governed per-state aggregate for
+      // sales orders and no attention projection, so a workload line here could only be assembled
+      // from the loaded page — a claim about the business drawn from one screenful, which is the
+      // decision the Work Order status chips already made correctly in the other direction.
+      summaryItems={[]}
+      // NO CREATE ACTION, and its absence is the third of P2's three treatments rather than an
+      // oversight. A Sales Order is not user-creatable: it is produced by the atomic Won transition
+      // on an Opportunity, and by the agreement path. Rendering a disabled "New sales order" here
+      // would describe a permission boundary, when the truth is that creation belongs to another
+      // object entirely.
+    >
       {/* THE ONE SHARED FILTER AND SORT EXPERIENCE, from the Sales Order metadata. Only `state` is
           offered, because sales_orders(state, salesOrderNumber DESC) is the only live composite —
           the definition declares exactly that one filter and this screen offers exactly what it
@@ -141,21 +180,40 @@ export default function SalesOrdersList() {
       />
       <DroppedCriteriaNotice message={droppedMessage} />
 
-      {/* NO DOLLARS COLUMN, and its absence is registered rather than forgotten. The Sales Order
-          document stores no total of any kind — see SALES_ORDER_TOTAL_AUTHORITY_GAP. */}
+      {/* Only on a settled, populated read — over a skeleton or a denial this would be describing a
+          secondary failure while the primary one is still unresolved. */}
+      {degraded && presentation?.state === "READY" ? (
+        <HonestState state={HONEST_STATE.DEGRADED} detail={degraded} />
+      ) : null}
+
+      {/* THE MONEY COLUMN IS REAL, AND THIS COMMENT USED TO DENY IT.
+          It read "NO DOLLARS COLUMN, and its absence is registered rather than forgotten — the
+          Sales Order document stores no total of any kind", citing SALES_ORDER_TOTAL_AUTHORITY_GAP.
+          That gap is CLOSED, and was wrong while it was open: invoiceCommands.ts snapshots each
+          line's unitPrice, refuses to bill a line without one, and refuses any invoice price that
+          disagrees with it — the invoice is derived FROM the order. salesOrderIndexList declares
+          totalMinor, and resolveMoneyCell above renders it through the record page's own
+          salesOrderDollars, so both surfaces give the same five readings by construction rather
+          than by coincidence.
+          A comment describing the opposite of the code is worse than no comment, because the next
+          reader trusts it and does not check. */}
       {presentation?.state === "FILTERED" ? (
         <ListEmptyState criteria={criteria} onClear={() => apply(clearFilters(criteria))} />
       ) : (
       <MetadataListGrid
         presentation={presentation}
         caption="Sales Orders"
-        // The destination the definition itself names (rowNavigationTo), not a path this
-        // screen invents -- so the row target cannot drift from the declaration.
-        onRowClick={(id) => navigate(`/customers/opportunities/sales-order/${id}`)}
+        // THE DESTINATION THE DEFINITION NAMES — and now actually read from it. This comment
+        // already claimed exactly that ("not a path this screen invents -- so the row target cannot
+        // drift from the declaration") while the code beneath it was a template literal. The two
+        // happened to agree; on Work Orders and Part Master the same pair disagreed and named
+        // routes this application does not mount, and nobody noticed because no screen ever asked
+        // the definition. A comment is not a mechanism.
+        onRowClick={(id) => navigate(buildRowHref(salesOrderIndexList.rowNavigationTo, id))}
         onLoadMore={loadMore}
         onRetry={retry}
       />
       )}
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }
