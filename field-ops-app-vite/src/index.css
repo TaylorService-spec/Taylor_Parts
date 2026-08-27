@@ -6513,3 +6513,21 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-week__identity-col { min-width: 0; }
 .ns-dispatch-queue__head { margin-bottom: 4px; }
 .ns-dispatch__session { min-width: 0; }
+
+/* Which day the board is showing. The Day tab names a SPECIFIC day, so there has to be a way to
+   choose it — without one the board could only ever reach the next fortnight. */
+.ns-dispatch-views__nav { display: flex; align-items: center; gap: 6px; }
+.ns-dispatch-views__step { font: 600 12px var(--font-interface); min-width: 44px; min-height: 44px;
+  padding: 8px 12px; background: var(--verenward-stone-card); color: var(--color-text-secondary);
+  border: 1px solid var(--verenward-border-strong); cursor: pointer; }
+.ns-dispatch-views__step:disabled { opacity: 0.5; cursor: default; }
+.ns-dispatch-views__step:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
+.ns-dispatch-views__jump { display: flex; align-items: center; gap: 6px; font-size: 11.5px;
+  color: var(--color-text-secondary); }
+.ns-dispatch-views__jump input { font: inherit; min-height: 44px; padding: 6px 8px;
+  background: var(--color-surface, #fff); color: var(--color-text-primary);
+  border: 1px solid var(--verenward-border-strong); }
+/* The "Go to" label. Visible rather than sr-only: a bare date field beside two arrows reads as an
+   unexplained control, and the word costs one line. */
+.ns-dispatch-views__jump-label { font: 600 11px var(--font-interface); letter-spacing: 0.08em;
+  text-transform: uppercase; }
