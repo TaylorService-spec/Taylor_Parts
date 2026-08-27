@@ -410,7 +410,15 @@ export default function DispatcherBoard() {
         time — its own governed record, never a work order; drops onto it are refused.
       </p>
 
-      <DispatchViewSwitcher view={view} onChange={setView} dayLabel={dayLabel} weekLabel={weekLabel} />
+      <DispatchViewSwitcher
+        view={view}
+        onChange={setView}
+        dayLabel={dayLabel}
+        weekLabel={weekLabel}
+        anchorMillis={anchorMillis}
+        onAnchorChange={(t) => setAnchorMillis(startOfDayMillis(t))}
+        isToday={startOfDayMillis(anchorMillis) === startOfDayMillis(Date.now())}
+      />
 
       {boardMessage ? (
         // A REFUSAL is an alert; a success or a warning is a status. Both are announced, but only a

@@ -29,7 +29,7 @@ export const DISPATCH_VIEW = Object.freeze({
 
 const VIEW_ORDER = [DISPATCH_VIEW.DAY, DISPATCH_VIEW.WEEK, DISPATCH_VIEW.FORTNIGHT];
 
-export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel }) {
+export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anchorMillis, onAnchorChange, isToday }) {
   const label = {
     [DISPATCH_VIEW.DAY]: `Day · ${dayLabel}`,
     [DISPATCH_VIEW.WEEK]: `Week · ${weekLabel}`,
@@ -52,6 +52,22 @@ export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel }) {
           </button>
         ))}
       </div>
+      {/* WHICH day / week the board is showing. The artifact heads the Day tab "Day · Tue 26" — a
+          SPECIFIC day — and 1e has the week and fortnight views jumping to one. Without a way to
+          move the anchor directly, the board could only ever show the next fortnight, so a job
+          scheduled five weeks out was unreachable. Steps by a day in Day view and by a week in the
+          other two, because that is the unit each of them is drawn in. */}
+      {view === DISPATCH_VIEW.MAP ? null : (
+        <div className="ns-dispatch-views__nav">
+          <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, -1))} aria-label={view === DISPATCH_VIEW.DAY ? "Previous day" : "Previous week"}>‹</button>
+          <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(Date.now())} disabled={isToday}>Today</button>
+          <button type="button" className="ns-dispatch-views__step" onClick={() => onAnchorChange?.(stepAnchor(anchorMillis, view, 1))} aria-label={view === DISPATCH_VIEW.DAY ? "Next day" : "Next week"}>›</button>
+          <label className="ns-dispatch-views__jump">
+            <span className="ns-dispatch-views__jump-label">Go to</span>
+            <input type="date" value={toDateInput(anchorMillis)} onChange={(e) => { const t = fromDateInput(e.target.value); if (t != null) onAnchorChange?.(t); }} />
+          </label>
+        </div>
+      )}
       <button
         type="button"
         role="tab"
@@ -249,6 +265,27 @@ function MapViewImpl() {
       </p>
     </div>
   );
+}
+
+/** Step the anchor by the unit the current view is drawn in. DST-safe via the Date API. */
+function stepAnchor(anchorMillis, view, direction) {
+  const d = new Date(anchorMillis);
+  d.setDate(d.getDate() + direction * (view === DISPATCH_VIEW.DAY ? 1 : 7));
+  return d.getTime();
+}
+
+function toDateInput(millis) {
+  const d = new Date(millis);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Parsed as LOCAL midnight, matching how the rest of the board buckets days. */
+function fromDateInput(value) {
+  if (!value) return null;
+  const [y, m, day] = value.split("-").map(Number);
+  if (!y || !m || !day) return null;
+  return new Date(y, m - 1, day, 12, 0, 0, 0).getTime();
 }
 
 function dayHeading(day) {
