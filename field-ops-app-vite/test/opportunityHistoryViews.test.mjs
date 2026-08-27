@@ -122,9 +122,50 @@ test("EACH EMPTY STATE NAMES ITS OWN FACT", () => {
   assert.match(OPPORTUNITY_EMPTY_TEXT.open, /Won or Lost/);
 });
 
-test("every view has a label, and the vocabulary is closed", () => {
-  assert.deepEqual(Object.keys(OPPORTUNITY_VIEW_LABEL).sort(), ["all", "lost", "open", "won"]);
+test("every view has a label, and the vocabulary is closed BOTH WAYS", () => {
+  // Widened 2026-08-27 for North Star Workspace P1: `attention` and `decision` are the two views
+  // the workspace tabs need, and both are slices of derivations this module already owns.
+  assert.deepEqual(
+    Object.keys(OPPORTUNITY_VIEW_LABEL).sort(),
+    ["all", "attention", "decision", "lost", "open", "won"],
+  );
+  // Closed BOTH ways, which the previous version only half-asserted: every view needs a label,
+  // AND every label must name a real view. A label with no view behind it is a tab that selects
+  // nothing, and normalizeOpportunityView would silently send it to OPEN.
   for (const v of Object.values(OPPORTUNITY_VIEW)) assert.ok(OPPORTUNITY_VIEW_LABEL[v], `${v} needs a label`);
+  const views = new Set(Object.values(OPPORTUNITY_VIEW));
+  for (const key of Object.keys(OPPORTUNITY_VIEW_LABEL)) {
+    assert.ok(views.has(key), `${key} is labelled but is not a view`);
+  }
+  // And every view must state its own emptiness -- the four-emptinesses rule this file already
+  // holds for the original set.
+  for (const v of Object.values(OPPORTUNITY_VIEW)) {
+    assert.ok(OPPORTUNITY_EMPTY_TEXT[v], `${v} needs an empty sentence`);
+  }
+});
+
+test("the two workspace views slice the SAME derivation the rows and counts use", () => {
+  // The falsifiable form of "no new pipeline authority". Needs Attention must equal the rows the
+  // pipeline already flagged, and At Decision the rows already at the governed DECISION stage --
+  // never a second opinion computed for the tab.
+  const p = build(SANDBOX);
+  const attention = selectOpportunityView(p, OPPORTUNITY_VIEW.NEEDS_ATTENTION).rows;
+  const decision = selectOpportunityView(p, OPPORTUNITY_VIEW.AT_DECISION).rows;
+  assert.deepEqual(attention, p.rows.filter((r) => r.attentionTone === "attention"));
+  assert.deepEqual(decision, p.rows.filter((r) => r.stage === "DECISION"));
+  // The header count and the tab must agree, because they read one number.
+  assert.equal(attention.length, p.counts.needsAttention);
+  assert.equal(decision.length, p.stageCounts.DECISION);
+  // Both are slices of OPEN work: a closed deal raises no attention and is past Decision.
+  for (const row of [...attention, ...decision]) assert.equal(row.commercial.closed, false);
+});
+
+test("an empty attention view reads as good news, not as a broken filter", () => {
+  const p = build(SANDBOX);
+  const v = selectOpportunityView(p, OPPORTUNITY_VIEW.NEEDS_ATTENTION);
+  if (v.rows.length === 0) {
+    assert.match(OPPORTUNITY_EMPTY_TEXT[v.emptyReason] ?? "", /Nothing needs attention|No opportunities yet/);
+  }
 });
 
 // ═════════════════════════════════════════ closed stays closed

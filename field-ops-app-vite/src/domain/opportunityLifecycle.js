@@ -201,6 +201,18 @@ export function buildOpportunityPipeline(opportunities = [], { nowMillis = null,
 
 export const OPPORTUNITY_VIEW = Object.freeze({
   OPEN: "open",
+  // TWO VIEWS ADDED FOR THE WORKSPACE (North Star Workspace P1), and neither invents anything.
+  //
+  // Both are slices of facts this file ALREADY derives for every row: `attentionTone` comes from
+  // deriveAttention, and `stage` is the governed stage. `buildOpportunityPipeline` already counts
+  // both -- counts.needsAttention and stageCounts.DECISION -- so the tabs and their numbers read
+  // the same derivation the rows do, and cannot disagree with it.
+  //
+  // They live HERE rather than as filters in the workspace component for the reason the brief
+  // states plainly: pipeline authority does not belong in UI code. A view the component invented
+  // would be a second answer to "which opportunities need attention".
+  NEEDS_ATTENTION: "attention",
+  AT_DECISION: "decision",
   WON: "won",
   LOST: "lost",
   ALL: "all",
@@ -208,6 +220,8 @@ export const OPPORTUNITY_VIEW = Object.freeze({
 
 export const OPPORTUNITY_VIEW_LABEL = Object.freeze({
   open: "Open",
+  attention: "Needs Attention",
+  decision: "At Decision",
   won: "Won",
   lost: "Lost",
   all: "All",
@@ -230,8 +244,17 @@ export function normalizeOpportunityView(value) {
 export function selectOpportunityView(pipeline, view) {
   const v = normalizeOpportunityView(view);
   const all = pipeline?.all ?? [];
+  // OPEN is `pipeline.rows`, which buildOpportunityPipeline has already sorted attention-first,
+  // then closing-soonest. The two new views slice that SAME sorted array rather than `all`, so they
+  // inherit the operational order instead of declaring one of their own -- the design asks for
+  // "attention first, then closing soonest" and this is the pipeline's own comparator, not a new
+  // one. WON/LOST/ALL keep the source order they have always had; re-sorting closed history would
+  // be a new ordering semantic, and the brief says to record that rather than invent it (GAP-OW-2).
+  const open = pipeline?.rows ?? [];
   const rows =
-    v === OPPORTUNITY_VIEW.OPEN ? (pipeline?.rows ?? [])
+    v === OPPORTUNITY_VIEW.OPEN ? open
+    : v === OPPORTUNITY_VIEW.NEEDS_ATTENTION ? open.filter((r) => r.attentionTone === "attention")
+    : v === OPPORTUNITY_VIEW.AT_DECISION ? open.filter((r) => r.stage === "DECISION")
     : v === OPPORTUNITY_VIEW.WON ? all.filter((r) => r.outcome === "WON")
     : v === OPPORTUNITY_VIEW.LOST ? all.filter((r) => r.outcome === "LOST")
     : all;
@@ -246,6 +269,10 @@ export function selectOpportunityView(pipeline, view) {
 export const OPPORTUNITY_EMPTY_TEXT = Object.freeze({
   none: "No opportunities yet.",
   open: "No open opportunities. Switch to Won or Lost to see closed ones.",
+  // Emptiness here is GOOD NEWS and says so. "No results" would read as a broken filter on the one
+  // view whose empty state is the desired state.
+  attention: "Nothing needs attention right now.",
+  decision: "No opportunities are awaiting a customer decision.",
   won: "No opportunities have been won yet.",
   lost: "No opportunities have been lost.",
   all: "No opportunities yet.",
