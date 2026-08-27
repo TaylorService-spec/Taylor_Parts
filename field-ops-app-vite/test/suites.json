@@ -1014,6 +1014,10 @@
       "runner": "node"
     },
     {
+      "file": "test/salesAgreementByIdRead.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/releaseIdentityRemoteRetry.test.mjs",
       "runner": "node"
     },

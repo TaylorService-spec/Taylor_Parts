@@ -48,10 +48,15 @@ export function useSalesAgreement(opportunityId, { enabled = true } = {}) {
     // DO NOT ASK FOR WHAT THIS CALLER MAY NOT HAVE.
     //
     // The read is a governed callable behind salesAgreement.read. Where that capability is not
-    // granted -- which today is EVERY environment, because the callable itself is part of the gated
-    // Sales Agreement release -- firing the request anyway produces a doomed round trip per
-    // selection. An undeployed Firebase callable answers 404 WITHOUT CORS headers, so the browser
-    // reports it as a CORS failure and logs a red error on every single Opportunity a user clicks.
+    // granted, firing the request anyway produces a doomed round trip per selection. An undeployed
+    // Firebase callable answers 404 WITHOUT CORS headers, so the browser reports it as a CORS
+    // failure and logs a red error on every single Opportunity a user clicks.
+    //
+    // This comment used to say the capability was granted in EVERY environment's negative — "which
+    // today is EVERY environment". That is stale and was corrected here in PR 2 of the Sales
+    // Agreement North Star run: access/environmentCapabilityOverrides.ts activates all four
+    // salesAgreement capabilities for eos-platform-sandbox, and App.jsx threads the resolved
+    // decision through. NOT_ENABLED is a real state to design for, not a permanent condition.
     //
     // That console noise is not harmless: it is the first thing anyone looks at when something else
     // goes wrong, and it says "blocked by CORS policy" about a feature that is simply not deployed.
