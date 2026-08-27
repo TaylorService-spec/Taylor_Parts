@@ -500,8 +500,43 @@ before a line of implementation existed. That is why this row has no “built bl
 | **Mutation proofs** | **20 — all caught, every source restored byte-identically.** Raw doc id as identity · fabricated line name · unknown money as zero · “binding” reintroduced · signature evidence implied · accepted facts synthesized locally · direct Firestore read · direct Firestore mutation · a third command exposed · decline · revise · CREATE from a by-id NOT_FOUND · NONE_YET/NOT_FOUND collapsed · terminal Edit restored · state relabelled as permission · permission relabelled as state · duplicate route alias · Opportunity raw id exposed · `sourceAgreementId` shown as identity · shared `.ns-record-body` changed. Two initially escaped and are recorded below. |
 | **Visual validation** | Real browser, real stylesheet, the page’s own markup, with the 252px application rail accounted for. **1440** → content 1188, body overflow 0, `.ns-record-body` `760px 340px` gap 56, commercial table 760px with no scroll needed. **768** → overflow 0, `352px 352px` gap 32. **375** → overflow 0, single column 343px. Zero elements overflow outside a declared scroll container at any width. |
 | **Named decisions** | ND-14 (`DECLINED` modelled, unreachable), ND-15 (no post-acceptance revision path), ND-16 (the design’s 224/300/40 vs the shipped 252/340/56 — Owner ruled *build to the shipped grammar*), and ND-9 carried forward unchanged |
-| **Gate** | **NONE YET.** Not deployed, not swept. |
-| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+| **Gate** | **Sandbox Quick Gate PASSED** against deployed `0cc303ba` on `platform-sandbox`, 2026-08-27 — pilot route sweep, dynamic detail sweep, **zero RAW_ID findings**. Not the full regression gate. |
+| **Acceptance** | Closed 2026-08-27 |
+
+### Owner visual acceptance — 2026-08-27
+
+Reviewed on the deployed sandbox and **APPROVED**. The Owner accepted the visual implementation
+**as composed on the shipped 252 / 340 / 56 grammar** — the main column lands at 680px beside the
+252px application rail, not the artifact's 820px, and that is the accepted result.
+
+| | |
+|---|---|
+| **Sandbox release** | `0cc303ba` · `platform-sandbox` · built 2026-08-27T06:11:31Z, read from `/version.json` |
+| **Quick Gate** | PASS |
+| **Owner visual acceptance** | APPROVED |
+
+**ND-16 is NOT reopened by this review.** The question of whether the shared record grammar should
+move toward the design's 224 / 300 / 40 for every family stays open on its own terms; accepting
+this family on 252 / 340 / 56 answers what family 5 ships, not what the grammar should become.
+
+**Draft and blocked-Draft were NOT OBSERVABLE at review.** All five sandbox agreements
+(SA-2026-000001 through 000005) are ACCEPTED, so no Draft fixture existed to open — and none was
+created, because a gate that mutates its own fixtures certifies a sandbox nobody else will see.
+Automated Draft coverage remains green: the derivation, page and command-wiring suites all assert
+the Draft composition, the unpriced-line blocker and its named reason. **The acceptance therefore
+rests on live evidence for the accepted states and on suite evidence for the draft ones**, and the
+distinction is recorded rather than smoothed over.
+
+**What was observed live**, across all five records at 1440 / 768 / 375: governed number as the
+title with no document id anywhere visible; reference-first lines; the two-block money ladder;
+exactly three acceptance evidence facts with the actor resolved to a person; the
+no-customer-signature statement; terminal records offering no action control at all; upstream
+opportunity links and downstream Sales Order links both resolving; a by-id address with nothing
+behind it reading *No sales agreement matches this address* and offering no Create; and zero
+horizontal overflow at every width.
+
+**SA-G2 through SA-G7 remain follow-ups under their existing classifications.** Acceptance of the
+family is not acceptance of its gaps.
 
 ### What the design pass found before implementation started
 
