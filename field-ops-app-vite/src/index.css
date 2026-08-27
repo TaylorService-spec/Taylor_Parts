@@ -5602,6 +5602,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* A command that failed, stated where it was invoked. */
 .ns-state--error { color: var(--color-negative, #B23B3B); }
 
+/* ── SALES AGREEMENT LINE EDITOR (SA-G7), on the record that owns the prices.
+   The editor itself is the pane's, moved to salesAgreementLines.jsx and shared, so it carries its
+   own .fo-agreement-line grid. These two rules only give it a home in the North Star section: the
+   ruled panel the expansion report admits for EDITORS specifically (Grammar R13), never for
+   read-only layout. */
+.ns-lines-edit { border: 1px solid var(--color-border, #D9D3C6);
+  background: var(--color-surface-raised, #FCFAF6); padding: 14px 16px; }
+.ns-lines-edit__actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
 /* ── THE 44px TOUCH FLOOR, on the two controls that are inline text rather than buttons.
    Measured at 375: "Refresh" and "Update next action" rendered 31px tall, because a link-styled
    button inherits the line box of the sentence it sits in. The North Star handheld model puts the

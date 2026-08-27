@@ -192,9 +192,28 @@ describe("a success re-reads; nothing is invented locally", () => {
 
   it("the page holds no local copy of state, totals, acceptance or downstream", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/modules/sales/SalesAgreementDetail.jsx"), "utf8");
-    // The only useState on this page is the editor's own open/closed flag and its form draft.
+    // STRENGTHENED 2026-08-27 (SA-G7). This was a bare count capped at 2, standing in for "only
+    // editor state lives here". The cap was the weaker half of the assertion: it says nothing about
+    // WHAT the state is, so a local copy of `total` would have passed while a second legitimate
+    // editor failed. Adding line editing made that visible -- it needs two more pieces of purely
+    // presentational state, and the count alone could not tell them apart from a cached total.
+    //
+    // Now every useState must be NAMED, and the name must be on this list. A new one fails until
+    // somebody adds it here deliberately, which is the moment to ask whether it is editor state or
+    // an authority copy.
+    const EDITOR_STATE_ONLY = [
+      "draft",         // TermsEditor's working copy of the terms form
+      "editingTerms",  // terms section open/closed
+      "editingLines",  // lines section: null = closed, array = working draft (SA-G7)
+      "linesError",    // client-side validation message from buildLines
+    ];
+    const declared = [...source.matchAll(/const \[(\w+),\s*set\w+\]\s*=\s*useState\(/g)].map((m) => m[1]);
     const states = source.match(/useState\(/g) ?? [];
-    expect(states.length).toBeLessThanOrEqual(2);
+    // Every useState must be a NAMED destructured pair -- an anonymous one would evade the check.
+    expect(declared.length).toBe(states.length);
+    for (const name of declared) {
+      expect(EDITOR_STATE_ONLY, `${name} is local state on a record page -- editor state, or a copy of authority?`).toContain(name);
+    }
     for (const banned of [/setAccepted/, /setState\(/, /setTotal/, /optimistic/i, /acceptedAtMillis\s*=/, /state:\s*"ACCEPTED"/]) {
       expect(source).not.toMatch(banned);
     }
@@ -329,5 +348,94 @@ describe("nothing new was granted", () => {
     for (const banned of [/signature/i, /sendToCustomer/i, /agreementList/i, /displayName:\s*ref/]) {
       expect(page.replace(/No customer-signature evidence[^"]*/g, "")).not.toMatch(banned);
     }
+  });
+});
+
+// ═════════════════════════════════════════ SA-G7 — LINE PRICING ON THE RECORD THAT OWNS IT
+//
+// Until this shipped, an agreement could only be priced from the Opportunity workspace's pane.
+// That made the pane the sole surface for an activated governed capability
+// (salesAgreement.updateDraft) and blocked its retirement — and with it Opportunity Workspace P1v4
+// and ND-13. These assertions are what makes "SA-G7 is closed" a checkable statement rather than a
+// claim in a ledger.
+
+describe("SA-G7 — the agreement is priced from its own record", () => {
+  it("a DRAFT the caller may edit offers Edit lines", () => {
+    mount();
+    expect(btn("Edit lines")).toBeTruthy();
+    expect(btn("Edit lines").disabled).toBe(false);
+  });
+
+  it("a TERMINAL agreement offers NO line editing at all — absent, not disabled (SA-D11)", () => {
+    // A disabled control here would send somebody hunting for a permission problem that does not
+    // exist: the engine forbids editing an accepted agreement, and that is a state fact.
+    mount({ overrides: ACCEPTED });
+    expect(btn("Edit lines")).toBeNull();
+  });
+
+  it("a DRAFT the caller may NOT edit shows the control disabled, with the reason", () => {
+    // The other half of SA-D11: this one really is permission, so it is stated rather than hidden.
+    mount({ grant: (id) => id !== "salesAgreement.updateDraft" });
+    const b = btn("Edit lines");
+    expect(b).toBeTruthy();
+    expect(b.disabled).toBe(true);
+    expect(b.getAttribute("data-restriction")).toBe("permission");
+  });
+
+  it("the editor seeds from the stored lines, and an UNPRICED line seeds EMPTY — never 0.00", () => {
+    // The load-bearing seeding rule. "0.00" would be submitted as a price of zero the moment
+    // anybody saved an unrelated change, silently turning "not priced yet" into "free".
+    mount({ overrides: { lines: [UNPRICED] } });
+    fireEvent.click(btn("Edit lines"));
+    const price = screen.getByLabelText("Line 1 unit price");
+    expect(price.value).toBe("");
+  });
+
+  it("a priced line seeds as major units, and saving sends INTEGER MINOR UNITS to the governed command", async () => {
+    mount({ overrides: { lines: [PRICED] } });
+    fireEvent.click(btn("Edit lines"));
+    fireEvent.change(screen.getByLabelText("Line 1 unit price"), { target: { value: "1250.50" } });
+    fireEvent.click(btn("Save lines"));
+    await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
+    const patch = seam.updateDraft.mock.calls[0][0];
+    expect(patch.lines[0].unitPrice).toBe(125050);
+    // The patch carries LINES ONLY. A lines save must not smuggle stale terms.
+    expect(Object.keys(patch)).toEqual(["lines"]);
+  });
+
+  it("an unpriced line stays unpriced — the key is OMITTED, never sent as 0", async () => {
+    mount({ overrides: { lines: [UNPRICED] } });
+    fireEvent.click(btn("Edit lines"));
+    fireEvent.click(btn("Save lines"));
+    await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
+    const line = seam.updateDraft.mock.calls[0][0].lines[0];
+    expect("unitPrice" in line).toBe(false);
+  });
+
+  it("a malformed price is REFUSED client-side and never reaches the command", async () => {
+    mount();
+    fireEvent.click(btn("Edit lines"));
+    fireEvent.change(screen.getByLabelText("Line 1 unit price"), { target: { value: "twelve fifty" } });
+    fireEvent.click(btn("Save lines"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(seam.updateDraft).not.toHaveBeenCalled();
+  });
+
+  it("a refused save keeps the editor open rather than reading as saved", async () => {
+    mount({ wiring: { updateDraft: vi.fn().mockResolvedValue({ ok: false, errorStatus: "failed-precondition" }) } });
+    fireEvent.click(btn("Edit lines"));
+    fireEvent.click(btn("Save lines"));
+    await waitFor(() => expect(seam.updateDraft).toHaveBeenCalled());
+    expect(btn("Save lines")).toBeTruthy();
+  });
+
+  it("the page adds NO second pricing command — it uses the same updateDraft the terms editor uses", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/modules/sales/SalesAgreementDetail.jsx"), "utf8");
+    // One command surface for the whole page. A second client would be a second authority.
+    expect(source).not.toMatch(/httpsCallable|CommandClient/);
+    // And the editor is IMPORTED, never reimplemented — one price parser for both surfaces.
+    expect(source).toMatch(/from "\.\/salesAgreementLines\.jsx"/);
+    expect(source).not.toMatch(/function\s+LinesEditor/);
+    expect(source).not.toMatch(/function\s+toMinor/);
   });
 });
