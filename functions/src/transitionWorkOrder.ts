@@ -26,6 +26,11 @@ import {
 import { WORK_ORDERS_COLLECTION, SALES_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
 import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
+// ND-24: THE governed placement policy, shared with the Scheduling command service so the initial
+// placement and every later change cannot disagree about what a legal placement is.
+import { checkPlacement } from "./scheduling/placementPolicy";
+import { mapError as mapSchedulingError } from "./scheduling/errorMapping";
+import { SchedulingError, type SchedulingWarning } from "./scheduling/types";
 import { stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
 import { transitionWorkOrderAuditId } from "./workOrderTransitionMath";
 import {
@@ -231,6 +236,11 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
       priorEndMillis: number | null;
       reason: string;
     } | null = null;
+    // ND-24: warnings from the shared placement policy on a SUCCESSFUL Schedule -- outside recorded
+    // working hours, or no working hours recorded at all. ND-20 says these must not refuse, because
+    // field service legitimately schedules emergency work at 02:00. They ride out on the response so
+    // a dispatcher is told; discarding them here would make the placement look unremarkable.
+    let scheduleWarnings: SchedulingWarning[] = [];
     if (action === "Schedule") {
       lockRef = techLockRef(db, scheduledTechId as string);
       await tx.get(lockRef);
@@ -247,15 +257,39 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     }
 
     if (action === "Schedule") {
-      const otherSnap = await tx.get(
-        db.collection(WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", scheduledTechId)
-      );
-      const others = otherSnap.docs.map((d) => {
-        const data = d.data() as WorkOrder;
-        return { id: d.id, scheduledTechId: data.scheduledTechId, scheduledStart: data.scheduledStart, scheduledEnd: data.scheduledEnd, status: data.status };
-      });
-      const conflict = findScheduleConflict(scheduledTechId as string, workOrderId, scheduledStart as number, scheduledEnd as number, others);
-      if (conflict) throw new HttpsError("failed-precondition", `Technician ${scheduledTechId} is already scheduled for overlapping Work Order ${conflict}.`);
+      // ND-24. This branch used to call findScheduleConflict directly and check nothing else, which
+      // meant the INITIAL placement enforced overlap alone while Reschedule enforced the whole of
+      // ND-20. Live, that let a dispatcher Schedule a job into the past or into a technician's PTO
+      // and be refused for the identical window on Reschedule -- two entry points, two answers, same
+      // business question.
+      //
+      // It now calls the SAME checkPlacement the scheduling commands call. Not a copy of the table:
+      // the function itself, so the two paths cannot drift. Overlap behavior is unchanged (the policy
+      // runs the same query and the same pure findScheduleConflict this branch used to run inline);
+      // past start, technician eligibility and blocked time are what is new here.
+      //
+      // Reads only, and it runs before every write below -- Firestore's all-reads-before-writes rule
+      // is why it sits here rather than beside the payload assembly.
+      try {
+        scheduleWarnings = await checkPlacement(tx, {
+          technicianId: scheduledTechId as string,
+          workOrderId,
+          startMillis: scheduledStart as number,
+          endMillis: scheduledEnd as number,
+          nowMillis: Date.now(),
+        });
+      } catch (err) {
+        // A SchedulingError crossing this boundary unmapped would reach the caller as a generic
+        // `internal` 500 -- telling a dispatcher the system is broken when the truthful answer is
+        // "that technician has PTO then". mapSchedulingError is the SAME sanitized table the
+        // scheduling callables use, so a refusal reads identically whichever path produced it.
+        //
+        // Anything that is not a SchedulingError propagates untouched: the surrounding transaction's
+        // contention and Firestore errors are not this catch's business, and swallowing them into a
+        // scheduling refusal would misreport a retryable race as a business rule.
+        if (err instanceof SchedulingError) throw mapSchedulingError(err);
+        throw err;
+      }
       payload.scheduledStart = Timestamp.fromMillis(scheduledStart as number);
       payload.scheduledEnd = Timestamp.fromMillis(scheduledEnd as number);
       payload.scheduledTechId = scheduledTechId;
@@ -617,7 +651,10 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         summary: `Work Order ${workOrderId} Complete skipped Sales Order fulfillment write-back: ${soWriteBackSkipped.reason} The Work Order still completed.`,
       });
     }
-    return { id: workOrderId, status: nextStatus };
+    // ND-24: warnings are part of a SUCCESSFUL Schedule response, exactly as they already are for
+    // reschedule and reassign. Empty for every other action, and empty for a Schedule with nothing to
+    // say -- so no existing caller sees a shape it did not before, it just gains a field.
+    return { id: workOrderId, status: nextStatus, warnings: scheduleWarnings };
   });
 
   // Post-commit only -- see header comment. Never throws: a failure

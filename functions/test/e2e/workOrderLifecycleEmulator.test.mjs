@@ -17,7 +17,7 @@ import {
   makeCheckRunner,
   seedAdmin,
   seedDispatcher,
-  seedTechnician,
+  seedTechnicianWithRecord,
   seedPart,
   grantWorkOrderPartsPlanRole,
   callReq,
@@ -38,7 +38,7 @@ await check("full chain: create -> plan -> schedule -> dispatch -> accept -> tra
   // ---- Seed a minimal governed dataset ----
   const adminUid = await seedAdmin();
   const dispatcherUid = await seedDispatcher();
-  const { uid: techUid, technicianId } = await seedTechnician();
+  const { uid: techUid, technicianId } = await seedTechnicianWithRecord();
   const plannerUid = await seedAdmin(); // a second admin, distinct principal, holding the SEPARATE parts-plan capability
   await grantWorkOrderPartsPlanRole(plannerUid);
   const partId = await seedPart(CATALOG_SKUS.COMPRESSOR);

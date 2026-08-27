@@ -93,14 +93,21 @@ export async function seedTechnician(technicianId = nextId("tech")) {
 // The GOVERNED TECHNICIAN RECORD, which is a different thing from the persona above.
 //
 // `seedTechnician` writes users/{uid} -- the identity a callable resolves a ROLE from. This writes
-// fieldops_technicians/{technicianId} -- the record the business schedules work ONTO. Chain 1 never
-// needed it: transitionWorkOrder's Schedule/Dispatch check for overlaps and double-booking but never
-// check that the technician exists at all.
+// fieldops_technicians/{technicianId} -- the record the business schedules work ONTO.
 //
-// The Scheduling commands DO check (schedulingCommands.checkPlacement), which is why this helper
-// exists. That asymmetry is real and is recorded in docs/design/governed-scheduling-domain.md -- the
-// new commands are stricter than the deployed ones, deliberately, and nothing about them relaxes what
-// Schedule/Dispatch already enforce.
+// UPDATED FOR ND-24. This comment used to say Chain 1 never needed the record, because
+// "transitionWorkOrder's Schedule/Dispatch check for overlaps and double-booking but never check that
+// the technician exists at all" -- and then described that asymmetry as deliberate. It was not
+// deliberate; it was the defect, and this comment was an accurate description of it. Schedule now
+// runs the same placement policy the change commands run, so a Work Order can only be placed onto a
+// technician that EXISTS and carries a governed status.
+//
+// Practical consequence for anyone writing a test here: seeding a technician PERSONA is no longer
+// enough to schedule. Use `seedTechnicianWithRecord` unless the test is specifically about what
+// happens when the record is missing.
+//
+// Dispatch is a separate question and is unchanged -- it assigns rather than places, and ND-24 did
+// not widen to it.
 export async function seedTechnicianRecord(technicianId = nextId("tech"), status = "available") {
   await db.collection("fieldops_technicians").doc(technicianId).set({
     id: technicianId,

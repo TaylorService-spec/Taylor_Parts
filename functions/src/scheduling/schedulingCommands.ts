@@ -29,14 +29,8 @@ import { findScheduleConflict } from "../workOrderAvailability";
 import { stageAuditEvent } from "../access/auditEventWriter";
 import type { AuditAction } from "../types/access";
 import type { WorkOrder } from "../types/workOrder";
-import { assessWorkingHours, findBlockedTimeConflict } from "./availabilityModel";
-import {
-  db,
-  GOVERNED_TECHNICIAN_STATUSES,
-  loadBlockedTime,
-  loadTechnician,
-  loadWorkingAvailability,
-} from "./schedulingRepository";
+import { checkPlacement, PAST_START_TOLERANCE_MS } from "./placementPolicy";
+import { db, loadTechnician } from "./schedulingRepository";
 import {
   TECHNICIAN_BLOCKED_TIME_COLLECTION,
   TECHNICIAN_WORKING_AVAILABILITY_COLLECTION,
@@ -59,10 +53,9 @@ import {
 // because it would look like it was protected.
 const TECH_LOCKS_COLLECTION = "work_order_tech_locks";
 
-// Tolerance on the past-start refusal (ND-20). A dispatcher placing a job "now" and a server a few
-// seconds ahead of their clock must not produce a refusal that reads as a bug. Sixty seconds is small
-// enough that it cannot be used to back-date anything meaningful.
-export const PAST_START_TOLERANCE_MS = 60_000;
+// Re-exported from the placement policy rather than redeclared (ND-24). Existing importers keep
+// working; there is still exactly one number.
+export { PAST_START_TOLERANCE_MS };
 
 // These commands CONTEND ON PURPOSE. Every schedule-touching write for one technician is serialized
 // through a single sentinel document, and each one also runs a transactional query over
@@ -108,84 +101,15 @@ function describeWindow(startMillis: number | null, endMillis: number | null): s
 }
 
 // ---------------------------------------------------------------------------------------------
-// The shared placement check
+// The shared placement check -- MOVED OUT (ND-24)
 // ---------------------------------------------------------------------------------------------
-
-interface PlacementCheck {
-  technicianId: string;
-  workOrderId: string;
-  startMillis: number;
-  endMillis: number;
-  nowMillis: number;
-}
-
-/**
- * Every refusal in ND-20 except the ones validation already made, applied in one place so
- * `rescheduleWorkOrder` and `reassignScheduledWorkOrder` cannot drift into disagreeing about what a
- * legal placement is.
- *
- * Refuses on: a start in the past, a technician that does not exist or whose record is malformed,
- * blocked time, and an overlapping Work Order. Returns the warnings that ride along with a placement
- * that is legal but worth mentioning -- outside working hours, or no working hours recorded.
- */
-async function checkPlacement(tx: Transaction, check: PlacementCheck): Promise<SchedulingWarning[]> {
-  const { technicianId, workOrderId, startMillis, endMillis, nowMillis } = check;
-
-  if (startMillis < nowMillis - PAST_START_TOLERANCE_MS) {
-    throw new SchedulingError("START_IN_PAST", "A Work Order cannot be scheduled to start in the past.");
-  }
-
-  const technician = await loadTechnician(tx, technicianId);
-  if (!technician) {
-    throw new SchedulingError("TECHNICIAN_NOT_FOUND", `No technician record exists at ${technicianId}.`);
-  }
-  // Eligibility, as far as this repository can honestly assert it today: a governed technician record
-  // whose status is one the platform recognises. There is no skill, certification or territory model
-  // to check against -- inventing one here would be inventing business policy, so this refuses only
-  // what it can actually see is wrong. When a real eligibility authority exists, it belongs on this
-  // line and nowhere else.
-  if (!GOVERNED_TECHNICIAN_STATUSES.has(technician.status)) {
-    throw new SchedulingError(
-      "TECHNICIAN_INELIGIBLE",
-      `Technician ${technicianId} has no governed status and cannot be scheduled.`,
-    );
-  }
-
-  const blocks = await loadBlockedTime(tx, technicianId, startMillis);
-  const blocked = findBlockedTimeConflict(blocks, startMillis, endMillis);
-  if (blocked) {
-    throw new SchedulingError(
-      "BLOCKED_TIME_CONFLICT",
-      `Technician ${technicianId} has ${blocked.kind} blocked time overlapping that window.`,
-    );
-  }
-
-  // The SAME query and the SAME pure overlap function Schedule uses, so a window this command accepts
-  // is one Schedule would have accepted and vice versa.
-  const otherSnap = await tx.get(
-    db().collection(WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", technicianId),
-  );
-  const others = otherSnap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      scheduledTechId: data.scheduledTechId,
-      scheduledStart: data.scheduledStart,
-      scheduledEnd: data.scheduledEnd,
-      status: data.status,
-    };
-  });
-  const conflict = findScheduleConflict(technicianId, workOrderId, startMillis, endMillis, others);
-  if (conflict) {
-    throw new SchedulingError(
-      "SCHEDULE_CONFLICT",
-      `Technician ${technicianId} is already scheduled for overlapping Work Order ${conflict}.`,
-    );
-  }
-
-  const availability = await loadWorkingAvailability(tx, technicianId);
-  return assessWorkingHours(availability, startMillis, endMillis).warnings;
-}
+//
+// checkPlacement used to be defined right here, private to this file. That is exactly why the
+// Schedule transition never got it: the policy was reachable only by the callers that happened to
+// live in this module. It now lives in ./placementPolicy.ts and both placement paths import it.
+//
+// Do not reintroduce a local copy. schedulingPlacementSymmetry.test.mjs asserts that this file and
+// transitionWorkOrder.ts each reach the policy by import and neither reimplements it.
 
 // ---------------------------------------------------------------------------------------------
 // Reschedule / Reassign

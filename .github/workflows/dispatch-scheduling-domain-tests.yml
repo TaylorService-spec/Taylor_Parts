@@ -18,6 +18,8 @@ on:
     paths:
       - "functions/src/scheduling/**"
       - "functions/src/transitionEngine.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/test/schedulingPlacementAuthorityContract.test.mjs"
       - "functions/src/workOrderAvailability.ts"
       - "functions/src/types/workOrder.ts"
       - "functions/test/schedulingAvailabilityModel.test.mjs"
@@ -32,6 +34,8 @@ on:
     paths:
       - "functions/src/scheduling/**"
       - "functions/src/transitionEngine.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/test/schedulingPlacementAuthorityContract.test.mjs"
       - "functions/src/workOrderAvailability.ts"
       - "functions/src/types/workOrder.ts"
       - "functions/test/schedulingAvailabilityModel.test.mjs"
