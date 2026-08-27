@@ -6,8 +6,9 @@
 // may speak or be recommended.
 //
 // Current rollout is SYNTHETIC-only because Keystone's central operational data policy is still
-// SYNTHETIC-only. There is no external-model fallback here. The configured Keystone endpoint routes
-// operational interpretation through the user's private/local model service.
+// SYNTHETIC-only. There is no external-model fallback here. Remote Keystone ingress is permitted
+// only over HTTPS and only with Cloudflare Access machine credentials in addition to Keystone's own
+// API-key + tenant authentication. Loopback development remains local and needs no Access token.
 
 import {
   KeystoneProviderConfig,
@@ -20,6 +21,7 @@ export type OperationalAIErrorCode =
   | "AI_OPERATIONAL_ENVELOPE_INVALID"
   | "AI_OPERATIONAL_DOMAIN_UNSUPPORTED"
   | "AI_OPERATIONAL_ACTION_DENIED"
+  | "AI_REMOTE_INGRESS_DENIED"
   | "AI_PROVIDER_UNAVAILABLE"
   | "AI_PROVIDER_ERROR";
 
@@ -51,7 +53,6 @@ export interface OperationalEvidenceItem {
 export interface OperationalAllowedRecommendation {
   readonly actionId: string;
   readonly label: string;
-  /** DENIED actions never cross this transport. */
   readonly authority: "ALLOWED";
 }
 
@@ -71,7 +72,6 @@ export interface OperationalInterpretationRequest {
   readonly maxOutputTokens?: number;
 }
 
-/** Exactly the untrusted object Keystone may return. Domain verifiers accept/reject it separately. */
 export interface OperationalModelCandidate {
   readonly interpretation: string;
   readonly businessConsequence: string;
@@ -86,31 +86,21 @@ export interface OperationalProvider {
   interpret(request: OperationalInterpretationRequest): Promise<OperationalModelCandidate>;
 }
 
+interface OperationalProviderConfig extends KeystoneProviderConfig {
+  readonly accessClientId?: string;
+  readonly accessClientSecret?: string;
+}
+
 const DOMAINS = new Set<OperationalDomain>([
-  "WORK_ORDER",
-  "SALES_ORDER",
-  "ACCOUNT",
-  "PARTS",
-  "DISPATCH",
-  "OPPORTUNITY",
-  "SALES_AGREEMENT",
+  "WORK_ORDER", "SALES_ORDER", "ACCOUNT", "PARTS", "DISPATCH", "OPPORTUNITY", "SALES_AGREEMENT",
 ]);
 
-/**
- * Validate the transport boundary before any network call.
- * This is deliberately NOT a business-authority check: the provider has no authority to establish
- * which facts/actions a caller may see. It only refuses malformed/non-synthetic envelopes and any
- * action that was not already marked ALLOWED by EOS.
- */
 export function assertOperationalEnvelope(request: OperationalInterpretationRequest): void {
   if (!request || request.schemaVersion !== 1) {
     throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI envelope is invalid.");
   }
   if (request.classification !== "SYNTHETIC" || request.synthetic !== true) {
-    throw new OperationalAIError(
-      "AI_CLASSIFICATION_DENIED",
-      "Operational model interpretation is currently limited to synthetic context.",
-    );
+    throw new OperationalAIError("AI_CLASSIFICATION_DENIED", "Operational model interpretation is currently limited to synthetic context.");
   }
   if (!DOMAINS.has(request.domain)) {
     throw new OperationalAIError("AI_OPERATIONAL_DOMAIN_UNSUPPORTED", "Operational AI domain is unsupported.");
@@ -129,59 +119,90 @@ export function assertOperationalEnvelope(request: OperationalInterpretationRequ
   }
   const recommendation = request.allowedRecommendation;
   if (recommendation && recommendation.authority !== "ALLOWED") {
+    throw new OperationalAIError("AI_OPERATIONAL_ACTION_DENIED", "A non-authorized action may not cross the model boundary.");
+  }
+}
+
+function isLoopbackEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+  } catch {
+    return false;
+  }
+}
+
+function assertIngressConfig(config: OperationalProviderConfig): void {
+  if (isLoopbackEndpoint(config.endpoint)) return;
+
+  let url: URL;
+  try {
+    url = new URL(config.endpoint);
+  } catch {
+    throw new OperationalAIError("AI_REMOTE_INGRESS_DENIED", "Remote Keystone ingress configuration is invalid.");
+  }
+  if (url.protocol !== "https:") {
+    throw new OperationalAIError("AI_REMOTE_INGRESS_DENIED", "Remote Keystone ingress requires HTTPS.");
+  }
+  if (!config.accessClientId || !config.accessClientSecret) {
     throw new OperationalAIError(
-      "AI_OPERATIONAL_ACTION_DENIED",
-      "A non-authorized action may not cross the model boundary.",
+      "AI_REMOTE_INGRESS_DENIED",
+      "Remote Keystone ingress requires machine-to-machine Access credentials.",
     );
   }
 }
 
 export class KeystoneOperationalProvider implements OperationalProvider {
   readonly name = "keystone-operational-private-first";
-
-  private readonly config: KeystoneProviderConfig;
+  private readonly config: OperationalProviderConfig;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(config: KeystoneProviderConfig, fetchImpl: typeof fetch = fetch) {
+  constructor(config: OperationalProviderConfig, fetchImpl: typeof fetch = fetch) {
     if (!config?.endpoint) {
       throw new OperationalAIError("AI_NOT_CONFIGURED", "No Keystone gateway endpoint is configured.");
     }
+    assertIngressConfig(config);
     this.config = config;
     this.fetchImpl = fetchImpl;
   }
 
   async interpret(request: OperationalInterpretationRequest): Promise<OperationalModelCandidate> {
     assertOperationalEnvelope(request);
-
     const url = `${this.config.endpoint.replace(/\/+$/, "")}/v1/operational/interpret`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-API-Key": this.config.apiKey,
+      "X-Tenant-ID": this.config.tenantId,
+    };
+    if (this.config.accessClientId && this.config.accessClientSecret) {
+      headers["CF-Access-Client-Id"] = this.config.accessClientId;
+      headers["CF-Access-Client-Secret"] = this.config.accessClientSecret;
+    }
+
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": this.config.apiKey,
-          "X-Tenant-ID": this.config.tenantId,
-        },
-        body: JSON.stringify(request),
-      });
+      response = await this.fetchImpl(url, { method: "POST", headers, body: JSON.stringify(request) });
     } catch {
       throw new OperationalAIError("AI_PROVIDER_UNAVAILABLE", "The Keystone operational service could not be reached.");
     }
-
     if (!response.ok) {
       throw new OperationalAIError("AI_PROVIDER_ERROR", `The Keystone operational service returned ${response.status}.`);
     }
-
     return (await response.json()) as OperationalModelCandidate;
   }
 }
 
-/** No endpoint default and no alternate/external provider fallback. */
 export function operationalProviderFromEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
 ): OperationalProvider | null {
-  const config = keystoneConfigFromEnvironment(environment);
-  return config ? new KeystoneOperationalProvider(config, fetchImpl) : null;
+  const base = keystoneConfigFromEnvironment(environment);
+  if (!base) return null;
+  const config: OperationalProviderConfig = {
+    ...base,
+    accessClientId: environment.KEYSTONE_ACCESS_CLIENT_ID,
+    accessClientSecret: environment.KEYSTONE_ACCESS_CLIENT_SECRET,
+  };
+  return new KeystoneOperationalProvider(config, fetchImpl);
 }
