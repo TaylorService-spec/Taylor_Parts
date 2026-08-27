@@ -270,11 +270,19 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
         <div className="ns-toolbar">
           <label className="ns-toolbar__search">
             <span className="ns-visually-hidden">Search opportunities</span>
+            {/* THE PLACEHOLDER NAMES EXACTLY WHAT THE SEARCH REACHES (Lists P2 §7). It read
+                "Search opportunities, customers, references", which named three things and matched
+                four: `filterOpportunityRows` matches reference, need, customer name and OWNER name.
+                Omitting owner made the box quietly better than it claimed — harmless — while
+                "opportunities" named the object rather than the fields, which made it quietly
+                broader than it is: a person reading that expects stage, value and close date to be
+                searchable too, and concludes the search is broken rather than narrower than they
+                assumed. The four fields are listed because four is a list somebody can hold. */}
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search opportunities, customers, references"
+              placeholder="Search reference, need, customer or owner"
             />
           </label>
           <Button
@@ -343,20 +351,67 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
         // checkbox two inches above it.
         <div className="ns-collection__empty">
           {narrowed ? (
-            <HonestState
-              state={HONEST_STATE.NO_MATCHES}
-              detail={`No opportunities match this view. ${
-                viewRows.length === 1 ? "1 opportunity is" : `${viewRows.length} opportunities are`
-              } being narrowed to none.`}
-              action={
-                <Button variant="secondary" onClick={() => { setQuery(""); setStageFilter(new Set()); }}>
-                  Clear filters
-                </Button>
-              }
-            />
+            // A SEARCH THAT FOUND NOTHING AND A FILTER THAT ATE EVERYTHING ARE TWO FACTS.
+            //
+            // They shared one sentence until Lists P2 split them, and the pair is worth separating
+            // because the reader's next move differs: a search that missed wants the term echoed
+            // back (a typo is invisible once it has scrolled out of the box) and wants to know how
+            // far it actually reached; a stage filter that emptied the view wants the count it is
+            // eating, beside the checkboxes still visible above.
+            //
+            // A query present makes it a search result — the stages narrowed the set the search then
+            // ran over, so the search is the last thing that happened and the honest headline.
+            query.trim() ? (
+              <HonestState
+                state={HONEST_STATE.SEARCH_ZERO}
+                subject="opportunities"
+                query={query.trim()}
+                // THE SCOPE IS STATED BECAUSE THIS SEARCH IS SMALLER THAN IT LOOKS. It runs over the
+                // rows already in hand, never a re-read — so "no results" is a claim about this view
+                // and nothing else. Saying so is what stops somebody concluding a deal does not
+                // exist when they are looking at the Won tab.
+                scope={`the ${viewRows.length === 1 ? "1 opportunity" : `${viewRows.length} opportunities`} loaded in this view`}
+                action={
+                  <Button variant="secondary" onClick={() => { setQuery(""); setStageFilter(new Set()); }}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <HonestState
+                state={HONEST_STATE.FILTER_ZERO}
+                subject="opportunities"
+                narrowedFrom={viewRows.length}
+                detail={`No opportunities match these stages. ${
+                  viewRows.length === 1 ? "1 opportunity is" : `${viewRows.length} opportunities are`
+                } being narrowed to none.`}
+                action={
+                  <Button variant="secondary" onClick={() => setStageFilter(new Set())}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            )
           ) : (
+            // THREE UN-NARROWED EMPTINESSES, and the third is the one that used to hide.
+            //
+            //   none             -> the collection itself is empty. Nothing to offer.
+            //   mine_unresolved  -> we cannot tell WHOSE these are. Lists P2 calls this UNKNOWN, and
+            //                       it is not an emptiness at all: nothing was counted, so nothing
+            //                       may be reported. It rendered through the same component as an
+            //                       empty view, which quietly framed a resolution failure as a
+            //                       result.
+            //   anything else    -> records exist and THIS VIEW's slice is empty, which on the
+            //                       attention and decision views is usually good news.
             <HonestState
-              state={selected.emptyReason === "none" ? HONEST_STATE.EMPTY : HONEST_STATE.NO_MATCHES}
+              state={
+                selected.emptyReason === "none"
+                  ? HONEST_STATE.EMPTY
+                  : selected.emptyReason === "mine_unresolved"
+                    ? HONEST_STATE.UNKNOWN
+                    : HONEST_STATE.EMPTY_VIEW
+              }
+              subject="opportunities"
               detail={OPPORTUNITY_EMPTY_TEXT[selected.emptyReason] ?? OPPORTUNITY_EMPTY_TEXT.none}
               action={
                 selected.emptyReason !== "none" ? (

@@ -298,3 +298,48 @@ horizontal scroll as the phone interaction.
 10. Does handheld preserve the operational answer without becoming a tiny desktop table?
 
 **A YES on 6, 7, 8 or 9 means simplify before merge.** Each family's migration records its answers.
+
+---
+
+## 7. Family answers to the acceptance test
+
+Appended as each family merges. A YES on 6, 7, 8 or 9 means simplify before merge.
+
+### Phase 2 — Opportunity (`/customers/opportunities`) · merged
+
+The delta was near zero, as forecast. P1v4 had already made every choice P2 later ratified —
+complete read so no pagination, Pattern A ordering so no sort control, no freshness claim, no
+`+ Save as view`, no Columns control, existence-only relationship words, bare numbers with no
+currency. Three things genuinely differed:
+
+1. **A search that found nothing and a filter that ate everything shared one sentence.** Split. The
+   search half now echoes the term and states that it reached only the rows loaded in this view; the
+   filter half keeps the count it is narrowing away, beside the checkboxes that caused it.
+2. **An unresolved viewer rendered as an empty view.** The sentence was already right — "we can't
+   tell which opportunities are yours" — but it came through the empty-state component, which framed
+   a resolution failure as a result. It is now `UNKNOWN`, a state with no count slot at all, so a `0`
+   cannot appear beside it. The way out is kept.
+3. **The search placeholder named three fields and matched four**, and named the object rather than
+   the fields — implying stage, value and close date were searchable. Now: reference, need, customer,
+   owner.
+
+| # | Question | Answer |
+| --- | --- | --- |
+| 1 | Identify quickly? | Yes — governed reference bold, need beneath. |
+| 2 | Current meaningful state? | Yes — the six governed stage words plus the `n of 6` ordinal. |
+| 3 | Needs attention? | Yes — `deriveAttention` in its own column, never folded into stage. |
+| 4 | Compare with neighbours? | Yes — attention first, then closing soonest; a governed operational order, not a spreadsheet. |
+| 5 | Open the right record? | Yes — the reference is a real anchor; the row defers to it. |
+| 6 | **Anything that belongs on Detail?** | **No.** Eight columns; the record holds lifecycle, activity, lines, terms and history. |
+| 7 | **Any field shown merely because it existed?** | **No.** The projection also carries ids, channel keys and line arrays. Channel appears only as a subtitle where it disambiguates a customer; the rest do not appear. |
+| 8 | **Duplicated context from another object?** | **No** — and this is the column where it would have happened. Agreement / Order states *existence* and stops: "Agreement", "Order created", "No agreement". No reference, no state, no per-row read, no fragment of the Agreement record. |
+| 9 | **Invented a fact, action or authority?** | **No.** No currency on `expectedValue` (G5), no pipeline maths, no probability, no forecast, no inline stage mutation, no agreement workflow. Create is the existing governed form, rendered `protected` with the seam's own reason when write-readiness is off. |
+| 10 | **Handheld preserves the answer?** | Yes — 375/320 recompose to structured rows (reference + attention, customer, stage · value · close · owner); the tablet **drops** rather than folds, per DECISIONS #136. |
+
+**States reachable here:** IDLE (not reached — the source seam is injected and settles), LOADING,
+POPULATED, TRUE_EMPTY, EMPTY_VIEW, SEARCH_ZERO, FILTER_ZERO, UNKNOWN, NOT_ENABLED, DENIED,
+UNAVAILABLE. **DEGRADED is deliberately not rendered**: the read returns `accountNameById` with no
+signal distinguishing "resolution failed" from "no name recorded", so the per-cell
+"Customer — name unavailable" is the whole truth available and a quiet line above the table would be
+a claim the read cannot support. OFFLINE_STALE and the four bulk-action states are unreachable
+platform-wide.

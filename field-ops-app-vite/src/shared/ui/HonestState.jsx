@@ -167,10 +167,17 @@ export default function HonestState({
       // UNKNOWN IS NOT ZERO, AND THIS IS THE RENDERING THAT ENFORCES IT. There is no count slot on
       // this branch at all, so a caller cannot accidentally print a `0` beside a sentence that says
       // the answer is unknown. Not an alert: nothing failed, and nothing here is retryable.
+      //
+      // It DOES take a way out, because "seven different sentences and seven different ways out" is
+      // the rule — an unresolvable viewer identity is exactly the case where the reader most needs a
+      // view that does not depend on it.
       return (
-        <p className="ns-state ns-state--na">
-          {detail ?? `EOS can't determine which ${subject ?? "records"} apply to you.`}
-        </p>
+        <>
+          <p className="ns-state ns-state--na">
+            {detail ?? `EOS can't determine which ${subject ?? "records"} apply to you.`}
+          </p>
+          {action ? <div className="fo-state-action">{action}</div> : null}
+        </>
       );
 
     case HONEST_STATE.DENIED:
