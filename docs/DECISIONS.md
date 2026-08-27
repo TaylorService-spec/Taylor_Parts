@@ -2462,3 +2462,98 @@ wrong against a sibling PR — 1 check where #1514 had 47 — not because anythi
 
 **Related:** DECISIONS #124 (a suite registered nowhere, run by nothing), #128 (the deny list).
 Standing rule: `docs/CLAUDE_CONTEXT.md` — "verify, don't assume".
+
+
+## #132 — RECORDED GAP, NO DECISION TAKEN: production release identity is confirmed by a human, not enforced by a gate
+
+**Date:** 2026-08-27
+**Status:** **OPEN — awaiting Owner decision.** Nothing is authorized and nothing has been changed.
+This entry records a control gap; it does not choose a remedy.
+**Classification:** PRODUCTION RELEASE BOUNDARY / GOVERNANCE GAP. Not a North Star product defect,
+and not a reason to block ordinary GUI migration except where production release certification is
+itself required.
+
+### 1. Current production behaviour
+
+`scripts/_prodRelease.run.sh`, step 7/7 ("verify the deployed revision"):
+
+- prints the expected commit;
+- `curl`s the deployed `version.json` and prints the response, or `(unreadable)`;
+- prints a checklist and asks the operator to *"Confirm ALL of the following before calling this
+  released"* — commit matches, `environmentId`, `environmentRole`.
+
+It performs **no comparison of its own**. There is no assertion, no non-zero exit, and no refusal
+path: the step cannot fail the release, whatever the deployed commit turns out to be. It is an
+**operator confirmation**, and the runbook is explicit that the operator is the one confirming.
+
+This is the same shape `_releaseIdentityGate.mjs` was written to replace — its own header records
+that the sandbox step once "printed the deployed version.json next to an expected commit and told
+the reader to compare… A post-deploy check that cannot fail is documentation, not a gate." Sandbox
+was given a mechanical gate. Production was not.
+
+### 2. Observed evidence (sandbox, 2026-08-27)
+
+Proven while diagnosing a sandbox `REMOTE_COMMIT_MISMATCH`:
+
+```
+01:32:56.817Z  artifact built
+01:33:04.311Z  Hosting version created
+01:33:08.142Z  releaseTime — and the Last-Modified of the bytes finally served
+```
+
+Firebase reported `Deploy complete!`, and for a short interval afterwards Hosting continued serving
+the **previous** release. The sandbox verifier read inside that interval and observed the prior
+commit. Subsequent reads returned the approved commit, the exact expected `buildTime`, and the
+correct Hosting site — the project has exactly one site (`DEFAULT_SITE`), so wrong-site and
+wrong-target explanations are excluded by evidence.
+
+**Hosting publication is therefore not guaranteed to be synchronously observable at the first read
+after deploy completion.** That is a property of the platform, not of the sandbox script.
+
+### 3. Why this matters to production
+
+Production performs a similarly immediate, single read, and is exposed to the same observability
+gap. It differs in what happens next: sandbox fails closed mechanically; production has no
+mechanical outcome at all.
+
+The gap is that **the runbook cannot refuse**. Whatever the response — the prior commit during
+propagation, a genuinely wrong commit, an unreadable or malformed body — the step prints it and
+proceeds to ask for confirmation. Whether a release is correctly identified depends on a human
+reading the value correctly at that moment.
+
+This entry deliberately makes **no claim about how often an operator would misread it**. The
+recorded fact is narrower and does not depend on that: *the control is advisory, and no mechanical
+enforcement exists at this boundary.*
+
+### 4. Current control
+
+Protected production actions remain Owner/operator-triggered, and the agent loop cannot reach them:
+the deny list (#128) covers `_prodRelease.run.sh` along with every other release path. Production
+Rules are excluded from this runbook by design and carry their own Tier-2 path. Those controls are
+unaffected by this gap and remain in force — the gap is specifically the absence of a mechanical
+identity check at step 7/7.
+
+### 5. Possible future direction — **NOT AUTHORIZED, NOT APPROVED**
+
+Recorded so the option is not lost, explicitly **not** as a decision or a plan:
+
+- reuse the governed `scripts/_releaseIdentityGate.mjs` at the production step;
+- bounded polling for the propagation interval;
+- exact approved-commit verification;
+- fail closed on timeout, wrong commit, or unreadable response.
+
+The sandbox bounded-retry work (PR #1530) does **not** authorize any of this. Production release is
+its own protected boundary, and reusing a component proven in sandbox is a separate decision from
+proving it there. Nothing above may be implemented without explicit Owner approval.
+
+### 6. OWNER DECISION REQUIRED
+
+> **Should `_prodRelease.run.sh` step 7/7 be replaced or supplemented by a mechanically enforced
+> release-identity gate that fails the release closed on a wrong, stale or unreadable deployed
+> commit — or should production release identity remain an operator confirmation?**
+
+Until that is answered, production release identity remains operator-confirmed and this entry
+stands open.
+
+**Related:** DECISIONS #128 (the deny list covering release paths), #131 (absence of a check is
+unsafe evidence). Sandbox counterpart: PR #1530, `scripts/_releaseIdentityGate.mjs` — sandbox only.
