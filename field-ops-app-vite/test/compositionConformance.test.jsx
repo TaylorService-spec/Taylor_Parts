@@ -52,7 +52,6 @@ const CONFORMANT_WORKSPACES = [
   "modules/inventoryRole/PartsAssociateHome.jsx", // Wave 4
   "modules/inventoryRole/PartsManagerHome.jsx", // Wave 4
   "modules/inventoryRole/WarehouseManagerHome.jsx", // Wave 4
-  "modules/jobs/Jobs.jsx", // Wave 5
   "modules/technicians/Technicians.jsx", // Wave 5
   "modules/technicianDashboard/TechnicianDashboard.jsx", // Wave 5
 ];
@@ -97,6 +96,11 @@ const CONFORMANT_SURFACES = [
   // TRANCHE 3 — operational movement families.
   "modules/purchasing/PurchaseOrders.jsx",
   "modules/inventory/Transfers.jsx",
+  // OWNER VISUAL CORRECTION 2026-08-27 — Job Assignments was BLOCKED on a PRODUCT question and
+  // therefore received no presentation work, which is why it looked nothing like Opportunity. The
+  // product question governs whether the surface should EXIST, not what it looks like meanwhile.
+  // Moved from CONFORMANT_WORKSPACES (Wave 5).
+  "modules/jobs/Jobs.jsx",
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -165,6 +169,7 @@ const NORTH_STAR_COLLECTION_PAGES = [
   "modules/inventory/TruckInventory.jsx",
   "modules/purchasing/PurchaseOrders.jsx",
   "modules/inventory/Transfers.jsx",
+  "modules/jobs/Jobs.jsx",
 ];
 
 function walk(dir) {

@@ -180,12 +180,50 @@ export default function MetadataListGrid({
             one in an aisle -- and every consumer of THIS grid is a list of records, which is exactly
             the case it was written for. The scroll container stays for the widths above the
             breakpoint, where it is still the right answer. */}
-        <table className="fo-table fo-table--stack">
+        {/* ns-table: THE NORTH STAR ROW GRAMMAR, applied here rather than page by page.
+            ════════════════════════════════════════════════════════════════════════════════
+            OWNER VISUAL REVIEW, 2026-08-27: the migrated collections did not look like
+            Opportunity. Structural conformance passed and visual conformance failed, and this
+            is most of the reason why — measured, not eyeballed:
+
+                                 .ns-table (Opportunity)      .fo-table (every other list)
+              body               13.5px                       14px
+              header             10.5px UPPERCASE, 0.1em       14px, sentence case, no tracking
+                                 tracking, weight 600
+              header rule        2px solid text-primary       1px surface-sunken (same as a row)
+              cell padding       9px 14px 9px 0               8px 10px
+              row separator      --color-border               --color-surface-sunken
+              identity column    text-primary, weight 500     no distinction
+              numerics           right + tabular              inherited left
+
+            So a person moving from Opportunity to Work Orders met a different table: lighter
+            headers with no rule to sit under, denser rows, no emphasis on the column that says
+            WHICH record this is, and numbers that did not line up. Every item on the Owner's
+            comparison list — uppercase header treatment, tracking, weight, column alignment, row
+            density, separator treatment, identity treatment, numeric alignment — is in that table.
+
+            BOTH CLASSES, DELIBERATELY. `fo-table` keeps the stack modifier, the row transitions and
+            the `is-inactive`/`is-observed` states that other rules already hang off it; `ns-table`
+            is later in index.css and wins on the typography where the two disagree. Additive, so no
+            existing selector or test that matches `fo-table` changes meaning.
+
+            ONE CHANGE, NOT THIRTEEN. This grid is what every metadata-driven collection renders
+            through, INDEX and RELATED alike, so the row grammar arrives everywhere at once — which
+            is the "fix the shared presentation contract first" instruction, and the alternative was
+            a CSS patch per page that would drift apart again. */}
+        <table className="fo-table fo-table--stack ns-table">
           <caption className="fo-sr-only">{caption ?? `${columns.length} column list`}</caption>
           <thead>
             <tr>
               {columns.map((column) => (
-                <th key={column.fieldId} scope="col">
+                // A numeric HEADER sits over its column, not beside it. `.ns-table th.ns-num` is
+                // the matching rule; without it the heading stayed left while its values moved
+                // right, which reads as a mislabelled column rather than an aligned one.
+                <th
+                  key={column.fieldId}
+                  scope="col"
+                  className={NUMERIC_CELL_TYPES.has(column?.type) ? "ns-num" : undefined}
+                >
                   {column.label}
                 </th>
               ))}
@@ -249,7 +287,16 @@ export default function MetadataListGrid({
                       <td
                         key={cell.fieldId}
                         data-label={column?.label || undefined}
-                        className={[cellIndex === 0 && onRowClick ? "fo-list-grid-label" : null, isNumeric ? "fo-tabular-nums" : null].filter(Boolean).join(" ") || undefined}
+                        // ns-num: RIGHT-ALIGNED AND TABULAR, the numeric treatment Opportunity
+                        // already had and no metadata list did. `fo-tabular-nums` fixed the digit
+                        // WIDTH so a column would not jitter, but left the values ragged-left
+                        // against text columns — so a column of quantities or amounts could not be
+                        // compared down its own edge, which is the entire reason a list shows them.
+                        // Both classes: one is the font feature, the other the alignment.
+                        className={[
+                          cellIndex === 0 && onRowClick ? "fo-list-grid-label" : null,
+                          isNumeric ? "fo-tabular-nums ns-num" : null,
+                        ].filter(Boolean).join(" ") || undefined}
                       >
                         {cell.value}
                       </td>

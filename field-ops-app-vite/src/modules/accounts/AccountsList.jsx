@@ -10,7 +10,7 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
-import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import ListViewHeader, { CollectionResultContext } from "../../metadata/ListViewHeader.jsx";
 import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, makeCriterion, describeDropped, describeRefusal,
@@ -375,6 +375,12 @@ export default function AccountsList() {
       {/* Refused WHOLE, never partially. Applying one array filter and dropping the other would
           return a broader set than was asked for while looking as though both had been applied. */}
       <DroppedCriteriaNotice message={droppedMessage} />
+
+      {/* RESULT CONTEXT, IMMEDIATELY ABOVE THE ROWS IT DESCRIBES (Lists P2 anatomy). This sentence
+          used to render inside the list header, ABOVE the filter and sort controls -- so it
+          described a state the reader had not produced yet. Same sentence, same pure source; only
+          its position changed. */}
+      <CollectionResultContext entity={accountEntity} criteria={criteria} defaultSort={accountIndexList.defaultSort} total={total} />
       {/* A list filtered to nothing and an empty book of business are different statements.
           MetadataListGrid renders its own "no rows" state, so this only takes over the FILTERED
           case, where telling somebody they have no customers would be plainly false. */}

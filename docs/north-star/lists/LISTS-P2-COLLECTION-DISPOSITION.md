@@ -655,3 +655,129 @@ demanded opposite things of the same file.
 
 Every suite is registered in the path-filtered lane, and `ciSuiteCoverage` is green — so none of
 them is a suite that exists but never runs.
+
+---
+
+## 10. Owner visual correction — 2026-08-27
+
+**OWNER RESULT: FAIL — visual conformance.** Structural and test conformance were green on every
+surface the review rejected. That is a finding about the gate as much as about the pages: it proved
+**membership** — this file imports `WorkspaceIdentity`, that file does not host `WorkspaceShell` —
+and membership is not composition. A page can import the right header, sit in the right list, pass
+every gate, and still meet the reader as a different product.
+
+Reference for the sweep: `Lists-North-Star-P2.dc.html` + `DESIGN-HANDOFF-LISTS-P2.md`, with the
+**Opportunity collection as the implemented reference for SHARED GRAMMAR only** — not for its
+columns, views, stages, ordering, attention derivations or commercial behaviour.
+
+### The measured delta
+
+Not eyeballed. The two table treatments, read from `index.css`:
+
+| | `.ns-table` (Opportunity) | `.fo-table` (every other collection) |
+| --- | --- | --- |
+| body | 13.5px | 14px |
+| header | 10.5px **uppercase**, 0.1em tracking, weight 600 | 14px, sentence case, no tracking |
+| header rule | 2px solid `--color-text-primary` | 1px `--color-surface-sunken` — identical to a row |
+| cell padding | 9px 14px 9px 0 | 8px 10px |
+| row separator | `--color-border` | `--color-surface-sunken` |
+| identity column | `--color-text-primary`, weight 500 | no distinction |
+| numerics | right-aligned, tabular | inherited left |
+
+Every item on the Owner's comparison list — uppercase header treatment, tracking, weight, column
+alignment, row density, separator treatment, identity treatment, numeric alignment — is in that
+table. A person moving from Opportunity to Work Orders met a different table.
+
+And the second one: `ListViewHeader` rendered the object's label **again**, as an 18px/600 heading
+(or a select styled to match) directly beneath the 34px serif title. **Two page identities on one
+page** — the doubled-chrome defect GATE 2b records for record pages, arriving on collections through
+a door nobody had gated.
+
+### MIGRATE surfaces — verdicts
+
+| Surface | Header | Views | Toolbar | Result context | Header row | Rows | State | Responsive | Verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Opportunities *(reference)* | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **PASS** |
+| Job Assignments | ❌→✅ | n/a | n/a | ❌→✅ | ❌→✅ | ❌→✅ | ❌→✅ | ❌→✅ | **VISUAL DELTA — fixed** |
+| Work Orders | ⚠️→✅ | ⚠️→✅ | ✅ | ❌→✅ | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Accounts | ⚠️→✅ | ⚠️→✅ | ✅ | ❌→✅ | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Sales Orders | ⚠️→✅ | ⚠️→✅ | ✅ | ❌→✅ | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Part Master | ⚠️→✅ | ⚠️→✅ | ✅ | ❌→✅ | ❌→✅ | ❌→✅ | ❌→✅ | ✅ | **VISUAL DELTA — fixed** |
+| Equipment (register) | ⚠️→✅ | ⚠️→✅ | ✅ | ❌→✅ | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Suppliers | ✅ | n/a | ✅ | n/a | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Warehouses | ✅ | n/a | ✅ | n/a | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Manufacturers | ✅ | n/a | n/a | n/a | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Employees | ✅ | n/a | n/a | n/a | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Purchase Orders | ✅ | n/a | ✅ | n/a | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Transfers | ✅ | n/a | ✅ | n/a | ❌→✅ | ❌→✅ | ✅ | ✅ | **VISUAL DELTA — fixed** |
+| Trucks *(card collection)* | ✅ | n/a | ✅ | n/a | n/a | cards | ❌→✅ | ✅ | **VISUAL DELTA — fixed** |
+
+`n/a` = the family has no governed capability for that slot and **none was invented**.
+`⚠️` = present but carrying a second page identity.
+
+### Primary defect — Job Assignments
+
+It matched nothing, and it had never been asked to. The disposition classified it **BLOCKED** on a
+*product* question (a distinct assignment board, or an assignment *view* of Work Orders?) and it
+therefore received none of the presentation work. **That was the wrong inference:** the product
+question governs whether the surface should *exist*, not what it looks like while it does. The
+product question remains open and untouched.
+
+Measured against Opportunity, it differed in every slot:
+
+| | Opportunity | Job Assignments (before) |
+| --- | --- | --- |
+| identity | `WorkspaceIdentity` — crumb, rule pair, 34px serif, governed count | `WorkspaceShell` — no crumb, no rule pair, no count |
+| action | Button primitive in the header slot | `ActionRail` wrapping an `fo-btn-link` **anchor** when permitted and the Button primitive when not — the same control changed shape depending on who was looking |
+| result context | present | absent |
+| table | `ns-table ns-collection__table` | bare `fo-table` |
+| identity cell | reference bold + human subtitle | plain link, no subtitle; complaint in its own column |
+| state | words + tone | `StatusPill` |
+| row → record | whole row defers to its anchor | link only |
+| loading / empty | distinct honest states | `<p class="fo-muted">` for both |
+| error | — | `role="alert"` on a **muted** paragraph: an alert styled as a whisper, and denied and unavailable shared it |
+
+All fixed as composition. Its data source, columns, facts, actions, assignment semantics, routes,
+permissions and read/write behaviour are unchanged. **No views, no search and no filter were added** —
+it has no governed view set, no search read and no declared filter, and inventing them to match a
+screenshot is precisely what the correction forbids.
+
+### Shared defects (fixed once, in the shared contract)
+
+1. **The row grammar** — `MetadataListGrid` now carries `ns-table`, so the header treatment, density,
+   separators, identity emphasis and numeric alignment arrive on all thirteen metadata surfaces and
+   the related lists at once. One change, not thirteen CSS patches.
+2. **The duplicate page identity** — `ListViewHeader` renders no heading. It is now the **views row**
+   (a `role="radiogroup"` of exclusive tabs, matching Opportunity) instead of a select that hid every
+   option but one.
+3. **The result context was above the controls that produce it** — moved to immediately above the
+   rows, via `CollectionResultContext`. Same sentence, same pure source, correct position.
+
+### Family-specific defects
+
+* **Part Master** — `StatusPill` in rows → words + tone. Its Change Status **dialog** keeps the pill:
+  a record-shaped surface where one status is the subject rather than one of many.
+* **Trucks** — the fleet card's status pill → `asText`, which is `StatusPill`'s own words-and-tone
+  mode and already carried the tone glyph. The **discrepancy count** keeps its treatment: it is an
+  attention signal, not object state, and collapsing the two would lose that distinction.
+* **Purchase Orders · Transfers · Receipts · Part Master** — hand-rolled `fo-table` → `ns-table`.
+
+### Authority
+
+**ZERO.** No Functions, Rules, capabilities, roles, reads, writes, routes, commands, state
+derivations, financial behaviour, pagination, saved views, column persistence or N+1 enrichment.
+No family gained a control it has no authority for.
+
+### The test gap, closed
+
+`test/listsP2VisualContract.test.jsx` asserts the **anatomy and grammar** rather than imports: one
+page identity per page; the shared row treatment (no bare `fo-table`); collection rows as words +
+tone; the result context after the narrowing controls; and no invented views, search or filter.
+
+It does **not** attempt pixel comparison — jsdom applies no stylesheet, so a "measured" height there
+measures nothing. **Visual acceptance remains an Owner gate.**
+
+Writing it caught four surfaces still on the old table treatment and two still using pills, before
+any of them reached the sweep — and three of its own first-draft assertions were wrong (a class-order
+match, a `\b` that treated `fo-table-scroll` as `fo-table`, and a tbody slice that read a detail
+pane's table as a collection's rows). Each is recorded where it was fixed.

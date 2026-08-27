@@ -75,6 +75,10 @@ const COLLECTION_PAGES = [
   "modules/inventory/TruckInventory.jsx",
   "modules/purchasing/PurchaseOrders.jsx",
   "modules/inventory/Transfers.jsx",
+  // Added by the Owner visual correction (2026-08-27): Job Assignments was BLOCKED on a product
+  // question and therefore received no presentation work, which is why it looked nothing like
+  // Opportunity. It is a collection page now; the product question is untouched.
+  "modules/jobs/Jobs.jsx",
 ];
 
 /**
