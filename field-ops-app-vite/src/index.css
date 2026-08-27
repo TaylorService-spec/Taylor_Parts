@@ -6535,3 +6535,29 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    unexplained control, and the word costs one line. */
 .ns-dispatch-views__jump-label { font: 600 11px var(--font-interface); letter-spacing: 0.08em;
   text-transform: uppercase; }
+
+/* The technician selector — frame 1a puts it at the right of the view row, after a spacer, with an
+   uppercase TECHNICIANS label and a bordered control reading "All technicians (n) ▾". */
+.ns-dispatch-views__spacer { flex: 1; }
+.ns-dispatch-techfilter { position: relative; display: flex; align-items: center; gap: 10px; }
+.ns-dispatch-techfilter__label { font: 600 11px var(--font-interface); letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-dispatch-techfilter__trigger { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-width: 190px; min-height: 44px; padding: 7px 14px;
+  font: 600 12.5px var(--font-interface); background: var(--verenward-stone-card);
+  color: var(--color-text-primary); border: 1px solid var(--verenward-border-strong); cursor: pointer; }
+.ns-dispatch-techfilter__trigger:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
+.ns-dispatch-techfilter__caret { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-techfilter__menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  min-width: 260px; max-height: 340px; overflow: auto; padding: 8px;
+  background: var(--verenward-stone-card); color: var(--color-text-primary);
+  border: 1px solid var(--verenward-border-strong); }
+.ns-dispatch-techfilter__all { width: 100%; text-align: left; min-height: 44px; padding: 8px 10px;
+  font: 600 12px var(--font-interface); background: var(--color-surface, #fff);
+  color: var(--color-text-primary); border: 1px solid var(--verenward-border-strong);
+  cursor: pointer; margin-bottom: 6px; }
+.ns-dispatch-techfilter__all:disabled { opacity: 0.5; cursor: default; }
+.ns-dispatch-techfilter__list { list-style: none; margin: 0; padding: 0; }
+.ns-dispatch-techfilter__option { display: flex; align-items: center; gap: 8px; min-height: 44px;
+  padding: 4px 10px; font-size: var(--font-size-sm); cursor: pointer; }
+.ns-dispatch-techfilter__option:hover { background: var(--verenward-stone-sunken); }

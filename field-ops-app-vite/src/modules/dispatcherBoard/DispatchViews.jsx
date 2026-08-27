@@ -30,7 +30,7 @@ export const DISPATCH_VIEW = Object.freeze({
 
 const VIEW_ORDER = [DISPATCH_VIEW.DAY, DISPATCH_VIEW.WEEK, DISPATCH_VIEW.FORTNIGHT];
 
-export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anchorMillis, onAnchorChange, isToday }) {
+export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anchorMillis, onAnchorChange, isToday, children }) {
   const label = {
     [DISPATCH_VIEW.DAY]: `Day · ${dayLabel}`,
     [DISPATCH_VIEW.WEEK]: `Week · ${weekLabel}`,
@@ -80,6 +80,7 @@ export function DispatchViewSwitcher({ view, onChange, dayLabel, weekLabel, anch
       >
         Map · locations
       </button>
+      {children ? <><span className="ns-dispatch-views__spacer" />{children}</> : null}
     </div>
   );
 }
