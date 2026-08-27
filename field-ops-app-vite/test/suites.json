@@ -1010,6 +1010,10 @@
       "runner": "node"
     },
     {
+      "file": "test/salesAgreementNorthStar.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/releaseIdentityRemoteRetry.test.mjs",
       "runner": "node"
     },
