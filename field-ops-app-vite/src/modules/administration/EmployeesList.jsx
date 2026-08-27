@@ -1,7 +1,7 @@
 import { employeeEntity, employeeIndexList } from "../../metadata/definitions/employee.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 
 // ADMINISTRATION > EMPLOYEES -- the governed employee directory.
 //
@@ -42,8 +42,29 @@ export default function EmployeesList() {
     filters: [],
   });
 
+  // THE COUNT EXISTS ONLY WHEN THE CURSOR IS EXHAUSTED — the rule Suppliers and Warehouses state
+  // at length. A directory is the surface where a partial count reads most convincingly as a
+  // complete one ("47 employees" sounds like a headcount), which is exactly why it is withheld
+  // while pages remain. No aggregate query was added to rescue the partial case: that would be
+  // creating a read to make the family look complete.
+  const complete = presentation.state === "READY" && !presentation.hasMore;
+
   return (
-    <WorkspaceShell title="Employees">
+    <WorkspaceIdentity
+      crumb="Administration → Employees"
+      title="Employees"
+      count={complete ? presentation.rows.length : null}
+      countLabel={presentation.rows.length === 1 ? "employee" : "employees"}
+      // NOTHING TO SUMMARISE. `employmentStatus` is a six-value field and there is no governed
+      // aggregate over it, so any workload line here would be a tally of the loaded page. The
+      // honest answer is silence, not an approximation in a smaller font.
+      summaryItems={[]}
+      // NO CREATE ACTION, and this is the sharpest case of P2's third treatment in the platform:
+      // an Employee is provisioned through the governed operator script
+      // (functions/scripts/provisionEmployeeAccess.js), which links a person to application access.
+      // Offering a disabled "New employee" here would describe a permission boundary, when the
+      // truth is that creating one is an onboarding procedure rather than a screen.
+    >
       <p className="fo-muted">
         The governed employee directory. Security Role shown here mirrors the legacy identity
         role (admin, dispatcher, technician) — not the governed Role an employee holds.
@@ -56,6 +77,6 @@ export default function EmployeesList() {
         onLoadMore={loadMore}
         onRetry={retry}
       />
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }

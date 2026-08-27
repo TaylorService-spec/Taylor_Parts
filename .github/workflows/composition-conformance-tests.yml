@@ -105,6 +105,14 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/supplier.js"
       - "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
       - "field-ops-app-vite/test/listsP2Tranche1.test.jsx"
+      # Lists P2 tranche 2 — organization / location families. No record route exists for any of
+      # them, and the ruling under test is that this is not authorization to create one.
+      - "field-ops-app-vite/src/modules/administration/EmployeesList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/employee.js"
+      - "field-ops-app-vite/src/metadata/definitions/warehouse.js"
+      - "field-ops-app-vite/src/metadata/definitions/truck.js"
+      - "field-ops-app-vite/test/listsP2Tranche2.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -246,6 +254,14 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/supplier.js"
       - "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
       - "field-ops-app-vite/test/listsP2Tranche1.test.jsx"
+      # Lists P2 tranche 2 — organization / location families. No record route exists for any of
+      # them, and the ruling under test is that this is not authorization to create one.
+      - "field-ops-app-vite/src/modules/administration/EmployeesList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Warehouses.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/employee.js"
+      - "field-ops-app-vite/src/metadata/definitions/warehouse.js"
+      - "field-ops-app-vite/src/metadata/definitions/truck.js"
+      - "field-ops-app-vite/test/listsP2Tranche2.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -359,6 +375,13 @@ jobs:
       # have, and Manufacturers reads the whole collection unbounded.
       - name: Lists P2 tranche 1 (catalog/reference: no invented boundaries, no invented routes)
         run: npx vitest run test/listsP2Tranche1.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Lists P2 tranche 2 — Employees, Warehouses, Trucks. Most of this suite asserts something was
+      # NOT built: the failure it exists to catch is somebody making rows clickable because every
+      # other family s rows are.
+      - name: Lists P2 tranche 2 (no invented record routes, exact-or-absent counts)
+        run: npx vitest run test/listsP2Tranche2.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the

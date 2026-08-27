@@ -30,9 +30,19 @@ describe("TruckInventory workspace", () => {
     expect(screen.getByText(/Nothing here is simulated/i)).toBeTruthy();
   });
 
-  it("denied source renders a failure state, never inventory", () => {
+  it("denied source states a PERMISSION fact, never inventory and never a retryable error", () => {
+    // Lists P2: a denial is not an error somebody can fix by trying again, so it no longer wears
+    // FailureState role="alert" copy. It says whose boundary it is, keeps the page frame, and
+    // shows no trucks. The old assertion matched the word "unavailable" in the failure title --
+    // which is the sentence UNAVAILABLE owns, and giving it to a denial is what made the two
+    // indistinguishable.
     render(<TruckInventory source={{ connected: false, status: "denied", trucks: [] }} />);
-    expect(screen.getByText(/unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/not able to view Truck Inventory/i)).toBeTruthy();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    // The page frame survives the denial -- a denial that renders as a blank screen reads as a
+    // broken product rather than as a boundary.
+    expect(screen.getByText("Truck Inventory")).toBeTruthy();
+    expect(screen.queryByLabelText(/Truck fleet/i)).toBeNull();
   });
 
   it("loading source renders a loading state", () => {
@@ -42,8 +52,12 @@ describe("TruckInventory workspace", () => {
 
   it("error source renders a SANITIZED failure -- never a raw error", () => {
     render(<TruckInventory source={{ status: "error", message: "RAW-BOOM-9000" }} />);
-    expect(screen.getByText(/couldn’t be loaded/i)).toBeTruthy();
+    expect(screen.getByText(/Something went wrong loading Truck Inventory/i)).toBeTruthy();
+    // The load-bearing half, unchanged: the raw message never reaches the screen.
     expect(screen.queryByText(/RAW-BOOM-9000/)).toBeNull();
+    // ...and it IS announced as a failure, which is the half that separates it from the denial
+    // above. Both keep the frame; only one is retryable.
+    expect(document.querySelector('[role="alert"]')).not.toBeNull();
   });
 
   it("connected-but-empty source renders 'No trucks recorded'", () => {

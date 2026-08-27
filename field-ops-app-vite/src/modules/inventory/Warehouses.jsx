@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { warehouseEntity, warehouseIndexList } from "../../metadata/definitions/warehouse.js";
 import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
-import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 
 // Inventory > Warehouses -- S-INV-WAREHOUSES. Migrated onto the metadata list runtime
@@ -125,10 +125,17 @@ export default function Warehouses({ accessVersion }) {
     return { ...presentation, rows };
   }, [presentation, filterKey]);
 
+  // COUNTS ONLY WHEN THE CURSOR IS EXHAUSTED — the same rule Suppliers states at length, for the
+  // same reason: a tally over loaded rows is a claim about a screenful, unless there is nothing
+  // left to load, in which case it is exact. No aggregate query was added to rescue the partial
+  // case; that would be creating a read to make the family look complete.
+  const complete = presentation.state === "READY" && !presentation.hasMore;
+  const bucketCount = (n) => (complete ? n : undefined);
+
   const filterOptions = [
-    { key: "all", label: "All", count: summary?.total },
-    { key: "active", label: "Active", count: summary?.active },
-    { key: "inactive", label: "Inactive", count: summary?.inactive },
+    { key: "all", label: "All", count: bucketCount(summary?.total) },
+    { key: "active", label: "Active", count: bucketCount(summary?.active) },
+    { key: "inactive", label: "Inactive", count: bucketCount(summary?.inactive) },
   ];
 
   const intro = (
@@ -139,22 +146,34 @@ export default function Warehouses({ accessVersion }) {
   );
 
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Warehouses" />
+    <WorkspaceIdentity
+      crumb="Inventory → Warehouses"
+      title="Warehouses"
+      count={complete ? summary?.total ?? null : null}
+      countLabel={summary?.total === 1 ? "warehouse" : "warehouses"}
+      // The receiving-eligibility question is what this page is opened to answer, so an ungoverned
+      // count -- warehouses that cannot be selected for governed receiving -- is the operational
+      // fact, not decoration. Omitted entirely, never zeroed, when the read cannot support it.
+      summaryItems={
+        complete && summary?.ungoverned > 0
+          ? [{ key: "ungoverned", label: `${summary.ungoverned} without governed status`, tone: "attention" }]
+          : []
+      }
+      // NO CREATE ACTION. Warehouse records are not created from this app; the status writer is a
+      // governed operator path. P2 third treatment: absent, not disabled.
+    >
       {intro}
 
-      {summary && summary.total > 0 && (
+      {complete && summary && summary.total > 0 && (
         <p className="fo-muted" role="status">
-          {summary.total} warehouse{summary.total === 1 ? "" : "s"}
-          {presentation.hasMore ? " loaded so far" : ""} · {summary.active} active
+          {summary.active} active
           {summary.inactive > 0 ? ` · ${summary.inactive} inactive` : ""}.
         </p>
       )}
-      {summary && filterKey === "all" && summary.ungoverned > 0 && (
+      {complete && filterKey === "all" && summary.ungoverned > 0 && (
         <p className="fo-warning" role="alert">
           {summary.ungoverned} warehouse{summary.ungoverned === 1 ? "" : "s"}{" "}
-          {summary.ungoverned === 1 ? "has" : "have"} no governed status
-          {presentation.hasMore ? " among those loaded so far" : ""} — the receiving service will not accept{" "}
+          {summary.ungoverned === 1 ? "has" : "have"} no governed status — the receiving service will not accept{" "}
           {summary.ungoverned === 1 ? "it" : "them"} until governed. Report this if it persists.
         </p>
       )}
@@ -166,6 +185,6 @@ export default function Warehouses({ accessVersion }) {
       <p className="fo-muted fo-wh-footnote">
         For bin-level stock and reconciliation, see the <Link to="/dashboard/operations">Operations overview</Link>.
       </p>
-    </div>
+    </WorkspaceIdentity>
   );
 }

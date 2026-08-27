@@ -44,7 +44,6 @@ const CONFORMANT_WORKSPACES = [
   "modules/sales/SalesWorkspace.jsx",
   "modules/service/CoordinatedVisitsWorkspace.jsx",
   "modules/mobile/CoordinatedMissionView.jsx",
-  "modules/inventory/TruckInventory.jsx", // Wave 1
   "modules/equipment/EquipmentDetail.jsx", // Wave 3
   "modules/equipment/EquipmentRegister.jsx", // Wave 3
   "modules/inventory/Inventory.jsx", // Wave 4 (unrouted/dead code -- see final report)
@@ -91,6 +90,10 @@ const CONFORMANT_SURFACES = [
   "modules/equipment/EquipmentWorkspace.jsx",
   "modules/purchasing/Suppliers.jsx",
   "modules/inventory/Manufacturers.jsx",
+  // TRANCHE 2 — organization / location families.
+  "modules/administration/EmployeesList.jsx",
+  "modules/inventory/Warehouses.jsx",
+  "modules/inventory/TruckInventory.jsx",  // moved from CONFORMANT_WORKSPACES (Wave 1)
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -154,6 +157,9 @@ const NORTH_STAR_COLLECTION_PAGES = [
   "modules/equipment/EquipmentWorkspace.jsx",
   "modules/purchasing/Suppliers.jsx",
   "modules/inventory/Manufacturers.jsx",
+  "modules/administration/EmployeesList.jsx",
+  "modules/inventory/Warehouses.jsx",
+  "modules/inventory/TruckInventory.jsx",
 ];
 
 function walk(dir) {
