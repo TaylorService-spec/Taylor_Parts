@@ -51,13 +51,13 @@ function DispatchLaneGrid({
   onDragLeaveLane,
   busyWorkOrderId,
 }) {
-  const hours = bandHours();
+  const hours = bandHours(band);
 
   return (
     <div className="ns-dispatch-grid">
       <div className="ns-dispatch-grid__head" aria-hidden="true">
         <div className="ns-dispatch-grid__identity-col" />
-        <div className="ns-dispatch-grid__hours">
+        <div className="ns-dispatch-grid__hours" style={{ gridTemplateColumns: `repeat(${hours.length}, 1fr)` }}>
           {hours.map((h) => (
             <div key={h.hour} className="ns-dispatch-grid__hour">{h.label}</div>
           ))}
@@ -91,6 +91,7 @@ function DispatchLaneGrid({
 
             <div
               className={`ns-dispatch-lane${isDragOver && canAccept ? " ns-dispatch-lane--over" : ""}`}
+              style={{ backgroundSize: `${100 / hours.length}% 100%` }}
               data-technician-id={tech.id}
               onDragOver={canAccept ? (e) => { e.preventDefault(); onDragOverLane?.(tech.id); } : undefined}
               onDragLeave={canAccept ? () => onDragLeaveLane?.(tech.id) : undefined}

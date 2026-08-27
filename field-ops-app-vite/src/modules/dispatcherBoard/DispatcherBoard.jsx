@@ -16,6 +16,7 @@ import {
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import {
   dayBand,
+  dayOccupancy,
   fleetBookedPercent,
   isPlaced,
   laneCapacity,
@@ -99,8 +100,6 @@ export default function DispatcherBoard() {
   const [boardMessage, setBoardMessage] = useState(null);
   const [pendingPlacement, setPendingPlacement] = useState(null);
 
-  const band = useMemo(() => dayBand(anchorMillis), [anchorMillis]);
-
   // The availability window spans what the CURRENT VIEW can show, so one read serves the day board,
   // the week grid and the fortnight band without any of them issuing their own.
   const availabilityWindow = useMemo(() => {
@@ -162,6 +161,17 @@ export default function DispatcherBoard() {
     }
     return map;
   }, [placedWorkOrders, view, anchorMillis]);
+
+  // The drawn hour band, WIDENED by whatever this day actually holds.
+  //
+  // Computed here rather than from the date alone because it depends on the day's placements and
+  // blocked time: ND-20 allows work outside recorded hours, so a fixed 7a-5p window would commit an
+  // 02:00 emergency and then draw nothing. Derived from the same two sources the lanes render from,
+  // so the grid can always draw everything the lanes contain.
+  const band = useMemo(
+    () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
+    [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId],
+  );
 
   // Scored for the queue AND for whatever is selected.
   //

@@ -18,6 +18,7 @@ import {
   bucketByDay,
   bucketBlockedByDay,
   dayBand,
+  dayOccupancy,
   fleetBookedPercent,
   fortnightDays,
   isPlaced,
@@ -117,10 +118,65 @@ describe("time geometry comes from committed facts", () => {
   });
 
   it("the hour header spans the same band the lanes do", () => {
-    const hours = bandHours();
+    const hours = bandHours(BAND);
     assert.equal(hours.length, 10);
     assert.equal(hours[0].label, "7a");
     assert.equal(hours[9].label, "4p");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+describe("the band covers what the day actually holds", () => {
+  // THE DEFECT THIS SECTION EXISTS FOR. ND-20 allows work outside recorded hours, because field
+  // service legitimately schedules an emergency at 02:00. A fixed 7a–5p board would COMMIT that
+  // placement and then draw nothing — the job would exist, be billable, and be invisible on the
+  // surface built to see it. Found by the live Quick Gate: every scheduled job in the sandbox sat
+  // outside the fixed band, and the day board rendered empty while insisting it was fine.
+
+  it("defaults to 7a–5p on a day with nothing on it", () => {
+    const band = dayBand(localAt(12), []);
+    assert.equal(new Date(band.startMillis).getHours(), 7);
+    assert.equal(new Date(band.endMillis).getHours(), 17);
+  });
+
+  it("stretches EARLIER for an overnight emergency, so the chip is drawn", () => {
+    const emergency = scheduledWo("e", localAt(2), localAt(4));
+    const band = dayBand(localAt(12), dayOccupancy([emergency]));
+    assert.equal(new Date(band.startMillis).getHours(), 2);
+    assert.ok(placeInBand(localAt(2), localAt(4), band), "the 02:00 job is now placeable");
+  });
+
+  it("stretches LATER, rounding a part-hour end up so nothing is clipped", () => {
+    const evening = scheduledWo("v", localAt(18), localAt(19, 30));
+    const band = dayBand(localAt(12), dayOccupancy([evening]));
+    assert.equal(new Date(band.endMillis).getHours(), 20, "19:30 rounds up to 20:00");
+    assert.equal(placeInBand(localAt(18), localAt(19, 30), band).outsideBand, false, "drawn whole");
+  });
+
+  it("never shrinks below the working day — a quiet day still reads as one", () => {
+    const midday = scheduledWo("m", localAt(11), localAt(12));
+    const band = dayBand(localAt(12), dayOccupancy([midday]));
+    assert.equal(new Date(band.startMillis).getHours(), 7);
+    assert.equal(new Date(band.endMillis).getHours(), 17);
+  });
+
+  it("blocked time widens the band too", () => {
+    const view = { blockedTime: [{ blockId: "b", kind: "PTO", startMillis: localAt(5), endMillis: localAt(6) }] };
+    const band = dayBand(localAt(12), dayOccupancy([], [view]));
+    assert.equal(new Date(band.startMillis).getHours(), 5);
+  });
+
+  it("a neighbouring day does not drag its hours onto this one", () => {
+    const tomorrow = scheduledWo("t", localAt(3, 0, 1), localAt(5, 0, 1));
+    const band = dayBand(localAt(12), dayOccupancy([tomorrow]));
+    assert.equal(new Date(band.startMillis).getHours(), 7, "tomorrow 3am must not open today at 3am");
+  });
+
+  it("the hour header always spans exactly the band in force", () => {
+    const band = dayBand(localAt(12), dayOccupancy([scheduledWo("e", localAt(2), localAt(4))]));
+    const hours = bandHours(band);
+    assert.equal(hours.length, 15, "2a..5p");
+    assert.equal(hours[0].label, "2a");
   });
 });
 
