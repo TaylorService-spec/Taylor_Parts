@@ -98,6 +98,15 @@ needs list-level resolution or denormalisation, which is a read change, not a pr
 Resolving them per row is explicitly forbidden — it is one round trip per visible opportunity on a
 scanning surface — and a test renders 25 rows and asserts the governed source was invoked once.
 
+**One accepted departure from the artifact, ruled by the Owner (DECISIONS #136).** P1v4's 1b frame
+folds owner, channel and attention into the identity cell at 768. Built that way, rendered against
+the artifact, and rejected on sight: *"the middle one goes into detail that consumes more space."*
+Folding does not remove content, it moves it downward — every row gained a third or fourth line at
+the width where vertical space is scarcest, and the tablet stopped reading as a list. The tablet now
+**drops** the channel and the stage ordinal instead, exactly as the desktop already does as it
+narrows, holding rows to 58px against the desktop's 56 (they were 68). Attention keeps its own
+column at every table width, because it is the reason to open a row.
+
 **Deferred from P1v4 with reasons, not silently dropped:**
 
 - **`+ Save as view`** — needs somewhere to persist a named view. That is new authority (a write

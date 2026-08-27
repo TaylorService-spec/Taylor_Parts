@@ -533,3 +533,48 @@ describe("search and stage filtering narrow the view, and say so", () => {
       .toMatch(/Showing 1 of 9 opportunit.* narrowed by a search and 2 stages/);
   });
 });
+
+// ════════════════════════════════════════════ the tablet stays a list (Owner ruling, #136)
+
+describe("every sub-line is addressable, so a narrow width can drop the right ones", () => {
+  const LIST = [opp("a", { salesChannel: "RETAIL", stage: "QUOTING", expectedCloseAt: NOW + 3 * DAY })];
+  const NAMES = { "acct-a": "Route 66 Custard" };
+
+  it("names each sub-line for the FACT it carries, not just 'sub'", () => {
+    render(<OpportunityList source={countingSource(LIST, NAMES)} />);
+    const row = rowFor("Route 66 Custard");
+    // THE REGRESSION THIS EXISTS FOR. All four sub-lines once shared `ns-row__sub`, so no stylesheet
+    // could drop one without dropping all of them -- and the only lever a narrow width had left was
+    // FOLDING facts under the reference, which adds a line to every row at exactly the width where
+    // vertical space is scarcest. That is what made the tablet read as detail rather than as a list.
+    //
+    // Merging these back into one class would silently restore that, with every test still green,
+    // so the names are pinned here rather than left as a stylesheet's private assumption.
+    expect(row.querySelector(".ns-row__need")).toBeTruthy();
+    expect(row.querySelector(".ns-row__channel")).toBeTruthy();
+    expect(row.querySelector(".ns-row__stagepos")).toBeTruthy();
+  });
+
+  it("does NOT fold attention into the identity cell — it keeps its own column at every width", () => {
+    render(<OpportunityList source={countingSource(
+      [opp("a", { expectedCloseAt: NOW - 3 * DAY, nextAction: null })], NAMES)} />);
+    const row = rowFor("Route 66 Custard");
+    const cells = [...row.querySelectorAll("td")];
+    const attentionCell = cells.find((c) => /overdue|next action|decision/i.test(c.textContent));
+    // Attention is the reason to open a row, so it survives every fold rather than being moved.
+    expect(attentionCell).toBeTruthy();
+    expect(attentionCell).not.toBe(cells[0]);
+    // And it is rendered ONCE. A folded copy plus a column copy is two renderings of one fact.
+    expect(row.querySelectorAll(".ns-row__attention")).toHaveLength(1);
+  });
+
+  it("renders each row's facts once — no duplicate markup branch per breakpoint", () => {
+    render(<OpportunityList source={countingSource(LIST, NAMES)} />);
+    const row = rowFor("Route 66 Custard");
+    // Responsive behaviour here is CSS over one DOM. A second markup branch shown by width is how
+    // two copies of one fact drift apart, and it doubles what every future change has to update.
+    expect(row.querySelectorAll(".ns-row__ref")).toHaveLength(1);
+    expect(row.querySelectorAll(".ns-row__need")).toHaveLength(1);
+    expect(row.textContent.match(/Route 66 Custard/g)).toHaveLength(1);
+  });
+});

@@ -732,6 +732,33 @@ The forbidden alternative is the one that would have looked easiest: resolving e
 on demand. That is one round trip per visible opportunity on a surface built for scanning. A test
 renders 25 rows and asserts the governed source was invoked exactly once.
 
+### The tablet was built to the artifact, and the Owner rejected it (#136)
+
+1b specifies a fold at 768: owner, channel and attention move into the identity cell. Built that way
+first. Rendering it beside the 1440 and 375 frames is what surfaced the problem, and the Owner named
+it in one sentence — *"the middle one goes into detail that consumes more space."*
+
+Folding does not remove content; it moves it **downward**. Every row gained a third and often a
+fourth line at exactly the width where vertical space is scarcest, so the tablet stopped answering
+*"which of these needs me?"* and started answering *"tell me about each of these"* — the record's
+question, on a surface whose whole job is finding one.
+
+The tablet now **drops** rather than folds, which is what the desktop already does as it narrows.
+Average row height went 68 → 58 against the desktop's 56; the phone frame, which the Owner accepted,
+is untouched at 249.
+
+Two things only measurement caught. The clamp holding rows to two lines had to begin at **1200**
+rather than at the drop breakpoint, because wrapping starts as soon as the table narrows while
+dropping is only needed once columns stop fitting — treated as one breakpoint, 1024 became the worst
+band on the page. And it had to be bounded **below** at 601 too: below that a row is a card, where a
+one-line clamp is wrong, and leaving it open cost 30px per card on the phone — regressing the one
+frame that had just been approved.
+
+The four row sub-lines had all shared a single class, which is *why* folding was the only lever
+available: nothing could drop one without dropping all of them. They are now named for the fact each
+carries, with three tests pinning the names, because merging them back would restore the rejected
+behaviour with every test still green.
+
 ### Deferred from the artifact, with reasons
 
 `+ Save as view` needs persistence authority for user-scoped list state. A sort control and column

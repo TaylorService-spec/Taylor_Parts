@@ -389,7 +389,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
                   <th scope="col">Opportunity</th>
                   <th scope="col">Customer</th>
                   <th scope="col">Stage</th>
-                  <th scope="col" className="ns-col--attention">Attention</th>
+                  <th scope="col">Attention</th>
                   <th scope="col" className="ns-num">Est. value</th>
                   <th scope="col">Expected close</th>
                   <th scope="col" className="ns-col--commercial">Agreement / Order</th>
@@ -437,19 +437,13 @@ function OpportunityRow({ row, navigate }) {
     >
       <td>
         <Link to={row.href} className="ns-row__ref">{row.reference}</Link>
-        {row.need ? <span className="ns-row__sub">{row.need}</span> : null}
-        {/* The 768 fold: attention loses its own column and appears here instead. Rendered once and
-            shown by width, rather than duplicated into a second markup branch -- two copies of one
-            fact is how they come to disagree. */}
-        {row.attention.words ? (
-          <span className={`ns-row__foldattention is-${row.attention.tone}`}>{row.attention.words}</span>
-        ) : null}
+        {row.need ? <span className="ns-row__sub ns-row__need">{row.need}</span> : null}
       </td>
       <td data-label="Customer">
         {row.customer.name ? (
           <>
             <span className="ns-row__strong">{row.customer.name}</span>
-            {row.channel ? <span className="ns-row__sub">{row.channel}</span> : null}
+            {row.channel ? <span className="ns-row__sub ns-row__channel">{row.channel}</span> : null}
           </>
         ) : (
           <span className="ns-state--na">{row.customer.fallback}</span>
@@ -457,9 +451,9 @@ function OpportunityRow({ row, navigate }) {
       </td>
       <td data-label="Stage">
         <span className={`ns-row__stage is-${row.stage.tone}`}>{row.stage.words}</span>
-        {row.stage.position ? <span className="ns-row__sub">{row.stage.position}</span> : null}
+        {row.stage.position ? <span className="ns-row__sub ns-row__stagepos">{row.stage.position}</span> : null}
       </td>
-      <td className="ns-col--attention" data-label="Attention">
+      <td data-label="Attention">
         {row.attention.words ? (
           <span className={`ns-row__attention is-${row.attention.tone}`}>{row.attention.words}</span>
         ) : (

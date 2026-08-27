@@ -2810,3 +2810,65 @@ G2 ruling above), #125, #129 (the Opportunity's route), #130 (the P1v2 record an
 reversed), #131 (a new suite runs in CI only where a workflow names it — this one is named in
 `composition-conformance-tests.yml`), #134 (the Sales Agreement record that made this retirement
 possible), ND-13.
+
+---
+
+## #136 — OWNER RULING: the tablet drops columns instead of folding them, overriding P1v4's 1b frame
+
+**Date:** 2026-08-27 · **Scope:** presentation only · **Authority:** Owner (acceptance)
+
+**The conflict.** P1v4's 1b frame specifies that at 768 *"owner + channel + attention fold into
+identity; Stage, Value survive; Close and the commercial chain share the last column as two lines."*
+It was built exactly that way, then rendered against the artifact and shown to the Owner alongside
+the 1440 and 375 frames.
+
+**Owner ruling, verbatim:** *"i like 1 and 3 because they are exactly what i would expect to see in
+a list. the middle one goes into detail that consumes more space."*
+
+**Decision.** The tablet band **drops** what will not fit rather than **folding** it, which is what
+the desktop already does as it narrows. Recorded here rather than applied quietly because it
+reverses a specific instruction in an approved design artifact — #122's rule is that Design and
+Acceptance disagreeing produces a named decision, and the Owner is the acceptance authority.
+
+**Why the ruling is right, in the terms the design uses.** Folding does not remove content; it moves
+it *downward*. Every row gained a third and often a fourth line at exactly the width where vertical
+space is scarcest, so a list of six deals filled a screen that had comfortably held them one
+breakpoint earlier. The surface stopped answering *"which of these needs me?"* and started answering
+*"tell me about each of these"*, which is the record's question and the reason the record has its
+own route.
+
+**Measured, because the complaint was about space and an opinion about a screenshot is not
+evidence.** Average row height across the designed widths, before and after:
+
+| Width | Before | After | |
+| --- | --- | --- | --- |
+| 1440 desktop | 56px | 56px | unchanged — the Owner accepted this frame |
+| 1024 | 62px | 58px | was briefly the worst band: drops had not started, columns already tight |
+| 900 | 58px | 56px | |
+| 768 tablet | **68px** (max 83) | **58px** (max 70) | the frame that was rejected |
+| 375 phone | 249px | 249px | unchanged — the Owner accepted this frame |
+
+**What is dropped at 900 and below, and why it is safe here and only here:**
+
+- **channel** — secondary context, never a reason to act. Present on the record.
+- **the stage ordinal ("2 of 6")** — the stage WORD survives, which is the fact; the ordinal
+  refines it.
+
+**What is NOT dropped:** attention keeps its own column at every table width, worded exactly as
+`deriveAttention` produced it. It is the reason to open a row at all, so it survives every fold.
+
+**Two findings that came out of measuring rather than looking.** The clamp that holds rows to two
+lines had to start at **1200**, not at the drop breakpoint — wrapping begins as soon as the table
+narrows, while dropping is only needed once columns stop fitting, and treating them as one
+breakpoint left 1024 as the worst band on the page. And the clamp had to be bounded **below** at 601
+as well: below that the row is a card, where a one-line clamp is simply wrong, and leaving it
+unbounded cost 30px per card on the phone — a regression in the one frame the Owner had explicitly
+approved.
+
+**Guarded, not just fixed.** All four row sub-lines previously shared one class, so no stylesheet
+could drop one without dropping all of them — which is *why* folding was the only lever available.
+They are now named for the fact each carries, and three tests pin those names, because merging them
+back would silently restore the rejected behaviour with every test still green. Mutation-proved.
+
+**Related:** #122 (the three authorities — the rule this entry follows), #135 (the collection this
+amends), and the family README, which records the departure beside the artifact it departs from.
