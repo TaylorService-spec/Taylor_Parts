@@ -20,10 +20,18 @@ export default function TruckFleetCard({ truck, onOpen }) {
   return (
     <OperationalCard
       title={t.id}
+      // WORDS + TONE, NO PILL — Lists P2 board 2e, and a card is a recomposed ROW (board 2c), so
+      // the collection rule reaches it. `asText` is the OperationalCard's own opt-out of the pill
+      // container; it already existed for the unknown case, which is the tell that the plain
+      // treatment was always available and the pill was the choice.
+      //
+      // OBJECT STATE ONLY. The discrepancy figure below keeps its treatment: it is a COUNT carrying
+      // an attention tone, not a lifecycle state, and collapsing the two would lose the distinction
+      // between what this truck IS and what needs looking at.
       status={
         status == null
           ? { tone: "unknown", asText: true, label: "Unavailable" }
-          : { tone: truckFleetStatusTone(status), label: status }
+          : { tone: truckFleetStatusTone(status), label: status, asText: true }
       }
       subtitle={`${t.technician || "Unassigned"}${t.location ? ` · ${t.location}` : ""}`}
       metadata={[

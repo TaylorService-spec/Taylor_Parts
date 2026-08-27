@@ -10,7 +10,7 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
-import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import ListViewHeader, { CollectionResultContext } from "../../metadata/ListViewHeader.jsx";
 import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import {
   addFilter, removeFilter, clearFilters, setSort, describeDropped, describeRefusal,
@@ -145,6 +145,12 @@ export default function CustomerEquipment() {
       />
 
       <DroppedCriteriaNotice message={droppedMessage} />
+
+      {/* RESULT CONTEXT, IMMEDIATELY ABOVE THE ROWS IT DESCRIBES (Lists P2 anatomy). This sentence
+          used to render inside the list header, ABOVE the filter and sort controls -- so it
+          described a state the reader had not produced yet. Same sentence, same pure source; only
+          its position changed. */}
+      <CollectionResultContext entity={equipmentEntity} criteria={criteria} defaultSort={equipmentIndexList.defaultSort} total={total} />
 
       {presentation?.state === "FILTERED" ? (
         <ListEmptyState criteria={criteria} onClear={() => apply(clearFilters(criteria))} />

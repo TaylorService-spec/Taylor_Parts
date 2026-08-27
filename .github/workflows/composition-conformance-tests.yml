@@ -123,6 +123,13 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/contact.js"
       - "field-ops-app-vite/src/metadata/definitions/location.js"
       - "field-ops-app-vite/test/listsP2Compose.test.jsx"
+      # OWNER VISUAL CORRECTION — the contract that proves composition rather than membership.
+      - "field-ops-app-vite/src/metadata/MetadataListGrid.jsx"
+      - "field-ops-app-vite/src/metadata/ListViewHeader.jsx"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/inventory/TruckFleetCard.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Receipts.jsx"
+      - "field-ops-app-vite/test/listsP2VisualContract.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -282,6 +289,13 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/contact.js"
       - "field-ops-app-vite/src/metadata/definitions/location.js"
       - "field-ops-app-vite/test/listsP2Compose.test.jsx"
+      # OWNER VISUAL CORRECTION — the contract that proves composition rather than membership.
+      - "field-ops-app-vite/src/metadata/MetadataListGrid.jsx"
+      - "field-ops-app-vite/src/metadata/ListViewHeader.jsx"
+      - "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
+      - "field-ops-app-vite/src/modules/inventory/TruckFleetCard.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Receipts.jsx"
+      - "field-ops-app-vite/test/listsP2VisualContract.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -422,6 +436,13 @@ jobs:
       # record -- and a page is assembled from parts a section could acquire one at a time.
       - name: Lists P2 COMPOSE (related lists stay subordinate)
         run: npx vitest run test/listsP2Compose.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE VISUAL CONTRACT. The Owner s visual review failed on surfaces whose structural tests
+      # were all green -- membership is not composition. This asserts the anatomy and the grammar:
+      # one page identity, one row treatment, words-and-tone state, result context in its place.
+      - name: "Lists P2 visual contract (anatomy and grammar, not membership)"
+        run: npx vitest run test/listsP2VisualContract.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the

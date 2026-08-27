@@ -145,7 +145,11 @@ const KNOWN_UNSTYLED = new Set([
   "wo-action-error",
   "wo-action-row",
   "wo-inventory",
-  "fo-btn-link",
+  // `fo-btn-link` REMOVED, not migrated. Its only consumer was Job Assignments' primary action,
+  // where the permitted branch rendered an anchor carrying this class while the protected branch
+  // rendered the Button primitive — so the same control changed shape depending on who was looking
+  // at it, and the class it changed into was never styled. The Owner's Lists P2 visual correction
+  // put both branches on the primitive. The backlog may only shrink, and this is it shrinking.
   "fo-confirm-actions",
   "fo-confirm-dialog",
   "fo-confirm-error",

@@ -81,7 +81,7 @@ export default function Receipts() {
         />
       ) : (
         <div className="fo-table-scroll">
-          <table className="fo-table" aria-label="Receipts">
+          <table className="fo-table fo-table--stack ns-table" aria-label="Receipts">
             <thead>
               <tr>
                 <th scope="col">Part</th>

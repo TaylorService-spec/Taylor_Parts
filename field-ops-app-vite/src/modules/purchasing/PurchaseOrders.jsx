@@ -192,7 +192,7 @@ export default function PurchaseOrders() {
         <EmptyState variant="filtered" title="No matching purchase orders" message="No purchase orders match this filter." />
       ) : (
         <div className="fo-table-scroll">
-          <table className="fo-table" aria-label="Purchase orders">
+          <table className="fo-table fo-table--stack ns-table" aria-label="Purchase orders">
             <thead>
               <tr>
                 <th scope="col">Part</th>

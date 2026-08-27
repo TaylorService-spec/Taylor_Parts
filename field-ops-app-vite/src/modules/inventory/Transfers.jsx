@@ -217,7 +217,7 @@ export default function Transfers({ accessVersion }) {
         <EmptyState variant="filtered" title="No matching transfers" message="No transfers match this filter." />
       ) : (
         <div className="fo-table-scroll">
-          <table className="fo-table" aria-label="Transfers">
+          <table className="fo-table fo-table--stack ns-table" aria-label="Transfers">
             <thead>
               <tr>
                 <th scope="col">Part</th>

@@ -16,7 +16,7 @@ import { fetchPartMasterPage } from "../../services/partMasterPageQuery";
 import {
   AddFilter, ActiveCriteria, SortControl, ListEmptyState, DroppedCriteriaNotice,
 } from "../../metadata/MetadataListControls.jsx";
-import ListViewHeader from "../../metadata/ListViewHeader.jsx";
+import ListViewHeader, { CollectionResultContext } from "../../metadata/ListViewHeader.jsx";
 import { useListViewChrome } from "../../hooks/useListViewChrome.js";
 import { partEntity, partIndexList } from "../../metadata/definitions/part.js";
 import { buildQueryDescriptor } from "../../metadata/listRuntime.js";
@@ -379,6 +379,12 @@ export default function PartMasterList(props) {
       {/* A criterion this list cannot execute is STATED, not silently dropped -- a filter that
           looks applied but is not is how somebody concludes the catalogue is smaller than it is. */}
       <DroppedCriteriaNotice message={droppedMessage} />
+
+      {/* RESULT CONTEXT, IMMEDIATELY ABOVE THE ROWS IT DESCRIBES (Lists P2 anatomy). This sentence
+          used to render inside the list header, ABOVE the filter and sort controls -- so it
+          described a state the reader had not produced yet. Same sentence, same pure source; only
+          its position changed. */}
+      <CollectionResultContext entity={partEntity} criteria={criteria} defaultSort={partIndexList.defaultSort} total={total} />
       {parts.length === 0 ? (
         // A list filtered to nothing and an empty catalogue are different statements.
         <ListEmptyState
@@ -394,7 +400,7 @@ export default function PartMasterList(props) {
               either. `data-label` on every cell carries the column heading into the card, so a value
               is never orphaned from the field it belongs to. Scroll stays right at a desk, which is
               why the scroll container above is unchanged. */}
-          <table className="fo-table fo-table--stack">
+          <table className="fo-table fo-table--stack ns-table">
             <thead>
               <tr>
                 {/* HEADINGS COME FROM THE METADATA, not from this file. Hand-typed ones drift: this
@@ -446,7 +452,17 @@ export default function PartMasterList(props) {
                   <td data-label={LABEL.stockingClass} data-raw={part.stockingClass}>{STOCKING_CLASS_LABEL[part.stockingClass] ?? part.stockingClass}</td>
                   <td data-label={LABEL.stockingUnit}>{part.stockingUnit}</td>
                   <td data-label={LABEL.status} data-raw={part.status}>
-                    <StatusPill tone={partStatusTone(part.status)} label={PART_STATUS_LABEL[part.status] ?? part.status} />
+                    {/* WORDS + TONE, NO PILL — Lists P2 board 2e, and collection-scoped.
+                        A pill is a container that says "this is a status"; in a scan-first list the
+                        word IS the status, and eleven pills down a column become eleven small boxes
+                        competing with the identity that tells you which record you are looking at.
+                        `ns-row__stage` carries the same tone families every other collection uses,
+                        so the state is never colour alone.
+                        The Change Status DIALOG above keeps its pill: that is a record-shaped
+                        surface where one status is the subject rather than one of many. */}
+                    <span className={`ns-row__stage is-${partStatusTone(part.status)}`}>
+                      {PART_STATUS_LABEL[part.status] ?? part.status}
+                    </span>
                   </td>
                   <td className="fo-pml__actions" data-label="Actions">
                     <button type="button" onClick={() => openEdit(part)} disabled={busy} className="fo-btn-secondary">Edit</button>{" "}

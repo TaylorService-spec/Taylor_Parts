@@ -6095,6 +6095,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
 
 .ns-collection__act { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+/* A primary action that is a LINK still has to look like the button it wraps. Job Assignments
+   navigates to the Work Order wizard rather than opening a dialog, so its action is an <a> around
+   the Button primitive; without this the anchor contributes its own underline and link colour
+   through the button. Layout only -- the Button keeps every visual decision. */
+.ns-collection__act-link { text-decoration: none; display: inline-flex; }
 /* The disabled reason is VISIBLE text beside the control, never tooltip-only — a tooltip is
    unreachable by keyboard and by touch, which is exactly the audience that most needs to know why
    a control is inert. Same rule the lifecycle actions already follow. */
