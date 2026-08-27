@@ -118,6 +118,38 @@ function verifyFunctionsAttestation(text) {
   return { acceptedRetroactiveAttestation: true, attestationSha256: sha256(text) };
 }
 
+/**
+ * Newline representation ONLY. CRLF -> LF, then any remaining lone CR -> LF.
+ *
+ * WHY THIS EXISTS. Git stores firestore.rules with LF, and the governed SHA pins those LF bytes
+ * (`git show <commit>:firestore.rules`). A Windows checkout materializes the file as CRLF, and
+ * `firebase deploy` uploads the on-disk bytes verbatim -- so the LIVE ruleset served back by the
+ * Rules API is CRLF. Hashing the served bytes raw against an LF-derived pin therefore FAILED for
+ * semantically identical rulesets, purely because of newline representation.
+ *
+ * That is not a hypothetical: it was measured on eos-platform-sandbox on 2026-08-27, where live and
+ * governed had ZERO line-by-line differences and the verifier still reported LIVE != GOVERNED. It had
+ * been failing that way for every Windows-originated deploy, undetected, because the verifier's own
+ * fixture injected git's LF bytes as the fake live source and so could never reproduce the real API's
+ * CRLF.
+ *
+ * THE EQUIVALENCE INTRODUCED IS EXACTLY ONE THING: how a line ends. This deliberately does NOT trim
+ * whitespace, collapse blank lines, reformat, sort, or canonicalize in any other way -- every one of
+ * those could mask a real Rules difference, which is the opposite of what a deployment verifier is
+ * for. A changed condition, an added rule or a removed rule still changes the hash.
+ */
+function normalizeRulesNewlines(content) {
+  if (typeof content !== "string") return content;
+  return content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+/**
+ * The live Rules source, in the governed LF representation.
+ *
+ * Normalization happens HERE, at the single point every live-vs-governed comparison draws its
+ * content from, rather than at each call site -- so a future comparison cannot forget it, and there
+ * is no separate normalization path for tests to exercise instead of the real one.
+ */
 function extractRulesSource(apiPayload) {
   const files = apiPayload && apiPayload.source && apiPayload.source.files;
   if (!Array.isArray(files) || files.length === 0) throw new VerificationError("Live Rules API response has no source files.");
@@ -125,7 +157,7 @@ function extractRulesSource(apiPayload) {
   if (typeof file.content !== "string" || !file.content.startsWith("rules_version")) {
     throw new VerificationError("Extracted live Rules source is empty or malformed.");
   }
-  return file.content;
+  return normalizeRulesNewlines(file.content);
 }
 
 function assertEvidenceSecretFree(value) {
@@ -157,6 +189,7 @@ module.exports = {
   extractRulesSource,
   interpretStatus,
   normalizeFunctionsInventory,
+  normalizeRulesNewlines,
   sha256,
   validateConfig,
   verifyDeploymentLog,
