@@ -119,6 +119,10 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/transferOrder.js"
       - "field-ops-app-vite/src/metadata/referenceResolution.js"
       - "field-ops-app-vite/test/listsP2Tranche3.test.jsx"
+      # The COMPOSE pass — related lists stay subordinate to the record that owns them.
+      - "field-ops-app-vite/src/metadata/definitions/contact.js"
+      - "field-ops-app-vite/src/metadata/definitions/location.js"
+      - "field-ops-app-vite/test/listsP2Compose.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -274,6 +278,10 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/transferOrder.js"
       - "field-ops-app-vite/src/metadata/referenceResolution.js"
       - "field-ops-app-vite/test/listsP2Tranche3.test.jsx"
+      # The COMPOSE pass — related lists stay subordinate to the record that owns them.
+      - "field-ops-app-vite/src/metadata/definitions/contact.js"
+      - "field-ops-app-vite/src/metadata/definitions/location.js"
+      - "field-ops-app-vite/test/listsP2Compose.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -401,6 +409,12 @@ jobs:
       # rather than filled in with a document id.
       - name: Lists P2 tranche 3 (no borrowed money, no raw id as a label)
         run: npx vitest run test/listsP2Tranche3.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The COMPOSE boundary. A related list must not become a collection page embedded inside a
+      # record -- and a page is assembled from parts a section could acquire one at a time.
+      - name: Lists P2 COMPOSE (related lists stay subordinate)
+        run: npx vitest run test/listsP2Compose.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the

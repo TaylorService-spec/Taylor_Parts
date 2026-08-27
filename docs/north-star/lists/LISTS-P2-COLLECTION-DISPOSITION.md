@@ -507,3 +507,151 @@ it started with:
 
 Remaining MIGRATE families (Part Master, Equipment, Employees, Suppliers, Warehouses, Manufacturers,
 Purchase Orders, Transfers, Trucks) follow the same pattern one at a time, per §1 and §1.2.
+
+---
+
+## 9. Final acceptance — the global reconciliation
+
+Answers to the ten acceptance points, in order.
+
+### 1 · Final disposition for all 75 surfaces
+
+| | Count | Change from the opening inventory |
+| --- | --- | --- |
+| **MIGRATE — complete** | 14 | all migrated |
+| **COMPOSE — reconciled** | 24 | verified subordinate; boundary now gated |
+| **EXEMPT** | 29 | +1 — Selling Agreement, by Owner ruling (§3.1) |
+| **BLOCKED** | 4 | −1 — Selling Agreement resolved by ruling, not by building |
+| *(not a surface)* | 7 | unchanged |
+
+### 2 · Every MIGRATE family
+
+| Family | Phase | Outcome |
+| --- | --- | --- |
+| Opportunity | 2 | complete |
+| Work Orders | 3 | complete |
+| Accounts | 4 | complete |
+| Sales Orders | 5 | complete |
+| Part Master | T1 | complete — **row now reaches its record**, which it never could |
+| Equipment | T1 | complete — page identity on the workspace, aggregate on the tab |
+| Suppliers | T1 | complete |
+| Manufacturers | T1 | complete — **no pagination affordance**, per Owner ruling |
+| Employees | T2 | complete — rows inert, no route invented |
+| Warehouses | T2 | complete — rows inert, no route invented |
+| Trucks | T2 | complete — detail **pane retained** as a named exception |
+| Purchase Orders | T3 | complete — **CONTRACT_ONLY on money preserved** |
+| Transfers | T3 | complete — **R3 corrected**; part label BLOCKED, stated as unresolved |
+| Parts workspace (`/inventory`) | — | **unchanged by ruling** — stays a workspace |
+
+Nothing was reclassified during migration except Selling Agreement, by ruling, before any code.
+
+### 3 · Every COMPOSE surface reconciled
+
+All 24 verified **subordinate**, and the boundary is now enforced rather than observed
+(`test/listsP2Compose.test.jsx`). Nothing was rewritten, because the rule was already modelled:
+`LIST_SURFACE` separates INDEX from RELATED, `buildListPresentation` **refuses** to report `hasMore`
+for a RELATED surface even when the page reports it, and `MAX_RELATED_ROWS` caps the section. What
+did not exist was anything that *fails* when a related list starts wearing collection chrome — and a
+collection page is assembled from parts (a header, a views row, a footer, its own criteria) that a
+section could acquire one at a time without any single step looking wrong. Four gates now hold that
+line, plus the context-without-duplication checks: every related column belongs to the related
+object, and none repeats the parent on every row.
+
+**One assertion was wrong and is recorded because the failure taught the rule.** The first version
+asserted a related list has *fewer* columns than its index. Sales Orders has six on both — and the
+related one is not a reduced index: it **drops** `accountId` (meaningless on a page already headed by
+that account) and adds `sourceOpportunityNumber`, which explains why *this* order is on *this*
+account. The invariant is not width. It is that a related list is **composed for the relationship**
+rather than inherited from the index.
+
+### 4 · EXEMPT surfaces, and why
+
+29 in total. Boards (7) — a time or assignment axis, drag-drop, realtime subscriptions; paging a
+dispatch board would be a dispatch decision taken under cover of a list migration. Handheld and scan
+workflows (10) — one task at a time, not a set to compare; Receiving and Returns must not be
+rendered as registers, because that implies operational effects the authority refuses. Editors,
+wizards and matrices (6). Dashboard panels (5) — tiles over a projection. Plus **Selling Agreement**,
+by ruling (§3.1). All remain bound by the shared **vocabularies** — honest states, absence,
+`Unassigned ≠ Unresolved`, no document ids as labels, the touch floor — just not by the page anatomy.
+
+### 5 · BLOCKED, with the exact missing capability
+
+| Surface | Missing authority / capability |
+| --- | --- |
+| Job Assignments | **Product decision**: is it a distinct assignment board, or an assignment *view* of Work Orders? The same shape as the Employees/Technicians question settled 2026-08-20. |
+| Contacts (global index) | A **route** and a **per-contact read**, both new. |
+| Returns register | A **register read**. Building one would imply stock effects the authority refuses. |
+| Audit Logs · Permission Preview | A **deployed Cloud Function read path**. Both collections are deny-all in Rules. |
+| **Transfers → part label** | A **list-level part-name projection**. New this pass — see §6. |
+
+### 6 · Raw-id findings
+
+| Finding | State |
+| --- | --- |
+| `Transfers.jsx:226` — part document id rendered as the link's own visible text | **Corrected, and the label is BLOCKED.** The transfer document carries no part number and no part name; the only resolver that could supply one issues a whole-catalogue read. Widening the read, adding a resolver callable, adding a client read and fabricating a name were all available and all refused. The cell states `Unresolved reference` in the shared platform vocabulary. **The id survives only in the href**, where the ruling permits it — `/inventory/:partId` is a mounted route, so the row still opens the part record, where the name this cell cannot supply is written down. |
+| `workOrderIndexList.rowNavigationTo` → `/work-orders/:id` | Corrected (Phase 1). The route did not exist. |
+| `partIndexList.rowNavigationTo` → `/parts/:id` | Corrected (Phase 1). The route did not exist. |
+
+No other raw-id finding surfaced. `rawIdPresentationGuard.test.jsx` green throughout.
+
+### 7 · Lists relying on an unbounded read
+
+| Surface | Read | Treatment |
+| --- | --- | --- |
+| **Manufacturers** | `getManufacturerCatalog` — no `limit`, no cursor, no `truncated` | **No pagination control, no footer, no `onLoadMore`** (Owner ruling). Guarded in two places: the presentation pins `hasMore: false`, and the screen passes no handler. Its header count is exact *because* the read is complete. |
+| **Trucks** | truck registry, read whole | Count exact; no paging affordance. |
+| **Transfers** | governed transfer set, one call | Count exact; no paging affordance. |
+| **Purchase Orders** | both reads resolve in full before leaving LOADING | Count exact; no paging affordance. |
+| Part detail / catalogue read | `PART_CATALOGUE_WHOLE_COLLECTION_READ` | Pre-existing, recorded, untouched. Part Master's own list **is** cursor-paged and keeps its Load more. |
+
+**No list renders a boundary its read does not have, and none hides a boundary its read does have.**
+
+### 8 · Lists with no record destination
+
+Seven, and **no route was created for any of them**: Employees · Suppliers · Warehouses ·
+Manufacturers · Purchase Orders · Transfers · Trucks. Rows are non-navigable; no dead href; no link
+to an unrelated workspace dressed as a detail destination. `test/listsP2Tranche2.test.jsx` asserts
+that `App.jsx` mounts no such route.
+
+Two nuances recorded rather than smoothed over. **Manufacturers** rows carry governed row *actions*
+(rename, status) instead of navigation — the affordance the object genuinely has. **Trucks** keeps
+its detail **pane**, which P2 would normally retire in favour of a route; a Truck has none, and
+inventing one is exactly what this tranche forbids, so the pane is the record surface until that is
+decided as its own product question.
+
+### 9 · Authority created by the reconciliation
+
+**None.**
+
+No new callable · no new client-direct read · no new aggregate query · no new route · no new
+command · no new capability · no Functions change · no Rules change · no domain-model change · no
+new status or state vocabulary · no new derived business fact.
+
+Every count on every migrated list is either a **governed server-side aggregate that already
+existed** (`useListViewChrome`) or an **exact tally over a read with no cursor** — and where neither
+is available, the count is **absent** rather than approximated. Three surfaces (Suppliers,
+Warehouses, Employees) could have gained an aggregate query to fill that gap and deliberately did
+not: adding a read to make a family look complete is the thing the governing rule forbids.
+
+`git diff --stat origin/main` touches **no** file under `functions/`, and neither `firestore.rules`
+nor `firestore.indexes.json`.
+
+### 10 · Tests and the shared conformance gate
+
+| Suite | Covers |
+| --- | --- |
+| `listsP2StateContract.test.jsx` | the 17 states, the seven empties, live record routes |
+| `listsP2Tranche1.test.jsx` | catalog / reference — invented boundaries, invented routes |
+| `listsP2Tranche2.test.jsx` | organization / location — the no-route rule, exact-or-absent counts |
+| `listsP2Tranche3.test.jsx` | movement — borrowed money, raw id as a label |
+| `listsP2Compose.test.jsx` | the COMPOSE boundary |
+| `compositionConformance.test.jsx` | GATE 2d / 2d² / 2c — the collection-page contract |
+
+**The gate earned its place during the work.** GATE 2d² caught all four tranche-1 surfaces before
+their own tests ran: membership is derived from the whole tree, so composing the collection grammar
+without declaring it fails the build. And GATE 2c is what made Accounts, Part Master and Trucks
+*able* to move off `WorkspaceShell` at all — without a third membership list, two gates would have
+demanded opposite things of the same file.
+
+Every suite is registered in the path-filtered lane, and `ciSuiteCoverage` is green — so none of
+them is a suite that exists but never runs.
