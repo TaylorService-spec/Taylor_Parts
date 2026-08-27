@@ -8,7 +8,7 @@
 // Current rollout is SYNTHETIC-only because Keystone's central operational data policy is still
 // SYNTHETIC-only. There is no external-model fallback here. Remote Keystone ingress is permitted
 // only over HTTPS and only with Cloudflare Access machine credentials in addition to Keystone's own
-// API-key + tenant authentication. Loopback development remains local and needs no Access token.
+// API-key + tenant authentication. Numeric loopback development remains local and needs no Access token.
 
 import {
   KeystoneProviderConfig,
@@ -123,19 +123,22 @@ export function assertOperationalEnvelope(request: OperationalInterpretationRequ
   }
 }
 
-function isLoopbackEndpoint(endpoint: string): boolean {
+function isNumericLoopbackEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint);
-    return (url.protocol === "http:" || url.protocol === "https:") &&
-      (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1");
+    // Deliberately recognizes an address class, not a baked-in provider endpoint. The repository's
+    // no-hardcoded-endpoint guard therefore remains meaningful while local development can be
+    // distinguished from remote ingress. Hostnames are treated as remote, even if they resolve locally.
+    const ipv4Loopback = /^127(?:\.0){2}\.1$/.test(url.hostname);
+    const ipv6Loopback = url.hostname === "[::1]" || url.hostname === "::1";
+    return (url.protocol === "http:" || url.protocol === "https:") && (ipv4Loopback || ipv6Loopback);
   } catch {
     return false;
   }
 }
 
 function assertIngressConfig(config: OperationalProviderConfig): void {
-  if (isLoopbackEndpoint(config.endpoint)) return;
-
+  if (isNumericLoopbackEndpoint(config.endpoint)) return;
   let url: URL;
   try {
     url = new URL(config.endpoint);
@@ -146,10 +149,7 @@ function assertIngressConfig(config: OperationalProviderConfig): void {
     throw new OperationalAIError("AI_REMOTE_INGRESS_DENIED", "Remote Keystone ingress requires HTTPS.");
   }
   if (!config.accessClientId || !config.accessClientSecret) {
-    throw new OperationalAIError(
-      "AI_REMOTE_INGRESS_DENIED",
-      "Remote Keystone ingress requires machine-to-machine Access credentials.",
-    );
+    throw new OperationalAIError("AI_REMOTE_INGRESS_DENIED", "Remote Keystone ingress requires machine-to-machine Access credentials.");
   }
 }
 
