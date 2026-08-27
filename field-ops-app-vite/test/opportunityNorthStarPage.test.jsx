@@ -510,6 +510,37 @@ describe("Opportunity P1v2 — responsive composition", () => {
 
 // ═══════════════════════════════════════════════════ AUTHORITY (§24)
 
+// ═══════════════════════════════════════════════════ THE PRODUCTION WIRING
+//
+// A seam resolved and not threaded is indistinguishable, on screen, from a seam that answered
+// "no" -- and this one produced a sentence that reads like a deliberate environment gate.
+
+describe("Opportunity P1v2 — the connected mount threads what it resolves", () => {
+  const APP = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "App.jsx"),
+    "utf8",
+  );
+  const MOUNT = APP.slice(
+    APP.indexOf("function OpportunityDetailConnected"),
+    APP.indexOf("function SalesOrderDetailConnected"),
+  );
+
+  it("passes hasCapability to OpportunityDetail, not just resolves it", () => {
+    // FOUND LIVE: the mount called useOpportunityCapabilities and never passed the result on, so
+    // the page used its fail-closed default and the Sales Agreement card rendered
+    // "aren't enabled in this environment yet" on every record -- while those capabilities ARE
+    // activated for platform-sandbox. Create could never appear either.
+    expect(MOUNT).toMatch(/useOpportunityCapabilities/);
+    expect(MOUNT, "hasCapability is resolved but never threaded").toMatch(/hasCapability=\{hasCapability\}/);
+  });
+
+  it("still threads the write-readiness seam it already had", () => {
+    // The regression to guard against in the other direction: a future edit that swaps one seam
+    // for the other rather than passing both.
+    expect(MOUNT).toMatch(/readiness=\{opportunityWriteReadiness\(/);
+  });
+});
+
 describe("Opportunity P1v2 — the migration introduced NO authority", () => {
   const SRC = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "..", "src", "modules", "sales", "OpportunityDetail.jsx"),

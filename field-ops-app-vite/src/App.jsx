@@ -291,7 +291,29 @@ function OpportunityDetailConnected() {
   const { user } = useAuth();
   const { hasCapability } = useOpportunityCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
-  return <OpportunityDetail readiness={opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted })} />;
+  // `hasCapability` MUST be threaded, not merely resolved.
+  //
+  // It was resolved here and dropped on the floor, so OpportunityDetail fell back to its own
+  // fail-closed default (`() => false`). The consequence was invisible and total: the Sales
+  // Agreement card called useSalesAgreement with `enabled: false` and rendered
+  // "Sales agreements aren't enabled in this environment yet" on EVERY record, forever -- while
+  // salesAgreement.read/.create/.updateDraft/.accept are in fact ACTIVATED for platform-sandbox
+  // (access/environmentCapabilityOverrides.ts). "Create Sales Agreement" could never appear either.
+  //
+  // The state was honest about what the component was told. The component was told something false,
+  // which is worse than an obviously broken panel: a truthful-looking NOT_ENABLED reads as a
+  // deliberate environment gate and invites nobody to investigate. It survived a Quick Gate for
+  // exactly that reason.
+  //
+  // The SAME trusted feed answers both capability families in one request
+  // (OPPORTUNITY_CAPABILITY_REQUEST includes SALES_AGREEMENT_CAPABILITY_REQUEST), so this costs no
+  // extra round trip -- the answer was already in hand.
+  return (
+    <OpportunityDetail
+      readiness={opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted })}
+      hasCapability={hasCapability}
+    />
+  );
 }
 
 function SalesOrderDetailConnected() {
