@@ -624,6 +624,42 @@ unmerged on `claude/opportunity-workspace-p1`. It touches no pane code.
 
 ---
 
+## Cross-family AMENDMENT — the pane blocker is now one capability, not four (2026-08-27)
+
+**Appended, not edited.** The entry above is preserved as written; this ledger records what it
+believed at the time and what changed, because a ledger that rewrites its own reasoning loses the
+record of having reasoned.
+
+That entry blocked Workspace P1v3 on the ground that `SalesAgreementPanel` is *“the only UI in the
+product”* through which an agreement can be drafted, priced, edited and accepted, and that P1v2
+*“assigns acceptance to the agreement itself, which has no surface.”*
+
+**The agreement now has a surface.** Family 5 shipped in six PRs (#1536–#1541) and was Owner-
+accepted 2026-08-27. So the sentence above is no longer accurate as written, and the blocker did
+not vanish — it narrowed to exactly one capability:
+
+| Pane capability | Home on the Sales Agreement record? |
+|---|---|
+| read | **yes** — the routed record page |
+| accept | **yes** — `acceptSalesAgreement`, PR #1539 |
+| edit commercial terms | **yes** — six governed scalar fields, in place |
+| create | **yes**, and correctly still on the Opportunity — creation must know which Opportunity |
+| **price / edit LINES** | **NO — SA-G7, and the whole remaining blocker** |
+
+The recorded sequence — *Sales Agreement North Star provides the replacement governed surface →
+then the legacy pane is retired* — is **one step in, not complete**. Retiring the pane today would
+still delete an activated governed capability, but now precisely one: line pricing, which is the
+only path to clearing an unpriced-line acceptance blocker.
+
+**SA-G7 is therefore the gate on Workspace P1v3 and on ND-13**, and it is the highest-value
+follow-up either family carries. It remains classified a MIGRATION gap rather than an outage: the
+pane still works, so nobody is blocked.
+
+Current-state map for the Opportunity family:
+[`../north-star/opportunity/HANDOFF-LEDGER.md`](../north-star/opportunity/HANDOFF-LEDGER.md).
+
+---
+
 ## Sandbox refresh — 1c8095d3, 2026-08-26
 
 Deployed and verified **from the environment, not from the exit code**:
