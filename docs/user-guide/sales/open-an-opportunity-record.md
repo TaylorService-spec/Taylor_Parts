@@ -20,9 +20,14 @@ permission.
 ## How to get there
 
 1. Go to **Sales > Opportunities**.
-2. Click any opportunity in the pipeline table. Its summary opens in the panel on the right.
-3. At the top of that panel, click **Open OPP-2026-000123** (or **Open the full record**, if the
-   deal is old enough that it has no reference number).
+2. Click the opportunity's row. That's it — the row is a link to the record.
+
+To open it in a new tab without losing your place in the list, ⌘-click (Ctrl-click on Windows) or
+middle-click the reference.
+
+> **This used to take three steps.** The list used to open a small summary in a panel on the right,
+> and you clicked again to get here. That panel was a cramped copy of this page, so it's gone. See
+> [Find an opportunity](./find-an-opportunity.md) for what the list does now.
 
 You can also reach it from a **Sales Order**: on a Sales Order page, the *Lineage* panel names the
 opportunity the order came from.

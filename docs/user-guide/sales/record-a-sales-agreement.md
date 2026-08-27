@@ -13,16 +13,21 @@ the prices to come from, so the Won button will refuse and tell you so.
 
 There are two places, and they do different jobs.
 
-**The opportunity workspace** — open **Opportunities**, select the opportunity you are working on,
-and look at the detail panel on the right. **Sales Agreement** sits directly under **Lifecycle**.
-If there is no agreement yet you will see a short form to create one. This is where you build and
-price the draft, and steps 1 to 3 below all happen here.
+**The opportunity's record page** — open **Opportunities**, click the deal's row, and find the
+**Sales agreement** card. If there is no agreement yet, this is where you create one. This is the
+only place you can, because an agreement is created *for* an opportunity and there is nothing to
+open until it exists.
 
-**The agreement's own page** — every agreement now has its own address, so you can link to it,
-bookmark it, and come back to it without going through the opportunity first. Open it from the
-**Sales agreement** card on the opportunity record, or from a Sales Order's **Priced from the
-sales agreement** link. It is the read surface: what was agreed, what it is worth, what was
-accepted and by whom, and where it went next. See *The agreement's own page* below.
+**The agreement's own page** — every agreement has its own address, so you can link to it, bookmark
+it, and come back to it without going through the opportunity first. Open it from the **Sales
+agreement** card, or from a Sales Order's **Priced from the sales agreement** link. This is where
+you do the work: pricing the lines, editing the terms while you negotiate, and accepting it. It is
+also the read surface — what was agreed, what it is worth, what was accepted and by whom, and where
+it went next.
+
+> **Pricing moved here.** Line pricing used to live only in a panel on the Opportunities screen.
+> That panel is gone, and pricing now lives on the agreement's own page — the record that actually
+> owns the prices. It is the same editor, so nothing about how you price a line has changed.
 
 ---
 

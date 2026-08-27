@@ -586,9 +586,20 @@ full line editor today — `ProductReferencePicker`, per-line quantity and unit 
 mounted. The gap is that two surfaces now show one record and only one of them can price it, which
 is the same question ND-13 asks about the Opportunity’s pane.
 
+**Closed 2026-08-27 (#1544).** The editor was **moved**, not reimplemented: `BLANK_LINE`, `toMinor`,
+`LinesEditor` and `buildLines` were extracted from `SalesAgreementPanel.jsx` to
+`salesAgreementLines.jsx`, and both surfaces import them. Two editors pricing one agreement would
+eventually round differently or disagree about which price shapes are acceptable, and that
+disagreement would be about what a customer agreed to pay. `toMinor` is the whole currency contract
+in eight lines — empty means UNPRICED and not zero, and anything that is not a plain amount is
+refused rather than coerced. A second copy of that is a second answer.
+
+With it, pane-only Sales Agreement capabilities reached **zero**, which is what unblocked the pane
+retirement recorded below — and, with it, ND-13.
+
 ---
 
-## Cross-family — the Opportunity workspace cannot retire its pane yet (2026-08-27)
+## Cross-family — the Opportunity pane could not retire, and now has (2026-08-27)
 
 **Owner ruling, 2026-08-27.** Opportunity Workspace P1v3 is DESIGN APPROVED and its architecture is
 final: a full-width workspace, no master-detail pane, no preview. **The deployed retirement is
@@ -621,6 +632,135 @@ live-render validation → Owner visual acceptance.
 
 The domain half of the workspace package (two governed pipeline views) is parked, tested and
 unmerged on `claude/opportunity-workspace-p1`. It touches no pane code.
+
+### Discharged, 2026-08-27 — and the count is now zero
+
+The sequence above ran to completion, in the order it specifies.
+
+**Sales Agreement North Star P1v1 provided the record** (family 5), which took over `read`,
+`accept` and terms editing. That left exactly one capability behind, and naming it precisely
+mattered: the blocker above says *"those capabilities — `salesAgreement.create`, `.updateDraft`,
+`.accept`, `.read`"*, four in total. Re-verified against `main` at `b926adf9` rather than carried
+forward on the strength of the earlier sentence:
+
+| Capability | Where it lives outside the pane | Since |
+| --- | --- | --- |
+| `salesAgreement.read` | `SalesAgreementDetail.jsx` | family 5 |
+| `salesAgreement.accept` | `SalesAgreementDetail.jsx` | family 5 |
+| `salesAgreement.updateDraft` | `SalesAgreementDetail.jsx` — terms, then **line pricing** via SA-G7 | SA-G7 (#1544) |
+| `salesAgreement.create` | `OpportunityAgreementCard.jsx`, on the P1v2 record | family 4 P1v2 |
+
+**Pane-only Sales Agreement capabilities: zero.** `create` was never trapped — it belongs on the
+Opportunity, because creating an agreement *for* an opportunity is an act performed from the
+opportunity and there is no agreement yet to open. The genuinely trapped one was line pricing,
+which SA-G7 moved by **extracting the editor to `salesAgreementLines.jsx` and composing it onto the
+Agreement record** — one price parser serving both surfaces, rather than a second copy that would
+eventually round differently or disagree about which price shapes are acceptable.
+
+**The pane is now unrouted.** `SalesWorkspace` is mounted nowhere in the app; `/customers/opportunities`
+renders the P1v4 collection. The retirement is **behavioral** — the module and its tests remain in
+the tree, because several of those tests still guard shared domain behaviour that has no other home
+yet, and deleting them to make a directory tidier would remove coverage this family is still using.
+That deletion is a separate, named cleanup.
+
+**Workspace P1v3 did not complete; it was superseded.** The sequence above anticipated
+"Workspace P1v3 completes". It did not, and the reason is worth recording because it changed the
+answer rather than the schedule: P1v3 was a revision of the *workspace*, and by the time the pane
+was free to retire, the record had had its own certified route since P1v2. A full-width workspace
+would still have been a surface whose job was previewing a page that already exists. **P1v4 replaced
+the shape**, not the styling — `/customers/opportunities` is now a collection whose only job is
+finding one opportunity, and the record is reached, not embedded.
+
+Two derivations were lifted from the parked branch — the `NEEDS_ATTENTION` and `AT_DECISION`
+pipeline views, pure domain slices that P1v4 also names — and `claude/opportunity-workspace-p1` was
+abandoned rather than merged. No P1v3 presentation reached `main`.
+
+---
+
+## Family 4b — Opportunity collection (P1v4)
+
+**Design authority:** `docs/north-star/opportunity/Opportunity-North-Star-List-P1v4.dc.html`.
+**Route:** `/customers/opportunities`. **Supersedes:** Workspace P1, and P1v3 unbuilt.
+
+The family has two surfaces now, and this is the first time that has been true in this ledger. The
+record (P1v2) and the collection (P1v4) are separate North Star pages with separate artifacts, and
+the migration README says so explicitly — a family is not a page, and flattening the two is how a
+collection ends up governed by a record's artifact.
+
+### What the pane was still holding, checked before it was removed
+
+Retiring a surface deletes whatever only that surface offered. SA-G7 was exactly that failure one
+family earlier, found *after* the record page shipped. So the check ran first this time, on the
+governed write commands rather than on the components:
+
+| Command | Only in the pane? | Where it is now |
+| --- | --- | --- |
+| `useOpportunityCreate` → `NewOpportunityForm` | **Yes** | Mounted by the collection |
+| `useOpportunitySectionSave` | No | Already on the P1v2 record |
+| `useOpportunityTransitions` | No | Already on the P1v2 record |
+
+One genuine trap, found before it could become a regression rather than after.
+
+### A second link was still pointing at the pane
+
+The P1v2 record's header fact linked the agreement to
+`/customers/opportunities?opportunity=<opportunityId>` — the pane's row selection — while the
+Sales agreement section directly below it linked to the agreement record. **One fact, two
+destinations** (NS-P4), and the header's was a surface this change removes. It also passed the
+*opportunity* id where the *agreement's* id belongs, so it would have been wrong even if the route
+had survived. Both now point at `/customers/opportunities/sales-agreement/:salesAgreementId`.
+
+Worth noting how it survived: the card immediately beneath it had been correct all along. A defect
+sitting inches from its own fixed twin reads as intentional.
+
+### G2 — the repository knew more than the design assumed
+
+P1v4 names G2 as *"the agreement reference is not on the opportunity list read"* and instructs the
+column to render `No agreement` truthfully. Verified rather than assumed: `projectOpportunity` is
+**shared** by the list read and the per-id read, and it returns `salesAgreementId` and
+`salesOrderId`. Existence is knowable at list level for free; `buildPipelineRow` was simply dropping
+`salesAgreementId` — the identical defect `salesOrderId` had one generation earlier, and the third
+instance of "written to Firestore, projected to nobody" in this family.
+
+What the read does **not** carry is either reference or either state. So the column states existence
+and stops — `Agreement` / `No agreement`, `Order created` / `Order not created` — which is **more
+than the design's fallback and less than its full treatment.** Recorded here as a named product
+decision rather than taken as a silent win: populating references needs list-level resolution or
+denormalisation, which is a read change, not a presentation change.
+
+The forbidden alternative is the one that would have looked easiest: resolving each row's agreement
+on demand. That is one round trip per visible opportunity on a surface built for scanning. A test
+renders 25 rows and asserts the governed source was invoked exactly once.
+
+### Deferred from the artifact, with reasons
+
+`+ Save as view` needs persistence authority for user-scoped list state. A sort control and column
+chooser would replace a governed order (attention first, then closing soonest) with a spreadsheet's.
+Pagination would imply a boundary the unpaged governed read does not have. `Updated moments ago`
+would require an "as of" timestamp nothing supplies — and inventing a relative time is precisely
+the class of fabrication this family keeps catching.
+
+### Absence carried the tests, because last time it did not
+
+The P1v2 blank-Owner defect survived 2,330 passing tests, every one of which resolved every fixture.
+So most of the 43 tests here are about missing facts: unassigned and unresolved are different
+sentences; an absent value is `Not estimated` and never `0`; `expectedValue` renders bare because no
+currency is recorded for it (G5); no document id appears anywhere, for any of the four entities on a
+row. Nineteen mutations were run against the load-bearing claims and all were caught but one
+equivalent mutant — including three that survived a first pass and exposed real weaknesses in the
+tests rather than in the code: an assertion matching a phrase where a bare `0` slipped through, a
+navigation claim made against a harness with no route table to navigate in, and two slices whose
+coverage lived in a different suite than the one being mutated.
+
+### My opportunities is viewer-scoped, and says so when it cannot be
+
+The only view whose membership depends on who is looking. The viewer's employee id resolves from the
+directory subscription already open for owner names — no extra read. An account with no linked
+Employee record gets a stated reason rather than an empty queue: *"we can't tell which are yours"*
+is true; *"you have no opportunities"* is a confident false claim about somebody's work. Its tab
+renders **no count** rather than a `0`, which would say the same wrong thing more quietly. An empty
+collection still outranks it — telling a brand-new tenant their sign-in is unlinked describes the
+wrong problem.
 
 ---
 

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 10px 12px 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    .sk { background: #DDD6C8; height: 11px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 40px;" data-screen-label="Opportunity List + State View P1v4">
+  <div id="ol1a" style="width: 1672px;" data-screen-label="1a Desktop 1440">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Opportunity North Star — List + State View P1v4 · desktop 1440</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">/customers/opportunities → row click → /customers/opportunities/:id (Opportunity Detail P1v2). No pane. No auto-select.</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ CRM/Sales</div>
+        <div style="padding: 5px 16px 5px 34px;">Customers</div>
+        <div style="margin: 2px 12px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Opportunities</div>
+        <div style="padding: 5px 16px 5px 34px;">Sales Orders</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Administration</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+      <div style="width: 1360px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">CRM/Sales → Opportunities</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Updated moments ago · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 0 12px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; margin: 0 0 6px; line-height: 1.05;">Opportunities</h1>
+            <div style="font-size: 13px; color: #4A5B55;"><strong style="color: #102B24;">41 open opportunities</strong> · 8 at decision · <span style="color: #B23B3B; font-weight: 600;">5 need attention</span></div>
+          </div>
+          <span style="font: 600 13px Inter, sans-serif; padding: 9px 18px; background: #102B24; color: #fff;">Create Opportunity</span>
+        </header>
+        <div style="display: flex; gap: 22px; align-items: baseline; border-bottom: 1px solid #C3BCAB; font-size: 13px;">
+          <span style="padding: 8px 2px; font-weight: 700; border-bottom: 3px solid #B08A55; margin-bottom: -1px;">Open <span style="color: #6B7A74; font-weight: 600;">41</span></span>
+          <span style="padding: 8px 2px; color: #4A5B55;">My Opportunities <span style="color: #6B7A74;">14</span></span>
+          <span style="padding: 8px 2px; color: #4A5B55;">Needs Attention <span style="color: #B23B3B; font-weight: 600;">5</span></span>
+          <span style="padding: 8px 2px; color: #4A5B55;">At Decision <span style="color: #6B7A74;">8</span></span>
+          <span style="padding: 8px 2px; color: #4A5B55;">Won <span style="color: #6B7A74;">12</span></span>
+          <span style="padding: 8px 2px; color: #4A5B55;">Lost <span style="color: #6B7A74;">6</span></span>
+          <span style="padding: 8px 2px; color: #4A5B55;">All <span style="color: #6B7A74;">59</span></span>
+          <span style="padding: 8px 2px; color: #1C4638; font-weight: 600;">+ Save as view</span>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; padding: 12px 0 10px;">
+          <span style="font-size: 12.5px; color: #6B7A74; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; min-width: 300px;">Search opportunities, customers, references</span>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #1C4638;">Filter · 1</span>
+          <span style="font-size: 12.5px; padding: 7px 12px; background: #FCFAF6; outline: 1px solid #D9D3C6; outline-offset: -1px;">Stage: any open <span style="color: #6B7A74;">✕</span></span>
+          <span style="font-size: 12.5px; color: #1C4638;">Clear all</span>
+          <span style="flex: 1;"></span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Sort <strong style="color: #102B24;">Attention, then closing soonest</strong> ▾</span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Columns ▾</span>
+        </div>
+        <div style="font-size: 12.5px; color: #4A5B55; padding-bottom: 6px;">Showing <strong style="color: #102B24;">41 open opportunities</strong> — narrowed by 1 filter</div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead><tr>
+            <th class="ls" style="width: 205px;">Opportunity</th>
+            <th class="ls">Customer</th>
+            <th class="ls" style="width: 120px;">Stage</th>
+            <th class="ls" style="width: 150px;">Attention</th>
+            <th class="ls" style="width: 95px; text-align: right;">Est. value</th>
+            <th class="ls" style="width: 105px;">Expected close</th>
+            <th class="ls" style="width: 175px;">Agreement / Order</th>
+            <th class="ls" style="width: 85px; padding-right: 0;">Owner</th>
+          </tr></thead>
+          <tbody>
+            <tr style="background: #FCFAF6;"><td class="ls"><strong>OPP-2026-001842</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Second commissary build-out</span></td><td class="ls">Desert Sun Beverage Co.<br><span style="color: #6B7A74; font-size: 12.5px;">National Accounts</span></td><td class="ls"><span style="color: #8A6D28; font-weight: 600;">Decision</span><br><span style="color: #6B7A74; font-size: 12px;">6 of 6</span></td><td class="ls"><span style="color: #8A6D28; font-weight: 600;">Awaiting decision</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">41,000</td><td class="ls">Sep 4 <span style="color: #6B7A74; font-size: 12px;">· 9d</span></td><td class="ls"><strong style="font-size: 12.5px;">SA-2026-000003</strong> <span style="color: #237A45; font-weight: 600; font-size: 12px;">Accepted</span><br><span style="font-size: 12.5px;">SO-2026-000015</span></td><td class="ls" style="padding-right: 0;">R. Amado</td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001839</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Shake line refresh</span></td><td class="ls">Route 66 Frozen Custard<br><span style="color: #6B7A74; font-size: 12.5px;">Retail</span></td><td class="ls"><span style="color: #2B5B7A; font-weight: 600;">Quoting</span><br><span style="color: #6B7A74; font-size: 12px;">4 of 6</span></td><td class="ls"><span style="color: #B23B3B; font-weight: 600;">No next action</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">18,500</td><td class="ls">Sep 18</td><td class="ls"><strong style="font-size: 12.5px;">SA-2026-000007</strong> <span style="color: #8A6D28; font-weight: 600; font-size: 12px;">Draft</span><br><span style="color: #6B7A74; font-size: 12.5px;">Order not created</span></td><td class="ls" style="padding-right: 0;">R. Amado</td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001833</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Two-store expansion</span></td><td class="ls">Sonoran Convenience Partners<br><span style="color: #6B7A74; font-size: 12.5px;">Retail</span></td><td class="ls"><span style="color: #2B5B7A; font-weight: 600;">Qualifying</span><br><span style="color: #6B7A74; font-size: 12px;">2 of 6</span></td><td class="ls"><span style="color: #B23B3B; font-weight: 600;">Close overdue 6d</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">64,200</td><td class="ls"><span style="color: #B23B3B; font-weight: 600;">Aug 20</span></td><td class="ls" style="color: #6B7A74;">No agreement</td><td class="ls" style="padding-right: 0;">T. Nguyen</td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001828</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Warranty-plus service plan</span></td><td class="ls">Verde Valley Creamery<br><span style="color: #6B7A74; font-size: 12.5px;">Retail</span></td><td class="ls"><span style="color: #2B5B7A; font-weight: 600;">Solution</span><br><span style="color: #6B7A74; font-size: 12px;">3 of 6</span></td><td class="ls" style="color: #6B7A74;">—</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">9,800</td><td class="ls">Oct 2</td><td class="ls" style="color: #6B7A74;">No agreement</td><td class="ls" style="padding-right: 0;">T. Nguyen</td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001824</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Harbor Grill — soft serve pilot</span></td><td class="ls">Harbor Grill Restaurant Group<br><span style="color: #6B7A74; font-size: 12.5px;">Retail</span></td><td class="ls"><span style="color: #2B5B7A; font-weight: 600;">Customer review</span><br><span style="color: #6B7A74; font-size: 12px;">5 of 6</span></td><td class="ls"><span style="color: #B23B3B; font-weight: 600;">No next action</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">999,999</td><td class="ls" style="color: #6B7A74;">Not recorded</td><td class="ls"><strong style="font-size: 12.5px;">SA-2026-000009</strong> <span style="color: #8A6D28; font-weight: 600; font-size: 12px;">Draft</span><br><span style="color: #6B7A74; font-size: 12.5px;">Order not created</span></td><td class="ls" style="padding-right: 0; color: #6B7A74;">Unresolved</td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001820</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Ice cream cabinet replacement</span></td><td class="ls">Maricopa Schools Nutrition<br><span style="color: #6B7A74; font-size: 12.5px;">Institutional</span></td><td class="ls"><span style="color: #237A45; font-weight: 600;">Identified</span><br><span style="color: #6B7A74; font-size: 12px;">1 of 6</span></td><td class="ls" style="color: #6B7A74;">—</td><td class="ls" style="text-align: right; color: #6B7A74;">Not estimated</td><td class="ls">Nov 14</td><td class="ls" style="color: #6B7A74;">No agreement</td><td class="ls" style="padding-right: 0;">T. Nguyen</td></tr>
+          </tbody>
+        </table>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 0; font-size: 12.5px; color: #6B7A74;">
+          <span>1–41 of 41 open · 59 total</span>
+          <span><a href="#p">Previous</a> · <a href="#n">Next</a></span>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p style="font-size: 12px; color: #4A5B55; margin: 8px 0 0; max-width: 130ch;">P1v4 = Workspace P1 rebuilt as an explicit Lists P1 composition, plus the downstream commercial column (§14–15). Identity stays <strong>reference bold + need subtitle</strong> — the domain has no "Opportunity Name" field; the need is the nearest human handle (gap G1). Agreement / Order is one column, two lines: SA reference + state word, then SO reference or "Order not created"; "No agreement" when none. The agreement reference is not on the opportunity list read today (stored on the agreement as sourceOpportunityId) — gap G2; until resolved the cell renders "No agreement" / "—" honestly, never a fabricated link. Value stays bare (no governed currency); "Not estimated" when absent. Views row = the domain's own pipeline views; "+ Save as view" is the Lists P1 pattern. Row = anchor to /customers/opportunities/:id.</p>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap;">
+    <div id="ol1b" style="width: 744px;" data-screen-label="1b Tablet 768">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b</span>Tablet 768</span>
+      <div style="width: 744px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 14px 24px 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">☰ · CRM/Sales → Opportunities</span>
+          <span style="font-size: 11px; color: #6B7A74;">Updated moments ago</span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 8px 0 12px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+          <div>
+            <span style="font-family: 'Source Serif 4', serif; font-size: 26px; font-weight: 700;">Opportunities</span>
+            <div style="font-size: 12.5px; color: #4A5B55;"><strong style="color: #102B24;">41 open</strong> · <span style="color: #B23B3B; font-weight: 600;">5 need attention</span></div>
+          </div>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 9px 14px; background: #102B24; color: #fff;">Create</span>
+        </div>
+        <div style="display: flex; gap: 18px; border-bottom: 1px solid #C3BCAB; font-size: 12.5px; margin-top: 8px; overflow-x: auto;">
+          <span style="padding: 7px 2px; font-weight: 700; border-bottom: 3px solid #B08A55; margin-bottom: -1px; white-space: nowrap;">Open 41</span>
+          <span style="padding: 7px 2px; color: #4A5B55; white-space: nowrap;">Mine 14</span>
+          <span style="padding: 7px 2px; color: #B23B3B; white-space: nowrap;">Attention 5</span>
+          <span style="padding: 7px 2px; color: #4A5B55; white-space: nowrap;">Decision 8</span>
+          <span style="padding: 7px 2px; color: #4A5B55; white-space: nowrap;">Won 12</span>
+          <span style="padding: 7px 2px; color: #4A5B55; white-space: nowrap;">All 59</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+          <thead><tr><th class="ls">Opportunity</th><th class="ls" style="width: 110px;">Stage</th><th class="ls" style="width: 90px; text-align: right;">Est. value</th><th class="ls" style="width: 130px; padding-right: 0;">Close · Commercial</th></tr></thead>
+          <tbody>
+            <tr><td class="ls"><strong>OPP-2026-001842</strong><br><span style="font-size: 12.5px;">Desert Sun Beverage Co.</span><br><span style="color: #8A6D28; font-size: 12px; font-weight: 600;">Awaiting decision</span></td><td class="ls"><span style="color: #8A6D28; font-weight: 600;">Decision</span><br><span style="color: #6B7A74; font-size: 12px;">6 of 6</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">41,000</td><td class="ls" style="padding-right: 0;">Sep 4<br><span style="font-size: 12px;">SA <span style="color: #237A45; font-weight: 600;">Accepted</span> · SO</span></td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001839</strong><br><span style="font-size: 12.5px;">Route 66 Frozen Custard</span><br><span style="color: #B23B3B; font-size: 12px; font-weight: 600;">No next action</span></td><td class="ls"><span style="color: #2B5B7A; font-weight: 600;">Quoting</span><br><span style="color: #6B7A74; font-size: 12px;">4 of 6</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">18,500</td><td class="ls" style="padding-right: 0;">Sep 18<br><span style="font-size: 12px;">SA <span style="color: #8A6D28; font-weight: 600;">Draft</span></span></td></tr>
+            <tr><td class="ls"><strong>OPP-2026-001833</strong><br><span style="font-size: 12.5px;">Sonoran Convenience Partners</span><br><span style="color: #B23B3B; font-size: 12px; font-weight: 600;">Close overdue 6d</span></td><td class="ls"><span style="color: #2B5B7A; font-weight: 600;">Qualifying</span><br><span style="color: #6B7A74; font-size: 12px;">2 of 6</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">64,200</td><td class="ls" style="padding-right: 0; color: #B23B3B;">Aug 20<br><span style="color: #6B7A74; font-size: 12px;">No agreement</span></td></tr>
+          </tbody>
+        </table>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 10px 0 0;">768: owner + channel + attention fold into identity; Stage, Value survive; Close and the commercial chain share the last column as two lines. Views row scrolls; same row → record navigation.</p>
+      </div>
+    </div>
+    <div id="ol1c" style="width: 420px;" data-screen-label="1c Phone 375">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1c</span>Phone 375</span>
+      <div style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 12px 14px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">CRM/Sales → Opportunities</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">Opportunities</span>
+          <span style="font: 600 12px Inter, sans-serif; padding: 8px 12px; background: #102B24; color: #fff;">Create</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; padding: 8px 0; font-size: 12px;">
+          <span style="flex: 1; color: #6B7A74; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px;">Search</span>
+          <span style="font-weight: 600; color: #1C4638; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px;">Open 41 ▾</span>
+          <span style="font-weight: 600; color: #1C4638; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px;">Filter</span>
+        </div>
+        <div style="border-top: 1px solid #C3BCAB;">
+          <div style="padding: 10px 2px; border-bottom: 1px solid #D9D3C6;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px;"><strong>OPP-2026-001842</strong><span style="color: #8A6D28; font-weight: 600; font-size: 12px;">Awaiting decision</span></div>
+            <div style="font-size: 12.5px;">Desert Sun Beverage Co.</div>
+            <div style="font-size: 12px; margin-top: 2px;"><span style="color: #8A6D28; font-weight: 600;">Decision</span> · <span style="font-variant-numeric: tabular-nums;">41,000</span> · Sep 4 · <span style="color: #6B7A74;">R. Amado</span></div>
+            <div style="font-size: 12px; color: #4A5B55;">SA-2026-000003 <span style="color: #237A45; font-weight: 600;">Accepted</span> · SO-2026-000015</div>
+          </div>
+          <div style="padding: 10px 2px; border-bottom: 1px solid #D9D3C6;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px;"><strong>OPP-2026-001839</strong><span style="color: #B23B3B; font-weight: 600; font-size: 12px;">No next action</span></div>
+            <div style="font-size: 12.5px;">Route 66 Frozen Custard</div>
+            <div style="font-size: 12px; margin-top: 2px;"><span style="color: #2B5B7A; font-weight: 600;">Quoting</span> · <span style="font-variant-numeric: tabular-nums;">18,500</span> · Sep 18 · <span style="color: #6B7A74;">R. Amado</span></div>
+            <div style="font-size: 12px; color: #4A5B55;">SA-2026-000007 <span style="color: #8A6D28; font-weight: 600;">Draft</span></div>
+          </div>
+          <div style="padding: 10px 2px; border-bottom: 1px solid #D9D3C6;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px;"><strong>OPP-2026-001820</strong></div>
+            <div style="font-size: 12.5px;">Maricopa Schools Nutrition</div>
+            <div style="font-size: 12px; margin-top: 2px;"><span style="color: #237A45; font-weight: 600;">Identified</span> · <span style="color: #6B7A74;">Not estimated</span> · Nov 14</div>
+          </div>
+        </div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 10px 0 0;">Card = reference + attention → customer → stage · value · close · owner → commercial chain when one exists (omitted otherwise — never "SA: —"). Whole card taps to the record; targets ≥44px; no horizontal scroll.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="ol1d" style="width: 1672px;" data-screen-label="1d North Star states">
+    <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1d</span>North Star states — Lists P1 system, Opportunity wording. Shell (rule pair, title, views) survives every state.</span>
+    <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-top: 10px;">
+      <div style="width: 520px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 14px 20px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">Loading (Lists P1 state B)</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700;">Opportunities</div>
+        <div class="sk" style="width: 180px; margin: 8px 0 14px;"></div>
+        <div style="border-bottom: 2px solid #102B24; padding-bottom: 6px; display: flex; gap: 40px;"><span class="sk" style="width: 90px;"></span><span class="sk" style="width: 70px;"></span><span class="sk" style="width: 60px;"></span></div>
+        <div style="padding: 13px 0; border-bottom: 1px solid #D9D3C6; display: flex; gap: 40px;"><span class="sk" style="width: 150px;"></span><span class="sk" style="width: 110px;"></span><span class="sk" style="width: 70px;"></span></div>
+        <div style="padding: 13px 0; border-bottom: 1px solid #D9D3C6; display: flex; gap: 40px;"><span class="sk" style="width: 140px;"></span><span class="sk" style="width: 90px;"></span><span class="sk" style="width: 80px;"></span></div>
+        <div style="padding: 13px 0; display: flex; gap: 40px;"><span class="sk" style="width: 160px;"></span><span class="sk" style="width: 100px;"></span><span class="sk" style="width: 60px;"></span></div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 8px 0 0;">Skeleton rows inside the intact shell. No lone spinner, no layout shift on arrival.</p>
+      </div>
+      <div style="width: 520px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 14px 20px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">True empty (state D)</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700;">Opportunities</div>
+        <div style="padding: 44px 0 36px; text-align: left; max-width: 46ch;">
+          <div style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 600;">No opportunities</div>
+          <p style="font-size: 13px; color: #4A5B55; margin: 8px 0 14px;">Opportunities track a customer need from first contact to a won or lost decision. The pipeline starts when the first one is created.</p>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 9px 16px; background: #102B24; color: #fff;">Create Opportunity</span>
+        </div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 0;">Create renders only when truly permitted; otherwise the sentence stands alone.</p>
+      </div>
+      <div style="width: 520px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 14px 20px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">Filtered empty (state G)</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700;">Opportunities</div>
+        <div style="display: flex; gap: 8px; padding: 10px 0; font-size: 12px;">
+          <span style="padding: 6px 10px; background: #FCFAF6; outline: 1px solid #D9D3C6; outline-offset: -1px;">Stage: Decision ✕</span>
+          <span style="padding: 6px 10px; background: #FCFAF6; outline: 1px solid #D9D3C6; outline-offset: -1px;">Owner: T. Nguyen ✕</span>
+        </div>
+        <div style="padding: 36px 0 30px; max-width: 46ch;">
+          <div style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 600;">No opportunities match this view</div>
+          <p style="font-size: 13px; color: #4A5B55; margin: 8px 0 14px;">2 filters are narrowing the Open view to zero.</p>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 9px 16px; outline: 1px solid #102B24; outline-offset: -1px; color: #102B24;">Clear filters</span>
+        </div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 0;">Tokens stay visible — the cause is on screen. Distinct wording from D/E/F, no create CTA.</p>
+      </div>
+      <div style="width: 520px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 14px 20px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">Load error (state H)</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700;">Opportunities</div>
+        <div style="padding: 44px 0 36px; max-width: 46ch;">
+          <div style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 600;">Opportunities didn't load</div>
+          <p style="font-size: 13px; color: #4A5B55; margin: 8px 0 14px;">Something went wrong reading the pipeline. Nothing was changed.</p>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 9px 16px; background: #102B24; color: #fff;">Try again</span>
+        </div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 0;">No raw backend text, no fake counts. Shell and views remain for orientation.</p>
+      </div>
+      <div style="width: 520px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 14px 20px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">Access restricted (state J)</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700;">Opportunities</div>
+        <div style="padding: 44px 0 36px; max-width: 46ch;">
+          <div style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 600;">You don't have access to Opportunities</div>
+          <p style="font-size: 13px; color: #4A5B55; margin: 8px 0 0;">Ask an administrator for the Sales capability if you need this pipeline.</p>
+        </div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 0;">No counts, no views row, no create — nothing leaks. Fail-closed per capability gating.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="ol1e" style="width: 1360px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 20px 28px 26px;" data-screen-label="1e Reuse and customization map">
+    <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1e</span>Shared system vs North Star — what is reused, what is designed</span>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 14px; font-size: 13px; line-height: 1.55;">
+      <div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 17px; font-weight: 700; border-bottom: 2px solid #102B24; padding-bottom: 4px;">Reused platform (Lists P1 + existing EOS)</div>
+        <ul style="margin: 10px 0 0; padding-left: 18px; color: #1C4638;">
+          <li>List engine: listViewDefinition columns/filters/sort/savedViews, readVia, capabilityRequirement</li>
+          <li>State engine: pipeline views from opportunityLifecycle (Open · Mine · Needs Attention · At Decision · Won · Lost · All) with truthful counts</li>
+          <li>Search, Filter sheet (governed stage words as checkboxes), sort, Columns, saved-view capture</li>
+          <li>Row navigation: row = anchor; cmd/middle-click work; checkbox/overflow stop propagation</li>
+          <li>16-state UI system; record-count + result-context logic; pagination; responsive column-drop order</li>
+          <li>Attention derivation (deriveAttention: Awaiting decision / No next action / Close overdue) — presentation of existing projections only</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 17px; font-weight: 700; border-bottom: 2px solid #102B24; padding-bottom: 4px;">North Star customization (this design)</div>
+        <ul style="margin: 10px 0 0; padding-left: 18px; color: #1C4638;">
+          <li>Full object-family header: context line, rule pair, serif title, count sentence, Create Opportunity placement</li>
+          <li>Opportunity row composition: reference + need identity, customer + channel, stage words + n of 6, tone-colored attention, bare tabular value, close with proximity/overdue tone</li>
+          <li>Agreement / Order column: SA reference + state word over SO reference or "Order not created"; "No agreement" when none — compact context only, no agreement workflow here</li>
+          <li>Opportunity wording for all five designed states (1d)</li>
+          <li>Responsive recomposition: 768 three-line identity fold; 375 purpose-built scan cards</li>
+        </ul>
+      </div>
+    </div>
+    <div style="margin-top: 18px; font-size: 13px; line-height: 1.55; max-width: 120ch;">
+      <div style="font-family: 'Source Serif 4', serif; font-size: 17px; font-weight: 700; border-bottom: 2px solid #102B24; padding-bottom: 4px;">Authority gaps (named, not invented)</div>
+      <ul style="margin: 10px 0 0; padding-left: 18px; color: #1C4638;">
+        <li><strong>G1 — No "Opportunity Name" field.</strong> Identity is the governed reference + the need subtitle. A name field is a product decision, not a design one.</li>
+        <li><strong>G2 — Agreement reference is not on the opportunity list read.</strong> The association lives on the agreement (sourceOpportunityId); getSalesAgreementForOpportunity is per-record. The column needs list-level resolution (or denormalization) to populate; until then it renders "No agreement" / "—" truthfully. Environment gate off (NOT_ENABLED) → the column is omitted entirely, never dead cells.</li>
+        <li><strong>G3 — Sales Order reference</strong> is durable on the record after atomic Won (closeOpportunityAsWon) — LIVE for Won rows; for open rows with an agreement-created order it depends on G2's resolution.</li>
+        <li><strong>G4 — Customer name resolution (existing O2):</strong> the read returns accountNameById: {} today; rows render "Customer — name unavailable" until it ships. Demo names are design intent.</li>
+        <li><strong>G5 — No governed currency on expectedValue (existing O1):</strong> bare numbers stand; "Not estimated" when absent.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

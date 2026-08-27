@@ -24,6 +24,14 @@ import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 // the rows answer "what exists" (NS-P2). Reusing it is also what keeps a person who opens an
 // opportunity from feeling they crossed between two products.
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+// THE BUTTON PRIMITIVE, not the bare `fo-button` class.
+//
+// `.fo-button` on its own is a FILLED DARK BUTTON, not a neutral one -- checked in the rendered
+// page rather than assumed from the name. Using it for Filter, "Clear filters" and "Show all"
+// put three buttons on screen with the same weight as "New Opportunity", so the page had four
+// primary actions and therefore none. The variants below restore the hierarchy the artifact
+// draws: one filled action, everything else quiet.
+import { Button } from "../../shared/ui/primitives/index.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 // THE SAME owner resolution the record page uses, imported rather than reimplemented so a deal
 // cannot be owned by one person in the list and another on the record that list opens.
@@ -167,14 +175,16 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
 
   const ready = status === "ready" && !loading;
 
-  // `ns-page` alone, with no block class of its own: this page's header, rules and table are the
-  // shared primitives, and every `ns-collection__*` element class below carries real styling. A
-  // bare block class that styles nothing is a hook pretending to be design.
+  // NO OUTER PAGE WRAPPER. `WorkspaceIdentity` renders `.ns-workspace`, which already carries the
+  // page's max-width, centring and padding, and it takes the rest of the page as `children`. An
+  // extra `.ns-page` around it doubled the horizontal padding and, because the body was rendered as
+  // a SIBLING rather than as children, left the container's 80px bottom padding sitting between the
+  // header and the views row as a 98px band of nothing.
+  //
+  // The count and summary render ONLY on a settled read. A "0 open" printed while loading, or after
+  // a denial, is a claim about the business rather than about the request -- and the primitive omits
+  // what it is not given rather than rendering a zero.
   return (
-    <div className="ns-page">
-      {/* The count and summary render ONLY on a settled read. A "0 open" printed while loading, or
-          after a denial, is a claim about the business rather than about the request -- and the
-          primitive omits what it is not given rather than rendering a zero. */}
       <WorkspaceIdentity
         crumb="CRM / Sales"
         title="Opportunities"
@@ -192,21 +202,20 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
           // while a disabled one carrying a reason reads as the permission boundary it is. The
           // reason is visible text, not tooltip-only, so it reaches keyboard and AT users too.
           <div className="ns-collection__act">
-            <button
-              type="button"
-              className={writeReadiness.enabled ? "fo-button fo-button--primary" : "fo-button"}
+            <Button
+              variant={writeReadiness.enabled ? "primary" : "protected"}
+              reason={writeReadiness.enabled ? undefined : (writeReadiness.reason ?? "Not available")}
               disabled={!writeReadiness.enabled}
               onClick={writeReadiness.enabled ? () => setCreating(true) : undefined}
             >
               New Opportunity
-            </button>
+            </Button>
             {!writeReadiness.enabled && writeReadiness.reason ? (
               <p className="ns-collection__act-reason">{writeReadiness.reason}</p>
             ) : null}
           </div>
         }
-      />
-
+      >
       {creating ? (
         <NewOpportunityForm
           readiness={writeReadiness}
@@ -268,22 +277,18 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
               placeholder="Search opportunities, customers, references"
             />
           </label>
-          <button
-            type="button"
-            className={`fo-button${stageFilter.size > 0 ? " is-active" : ""}`}
+          <Button
+            variant="secondary"
+            className={stageFilter.size > 0 ? "is-active" : undefined}
             aria-expanded={filterOpen}
             onClick={() => setFilterOpen((v) => !v)}
           >
             Filter{stageFilter.size > 0 ? ` · ${stageFilter.size}` : ""}
-          </button>
+          </Button>
           {narrowed ? (
-            <button
-              type="button"
-              className="fo-link-button"
-              onClick={() => { setQuery(""); setStageFilter(new Set()); }}
-            >
+            <Button variant="tertiary" onClick={() => { setQuery(""); setStageFilter(new Set()); }}>
               Clear all
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -344,13 +349,9 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
                 viewRows.length === 1 ? "1 opportunity is" : `${viewRows.length} opportunities are`
               } being narrowed to none.`}
               action={
-                <button
-                  type="button"
-                  className="fo-button"
-                  onClick={() => { setQuery(""); setStageFilter(new Set()); }}
-                >
+                <Button variant="secondary" onClick={() => { setQuery(""); setStageFilter(new Set()); }}>
                   Clear filters
-                </button>
+                </Button>
               }
             />
           ) : (
@@ -359,9 +360,9 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
               detail={OPPORTUNITY_EMPTY_TEXT[selected.emptyReason] ?? OPPORTUNITY_EMPTY_TEXT.none}
               action={
                 selected.emptyReason !== "none" ? (
-                  <button type="button" className="fo-button" onClick={() => setView(OPPORTUNITY_VIEW.ALL)}>
+                  <Button variant="secondary" onClick={() => setView(OPPORTUNITY_VIEW.ALL)}>
                     Show all opportunities
-                  </button>
+                  </Button>
                 ) : null
               }
             />
@@ -388,7 +389,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
                   <th scope="col">Opportunity</th>
                   <th scope="col">Customer</th>
                   <th scope="col">Stage</th>
-                  <th scope="col">Attention</th>
+                  <th scope="col" className="ns-col--attention">Attention</th>
                   <th scope="col" className="ns-num">Est. value</th>
                   <th scope="col">Expected close</th>
                   <th scope="col" className="ns-col--commercial">Agreement / Order</th>
@@ -404,7 +405,7 @@ export default function OpportunityList({ source, readiness, createDeps, viewerU
           </div>
         </>
       )}
-    </div>
+      </WorkspaceIdentity>
   );
 }
 
@@ -437,6 +438,12 @@ function OpportunityRow({ row, navigate }) {
       <td>
         <Link to={row.href} className="ns-row__ref">{row.reference}</Link>
         {row.need ? <span className="ns-row__sub">{row.need}</span> : null}
+        {/* The 768 fold: attention loses its own column and appears here instead. Rendered once and
+            shown by width, rather than duplicated into a second markup branch -- two copies of one
+            fact is how they come to disagree. */}
+        {row.attention.words ? (
+          <span className={`ns-row__foldattention is-${row.attention.tone}`}>{row.attention.words}</span>
+        ) : null}
       </td>
       <td data-label="Customer">
         {row.customer.name ? (
@@ -452,7 +459,7 @@ function OpportunityRow({ row, navigate }) {
         <span className={`ns-row__stage is-${row.stage.tone}`}>{row.stage.words}</span>
         {row.stage.position ? <span className="ns-row__sub">{row.stage.position}</span> : null}
       </td>
-      <td data-label="Attention">
+      <td className="ns-col--attention" data-label="Attention">
         {row.attention.words ? (
           <span className={`ns-row__attention is-${row.attention.tone}`}>{row.attention.words}</span>
         ) : (

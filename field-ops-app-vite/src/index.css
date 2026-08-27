@@ -6104,6 +6104,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* ── The state view. Views of one collection, so they read as a set rather than as six buttons. */
 .ns-collection__views { display: flex; flex-wrap: wrap; gap: 2px; margin: 18px 0 0;
   border-bottom: 1px solid var(--color-border); }
+/* THE VIEWS ROW SCROLLS RATHER THAN WRAPPING once it stops fitting. Wrapped onto three lines it
+   stopped reading as one row of alternatives and started reading as a block of links, and it pushed
+   the first opportunity most of a screen further down. Scrolling keeps the set legible as a set.
+   `flex-shrink: 0` on the tabs is what stops them compressing instead of overflowing. */
+@media (max-width: 820px) {
+  .ns-collection__views { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ns-collection__views::-webkit-scrollbar { display: none; }
+  .ns-view { flex: 0 0 auto; }
+}
 .ns-view { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px;
   border: 0; border-bottom: 2px solid transparent; background: none; cursor: pointer;
   font: inherit; font-size: 13px; color: var(--color-text-secondary); margin-bottom: -1px; }
@@ -6158,8 +6167,21 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (max-width: 900px) {
   .ns-collection__table .ns-col--commercial { display: none; }
 }
+/* THE 768 FOLD. Attention stops being its own column and rides under the reference, which is where
+   the artifact puts it -- the reason to act belongs beside the thing to act on, not three columns
+   away from it. Customer keeps its own column; stage, value and close survive. */
+@media (max-width: 820px) {
+  .ns-collection__table .ns-col--attention { display: none; }
+  .ns-row__foldattention { display: block; margin-top: 3px; font-size: 11.5px; }
+  .ns-row__foldattention.is-attention { color: var(--verenward-bronze); font-weight: 600; }
+}
+@media (min-width: 821px) { .ns-row__foldattention { display: none; } }
 
-@media (max-width: 768px) {
+/* CARDS START BELOW THE TABLET, NOT AT IT. The artifact's 1b frame is 768 and it is still a table
+   -- columns drop and identity folds to three lines. `max-width: 768px` is INCLUSIVE, so the card
+   recomposition was firing at exactly the width the design draws as a table. 600px is the width
+   below which the surviving four columns genuinely stop fitting. */
+@media (max-width: 600px) {
   .ns-collection__act { align-items: flex-start; }
   .ns-collection__act-reason { text-align: left; }
   /* THE TABLE BECOMES CARDS. thead is removed from the accessibility tree as well as from view —
@@ -6169,6 +6191,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .ns-collection__table, .ns-collection__table tbody, .ns-collection__table tr,
   .ns-collection__table td { display: block; width: 100%; }
   .ns-collection__table tr { padding: 14px 0; border-bottom: 1px solid var(--color-border); }
+  /* THE CARD IS ONE THING, so only the CARD gets a rule. `.ns-workspace table td` sets a hairline
+     on every cell and outranks a bare `td` selector, so the card rendered as a stack of eight ruled
+     strips -- heavier than the table it replaced, and reading as eight rows rather than one record.
+     Matched at the same specificity to actually win. */
+  .ns-workspace .ns-collection__table td,
   .ns-collection__table td { border: 0; padding: 2px 0; }
   .ns-collection__table .ns-col--owner,
   .ns-collection__table .ns-col--commercial { display: block; }
@@ -6179,8 +6206,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     color: var(--color-text-secondary); }
   .ns-collection__table td.ns-num { text-align: left; }
   .ns-row__sub { display: inline; margin-left: 6px; }
-  /* The whole card is the target, and it clears the 44px floor by its own padding and content. */
-  .ns-row__ref { min-height: 32px; font-size: 15px; }
+  /* The REFERENCE is what a thumb aims at, so it carries the floor itself. The card around it is
+     tappable too, but "the card is big enough" does not excuse a 32px link inside it -- the link is
+     the thing that looks tappable, and it was measured at 32 before this rule. */
+  .ns-row__ref { display: flex; align-items: center; min-height: 44px; font-size: 15px; }
 }
 
 /* ── The collection toolbar. Narrows what is already loaded; it never re-reads. */
@@ -6191,9 +6220,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   border: 1px solid var(--color-border); }
 .ns-toolbar__search input:focus-visible { outline: 2px solid var(--color-text-primary);
   outline-offset: -2px; }
-/* An ACTIVE filter is marked by weight and a stronger edge as well as by its count, so the fact
-   that the list is narrowed never depends on colour alone. */
-.ns-toolbar .fo-button.is-active { font-weight: 600; border-color: var(--color-text-primary); }
+/* An ACTIVE filter is marked by a stronger edge and its own count as well as by colour, so the fact
+   that the list is narrowed never depends on colour alone. Sits on the SECONDARY variant: Filter is
+   a subordinate control beside Create, which is the page's one filled action. */
+.ns-toolbar .fo-button.is-active { border-color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 1px var(--color-text-primary); }
 
 .ns-filtersheet { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0 0;
   padding: 12px 14px; border: 1px solid var(--color-border);
