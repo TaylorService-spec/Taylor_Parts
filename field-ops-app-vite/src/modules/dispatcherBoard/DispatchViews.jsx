@@ -6,6 +6,7 @@ import {
   dayBand,
   fortnightDays,
   laneCapacity,
+  occupiedDays,
   weekDays,
 } from "../../domain/dispatchBoardGeometry.js";
 import { blockedKindChipLabel } from "../../domain/schedulingRefusal.js";
@@ -103,7 +104,12 @@ function WeekViewImpl({
   draggingWorkOrder,
   onDropOnTechnicianDay,
 }) {
-  const days = weekDays(anchorMillis, nowMillis).filter((d) => !d.isWeekend);
+  // ALL SEVEN DAYS. schedulingWorkspace.buildWeekDays says why in its own comment -- a job scheduled
+  // on a weekend is never silently hidden, because a hidden job is a correctness bug -- and filtering
+  // to Mon-Fri reintroduced exactly that: the live gate navigated to a Saturday carrying two
+  // placements and the week view showed nothing. Weekends are de-emphasised in CSS instead, which
+  // keeps the artifact's weekday-forward reading without dropping work off the board.
+  const days = weekDays(anchorMillis, nowMillis);
 
   return (
     <div className="ns-dispatch-week" role="table" aria-label="Week schedule">
@@ -136,7 +142,7 @@ function WeekViewImpl({
                 <div
                   key={d.dateMillis}
                   role="cell"
-                  className={`ns-dispatch-week__cell${canDrop ? " ns-dispatch-week__cell--droppable" : ""}`}
+                  className={`ns-dispatch-week__cell${canDrop ? " ns-dispatch-week__cell--droppable" : ""}${d.isWeekend ? " ns-dispatch-week__cell--weekend" : ""}`}
                   onDragOver={canDrop ? (e) => e.preventDefault() : undefined}
                   onDrop={canDrop ? (e) => { e.preventDefault(); onDropOnTechnicianDay?.(tech.id, d.dateMillis); } : undefined}
                   onClick={() => onSelectDay?.(d.dateMillis)}
@@ -178,7 +184,7 @@ function TwoWeekLoadImpl({
   nowMillis,
   onSelectDay,
 }) {
-  const days = fortnightDays(anchorMillis, nowMillis);
+  const days = fortnightDays(anchorMillis, nowMillis, occupiedDays(placedWorkOrders, [...availabilityByTechnicianId.values()]));
   const weekBreakIndex = 5;
 
   return (

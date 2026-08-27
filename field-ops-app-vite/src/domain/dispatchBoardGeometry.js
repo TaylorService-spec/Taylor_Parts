@@ -301,11 +301,37 @@ export function weekDays(anchorMillis, nowMillis) {
   return buildWeekDays(startOfWeekMillis(anchorMillis), nowMillis);
 }
 
-/** Ten weekday cells across two weeks, for the load band. */
-export function fortnightDays(anchorMillis, nowMillis) {
+/**
+ * The load band's days across two weeks.
+ *
+ * Ten weekday cells, as the artifact draws them — PLUS any weekend day that actually carries work or
+ * blocked time. `buildWeekDays` renders all seven for a reason its own comment states outright: "a
+ * job scheduled on a weekend is never silently hidden (a hidden job is a correctness bug)". A fixed
+ * Mon–Fri band would keep the drawing tidy by dropping real placements out of the load picture,
+ * which is the one thing this board must not do.
+ *
+ * So a quiet fortnight looks exactly like the artifact, and a fortnight with Saturday work says so.
+ */
+export function fortnightDays(anchorMillis, nowMillis, occupiedDayStarts = new Set()) {
   const first = weekDays(anchorMillis, nowMillis);
   const second = weekDays(startOfWeekMillis(anchorMillis) + 7 * MS_PER_DAY + MS_PER_HOUR, nowMillis);
-  return [...first, ...second].filter((d) => !d.isWeekend);
+  return [...first, ...second].filter((d) => !d.isWeekend || occupiedDayStarts.has(d.dateMillis));
+}
+
+/** The local day-starts carrying a placement or blocked time — for `fortnightDays`' weekend rule. */
+export function occupiedDays(workOrders, availabilityViews = []) {
+  const days = new Set();
+  for (const wo of workOrders ?? []) {
+    const w = placementWindow(wo);
+    if (w) days.add(startOfDayMillis(w.startMillis));
+  }
+  for (const view of availabilityViews) {
+    for (const b of view?.blockedTime ?? []) {
+      let cursor = startOfDayMillis(b.startMillis);
+      while (cursor < b.endMillis) { days.add(cursor); cursor += MS_PER_DAY; }
+    }
+  }
+  return days;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   fleetBookedPercent,
   fortnightDays,
   isPlaced,
+  occupiedDays,
   laneCapacity,
   placeInBand,
   placedBlockedTime,
@@ -271,6 +272,25 @@ describe("Day, Week and 2 Weeks agree on one schedule", () => {
     const early = scheduledWo("early", localAt(8), localAt(9));
     const bucket = bucketByDay([late, early], days).get(startOfDayMillis(localAt(9)));
     assert.deepEqual(bucket.map((e) => e.workOrder.id), ["early", "late"]);
+  });
+
+  it("a WEEKEND placement is never hidden — from either coarse view", () => {
+    // buildWeekDays renders all seven days precisely so this cannot happen, and filtering to Mon-Fri
+    // reintroduced it: the live gate landed on a Saturday with two placements and the week view drew
+    // nothing. The load band keeps the artifact's ten weekday cells UNLESS a weekend carries work.
+    const sat = new Date(2026, 8, 15);
+    sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7)); // the coming Saturday
+    sat.setHours(9, 0, 0, 0);
+    const weekendJob = scheduledWo("sat", sat.getTime(), sat.getTime() + HOUR);
+
+    const days = weekDays(sat.getTime(), sat.getTime());
+    assert.equal(days.length, 7, "the week view is offered all seven days");
+    assert.equal((bucketByDay([weekendJob], days).get(startOfDayMillis(sat.getTime())) ?? []).length, 1);
+
+    const quiet = fortnightDays(sat.getTime(), sat.getTime(), new Set());
+    assert.equal(quiet.length, 10, "a quiet fortnight looks exactly like the artifact");
+    const busy = fortnightDays(sat.getTime(), sat.getTime(), occupiedDays([weekendJob]));
+    assert.ok(busy.some((d) => d.dateMillis === startOfDayMillis(sat.getTime())), "Saturday work adds its day");
   });
 
   it("a multi-day block hatches every day it covers", () => {
