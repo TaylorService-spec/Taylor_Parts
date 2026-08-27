@@ -20,6 +20,8 @@ live Firebase project.
 | `lib/testKit.mjs` | Shared harness: persona seeding, Part Master seeding, the `workOrder.parts.plan` governed-capability grant, callable request builder, ledger/audit assertion helpers. |
 | `workOrderLifecycleEmulator.test.mjs` | **Chain 1, happy path.** `createWorkOrder` → `setWorkOrderPartsPlan` → `transitionWorkOrder` (MarkReady/Schedule/Dispatch/Accept/Travel/Arrive/WorkStart/Complete/Close) → `updateWorkOrderExecutionData`, asserting Work Order status, `inventory_transactions` ledger entries, and `auditEvents` at each step. |
 | `workOrderLifecycleEdgeCasesEmulator.test.mjs` | Chain 1's three "current fixtures don't cover this" states: an **empty** parts plan, a **terminal** (CLOSED) Work Order, and a **cancelled** (post-Dispatch, reservation-releasing) Work Order. |
+| `schedulingCommandsEmulator.test.mjs` | **Chain 2, the governed Scheduling commands.** `rescheduleWorkOrder` / `reassignScheduledWorkOrder` (plan changes — status stays `SCHEDULED`) and `transitionWorkOrder("Unschedule")` (ND-18's one reverse edge), including every ND-20 refusal, the outside-working-hours **warning** that must NOT become a refusal, atomicity after each refusal, and a real two-writer concurrency race against the per-technician lock. |
+| `schedulingAvailabilityEmulator.test.mjs` | **Chain 2b, the availability authority.** `setTechnicianWorkingAvailability` / `createTechnicianBlockedTime` / `deleteTechnicianBlockedTime` and the trusted `readTechnicianAvailability` projection — including that the projection and the commands agree about which windows are blocked, and that an unrecorded schedule reports `null` capacity rather than zero. |
 | `runAll.mjs` | Spawns every `*Emulator.test.mjs` file in this directory as its own process and aggregates pass/fail into one exit code. |
 
 The orchestrator that starts/stops the emulator lives one level up, at
@@ -121,6 +123,20 @@ callable authorization logic.
    shells out through on this platform). Set env vars in a `.mjs` script (as
    `runE2eEmulatorSuite.mjs` does) or pass them as real CLI flags (`--project`, `--config`), never as
    shell-syntax prefixes.
+
+### One thing chain 2 learned the hard way
+
+**Log an unrecognised error before sanitizing it.** The scheduling callables collapse anything they
+do not recognise into a generic `internal` so no internal state crosses the trust boundary — which is
+right, and which also meant an intermittent `10 ABORTED: Transaction lock timeout` surfaced as an
+unexplainable "The request could not be completed." and cost an instrumented rerun to identify. The
+callables now log the raw error server-side first. If you add a chain whose callables sanitize
+errors, do the same, or the harness will one day tell you something failed and nothing will tell you
+what.
+
+The finding underneath it was real: contention was being reported to callers as a 500 when the
+truthful answer was "somebody else was moving this, try again". See
+`docs/design/governed-scheduling-domain.md`.
 
 ## Known gaps (honest accounting)
 

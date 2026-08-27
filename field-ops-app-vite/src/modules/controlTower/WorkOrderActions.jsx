@@ -70,6 +70,9 @@ const STATUS_LABEL = {
 const ACTION_LABEL = {
   MarkReady: "Mark Ready",
   Schedule: "Schedule",
+  // Named for what it does to the job, not for the transition it performs. A dispatcher is putting
+  // the work back in the queue, not "performing an Unschedule".
+  Unschedule: "Return to queue",
   Dispatch: "Dispatch",
   Close: "Close",
   Cancel: "Cancel",
@@ -81,13 +84,15 @@ export default function WorkOrderActions({ workOrder, role, technicians, showSta
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [selectedTechId, setSelectedTechId] = useState("");
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [confirmingUnschedule, setConfirmingUnschedule] = useState(false);
   const [actionError, setActionError] = useState(null);
 
   const isOwnAssignment = false; // dispatcher-only view -- see header comment
   const allowedActions = getAllowedActions(workOrder.status, role, isOwnAssignment);
   // Presentation only: keep the canonical resolver's result, but render the
   // non-destructive actions first and the destructive Cancel visually separated.
-  const { primary: primaryActions, cancelAllowed } = orderWorkflowActions(allowedActions);
+  const { primary: primaryActions, cancelAllowed, emphasized: emphasizedAction } =
+    orderWorkflowActions(allowedActions);
 
   async function runAction(action, extra = {}) {
     setSubmitting(true);
@@ -124,6 +129,15 @@ export default function WorkOrderActions({ workOrder, role, technicians, showSta
       setConfirmingCancel(true);
       return;
     }
+    // ND-18: Unschedule requires a reason server-side, so firing it bare would be an
+    // invalid-argument round trip. Collected here through the SAME governed confirm dialog Cancel
+    // uses, with requireReason -- the client check is defense-in-depth, and transitionWorkOrder
+    // re-enforces it regardless of what this surface sends.
+    if (action === "Unschedule") {
+      setActionError(null);
+      setConfirmingUnschedule(true);
+      return;
+    }
     runAction(action);
   }
 
@@ -152,16 +166,19 @@ const statusPill = (status) =>
       {showStatus ? statusPill(workOrder.status) : null}
 
       <div className="fo-btn-row wo-action-row">
-        {primaryActions.map((action, i) => (
+        {primaryActions.map((action) => (
           <Button
             key={action}
-            // ONE FILLED BUTTON, OPT-IN. orderWorkflowActions already returns the actions in
-            // likelihood order, so the first is the transition a dispatcher almost always wants.
-            // The North Star record header asks for exactly one filled button and outlines for the
-            // rest; every other caller (ControlTower, the dispatcher board) keeps today-s uniform
-            // secondaries by not passing the flag. LEGALITY IS UNCHANGED — this reweights the
-            // rendering of the SAME allowed list, and adds no action to it.
-            variant={emphasizeFirst && i === 0 ? "primary" : "secondary"}
+            // ONE FILLED BUTTON, OPT-IN. orderWorkflowActions names which action to fill — the one
+            // that ADVANCES the lifecycle. It used to be "the first", which was safe only while
+            // every status offered at most one non-destructive action. ND-18 ended that: SCHEDULED
+            // now offers Dispatch and Unschedule, and the engine returns Unschedule first, so
+            // emphasis by position would fill the withdraw button. The North Star record header asks
+            // for exactly one filled button and outlines for the rest; every other caller
+            // (ControlTower, the dispatcher board) keeps today-s uniform secondaries by not passing
+            // the flag. LEGALITY IS UNCHANGED — this reweights the rendering of the SAME allowed
+            // list, and adds no action to it.
+            variant={emphasizeFirst && action === emphasizedAction ? "primary" : "secondary"}
             disabled={submitting}
             onClick={() => handleActionClick(action)}
           >
@@ -194,6 +211,27 @@ const statusPill = (status) =>
             setConfirmingCancel(false); // success -- the live subscription re-renders the read-only status
           }}
           onClose={() => setConfirmingCancel(false)}
+          mapError={workflowActionErrorMessage}
+        />
+      )}
+
+      {confirmingUnschedule && (
+        <ConfirmDialog
+          title="Return work order to the queue"
+          consequence="The scheduled technician and time are cleared, and the work order goes back to Ready to schedule. The previous placement is kept in the audit record."
+          confirmLabel="Return to queue"
+          cancelLabel="Keep the schedule"
+          // Not destructive: nothing is lost and the work is still going to happen. It is a plan
+          // being withdrawn, and the dialog should not dress it as a deletion.
+          destructive={false}
+          requireReason
+          reasonLabel="Why is this being unscheduled?"
+          reasonHint="Recorded against the work order, with the technician and time being given up."
+          onConfirm={async (reason) => {
+            await transitionWorkOrder(workOrder.id, "Unschedule", { unscheduleReason: reason });
+            setConfirmingUnschedule(false);
+          }}
+          onClose={() => setConfirmingUnschedule(false)}
           mapError={workflowActionErrorMessage}
         />
       )}

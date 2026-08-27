@@ -66,6 +66,11 @@ const server = stripComments(readFileSync(SERVER_SRC, "utf8"));
 const TRANSITIONS = extractObject(server, "TRANSITIONS");
 const ACTION_TO_STATUS = extractObject(server, "ACTION_TO_STATUS");
 const ACTION_PERMISSIONS = extractObject(server, "ACTION_PERMISSIONS");
+// ND-18 added a THIRD table to the contract. Once two actions could produce the same status
+// (MarkReady and Unschedule both target READY_TO_DISPATCH), the transition edge stopped being enough
+// to identify which action is legal from a status -- so the mirror has to reproduce this table too,
+// or the client would offer MarkReady on a SCHEDULED Work Order.
+const ACTION_ALLOWED_FROM = extractObject(server, "ACTION_ALLOWED_FROM");
 
 const STATUSES = Object.keys(TRANSITIONS);
 const ACTIONS = Object.keys(ACTION_TO_STATUS);
@@ -78,6 +83,20 @@ test("the parse actually found the server tables (guards against a silent empty 
     "every action must carry a permission entry");
   // Spot-check a value the field lifecycle depends on.
   assert.deepEqual(TRANSITIONS.ARRIVED, ["WORK_IN_PROGRESS", "CANCELLED"]);
+  // And one the ND-18 reverse edge depends on -- a silently empty parse of the third table would
+  // make the sweep below pass while checking nothing about it.
+  assert.deepEqual(ACTION_ALLOWED_FROM.Unschedule, ["SCHEDULED"]);
+  assert.deepEqual(ACTION_ALLOWED_FROM.MarkReady, ["CREATED"]);
+});
+
+test("ND-18: the client mirror does not offer MarkReady on a SCHEDULED Work Order", () => {
+  // Asserted by name, not merely implied by the sweep. The reverse edge made READY_TO_DISPATCH
+  // reachable from SCHEDULED, and MarkReady targets READY_TO_DISPATCH -- so a mirror that forgot
+  // ACTION_ALLOWED_FROM would give a dispatcher a second, reason-free way to un-schedule a job.
+  for (const role of ROLES) {
+    assert.ok(!getAllowedActions("SCHEDULED", role, true).includes("MarkReady"));
+  }
+  assert.ok(getAllowedActions("SCHEDULED", "admin", false).includes("Unschedule"));
 });
 
 test("client canTransitionWorkOrder matches the server TRANSITIONS table exactly", () => {
@@ -99,6 +118,8 @@ test("client getAllowedActions matches the server permission matrix for every ca
         const expected = ACTIONS.filter((action) => {
           const next = ACTION_TO_STATUS[action];
           if (!TRANSITIONS[status].includes(next)) return false;
+          const allowedFrom = ACTION_ALLOWED_FROM[action];
+          if (allowedFrom && !allowedFrom.includes(status)) return false;
           const perm = ACTION_PERMISSIONS[action];
           if (!perm.roles.includes(role)) return false;
           if (perm.requiresOwnAssignment && !isOwn) return false;

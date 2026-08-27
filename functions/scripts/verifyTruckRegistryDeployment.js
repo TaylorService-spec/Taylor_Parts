@@ -36,7 +36,20 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 // obstacle. Previous pin: 4605a7f0775986da7b087abcbab00c53d7dde6e0167ff2a3dd223208263bd1cf, whose
 // ruleset is still the one named in docs/releases/sandbox-convergence-state-2026-08-16.md -- that
 // record describes what was deployed on that date and is deliberately NOT rewritten.
-const GOVERNED_RULES_SHA256 = "c2840d12f30ed89becbc9223a4acda69748ae6be8f777ee57f9c9ac2fd017b27";
+// Re-pinned 2026-08-27 for the Dispatch & Scheduler technician-availability deny-all blocks
+// (technician_working_availability, technician_blocked_time -- ND-22). Same shape as the
+// sales_agreements re-pin above, and the guard caught this change in CI before the branch merged,
+// which is the guard working exactly as its comment promises.
+//
+// WHAT THIS PIN NOW MEANS, STATED PLAINLY: it tracks the GOVERNED ruleset in this repository, not
+// the live one. The availability blocks are authored and NOT deployed, so until someone runs
+// `firebase deploy --only firestore:rules`, running this verifier against the sandbox will refuse
+// with LIVE-EXTRACTED-SOURCE != GOVERNED. That refusal is correct -- live genuinely is not governed
+// -- and it is the signal to deploy, not a reason to un-pin.
+//
+// Previous pin: c2840d12f30ed89becbc9223a4acda69748ae6be8f777ee57f9c9ac2fd017b27 (the
+// sales_agreements ruleset, and the one currently live on the sandbox).
+const GOVERNED_RULES_SHA256 = "b94e287a918acb12b000bf717a8cce5c8678b6afd02184eacaa21624bae969d4";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

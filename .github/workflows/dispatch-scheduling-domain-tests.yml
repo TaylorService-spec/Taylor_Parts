@@ -1,0 +1,66 @@
+name: Dispatch Scheduling Domain Tests
+
+# Dispatch & Scheduler -- the governed Scheduling domain (ND-18 through ND-22, Owner ruling
+# 2026-08-27). Covers the pure availability model, its input validation, and the Work Order state
+# machine that the ND-18 reverse edge changed.
+#
+# A new subsystem without its own workflow is CI-uncovered, however green the repository looks. This
+# file exists so the collision policy cannot be quietly inverted: minutesOutsideWorkingHours,
+# findBlockedTimeConflict and the ND-18 assertions in transitionEngine.test.mjs are what make
+# "blocked time refuses and working hours only warn" falsifiable rather than merely written down.
+#
+# No emulator: every module under test is pure by construction (no Firestore access, no clock).
+# The transactional commands in scheduling/schedulingCommands.ts are NOT covered here -- they need
+# the emulator harness and are a separate, later step, recorded rather than implied.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/scheduling/**"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/workOrderAvailability.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/test/schedulingAvailabilityModel.test.mjs"
+      - "functions/test/transitionEngine.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/dispatch-scheduling-domain-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/scheduling/**"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/workOrderAvailability.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/test/schedulingAvailabilityModel.test.mjs"
+      - "functions/test/transitionEngine.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/dispatch-scheduling-domain-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scheduling-domain-tests:
+    name: Scheduling availability model + lifecycle tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Scheduling domain tests (build + run)
+        run: npm run test:schedulingDomain
+        working-directory: functions

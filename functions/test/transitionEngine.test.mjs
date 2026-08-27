@@ -200,5 +200,74 @@ check("COMPLETED only allows Close (admin/dispatcher), never Cancel (spec: COMPL
   assert.deepEqual(getAllowedActions("COMPLETED", "technician", true), []);
 });
 
+// ---------------------------------------------------------------------------------------------
+// ND-18 -- the one reverse edge (Owner ruling 2026-08-27)
+//
+// SCHEDULED -> READY_TO_DISPATCH is the first and only backward transition in this table. These
+// assertions exist because "only" is the load-bearing word: a reverse edge is easy to add and hard
+// to notice, and the reasoning that admitted this one does not extend to any other.
+// ---------------------------------------------------------------------------------------------
+
+check("ND-18: SCHEDULED can go back to READY_TO_DISPATCH", () => {
+  assert.ok(canTransition("SCHEDULED", "READY_TO_DISPATCH"));
+  assert.equal(ACTION_TO_STATUS.Unschedule, "READY_TO_DISPATCH");
+});
+
+check("ND-18: it is the ONLY reverse edge anywhere in the table", () => {
+  // The lifecycle's forward order. Any edge from a later status to an earlier one, other than the
+  // sanctioned Unschedule edge, is a regression -- and CANCELLED is terminal, not backward.
+  const ORDER = [
+    "CREATED",
+    "READY_TO_DISPATCH",
+    "SCHEDULED",
+    "DISPATCHED",
+    "ACCEPTED",
+    "EN_ROUTE",
+    "ARRIVED",
+    "WORK_IN_PROGRESS",
+    "COMPLETED",
+    "CLOSED",
+  ];
+  const rank = (status) => ORDER.indexOf(status);
+  const reverse = [];
+  for (const [from, targets] of Object.entries(TRANSITIONS)) {
+    for (const to of targets) {
+      if (to === "CANCELLED") continue;
+      if (rank(from) >= 0 && rank(to) >= 0 && rank(to) < rank(from)) reverse.push(`${from} -> ${to}`);
+    }
+  }
+  assert.deepEqual(reverse, ["SCHEDULED -> READY_TO_DISPATCH"]);
+});
+
+check("ND-18: Unschedule is offered from SCHEDULED, to admin and dispatcher only", () => {
+  assert.ok(getAllowedActions("SCHEDULED", "admin", false).includes("Unschedule"));
+  assert.ok(getAllowedActions("SCHEDULED", "dispatcher", false).includes("Unschedule"));
+  assert.ok(!getAllowedActions("SCHEDULED", "technician", true).includes("Unschedule"));
+});
+
+check("ND-18: Unschedule is refused from DISPATCHED onward -- once a technician is sent, the job is committed", () => {
+  for (const status of ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS", "COMPLETED", "CLOSED", "CANCELLED"]) {
+    for (const role of ["admin", "dispatcher", "technician"]) {
+      assert.ok(
+        !getAllowedActions(status, role, true).includes("Unschedule"),
+        `Unschedule must not be offered from ${status} to ${role}`,
+      );
+    }
+  }
+});
+
+check("ND-18 regression guard: MarkReady did NOT become available from SCHEDULED", () => {
+  // The defect the ACTION_ALLOWED_FROM table exists to prevent. MarkReady and Unschedule now share a
+  // target status, so without that table the new reverse edge would silently create a second,
+  // unaudited, reason-free way to un-schedule a job -- as a side effect of allowing the first one.
+  assert.ok(!getAllowedActions("SCHEDULED", "admin", false).includes("MarkReady"));
+  assert.ok(!getAllowedActions("SCHEDULED", "dispatcher", false).includes("MarkReady"));
+  assert.ok(getAllowedActions("CREATED", "admin", false).includes("MarkReady"), "MarkReady must still work from CREATED");
+});
+
+check("ND-18: Unschedule writes no execution timestamp -- nothing happened, a plan was withdrawn", () => {
+  assert.equal(ACTION_TIMESTAMP_FIELD.Unschedule, undefined);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
