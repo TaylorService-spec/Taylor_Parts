@@ -87,6 +87,10 @@ const CONFORMANT_SURFACES = [
   "modules/workOrders/WorkOrdersList.jsx",
   "modules/accounts/AccountsList.jsx",
   "modules/sales/SalesOrdersList.jsx",
+  "modules/inventory/PartMasterList.jsx",
+  "modules/equipment/EquipmentWorkspace.jsx",
+  "modules/purchasing/Suppliers.jsx",
+  "modules/inventory/Manufacturers.jsx",
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -145,6 +149,11 @@ const NORTH_STAR_COLLECTION_PAGES = [
   // migration could not have merged.
   "modules/accounts/AccountsList.jsx",     // Phase 4
   "modules/sales/SalesOrdersList.jsx",     // Phase 5
+  // TRANCHE 1 — catalog / reference families.
+  "modules/inventory/PartMasterList.jsx",  // moved from CONFORMANT_WORKSPACES (Wave 4)
+  "modules/equipment/EquipmentWorkspace.jsx",
+  "modules/purchasing/Suppliers.jsx",
+  "modules/inventory/Manufacturers.jsx",
 ];
 
 function walk(dir) {

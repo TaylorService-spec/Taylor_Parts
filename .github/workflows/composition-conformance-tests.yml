@@ -97,6 +97,14 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
       - "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
+      # Lists P2 tranche 1 — the catalog / reference families.
+      - "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentWorkspace.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/supplier.js"
+      - "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
+      - "field-ops-app-vite/test/listsP2Tranche1.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -230,6 +238,14 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
       - "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
+      # Lists P2 tranche 1 — the catalog / reference families.
+      - "field-ops-app-vite/src/modules/inventory/PartMasterList.jsx"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentWorkspace.jsx"
+      - "field-ops-app-vite/src/modules/purchasing/Suppliers.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Manufacturers.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/supplier.js"
+      - "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
+      - "field-ops-app-vite/test/listsP2Tranche1.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -336,6 +352,13 @@ jobs:
       # between the shell lists, so its conformance and its silent-truncation guard run together.
       - name: Customers collection (Lists P2 grammar + truncation guard)
         run: npx vitest run test/accountsStructuredList.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Lists P2 tranche 1 — Part Master, Equipment, Suppliers, Manufacturers. The Owner ruling
+      # under test here is the pagination one: a list may not render a boundary its read does not
+      # have, and Manufacturers reads the whole collection unbounded.
+      - name: Lists P2 tranche 1 (catalog/reference: no invented boundaries, no invented routes)
+        run: npx vitest run test/listsP2Tranche1.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the
