@@ -18,8 +18,9 @@ import {
 import { useListCriteria } from "../../hooks/useListCriteria.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
-import ActionRail from "../../shared/ui/ActionRail.jsx";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import { buildRowHref } from "../../metadata/listPresentation.js";
 import { Button } from "../../shared/ui/primitives/index.js";
 import Modal from "../../shared/ui/Modal";
 import AccountForm from "./AccountForm";
@@ -170,14 +171,40 @@ export default function AccountsList() {
   const [searchTerm, setSearchTerm] = useState("");
   const search = useAccountSearch(searchTerm);
 
+  // THE PRIMARY ACTION, WITHOUT A RAIL AROUND IT. Lists P2 places one governed action beside the
+  // title; ActionRail exists to arrange a CLUSTER, and a cluster of one is chrome around nothing.
+  // The label drops its "+" for the reason the record pages dropped theirs — the button already
+  // reads as an action, and the glyph was the last thing on this page speaking the old vocabulary.
   const actions = (
-    <ActionRail
-      primary={<Button variant="primary" onClick={() => setShowCreate(true)}>+ New Customer</Button>}
-    />
+    <Button variant="primary" onClick={() => setShowCreate(true)}>New Customer</Button>
   );
 
+  // OWNER NAMES ARE A SECONDARY FACT, and the directory subscription can fail on its own while
+  // every customer loads. Each affected cell already says so where the name would have been; this
+  // is the one quiet line above the table that tells a reader scanning a column of them that the
+  // cause is one failed read rather than a hundred incomplete records (Lists P2 board 2d).
+  const degraded = directory.error
+    ? "Owner names couldn’t be loaded. The customers below are complete otherwise."
+    : null;
+
   return (
-    <WorkspaceShell title="Customers" actions={actions}>
+    <WorkspaceIdentity
+      crumb="CRM / Sales"
+      title="Customers"
+      // THE AGGREGATE OVER THE CURRENT FILTERS, which is what the rows below are a page of — never
+      // a tally of loaded rows, and null rather than 0 on any failure (useListViewChrome).
+      //
+      // NOT the portfolio total. That is a different, wider read, and it already has a home: the
+      // status cards below, beside the four counts it adds up to. Printing it here would put a
+      // collection-wide number directly above a filtered list.
+      count={typeof total === "number" ? total : null}
+      countLabel={total === 1 ? "customer" : "customers"}
+      // DELIBERATELY EMPTY. The portfolio cards ARE this page's workload summary and they carry
+      // governed server-side counts. Repeating them as a summary line would be the duplicated
+      // lifecycle state the density rule names, in a smaller font.
+      summaryItems={[]}
+      action={actions}
+    >
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
       {showCreate && (
@@ -351,6 +378,12 @@ export default function AccountsList() {
       {/* A list filtered to nothing and an empty book of business are different statements.
           MetadataListGrid renders its own "no rows" state, so this only takes over the FILTERED
           case, where telling somebody they have no customers would be plainly false. */}
+      {/* Only on a settled, populated read: over a skeleton or a denial this would be explaining a
+          secondary failure while the primary one is still unresolved. */}
+      {degraded && presentation?.state === "READY" ? (
+        <HonestState state={HONEST_STATE.DEGRADED} detail={degraded} />
+      ) : null}
+
       {presentation?.state === "FILTERED" ? (
         <ListEmptyState
           criteria={criteria}
@@ -360,11 +393,15 @@ export default function AccountsList() {
       <MetadataListGrid
         presentation={presentation}
         caption="Customers"
-        onRowClick={(id) => navigate(`/customers/${id}`)}
+        // THE DESTINATION THE DEFINITION NAMES. accountIndexList.rowNavigationTo is "/customers/:id"
+        // and agreed with the literal this replaces -- which is luck, not a property. Work Orders
+        // and Part Master both declared routes this application does not mount, and nobody noticed
+        // because no screen ever asked. Reading it is what puts this path under the route check.
+        onRowClick={(id) => navigate(buildRowHref(accountIndexList.rowNavigationTo, id))}
         onLoadMore={loadMore}
         onRetry={retry}
       />
       )}
-    </WorkspaceShell>
+    </WorkspaceIdentity>
   );
 }

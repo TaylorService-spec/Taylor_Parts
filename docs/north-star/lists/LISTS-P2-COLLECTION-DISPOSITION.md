@@ -407,3 +407,48 @@ criteria visible), DENIED, UNAVAILABLE, **DEGRADED**. SEARCH_ZERO belongs to the
 which states its own scope precisely — *"No work order numbers start with …"* — rather than claiming
 a collection-wide absence. IDLE, EMPTY_VIEW, UNKNOWN, OFFLINE_STALE and the four bulk-action states
 are not reachable on this surface.
+
+### Phase 4 — Customers / Accounts (`/customers`) · merged
+
+**The first page to cross between the shell lists** — the move the third membership list was added in
+Phase 1 to make possible. It dropped `WorkspaceShell` (which GATE 2 demands of its former list) for
+`WorkspaceIdentity` (which GATE 2d demands of this one); without that list the migration could not
+have merged.
+
+Everything underneath is unchanged: the bounded cursor-paged read, the governed server-side portfolio
+summary, URL-backed criteria, the bounded prefix search, the relationship facets, the refused-vs-
+dropped distinction, and the silent-truncation guard. Four things changed:
+
+1. **The header is the collection header.** `ActionRail` went with the shell — it exists to arrange a
+   *cluster*, and a cluster of one is chrome around nothing. The action's `+` went too: the button
+   already reads as an action, and the glyph was the last thing on this page speaking the old
+   vocabulary.
+2. **Two governed counts, and only one belongs in the header.** This page is the only collection with
+   both. The header takes the **filtered aggregate**, because that describes the rows below it; the
+   **portfolio total** stays with the status cards, beside the four counts it adds up to. Printing
+   the collection-wide total directly above a filtered list would be true and would read as a lie.
+3. **The summary line is deliberately empty.** The portfolio cards *are* this page's workload summary
+   and they carry governed server-side counts. Repeating them as a summary line is the duplicated
+   lifecycle state the density rule names, in a smaller font.
+4. **DEGRADED** for a failed owner-name read, and the row destination now comes from the definition.
+
+**Account and prospect semantics preserved.** `PROSPECT` remains a status card, not a family (A-D4) —
+and a Lists migration is precisely where somebody might promote it to its own collection because a
+design board draws families as tabs. A test holds it. Account **record** authority is untouched.
+
+| # | Question | Answer |
+| --- | --- | --- |
+| 1 | Identify quickly? | Yes — the customer name, which is this object's governed identity. |
+| 2 | Current meaningful state? | Status as a **field**, not a lifecycle (ND-11) — the page does not draw a spine this object does not have. |
+| 3 | Needs attention? | **No column, correctly.** `accountAttentionProjection` is *record*-level and AR-gated; a list-level attention column would need a projection that does not exist. |
+| 4 | Compare with neighbours? | Yes — Pattern B sorts, relationship and status facets from the definition, and the portfolio cards as governed comparators. |
+| 5 | Open the right record? | Yes — from the definition. |
+| 6 | **Anything that belongs on Detail?** | **No.** Contacts, locations, AR, service history, equipment and commercial profile are all on the record. |
+| 7 | **Any field shown merely because it existed?** | **No.** Tags render in their rows but the global tag facet is still withheld — tag values are open, so a facet built from the current page would present "the tags on these fifty rows" as "the tags that exist". |
+| 8 | **Duplicated context from another object?** | **No.** Owner is a resolved name from one directory subscription — never `find(...)?.name ?? id`, and never the stale `assignedToDisplayName` on the snapshot, because a person who changed their name would otherwise be shown as somebody who no longer exists. |
+| 9 | **Invented a fact, action or authority?** | **No.** No count is derived from a page; every unavailable count is a dash, never a zero; refused and dropped criteria keep separate sentences; the truncation guard still says which of two shortfalls it is looking at. |
+| 10 | **Handheld preserves the answer?** | Yes — `fo-table--stack` cards below the phone breakpoint. |
+
+**States reachable here:** LOADING, POPULATED, TRUE_EMPTY, FILTER_ZERO, DENIED, UNAVAILABLE,
+DEGRADED. The portfolio summary carries its own DENIED and UNAVAILABLE lines, separately from the
+list's — two reads, two states, and a denial of one must not read as a failure of the other.

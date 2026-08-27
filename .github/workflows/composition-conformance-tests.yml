@@ -93,6 +93,9 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/listsP2StateContract.test.jsx"
       - "field-ops-app-vite/src/metadata/definitions/part.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/account.js"
+      - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -222,6 +225,9 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/listsP2StateContract.test.jsx"
       - "field-ops-app-vite/src/metadata/definitions/part.js"
+      - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/account.js"
+      - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -322,6 +328,12 @@ jobs:
       # enforces it).
       - name: Lists P2 shared contract (17 states, seven empties, live record routes)
         run: npx vitest run test/listsP2StateContract.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Customers on the shared collection grammar (Lists P2 Phase 4) — the first page to move
+      # between the shell lists, so its conformance and its silent-truncation guard run together.
+      - name: Customers collection (Lists P2 grammar + truncation guard)
+        run: npx vitest run test/accountsStructuredList.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the

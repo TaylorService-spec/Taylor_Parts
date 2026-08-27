@@ -45,7 +45,6 @@ const CONFORMANT_WORKSPACES = [
   "modules/service/CoordinatedVisitsWorkspace.jsx",
   "modules/mobile/CoordinatedMissionView.jsx",
   "modules/inventory/TruckInventory.jsx", // Wave 1
-  "modules/accounts/AccountsList.jsx", // Wave 2
   "modules/equipment/EquipmentDetail.jsx", // Wave 3
   "modules/equipment/EquipmentRegister.jsx", // Wave 3
   "modules/inventory/Inventory.jsx", // Wave 4 (unrouted/dead code -- see final report)
@@ -86,6 +85,7 @@ const CONFORMANT_SURFACES = [
   // page look like a conformant workspace to it.
   "modules/sales/OpportunityList.jsx",
   "modules/workOrders/WorkOrdersList.jsx",
+  "modules/accounts/AccountsList.jsx",
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -138,6 +138,11 @@ const NORTH_STAR_RECORD_PAGES = [
 const NORTH_STAR_COLLECTION_PAGES = [
   "modules/sales/OpportunityList.jsx",     // family 4b — the P1v4 reference collection
   "modules/workOrders/WorkOrdersList.jsx", // the WorkspaceIdentity header landed here first
+  // MOVED here from CONFORMANT_WORKSPACES (Wave 2) by the Lists P2 Phase 4 migration — the first
+  // page to cross the line this third list was added to make crossable. It dropped WorkspaceShell,
+  // which GATE 2 demands of its former list and GATE 2d forbids of this one; without the move the
+  // migration could not have merged.
+  "modules/accounts/AccountsList.jsx",     // Phase 4
 ];
 
 function walk(dir) {
