@@ -78,14 +78,23 @@ function projection(overrides = {}) {
 }
 
 /** Drives the page exactly as the real seam does: projection → view → absence. */
-function mountWith({ result = null, loading = false, errorStatus = null, grant = () => true, handlers = {} } = {}) {
+function mountWith({ result = null, loading = false, errorStatus = null, grant = () => true, handlers = {}, seam = {} } = {}) {
   const view = salesAgreementView({ result, loading, errorStatus });
+  const wired = {
+    updateDraft: vi.fn().mockResolvedValue({ ok: true }),
+    accept: vi.fn().mockResolvedValue({ ok: true }),
+    pending: null,
+    commandError: null,
+    clearCommandError: vi.fn(),
+    refresh: vi.fn(),
+    ...seam,
+  };
   useSalesAgreementById.mockReturnValue({
     view,
     absence: salesAgreementAbsence(view, SALES_AGREEMENT_READ_MODE.BY_ID),
     readMode: SALES_AGREEMENT_READ_MODE.BY_ID,
-    refresh: vi.fn(),
     STATE: {},
+    ...wired,
   });
   return render(
     <MemoryRouter initialEntries={[`/customers/opportunities/sales-agreement/${AGREEMENT_DOC_ID}`]}>
@@ -232,11 +241,12 @@ describe("actions — governed only, and restrictions kept apart", () => {
     }
   });
 
-  it("never renders a live-looking control with nothing behind it", () => {
-    ready(); // no handlers injected — PR 4 supplies them
+  it("wires eligible controls to the governed commands (PR 4)", () => {
+    // PR 3 asserted these were disabled because nothing was behind them. PR 4 is what puts
+    // something behind them, so the assertion becomes the opposite — deliberately.
+    ready();
     for (const name of ["Edit draft", "Record acceptance"]) {
-      const button = screen.queryByRole("button", { name });
-      if (button) expect(button.disabled).toBe(true);
+      expect(screen.getByRole("button", { name }).disabled).toBe(false);
     }
   });
 });

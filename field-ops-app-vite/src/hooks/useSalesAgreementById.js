@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSalesAgreementContext } from "../services/salesAgreementCommandClient.js";
+import {
+  getSalesAgreementContext,
+  updateSalesAgreementDraft,
+  acceptSalesAgreement,
+} from "../services/salesAgreementCommandClient.js";
+import { useAgreementCommandRunner } from "./useAgreementCommandRunner.js";
 import { salesAgreementView, SALES_AGREEMENT_VIEW_STATE } from "../domain/salesAgreementView.js";
 import {
   planSalesAgreementRead,
@@ -16,12 +21,16 @@ import {
 // and no Rules change: the read authority this page needs has existed the whole time and nothing
 // called it.
 //
-// ════════════════════ READ-ONLY, DELIBERATELY ════════════════════
+// ════════════════════ TWO COMMANDS, AND ONLY TWO (PR 4) ════════════════════
 //
-// `useSalesAgreement` bundles create / updateDraft / accept because the Opportunity surface needs
-// them together. This hook exposes NO mutation. PR 4 wires the two governed commands onto the
-// record page; until then a surface holding an agreement id cannot write through this seam even by
-// accident — which is the point of introducing it separately.
+// It shipped read-only in PR 2 and gains exactly `updateSalesAgreementDraft` and
+// `acceptSalesAgreement` here. NOT `createSalesAgreement` — creation belongs to the Opportunity
+// surface, which is the only place that knows which Opportunity an agreement would be created FROM,
+// and the server derives the customer from it. There is no third command in this family.
+//
+// Both run through `useAgreementCommandRunner`, the same discipline `useSalesAgreement` uses:
+// per-intent idempotency keys, one in-flight command at a time, and an authoritative re-read after
+// every success. What differs is only WHICH read is refreshed — this hook's by-id one.
 //
 // ════════════════════ THE DECISIONS ARE NOT IN THIS FILE ════════════════════
 //
@@ -66,9 +75,34 @@ export function useSalesAgreementById(salesAgreementId, { enabled = true } = {})
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // The shared runner, refreshing through THIS hook's by-id read — which is the whole reason the
+  // discipline was extracted: `useSalesAgreement` would have re-read by opportunity after a command
+  // and left this page showing pre-command state.
+  const { run, pending, commandError, clearCommandError } = useAgreementCommandRunner(refresh);
+
+  const updateDraft = useCallback(
+    (patch) => run("updateDraft", (idempotencyKey) =>
+      // The id comes from the ROUTE, not from the caller: a page that let a handler name a different
+      // agreement would be a way to edit one record from another's address.
+      updateSalesAgreementDraft({ ...patch, salesAgreementId, idempotencyKey })),
+    [run, salesAgreementId],
+  );
+
+  // ACCEPT TAKES NO COMMERCIAL INPUT — only which agreement, and the retry key. state, acceptedAt
+  // and acceptedBy are server-stamped, and sending them is refused rather than ignored.
+  const accept = useCallback(
+    () => run("accept", (idempotencyKey) => acceptSalesAgreement({ salesAgreementId, idempotencyKey })),
+    [run, salesAgreementId],
+  );
+
   const view = salesAgreementView({ result, loading, errorStatus });
   return {
     view,
+    updateDraft,
+    accept,
+    pending,
+    commandError,
+    clearCommandError,
     // Same view state, two different facts: an id that resolves to nothing is a bad address, not an
     // invitation to draft an agreement from nowhere. See domain/salesAgreementRead.js.
     absence: salesAgreementAbsence(view, SALES_AGREEMENT_READ_MODE.BY_ID),
