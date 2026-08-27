@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,6 +12,7 @@ import {
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
+const CLIENT_SOURCE = join(REPO_ROOT, "field-ops-app-vite", "src");
 const API_KEY = "private_ai_test_key_not_real";
 
 const envelope = (over = {}) => ({
@@ -45,6 +46,18 @@ const okResponse = (body = {}) => ({
     ...body,
   }),
 });
+
+function collectFiles(directory, extensions) {
+  const found = [];
+  let entries;
+  try { entries = readdirSync(directory); } catch { return found; }
+  for (const entry of entries) {
+    const full = join(directory, entry);
+    if (statSync(full).isDirectory()) found.push(...collectFiles(full, extensions));
+    else if (extensions.some((extension) => entry.endsWith(extension))) found.push(full);
+  }
+  return found;
+}
 
 test("only synthetic, reviewed domains may cross the transport", () => {
   assert.doesNotThrow(() => assertOperationalEnvelope(envelope()));
@@ -141,6 +154,22 @@ test("provider failures do not leak the endpoint or key", async () => {
     assert.equal(error.message.includes(API_KEY), false);
     return true;
   });
+});
+
+test("the browser bundle cannot address the operational model route or gateway configuration", () => {
+  const files = collectFiles(CLIENT_SOURCE, [".js", ".jsx", ".ts", ".tsx"]);
+  assert.ok(files.length > 0, "no client source was scanned");
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    for (const forbidden of [
+      "/v1/operational/interpret",
+      "KEYSTONE_GATEWAY_URL",
+      "KEYSTONE_GATEWAY_API_KEY",
+      ":11434",
+    ]) {
+      assert.equal(text.includes(forbidden), false, `${file} exposes ${forbidden} to the browser`);
+    }
+  }
 });
 
 test("the operational provider has no external fallback and no operational write path", () => {
