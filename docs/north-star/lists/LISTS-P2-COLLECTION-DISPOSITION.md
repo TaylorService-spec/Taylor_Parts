@@ -343,3 +343,44 @@ signal distinguishing "resolution failed" from "no name recorded", so the per-ce
 "Customer — name unavailable" is the whole truth available and a quiet line above the table would be
 a claim the read cannot support. OFFLINE_STALE and the four bulk-action states are unreachable
 platform-wide.
+
+### Phase 3 — Work Orders (`/service`) · merged
+
+The cursor-paged proof. Most of P2's shape was already here and already correct — governed aggregate
+total (null on failure, never 0), "Load more" instead of invented page boundaries, count-less status
+chips, definition-declared filters/sorts/saved views, filter tokens and dropped/refused notices, the
+customer filter as a picker of names, and a bounded prefix search with `WORK_ORDER_TEXT_SEARCH_GAP`
+named rather than implied. Three things changed:
+
+1. **The row destination now comes from the definition.** The screen navigated to a hard-coded path —
+   correct, and correct in *one* of the two places that claimed to know the answer. `rowNavigationTo`
+   said `/work-orders/:id`, a route this application does not mount, and the disagreement was
+   invisible because nothing read the definition. Reading it makes the declaration guardable.
+2. **DEGRADED became reachable.** Customer and Technician resolve through separate reads and either
+   can fail while every work order loads perfectly. Each cell already said so in its own place; a
+   reader scanning a column of "Name unavailable" could not tell one bad record from one failed read.
+   One quiet line above the table now says which — and **withheld is a different sentence from
+   failed**, because a permission fact no retry changes must not wear the words of a failure a retry
+   might fix.
+3. **The status chips were re-checked, not re-decided.** A shared grammar is exactly the moment
+   somebody adds per-bucket counts back "for consistency". P2 2h agrees with the decision already
+   made here, and a test now holds it.
+
+| # | Question | Answer |
+| --- | --- | --- |
+| 1 | Identify quickly? | Yes — `WO-` reference bold, complaint beneath. |
+| 2 | Current meaningful state? | Yes — the governed status vocabulary, grouped so every status is in exactly one chip. |
+| 3 | Needs attention? | **Not yet, and not faked.** Attention derivations exist on the *record*; no collection-level projection does. P2 2h calls for the slot preserved, not invented — a test asserts no attention column and no `workOrderAttention` import. Closing it needs a projection, which is a read change. |
+| 4 | Compare with neighbours? | Yes — Pattern B: definition-declared sorts only, and sorting by an optional date states on screen that unscheduled work cannot appear. |
+| 5 | Open the right record? | Yes — and now from the definition. |
+| 6 | **Anything that belongs on Detail?** | **No.** Six columns. Parts plan, labour, history, transitions and equipment all live on the record. |
+| 7 | **Any field shown merely because it existed?** | **No.** The entity carries far more than six fields. |
+| 8 | **Duplicated context from another object?** | **No.** Customer is a resolved *name*, one line; the Account record is not reproduced. Technician is a resolved name through the one technician vocabulary — never a `find(...)?.name ?? id`, which is how a raw id reaches a screen. |
+| 9 | **Invented a fact, action or authority?** | **No.** No per-bucket counts, no attention column, no freshness claim, no text search implied beyond the number prefix. The realtime `useWorkOrders` subscription five dispatch surfaces depend on is untouched — paging it would have been a dispatch decision taken under cover of a list migration. |
+| 10 | **Handheld preserves the answer?** | Yes — `MetadataListGrid` renders `fo-table--stack`, so each row becomes a labelled card below the phone breakpoint. |
+
+**States reachable here:** LOADING, POPULATED, TRUE_EMPTY, FILTER_ZERO (via `ListEmptyState` with the
+criteria visible), DENIED, UNAVAILABLE, **DEGRADED**. SEARCH_ZERO belongs to the search dropdown,
+which states its own scope precisely — *"No work order numbers start with …"* — rather than claiming
+a collection-wide absence. IDLE, EMPTY_VIEW, UNKNOWN, OFFLINE_STALE and the four bulk-action states
+are not reachable on this surface.

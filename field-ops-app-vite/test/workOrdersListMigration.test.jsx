@@ -249,3 +249,64 @@ describe("back to the list returns the list somebody had", () => {
     expect(detail).not.toMatch(/navigate\(-1\)/);
   });
 });
+
+// ═════════════════════════════════════════ Lists P2 conformance (Phase 3)
+
+describe("Lists P2 — the cursor-paged proof family", () => {
+  it("the row destination comes from the DEFINITION, not from a path typed in the screen", async () => {
+    // The screen navigated to a hard-coded "/service/work-orders/${id}" — correct, and correct in
+    // one of the TWO places that claimed to know the answer. The definition said "/work-orders/:id",
+    // a route this application does not mount, and the disagreement was invisible because nothing
+    // read the definition. Reading it is what makes the declaration guardable.
+    const { buildRowHref } = await import("../src/metadata/listPresentation.js");
+    expect(buildRowHref(workOrderIndexList.rowNavigationTo, "wo-1")).toBe("/service/work-orders/wo-1");
+    expect(SCREEN).toMatch(/buildRowHref\(workOrderIndexList\.rowNavigationTo/);
+    // And the literal it replaced is gone, so the two cannot drift apart again.
+    expect(SCREEN).not.toMatch(/navigate\(`\/service\/work-orders\/\$\{id\}`\)/);
+  });
+
+  it("the id is encoded into the destination rather than trusted", () => {
+    // A row key is a document id, and a document id reaches this from a read rather than from a
+    // validator. Encoding costs nothing and removes the whole class.
+    expect(buildRowHrefSync("/service/work-orders/:id", "a b/c")).toBe("/service/work-orders/a%20b%2Fc");
+  });
+
+  it("DEGRADED distinguishes a name withheld from a name that failed", () => {
+    // Lists P2 board 2d. The rows are fine; Customer and Technician resolve through separate reads
+    // and either can fail alone. A permission fact no retry changes must not wear the sentence of a
+    // failure that a retry might fix.
+    expect(SCREEN).toMatch(/ACCOUNT_NAMES_STATUS\.DENIED/);
+    expect(SCREEN).toMatch(/aren't available to your role/);
+    expect(SCREEN).toMatch(/couldn't be loaded/);
+    // One QUIET line, not a failure box over a list that loaded.
+    expect(SCREEN).toMatch(/HONEST_STATE\.DEGRADED/);
+    expect(SCREEN).not.toMatch(/HONEST_STATE\.UNAVAILABLE/);
+  });
+
+  it("the degraded note renders only on a settled, POPULATED read", () => {
+    // Over a skeleton or a denial it would describe a secondary failure while the primary one is
+    // unresolved — which reads as the page explaining the wrong problem.
+    expect(SCREEN).toMatch(/degraded && presentation\?\.state === "READY"/);
+  });
+
+  it("the status chips still carry NO counts, and the header total is still null-safe", () => {
+    // P2 2h agrees with the decision already made here: a count over a bounded page is a confident
+    // wrong claim. Re-checked because a shared grammar is exactly the moment somebody adds them
+    // back "for consistency".
+    expect(SCREEN).not.toMatch(/count.*WORK_ORDER_STATUS_GROUPS|WORK_ORDER_STATUS_GROUPS.*count/);
+    expect(SCREEN).toMatch(/typeof total === "number" \? total : null/);
+  });
+
+  it("the attention SLOT stays empty rather than being faked", () => {
+    // P2 2h: Work Order attention derivations exist on RECORDS; no collection-level projection does.
+    // The column is preserved as a named gap, not invented from whatever the list happens to carry.
+    expect(workOrderIndexList.columns.map((c) => c.fieldId)).not.toContain("attention");
+    expect(SCREEN).not.toMatch(/workOrderAttention/);
+  });
+});
+
+// A local mirror of the pure helper, so the encoding claim above is about the CONTRACT rather than
+// about whichever module happens to implement it today.
+function buildRowHrefSync(template, key) {
+  return template.replace(/:[^/]+/, encodeURIComponent(String(key)));
+}
