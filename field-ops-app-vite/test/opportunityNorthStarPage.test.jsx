@@ -270,6 +270,38 @@ describe("Opportunity P1v2 — identity and stage", () => {
     expect(link.getAttribute("href")).toBe("/customers/acct_doc_1");
   });
 
+  it("an owner the directory cannot resolve is STATED, never left blank", () => {
+    // FOUND LIVE on sandbox OPP-2026-000002: the header rendered "Owner" with nothing after it.
+    // ownerName() returns null when the directory has no entry, and the fact passed
+    // `<strong>{null}</strong>` -- a truthy element wrapping nothing, so RecordIdentity's
+    // "drop a fact with no value" filter could not tell it was empty. A label with no value is
+    // exactly the fail-blank the grammar exists to remove.
+    const { container } = mount({ ownerEmployeeId: "EMP-NOT-IN-DIRECTORY" });
+    const facts = container.querySelector(".ns-identity__facts").textContent;
+    expect(facts).toMatch(/Owner/);
+    // Something must follow the label, and it must not be the employee id.
+    expect(facts).not.toMatch(/Owner\s*(·|$)/);
+    expect(facts).not.toContain("EMP-NOT-IN-DIRECTORY");
+  });
+
+  it("no owner recorded and an unresolvable owner are different sentences", () => {
+    // The employee directory is admin/dispatcher-only, so "cannot resolve" is a normal outcome
+    // for a legitimate caller -- and a deal with no owner at all is a different fact about the
+    // record. Collapsing them would report a data gap as a permissions one, or the reverse.
+    const unresolved = mount({ ownerEmployeeId: "EMP-NOT-IN-DIRECTORY" });
+    const a = unresolved.container.querySelector(".ns-identity__facts").textContent;
+    unresolved.unmount();
+    const none = mount({ ownerEmployeeId: null });
+    const b = none.container.querySelector(".ns-identity__facts").textContent;
+    expect(a).not.toBe(b);
+    expect(b).toMatch(/Unassigned/);
+  });
+
+  it("a resolvable owner renders the person's name", () => {
+    const { container } = mount();
+    expect(container.querySelector(".ns-identity__facts").textContent).toMatch(/R\. Amado/);
+  });
+
   it("the activity gap is stated, never fabricated (O3)", () => {
     const { container } = mount();
     const activity = container.querySelector('[aria-label="Activity"]');
@@ -477,6 +509,37 @@ describe("Opportunity P1v2 — responsive composition", () => {
 });
 
 // ═══════════════════════════════════════════════════ AUTHORITY (§24)
+
+// ═══════════════════════════════════════════════════ THE PRODUCTION WIRING
+//
+// A seam resolved and not threaded is indistinguishable, on screen, from a seam that answered
+// "no" -- and this one produced a sentence that reads like a deliberate environment gate.
+
+describe("Opportunity P1v2 — the connected mount threads what it resolves", () => {
+  const APP = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "App.jsx"),
+    "utf8",
+  );
+  const MOUNT = APP.slice(
+    APP.indexOf("function OpportunityDetailConnected"),
+    APP.indexOf("function SalesOrderDetailConnected"),
+  );
+
+  it("passes hasCapability to OpportunityDetail, not just resolves it", () => {
+    // FOUND LIVE: the mount called useOpportunityCapabilities and never passed the result on, so
+    // the page used its fail-closed default and the Sales Agreement card rendered
+    // "aren't enabled in this environment yet" on every record -- while those capabilities ARE
+    // activated for platform-sandbox. Create could never appear either.
+    expect(MOUNT).toMatch(/useOpportunityCapabilities/);
+    expect(MOUNT, "hasCapability is resolved but never threaded").toMatch(/hasCapability=\{hasCapability\}/);
+  });
+
+  it("still threads the write-readiness seam it already had", () => {
+    // The regression to guard against in the other direction: a future edit that swaps one seam
+    // for the other rather than passing both.
+    expect(MOUNT).toMatch(/readiness=\{opportunityWriteReadiness\(/);
+  });
+});
 
 describe("Opportunity P1v2 — the migration introduced NO authority", () => {
   const SRC = readFileSync(
