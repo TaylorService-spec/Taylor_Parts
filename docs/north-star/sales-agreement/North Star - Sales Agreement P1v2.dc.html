@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    /* DIMENSION TRUTH. Every frame below states a viewport width and RENDERS at exactly that
+       width, padding included. P1v1 labelled 1440/768/375 while composing 1640/792/407, so its
+       responsive claims could not be checked against the artifact. Border-box everywhere is what
+       makes the stated number the measured number. */
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    .cap { font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+    .chip { background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px; }
+    .dim { font: 600 10.5px Inter, sans-serif; letter-spacing: 0.06em; color: #6B7A74; text-transform: none; }
+    .note { font-size: 12px; color: #4A5B55; margin: 8px 0 0; max-width: 118ch; line-height: 1.65; }
+    .sec-h { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    .num { font-variant-numeric: tabular-nums; }
+    .ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; letter-spacing: -0.01em; }
+    .tile { background: #FCFAF6; border: 1px solid #D9D3C6; padding: 12px; }
+    .tile-h { font: 600 10.5px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #B08A55; margin-bottom: 7px; }
+    .btn { font: 600 11.5px Inter, sans-serif; padding: 7px 11px; background: #102B24; color: #fff; display: inline-block; }
+    .btn-sec { font: 600 11.5px Inter, sans-serif; padding: 7px 11px; border: 1px solid #C3BCAB; display: inline-block; }
+    .rail-h { font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55; border-bottom: 2px solid #102B24; padding-bottom: 5px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 40px;">
+
+  <!-- ============================================ 1A - TRUE 1440 -->
+  <div style="width: 1440px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span class="cap"><span class="chip">1A</span>Sales Agreement &mdash; North Star P1v2 &middot; desktop &middot; ACCEPTED, Sales Order exists <span class="dim">frame renders at exactly 1440px</span></span>
+      <span style="font-size: 11.5px; color: #4A5B55;">The negotiated commercial commitment. Every fact is a projected field; every action a governed command.</span>
+    </div>
+    <div style="width: 1440px; background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+
+      <!-- SHELL = CONTEXT, NOT AUTHORITY. Current EOS shell truth: the Verenward mark
+           (shared/brand/VerenwardMark.jsx) and the navConfig.js domain list. "Opportunities" is
+           active because that is where this record is reached from today. NO "Sales Agreements"
+           nav item is added, because none exists and adding one would be a product decision made
+           by a mock. See SA-G1. -->
+      <nav style="width: 224px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 14px 14px 12px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">&#9656; Dashboard</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #fff;">&#9662; CRM/Sales</div>
+        <div style="padding: 4px 14px 4px 30px;">Customers</div>
+        <div style="margin: 2px 10px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Opportunities</div>
+        <div style="padding: 4px 14px 4px 30px;">Sales Orders</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">&#9656; Service</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">Service Operations</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">&#9656; Inventory</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">&#9656; Purchasing</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">&#9656; Reporting</div>
+        <div style="padding: 8px 14px 4px; font-weight: 600; color: #E8E2D6;">&#9656; Administration</div>
+      </nav>
+
+      <div style="flex: 1; min-width: 0; padding: 0 28px 56px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">CRM/Sales &rarr; <a href="#o">Opportunities</a> &rarr; <a href="#opp">OPP-2026-001842</a> &rarr; SA-2026-000003</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 11:20 AM &middot; <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+
+        <!-- IDENTITY: GROUPED, NOT A METADATA SENTENCE.
+             Rank 1 the number. Rank 2 (one line, larger) state / account / committed value.
+             Rank 3 (smaller, muted) PO / owner / originating opportunity. -->
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 22px 0 12px;">
+          <div style="min-width: 0; flex: 1 1 0;">
+            <p style="font: 600 12px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #B08A55; margin: 0 0 6px;">Sales Agreement &middot; Negotiated commercial commitment</p>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 40px; font-weight: 700; margin: 0 0 8px; line-height: 1.05;">SA-2026-000003</h1>
+            <div style="display: flex; gap: 14px; align-items: baseline; font-size: 16px; flex-wrap: wrap;">
+              <span style="color: #237A45; font-weight: 700;">Accepted</span>
+              <span style="color: #C3BCAB;">&middot;</span>
+              <strong><a href="#acct" style="color: #102B24;">Desert Sun Beverage Co.</a></strong>
+              <span style="color: #C3BCAB;">&middot;</span>
+              <span class="num"><strong>$25,946.05</strong> <span style="font-size: 12.5px; color: #6B7A74;">USD committed</span></span>
+            </div>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: #6B7A74; margin-top: 7px;">
+              <span>Customer PO <strong style="color: #4A5B55;">PO-88231</strong></span>
+              <span>Owner <strong style="color: #4A5B55;">R. Amado</strong></span>
+              <span>From <a href="#opp">OPP-2026-001842</a></span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="#so" style="font: 600 13px Inter, sans-serif; padding: 10px 18px; background: #102B24; color: #fff; text-decoration: none;">Open Sales Order SO-2026-000015</a>
+          </div>
+        </header>
+
+        <div style="display: flex; gap: 8px; align-items: center; padding: 6px 0; font-size: 12.5px; flex-wrap: wrap;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-right: 6px;">Lineage</span>
+          <a href="#acct" style="font-weight: 600;">Desert Sun Beverage Co.</a><span style="color: #B08A55;">&rarr;</span>
+          <a href="#opp" style="font-weight: 600;">OPP-2026-001842</a><span style="color: #B08A55;">&rarr;</span>
+          <span style="font-weight: 700; background: #102B24; color: #fff; padding: 2px 8px;">SA-2026-000003</span><span style="color: #B08A55;">&rarr;</span>
+          <a href="#so" style="font-weight: 600;">SO-2026-000015</a>
+          <span style="color: #6B7A74; margin-left: 8px;">The order's lines are these committed lines and prices.</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 40px; margin-top: 16px;">
+          <div>
+            <!-- == AGREED LINES: the dominant section, 820px of the 1160px content area == -->
+            <section style="margin-bottom: 32px;">
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">What we committed to sell <span style="font: 600 12px Inter, sans-serif; color: #6B7A74;">&middot; negotiated prices, fixed at acceptance</span></h2>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13.5px;">
+                <thead><tr>
+                  <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left;">Line</th>
+                  <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: right; width: 62px;">Qty</th>
+                  <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: right; width: 112px;">Unit</th>
+                  <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 0; border-bottom: 2px solid #102B24; text-align: right; width: 128px;">Committed</th>
+                </tr></thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6;"><span class="ref">TAY-C712</span> <span style="color: #6B7A74;">Taylor C712 Soft Serve Freezer</span><span style="color: #B08A55;">&dagger;</span><br><span style="color: #6B7A74; font-size: 12.5px;">Equipment model &middot; New &middot; 12 mo parts &amp; labour &middot; est. arrival Aug 24, 2026</span></td>
+                    <td class="num" style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">2</td>
+                    <td class="num" style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">$9,800.00</td>
+                    <td class="num" style="padding: 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">$19,600.00</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6;"><span class="ref">X49463-3</span> <span style="color: #6B7A74;">Scraper Blade Kit</span><span style="color: #B08A55;">&dagger;</span><br><span style="color: #6B7A74; font-size: 12.5px;">Part &middot; New</span></td>
+                    <td class="num" style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">12</td>
+                    <td class="num" style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">$175.00</td>
+                    <td class="num" style="padding: 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">$2,100.00</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6;"><span class="ref">SVC-INSTALL-COMM</span> <span style="color: #6B7A74;">Install &amp; commissioning</span><span style="color: #B08A55;">&dagger;</span><br><span style="color: #6B7A74; font-size: 12.5px;">Service</span></td>
+                    <td class="num" style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">4</td>
+                    <td class="num" style="padding: 11px 12px 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">$437.50</td>
+                    <td class="num" style="padding: 11px 0; border-bottom: 1px solid #D9D3C6; text-align: right;">$1,750.00</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style="font-size: 11.5px; color: #6B7A74; margin: 8px 0 0;"><span style="color: #B08A55;">&dagger;</span> The line stores a product <em>reference</em> and no display name. The name beside it is resolved from the product catalogue at render time &mdash; a read this surface does not have today (<strong>SA-G4</strong>). Where it is unresolved the reference stands alone; it is never replaced by a guess.</p>
+
+              <!-- == MONEY LADDER: two jobs, visually separated (P1v2 correction) == -->
+              <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <div style="width: 360px;">
+                  <div style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-bottom: 6px;">Sale composition</div>
+                  <dl class="num" style="margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 5px 28px; font-size: 13.5px; text-align: right;">
+                    <dt style="color: #6B7A74; text-align: left;">Subtotal</dt><dd style="margin: 0;">$23,450.00</dd>
+                    <dt style="color: #6B7A74; text-align: left;">Shipping</dt><dd style="margin: 0;">$600.00</dd>
+                    <dt style="color: #6B7A74; text-align: left;">Installation charge</dt><dd style="margin: 0;">$250.00</dd>
+                    <dt style="color: #6B7A74; text-align: left;">Tax</dt><dd style="margin: 0;">$1,646.05</dd>
+                    <dt style="font-weight: 700; color: #102B24; border-top: 2px solid #102B24; padding-top: 7px; text-align: left; font-size: 15px;">Total committed</dt>
+                    <dd style="margin: 0; font-weight: 700; border-top: 2px solid #102B24; padding-top: 7px; font-size: 17px;">$25,946.05</dd>
+                  </dl>
+                  <div style="border-left: 2px solid #D9D3C6; padding-left: 12px; margin: 16px 0 0 20px;">
+                    <div style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-bottom: 6px;">Credits recorded at commitment</div>
+                    <dl class="num" style="margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 4px 24px; font-size: 12.5px; text-align: right; color: #4A5B55;">
+                      <dt style="color: #6B7A74; text-align: left;">Down payment</dt><dd style="margin: 0;">&minus;$5,000.00</dd>
+                      <dt style="color: #6B7A74; text-align: left;">Trade-in</dt><dd style="margin: 0;">&minus;$1,500.00</dd>
+                      <dt style="text-align: left; font-weight: 600;">Balance after credits</dt><dd style="margin: 0; font-weight: 600;">$19,446.05</dd>
+                    </dl>
+                    <p style="font-size: 11.5px; color: #6B7A74; margin: 6px 0 0; text-align: left; line-height: 1.55;">The agreement's own arithmetic: total &minus; down payment &minus; trade-in. Not an accounts-receivable balance &mdash; no payment is tracked on this record.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- == ACCEPTANCE: EVIDENCE, NOT ESSAY (P1v2 correction) == -->
+            <section style="margin-bottom: 32px;">
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Acceptance <span style="font: 600 12px Inter, sans-serif; color: #6B7A74;">&middot; exactly what EOS records</span></h2>
+              <div style="border-top: 2px solid #102B24; padding-top: 14px;">
+                <div style="display: flex; gap: 56px; flex-wrap: wrap; margin-bottom: 14px;">
+                  <div>
+                    <div style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-bottom: 3px;">Agreement state</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #237A45;">Accepted</div>
+                  </div>
+                  <div>
+                    <div style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-bottom: 3px;">Recorded</div>
+                    <div class="num" style="font-size: 16px; font-weight: 600;">Aug 18, 2026 &middot; 2:41 PM</div>
+                  </div>
+                  <div>
+                    <div style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-bottom: 3px;">Action executed by</div>
+                    <div style="font-size: 16px; font-weight: 600;">R. Amado</div>
+                  </div>
+                </div>
+                <p style="margin: 0 0 6px; font-size: 13.5px; line-height: 1.65; max-width: 68ch;">EOS records the governed acceptance event. <span style="color: #4A5B55;">No customer-signature evidence is stored on this Agreement.</span></p>
+                <p style="margin: 0; font-size: 13.5px; line-height: 1.65; color: #4A5B55;">Accepted agreements are read-only.</p>
+              </div>
+            </section>
+
+            <section>
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">What this agreement became</h2>
+              <div style="border-top: 1px solid #D9D3C6;">
+                <div style="display: grid; grid-template-columns: 170px 1fr 150px; gap: 16px; padding: 12px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; align-items: baseline;">
+                  <a href="#so" style="font-weight: 700;">SO-2026-000015</a>
+                  <span>Sales Order created from these committed lines and prices</span>
+                  <span style="color: #8A6D28; font-weight: 600; text-align: right;">In Fulfillment</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- == CONTEXTUAL RAIL, 300px == -->
+          <aside>
+            <section style="margin-bottom: 28px; font-size: 13px; line-height: 1.65;">
+              <h3 class="sec-h">Commercial terms</h3>
+              <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px;">
+                <dt style="color: #6B7A74;">Customer PO</dt><dd style="margin: 0;">PO-88231</dd>
+                <dt style="color: #6B7A74;">Lease</dt><dd style="margin: 0;">No &mdash; purchase</dd>
+                <dt style="color: #6B7A74;">Fulfillment</dt><dd style="margin: 0;">Deliver and install</dd>
+                <dt style="color: #6B7A74;">Ship via</dt><dd style="margin: 0;">Taylor truck</dd>
+                <dt style="color: #6B7A74;">Currency</dt><dd style="margin: 0;">USD</dd>
+              </dl>
+              <p style="margin: 8px 0 0; color: #6B7A74;">Shipping: loading dock, 22nd St entrance.<br>Special: commission both freezers on the same visit.</p>
+            </section>
+            <section style="margin-bottom: 28px; font-size: 13px; line-height: 1.6;">
+              <h3 class="sec-h">Why this agreement exists</h3>
+              <strong><a href="#opp">OPP-2026-001842</a></strong><br>
+              <span style="color: #6B7A74;">Second commissary build-out &mdash; soft serve and shake capacity for the Flagstaff line. National Accounts &middot; owner R. Amado.</span>
+            </section>
+            <section style="margin-bottom: 28px; font-size: 13px; line-height: 1.6;">
+              <h3 class="sec-h">Customer</h3>
+              <strong><a href="#acct">Desert Sun Beverage Co.</a></strong><br>
+              <span style="color: #6B7A74;">Broadway Plant &middot; 2214 E Broadway Rd, Phoenix</span>
+            </section>
+            <section style="font-size: 13px;">
+              <h3 class="sec-h">Record</h3>
+              <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px;">
+                <dt style="color: #6B7A74;">Agreement</dt><dd style="margin: 0;">SA-2026-000003</dd>
+                <dt style="color: #6B7A74;">State</dt><dd style="margin: 0;">Accepted &middot; terminal</dd>
+                <dt style="color: #6B7A74;">Accepted</dt><dd style="margin: 0;">Aug 18, 2026</dd>
+              </dl>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <p class="note"><strong>Width math, stated so it can be checked:</strong> 1440 frame = 224 nav + 1216 content; content padding 28 each side &rarr; 1160 inner; body grid 820 main / 40 gap / 300 rail. The rail gave up 40px and the gap 16px so the commercial table could have them &mdash; the agreed lines are the dominant content and are not squeezed to preserve a rail number.<br>
+    <strong>No lifecycle chevrons, deliberately:</strong> DRAFT &rarr; ACCEPTED | DECLINED is a gate with terminal outcomes, not a progression. State is stated once, with tone, in the identity group; the Acceptance section is the record of the one event that matters.<br>
+    <strong>Shell is context, not authority.</strong> "Opportunities" is active because this record is reached from the Opportunity record page today. No Sales Agreements nav item is invented &mdash; see SA-G1.</p>
+  </div>
+
+  <!-- ============================================ 1B - TRUE 768 -->
+  <div style="width: 768px;">
+    <span class="cap"><span class="chip">1B</span>Tablet &middot; DRAFT, acceptance blocked <span class="dim">frame renders at exactly 768px</span></span>
+    <div style="width: 768px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 14px 24px 26px;">
+      <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">&#9776; &middot; <a href="#opp">OPP-2026-001842</a> &rarr; SA-2026-000003</div>
+      <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 8px 0 14px;"></div>
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;">
+        <div>
+          <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #B08A55;">Sales Agreement</div>
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 4px 0 5px;">SA-2026-000003</h2>
+          <div style="font-size: 14px;"><span style="color: #2B5B7A; font-weight: 700;">Draft</span> <span style="color: #C3BCAB;">&middot;</span> <strong>Desert Sun Beverage Co.</strong></div>
+          <div style="font-size: 12px; color: #6B7A74; margin-top: 4px;">PO PO-88231 &middot; Owner R. Amado</div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 12px 16px; border: 1px solid #C3BCAB; color: #1C4638; background: #FCFAF6;">Edit draft</span>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 12px 16px; background: #102B24; color: #fff; opacity: 0.4;" aria-disabled="true">Record acceptance</span>
+        </div>
+      </div>
+
+      <div style="border: 1px solid #B08A55; background: #FCFAF6; padding: 10px 12px; font-size: 12.5px; margin: 14px 0; line-height: 1.6;">
+        <strong style="color: #B08A55;">Acceptance is unavailable.</strong> Every line needs a price before this can be accepted. Missing: <strong class="ref">X49463-3</strong>.
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 232px; gap: 24px; font-size: 12.5px;">
+        <div>
+          <div class="rail-h" style="margin-bottom: 2px;">Lines &middot; 3 <span style="text-transform: none; letter-spacing: 0; font-weight: 400; color: #6B7A74;">&mdash; tap a line for unit price</span></div>
+
+          <!-- EXPANDED line: the disclosure is DRAWN, not described (P1v2 correction). -->
+          <div style="border-bottom: 1px solid #D9D3C6;">
+            <div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; gap: 12px;">
+              <span style="display: flex; gap: 8px; align-items: baseline;"><span style="color: #B08A55; width: 10px;">&#9662;</span><span><span class="ref">TAY-C712</span> <span style="color: #6B7A74;">Taylor C712 Freezer</span><br><span style="color: #6B7A74; font-size: 11.5px;">Equipment model &middot; New &middot; qty 2</span></span></span>
+              <span class="num" style="font-weight: 600;">$19,600.00</span>
+            </div>
+            <div style="background: #FCFAF6; border-left: 2px solid #B08A55; padding: 7px 10px; margin: 0 0 8px 18px; font-size: 12px; color: #4A5B55; display: flex; justify-content: space-between;">
+              <span>Unit price &times; quantity</span><span class="num">$9,800.00 &times; 2</span>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; gap: 12px; border-bottom: 1px solid #D9D3C6;">
+            <span style="display: flex; gap: 8px; align-items: baseline;"><span style="color: #B08A55; width: 10px;">&#9656;</span><span><span class="ref">X49463-3</span> <span style="color: #6B7A74;">Scraper Blade Kit</span><br><span style="color: #6B7A74; font-size: 11.5px;">Part &middot; New &middot; qty 12</span></span></span>
+            <span style="color: #B23B3B; font-weight: 700;">Not priced</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; gap: 12px; border-bottom: 1px solid #D9D3C6;">
+            <span style="display: flex; gap: 8px; align-items: baseline;"><span style="color: #B08A55; width: 10px;">&#9656;</span><span><span class="ref">SVC-INSTALL-COMM</span> <span style="color: #6B7A74;">Install &amp; commissioning</span><br><span style="color: #6B7A74; font-size: 11.5px;">Service &middot; qty 4</span></span></span>
+            <span class="num" style="font-weight: 600;">$1,750.00</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 10px 0 2px; align-items: baseline;">
+            <span style="font-weight: 700;">Total committed</span>
+            <span style="color: #B23B3B; font-weight: 600;">Incomplete &mdash; 1 line has no price</span>
+          </div>
+          <p style="font-size: 11.5px; color: #6B7A74; margin: 4px 0 0;">No subtotal, total or balance is claimed while a line is unpriced. A partial sum would read as the price of the whole agreement.</p>
+        </div>
+        <div>
+          <div class="rail-h" style="margin-bottom: 7px;">Terms</div>
+          PO <strong>PO-88231</strong> &middot; Purchase<br>Deliver and install<br><span style="color: #6B7A74;">Ship via Taylor truck &middot; USD</span>
+          <div class="rail-h" style="margin: 16px 0 7px;">Acceptance</div>
+          <span style="color: #6B7A74;">Not recorded. A draft has no acceptance event.</span>
+          <div class="rail-h" style="margin: 16px 0 7px;">Downstream</div>
+          <span style="color: #6B7A74;">No Sales Order. One is created when the Opportunity is closed as won, which requires this agreement to be accepted first.</span>
+        </div>
+      </div>
+      <p style="font-size: 11.5px; color: #6B7A74; margin: 14px 0 0; line-height: 1.6;">768: the identity group stacks, the rail becomes a 232px column, and the lines table sheds its Unit column &mdash; unit price moves onto the line's own disclosure, which is drawn here rather than promised in prose. Rows are 44px minimum because the disclosure is a touch target. "Edit draft" opens section-aware editing in place; the record never becomes one long form.</p>
+    </div>
+  </div>
+
+  <!-- ============================================ 1C + 1D - TRUE 375 -->
+  <div style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap;">
+
+    <div style="width: 375px;">
+      <span class="cap"><span class="chip">1C</span>Phone &middot; Accepted <span class="dim">375px</span></span>
+      <div style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 14px 16px 22px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;"><a href="#opp">OPP-2026-001842</a> &rarr; SA-2026-000003</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 8px 0 12px;"></div>
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #B08A55;">Sales Agreement</div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 25px; font-weight: 700; margin: 4px 0 4px;">SA-2026-000003</div>
+        <div style="font-size: 15px; font-weight: 700; color: #237A45;">Accepted</div>
+        <div style="font-size: 13.5px; margin: 3px 0 2px;">Desert Sun Beverage Co.</div>
+        <div class="num" style="font-size: 17px; font-weight: 700; margin-bottom: 12px;">$25,946.05 <span style="font-size: 11.5px; font-weight: 400; color: #6B7A74;">USD committed</span></div>
+        <a href="#so" style="display: flex; align-items: center; justify-content: center; min-height: 48px; font: 600 13.5px Inter, sans-serif; background: #102B24; color: #fff; text-decoration: none; margin-bottom: 16px;">Open Sales Order SO-2026-000015</a>
+
+        <div class="rail-h">Committed lines &middot; 3</div>
+        <div style="border-bottom: 1px solid #D9D3C6; padding: 9px 0;">
+          <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;"><span class="ref" style="font-size: 13px;">TAY-C712</span><span class="num" style="font-weight: 700;">$19,600.00</span></div>
+          <div style="color: #6B7A74; font-size: 12px; margin-top: 2px;">Taylor C712 Freezer &middot; 2 &times; $9,800.00</div>
+          <div style="color: #6B7A74; font-size: 12px;">New &middot; 12 mo parts &amp; labour &middot; arr. Aug 24</div>
+        </div>
+        <div style="border-bottom: 1px solid #D9D3C6; padding: 9px 0;">
+          <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;"><span class="ref" style="font-size: 13px;">X49463-3</span><span class="num" style="font-weight: 700;">$2,100.00</span></div>
+          <div style="color: #6B7A74; font-size: 12px; margin-top: 2px;">Scraper Blade Kit &middot; 12 &times; $175.00</div>
+          <div style="color: #6B7A74; font-size: 12px;">Part &middot; New</div>
+        </div>
+        <div style="border-bottom: 2px solid #102B24; padding: 9px 0;">
+          <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;"><span class="ref" style="font-size: 13px;">SVC-INSTALL-COMM</span><span class="num" style="font-weight: 700;">$1,750.00</span></div>
+          <div style="color: #6B7A74; font-size: 12px; margin-top: 2px;">Install &amp; commissioning &middot; 4 &times; $437.50</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 9px 0 3px; font-size: 12.5px; color: #6B7A74;"><span>Subtotal + shipping + install + tax</span><span class="num">$25,946.05</span></div>
+        <div style="display: flex; justify-content: space-between; padding: 3px 0 9px; border-bottom: 1px solid #D9D3C6;"><span style="font-weight: 700; font-size: 15px;">Total committed</span><span class="num" style="font-weight: 700; font-size: 15px;">$25,946.05</span></div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0 0; font-size: 12.5px; color: #4A5B55;"><span>After down payment &amp; trade-in</span><span class="num">$19,446.05</span></div>
+
+        <div class="rail-h" style="margin: 18px 0 8px;">Acceptance</div>
+        <div style="font-size: 13px; line-height: 1.6;">
+          <div><span style="color: #6B7A74;">Recorded</span> <strong class="num">Aug 18, 2026 &middot; 2:41 PM</strong></div>
+          <div><span style="color: #6B7A74;">Action executed by</span> <strong>R. Amado</strong></div>
+          <p style="margin: 6px 0 0; color: #4A5B55; font-size: 12.5px;">EOS records the governed acceptance event. No customer-signature evidence is stored. Accepted agreements are read-only.</p>
+        </div>
+        <div style="display: flex; align-items: center; min-height: 44px; border-top: 1px solid #D9D3C6; margin-top: 12px; font-size: 13px; justify-content: space-between;"><span style="font-weight: 600;">Terms, customer &amp; provenance</span><span style="color: #B08A55;">&#9656;</span></div>
+      </div>
+      <p class="note" style="max-width: 375px;">Ruled rows, not cards: strong reference, amount opposite, commercial facts beneath. Boxes appear only where they carry a tap target. Rank: identity &rarr; state &rarr; customer &rarr; committed value &rarr; downstream action &rarr; lines &rarr; money &rarr; acceptance.</p>
+    </div>
+
+    <div style="width: 375px;">
+      <span class="cap"><span class="chip">1D</span>Phone &middot; DRAFT, acceptance blocked <span class="dim">375px</span></span>
+      <div style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 14px 16px 22px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;"><a href="#opp">OPP-2026-001842</a> &rarr; SA-2026-000003</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 8px 0 12px;"></div>
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #B08A55;">Sales Agreement</div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 25px; font-weight: 700; margin: 4px 0 4px;">SA-2026-000003</div>
+        <div style="font-size: 15px; font-weight: 700; color: #2B5B7A;">Draft</div>
+        <div style="font-size: 13.5px; margin: 3px 0 10px;">Desert Sun Beverage Co. <span style="color: #6B7A74;">&middot; PO-88231</span></div>
+
+        <div style="border: 1px solid #B08A55; background: #FCFAF6; padding: 10px 11px; font-size: 12.5px; line-height: 1.6; margin-bottom: 12px;">
+          <strong style="color: #B08A55;">Acceptance is unavailable.</strong><br>Every line needs a price before this can be accepted. Missing: <strong class="ref">X49463-3</strong>.
+        </div>
+        <div style="display: flex; align-items: center; justify-content: center; min-height: 48px; font: 600 13.5px Inter, sans-serif; border: 1px solid #102B24; color: #102B24; background: #FCFAF6; margin-bottom: 8px;">Edit draft</div>
+        <div style="display: flex; align-items: center; justify-content: center; min-height: 48px; font: 600 13.5px Inter, sans-serif; background: #102B24; color: #fff; opacity: 0.4; margin-bottom: 16px;" aria-disabled="true">Record acceptance</div>
+
+        <div class="rail-h">Lines &middot; 3</div>
+        <div style="border-bottom: 1px solid #D9D3C6; padding: 9px 0;">
+          <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;"><span class="ref" style="font-size: 13px;">TAY-C712</span><span class="num" style="font-weight: 700;">$19,600.00</span></div>
+          <div style="color: #6B7A74; font-size: 12px; margin-top: 2px;">Taylor C712 Freezer &middot; 2 &times; $9,800.00</div>
+        </div>
+        <!-- The blocking line is marked IN PLACE, in the row's own tone rather than with a side
+             rule: the reference and the value both carry the alert colour, so the row keeps the
+             ruled rhythm every other line has. The banner above says which line; this says which
+             row is it. -->
+        <div style="border-bottom: 1px solid #D9D3C6; padding: 9px 0;">
+          <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;"><span class="ref" style="font-size: 13px; color: #B23B3B;">X49463-3</span><span style="color: #B23B3B; font-weight: 700;">Not priced</span></div>
+          <div style="color: #6B7A74; font-size: 12px; margin-top: 2px;">Scraper Blade Kit &middot; qty 12 &middot; no unit price</div>
+        </div>
+        <div style="border-bottom: 2px solid #102B24; padding: 9px 0;">
+          <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;"><span class="ref" style="font-size: 13px;">SVC-INSTALL-COMM</span><span class="num" style="font-weight: 700;">$1,750.00</span></div>
+          <div style="color: #6B7A74; font-size: 12px; margin-top: 2px;">Install &amp; commissioning &middot; 4 &times; $437.50</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 10px 0 3px; align-items: baseline; gap: 10px;"><span style="font-weight: 700; font-size: 15px;">Total committed</span><span style="color: #B23B3B; font-weight: 600; font-size: 12.5px; text-align: right;">Incomplete &mdash; 1 line has no price</span></div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 2px 0 0;">No total or balance is claimed while a line is unpriced.</p>
+
+        <div class="rail-h" style="margin: 18px 0 8px;">Acceptance</div>
+        <div style="font-size: 12.5px; color: #6B7A74; line-height: 1.6;">Not recorded. A draft has no acceptance event.</div>
+        <div class="rail-h" style="margin: 16px 0 8px;">Downstream</div>
+        <div style="font-size: 12.5px; color: #6B7A74; line-height: 1.6;">No Sales Order. One is created when the Opportunity is closed as won, which requires this agreement to be accepted first.</div>
+        <div style="display: flex; align-items: center; min-height: 44px; border-top: 1px solid #D9D3C6; margin-top: 12px; font-size: 13px; justify-content: space-between;"><span style="font-weight: 600;">Terms, customer &amp; provenance</span><span style="color: #B08A55;">&#9656;</span></div>
+      </div>
+      <p class="note" style="max-width: 375px;">Draft is the primary working state, so it is designed rather than described. The blocker comes first and names the line; the two commands sit directly beneath it at 48px; the unpriced line is marked in place, not only in the banner.<br><strong>Targets:</strong> both commands and every disclosure row are &ge;44px. The breadcrumb and lineage links are deliberately smaller &mdash; they are contextual navigation, not handheld primary controls, and the claim is scoped to the controls rather than asserted for every link.</p>
+    </div>
+  </div>
+
+  <!-- ============================================ 1E - STATE STUDIES -->
+  <div style="width: 1200px;">
+    <span class="cap"><span class="chip">1E</span>Honest states &mdash; representative treatments</span>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 20px 24px; margin-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12.5px;">
+
+      <div class="tile">
+        <div class="tile-h">READY &middot; Draft, all lines priced</div>
+        <div style="font-weight: 700; color: #2B5B7A; margin-bottom: 4px;">Draft</div>
+        <div class="num" style="font-weight: 700; font-size: 15px;">$25,946.05</div>
+        <div style="display: flex; gap: 6px; margin-top: 8px;">
+          <span class="btn">Record acceptance</span>
+          <span class="btn-sec">Edit draft</span>
+        </div>
+        <p style="margin: 8px 0 0; color: #6B7A74;">Both commands live. The full money ladder renders because every line carries a price.</p>
+      </div>
+
+      <div class="tile" style="border-color: #B08A55;">
+        <div class="tile-h">READY &middot; Draft, acceptance blocked</div>
+        <div style="font-weight: 700; color: #2B5B7A; margin-bottom: 4px;">Draft</div>
+        <div style="color: #B23B3B; font-weight: 600;">Incomplete &mdash; 1 line has no price</div>
+        <div style="display: flex; gap: 6px; margin-top: 8px;">
+          <span class="btn" style="opacity: 0.4;">Record acceptance</span>
+          <span class="btn-sec">Edit draft</span>
+        </div>
+        <p style="margin: 8px 0 0; color: #6B7A74;">Disabled with the view model's own reason, naming every unpriced line. A <strong>state</strong> restriction &mdash; not permission.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h">READY &middot; Accepted, order exists</div>
+        <div style="font-weight: 700; color: #237A45; margin-bottom: 4px;">Accepted</div>
+        <div style="margin-bottom: 8px;"><a href="#so" style="font-weight: 700;">SO-2026-000015</a> <span style="color: #6B7A74;">&middot; In Fulfillment</span></div>
+        <span class="btn">Open Sales Order</span>
+        <p style="margin: 8px 0 0; color: #6B7A74;">No edit affordance at all &mdash; the engine forbids editing a terminal agreement, so the control is absent rather than disabled.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h">READY &middot; Accepted, no order yet</div>
+        <div style="font-weight: 700; color: #237A45; margin-bottom: 4px;">Accepted</div>
+        <p style="margin: 0; color: #4A5B55;">No Sales Order. One is created when the Opportunity is closed as won, which requires this agreement to be accepted first.</p>
+        <p style="margin: 8px 0 0; color: #6B7A74;">Neutral, not a failure. No Create button is invented: the order is produced by the Opportunity's governed close, and that command can still refuse.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h" style="color: #6B7A74;">READY &middot; Declined <span style="color: #B23B3B;">&mdash; modelled, unreachable</span></div>
+        <div style="font-weight: 700; color: #B23B3B; margin-bottom: 4px;">Declined</div>
+        <p style="margin: 0; color: #4A5B55;">Terminal. No actions; the lines and terms stay readable as the record of what was offered.</p>
+        <p style="margin: 8px 0 0; color: #6B7A74;">DECLINED is a real modelled state with a legal transition &mdash; but <strong>no command produces it</strong>. Designed so the state is honest if it becomes reachable. See <strong>SA-G5</strong>.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h">READY &middot; Unresolved acceptor</div>
+        <div style="font-weight: 700; color: #237A45; margin-bottom: 4px;">Accepted</div>
+        <div><span style="color: #6B7A74;">Recorded</span> <strong class="num">Aug 18, 2026 &middot; 2:41 PM</strong></div>
+        <div><span style="color: #6B7A74;">Action executed by</span> <strong>Unknown user</strong></div>
+        <p style="margin: 8px 0 0; color: #6B7A74;">The directory could not resolve the actor. The label is the governed constant &mdash; never the raw uid (F-UID-1).</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h">READY &middot; Unnumbered</div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 700;">Sales Agreement</div>
+        <p style="margin: 6px 0 0; color: #6B7A74;">A record with no allocated reference falls back to the truthful generic label &mdash; never the document id dressed up as a name (DECISIONS #106).</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h" style="color: #6B7A74;">Permission denied</div>
+        <p style="margin: 0 0 6px;">"You do not have permission to view Sales Agreements."</p>
+        <p style="margin: 0; color: #6B7A74;">A real authorization answer about a live feature. Where a <em>command</em> is the denied part, the control renders protected and disabled with "You do not have permission to accept Sales Agreements." Permission never wears state's sentence, and state never wears permission's.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h" style="color: #6B7A74;">Not enabled</div>
+        <p style="margin: 0 0 6px;">"Sales agreements aren't enabled in this environment yet."</p>
+        <p style="margin: 0; color: #6B7A74;">No read is attempted at all. Distinct from denied, and it must never read as a permission problem.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h" style="color: #6B7A74;">Unavailable</div>
+        <p style="margin: 0 0 6px;">"We couldn't reach the agreement just now." <a href="#r">Try again</a></p>
+        <p style="margin: 0; color: #6B7A74;">We asked and could not get an answer. Retryable &mdash; and it must never read as "there is no agreement".</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h" style="color: #6B7A74;">None for this Opportunity</div>
+        <p style="margin: 0 0 6px;">"No sales agreement yet."</p>
+        <span class="btn-sec">Create Sales Agreement</span>
+        <p style="margin: 8px 0 0; color: #6B7A74;">Ordinary and common, not an error. Create appears only where the layer is enabled <em>and</em> the caller holds the capability. Exactly one agreement per Opportunity is permitted; a second is refused.</p>
+      </div>
+
+      <div class="tile">
+        <div class="tile-h" style="color: #6B7A74;">Loading</div>
+        <div style="height: 10px; background: #E8E2D6; width: 60%; margin-bottom: 6px;"></div>
+        <div style="height: 10px; background: #E8E2D6; width: 85%; margin-bottom: 6px;"></div>
+        <div style="height: 10px; background: #E8E2D6; width: 40%;"></div>
+        <p style="margin: 8px 0 0; color: #6B7A74;">A read is in flight. It claims nothing about whether an agreement exists.</p>
+      </div>
+    </div>
+    <p class="note">Six of these are the view model's own states (LOADING / NOT_ENABLED / DENIED / UNAVAILABLE / NONE / READY); the rest are READY's genuinely different renderings. Every one is a different sentence, because each sends the reader somewhere different.</p>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

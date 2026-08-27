@@ -112,17 +112,122 @@ if (artifactArg !== null) {
 
 // ── 5. And after a deploy, what the environment is actually serving. THE ENVIRONMENT IS THE
 //      AUTHORITY: a clean exit from firebase is not evidence of what is live.
+//
+// ════════════════════ WHY THIS POLLS, AND WHAT IT REFUSES TO SOFTEN ════════════════════
+//
+// THE DEFECT (2026-08-27). This was a SINGLE fetch. Firebase Hosting prints "Deploy complete!"
+// when the release is created; the release becomes current, and reaches the edge this gate reads,
+// a moment later. On the 34b19c8d refresh the gap was measurable:
+//
+//     01:32:56.817Z  artifact built
+//     01:33:04.311Z  Hosting version created
+//     01:33:08.142Z  releaseTime -- and the Last-Modified of the bytes finally served
+//
+// The gate fetched between "Deploy complete!" and 01:33:08.142Z, was served the PREVIOUS release
+// (c45979b7), and refused with REMOTE_COMMIT_MISMATCH, exit 6 -- on a deploy that had entirely
+// succeeded. Same project, same site (the project has exactly one, DEFAULT_SITE), same URL, and
+// the bytes now serving carry byte-identical buildTime to the local artifact. Nothing was wrong
+// except WHEN the question was asked.
+//
+// `cache: "no-store"` did not and cannot prevent this: it governs THIS process's HTTP cache. It
+// has no authority over Firebase's CDN, which was correctly serving the release that was current
+// at the moment of the request.
+//
+// Because it is a race it fires only when the read lands inside the gap, which is why it recurred
+// intermittently across refreshes and why a blind retry appeared to "fix" it.
+//
+// ════════════════════ WHAT IS DELIBERATELY UNCHANGED ════════════════════
+//
+// The gate still refuses unless the ENVIRONMENT ITSELF serves the approved commit. It has simply
+// stopped refusing because it asked before the answer could exist. Specifically NOT done:
+//   * the remote check is not removed, and no mismatch is downgraded to a warning;
+//   * "Deploy complete!" is never trusted as evidence;
+//   * there is no unconditional sleep -- a fixed wait trades one race for a slower one, and still
+//     fails whenever propagation takes a second longer than the guess;
+//   * commit equality is untouched (sameCommit is unchanged);
+//   * a WRONG commit can never become a pass. Only the APPROVED commit ends the poll early;
+//     anything else is retried and, if it persists, fails exactly as before.
+//   * the environment assertion still runs, on the last response observed.
+//
+// A persistent mismatch therefore still costs REMOTE_DEADLINE_SECONDS and then fails closed --
+// which is the correct trade: a real wrong-commit deploy is not made safe by failing faster.
+// The production values. Overridable ONLY through environment variables, and ONLY so the proof
+// suite can exercise the timeout branch without taking a real minute per case. NO RUNBOOK SETS
+// THEM -- test/releaseIdentityRemoteRetry.test.mjs asserts that, so a future edit cannot quietly
+// shorten a live release's deadline by exporting one. A missing or unparseable value falls back
+// to the production number rather than to something smaller.
+const envMs = (name, fallback) => {
+  const raw = process.env[name];
+  const n = raw == null ? NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const REMOTE_DEADLINE_MS = envMs("EOS_RELEASE_REMOTE_DEADLINE_MS", 60_000);
+const REMOTE_INTERVAL_MS = envMs("EOS_RELEASE_REMOTE_INTERVAL_MS", 2_000);
+
+/**
+ * Read the deployed version.json until it reports the approved commit, or the deadline expires.
+ *
+ * Cache-busted per attempt: `cache: "no-store"` covers this process, and the query parameter
+ * covers anything between here and the origin. Belt and braces, because the whole point of this
+ * gate is that it is reading the environment rather than a copy of it.
+ *
+ * Returns the LAST response observed (or null if none was readable), plus the evidence needed to
+ * tell the three outcomes apart in the log.
+ */
+async function pollRemoteIdentity(origin) {
+  const base = `${origin.replace(/\/$/, "")}/version.json`;
+  const startedAt = Date.now();
+  let attempts = 0;
+  let last = null;
+  let sawStale = false;
+
+  for (;;) {
+    attempts += 1;
+    const res = await fetch(`${base}?releaseIdentityCheck=${Date.now()}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (res) {
+      last = res;
+      if (sameCommit(res.commit, approved)) {
+        return { res: last, attempts, waitedMs: Date.now() - startedAt, matched: true, sawStale };
+      }
+      sawStale = true;
+    }
+    if (Date.now() - startedAt + REMOTE_INTERVAL_MS > REMOTE_DEADLINE_MS) {
+      return { res: last, attempts, waitedMs: Date.now() - startedAt, matched: false, sawStale };
+    }
+    // Reported the FIRST time only. A line every two seconds turns a normal ten-second
+    // propagation into a wall of text that hides the one line that matters.
+    if (attempts === 1) {
+      console.log(`  waiting for the deployed release to become current (up to ${REMOTE_DEADLINE_MS / 1000}s)…`);
+    }
+    await new Promise((r) => setTimeout(r, REMOTE_INTERVAL_MS));
+  }
+}
+
 if (remote) {
-  const res = await fetch(`${remote.replace(/\/$/, "")}/version.json`, { cache: "no-store" })
-    .then((r) => (r.ok ? r.json() : null))
-    .catch(() => null);
+  const { res, attempts, waitedMs, matched, sawStale } = await pollRemoteIdentity(remote);
   if (!res) {
+    // Unreadable is still unreadable. Retrying a DNS failure or a 500 for a minute does not make
+    // it a pass, and this branch is reached only when NO attempt ever returned a usable body.
     failures.push("REMOTE_UNREADABLE");
-    detail.push(`could not read ${remote}/version.json`);
+    detail.push(`could not read ${remote}/version.json after ${attempts} attempt(s) over ${Math.round(waitedMs / 1000)}s`);
   } else {
-    if (!sameCommit(res.commit, approved)) {
+    if (!matched) {
       failures.push("REMOTE_COMMIT_MISMATCH");
-      detail.push(`deployed commit is ${res.commit}, approved was ${approved}`);
+      // The last commit actually observed is the diagnostic -- it is what distinguishes "the wrong
+      // artifact is live" from "propagation never completed".
+      detail.push(
+        `deployed commit is ${res.commit}, approved was ${approved} ` +
+        `(last of ${attempts} reads over ${Math.round(waitedMs / 1000)}s)`,
+      );
+    } else if (sawStale) {
+      // The race, observed and survived. Worth saying out loud: it is the evidence that this
+      // deploy was subject to propagation lag, and the reason the deadline exists.
+      detail.push(
+        `deployed commit ${res.commit} matches the approved commit ` +
+        `(after ${Math.round(waitedMs / 1000)}s / ${attempts} reads — the release was still propagating)`,
+      );
     } else {
       detail.push(`deployed commit ${res.commit} matches the approved commit`);
     }

@@ -9,6 +9,7 @@ import { opportunityView, OPPORTUNITY_VIEW_STATE } from "../../domain/opportunit
 import { opportunityDetailModel } from "../../domain/opportunityFieldModel.js";
 import { isOpportunityEditable } from "../../domain/opportunitySectionSave.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
+import { UNRESOLVED_REFERENCE_LABEL } from "../../metadata/referenceResolution.js";
 import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
@@ -252,7 +253,27 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
               ? <>Closes <strong>{formatDateOnly(view.expectedCloseAt, { unknown: "—" })}</strong>{daysOpen != null ? ` · open ${daysOpen} day${daysOpen === 1 ? "" : "s"}` : null}</>
               : null,
           },
-          { key: "owner", label: "Owner", value: <strong>{ownerDisplay}</strong> },
+          {
+            key: "owner",
+            label: "Owner",
+            // AN UNRESOLVED OWNER IS STATED, NOT LEFT BLANK.
+            //
+            // Found on the live sandbox record OPP-2026-000002: the header read "Owner" with
+            // nothing after it. `ownerName()` returns NULL when the directory cannot resolve the
+            // id, and this passed `<strong>{null}</strong>` -- a truthy React element wrapping
+            // nothing, so RecordIdentity's own "drop a fact with no value" filter could not see it
+            // was empty. A label with no value is the fail-blank the grammar exists to remove.
+            //
+            // Two different facts, kept apart: an opportunity with NO owner recorded is not the
+            // same as one whose owner the directory could not resolve. The employee directory is
+            // admin/dispatcher-only, so "cannot resolve" is a normal outcome for a legitimate
+            // caller rather than an error. Neither branch ever renders the employee id.
+            value: ownerDisplay
+              ? <strong>{ownerDisplay}</strong>
+              : view.ownerEmployeeId
+                ? UNRESOLVED_REFERENCE_LABEL
+                : "Unassigned",
+          },
           {
             key: "agreement",
             label: null,

@@ -11,10 +11,18 @@ the prices to come from, so the Won button will refuse and tell you so.
 
 ## Where to find it
 
-Open **Opportunities**, select the opportunity you are working on, and look at the detail panel on
-the right. **Sales Agreement** sits directly under **Lifecycle**.
+There are two places, and they do different jobs.
 
-If there is no agreement yet, you will see a short form to create one. If there is, you will see it.
+**The opportunity workspace** — open **Opportunities**, select the opportunity you are working on,
+and look at the detail panel on the right. **Sales Agreement** sits directly under **Lifecycle**.
+If there is no agreement yet you will see a short form to create one. This is where you build and
+price the draft, and steps 1 to 3 below all happen here.
+
+**The agreement's own page** — every agreement now has its own address, so you can link to it,
+bookmark it, and come back to it without going through the opportunity first. Open it from the
+**Sales agreement** card on the opportunity record, or from a Sales Order's **Priced from the
+sales agreement** link. It is the read surface: what was agreed, what it is worth, what was
+accepted and by whom, and where it went next. See *The agreement's own page* below.
 
 ---
 
@@ -86,6 +94,97 @@ manager rather than looking for a way to edit it.
 
 Once the opportunity is Won, the agreement shows a link: **View the Sales Order this became**. The
 order carries your prices, your customer PO, and the delivery location.
+
+---
+
+## The agreement’s own page
+
+Its address looks like `/customers/opportunities/sales-agreement/…`, and the page is titled with the
+agreement number — `SA-2026-000003`. An agreement written before numbering existed is titled
+**Sales Agreement**; you will never see a database id used as its name.
+
+### What it shows
+
+| Section | What it tells you |
+|---|---|
+| Heading | The agreement number, its state (Draft, Accepted or Declined), the customer, and what it is worth |
+| What we committed to sell | One row per line: the item reference, quantity, unit price and committed amount |
+| Sale composition | Subtotal, shipping, installation, tax, and **Total committed** |
+| Credits recorded at commitment | Down payment, trade-in, and the balance after them |
+| Acceptance | Whether it was accepted, when, and who ran the action |
+| What this agreement became | The Sales Order, once one exists |
+| Commercial terms (right) | Customer PO, lease, fulfillment, ship via, currency, instructions |
+
+**Amounts you do not know stay unknown.** An unpriced line reads *Not priced* — never `$0.00`,
+which would say you are giving it away. While any line is unpriced the page claims no subtotal,
+total or balance at all, and says so: *No subtotal, total or balance is claimed while a line is
+unpriced.* A partial sum is a real number that is not the price of the agreement, and it is worse
+than nothing because it looks credible.
+
+**Items are shown by their reference** — `TAY-C712`, `X49463-3`. The agreement stores the reference
+and not a product name, so a name is only ever shown beside the reference when it can genuinely be
+looked up. The reference is the identity.
+
+### What you can do from it
+
+- **Edit draft** — opens the commercial terms for editing in place: customer PO, lease,
+  fulfillment, ship via, and the two instruction fields. Available only while the agreement is a
+  Draft and only if your role includes editing agreements.
+- **Record acceptance** — the same governed acceptance described in step 3. Available only when
+  every line has a price and your role includes accepting agreements.
+
+> **Line prices are edited in the opportunity workspace, not here.** If acceptance is blocked
+> because a line has no price, the page names the line — go back to the opportunity’s **Sales
+> Agreement** panel and price it there. Pricing lines from this page is not built yet.
+
+An **Accepted** or **Declined** agreement shows no editing controls at all. They are not greyed
+out; they are absent, because the record genuinely cannot be edited any more — that is a fact
+about its state, not about your permissions.
+
+### What “Accepted” means here, exactly
+
+Accepted means **the governed accept action was run inside EOS**, and the page shows the three
+things EOS records: the state, when it was recorded, and who ran the action.
+
+It does **not** mean EOS holds a signature. The page says so plainly: *No customer-signature
+evidence is stored on this Agreement.* If your process needs signed paper or an e-signature, that
+lives outside EOS today — the system is not claiming to have it.
+
+If the person who ran the action cannot be looked up, you will see **Unknown user** rather than a
+database id.
+
+### A Sales Order is not created by accepting
+
+The page says: *No Sales Order. One is created when the Opportunity is closed as won, which
+requires this agreement to be accepted first.*
+
+Read that literally. Accepting is a **precondition**; the order is produced when someone closes the
+opportunity as **Won**, and that step can still refuse — for example if the agreement belongs to a
+different customer than the opportunity. There is no button on this page that creates an order.
+
+### When the page cannot show you the agreement
+
+| What you see | What it means |
+|---|---|
+| “No sales agreement matches this address.” | The link or bookmark points at something that is not there. It does **not** mean the opportunity has no agreement — that is a different message, on the opportunity. |
+| “You do not have permission to view Sales Agreements.” | Your role does not include reading agreements. |
+| “Sales agreements aren’t enabled in this environment yet.” | The feature is not switched on here. Not a permissions problem. |
+| “We couldn’t reach this sales agreement just now.” | A connection problem. **Try again** is safe — it only reads. |
+
+---
+
+## What this page does not do
+
+Stated so you do not go looking:
+
+- there is **no list of agreements** — you reach one through its opportunity, a Sales Order, or a link
+- there is **no Decline button**. Declined exists as a state in the data model, but nothing in the
+  application produces it
+- there is **no way to revise, reopen, supersede or replace** an accepted agreement, and no way to
+  create a second one for the same opportunity. If agreed terms must change after acceptance, that
+  is a conversation to have with your manager, not a screen to look for
+- there is **no send-to-customer, present, or e-signature** step
+- **line prices are not edited here** — use the opportunity workspace panel
 
 ---
 

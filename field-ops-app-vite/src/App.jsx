@@ -42,6 +42,10 @@ const SalesWorkspace = lazy(() => import("./modules/sales/SalesWorkspace"));
 // all -- it was reachable only as the selected row of a pipeline someone had already loaded.
 const OpportunityDetail = lazy(() => import("./modules/sales/OpportunityDetail"));
 const SalesOrderDetail = lazy(() => import("./modules/sales/SalesOrderDetail.jsx"));
+// The Sales Agreement RECORD page (North Star family 5). Owner ruling DECISIONS #134: a first-class
+// routed record page. The route nests under opportunities/ following the Sales Order precedent
+// (#129) -- a URL shape is not ownership, and the Opportunity does not own the Agreement record UX.
+const SalesAgreementDetail = lazy(() => import("./modules/sales/SalesAgreementDetail.jsx"));
 const SalesOrdersList = lazy(() => import("./modules/sales/SalesOrdersList.jsx"));
 import { governedOpportunitySource } from "./access/opportunitySource.js";
 import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
@@ -291,13 +295,45 @@ function OpportunityDetailConnected() {
   const { user } = useAuth();
   const { hasCapability } = useOpportunityCapabilities(user);
   const granted = hasCapability(OPPORTUNITY_WRITE_CAPABILITY);
-  return <OpportunityDetail readiness={opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted })} />;
+  // `hasCapability` MUST be threaded, not merely resolved.
+  //
+  // It was resolved here and dropped on the floor, so OpportunityDetail fell back to its own
+  // fail-closed default (`() => false`). The consequence was invisible and total: the Sales
+  // Agreement card called useSalesAgreement with `enabled: false` and rendered
+  // "Sales agreements aren't enabled in this environment yet" on EVERY record, forever -- while
+  // salesAgreement.read/.create/.updateDraft/.accept are in fact ACTIVATED for platform-sandbox
+  // (access/environmentCapabilityOverrides.ts). "Create Sales Agreement" could never appear either.
+  //
+  // The state was honest about what the component was told. The component was told something false,
+  // which is worse than an obviously broken panel: a truthful-looking NOT_ENABLED reads as a
+  // deliberate environment gate and invites nobody to investigate. It survived a Quick Gate for
+  // exactly that reason.
+  //
+  // The SAME trusted feed answers both capability families in one request
+  // (OPPORTUNITY_CAPABILITY_REQUEST includes SALES_AGREEMENT_CAPABILITY_REQUEST), so this costs no
+  // extra round trip -- the answer was already in hand.
+  return (
+    <OpportunityDetail
+      readiness={opportunityWriteReadiness({ capabilityGranted: granted, commandDeployed: granted })}
+      hasCapability={hasCapability}
+    />
+  );
 }
 
 function SalesOrderDetailConnected() {
   const { user } = useAuth();
   const { hasCapability } = useSalesOrderCapabilities(user);
   return <SalesOrderDetail hasCapability={hasCapability} />;
+}
+
+// The Sales Agreement record page mount. OPPORTUNITY_CAPABILITY_REQUEST already includes all four
+// SALES_AGREEMENT_CAPABILITY_REQUEST ids, resolved in ONE trusted request -- so this costs no extra
+// round trip and the page can never render an ACCEPT decided under a different accessVersion than
+// the EDIT beside it. hasCapability is fail-closed: the page reads nothing without salesAgreement.read.
+function SalesAgreementDetailConnected() {
+  const { user } = useAuth();
+  const { hasCapability } = useOpportunityCapabilities(user);
+  return <SalesAgreementDetail hasCapability={hasCapability} />;
 }
 
 function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyKeys) {
@@ -742,6 +778,10 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                   the dynamic :accountId sibling route, same reasoning as the retired-paths block
                   above. Reads the trusted getSalesOrderContext callable (salesOrder.read). */}
               <Route path="opportunities/sales-order/:salesOrderId" element={<SalesOrderDetailConnected />} />
+              {/* Declared BEFORE opportunities/:opportunityId for the same reason the Sales Order
+                  route above is: both are children of opportunities/, and React Router must read
+                  "sales-agreement" as a static segment rather than as an Opportunity id. */}
+              <Route path="opportunities/sales-agreement/:salesAgreementId" element={<SalesAgreementDetailConnected />} />
               {/* THE OPPORTUNITY GETS A URL (North Star family 4). Listed AFTER the sales-order
                   route above deliberately -- both are children of `opportunities/`, and React
                   Router ranks the static "sales-order" segment above this dynamic one, so an

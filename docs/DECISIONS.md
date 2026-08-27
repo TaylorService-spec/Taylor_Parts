@@ -2462,3 +2462,234 @@ wrong against a sibling PR — 1 check where #1514 had 47 — not because anythi
 
 **Related:** DECISIONS #124 (a suite registered nowhere, run by nothing), #128 (the deny list).
 Standing rule: `docs/CLAUDE_CONTEXT.md` — "verify, don't assume".
+
+
+## #132 — RECORDED GAP, NO DECISION TAKEN: production release identity is confirmed by a human, not enforced by a gate
+
+**Date:** 2026-08-27
+**Status:** **OPEN — awaiting Owner decision.** Nothing is authorized and nothing has been changed.
+This entry records a control gap; it does not choose a remedy.
+**Classification:** PRODUCTION RELEASE BOUNDARY / GOVERNANCE GAP. Not a North Star product defect,
+and not a reason to block ordinary GUI migration except where production release certification is
+itself required.
+
+### 1. Current production behaviour
+
+`scripts/_prodRelease.run.sh`, step 7/7 ("verify the deployed revision"):
+
+- prints the expected commit;
+- `curl`s the deployed `version.json` and prints the response, or `(unreadable)`;
+- prints a checklist and asks the operator to *"Confirm ALL of the following before calling this
+  released"* — commit matches, `environmentId`, `environmentRole`.
+
+It performs **no comparison of its own**. There is no assertion, no non-zero exit, and no refusal
+path: the step cannot fail the release, whatever the deployed commit turns out to be. It is an
+**operator confirmation**, and the runbook is explicit that the operator is the one confirming.
+
+This is the same shape `_releaseIdentityGate.mjs` was written to replace — its own header records
+that the sandbox step once "printed the deployed version.json next to an expected commit and told
+the reader to compare… A post-deploy check that cannot fail is documentation, not a gate." Sandbox
+was given a mechanical gate. Production was not.
+
+### 2. Observed evidence (sandbox, 2026-08-27)
+
+Proven while diagnosing a sandbox `REMOTE_COMMIT_MISMATCH`:
+
+```
+01:32:56.817Z  artifact built
+01:33:04.311Z  Hosting version created
+01:33:08.142Z  releaseTime — and the Last-Modified of the bytes finally served
+```
+
+Firebase reported `Deploy complete!`, and for a short interval afterwards Hosting continued serving
+the **previous** release. The sandbox verifier read inside that interval and observed the prior
+commit. Subsequent reads returned the approved commit, the exact expected `buildTime`, and the
+correct Hosting site — the project has exactly one site (`DEFAULT_SITE`), so wrong-site and
+wrong-target explanations are excluded by evidence.
+
+**Hosting publication is therefore not guaranteed to be synchronously observable at the first read
+after deploy completion.** That is a property of the platform, not of the sandbox script.
+
+### 3. Why this matters to production
+
+Production performs a similarly immediate, single read, and is exposed to the same observability
+gap. It differs in what happens next: sandbox fails closed mechanically; production has no
+mechanical outcome at all.
+
+The gap is that **the runbook cannot refuse**. Whatever the response — the prior commit during
+propagation, a genuinely wrong commit, an unreadable or malformed body — the step prints it and
+proceeds to ask for confirmation. Whether a release is correctly identified depends on a human
+reading the value correctly at that moment.
+
+This entry deliberately makes **no claim about how often an operator would misread it**. The
+recorded fact is narrower and does not depend on that: *the control is advisory, and no mechanical
+enforcement exists at this boundary.*
+
+### 4. Current control
+
+Protected production actions remain Owner/operator-triggered, and the agent loop cannot reach them:
+the deny list (#128) covers `_prodRelease.run.sh` along with every other release path. Production
+Rules are excluded from this runbook by design and carry their own Tier-2 path. Those controls are
+unaffected by this gap and remain in force — the gap is specifically the absence of a mechanical
+identity check at step 7/7.
+
+### 5. Possible future direction — **NOT AUTHORIZED, NOT APPROVED**
+
+Recorded so the option is not lost, explicitly **not** as a decision or a plan:
+
+- reuse the governed `scripts/_releaseIdentityGate.mjs` at the production step;
+- bounded polling for the propagation interval;
+- exact approved-commit verification;
+- fail closed on timeout, wrong commit, or unreadable response.
+
+The sandbox bounded-retry work (PR #1530) does **not** authorize any of this. Production release is
+its own protected boundary, and reusing a component proven in sandbox is a separate decision from
+proving it there. Nothing above may be implemented without explicit Owner approval.
+
+### 6. OWNER DECISION REQUIRED
+
+> **Should `_prodRelease.run.sh` step 7/7 be replaced or supplemented by a mechanically enforced
+> release-identity gate that fails the release closed on a wrong, stale or unreadable deployed
+> commit — or should production release identity remain an operator confirmation?**
+
+Until that is answered, production release identity remains operator-confirmed and this entry
+stands open.
+
+**Related:** DECISIONS #128 (the deny list covering release paths), #131 (absence of a check is
+unsafe evidence). Sandbox counterpart: PR #1530, `scripts/_releaseIdentityGate.mjs` — sandbox only.
+
+
+## #133 — RECORDED GAP, NO FIX AUTHORIZED: a release-boundary script change triggers no CI lane of its own
+
+**Date:** 2026-08-27
+**Status:** **OPEN — recorded, not fixed.** No workflow was added or edited.
+**Classification:** CI COVERAGE / RELEASE INFRASTRUCTURE. Same family as #124 (a suite registered
+nowhere, run by nothing) and #131 (an absent check suite is unsafe evidence), one directory over.
+
+### The problem, stated precisely
+
+CI lanes are path-filtered by **explicit file name**. Sixteen files under `scripts/` are named in a
+workflow filter and are covered. **The release boundary is not among them.** Named nowhere:
+
+```
+_releaseIdentityGate.mjs      _releaseProvenanceGuard.mjs    _sandboxDeployGuard.mjs
+verifyDeployArtifact.mjs      releaseProvenance.mjs          releaseRoot.mjs
+_sandboxRefresh.run.sh        _prodRelease.run.sh
+_sandboxQuickGate.sh          _sandboxRegressionGate.sh      _certificationRoutes.mjs
+verifySandboxFunctions.mjs    verifyDeployedCallablesFirebase.mjs
+sandboxFunctionsVerification.mjs   sandboxCredentials.mjs
+```
+
+There is no `scripts/**` glob in any workflow either — the globs that exist are narrow
+(`scripts/governance/**`, `scripts/fixtures/**`, `scripts/certificationWorld/**`, `scripts/repoGraph*`).
+
+**A correction to an earlier claim.** While proving PR #1530 this was first reported as "no workflow
+path-filters on `scripts/`", which is wider than the evidence. Most of `scripts/` is fine. The
+uncovered set is specific, and it is the release boundary.
+
+### The risk
+
+Coverage of these files today is **transitive and accidental**: suites that exercise them
+(`releaseProvenanceControl`, `sandboxGatePhases`, `verifyBuildBase`, `releaseIdentityRemoteRetry`)
+run in the `Full client node:test manifest (suites.json)` lane, which triggers on
+`field-ops-app-vite/test/**` and `suites.json` — **not** on the scripts they test.
+
+So a PR that changes a release gate **and nothing else** receives `build` and `gitleaks`, and no
+suite that exercises what it changed. The tests exist and are green; nothing runs them.
+
+This is not hypothetical. **PR #1530 changed `_releaseIdentityGate.mjs` and was covered only because
+it also registered a new suite in `suites.json`.** Had the same change shipped without a registered
+test — a comment fix, a timeout adjustment, a refactor — the manifest lane would not have fired.
+
+### Why it is easy to miss
+
+It presents as a small green PR. Per #131 the check to run is whether the EXPECTED lanes were
+created, and for a scripts-only change the honest expectation is currently "generic lanes only" —
+which is exactly what appears. Nothing looks wrong.
+
+### Current control
+
+The deny list (#128) prevents this loop from *running* a release path, and every protected action
+stays Owner-triggered. Those are unaffected. This gap is narrower: it is about whether a **change**
+to that tooling is tested before it merges, not about who may execute it.
+
+### Possible direction — **NOT AUTHORIZED**
+
+Recorded so the option is not lost, explicitly not as a decision:
+
+- a release-tooling CI lane triggered on the uncovered paths above, running the release/tooling
+  suites that already exist (`releaseProvenanceControl`, `sandboxGatePhases`, `verifyBuildBase`,
+  `releaseIdentityRemoteRetry`, `recordProvenance`);
+- **carrying its own hazard:** #128 records that a PR editing a workflow file can silently lose its
+  entire CI, and #131 records that this can happen without a workflow edit at all. Adding a lane is
+  therefore itself a change whose CI must be verified by lane creation, not by green checks.
+
+**Deliberately not proposed:** widening to a `scripts/**` glob. It would pull unrelated tooling into
+the release lane and make the trigger less legible, which is how a path filter stops being read.
+
+### OWNER DECISION REQUIRED
+
+> **Should a dedicated release-tooling CI lane be added, triggered on the release-boundary paths
+> above and running the existing release/tooling suites — or is transitive coverage via the node:test
+> manifest accepted, with lane-creation verified per #131 on every release-tooling PR?**
+
+**Related:** #124, #128, #131, #132. Surfaced while certifying PR #1530 (sandbox bounded retry).
+
+---
+
+## #134 — The Sales Agreement is a first-class routed record page, and its design was verified against source rather than briefed
+
+**Date:** 2026-08-26
+**Decision:** `docs/north-star/sales-agreement/North Star - Sales Agreement P1v2.dc.html` is the
+Sales Agreement family's visual authority (Owner approval, merged as PR #1533). The Owner further
+ruled **SA-G1**: the Sales Agreement becomes a **first-class routed record page**. The Agreement
+stays strongly connected to its originating Opportunity, but the Opportunity does not own the
+permanent Agreement record UX — `Opportunity → Sales Agreement → Sales Order`, each object keeping
+its own record identity and page purpose.
+
+**Scope of that ruling, stated because it is narrow.** It settles product direction only. It does
+not authorize routing or platform reconstruction. The implementation pass builds the route and must
+compose **existing** governed read and action authority: `getSalesAgreementContext` (the by-id read)
+already exists and is client-wired, so no new read is implied. SA-G2 through SA-G6 are explicitly
+outside that pass's scope.
+
+**Reason:** the alternative was to keep the composition inside the governed Opportunity workspace,
+where it lives today as `OpportunityAgreementCard` on the Opportunity record page. That would have
+made the Agreement permanently a sub-record of the object it is created from, which is wrong for a
+commercial commitment that a Sales Order is created *from* and that outlives the negotiation.
+
+**What the design pass found, which is why this entry is not only a ruling.** P1v2 re-checked every
+design-driving claim against source instead of carrying P1v1's assertions forward, and four findings
+changed the design:
+
+- **Lines persist `ref` with no durable display name.** P1v1 led each line with a product name that
+  nothing stores; the picker's `displayName` exists only at pick time and the agreement read does
+  not return it. The reference is now the line's identity, with a catalogue name shown as a marked
+  design recommendation. **No duplicate display name is to be persisted to satisfy a mock.**
+- **`DECLINED` is modelled but unreachable** — legal transition, entity label, no producing command.
+  Now **ND-14**.
+- **There is no post-acceptance revision path.** A terminal Agreement cannot be edited *and* a
+  second Agreement for the same Opportunity is transactionally refused. P1v1 asserted "a changed
+  mind is a new agreement", which the engine does not support. Now **ND-15**.
+- **The Sales Order is produced by the Opportunity's `closeOpportunityAsWon`**, which can still
+  refuse; acceptance is a precondition, not the trigger. UX copy must not imply
+  `Accept Agreement → Sales Order automatically created`.
+
+**Two corrections of P1v1 that bind any implementation.** *Dimension truth:* the 1440 / 768 / 375
+frames must render at exactly those widths — P1v1 labelled them while composing roughly
+1640 / 792 / 407, so its responsive claims could not be checked at all. *Acceptance evidence:* EOS
+proves three things — state `ACCEPTED`, `acceptedAtMillis`, `acceptedByUid` — and nothing about a
+customer. P1v1's "binding" and "recording the customer's commitment" are removed; the unresolved
+actor renders the governed constant `Unknown user` (F-UID-1). No signature, electronic-acceptance,
+external-acceptance or legal-enforceability claim may appear.
+
+**Recorded, not fixed:** `field-ops-app-vite/src/hooks/useSalesAgreement.js` carries capability
+commentary saying the read is granted in no environment;
+`functions/src/access/environmentCapabilityOverrides.ts` and `App.jsx` show all four Sales Agreement
+capabilities activated for `eos-platform-sandbox`. Left untouched so no product code entered a
+docs-only diff.
+
+**Related:** #106 (a missing business reference is not permission to display a record id), #122
+(the three authorities), #125 (a family composed without its design source), #129/#130 (the
+Opportunity's route and its design-source rebuild — the available precedent for SA-G1), ND-9,
+ND-14, ND-15.
