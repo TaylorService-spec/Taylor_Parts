@@ -83,6 +83,16 @@ on:
       - "field-ops-app-vite/src/modules/sales/OpportunityList.jsx"
       - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
       - "field-ops-app-vite/test/opportunityCollectionPage.test.jsx"
+      # LISTS P2 (docs/north-star/lists/) - the SHARED collection grammar, Phase 1.
+      # The state contract, the collection conformance gate and the row-to-record route check are
+      # cross-family: every list migration lands on them, so a change to any of them must run the
+      # whole conformance lane rather than only one family suite.
+      - "field-ops-app-vite/src/shared/ui/collectionPageState.js"
+      - "field-ops-app-vite/src/shared/ui/HonestState.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/listsP2StateContract.test.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/part.js"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -202,6 +212,16 @@ on:
       - "field-ops-app-vite/src/modules/sales/OpportunityList.jsx"
       - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
       - "field-ops-app-vite/test/opportunityCollectionPage.test.jsx"
+      # LISTS P2 (docs/north-star/lists/) - the SHARED collection grammar, Phase 1.
+      # The state contract, the collection conformance gate and the row-to-record route check are
+      # cross-family: every list migration lands on them, so a change to any of them must run the
+      # whole conformance lane rather than only one family suite.
+      - "field-ops-app-vite/src/shared/ui/collectionPageState.js"
+      - "field-ops-app-vite/src/shared/ui/HonestState.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/listsP2StateContract.test.jsx"
+      - "field-ops-app-vite/src/metadata/definitions/part.js"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -293,6 +313,15 @@ jobs:
       # surface broke: they are two pages with different authority, not one suite.
       - name: Opportunity collection (no pane, no per-row reads, no fabricated currency)
         run: npx vitest run test/opportunityCollectionPage.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LISTS P2 PHASE 1 - the shared collection contract every family migration stands on: the
+      # seventeen page states are seventeen distinct sentences, and a declared rowNavigationTo names
+      # a route this application actually mounts. Named here for the reason family 2 recorded: a
+      # vitest suite runs in CI only where a workflow names it (test/ciSuiteCoverage.test.mjs
+      # enforces it).
+      - name: Lists P2 shared contract (17 states, seven empties, live record routes)
+        run: npx vitest run test/listsP2StateContract.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the

@@ -80,6 +80,12 @@ const CONFORMANT_SURFACES = [
   "modules/reporting/ReportBuilder.jsx", // Wave 5
   "modules/workOrders/CustomerPicker.jsx", // Wave 5
   "shared/ui/NotificationPanel.jsx", // Wave 5
+  // The North Star COLLECTION pages, on the same terms as the record pages above: only their SHELL
+  // obligation differs (see NORTH_STAR_COLLECTION_PAGES). Listed literally rather than spread,
+  // because GATE 2c compares the three membership arrays and a spread would make every collection
+  // page look like a conformant workspace to it.
+  "modules/sales/OpportunityList.jsx",
+  "modules/workOrders/WorkOrdersList.jsx",
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -105,6 +111,33 @@ const NORTH_STAR_RECORD_PAGES = [
   "modules/accounts/AccountDetail.jsx",         // family 3 (formerly Wave 2 conformant)
   "modules/sales/OpportunityDetail.jsx",        // family 4 (a NEW page, not a recomposition)
   "modules/sales/SalesAgreementDetail.jsx",     // family 5 (a NEW routed record page)
+];
+
+// ════════════════════ NORTH STAR COLLECTION PAGES ════════════════════
+//
+// GOVERNANCE: docs/north-star/lists/ (Lists P2), reconciliation §H.
+//
+// THE HOLE THIS CLOSES, AND IT IS THE SAME HOLE TWICE. The comment above records that families 1
+// and 2 shipped onto no list at all and satisfied no composition obligation for weeks. The Lists P2
+// reconciliation found that the collection half of the programme had shipped into the identical
+// hole and nobody had noticed, because the fix last time added a list for RECORD pages only:
+//
+//   * OpportunityList.jsx (family 4b, the P1v4 collection) and WorkOrdersList.jsx both compose
+//     WorkspaceIdentity — the ratified collection header — and appear on NO list here.
+//   * NORTH_STAR_RECORD_PAGES cannot absorb them: it demands RecordIdentity, which is the RECORD's
+//     identity primitive. A collection does not have one and must not grow one.
+//   * AccountsList.jsx is on CONFORMANT_WORKSPACES. Migrating it to the collection grammar means
+//     dropping WorkspaceShell, which fails GATE 2 — with nowhere to move it to.
+//
+// So a collection gets its own contract, mirroring the record one exactly: compose the collection
+// grammar, do NOT also host WorkspaceShell (same doubled-chrome and same competing-h1 reason), and
+// stay bound by the fo-badge rule through CONFORMANT_SURFACES.
+//
+// A page migrates by MOVING between lists, never by appearing on two — GATE 2c enforces that across
+// all three.
+const NORTH_STAR_COLLECTION_PAGES = [
+  "modules/sales/OpportunityList.jsx",     // family 4b — the P1v4 reference collection
+  "modules/workOrders/WorkOrdersList.jsx", // the WorkspaceIdentity header landed here first
 ];
 
 function walk(dir) {
@@ -186,11 +219,63 @@ describe("composition conformance — site-wide standardization gates", () => {
     expect(stale, `Declared North Star page is not a surface any more:\n${stale.join("\n")}`).toEqual([]);
   });
 
-  it("GATE 2c — a page cannot be on both shell lists", () => {
-    // Otherwise GATE 2 and GATE 2b would demand opposite things of the same file, and whichever
-    // ran first would decide. A migration MOVES a page between the lists; it never adds it twice.
-    const both = NORTH_STAR_RECORD_PAGES.filter((r) => CONFORMANT_WORKSPACES.includes(r));
-    expect(both, `File is on both shell lists:\n${both.join("\n")}`).toEqual([]);
+  it("GATE 2d — North Star collection pages adopt the collection grammar INSTEAD of the shell", () => {
+    // The same replacement obligation GATE 2b places on record pages, for the surface P2 governs.
+    // The primitive is WorkspaceIdentity rather than RecordIdentity: a collection's header answers
+    // "what is this set and what about it needs me", a record's answers "which one is this".
+    const missing = NORTH_STAR_COLLECTION_PAGES.filter((r) => !/import\s+WorkspaceIdentity\s+from/.test(read(r)));
+    expect(
+      missing,
+      `North Star collection page missing WorkspaceIdentity:\n${missing.join("\n")}`,
+    ).toEqual([]);
+
+    // ...and must NOT also host WorkspaceShell, for the reason GATE 2b records: two shells double
+    // the chrome and both claim the h1 (ND-4).
+    const doubled = NORTH_STAR_COLLECTION_PAGES.filter((r) => /WorkspaceShell/.test(read(r)));
+    expect(
+      doubled,
+      `North Star collection page also hosts WorkspaceShell (pick one):\n${doubled.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("GATE 2d² — collection membership is DERIVED, so it cannot be quietly emptied", () => {
+    // The mutation hole GATE 2b² found, closed here before it can be dug a second time: a list that
+    // only ever constrains its own members can be shrunk to nothing and still pass. So the check
+    // runs against the WHOLE TREE and membership is compulsory.
+    //
+    // The probe is the IMPORT rather than the bare word, so `shared/ui/WorkspaceIdentity.jsx` — which
+    // contains its own name and is the primitive, not a consumer — does not report itself.
+    const undeclared = allFiles.map(rel)
+      .filter((r) => /import\s+WorkspaceIdentity\s+from/.test(read(r)))
+      .filter((r) => !NORTH_STAR_COLLECTION_PAGES.includes(r));
+    expect(
+      undeclared,
+      `These surfaces compose the North Star collection grammar but are declared nowhere, so no gate covers them:\n${undeclared.join("\n")}`,
+    ).toEqual([]);
+
+    // And the reverse: a declared file that no longer exists must be removed rather than left as a
+    // claim of coverage with nothing behind it.
+    const surfaces = new Set(allFiles.map(rel));
+    const stale = NORTH_STAR_COLLECTION_PAGES.filter((r) => !surfaces.has(r));
+    expect(stale, `Declared North Star collection page is not a surface any more:\n${stale.join("\n")}`).toEqual([]);
+  });
+
+  it("GATE 2c — a page cannot be on two shell lists", () => {
+    // Otherwise two gates would demand opposite things of the same file, and whichever ran first
+    // would decide. A migration MOVES a page between the lists; it never adds it twice.
+    //
+    // Now THREE lists, so all three pairs are compared. The pair that matters most in practice is
+    // collection-vs-workspace: every list still on WorkspaceShell (AccountsList, PartsList,
+    // PartMasterList, TruckInventory...) migrates by moving across exactly that line.
+    const pairs = [
+      ["North Star record", NORTH_STAR_RECORD_PAGES, "conformant workspace", CONFORMANT_WORKSPACES],
+      ["North Star collection", NORTH_STAR_COLLECTION_PAGES, "conformant workspace", CONFORMANT_WORKSPACES],
+      ["North Star collection", NORTH_STAR_COLLECTION_PAGES, "North Star record", NORTH_STAR_RECORD_PAGES],
+    ];
+    for (const [leftName, left, rightName, right] of pairs) {
+      const both = left.filter((r) => right.includes(r));
+      expect(both, `File is on both the ${leftName} and ${rightName} lists:\n${both.join("\n")}`).toEqual([]);
+    }
   });
 
   it("GATE 3 — conformant surfaces are status-standardized (no fo-badge)", () => {
