@@ -6406,7 +6406,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* --- week + fortnight ---------------------------------------------------- */
 .ns-dispatch-week, .ns-dispatch-load { margin-bottom: 22px; }
 .ns-dispatch-week__head, .ns-dispatch-week__row { display: grid;
-  grid-template-columns: 150px repeat(5, minmax(0, 1fr)); }
+  grid-template-columns: 150px repeat(7, minmax(0, 1fr)); }
 .ns-dispatch-week__head { border-bottom: 2px solid var(--verenward-evergreen); }
 .ns-dispatch-week__row { border-bottom: 1px solid var(--verenward-border); }
 .ns-dispatch-week__dayhead { padding: 4px 8px; font: 600 10.5px var(--font-interface);
@@ -6421,9 +6421,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-week__blocked { padding: 4px 8px; font: 600 11px var(--font-interface);
   outline: 1px solid var(--verenward-border-strong); outline-offset: -1px; color: var(--color-text-secondary); }
 .ns-dispatch-week__open { font-size: 11px; color: var(--color-text-tertiary, #6B7A74); }
+/* Weekends are shown but quieter — present so nothing is hidden, recessive so the working week still
+   reads first. */
+.ns-dispatch-week__cell--weekend { background: var(--verenward-stone); }
 
 .ns-dispatch-load__head, .ns-dispatch-load__row { display: grid;
-  grid-template-columns: 150px repeat(10, minmax(0, 1fr)); }
+  /* auto-fit rather than a fixed 10: the band gains a column when a weekend carries work. */
+  grid-template-columns: 150px repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; }
 .ns-dispatch-load__head { border-bottom: 2px solid var(--verenward-evergreen);
   font: 600 10px var(--font-interface); text-transform: uppercase; color: var(--color-text-secondary); }
 .ns-dispatch-load__identity-col, .ns-dispatch-load__dayhead { padding: 4px; }
@@ -6483,7 +6487,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
      and the board scrolls horizontally rather than compressing ten hours into thumb-widths. */
   .ns-dispatch-grid, .ns-dispatch-week, .ns-dispatch-load { overflow-x: auto; }
   .ns-dispatch-grid__head, .ns-dispatch-grid__row { min-width: 720px; }
-  .ns-dispatch-week__head, .ns-dispatch-week__row { min-width: 680px; }
+  .ns-dispatch-week__head, .ns-dispatch-week__row { min-width: 820px; }
   .ns-dispatch-load__head, .ns-dispatch-load__row { min-width: 820px; }
   .ns-dispatch-card { flex: 1 1 100%; }
 }
