@@ -90,10 +90,23 @@ async function main() {
 
   await seedAuthenticatedSession(page, ORIGIN, session);
   // NOT networkidle: this app holds live Firestore listeners open, so the network never goes idle
-  // and the wait can only time out. Wait for the board to actually appear instead.
-  await page.goto(`${ORIGIN}${ROUTE}`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".ns-dispatch, .ns-dispatch-denied", { timeout: 45000 });
-  await page.waitForTimeout(4000);
+  // and that wait can only time out. Wait for the board itself.
+  //
+  // Retried once, because the FIRST load after a Hosting deploy pulls a cold bundle through a cold
+  // CDN edge and has twice taken longer than a patient first attempt. A gate that reports a slow
+  // cache as a failed board is a gate that gets rerun by hand and eventually ignored.
+  let loaded = false;
+  for (let attempt = 1; attempt <= 2 && !loaded; attempt += 1) {
+    await page.goto(`${ORIGIN}${ROUTE}`, { waitUntil: "domcontentloaded" });
+    try {
+      await page.waitForSelector(".ns-dispatch, .ns-dispatch-denied", { timeout: 60000 });
+      loaded = true;
+    } catch {
+      if (attempt === 2) throw new Error("the Dispatch board did not render after two attempts");
+      console.log("  (cold load, retrying once)");
+    }
+  }
+  await page.waitForTimeout(5000);
 
   const text = await page.evaluate(() => document.body.innerText);
 
