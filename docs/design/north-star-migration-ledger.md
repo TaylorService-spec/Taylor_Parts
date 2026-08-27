@@ -482,6 +482,77 @@ below, and both remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
 
 ---
 
+## Family 5 — Sales Agreement
+
+**The first family built against a design source that was itself verified against the repository.**
+P1v2 was not handed over and implemented; it was produced from the Owner’s correction order by
+re-checking every design-driving claim in source, and four of those checks changed the design
+before a line of implementation existed. That is why this row has no “built blind first” section.
+
+| | |
+|---|---|
+| **Composition** | `src/modules/sales/SalesAgreementDetail.jsx` over `src/domain/salesAgreementNorthStar.js`, `src/domain/salesAgreementRead.js` and the existing `src/domain/salesAgreementView.js` |
+| **Read** | **EXISTING, previously uncalled:** `getSalesAgreementContext` (by id). No new callable, capability, index or Rules change in any of the six PRs. |
+| **Route** | **NEW:** `/customers/opportunities/sales-agreement/:salesAgreementId` — nested under `opportunities/` following the Sales Order precedent (#129). A URL shape is not ownership. |
+| **Visual authority** | **`North Star - Sales Agreement P1v2.dc.html`** — `docs/north-star/sales-agreement/`, merged as PR #1533 (`7f1ab681`), registered in `eos-north-star-sources.md`, Owner-approved 2026-08-26. Five artboards at true 1440 / 768 / 375 / 375 plus twelve state studies. |
+| **Implementation** | Six PRs: [#1536](https://github.com/TaylorService-spec/Taylor_Parts/pull/1536) derivation · [#1537](https://github.com/TaylorService-spec/Taylor_Parts/pull/1537) by-id read seam · [#1538](https://github.com/TaylorService-spec/Taylor_Parts/pull/1538) record page · [#1539](https://github.com/TaylorService-spec/Taylor_Parts/pull/1539) command wiring · [#1540](https://github.com/TaylorService-spec/Taylor_Parts/pull/1540) lineage · this PR, closeout. Work order: `docs/implementation-plans/sales-agreement-north-star.md`. |
+| **Proof** | `test/salesAgreementNorthStar.test.mjs` (26) · `test/salesAgreementByIdRead.test.mjs` (18) · `test/salesAgreementNorthStarPage.test.jsx` (30) · `test/salesAgreementCommandWiring.test.jsx` (24) · `test/salesAgreementLineage.test.jsx` (19), plus the reconciled Opportunity, Sales Order and conformance suites |
+| **Mutation proofs** | **20 — all caught, every source restored byte-identically.** Raw doc id as identity · fabricated line name · unknown money as zero · “binding” reintroduced · signature evidence implied · accepted facts synthesized locally · direct Firestore read · direct Firestore mutation · a third command exposed · decline · revise · CREATE from a by-id NOT_FOUND · NONE_YET/NOT_FOUND collapsed · terminal Edit restored · state relabelled as permission · permission relabelled as state · duplicate route alias · Opportunity raw id exposed · `sourceAgreementId` shown as identity · shared `.ns-record-body` changed. Two initially escaped and are recorded below. |
+| **Visual validation** | Real browser, real stylesheet, the page’s own markup, with the 252px application rail accounted for. **1440** → content 1188, body overflow 0, `.ns-record-body` `760px 340px` gap 56, commercial table 760px with no scroll needed. **768** → overflow 0, `352px 352px` gap 32. **375** → overflow 0, single column 343px. Zero elements overflow outside a declared scroll container at any width. |
+| **Named decisions** | ND-14 (`DECLINED` modelled, unreachable), ND-15 (no post-acceptance revision path), ND-16 (the design’s 224/300/40 vs the shipped 252/340/56 — Owner ruled *build to the shipped grammar*), and ND-9 carried forward unchanged |
+| **Gate** | **NONE YET.** Not deployed, not swept. |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+
+### What the design pass found before implementation started
+
+Four claims in the P1v1 handoff did not survive being checked against source, and each changed the
+design rather than the code:
+
+- **Agreement lines persist `ref` and no durable display name.** P1v1 led each line with a product
+  name that nothing stores. The reference became the identity (SA-G4).
+- **`DECLINED` is modelled with a legal transition and no producing command** (ND-14).
+- **A terminal agreement cannot be edited AND a second agreement for the same opportunity is
+  transactionally refused**, so there is no governed post-acceptance revision path. P1v1 asserted
+  “a changed mind is a new agreement”, which the engine refuses (ND-15).
+- **The Sales Order is produced by the Opportunity’s `closeOpportunityAsWon`**, which can still
+  refuse. Acceptance is a precondition, not the trigger.
+
+P1v1 also labelled its frames 1440/768/375 while composing roughly 1640/792/407. P1v2’s frames were
+measured after authoring and render at exactly their stated widths.
+
+### The two mutations that escaped first, and what they mean
+
+Recorded because a mutation register that only lists successes is not evidence.
+
+1. **Duplicate route alias — a real coverage gap, now closed.** The assertion counted routes whose
+   *path* contained `sales-agreement`. An alias at `opportunities/agreement/:id` mounts the same
+   page at a second address and contains no such substring, so the assertion could not see it. It
+   now counts routes by their **element** (`<SalesAgreementDetailConnected />`) and requires exactly
+   one. Re-run: caught.
+2. **CREATE from a by-id NOT_FOUND — an inert mutation, not a weak test.** The mutation passed an
+   `action` prop to `HonestState` in the `NOT_APPLICABLE` branch, and that branch **ignores
+   `action` entirely** — the same trap `SalesOrderDetail.jsx` already documents about its
+   `UNAVAILABLE`/`onRetry` pair. Nothing rendered, so nothing could be caught. Re-run with a
+   mutation that genuinely renders a Create control: caught.
+
+   *Worth knowing:* `HonestState`’s `NOT_APPLICABLE` branch silently drops `action`. A future
+   developer adding one there gets no button and no error.
+
+### Known incompleteness, recorded rather than smoothed over
+
+**SA-G7 — line pricing is not on the record page.** The page’s Draft editor covers the six scalar
+commercial terms, all on the server’s own allowlist. It does not price lines, so an acceptance
+blocked by an unpriced line cannot be cleared from this page.
+
+**This is a migration-completeness gap, not a functional one, and the distinction was corrected
+during closeout.** The PR 4 report called it “the only way to clear the unpriced-line blocker”,
+which implied users are stuck. They are not: `SalesAgreementPanel` inside `SalesWorkspace` ships a
+full line editor today — `ProductReferencePicker`, per-line quantity and unit price — and remains
+mounted. The gap is that two surfaces now show one record and only one of them can price it, which
+is the same question ND-13 asks about the Opportunity’s pane.
+
+---
+
 ## Cross-family — the Opportunity workspace cannot retire its pane yet (2026-08-27)
 
 **Owner ruling, 2026-08-27.** Opportunity Workspace P1v3 is DESIGN APPROVED and its architecture is
