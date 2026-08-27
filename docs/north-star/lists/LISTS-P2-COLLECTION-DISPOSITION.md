@@ -452,3 +452,58 @@ design board draws families as tabs. A test holds it. Account **record** authori
 **States reachable here:** LOADING, POPULATED, TRUE_EMPTY, FILTER_ZERO, DENIED, UNAVAILABLE,
 DEGRADED. The portfolio summary carries its own DENIED and UNAVAILABLE lines, separately from the
 list's — two reads, two states, and a denial of one must not read as a failure of the other.
+
+### Phase 5 — Sales Orders (`/customers/sales-orders`) · merged
+
+The fourth and last proving family. The read, the money authority, the lineage, the actions and the
+record route are all untouched. Four things changed:
+
+1. **The collection header replaces the shell**, with the governed aggregate as its count.
+2. **The row destination is now read from the definition — and this is the instructive one.** The
+   comment at that line *already claimed* it was: *"the destination the definition itself names
+   (rowNavigationTo), not a path this screen invents — so the row target cannot drift from the
+   declaration."* The code beneath it was a template literal. They agreed by luck; on Work Orders
+   and Part Master the same pair disagreed and named routes this application does not mount, and
+   nobody noticed because no screen ever asked the definition. **A comment is not a mechanism.**
+3. **A stale comment that denied the money column is gone.** It read *"NO DOLLARS COLUMN … the Sales
+   Order document stores no total of any kind"*, citing a gap that is closed and was wrong while it
+   was open — the invoice is derived *from* the order. The screen renders `totalMinor` through the
+   record page's own `salesOrderDollars`. A comment describing the opposite of the code is worse
+   than no comment, because the next reader trusts it and does not check. The record of the wrong
+   call survives in the replacement text.
+4. **DEGRADED** for customer-name resolution, with withheld and failed kept apart.
+
+**No create action, and its absence is a treatment rather than an oversight.** A Sales Order is not
+user-creatable: it is produced by the atomic Won transition on an Opportunity. A disabled
+"New sales order" would describe a permission boundary when the truth is that creation belongs to
+another object entirely — P2's third create treatment, *absent*.
+
+| # | Question | Answer |
+| --- | --- | --- |
+| 1 | Identify quickly? | Yes — the `SO-` reference, sorted newest-first by number. |
+| 2 | Current meaningful state? | Yes — the governed state vocabulary. |
+| 3 | Needs attention? | **No column.** `salesOrderAttention` is record-level; no list projection exists. |
+| 4 | Compare with neighbours? | Yes — the one index-backed `state` filter, declared sorts, and the money column in tabular numerals. |
+| 5 | Open the right record? | Yes — from the definition. |
+| 6 | **Anything that belongs on Detail?** | **No.** Six columns. Lines, fulfilment, allocation, lineage and times are on the record. |
+| 7 | **Any field shown merely because it existed?** | **No.** Still no timestamp column: the read service's timestamp projection reads field names the write path does not store, and a column bound to it could only ever print an em dash. |
+| 8 | **Duplicated context from another object?** | **No.** Customer is a resolved name. The originating Opportunity is not reproduced. |
+| 9 | **Invented a fact, action or authority?** | **No.** Money routes through the record page's own five readings — the migration grew no second opinion about the money of the sale. No filter is offered that no composite serves. |
+| 10 | **Handheld preserves the answer?** | Yes — `fo-table--stack`. |
+
+---
+
+## 8. Proving set complete
+
+Four families, two data shapes, two domains, and every one of them left with **less** invented than
+it started with:
+
+| Family | Shape | What it proved |
+| --- | --- | --- |
+| Opportunity | complete read | No pagination controls at all; Pattern A governed order; existence-only relationships; the seven empties are seven sentences. |
+| Work Orders | cursor-paged | The same anatomy over a bounded metadata read; governed aggregate; count-less chips; a named search gap; Pattern B with its consequence stated. |
+| Accounts | cursor-paged + governed summary | Two governed counts can coexist without either lying about the other; the shell lists can be crossed. |
+| Sales Orders | cursor-paged (CALLABLE) | The grammar carries a callable-backed read and a real money column without growing a second opinion about either. |
+
+Remaining MIGRATE families (Part Master, Equipment, Employees, Suppliers, Warehouses, Manufacturers,
+Purchase Orders, Transfers, Trucks) follow the same pattern one at a time, per §1 and §1.2.

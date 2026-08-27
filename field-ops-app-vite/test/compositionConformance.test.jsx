@@ -86,6 +86,7 @@ const CONFORMANT_SURFACES = [
   "modules/sales/OpportunityList.jsx",
   "modules/workOrders/WorkOrdersList.jsx",
   "modules/accounts/AccountsList.jsx",
+  "modules/sales/SalesOrdersList.jsx",
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -143,6 +144,7 @@ const NORTH_STAR_COLLECTION_PAGES = [
   // which GATE 2 demands of its former list and GATE 2d forbids of this one; without the move the
   // migration could not have merged.
   "modules/accounts/AccountsList.jsx",     // Phase 4
+  "modules/sales/SalesOrdersList.jsx",     // Phase 5
 ];
 
 function walk(dir) {

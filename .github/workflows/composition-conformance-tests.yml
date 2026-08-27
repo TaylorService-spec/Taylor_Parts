@@ -96,6 +96,7 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
+      - "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -228,6 +229,7 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
+      - "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
