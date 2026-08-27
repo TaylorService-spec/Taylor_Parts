@@ -12,6 +12,7 @@ import { REFERENCE_STATE, REFERENCE_STATE_LABEL } from "../../metadata/reference
 import { formatMoment } from "../../domain/displayTimestamp";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { SALES_AGREEMENT_READ_CAPABILITY } from "../../access/salesAgreementCapabilityAccess.js";
+import { LinesEditor, buildLines, toEditorLines } from "./salesAgreementLines.jsx";
 import {
   salesAgreementHeader,
   salesAgreementLines,
@@ -213,6 +214,11 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
   const { view, absence, refresh, updateDraft, accept, pending, commandError, clearCommandError } =
     useSalesAgreementById(salesAgreementId, { enabled: mayRead });
   const [editingTerms, setEditingTerms] = useState(false);
+  // SA-G7. `null` means not editing; an array is the working draft. Kept separate from
+  // editingTerms rather than merged into one flag: they are two different governed patches, and
+  // one flag would let a lines save carry stale terms, or the reverse.
+  const [editingLines, setEditingLines] = useState(null);
+  const [linesError, setLinesError] = useState(null);
 
   const ready = view.kind === SALES_AGREEMENT_VIEW_STATE.READY;
 
@@ -389,8 +395,80 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
           <RuledSection
             title="What we committed to sell"
             meta={<span className="ns-section__note">negotiated prices, fixed at acceptance</span>}
+            actions={
+              // SA-G7: LINE PRICING, ON THE RECORD THAT OWNS IT.
+              //
+              // Until now this existed only in the workspace's Opportunity pane, which made that
+              // pane the sole surface for an activated governed capability and blocked its
+              // retirement -- and with it Opportunity Workspace P1v4 and ND-13.
+              //
+              // The editor is NOT reimplemented here. It is the same component and the same
+              // `buildLines` the pane uses, moved to salesAgreementLines.jsx so one price parser
+              // serves both surfaces. Two editors would eventually round differently, or disagree
+              // about which price shapes are acceptable, and that disagreement would be about what
+              // a customer agreed to pay.
+              //
+              // ABSENT IS NOT DISABLED (SA-D11). A terminal agreement offers no control at all. A
+              // DRAFT the caller may not edit DOES show it, disabled, carrying the seam's own
+              // reason -- that one genuinely is permission.
+              actions.edit?.present && editingLines === null ? (
+                <button
+                  type="button"
+                  className="fo-button"
+                  disabled={!actions.edit.available}
+                  title={actions.edit.reason ?? undefined}
+                  data-restriction={actions.edit.restriction ?? undefined}
+                  onClick={
+                    actions.edit.available
+                      ? () => { setLinesError(null); clearCommandError?.(); setEditingLines(toEditorLines(view.lines)); }
+                      : undefined
+                  }
+                >
+                  Edit lines
+                </button>
+              ) : null
+            }
           >
-            {lines.length === 0 ? (
+            {editingLines !== null ? (
+              <div className="ns-lines-edit">
+                <LinesEditor
+                  lines={editingLines}
+                  onChange={setEditingLines}
+                  disabled={pending === "updateDraft"}
+                />
+                {linesError ? <p className="ns-state ns-state--error" role="alert">{linesError}</p> : null}
+                {commandError ? <p className="ns-state ns-state--error" role="alert">{commandError}</p> : null}
+                <div className="ns-lines-edit__actions">
+                  <button
+                    type="button"
+                    className="fo-button fo-button--primary"
+                    disabled={pending === "updateDraft"}
+                    onClick={async () => {
+                      // The SAME validator the pane uses. A price that is not a plain amount is
+                      // REFUSED rather than coerced, and an empty price stays UNPRICED rather than
+                      // becoming a zero the server would read as "free".
+                      const built = buildLines(editingLines);
+                      if (built.error) { setLinesError(built.error); return; }
+                      setLinesError(null);
+                      const outcome = await updateDraft({ lines: built.lines });
+                      // Closes ONLY on a governed success. A refusal keeps the editor open with its
+                      // reason, because closing would read as "saved".
+                      if (outcome?.ok) setEditingLines(null);
+                    }}
+                  >
+                    {pending === "updateDraft" ? "Saving lines…" : "Save lines"}
+                  </button>
+                  <button
+                    type="button"
+                    className="fo-button"
+                    disabled={pending === "updateDraft"}
+                    onClick={() => { setEditingLines(null); setLinesError(null); clearCommandError?.(); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : lines.length === 0 ? (
               <HonestState state={HONEST_STATE.EMPTY} detail="No lines have been recorded on this agreement." />
             ) : (
               <div className="ns-table-wrap">

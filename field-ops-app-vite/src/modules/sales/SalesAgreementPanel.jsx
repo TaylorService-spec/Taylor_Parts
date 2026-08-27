@@ -55,76 +55,7 @@ const money = (minor, currency) => (typeof minor === "number" ? formatMinorUnits
 const STATE_TONE = { DRAFT: "neutral", ACCEPTED: "positive", DECLINED: "negative" };
 const STATE_LABEL = { DRAFT: "Draft", ACCEPTED: "Accepted", DECLINED: "Declined" };
 
-const BLANK_LINE = { kind: "PART", ref: "", quantity: "1", unitPrice: "" };
-
-/** Major-unit text -> integer minor units. Empty stays UNDEFINED, which is "no price yet", not zero. */
-function toMinor(text) {
-  const t = String(text ?? "").trim();
-  if (t === "") return undefined;
-  if (!/^\d+(\.\d{1,2})?$/.test(t)) return NaN; // rejected by the caller; never silently coerced
-  const [whole, frac = ""] = t.split(".");
-  return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
-}
-
-function LinesEditor({ lines, onChange, disabled }) {
-  const set = (i, patch) => onChange(lines.map((l, n) => (n === i ? { ...l, ...patch } : l)));
-  return (
-    <div className="fo-agreement-lines">
-      {lines.map((l, i) => (
-        <div key={i} className="fo-agreement-line">
-          {/* CHANGING THE KIND CLEARS THE REF, and that is the correct destructive default.
-              A ref belongs to exactly one catalog: a part id carried over into an EQUIPMENT_MODEL
-              line is not a value worth preserving, it is the wrong-kind error waiting to happen at
-              submit. Clearing says so immediately, at the moment the user made the choice. */}
-          <select aria-label={`Line ${i + 1} kind`} value={l.kind} disabled={disabled}
-            onChange={(e) => set(i, { kind: e.target.value, ref: "" })}>
-            <option value="EQUIPMENT_MODEL">Equipment model</option>
-            <option value="PART">Part</option>
-            <option value="SERVICE">Service</option>
-          </select>
-          <ProductReferencePicker
-            kind={l.kind}
-            value={l.ref}
-            lineNumber={i + 1}
-            disabled={disabled}
-            onChange={(ref) => set(i, { ref })}
-          />
-          <input aria-label={`Line ${i + 1} quantity`} inputMode="numeric" value={l.quantity} disabled={disabled}
-            onChange={(e) => set(i, { quantity: e.target.value })} />
-          {/* Left empty this is an UNPRICED line, which a draft is allowed to carry. It becomes the
-              thing that blocks acceptance, and the Accept control says so by name. */}
-          <input aria-label={`Line ${i + 1} unit price`} inputMode="decimal" placeholder="Price" value={l.unitPrice}
-            disabled={disabled} onChange={(e) => set(i, { unitPrice: e.target.value })} />
-          {lines.length > 1 && (
-            <Button variant="ghost" disabled={disabled} onClick={() => onChange(lines.filter((_, n) => n !== i))}>
-              Remove
-            </Button>
-          )}
-        </div>
-      ))}
-      <Button variant="ghost" disabled={disabled} onClick={() => onChange([...lines, { ...BLANK_LINE }])}>
-        Add line
-      </Button>
-    </div>
-  );
-}
-
-/** Turns the editor's text into the command's shape, or returns the reason it cannot. */
-function buildLines(draftLines) {
-  const out = [];
-  for (const [i, l] of draftLines.entries()) {
-    const ref = String(l.ref ?? "").trim();
-    if (!ref) return { error: `Line ${i + 1} needs an item.` };
-    const quantity = Number(l.quantity);
-    if (!Number.isInteger(quantity) || quantity <= 0) return { error: `Line ${i + 1} needs a whole quantity above zero.` };
-    const unitPrice = toMinor(l.unitPrice);
-    if (Number.isNaN(unitPrice)) return { error: `Line ${i + 1}'s price must be an amount like 1250.00.` };
-    // `unitPrice: undefined` is omitted by the transport, so an unpriced draft line stays unpriced
-    // rather than arriving as a zero the server would read as "free".
-    out.push(unitPrice === undefined ? { kind: l.kind, ref, quantity } : { kind: l.kind, ref, quantity, unitPrice });
-  }
-  return { lines: out };
-}
+import { BLANK_LINE, toMinor, LinesEditor, buildLines } from "./salesAgreementLines.jsx";
 
 function CreateForm({ onCreate, pending, canCreate }) {
   const [lines, setLines] = useState([{ ...BLANK_LINE }]);
