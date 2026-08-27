@@ -70,7 +70,7 @@ const CONFORMANT_SURFACES = [
   "modules/equipment/InventoryControlSection.jsx", // Wave 3
   "modules/inventory/truckManagement/OutcomeBanner.jsx", // Wave 4
   "modules/inventory/UsedInEquipmentSection.jsx", // Wave 4
-  "modules/dispatcherBoard/TechnicianBoard.jsx", // Wave 5
+  // TechnicianBoard.jsx was deleted by the Dispatch North Star P1 composition (Wave 5 entry retired).
   "modules/operations/panels/InventoryHealthPanel.jsx", // Wave 5
   "modules/operations/panels/ProcurementPanel.jsx", // Wave 5
   "modules/operations/panels/WarehousePanel.jsx", // Wave 5
@@ -170,6 +170,11 @@ const NORTH_STAR_COLLECTION_PAGES = [
   "modules/purchasing/PurchaseOrders.jsx",
   "modules/inventory/Transfers.jsx",
   "modules/jobs/Jobs.jsx",
+  // DISPATCH NORTH STAR P1 (2026-08-27). A board rather than a table, and a collection page all
+  // the same: it is a workspace whose job is finding and placing work, and the artifact draws the
+  // ratified collection header on it -- crumb, rule pair, serif title, workload summary line.
+  // Listed here so GATE 2d holds it to that grammar instead of letting a board invent its own.
+  "modules/dispatcherBoard/DispatcherBoard.jsx",
 ];
 
 function walk(dir) {

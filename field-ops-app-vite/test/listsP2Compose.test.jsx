@@ -79,6 +79,11 @@ const COLLECTION_PAGES = [
   // question and therefore received no presentation work, which is why it looked nothing like
   // Opportunity. It is a collection page now; the product question is untouched.
   "modules/jobs/Jobs.jsx",
+  // DISPATCH NORTH STAR P1 (2026-08-27). A board rather than a table, and a collection page all
+  // the same: it is a workspace whose job is finding and placing work, and the artifact draws the
+  // ratified collection header on it -- crumb, rule pair, serif title, workload summary line.
+  // Listed here so GATE 2d holds it to that grammar instead of letting a board invent its own.
+  "modules/dispatcherBoard/DispatcherBoard.jsx",
 ];
 
 /**

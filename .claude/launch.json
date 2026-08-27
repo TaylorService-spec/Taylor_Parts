@@ -28,6 +28,23 @@
         "5200"
       ],
       "port": 5200
+    },
+    {
+      "name": "field-ops-dev-sandbox",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "field-ops-app-vite",
+        "--",
+        "--port",
+        "5198"
+      ],
+      "port": 5198,
+      "env": {
+        "VITE_ENVIRONMENT_ID": "platform-sandbox"
+      }
     }
   ]
 }
