@@ -17,7 +17,7 @@ under the board, handheld, scan, dashboard and administration module trees. **75
 | **MIGRATE** | A true object collection. One row is one governed record of one family. Gets the full List North Star grammar. |
 | **COMPOSE** | A specialised collection. Uses the shared List primitives (states, absence vocabulary, row identity, reference resolution) at a lighter configuration — typically the metadata layer's own `LIST_SURFACE: "RELATED"`. Does **not** get a page header, views row or footer: it lives inside another page. |
 | **EXEMPT** | A legitimately different interaction archetype — a board, a scanner, a wizard, a matrix, a dashboard panel, an editor. Forcing it into the List grammar would destroy the thing it is good at. Still bound by the shared **vocabularies** (honest states, absence, no raw ids, touch floor). |
-| **BLOCKED** | Needs a genuine domain or governance decision before it can be classified. Named with the exact question. |
+| **BLOCKED** | Needs a genuine domain or governance decision before it can be classified. Named with the exact question. **Reported, never resolved by manufacturing the authority that would make the surface conform.** |
 
 **A fifth bucket is stated separately, deliberately.** *Not a surface* — a nav placeholder or a
 retired screen with no collection behind it. The four classifications describe surfaces that exist;
@@ -28,13 +28,16 @@ is nothing here yet."
 
 ## The Owner's proving set — status
 
+**Owner ruling, 2026-08-27: the proving set is four.** Selling Agreement was removed from it and
+classified EXEMPT — see §3.1. Four families are sufficient to prove the shared abstraction.
+
 | Family | Disposition | Note |
 | --- | --- | --- |
 | Customer / Account | **MIGRATE** | Phase 4 |
 | Opportunity | **MIGRATE** | Phase 2 — the reference implementation |
-| **Selling (Sales) Agreement** | **🛑 BLOCKED** | **No collection read of any kind exists.** See §5.1. This is a STOP condition under the addendum's own list ("a new domain read") and is reported rather than absorbed. |
 | Sales Order | **MIGRATE** | Phase 5 |
 | Work Order | **MIGRATE** | Phase 3 — the cursor-paged proof |
+| ~~Selling (Sales) Agreement~~ | **EXEMPT** | Removed from the proving set by Owner ruling. §3.1. |
 
 ---
 
@@ -148,7 +151,35 @@ referenced object's record page inside a row, an expanded row, a rail, a drawer,
 
 ---
 
-## 3. EXEMPT — different interaction archetypes (28)
+## 3. EXEMPT — different interaction archetypes (29)
+
+### 3.1 — Selling (Sales) Agreement · **Owner ruling, 2026-08-27**
+
+Raised as BLOCKED, and resolved by ruling rather than by building the read.
+
+**The ruling: Option B.** A Selling Agreement is not required to gain a collection read merely to
+participate in List North Star. The governed navigation model is preserved as it stands —
+**Opportunity → Selling Agreement** — because *EOS presently defines a Selling Agreement as a
+relationship-owned object reachable through its Opportunity, not as an independently browsable
+collection.* That is a statement about the product, not about the migration, which is why it settles
+the question rather than deferring it.
+
+**Explicitly not created:** ~~listSalesAgreements~~ · ~~a Selling Agreement collection projection~~ ·
+~~a capability~~ · ~~Rules~~ · ~~a route~~ · ~~a synthetic client-side collection~~. The last one is
+the one worth naming: assembling a browsable set on the client from per-opportunity reads would have
+produced a surface that *looked* like the others while being an N+1 fan-out wearing a collection's
+clothes, and it would have created the product capability by accident — which is precisely what the
+ruling withholds.
+
+**This is not a permanent ruling that EOS may never have one.** It means List North Star is not
+authorised to *create that product capability*. If a future operational requirement establishes that
+users need to browse Selling Agreements independently, that is a separate governed product decision,
+and the collection and its read authority get designed intentionally rather than arriving as a side
+effect of a presentation migration.
+
+The Sales Agreement **record** family (family 5) is accepted, untouched, and unaffected.
+
+### 3.2 — The rest
 
 Still bound by the shared **vocabularies** — honest states, absence, `Unassigned ≠ Unresolved`, no
 document ids as labels, the touch floor. Not bound by the page anatomy.
@@ -208,22 +239,14 @@ Stated separately because classifying them would claim a design decision where n
 
 ---
 
-## 5. BLOCKED — genuine decisions required (5)
+## 5. BLOCKED — genuine decisions required (4)
 
 Each is a STOP condition under the addendum. None is absorbed into List infrastructure.
 
-### 5.1 — Sales Agreement collection · **in the Owner's proving set**
+### 5.1 — *(withdrawn)* Sales Agreement collection
 
-**No collection read exists.** The only governed reads are `getSalesAgreementForOpportunity`
-(per-opportunity) and a by-id read; `salesAgreement.js` declares an entity and **no list view
-definition**. P2's own 2j marks the row `AUTHORITY REQUIRED`.
-
-A Sales Agreement collection needs a **new governed read** — a Class C gap and an explicit stop
-condition. The record family (family 5) is accepted and untouched.
-
-> **Decision required:** authorise a `listSalesAgreements` read, or accept that Selling Agreement is
-> reachable only from the Opportunity that owns it and drop it from the proving set. The other four
-> proving families prove the abstraction without it.
+**Resolved by Owner ruling, 2026-08-27 — Option B.** No longer blocked, because the collection is no
+longer sought. Reclassified **EXEMPT**; the reasoning is recorded in full at §3.1.
 
 ### 5.2 — Job Assignments (`/service/job-assignments`)
 
