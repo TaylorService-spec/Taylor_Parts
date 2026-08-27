@@ -252,15 +252,24 @@ test("the seam reads through the governed callable and through nothing else", ()
   assert.ok(!/getSalesAgreementForOpportunity/.test(hook));
 });
 
-test("the seam exposes no mutation authority", () => {
+test("the seam exposes EXACTLY the two governed commands, and no third", () => {
+  // PR 2 shipped this seam read-only and asserted zero commands. PR 4 wired the two governed ones,
+  // so the fence NARROWS rather than disappears: these two, and nothing else. Deleting the
+  // assertion instead would have quietly removed the only thing stopping a third from appearing.
   const hook = src("hooks/useSalesAgreementById.js");
+  assert.match(hook, /updateSalesAgreementDraft\(/, "the governed draft edit");
+  assert.match(hook, /acceptSalesAgreement\(/, "the governed acceptance");
   for (const command of [
-    "createSalesAgreement", "updateSalesAgreementDraft", "acceptSalesAgreement",
-    "decline", "revise", "supersede", "reopen", "replaceAgreement",
+    // Creation belongs to the Opportunity surface, which is the only place that knows which
+    // Opportunity an agreement would be created FROM.
+    "createSalesAgreement",
+    "declineSalesAgreement", "reviseSalesAgreement", "supersedeSalesAgreement",
+    "reopenSalesAgreement", "replaceAgreement", "duplicateSalesAgreement",
   ]) {
-    assert.ok(!new RegExp(`\\b${command}\\b`).test(hook), `${command} must not be reachable from the read seam`);
+    assert.ok(!new RegExp(`${command}\\(`).test(hook), `${command} must not be reachable from this seam`);
   }
-  assert.ok(!/idempotencyKey/.test(hook), "a read needs no retry key; carrying one implies a write");
+  // One idempotency discipline: the retry key is minted by the shared runner, never here.
+  assert.ok(!/mintKey/.test(hook), "the seam must not mint its own idempotency keys");
 });
 
 test("no unsupported acceptance or customer-signature language enters the seam", () => {

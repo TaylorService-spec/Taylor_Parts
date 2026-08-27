@@ -84,6 +84,9 @@ on:
       - "field-ops-app-vite/src/hooks/useSalesAgreementById.js"
       - "field-ops-app-vite/src/modules/sales/SalesAgreementDetail.jsx"
       - "field-ops-app-vite/test/salesAgreementNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/salesAgreementCommandWiring.test.jsx"
+      - "field-ops-app-vite/src/hooks/useAgreementCommandRunner.js"
+      - "field-ops-app-vite/src/hooks/useSalesAgreement.js"
       - "functions/src/opportunity/opportunityReadService.ts"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
@@ -193,6 +196,9 @@ on:
       - "field-ops-app-vite/src/hooks/useSalesAgreementById.js"
       - "field-ops-app-vite/src/modules/sales/SalesAgreementDetail.jsx"
       - "field-ops-app-vite/test/salesAgreementNorthStarPage.test.jsx"
+      - "field-ops-app-vite/test/salesAgreementCommandWiring.test.jsx"
+      - "field-ops-app-vite/src/hooks/useAgreementCommandRunner.js"
+      - "field-ops-app-vite/src/hooks/useSalesAgreement.js"
       - "functions/src/opportunity/opportunityReadService.ts"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
@@ -272,7 +278,7 @@ jobs:
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the
       # COMPOSITION, which has no manifest and runs only where a workflow names it.
       - name: Sales Agreement North Star composition (no spine, governed actions only, honest absence)
-        run: npx vitest run test/salesAgreementNorthStarPage.test.jsx
+        run: npx vitest run test/salesAgreementNorthStarPage.test.jsx test/salesAgreementCommandWiring.test.jsx
         working-directory: field-ops-app-vite
 
       # The five features converged into src/metadata/ (ADR-013), each with its mutation proof:

@@ -6,34 +6,22 @@ import {
   acceptSalesAgreement,
 } from "../services/salesAgreementCommandClient.js";
 import { salesAgreementView, SALES_AGREEMENT_VIEW_STATE } from "../domain/salesAgreementView.js";
+import { useAgreementCommandRunner } from "./useAgreementCommandRunner.js";
 
 // The Sales Agreement for one Opportunity: read it, create it, edit the draft, accept it.
 //
-// ════════════════════ IDEMPOTENCY KEYS ARE MINTED PER INTENT, NOT PER CALL ════════════════════
+// ════════════════════ THE COMMAND DISCIPLINE MOVED, IT DID NOT CHANGE ════════════════════
 //
-// Each command's key is generated ONCE when the user forms the intent and reused across every
-// retry of that intent. A key minted inside the transport layer would make every retry a fresh
-// create — which is precisely the failure the server's replay path exists to prevent, defeated on
-// the client. The key is cleared only when the command SUCCEEDS, so a network failure followed by a
-// retry replays rather than duplicating.
-//
-// ════════════════════ EVERY MUTATION RE-READS ════════════════════
-//
-// Nothing here patches local state from a command's return value. The server owns totals, state,
-// timestamps and the allocated number; a locally-assembled optimistic record would be a second
-// answer that disagrees the moment any of them is derived differently. Slower, and honest.
-
-let keySeq = 0;
-const mintKey = (prefix) => `${prefix}-${Date.now()}-${++keySeq}-${Math.floor(Math.random() * 1e6)}`;
+// Per-intent idempotency keys, the unmounted-tree guard, the re-read after every successful
+// mutation and the refusal to patch local state all now live in `useAgreementCommandRunner`,
+// extracted in PR 4 of the Sales Agreement North Star run so the by-id record page shares ONE
+// mechanism with this hook rather than growing a second. The behaviour here is unchanged; what each
+// hook still owns is its own read, and therefore its own `refresh`.
 
 export function useSalesAgreement(opportunityId, { enabled = true } = {}) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorStatus, setErrorStatus] = useState(null);
-  const [pending, setPending] = useState(null);
-  const [commandError, setCommandError] = useState(null);
-  // Keys survive a re-render so a retry reuses the SAME key. Keyed by intent, not by attempt.
-  const keys = useRef({});
   // Guards a stale response from an earlier Opportunity overwriting a newer one's.
   const requestSeq = useRef(0);
   // AND GUARDS AN UNMOUNTED TREE. The sequence check above only orders responses WITHIN a mount;
@@ -76,25 +64,8 @@ export function useSalesAgreement(opportunityId, { enabled = true } = {}) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const run = useCallback(async (intent, fn) => {
-    setPending(intent);
-    setCommandError(null);
-    keys.current[intent] = keys.current[intent] ?? mintKey(intent);
-    const res = await fn(keys.current[intent]);
-    // A command that lands after unmount still SUCCEEDED on the server -- the write is real and the
-    // idempotency key is spent. Only the local state update is abandoned.
-    if (!mounted.current) return res.errorStatus ? { ok: false, errorStatus: res.errorStatus } : { ok: true, result: res.result };
-    setPending(null);
-    if (res.errorStatus) {
-      // The key is DELIBERATELY kept: the next attempt is a retry of the same intent, and the
-      // server must be able to recognise it as one.
-      setCommandError(res.errorStatus === "internal" ? "That did not go through. Try again." : res.errorStatus);
-      return { ok: false, errorStatus: res.errorStatus };
-    }
-    delete keys.current[intent];
-    await refresh();
-    return { ok: true, result: res.result };
-  }, [refresh]);
+  // The shared runner, refreshing through THIS hook's by-opportunity read.
+  const { run, pending, commandError, clearCommandError } = useAgreementCommandRunner(refresh);
 
   const create = useCallback(
     (input) => run("create", (idempotencyKey) =>
@@ -124,7 +95,7 @@ export function useSalesAgreement(opportunityId, { enabled = true } = {}) {
     accept,
     pending,
     commandError,
-    clearCommandError: () => setCommandError(null),
+    clearCommandError,
     STATE: SALES_AGREEMENT_VIEW_STATE,
   };
 }

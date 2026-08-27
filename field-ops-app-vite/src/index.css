@@ -6058,3 +6058,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    sentence for a state block, the capability's for a permission one. Never interchanged. */
 .ns-action-reason { flex: 1 1 100%; margin: 4px 0 0; font-size: 12.5px;
   color: var(--color-text-secondary); }
+
+/* Draft terms, edited IN PLACE (PR 4). Section-aware, not a modal: the record composition stays
+   recognisable while one section becomes editable. Additive — no shared primitive is touched. */
+.ns-terms-edit { display: grid; gap: 10px; }
+.ns-terms-edit__field { display: grid; gap: 3px; font-size: 12.5px; }
+.ns-terms-edit__field > span { font-size: 12px; color: var(--color-text-muted); }
+.ns-terms-edit__field input[type="text"], .ns-terms-edit__field select,
+.ns-terms-edit__field textarea { font: inherit; padding: 6px 8px;
+  border: 1px solid var(--color-border, #C3BCAB); background: var(--color-surface, #fff);
+  color: inherit; width: 100%; }
+.ns-terms-edit__field input[type="checkbox"] { justify-self: start; width: 18px; height: 18px; }
+.ns-terms-edit__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }

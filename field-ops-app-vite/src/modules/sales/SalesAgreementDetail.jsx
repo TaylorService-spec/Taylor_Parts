@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useSalesAgreementById } from "../../hooks/useSalesAgreementById.js";
 import { SALES_AGREEMENT_VIEW_STATE } from "../../domain/salesAgreementView.js";
@@ -37,8 +37,11 @@ import {
 // acceptance — it places what those two already decided. That is why the page suite can assert
 // semantics rather than pixels: the semantics are not in here.
 //
-// The read is the existing governed `getSalesAgreementContext`. No callable, capability, index or
-// Rules change; no write path at all until PR 4.
+// The read is the existing governed `getSalesAgreementContext`; the two writes are the existing
+// governed `updateSalesAgreementDraft` and `acceptSalesAgreement`, wired in PR 4 through the same
+// hook that owns the read — so a successful command re-reads THIS record and the page re-renders
+// authoritative state. No callable, capability, index or Rules change, and nothing is patched
+// locally to simulate what the server would have said.
 //
 // ════════════════════ NO LIFECYCLE BAND, AND THAT IS THE DESIGN (SA-D2) ════════════════════
 //
@@ -68,10 +71,97 @@ import {
 // the rendering — they are two different sentences — and the limit is stated here rather than
 // papered over.
 
-/** The action cluster. Eligibility is PR 1's; invocation arrives in PR 4. */
-function AgreementActions({ actions, onEditDraft, onRecordAcceptance }) {
+// THE GOVERNED DRAFT-EDIT FIELD SET, and why it is a SUBSET.
+//
+// `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` allows locationId, customerPO, isLease,
+// fulfillmentIntent, shippingInstructions, shipVia, specialInstructions, lines, and the five charge
+// amounts. This editor wires the six SCALAR commercial terms — the ones the record already displays
+// in its rail, edited in place so the North Star composition stays recognisable rather than becoming
+// a modal form.
+//
+// DELIBERATELY NOT HERE, and neither is an invention:
+//   lines            line pricing needs the product picker and a per-line money editor. It is the
+//                    only way to clear the unpriced-line acceptance blocker, so it is a real
+//                    remaining gap and is reported as one rather than half-built into an action-
+//                    wiring PR.
+//   charge amounts   commercial money, and they belong with line pricing for the same reason.
+//   locationId       a reference picker over a read this surface does not have.
+//
+// Nothing outside the server's allowlist is offered. A field appearing in the design artifact is
+// not authority to make it editable.
+const EDITABLE_TERMS = Object.freeze([
+  { id: "customerPO", label: "Customer PO", type: "text" },
+  { id: "isLease", label: "Lease", type: "boolean" },
+  { id: "fulfillmentIntent", label: "Fulfillment", type: "enum", options: [
+    { value: "DELIVER", label: "Deliver" },
+    { value: "INSTALL", label: "Install" },
+    { value: "BOTH", label: "Deliver and install" },
+  ] },
+  { id: "shipVia", label: "Ship via", type: "text" },
+  { id: "shippingInstructions", label: "Shipping instructions", type: "textarea" },
+  { id: "specialInstructions", label: "Special instructions", type: "textarea" },
+]);
+
+/** Section-aware editing, in place. The record never becomes one giant form. */
+function TermsEditor({ view, pending, commandError, onSave, onCancel }) {
+  const [draft, setDraft] = useState(() =>
+    Object.fromEntries(EDITABLE_TERMS.map((f) => [f.id, f.type === "boolean" ? view[f.id] === true : (view[f.id] ?? "")])));
+  const busy = pending === "updateDraft";
+
+  return (
+    <form
+      className="ns-terms-edit"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (busy) return;
+        // Only allowlisted keys leave here, and a blank scalar is sent as null rather than "" —
+        // an empty string is a value, and "no PO" is not the same fact as "the PO is empty".
+        const patch = {};
+        for (const field of EDITABLE_TERMS) {
+          patch[field.id] = field.type === "boolean" ? draft[field.id] === true : (String(draft[field.id] ?? "").trim() || null);
+        }
+        onSave(patch);
+      }}
+    >
+      {EDITABLE_TERMS.map((field) => (
+        <label key={field.id} className="ns-terms-edit__field">
+          <span>{field.label}</span>
+          {field.type === "boolean" ? (
+            <input type="checkbox" checked={draft[field.id] === true} disabled={busy}
+              onChange={(e) => setDraft((d) => ({ ...d, [field.id]: e.target.checked }))} />
+          ) : field.type === "enum" ? (
+            <select value={draft[field.id] ?? ""} disabled={busy}
+              onChange={(e) => setDraft((d) => ({ ...d, [field.id]: e.target.value }))}>
+              <option value="">Not recorded</option>
+              {field.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : field.type === "textarea" ? (
+            <textarea rows={2} value={draft[field.id] ?? ""} disabled={busy}
+              onChange={(e) => setDraft((d) => ({ ...d, [field.id]: e.target.value }))} />
+          ) : (
+            <input type="text" value={draft[field.id] ?? ""} disabled={busy}
+              onChange={(e) => setDraft((d) => ({ ...d, [field.id]: e.target.value }))} />
+          )}
+        </label>
+      ))}
+      {commandError ? <p className="ns-action-reason" data-restriction="command">{commandError}</p> : null}
+      <div className="ns-terms-edit__actions">
+        <button type="submit" className="fo-button fo-button--primary" disabled={busy}>
+          {busy ? "Saving…" : "Save terms"}
+        </button>
+        <button type="button" className="fo-button" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+/** The action cluster. Eligibility is PR 1's; invocation is wired in PR 4. */
+function AgreementActions({ actions, pending, onEditDraft, onRecordAcceptance }) {
   if (!actions?.edit && !actions?.accept) return null;
   const handlers = { updateSalesAgreementDraft: onEditDraft, acceptSalesAgreement: onRecordAcceptance };
+  // The runner keys pending by intent; map the command id onto it so only the button whose command
+  // is actually running goes busy.
+  const PENDING_INTENT = { updateSalesAgreementDraft: "updateDraft", acceptSalesAgreement: "accept" };
 
   // ABSENT IS NOT DISABLED. A terminal agreement offers no edit at all, because a disabled control
   // sends somebody hunting for a permission problem that does not exist (SA-D11).
@@ -82,10 +172,10 @@ function AgreementActions({ actions, onEditDraft, onRecordAcceptance }) {
     <>
       {offered.map((action, index) => {
         const handler = handlers[action.id] ?? null;
-        // A control with no handler is truthfully disabled, never live-looking and inert: this page
-        // ships before PR 4 wires the commands, and a dead button is the defect the grammar names.
-        const live = action.available && typeof handler === "function";
-        const reason = action.reason ?? (action.available ? "This action is not connected on this page yet." : null);
+        // A control with no handler is truthfully disabled, never live-looking and inert.
+        const inFlight = pending === PENDING_INTENT[action.id];
+        const live = action.available && typeof handler === "function" && !inFlight;
+        const reason = action.reason;
         return (
           <button
             key={action.id}
@@ -96,7 +186,9 @@ function AgreementActions({ actions, onEditDraft, onRecordAcceptance }) {
             title={reason ?? undefined}
             data-restriction={action.restriction ?? undefined}
           >
-            {action.label}
+            {/* The in-flight label states what is happening and never implies it has happened:
+                the record only changes when the governed re-read comes back. */}
+            {inFlight ? `${action.label}…` : action.label}
           </button>
         );
       })}
@@ -116,7 +208,11 @@ function AgreementActions({ actions, onEditDraft, onRecordAcceptance }) {
 export default function SalesAgreementDetail({ hasCapability = () => false, onEditDraft, onRecordAcceptance } = {}) {
   const { salesAgreementId } = useParams();
   const mayRead = hasCapability(SALES_AGREEMENT_READ_CAPABILITY) === true;
-  const { view, absence, refresh } = useSalesAgreementById(salesAgreementId, { enabled: mayRead });
+  // The commands come from the SAME hook that owns the read, so a success refreshes the record this
+  // page is showing. The onEditDraft / onRecordAcceptance props stay as an override seam.
+  const { view, absence, refresh, updateDraft, accept, pending, commandError, clearCommandError } =
+    useSalesAgreementById(salesAgreementId, { enabled: mayRead });
+  const [editingTerms, setEditingTerms] = useState(false);
 
   const ready = view.kind === SALES_AGREEMENT_VIEW_STATE.READY;
 
@@ -207,6 +303,11 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
   const terms = salesAgreementTerms(view);
   const actions = salesAgreementActions(view, { hasCapability });
 
+  // NO CLIENT-SIDE OVERRIDE OF GOVERNED ELIGIBILITY. These only decide what a live control DOES;
+  // whether it is live at all is salesAgreementActions' answer, and the server re-checks anyway.
+  const handleEditDraft = onEditDraft ?? (() => { clearCommandError(); setEditingTerms(true); });
+  const handleRecordAcceptance = onRecordAcceptance ?? (() => accept());
+
   return (
     <div className="ns-page">
       <div className="ns-page__utility">
@@ -254,10 +355,17 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
           { key: "po", label: "Customer PO", value: header.customerPO },
           { key: "owner", label: "Owner", value: owner.name },
         ]}
-        actions={<AgreementActions actions={actions} onEditDraft={onEditDraft} onRecordAcceptance={onRecordAcceptance} />}
+        actions={<AgreementActions actions={actions} pending={pending} onEditDraft={handleEditDraft} onRecordAcceptance={handleRecordAcceptance} />
+        }
       />
 
       {/* No LifecycleBand. See the file header — SA-D2. */}
+
+      {/* A COMMAND REFUSAL IS ITS OWN FACT, and never re-worded as a state or permission problem:
+          this is the server's answer to an attempt, shown where the attempt was made. */}
+      {commandError && !editingTerms ? (
+        <p className="ns-action-reason" data-restriction="command" role="status">{commandError}</p>
+      ) : null}
 
       {!ladder.complete ? (
         /* The existing attention markup, not a second one. Blocking severity, because the engine
@@ -396,13 +504,30 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
 
         <aside className="ns-rail">
           <RuledSection title="Commercial terms" panel>
-            <dl className="ns-rail__dl">
-              {terms.rows.map((row) => (
-                <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>
-              ))}
-            </dl>
-            {terms.shippingInstructions ? <p className="ns-rail__meta">Shipping: {terms.shippingInstructions}</p> : null}
-            {terms.specialInstructions ? <p className="ns-rail__meta">Special: {terms.specialInstructions}</p> : null}
+            {editingTerms ? (
+              <TermsEditor
+                view={view}
+                pending={pending}
+                commandError={commandError}
+                onCancel={() => setEditingTerms(false)}
+                onSave={async (patch) => {
+                  const outcome = await updateDraft(patch);
+                  // The section closes ONLY on a governed success. A refusal keeps the form open
+                  // with its reason, because closing it would read as "saved".
+                  if (outcome?.ok) setEditingTerms(false);
+                }}
+              />
+            ) : (
+              <>
+                <dl className="ns-rail__dl">
+                  {terms.rows.map((row) => (
+                    <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>
+                  ))}
+                </dl>
+                {terms.shippingInstructions ? <p className="ns-rail__meta">Shipping: {terms.shippingInstructions}</p> : null}
+                {terms.specialInstructions ? <p className="ns-rail__meta">Special: {terms.specialInstructions}</p> : null}
+              </>
+            )}
           </RuledSection>
 
           <RuledSection title="Why this agreement exists" panel>
