@@ -126,10 +126,14 @@ export function assertOperationalEnvelope(request: OperationalInterpretationRequ
 function isNumericLoopbackEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint);
-    // Deliberately recognizes an address class, not a baked-in provider endpoint. The repository's
-    // no-hardcoded-endpoint guard therefore remains meaningful while local development can be
-    // distinguished from remote ingress. Hostnames are treated as remote, even if they resolve locally.
-    const ipv4Loopback = /^127(?:\.0){2}\.1$/.test(url.hostname);
+    // An address CLASS, not a baked-in provider endpoint: the whole 127.0.0.0/8 block is loopback,
+    // so this recognizes local development rather than naming somewhere to send traffic. The seam
+    // still hard-codes no endpoint -- the address it will actually call is configured, or absent.
+    //
+    // A hostname is treated as remote even when it resolves locally: "localhost" is a name whose
+    // meaning is decided by resolver configuration, and a name that can be repointed is not evidence
+    // that the request stays on this machine. Remote means HTTPS plus Access credentials.
+    const ipv4Loopback = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(url.hostname);
     const ipv6Loopback = url.hostname === "[::1]" || url.hostname === "::1";
     return (url.protocol === "http:" || url.protocol === "https:") && (ipv4Loopback || ipv6Loopback);
   } catch {

@@ -107,6 +107,26 @@ test("loopback development remains local and does not require Access credentials
   }));
 });
 
+test("a name that merely resolves locally is still remote ingress", () => {
+  // The local exemption recognizes an address, not a name. A resolver can point a hostname anywhere,
+  // so a hostname is never evidence that the request stayed on this machine -- it must clear HTTPS
+  // and Access credentials like any other remote endpoint.
+  for (const endpoint of ["http://localhost:8080", "https://ai.internal.example.invalid"]) {
+    assert.throws(
+      () => new KeystoneOperationalProvider({ endpoint, apiKey: API_KEY, tenantId: "tenant-1" }),
+      (error) => error.code === "AI_REMOTE_INGRESS_DENIED",
+    );
+  }
+});
+
+test("the whole loopback block is local, not one memorized address", () => {
+  for (const endpoint of ["http://127.0.0.1:8080", "http://127.0.0.53:8080", "http://[::1]:8080"]) {
+    assert.doesNotThrow(() => new KeystoneOperationalProvider({
+      endpoint, apiKey: API_KEY, tenantId: "tenant-1",
+    }));
+  }
+});
+
 test("a denied recommendation cannot reach Keystone", async () => {
   let calls = 0;
   const provider = new KeystoneOperationalProvider(remoteConfig(), async () => { calls += 1; return okResponse(); });
