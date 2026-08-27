@@ -27,10 +27,19 @@ import type { WorkOrderStatus, ActionName } from "./types/workOrder";
 // canTransition() below a pure table lookup -- the entire state
 // machine, cancellation included, is visible in one data structure,
 // with no special-case branch to keep in sync with it separately.
+// ND-18 (Owner ruling 2026-08-27) -- SCHEDULED -> READY_TO_DISPATCH is the FIRST REVERSE EDGE in
+// this table, and it is deliberately the only one. Returning a scheduled job to the Ready queue
+// genuinely changes its operational readiness, so un-scheduling belongs in the state machine rather
+// than beside it (unlike Reschedule, which only re-times a job and is therefore a separate callable
+// that never touches this table -- see ND-19 and scheduling/schedulingCommands.ts).
+//
+// The edge exists from SCHEDULED and nowhere else. Once a technician has been dispatched the job is
+// committed, so DISPATCHED / ACCEPTED / EN_ROUTE / ARRIVED / WORK_IN_PROGRESS have no way back.
+// Any future reverse edge is its own decision and may not appeal to this one.
 export const TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   CREATED: ["READY_TO_DISPATCH", "CANCELLED"],
   READY_TO_DISPATCH: ["SCHEDULED", "CANCELLED"],
-  SCHEDULED: ["DISPATCHED", "CANCELLED"],
+  SCHEDULED: ["DISPATCHED", "READY_TO_DISPATCH", "CANCELLED"],
   DISPATCHED: ["ACCEPTED", "CANCELLED"],
   ACCEPTED: ["EN_ROUTE", "CANCELLED"],
   EN_ROUTE: ["ARRIVED", "CANCELLED"],
@@ -58,6 +67,7 @@ export function canTransition(current: WorkOrderStatus, next: WorkOrderStatus): 
 // action, and the server resolves the status.
 export const ACTION_TO_STATUS: Record<ActionName, WorkOrderStatus> = {
   MarkReady: "READY_TO_DISPATCH",
+  Unschedule: "READY_TO_DISPATCH",
   Schedule: "SCHEDULED",
   Dispatch: "DISPATCHED",
   Accept: "ACCEPTED",
@@ -98,8 +108,29 @@ interface ActionPermission {
   requiresOwnAssignment: boolean;
 }
 
+// ND-18 consequence, and the reason this table has to exist at all.
+//
+// `canTransition` answers a question about STATUSES, and two different actions may now produce the
+// SAME status: MarkReady and Unschedule both target READY_TO_DISPATCH. Without this table, adding
+// the reverse edge SCHEDULED -> READY_TO_DISPATCH would silently make `MarkReady` legal from
+// SCHEDULED as well -- a second, unaudited, reason-free way to un-schedule a job, created as a side
+// effect of allowing the first one.
+//
+// So: an action listed here is legal ONLY from the statuses named. An action absent from this table
+// is unconstrained beyond `canTransition` (its target status is reached by no other action, so the
+// edge alone identifies it). This is what makes "Unschedule refuses from DISPATCHED onward" a
+// property of the table rather than a check someone has to remember to write.
+export const ACTION_ALLOWED_FROM: Partial<Record<ActionName, readonly WorkOrderStatus[]>> = {
+  MarkReady: ["CREATED"],
+  Unschedule: ["SCHEDULED"],
+};
+
 export const ACTION_PERMISSIONS: Record<ActionName, ActionPermission> = {
   MarkReady: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
+  // Same role bucket as Schedule/Dispatch, by Owner ruling 2026-08-27: no new capability family is
+  // registered for the scheduling commands, because doing so would open a second authorization
+  // pattern before there is any demonstrated need for finer separation.
+  Unschedule: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Schedule: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Dispatch: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Close: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
@@ -126,6 +157,11 @@ export function getAllowedActions(
   return (Object.keys(ACTION_TO_STATUS) as ActionName[]).filter((action) => {
     const nextStatus = ACTION_TO_STATUS[action];
     if (!canTransition(status, nextStatus)) return false;
+
+    // See ACTION_ALLOWED_FROM: two actions may share a target status, so the edge alone is no longer
+    // enough to identify which action is legal here.
+    const allowedFrom = ACTION_ALLOWED_FROM[action];
+    if (allowedFrom && !allowedFrom.includes(status)) return false;
 
     const permission = ACTION_PERMISSIONS[action];
     if (!role || !permission.roles.includes(role)) return false;

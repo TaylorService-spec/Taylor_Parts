@@ -47,6 +47,9 @@ export type WorkOrderType =
 // instead of a client being able to name an arbitrary status directly.
 export type ActionName =
   | "MarkReady"
+  // ND-18 -- returns a SCHEDULED Work Order to READY_TO_DISPATCH. The only reverse edge in the
+  // lifecycle, and legal from SCHEDULED only (transitionEngine.ts's ACTION_ALLOWED_FROM).
+  | "Unschedule"
   | "Schedule"
   | "Dispatch"
   | "Accept"
@@ -103,10 +106,32 @@ export interface WorkOrder {
 
   assignedTechId?: string;
 
+  // ND-21 (Owner ruling 2026-08-27) -- an OPTIONAL planning estimate, set at creation or through the
+  // governed setWorkOrderEstimatedDuration command. It is NOT an execution timestamp, NOT actual
+  // labor duration, and NOT billing authority (laborHours and the workOrderLabor family remain the
+  // record of work performed). It exists to propose a placement, suggest an end time, drive the
+  // Day/Week/2-Week board geometry, and give technician capacity a numerator.
+  //
+  // Absent is the normal case -- every Work Order written before this field existed has none, and an
+  // estimate is optional at creation. Never read undefined as zero.
+  estimatedDurationMinutes?: number;
+
   // Planning (mutable)
   scheduledStart?: Timestamp;
   scheduledEnd?: Timestamp;
   scheduledTechId?: string;
+
+  // Dispatch & Scheduler -- the most recent reschedule, denormalized onto the record for cheap board
+  // display, exactly as the reassigned* block below is. The durable, append-only record is the
+  // matching "rescheduleWorkOrder" Audit Event, which also carries the actor and the server
+  // timestamp. A SECOND reschedule overwrites these fields: this is the LATEST reschedule, never the
+  // history, and any surface reading it must say so.
+  rescheduledFromStart?: Timestamp;
+  rescheduledFromEnd?: Timestamp;
+  rescheduledFromTechId?: string;
+  rescheduledAt?: Timestamp;
+  rescheduledReason?: string;
+  rescheduledByUid?: string;
 
   // H20 fix (dispatch reassignment): only set when a Dispatch call sends a Work Order to a
   // technician OTHER than the one it was Scheduled for (wo.scheduledTechId at the moment

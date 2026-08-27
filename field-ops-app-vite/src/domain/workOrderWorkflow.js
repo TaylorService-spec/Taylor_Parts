@@ -22,7 +22,9 @@
 export const WORK_ORDER_TRANSITIONS = {
   CREATED: ["READY_TO_DISPATCH", "CANCELLED"],
   READY_TO_DISPATCH: ["SCHEDULED", "CANCELLED"],
-  SCHEDULED: ["DISPATCHED", "CANCELLED"],
+  // ND-18 -- the one reverse edge in the whole table. See transitionEngine.ts's TRANSITIONS for why
+  // it exists here and nowhere else.
+  SCHEDULED: ["DISPATCHED", "READY_TO_DISPATCH", "CANCELLED"],
   DISPATCHED: ["ACCEPTED", "CANCELLED"],
   ACCEPTED: ["EN_ROUTE", "CANCELLED"],
   EN_ROUTE: ["ARRIVED", "CANCELLED"],
@@ -39,6 +41,7 @@ export function canTransitionWorkOrder(currentStatus, nextStatus) {
 
 export const ACTION_TO_STATUS = {
   MarkReady: "READY_TO_DISPATCH",
+  Unschedule: "READY_TO_DISPATCH",
   Schedule: "SCHEDULED",
   Dispatch: "DISPATCHED",
   Accept: "ACCEPTED",
@@ -53,6 +56,7 @@ export const ACTION_TO_STATUS = {
 // Mirrors transitionEngine.ts's ACTION_PERMISSIONS.
 const ACTION_PERMISSIONS = {
   MarkReady: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
+  Unschedule: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Schedule: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Dispatch: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Close: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
@@ -64,11 +68,22 @@ const ACTION_PERMISSIONS = {
   Complete: { roles: ["technician"], requiresOwnAssignment: true },
 };
 
+// Mirrors transitionEngine.ts's ACTION_ALLOWED_FROM. MarkReady and Unschedule both target
+// READY_TO_DISPATCH, so the edge alone no longer identifies which action is legal from a status --
+// without this, the ND-18 reverse edge would silently make MarkReady available from SCHEDULED.
+const ACTION_ALLOWED_FROM = {
+  MarkReady: ["CREATED"],
+  Unschedule: ["SCHEDULED"],
+};
+
 // Mirrors transitionEngine.ts's getAllowedActions(status, role, isOwnAssignment).
 export function getAllowedActions(status, role, isOwnAssignment) {
   return Object.keys(ACTION_TO_STATUS).filter((action) => {
     const nextStatus = ACTION_TO_STATUS[action];
     if (!canTransitionWorkOrder(status, nextStatus)) return false;
+
+    const allowedFrom = ACTION_ALLOWED_FROM[action];
+    if (allowedFrom && !allowedFrom.includes(status)) return false;
 
     const permission = ACTION_PERMISSIONS[action];
     if (!role || !permission.roles.includes(role)) return false;

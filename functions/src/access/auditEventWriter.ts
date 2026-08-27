@@ -216,6 +216,14 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Phantom Sales Order link repair -- see the matching entries on the AuditAction union (types/access.ts).
   "repairPhantomSalesOrderLink",
   "rollbackPhantomSalesOrderLinkRepair",
+  // Dispatch & Scheduler -- mirrors the seven scheduling entries in types/access.ts's AuditAction.
+  "rescheduleWorkOrder",
+  "unscheduleWorkOrder",
+  "reassignScheduledWorkOrder",
+  "setWorkOrderEstimatedDuration",
+  "setTechnicianWorkingAvailability",
+  "createTechnicianBlockedTime",
+  "deleteTechnicianBlockedTime",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

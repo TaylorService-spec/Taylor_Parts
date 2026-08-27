@@ -180,9 +180,17 @@ capability-based. Any new command must decide whether to match that convention o
 
 ## Rules / index changes required
 
-Two new deny-all client blocks for the availability collections. No new composite index is required
-for the conflict queries — `findScheduleConflict` queries a single equality field
-(`scheduledTechId`), which Firestore indexes automatically.
+Two new deny-all client blocks for the availability collections.
+
+The Work Order conflict query needs no new index — `findScheduleConflict` filters on a single
+equality field (`scheduledTechId`), which Firestore indexes automatically. **Corrected during
+implementation:** the blocked-time query does need one. Finding the exceptions that could overlap a
+window means `technicianId == x AND endMillis > start`, an equality plus a range, which requires the
+composite index `(technicianId ASC, endMillis ASC)`. It is declared in `firestore.indexes.json`.
+
+The range is on `endMillis` rather than `startMillis` deliberately: Firestore allows a range filter
+on one field per query, and narrowing on the start would drop a long block that began before the
+window and is still running — the record most worth catching.
 
 ---
 

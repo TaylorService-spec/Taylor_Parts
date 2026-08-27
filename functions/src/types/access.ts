@@ -399,7 +399,29 @@ export type AuditAction =
   // an operator later reverts it, the paired rollback. Same verb+Noun convention, extending this SAME
   // immutable Audit Event path -- no parallel audit system.
   | "repairPhantomSalesOrderLink"
-  | "rollbackPhantomSalesOrderLinkRepair";
+  | "rollbackPhantomSalesOrderLinkRepair"
+  // Dispatch & Scheduler (ND-18 through ND-22, Owner ruling 2026-08-27) -- the governed Scheduling
+  // domain. Seven actions extending this SAME immutable Audit Event path, not a parallel audit
+  // system. Same verb+Noun convention as every entry above, and the runtime allow-list mirror lives
+  // in access/auditEventWriter.ts's AUDIT_ACTIONS.
+  //
+  // rescheduleWorkOrder and reassignScheduledWorkOrder are NOT lifecycle transitions -- they rewrite
+  // planning fields under an unchanged SCHEDULED status (ND-19), so they get their own events rather
+  // than riding on transitionWorkOrder. unscheduleWorkOrder IS a lifecycle transition (ND-18) and
+  // therefore ALSO produces the generic transitionWorkOrder event -- this one carries the prior
+  // technician and window, which the generic event structurally cannot express.
+  //
+  // Each of the three carries the prior scheduling facts in its summary, which is what makes the
+  // handoff's historical-integrity rule enforceable: current state may change, history may not.
+  // This comment is deliberately punctuated without the statement-terminator character, since mirror
+  // checks parse the union up to the first one.
+  | "rescheduleWorkOrder"
+  | "unscheduleWorkOrder"
+  | "reassignScheduledWorkOrder"
+  | "setWorkOrderEstimatedDuration"
+  | "setTechnicianWorkingAvailability"
+  | "createTechnicianBlockedTime"
+  | "deleteTechnicianBlockedTime";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
