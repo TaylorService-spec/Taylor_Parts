@@ -70,11 +70,25 @@ test("the Opportunity entity reaches CLOSED work, and now certifies the RECORD P
     "must refuse the Sales Order route, which shares this prefix one segment deeper",
   );
 
-  // The pane still exists and is still where an Opportunity is edited, so resolution deliberately
-  // does NOT depend on changing what clicking a pipeline row does: the workspace auto-selects the
-  // first row on load, so the pane's own "Open OPP-…" link is in the DOM before any click. One
-  // hop, no product change.
-  assert.match(opp.rowSelector, /fo-sales-detail__open-record/);
+  // RESOLUTION NO LONGER DEPENDS ON A PANE — updated 2026-08-27 (North Star P1v4, DECISIONS #135).
+  //
+  // This asserted `/fo-sales-detail__open-record/`: the WORKSPACE PANE's own "Open OPP-…" link,
+  // chosen because the workspace auto-selected the first row on load, so the link was in the DOM
+  // before any click. P1v4 retired that pane and its auto-selection deliberately, and the selector
+  // went with it — the deployed gate then reported "no rows at /customers/opportunities?view=all"
+  // against a list rendering fourteen. A harness assumption wearing a fixture failure's clothes.
+  //
+  // The row ANCHOR is the better anchor, not merely the working one: it is what a user clicks, it
+  // is a real <a> to the record route, and it presumes no auto-selection behaviour. So this now
+  // pins the class AND forbids the whole family of pane-shaped selectors, because the way this
+  // breaks again is somebody reaching for a container that only exists when something is
+  // pre-selected for them.
+  assert.match(opp.rowSelector, /ns-row__ref/, "resolve through the row anchor a user would click");
+  assert.doesNotMatch(
+    opp.rowSelector,
+    /fo-sales-detail|__open-record|aside|is-selected|\[aria-selected/,
+    "must not depend on a pre-selected detail pane — that surface is retired",
+  );
 });
 
 test("a NAVIGATING entity states the route it must land on", () => {
