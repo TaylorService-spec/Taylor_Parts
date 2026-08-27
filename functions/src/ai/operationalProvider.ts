@@ -9,11 +9,29 @@
 // SYNTHETIC-only. There is no external-model fallback here. The configured Keystone endpoint routes
 // operational interpretation through the user's private/local model service.
 
-import { AIError } from "./types";
 import {
   KeystoneProviderConfig,
   keystoneConfigFromEnvironment,
 } from "./provider";
+
+export type OperationalAIErrorCode =
+  | "AI_NOT_CONFIGURED"
+  | "AI_CLASSIFICATION_DENIED"
+  | "AI_OPERATIONAL_ENVELOPE_INVALID"
+  | "AI_OPERATIONAL_DOMAIN_UNSUPPORTED"
+  | "AI_OPERATIONAL_ACTION_DENIED"
+  | "AI_PROVIDER_UNAVAILABLE"
+  | "AI_PROVIDER_ERROR";
+
+export class OperationalAIError extends Error {
+  readonly code: OperationalAIErrorCode;
+
+  constructor(code: OperationalAIErrorCode, message: string) {
+    super(message);
+    this.name = "OperationalAIError";
+    this.code = code;
+  }
+}
 
 export type OperationalDomain =
   | "WORK_ORDER"
@@ -86,32 +104,32 @@ const DOMAINS = new Set<OperationalDomain>([
  */
 export function assertOperationalEnvelope(request: OperationalInterpretationRequest): void {
   if (!request || request.schemaVersion !== 1) {
-    throw new AIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI envelope is invalid.");
+    throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI envelope is invalid.");
   }
   if (request.classification !== "SYNTHETIC" || request.synthetic !== true) {
-    throw new AIError(
+    throw new OperationalAIError(
       "AI_CLASSIFICATION_DENIED",
       "Operational model interpretation is currently limited to synthetic context.",
     );
   }
   if (!DOMAINS.has(request.domain)) {
-    throw new AIError("AI_OPERATIONAL_DOMAIN_UNSUPPORTED", "Operational AI domain is unsupported.");
+    throw new OperationalAIError("AI_OPERATIONAL_DOMAIN_UNSUPPORTED", "Operational AI domain is unsupported.");
   }
   if (typeof request.source !== "string" || request.source.trim().length === 0 ||
       typeof request.observedFact !== "string" || request.observedFact.trim().length === 0 ||
       !Array.isArray(request.evidence) || request.evidence.length === 0) {
-    throw new AIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI envelope is incomplete.");
+    throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI envelope is incomplete.");
   }
   for (const item of request.evidence) {
     if (!item || typeof item.key !== "string" || !item.key.trim() ||
         typeof item.kind !== "string" || !item.kind.trim() ||
         typeof item.summary !== "string" || !item.summary.trim()) {
-      throw new AIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI evidence is invalid.");
+      throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI evidence is invalid.");
     }
   }
   const recommendation = request.allowedRecommendation;
   if (recommendation && recommendation.authority !== "ALLOWED") {
-    throw new AIError(
+    throw new OperationalAIError(
       "AI_OPERATIONAL_ACTION_DENIED",
       "A non-authorized action may not cross the model boundary.",
     );
@@ -126,7 +144,7 @@ export class KeystoneOperationalProvider implements OperationalProvider {
 
   constructor(config: KeystoneProviderConfig, fetchImpl: typeof fetch = fetch) {
     if (!config?.endpoint) {
-      throw new AIError("AI_NOT_CONFIGURED", "No Keystone gateway endpoint is configured.");
+      throw new OperationalAIError("AI_NOT_CONFIGURED", "No Keystone gateway endpoint is configured.");
     }
     this.config = config;
     this.fetchImpl = fetchImpl;
@@ -148,11 +166,11 @@ export class KeystoneOperationalProvider implements OperationalProvider {
         body: JSON.stringify(request),
       });
     } catch {
-      throw new AIError("AI_PROVIDER_UNAVAILABLE", "The Keystone operational service could not be reached.");
+      throw new OperationalAIError("AI_PROVIDER_UNAVAILABLE", "The Keystone operational service could not be reached.");
     }
 
     if (!response.ok) {
-      throw new AIError("AI_PROVIDER_ERROR", `The Keystone operational service returned ${response.status}.`);
+      throw new OperationalAIError("AI_PROVIDER_ERROR", `The Keystone operational service returned ${response.status}.`);
     }
 
     return (await response.json()) as OperationalModelCandidate;
