@@ -2634,3 +2634,62 @@ the release lane and make the trigger less legible, which is how a path filter s
 > manifest accepted, with lane-creation verified per #131 on every release-tooling PR?**
 
 **Related:** #124, #128, #131, #132. Surfaced while certifying PR #1530 (sandbox bounded retry).
+
+---
+
+## #134 — The Sales Agreement is a first-class routed record page, and its design was verified against source rather than briefed
+
+**Date:** 2026-08-26
+**Decision:** `docs/north-star/sales-agreement/North Star - Sales Agreement P1v2.dc.html` is the
+Sales Agreement family's visual authority (Owner approval, merged as PR #1533). The Owner further
+ruled **SA-G1**: the Sales Agreement becomes a **first-class routed record page**. The Agreement
+stays strongly connected to its originating Opportunity, but the Opportunity does not own the
+permanent Agreement record UX — `Opportunity → Sales Agreement → Sales Order`, each object keeping
+its own record identity and page purpose.
+
+**Scope of that ruling, stated because it is narrow.** It settles product direction only. It does
+not authorize routing or platform reconstruction. The implementation pass builds the route and must
+compose **existing** governed read and action authority: `getSalesAgreementContext` (the by-id read)
+already exists and is client-wired, so no new read is implied. SA-G2 through SA-G6 are explicitly
+outside that pass's scope.
+
+**Reason:** the alternative was to keep the composition inside the governed Opportunity workspace,
+where it lives today as `OpportunityAgreementCard` on the Opportunity record page. That would have
+made the Agreement permanently a sub-record of the object it is created from, which is wrong for a
+commercial commitment that a Sales Order is created *from* and that outlives the negotiation.
+
+**What the design pass found, which is why this entry is not only a ruling.** P1v2 re-checked every
+design-driving claim against source instead of carrying P1v1's assertions forward, and four findings
+changed the design:
+
+- **Lines persist `ref` with no durable display name.** P1v1 led each line with a product name that
+  nothing stores; the picker's `displayName` exists only at pick time and the agreement read does
+  not return it. The reference is now the line's identity, with a catalogue name shown as a marked
+  design recommendation. **No duplicate display name is to be persisted to satisfy a mock.**
+- **`DECLINED` is modelled but unreachable** — legal transition, entity label, no producing command.
+  Now **ND-14**.
+- **There is no post-acceptance revision path.** A terminal Agreement cannot be edited *and* a
+  second Agreement for the same Opportunity is transactionally refused. P1v1 asserted "a changed
+  mind is a new agreement", which the engine does not support. Now **ND-15**.
+- **The Sales Order is produced by the Opportunity's `closeOpportunityAsWon`**, which can still
+  refuse; acceptance is a precondition, not the trigger. UX copy must not imply
+  `Accept Agreement → Sales Order automatically created`.
+
+**Two corrections of P1v1 that bind any implementation.** *Dimension truth:* the 1440 / 768 / 375
+frames must render at exactly those widths — P1v1 labelled them while composing roughly
+1640 / 792 / 407, so its responsive claims could not be checked at all. *Acceptance evidence:* EOS
+proves three things — state `ACCEPTED`, `acceptedAtMillis`, `acceptedByUid` — and nothing about a
+customer. P1v1's "binding" and "recording the customer's commitment" are removed; the unresolved
+actor renders the governed constant `Unknown user` (F-UID-1). No signature, electronic-acceptance,
+external-acceptance or legal-enforceability claim may appear.
+
+**Recorded, not fixed:** `field-ops-app-vite/src/hooks/useSalesAgreement.js` carries capability
+commentary saying the read is granted in no environment;
+`functions/src/access/environmentCapabilityOverrides.ts` and `App.jsx` show all four Sales Agreement
+capabilities activated for `eos-platform-sandbox`. Left untouched so no product code entered a
+docs-only diff.
+
+**Related:** #106 (a missing business reference is not permission to display a record id), #122
+(the three authorities), #125 (a family composed without its design source), #129/#130 (the
+Opportunity's route and its design-source rebuild — the available precedent for SA-G1), ND-9,
+ND-14, ND-15.

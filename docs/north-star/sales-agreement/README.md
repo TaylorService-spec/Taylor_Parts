@@ -364,11 +364,11 @@ Named, and kept as gaps. A gap is not a design brief.
   catalogue read. **This stays a design recommendation, visibly classified as one** — the dagger
   footnote in 1A is the mechanism. Until governed readable-name resolution exists, the reference is
   the identity. **A duplicate display name must not be persisted onto the line to satisfy the mock.**
-- **SA-G5 — DECLINED is unreachable.** The state is modelled, its transition is legal, and its
+- **SA-G5 — DECLINED is unreachable.** *(Programme register: ND-14. Ruling: DECISIONS #134.)* The state is modelled, its transition is legal, and its
   label exists — but no command produces it. **No decline command is to be created, and Decline is
   never shown as an available user action**; the state study stays documented as *modelled,
   currently unreachable*. Later Owner/product question, per the decision section above.
-- **SA-G6 — No post-acceptance revision path.** ACCEPTED and DECLINED cannot be edited, and a
+- **SA-G6 — No post-acceptance revision path.** *(Programme register: ND-15. Ruling: DECISIONS #134.)* ACCEPTED and DECLINED cannot be edited, and a
   second agreement for the same Opportunity is transactionally refused. So under current authority
   EOS has **no** governed path for changing commercial commitment after terminal acceptance. P1v1
   asserted "a changed mind is a new agreement"; that behaviour is not supported and the copy is

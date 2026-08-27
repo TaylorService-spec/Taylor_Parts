@@ -334,6 +334,55 @@ between them prove the two surfaces read one derivation and one save path.
 
 ---
 
+### ND-14 — `DECLINED` is a modelled Sales Agreement state that nothing can produce
+
+**Raised:** 2026-08-26, by the Sales Agreement North Star P1v2 design pass (SA-G5)
+**Design holds:** a state the model names is a state the record page must be able to render
+honestly, so P1v2 designs it — as a compact state study, explicitly labelled *modelled, currently
+unreachable*.
+**Behavioral holds:** `salesAgreementLifecycle.ts` declares `DECLINED` in `SALES_AGREEMENT_STATES`,
+`checkAgreementTransition` permits `DRAFT → DECLINED`, and `salesAgreement.js` carries its label
+"Declined". But `functions/src/index.ts` exports exactly three Agreement commands — `create`,
+`updateDraft`, `accept`. **No callable produces `DECLINED`.** The state is reachable only by a
+direct document write.
+**Why it is not a bug to be fixed by the implementation pass:** creating a decline command is a new
+governed action with its own capability, audit event and refusal rules. That is a product decision,
+not a gap in a design.
+**Shipped meanwhile:** nothing. Decline is **never** offered as an available user action; the state
+study documents the condition and stops there.
+**The decision:** should EOS support a governed decline action — or should the unreachable
+`DECLINED` model state be removed and reconciled? Answering "remove it" is as legitimate as
+"build it"; what is not legitimate is leaving a vocabulary the system cannot reach.
+
+---
+
+### ND-15 — Commercially agreed terms cannot change after an Agreement goes terminal
+
+**Raised:** 2026-08-26, by the Sales Agreement North Star P1v2 design pass (SA-G6)
+**Design holds:** a commercial commitment object must be able to answer "the customer wants
+different terms" with something. P1v2 answers it with silence, deliberately, because the engine
+answers it with a refusal.
+**Behavioral holds:** two independent refusals compose into a dead end.
+`buildUpdateSalesAgreementDraft` is DRAFT-only and `checkAgreementTransition` makes `ACCEPTED` and
+`DECLINED` terminal, so the record cannot be edited. And `persistCreateSalesAgreement` step 3 does
+an in-transaction duplicate check that **refuses a second Agreement** for the same Opportunity:
+*"Opportunity X already has a Sales Agreement. Edit that draft rather than creating a second."*
+Editing is forbidden and creating is refused, so under current authority there is **no governed
+path** for changing commercial commitment after terminal acceptance.
+**What this corrects:** P1v1's copy asserted "a changed mind is a new agreement" and "a new
+conversation is a new agreement, drafted from the opportunity". Neither is supported. Both were
+removed from visual authority.
+**Shipped meanwhile:** nothing, and nothing may be invented. No **revise**, **supersede**,
+**duplicate**, **reopen**, **replace agreement**, or **create a second Agreement** affordance
+appears in the design, and none is in the implementation pass's scope.
+**The decision:** what is the governed business process when agreed terms must change after an
+Agreement reaches a terminal state? This needs deliberate domain design — amendment records,
+supersession lineage, or a relaxed one-per-Opportunity rule are materially different answers with
+different consequences for the Sales Order created from the superseded prices. **It must not be
+accidentally solved in the presentation layer**, which is exactly what P1v1's sentence did.
+
+---
+
 ## The Opportunity design's own product decisions (O1–O6, from the P1v2 handoff)
 
 These are **Design's** register, carried here so they are visible alongside the programme's. They

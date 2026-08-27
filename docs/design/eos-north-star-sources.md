@@ -106,9 +106,49 @@ decides. If it would change who may do what, or what is recorded, Behavioral dec
 | `Proposed - Dispatch Board.dc.html` · `Proposed - Dispatch Map.html` | Dispatch | Densest board; drag-scheduling with refusal reasons. |
 | `Proposed - Technician Mobile.dc.html` | Handheld, technician | Four moments of a field day. |
 | `Proposed - Warehouse Mobile.dc.html` | Handheld, warehouse | Pick / receive / count. |
-| `Subpages - Commercial.dc.html` | Sales Agreement edit / accepted / states | Hardest commercial surface. |
+| `Subpages - Commercial.dc.html` | Sales Agreement edit / accepted / states | Hardest commercial surface. **SUPERSEDED 2026-08-26** for the Sales Agreement record surface by `North Star - Sales Agreement P1v2.dc.html` (see below). Whatever else this artifact covers has not been seen here. |
 | `Subpages - Operations.dc.html` | Receiving, scheduling, exception, balances | Cross-object consequence. |
 | `Subpages - Lists and States.dc.html` | 142-row list + 12 honest states | The density floor and the state vocabulary. |
+
+### `North Star - Sales Agreement P1v2.dc.html` — the CURRENT approved Sales Agreement visual source
+
+**Approved by the Owner 2026-08-26; merged as PR #1533 (`7f1ab681`).** P1v1 arrived as
+`Claude Design Docs/Sales Agreement P1v1.zip` → folder `design_handoff_sales_agreement`; P1v2 was
+produced in-repo from the Owner's written correction order and is what the approval names.
+
+| File | What it is |
+| --- | --- |
+| `North Star - Sales Agreement P1v2.dc.html` | **The visual authority.** 1A desktop 1440 (Accepted, Sales Order exists) · 1B tablet 768 (Draft, acceptance blocked) · 1C phone 375 (Accepted) · 1D phone 375 (Draft, acceptance blocked) · 1E twelve honest-state studies. |
+| `README.md` | The handoff: core hierarchy, SA-D1–SA-D12, responsive rules, the acceptance-evidence rule, the shell/route decision boundary, an AUTHORITY VERIFICATION source map, implementation mapping, product gaps SA-G1–SA-G6, and the P1v1→P1v2 change table. |
+
+Both live at [`../north-star/sales-agreement/`](../north-star/sales-agreement/). P1v1 was **not**
+committed — it exists only as the delivered `.zip` — so unlike the Opportunity family there is no
+in-repo provenance copy of the superseded version. The P1v2 README's change table is what records
+what P1v1 said.
+
+**This is the second family whose artifacts are in the repository, and the first designed against
+verified repository truth rather than against a brief.** The design pass re-checked every
+design-driving claim in source and found four that changed the design: Agreement lines persist
+`ref` with no durable display name; `DECLINED` is modelled with a legal transition but no command
+produces it; a terminal Agreement can neither be edited nor replaced, so there is no governed
+post-acceptance revision path; and the Sales Order is produced by the Opportunity's governed
+close-as-won, with acceptance as a precondition rather than the trigger. The first is recorded as a
+design recommendation; the middle two became ND-14 and ND-15; the last corrected the page's
+downstream copy.
+
+**Dimension truth is part of this authority.** The 1440 / 768 / 375 frames were measured in a
+browser after authoring and render at exactly those widths with zero horizontal overflow. P1v1's
+frames did not — the same defect the Opportunity P1v2 artifact still carries (see the migration
+ledger).
+
+They are **visual acceptance authority only** — not runtime, data, workflow or permission
+authority. See [`../north-star/sales-agreement/README.md`](../north-star/sales-agreement/README.md).
+
+**One deviation from this document's own naming convention, deliberately.** The convention below is
+`<Family>-North-Star-<version>.dc.html`; this family's file is `North Star - Sales Agreement
+P1v2.dc.html`, because the Owner's correction order and approval both name that exact path. Left as
+delivered rather than renamed under a governance rule the Owner's instruction outranks. Renaming it
+to match is a trivial follow-up if the Owner prefers consistency.
 
 ### `North Star - Opportunity P1v2.dc.html` — the CURRENT approved Opportunity visual source
 
