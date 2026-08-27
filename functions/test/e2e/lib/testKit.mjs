@@ -90,6 +90,90 @@ export async function seedTechnician(technicianId = nextId("tech")) {
   return { uid, technicianId };
 }
 
+// The GOVERNED TECHNICIAN RECORD, which is a different thing from the persona above.
+//
+// `seedTechnician` writes users/{uid} -- the identity a callable resolves a ROLE from. This writes
+// fieldops_technicians/{technicianId} -- the record the business schedules work ONTO. Chain 1 never
+// needed it: transitionWorkOrder's Schedule/Dispatch check for overlaps and double-booking but never
+// check that the technician exists at all.
+//
+// The Scheduling commands DO check (schedulingCommands.checkPlacement), which is why this helper
+// exists. That asymmetry is real and is recorded in docs/design/governed-scheduling-domain.md -- the
+// new commands are stricter than the deployed ones, deliberately, and nothing about them relaxes what
+// Schedule/Dispatch already enforce.
+export async function seedTechnicianRecord(technicianId = nextId("tech"), status = "available") {
+  await db.collection("fieldops_technicians").doc(technicianId).set({
+    id: technicianId,
+    name: `E2E ${technicianId}`,
+    status,
+  });
+  return technicianId;
+}
+
+/** A persona AND the governed record it schedules against -- what the Scheduling commands need. */
+export async function seedTechnicianWithRecord({ status = "available" } = {}) {
+  const { uid, technicianId } = await seedTechnician();
+  await seedTechnicianRecord(technicianId, status);
+  return { uid, technicianId };
+}
+
+// ---- Reading the Scheduling domain's own collections back ----
+// Deliberately Admin-SDK reads: firestore.rules denies ALL client read on both of these, so a test
+// asserting through a client SDK would be asserting the Rules, not the command. Rules coverage for
+// these collections belongs in the Rules regression lane, not here.
+export async function workingAvailabilityDoc(technicianId) {
+  const snap = await db.collection("technician_working_availability").doc(technicianId).get();
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
+}
+
+export async function blockedTimeDocs(technicianId) {
+  const snap = await db.collection("technician_blocked_time").where("technicianId", "==", technicianId).get();
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Drive a Work Order to SCHEDULED through the REAL governed chain -- createWorkOrder, then
+ * transitionWorkOrder MarkReady, then Schedule.
+ *
+ * Deliberately not a hand-authored `{ status: "SCHEDULED" }` document. A fixture written straight to
+ * Firestore would let a test pass against a Work Order the real commands could never have produced,
+ * which is the failure mode this whole harness exists to avoid (see README item 6).
+ */
+export async function createScheduledWorkOrder({
+  adminUid,
+  dispatcherUid,
+  technicianId,
+  startMillis,
+  endMillis,
+  customerId = "cust-sched-e2e",
+  locationId = "loc-sched-e2e",
+} = {}) {
+  const { createWorkOrder } = await import("../../../lib/createWorkOrder.js");
+  const { transitionWorkOrder } = await import("../../../lib/transitionWorkOrder.js");
+
+  const created = await createWorkOrder.run(
+    callReq(adminUid, {
+      customerId,
+      locationId,
+      priority: 3,
+      type: "SERVICE_CALL",
+      idempotencyKey: nextId("idem"),
+    }),
+  );
+  const workOrderId = created.id;
+  await transitionWorkOrder.run(callReq(dispatcherUid, { workOrderId, action: "MarkReady" }));
+  await transitionWorkOrder.run(
+    callReq(dispatcherUid, {
+      workOrderId,
+      action: "Schedule",
+      scheduledStart: startMillis,
+      scheduledEnd: endMillis,
+      scheduledTechId: technicianId,
+    }),
+  );
+  return workOrderId;
+}
+
 // ---- Part Master ----
 // Real deployed governed dataset flow: setWorkOrderPartsPlan resolves partId -> canonical
 // internalPartNumber (sku) through parts/{partId}; inventoryService.ts's ledger baseline

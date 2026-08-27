@@ -64,6 +64,21 @@ const TECH_LOCKS_COLLECTION = "work_order_tech_locks";
 // enough that it cannot be used to back-date anything meaningful.
 export const PAST_START_TOLERANCE_MS = 60_000;
 
+// These commands CONTEND ON PURPOSE. Every schedule-touching write for one technician is serialized
+// through a single sentinel document, and each one also runs a transactional query over
+// `fieldops_wos` -- so losing a contention race is a normal outcome here, not an exceptional one.
+// Firestore's default of five attempts is tuned for transactions that rarely collide.
+//
+// Raised to ten after the emulator suite hit `10 ABORTED: Transaction lock timeout` on a sequential
+// run. Part of that is an emulator artifact -- its lock manager is coarser than production Firestore,
+// which locks the documents a transactional query returns rather than a broader range -- so this is
+// not purely a production fix, and saying so matters. But the underlying fact is real in both places:
+// a design that funnels a technician's writes through one document should retry more than one that
+// does not. The corrected error mapping in schedulingCallables.ts is the other half: when the retries
+// ARE exhausted, the caller now learns it was contention and can try again, instead of being told the
+// system is broken.
+const SCHEDULING_TRANSACTION_OPTIONS = { maxAttempts: 10 } as const;
+
 function unwrap<T>(result: ValidationResult<T>, field: string): T {
   if (result.valid) return result.value;
   const detail = result.errors.map((e) => `${e.path}:${e.code}`).join(", ");
@@ -295,7 +310,7 @@ async function applyScheduleChange(
       scheduledEnd: input.endMillis,
       warnings,
     };
-  });
+  }, SCHEDULING_TRANSACTION_OPTIONS);
 }
 
 /** Re-time a SCHEDULED Work Order, optionally onto a different technician. */
@@ -418,7 +433,7 @@ export async function setWorkOrderEstimatedDuration(actorUid: string, raw: unkno
       outcome: "applied",
       summary: `${role} ${actorUid} set the planning estimate on Work Order ${workOrderId} from ${prior ?? "none"} to ${minutes ?? "none"} minutes.`,
     });
-  });
+  }, SCHEDULING_TRANSACTION_OPTIONS);
   return { workOrderId, estimatedDurationMinutes: minutes };
 }
 
@@ -460,7 +475,7 @@ export async function setTechnicianWorkingAvailability(actorUid: string, raw: un
         `${role} ${actorUid} set the working schedule for technician ${input.technicianId} in ${input.timeZone} ` +
         `(${priorDays} weekday(s) recorded before, ${Object.keys(input.weeklyHours).length} after).`,
     });
-  });
+  }, SCHEDULING_TRANSACTION_OPTIONS);
   return { technicianId: input.technicianId };
 }
 
@@ -499,7 +514,7 @@ export async function createTechnicianBlockedTime(actorUid: string, raw: unknown
         `${role} ${actorUid} recorded ${input.kind} blocked time ${describeWindow(input.startMillis, input.endMillis)} ` +
         `for technician ${input.technicianId} (block ${ref.id}).`,
     });
-  });
+  }, SCHEDULING_TRANSACTION_OPTIONS);
   return { blockId: ref.id };
 }
 
@@ -527,6 +542,6 @@ export async function deleteTechnicianBlockedTime(actorUid: string, raw: unknown
         `${describeWindow(block.startMillis ?? null, block.endMillis ?? null)} for technician ` +
         `${block.technicianId ?? "unrecorded"} (block ${blockId}).`,
     });
-  });
+  }, SCHEDULING_TRANSACTION_OPTIONS);
   return { blockId };
 }

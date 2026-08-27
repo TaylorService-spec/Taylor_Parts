@@ -129,13 +129,43 @@ is `auditEvents`.
 silently reserve a technician's time for a job that is no longer placed — the H20 defect in a
 different costume.
 
+## What the emulator suite found
+
+Two defects, both in the seam between the commands and their callers, and neither visible to the pure
+tests because neither is arithmetic.
+
+**Contention was being reported as a fault.** These commands funnel every schedule-touching write for
+one technician through a single sentinel document — they contend *by design*. When a transaction lost
+that race, Firestore raised gRPC `10 ABORTED` and `mapError` collapsed it, along with everything else
+it did not recognise, into `internal`. That is a 500: it tells a dispatcher the system is broken when
+the truthful answer is "somebody else was moving this, try again". One of those is a bug report and
+the other is a button press. Contention codes (`4`, `10`, `14`) now map to `aborted` and reuse the
+`STALE_WORK_ORDER` code, because from the caller's side a lost race and a stale board are the same
+situation with the same remedy. Genuinely unrecognised errors still collapse to `internal` — the
+sanitization posture is unchanged, only the classification is corrected.
+
+**A sanitized failure left no trace of itself.** The same collapse meant the original symptom was an
+unexplainable "The request could not be completed." with nothing logged anywhere. The callables now
+log the raw error server-side *before* sanitizing. The client still learns nothing it should not; the
+server log keeps what an operator needs. Recognised refusals are not logged — they are ordinary
+outcomes, not faults.
+
+Alongside those, `maxAttempts` was raised from Firestore's default of 5 to 10 for the scheduling
+transactions. Part of that is an emulator artifact and it is worth saying so: the emulator's lock
+manager is coarser than production Firestore, which locks the documents a transactional query returns
+rather than a broader range. But the underlying fact holds in both places — a design that deliberately
+serializes on one document per technician should retry more than one that does not.
+
 ## What is not covered yet, stated plainly
 
-- **The transactional commands have no automated tests.** `schedulingCommands.ts` needs the Firestore
-  emulator harness, and that is a separate step. What *is* covered, and covered thoroughly, is the
-  pure availability model, its validation, and the lifecycle change — see
-  `functions/test/schedulingAvailabilityModel.test.mjs` (28) and the ND-18 block in
-  `functions/test/transitionEngine.test.mjs` (6).
+- ~~The transactional commands have no automated tests.~~ **Closed.** They are exercised end to end
+  against a real Firestore emulator through the existing harness (`functions/test/e2e/`):
+  `schedulingCommandsEmulator.test.mjs` (19) and `schedulingAvailabilityEmulator.test.mjs` (15),
+  alongside the pure suites `schedulingAvailabilityModel.test.mjs` (30) and the ND-18 block in
+  `transitionEngine.test.mjs` (6). The client-direct Rules boundary is
+  `functions/test/technicianAvailabilityRules.test.js` (77) in the Rules regression lane — deliberately
+  separate, because the callables run on the Admin SDK and the Admin SDK bypasses Rules by design, so
+  a "a client cannot read this" assertion made through the callable harness would prove nothing.
 - **Nothing is deployed.** Export is not deploy. The callables are exported for build and test only.
 - **The Rules blocks are authored, not live.** `firestore.rules` has no CI deploy in this repository.
   Until `firebase deploy --only firestore:rules` is run, the two new collections are protected only

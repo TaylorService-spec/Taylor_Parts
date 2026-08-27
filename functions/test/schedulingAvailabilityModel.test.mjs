@@ -301,6 +301,43 @@ test("the planning estimate is optional, and absent is not zero", () => {
   assert.equal(parseEstimatedDurationMinutes("90").valid, false);
 });
 
+// ---------------------------------------------------------------------------------------------
+// Error sanitization
+// ---------------------------------------------------------------------------------------------
+
+test("mapError: a known refusal surfaces its stable code and ONLY its generic message", async () => {
+  const { mapError } = await import("../lib/scheduling/schedulingCallables.js");
+  const { SchedulingError } = await import("../lib/scheduling/types.js");
+
+  const mapped = mapError(new SchedulingError("BLOCKED_TIME_CONFLICT", "Technician tech-42 has PTO blocked time overlapping that window."));
+  assert.equal(mapped.code, "failed-precondition");
+  assert.equal(mapped.details.code, "BLOCKED_TIME_CONFLICT");
+  assert.doesNotMatch(mapped.message, /tech-42/, "the internal message named a technician and must not cross the boundary");
+});
+
+test("mapError: a lost contention race is ABORTED and retryable, never a 500", () => {
+  // The defect the emulator suite found. Firestore raises gRPC 10 (ABORTED) when a transaction loses
+  // a contention race -- which these commands provoke on purpose, by serializing every
+  // schedule-touching write for one technician on a single sentinel document. Collapsing that into
+  // `internal` tells a dispatcher the system is broken when the truthful answer is "somebody else was
+  // moving this, try again". One is a bug report, the other is a button press.
+  return import("../lib/scheduling/schedulingCallables.js").then(({ mapError }) => {
+    for (const code of [4, 10, 14]) {
+      const err = Object.assign(new Error("10 ABORTED: Transaction lock timeout."), { code });
+      const mapped = mapError(err);
+      assert.equal(mapped.code, "aborted", `gRPC ${code} must be retryable`);
+      assert.equal(mapped.details.code, "STALE_WORK_ORDER");
+      assert.doesNotMatch(mapped.message, /Transaction lock timeout/, "the raw Firestore message does not cross the boundary");
+    }
+
+    // Anything genuinely unrecognised still collapses to internal -- the sanitization posture is
+    // unchanged, only the classification of contention is corrected.
+    assert.equal(mapError(new Error("something nobody anticipated")).code, "internal");
+    assert.equal(mapError(Object.assign(new Error("not found"), { code: 5 })).code, "internal", "a non-retryable gRPC code is not laundered into aborted");
+    assert.equal(mapError(Object.assign(new Error("stringy"), { code: "10" })).code, "internal", "a string code is not a gRPC status");
+  });
+});
+
 test("isUsableTimeZone asks the runtime rather than pattern-matching", () => {
   assert.equal(isUsableTimeZone("America/Phoenix"), true);
   assert.equal(isUsableTimeZone("UTC"), true);

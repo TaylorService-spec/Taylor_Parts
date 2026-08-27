@@ -41,6 +41,21 @@ const FAILURE_MAP: Record<SchedulingFailureCode, { code: FunctionsErrorCode; mes
   STALE_WORK_ORDER: { code: "aborted", message: "The schedule changed since it was loaded. Reload and try again." },
 };
 
+// gRPC status codes that mean "this did not happen, and trying again may work" rather than "this is
+// broken". Firestore raises them when a transaction loses a contention race or runs out of time --
+// which these commands provoke ON PURPOSE, by serializing every schedule-touching write for one
+// technician on a single sentinel document.
+//
+// Found by the emulator suite (see docs/design/governed-scheduling-domain.md): a transaction lock
+// timeout was reaching the caller as `internal`. That is a 500 -- it tells a dispatcher the system is
+// broken, when the truthful answer is "somebody else was moving this, try again". The distinction is
+// not cosmetic: one is a bug report and the other is a button press.
+const RETRYABLE_FIRESTORE_CODES = new Set([
+  4, // DEADLINE_EXCEEDED
+  10, // ABORTED -- contention, including the emulator's transaction lock timeout
+  14, // UNAVAILABLE
+]);
+
 /** Exported for direct sanitization tests: a known failure surfaces ONLY its generic per-code message. */
 export function mapError(err: unknown): HttpsError {
   if (err instanceof SchedulingError) {
@@ -48,6 +63,13 @@ export function mapError(err: unknown): HttpsError {
     return new HttpsError(mapped.code, mapped.message, { code: err.code });
   }
   if (err instanceof HttpsError) return err;
+  // Same sanitization posture as everything else here -- the code crosses, the detail does not. The
+  // reused STALE_WORK_ORDER code is deliberate: from the caller's side a lost contention race and a
+  // stale board are the same situation and have the same remedy.
+  const grpcCode = (err as { code?: unknown } | null)?.code;
+  if (typeof grpcCode === "number" && RETRYABLE_FIRESTORE_CODES.has(grpcCode)) {
+    return new HttpsError("aborted", FAILURE_MAP.STALE_WORK_ORDER.message, { code: "STALE_WORK_ORDER" });
+  }
   return new HttpsError("internal", "The request could not be completed.");
 }
 
@@ -59,6 +81,17 @@ function adapt<T>(handler: Handler<T>) {
     try {
       return await handler(request.auth.uid, request.data);
     } catch (err) {
+      // LOG BEFORE SANITIZING. mapError deliberately collapses anything it does not recognise into a
+      // generic "internal" so no internal state crosses the trust boundary -- which is right, and
+      // which also means an unexpected failure would otherwise leave NO trace anywhere of what
+      // actually went wrong. This lane found that out the hard way: an intermittent Firestore
+      // transaction error surfaced as an unexplainable "The request could not be completed." and took
+      // an instrumented rerun to identify. The client still learns nothing it should not; the server
+      // log keeps what an operator needs. Recognised SchedulingErrors are not logged here -- they are
+      // ordinary refusals, not faults.
+      if (!(err instanceof SchedulingError)) {
+        console.error("scheduling command failed with an unrecognised error", err);
+      }
       throw mapError(err);
     }
   });

@@ -207,7 +207,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 720 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 797 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -244,8 +244,14 @@ await okAsync("7. a fully-passing run reports exactly 720 passed, 0 failed", asy
   // neighboring collection's permissions changed). 712 -> 720: WO Parts Planning Phase 3 added +8
   // reorderRequestsRules assertions for the additive OPTIONAL reorder_requests.workOrderId back-link
   // (absent/null/valid accepted; empty/int/bool/extra-field denied; technician still denied).
-  assert.equal(EXPECTED_TOTAL, 720); // WO Parts Planning Phase 3: +8 reorderRequestsRules (was 712)
-  assert.ok(lines.some((l) => /720 passed, 0 failed/.test(l)), "summary must state 720 passed, 0 failed");
+  // 720 -> 797: Dispatch & Scheduler (ND-22) registered technicianAvailabilityRules.test.js (77
+  // assertions -- technician_working_availability and technician_blocked_time fully backend-private:
+  // all client read/create/update/delete denied for 8 principals across both collections, a
+  // technician denied even their OWN availability, collection LIST denied, malformed auth rejected
+  // 4xx, Admin-SDK trusted write is not a client grant, and fieldops_technicians' own posture is
+  // unchanged).
+  assert.equal(EXPECTED_TOTAL, 797); // Dispatch & Scheduler ND-22: +77 technicianAvailabilityRules (was 720)
+  assert.ok(lines.some((l) => /797 passed, 0 failed/.test(l)), "summary must state 797 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
