@@ -1,0 +1,49 @@
+name: Opportunity Intelligence Tests
+
+# Opportunity is a commercial record. EOS owns every fact, lifecycle transition and action.
+# This lane proves the first AI slice can explain only the existing attention derivation and cannot
+# invent numbers, currency, dates, probabilities, evidence or actions.
+# Offline only: no emulator, deploy, provider call or secret.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/opportunityIntelligence.js"
+      - "field-ops-app-vite/src/domain/opportunityNorthStar.js"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/test/opportunityIntelligence.test.mjs"
+      - "functions/src/ai/opportunityModelInterpretation.ts"
+      - "functions/test/aiOpportunityModelInterpretation.test.mjs"
+      - ".github/workflows/opportunity-intelligence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  opportunity-intelligence:
+    name: North Star Opportunity intelligence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Deterministic Opportunity intelligence and model-payload boundary
+        run: node --test test/opportunityIntelligence.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Build Functions
+        run: npm run build
+        working-directory: functions
+      - name: Fail-closed Opportunity model-output verification
+        run: node --test test/aiOpportunityModelInterpretation.test.mjs
+        working-directory: functions
