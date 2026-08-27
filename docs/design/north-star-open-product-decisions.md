@@ -669,7 +669,7 @@ rewritten. Placement now requires a governed technician record — a real narrow
 
 Evidence: emulator E2E suite 50/50 (12 new symmetry checks), scheduling domain lane 40/40, transition
 emulator suites 16/16, and the
-live Scheduling Functional Gate rerun after the redeploy.
+live Scheduling Functional Gate at **32/32 PASS** after redeploying `transitionWorkOrder` alone.
 
 <details>
 <summary>The finding as originally raised (2026-08-27)</summary>

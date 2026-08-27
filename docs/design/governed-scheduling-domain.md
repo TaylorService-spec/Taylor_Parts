@@ -1,8 +1,8 @@
 # The governed Scheduling domain
 
-Status: **Implemented and DEPLOYED to the sandbox. Certification pending the ND-24 redeploy.** The eight callables are `ACTIVE` on
+Status: **Implemented, DEPLOYED to the sandbox, and CERTIFIED.** The eight callables are `ACTIVE` on
 `nodejs22` in `eos-platform-sandbox`, both Rules blocks are live (a client ID token gets `403` on
-either collection), and the live Scheduling Functional Gate is at 29/32 pending the ND-24 redeploy — see
+either collection), and the live Scheduling Functional Gate passes **32/32** — see
 [`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
 
 **ND-24 is closed.** The gate found the collision policy enforced by the *change* paths and not by
