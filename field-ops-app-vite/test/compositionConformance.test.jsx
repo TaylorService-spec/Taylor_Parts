@@ -94,6 +94,9 @@ const CONFORMANT_SURFACES = [
   "modules/administration/EmployeesList.jsx",
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",  // moved from CONFORMANT_WORKSPACES (Wave 1)
+  // TRANCHE 3 — operational movement families.
+  "modules/purchasing/PurchaseOrders.jsx",
+  "modules/inventory/Transfers.jsx",
 ];
 
 // ════════════════════ NORTH STAR RECORD PAGES ════════════════════
@@ -160,6 +163,8 @@ const NORTH_STAR_COLLECTION_PAGES = [
   "modules/administration/EmployeesList.jsx",
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",
+  "modules/purchasing/PurchaseOrders.jsx",
+  "modules/inventory/Transfers.jsx",
 ];
 
 function walk(dir) {
