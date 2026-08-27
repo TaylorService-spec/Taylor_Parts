@@ -26,6 +26,11 @@ import {
 import { WORK_ORDERS_COLLECTION, SALES_ORDERS_COLLECTION } from "./constants/collections";
 import { triggerInventoryEffects } from "./inventoryService";
 import { findDoubleBookingConflict, findScheduleConflict } from "./workOrderAvailability";
+// ND-24: THE governed placement policy, shared with the Scheduling command service so the initial
+// placement and every later change cannot disagree about what a legal placement is.
+import { checkPlacement } from "./scheduling/placementPolicy";
+import { mapError as mapSchedulingError } from "./scheduling/errorMapping";
+import { SchedulingError, type SchedulingWarning } from "./scheduling/types";
 import { stageAuditEvent, stageAuditEventWithId } from "./access/auditEventWriter";
 import { transitionWorkOrderAuditId } from "./workOrderTransitionMath";
 import {
@@ -50,6 +55,16 @@ const TECH_LOCKS_COLLECTION = "work_order_tech_locks";
 const techLockRef = (db: Firestore, technicianId: string) =>
   db.collection(TECH_LOCKS_COLLECTION).doc(technicianId);
 
+// Stored scheduling windows are Firestore Timestamps, but a Work Order written by an older path (or
+// read back mid-migration) can carry a raw number. Both are read here, and anything else is null
+// rather than a guess -- an audit line that says "an unrecorded window" is honest, and one that says
+// "1970-01-01" is not.
+function toMillisOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const millis = (value as { toMillis?: () => number } | null)?.toMillis?.();
+  return typeof millis === "number" && Number.isFinite(millis) ? millis : null;
+}
+
 interface TransitionWorkOrderInput {
   workOrderId: string;
   action: ActionName;
@@ -70,6 +85,11 @@ interface TransitionWorkOrderInput {
   // (assignedTechId === scheduledTechId, the ordinary case) never requires or records this.
   // See transitionWorkOrder()'s Dispatch branch for the enforcement.
   reassignReason?: string;
+  // ND-18 (Owner ruling 2026-08-27): required for "Unschedule", and valid for nothing else.
+  // Un-scheduling discards a placement a dispatcher already made and a technician may already be
+  // planning around, so it is never a bare click -- the reason is what the Audit Event records
+  // alongside the technician and window being given up.
+  unscheduleReason?: string;
   // P1.1 (Sales->Cash fulfillment spine): Complete-only. Explicit technician-declared acceptance for
   // EQUIPMENT_MODEL/SERVICE Sales Order lines (which have no inventorySnapshot to derive from). PART actuals
   // are derived solely from governed inventorySnapshot (qtyUsed when recorded, else qtyPlanned -- completion
@@ -110,6 +130,13 @@ function assertValidInput(data: unknown): asserts data is TransitionWorkOrderInp
     if (typeof input.reassignReason !== "string" || input.reassignReason.trim().length === 0) {
       throw new HttpsError("invalid-argument", "reassignReason must be a non-empty string when present.");
     }
+  }
+  if (input.action === "Unschedule") {
+    if (typeof input.unscheduleReason !== "string" || input.unscheduleReason.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "Unschedule requires a non-empty unscheduleReason.");
+    }
+  } else if (input.unscheduleReason !== undefined) {
+    throw new HttpsError("invalid-argument", "unscheduleReason is only valid for the Unschedule action.");
   }
   if (input.fulfillmentAccepted !== undefined) {
     if (input.action !== "Complete") {
@@ -153,7 +180,7 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
   }
 
   assertValidInput(request.data);
-  const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId, fulfillmentAccepted, reassignReason } =
+  const { workOrderId, action, scheduledStart, scheduledEnd, scheduledTechId, assignedTechId, fulfillmentAccepted, reassignReason, unscheduleReason } =
     request.data;
 
   const caller = await getCallerContext(request.auth.uid);
@@ -200,24 +227,69 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     // Event (reassignWorkOrderTechnician) alongside the WO write below, in the SAME transaction, so the
     // audit record and the business mutation commit atomically (or neither does).
     let reassignmentAudit: { priorTechId: string; newTechId: string; reason: string } | null = null;
+    // ND-18: the prior scheduling facts, captured before the Unschedule branch below deletes them, and
+    // staged as an unscheduleWorkOrder Audit Event in this SAME transaction -- the durable record of
+    // who this job was scheduled for and when, once the document no longer says.
+    let unscheduleAudit: {
+      priorTechId: string | null;
+      priorStartMillis: number | null;
+      priorEndMillis: number | null;
+      reason: string;
+    } | null = null;
+    // ND-24: warnings from the shared placement policy on a SUCCESSFUL Schedule -- outside recorded
+    // working hours, or no working hours recorded at all. ND-20 says these must not refuse, because
+    // field service legitimately schedules emergency work at 02:00. They ride out on the response so
+    // a dispatcher is told; discarding them here would make the placement look unremarkable.
+    let scheduleWarnings: SchedulingWarning[] = [];
     if (action === "Schedule") {
       lockRef = techLockRef(db, scheduledTechId as string);
       await tx.get(lockRef);
     } else if (action === "Dispatch") {
       lockRef = techLockRef(db, assignedTechId as string);
       await tx.get(lockRef);
+    } else if (action === "Unschedule" && wo.scheduledTechId) {
+      // Unschedule RELEASES a technician's window, so it contends for the same sentinel as the
+      // Schedule/Dispatch calls that claim one. Without this, a concurrent Schedule for the same
+      // technician could read a snapshot in which this job still occupies the slot and refuse a
+      // placement that is in fact free -- or, worse, the reverse once the delete commits.
+      lockRef = techLockRef(db, wo.scheduledTechId);
+      await tx.get(lockRef);
     }
 
     if (action === "Schedule") {
-      const otherSnap = await tx.get(
-        db.collection(WORK_ORDERS_COLLECTION).where("scheduledTechId", "==", scheduledTechId)
-      );
-      const others = otherSnap.docs.map((d) => {
-        const data = d.data() as WorkOrder;
-        return { id: d.id, scheduledTechId: data.scheduledTechId, scheduledStart: data.scheduledStart, scheduledEnd: data.scheduledEnd, status: data.status };
-      });
-      const conflict = findScheduleConflict(scheduledTechId as string, workOrderId, scheduledStart as number, scheduledEnd as number, others);
-      if (conflict) throw new HttpsError("failed-precondition", `Technician ${scheduledTechId} is already scheduled for overlapping Work Order ${conflict}.`);
+      // ND-24. This branch used to call findScheduleConflict directly and check nothing else, which
+      // meant the INITIAL placement enforced overlap alone while Reschedule enforced the whole of
+      // ND-20. Live, that let a dispatcher Schedule a job into the past or into a technician's PTO
+      // and be refused for the identical window on Reschedule -- two entry points, two answers, same
+      // business question.
+      //
+      // It now calls the SAME checkPlacement the scheduling commands call. Not a copy of the table:
+      // the function itself, so the two paths cannot drift. Overlap behavior is unchanged (the policy
+      // runs the same query and the same pure findScheduleConflict this branch used to run inline);
+      // past start, technician eligibility and blocked time are what is new here.
+      //
+      // Reads only, and it runs before every write below -- Firestore's all-reads-before-writes rule
+      // is why it sits here rather than beside the payload assembly.
+      try {
+        scheduleWarnings = await checkPlacement(tx, {
+          technicianId: scheduledTechId as string,
+          workOrderId,
+          startMillis: scheduledStart as number,
+          endMillis: scheduledEnd as number,
+          nowMillis: Date.now(),
+        });
+      } catch (err) {
+        // A SchedulingError crossing this boundary unmapped would reach the caller as a generic
+        // `internal` 500 -- telling a dispatcher the system is broken when the truthful answer is
+        // "that technician has PTO then". mapSchedulingError is the SAME sanitized table the
+        // scheduling callables use, so a refusal reads identically whichever path produced it.
+        //
+        // Anything that is not a SchedulingError propagates untouched: the surrounding transaction's
+        // contention and Firestore errors are not this catch's business, and swallowing them into a
+        // scheduling refusal would misreport a retryable race as a business rule.
+        if (err instanceof SchedulingError) throw mapSchedulingError(err);
+        throw err;
+      }
       payload.scheduledStart = Timestamp.fromMillis(scheduledStart as number);
       payload.scheduledEnd = Timestamp.fromMillis(scheduledEnd as number);
       payload.scheduledTechId = scheduledTechId;
@@ -319,6 +391,38 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
             reason: reassignReason as string,
           }
         : null;
+    } else if (action === "Unschedule") {
+      // ND-18 (Owner ruling 2026-08-27). The only reverse edge in the lifecycle, and the only place
+      // the scheduling projection is CLEARED rather than rewritten.
+      //
+      // Order matters here: the prior facts are captured BEFORE the deletes are staged, because once
+      // this Work Order is back in READY_TO_DISPATCH nothing on the document remembers who it was
+      // scheduled for or when. That memory moves into the Audit Event staged below, in this same
+      // transaction. Current state may change -- history may not.
+      unscheduleAudit = {
+        priorTechId: wo.scheduledTechId ?? null,
+        priorStartMillis: toMillisOrNull(wo.scheduledStart),
+        priorEndMillis: toMillisOrNull(wo.scheduledEnd),
+        reason: unscheduleReason as string,
+      };
+
+      // Deleted, not blanked. A Work Order back in the Ready queue must be indistinguishable from one
+      // that was never scheduled -- a lingering empty-string scheduledTechId would keep it inside
+      // findScheduleConflict's equality query and silently reserve a technician's time for a job that
+      // is no longer placed. That is the H20 defect in a different costume.
+      payload.scheduledStart = FieldValue.delete();
+      payload.scheduledEnd = FieldValue.delete();
+      payload.scheduledTechId = FieldValue.delete();
+
+      // The reschedule snapshot describes a placement that no longer exists, so it goes too. The
+      // durable rescheduleWorkOrder Audit Events stay where they are -- clearing a projection is not
+      // erasing history.
+      payload.rescheduledFromStart = FieldValue.delete();
+      payload.rescheduledFromEnd = FieldValue.delete();
+      payload.rescheduledFromTechId = FieldValue.delete();
+      payload.rescheduledAt = FieldValue.delete();
+      payload.rescheduledReason = FieldValue.delete();
+      payload.rescheduledByUid = FieldValue.delete();
     } else {
       const timestampField = ACTION_TIMESTAMP_FIELD[action];
       if (timestampField) {
@@ -466,6 +570,27 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
           : ""),
     });
 
+    if (unscheduleAudit) {
+      // ND-18: an ADDITIONAL event beside the generic "transitionWorkOrder" one above, for the same
+      // reason the reassignment event exists -- the generic event records SCHEDULED -> READY_TO_DISPATCH
+      // and structurally cannot say which technician and which window were given up. Those facts have
+      // just been deleted from the document, so if they are not here they are nowhere.
+      const priorWindow =
+        unscheduleAudit.priorStartMillis !== null && unscheduleAudit.priorEndMillis !== null
+          ? `${new Date(unscheduleAudit.priorStartMillis).toISOString()} to ${new Date(unscheduleAudit.priorEndMillis).toISOString()}`
+          : "an unrecorded window";
+      stageAuditEvent(tx, {
+        actorUid,
+        action: "unscheduleWorkOrder",
+        targetType: "workOrder",
+        targetId: workOrderId,
+        outcome: "applied",
+        summary:
+          `Work Order ${workOrderId} unscheduled from technician ${unscheduleAudit.priorTechId ?? "unrecorded"} ` +
+          `(was ${priorWindow}) and returned to the Ready queue. Reason: ${unscheduleAudit.reason}`,
+      });
+    }
+
     if (reassignmentAudit) {
       // H20 fix: an ADDITIONAL event beside "transitionWorkOrder" above (same coexistence pattern as
       // salesOrderFulfillmentWriteBack beside it for Complete) -- the durable record of prior technician,
@@ -526,7 +651,10 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
         summary: `Work Order ${workOrderId} Complete skipped Sales Order fulfillment write-back: ${soWriteBackSkipped.reason} The Work Order still completed.`,
       });
     }
-    return { id: workOrderId, status: nextStatus };
+    // ND-24: warnings are part of a SUCCESSFUL Schedule response, exactly as they already are for
+    // reschedule and reassign. Empty for every other action, and empty for a Schedule with nothing to
+    // say -- so no existing caller sees a shape it did not before, it just gains a field.
+    return { id: workOrderId, status: nextStatus, warnings: scheduleWarnings };
   });
 
   // Post-commit only -- see header comment. Never throws: a failure

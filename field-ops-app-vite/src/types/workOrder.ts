@@ -46,6 +46,9 @@ export type WorkOrderType =
 // functions/src/transitionEngine.ts only).
 export type ActionName =
   | "MarkReady"
+  // ND-18 -- returns a SCHEDULED Work Order to READY_TO_DISPATCH. Legal from SCHEDULED only; see
+  // domain/workOrderWorkflow.js's ACTION_ALLOWED_FROM.
+  | "Unschedule"
   | "Schedule"
   | "Dispatch"
   | "Accept"
@@ -78,10 +81,24 @@ export interface WorkOrder {
 
   assignedTechId?: string;
 
+  // ND-21 -- an OPTIONAL planning estimate. NOT an execution timestamp, NOT actual labor duration,
+  // NOT billing authority. See functions/src/types/workOrder.ts for the full contract. Absent is the
+  // normal case; never read undefined as zero.
+  estimatedDurationMinutes?: number;
+
   // Planning (mutable)
   scheduledStart?: Timestamp;
   scheduledEnd?: Timestamp;
   scheduledTechId?: string;
+
+  // Denormalized snapshot of the most recent reschedule -- the LATEST one, never the history. The
+  // durable record is the "rescheduleWorkOrder" Audit Event. See functions/src/types/workOrder.ts.
+  rescheduledFromStart?: Timestamp;
+  rescheduledFromEnd?: Timestamp;
+  rescheduledFromTechId?: string;
+  rescheduledAt?: Timestamp;
+  rescheduledReason?: string;
+  rescheduledByUid?: string;
 
   // H20 fix (dispatch reassignment): denormalized snapshot of the most recent Dispatch that
   // sent this Work Order to a technician OTHER than who it was scheduled for. See

@@ -1756,6 +1756,33 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Dispatch & Scheduler -- the governed technician availability authority (ND-22, Owner ruling
+    // 2026-08-27). Two collections, deliberately separate: a technician's RECURRING weekly working
+    // schedule, and DATED one-off exceptions (PTO, lunch, training, meetings, truck service, company
+    // closure). Admin-SDK-only, the same fail-closed posture as sales_orders above.
+    //
+    // EXPLICIT, THOUGH FIRESTORE WOULD DENY AN UNDECLARED COLLECTION ANYWAY. The default denial is
+    // the absence of a decision; this is the decision. The Owner's ruling was specifically that the
+    // repository should not be left relying on implicit behaviour for real backend authority.
+    //
+    // READ IS DENIED TOO, DELIBERATELY, and it costs something -- the Dispatch board genuinely needs
+    // these records to shade technician lanes and compute capacity, so it reads them through the
+    // trusted readTechnicianAvailability projection (functions/src/scheduling/schedulingReadService.ts)
+    // rather than querying directly. That is the price of not putting every technician's PTO calendar
+    // in front of every authenticated principal, scoped by nothing.
+    //
+    // The only write paths are the trusted setTechnicianWorkingAvailability /
+    // createTechnicianBlockedTime / deleteTechnicianBlockedTime commands (Admin SDK, which bypasses
+    // these rules). NOTE: merging this block does NOT deploy it. firestore.rules has no CI deploy in
+    // this repository -- `firebase deploy --only firestore:rules` is a separate, manual, Tier-2 step,
+    // and until it runs these collections are protected only by the undeclared-collection default.
+    match /technician_working_availability/{technicianId} {
+      allow read, write: if false;
+    }
+    match /technician_blocked_time/{blockId} {
+      allow read, write: if false;
+    }
+
     // Sales Agreements -- the commercial commitment. Admin-SDK-only, same fail-closed posture as
     // sales_orders above. ALL direct client read and write denied; the only write paths are the
     // trusted createSalesAgreement / updateSalesAgreementDraft / acceptSalesAgreement commands

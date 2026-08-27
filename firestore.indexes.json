@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "technician_blocked_time",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "technicianId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endMillis",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "employees",
       "queryScope": "COLLECTION",
       "fields": [

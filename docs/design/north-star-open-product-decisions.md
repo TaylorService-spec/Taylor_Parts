@@ -521,3 +521,288 @@ and the record both claim `h1`), ND-5 (two approved colours under the contrast f
 the running page writes `Work Order · Service Call · High (2)`, because those are the governed
 vocabularies. The composition is unchanged — the words differ, and they will keep differing until
 the question is answered.
+
+
+---
+
+## Open — raised by the Dispatch & Scheduler build handoff (2026-08-27)
+
+Full evidence for all six lives in
+[`dispatch-scheduling-authority-map.md`](./dispatch-scheduling-authority-map.md). Each clears the
+bar in "How an entry gets here": each would change *what the business can do*, and none can be
+answered by reading the code — because the thing they ask about does not exist in it.
+
+### ND-18 — May a scheduled Work Order return to the queue?
+
+**Raised:** 2026-08-27, Dispatch & Scheduler reconnaissance
+**Design holds:** the Dispatch board returns a scheduled job to the Ready queue by dragging it there.
+**Behavioral holds:** `transitionEngine.ts`'s `TRANSITIONS` table is strictly forward plus
+`CANCELLED`. `SCHEDULED → {DISPATCHED, CANCELLED}` is the entire outgoing set. There is no backward
+edge anywhere in ADR-002, and `canTransition` is a pure table lookup, so there is no back door either.
+**The conflict:** an `Unschedule` command would be the **first reverse transition in the governed
+lifecycle**. The alternative reading is that scheduling is a commitment, undone only by `Cancel` plus
+a new Work Order.
+**Shipped meanwhile:** nothing. The day board schedules `READY_TO_DISPATCH` work only and never
+offers to un-place a job.
+**The decision:** is un-scheduling a legitimate operating action, or is a scheduled job committed?
+**Blocked on it:** the Ready-queue return interaction, and the precedent for every future reverse edge.
+
+### ND-19 — Is `Reschedule` a lifecycle transition or a governed field command?
+
+**Raised:** 2026-08-27, Dispatch & Scheduler reconnaissance
+**Design holds:** a dispatcher drags a placed job to a new time and it moves.
+**Behavioral holds:** the scheduled window lives in three *planning* fields (`scheduledStart`,
+`scheduledEnd`, `scheduledTechId`) that `transitionEngine.ts` deliberately excludes from
+`ACTION_TIMESTAMP_FIELD` precisely because they are mutable planning values, not execution facts.
+**The conflict:** as a `SCHEDULED → SCHEDULED` self-transition, `Reschedule` edits ADR-002's table
+and its client mirror (`workOrderWorkflow.js`), and introduces the first self-edge. As a separate
+trusted callable rewriting planning fields under an unchanged status, it touches neither. Both are
+defensible; the second is materially smaller and matches how the fields are already described.
+**Shipped meanwhile:** nothing. `SchedulingWorkspace` explicitly refuses to fabricate a reschedule
+(see `work-order-scheduling-workspace.md`, "Deliberate boundaries").
+**Blocked on it:** the shape of the whole command family — `reassignScheduledWorkOrder` and
+`unscheduleWorkOrder` follow whichever answer this gets.
+**Relates to:** ND-3's package **B1**, which already names a governed `Reschedule` with
+`DISPATCHED → SCHEDULED` semantics as approved-in-principle and separately scoped.
+
+### ND-20 — Which scheduling conditions refuse, which warn, and which allow with a reason?
+
+**Raised:** 2026-08-27, Dispatch & Scheduler reconnaissance
+**Design holds:** the board shows conflict feedback.
+**Behavioral holds:** exactly one rule is settled and shipped — overlapping the **same technician**
+**refuses**, server-side, inside the transaction (`findScheduleConflict`, `failed-precondition`).
+**The conflict:** four further conditions have no policy at all: scheduling outside a technician's
+working hours, scheduling into blocked time, scheduling in the past, and scheduling an ineligible
+technician. Each could reasonably refuse, warn, or allow with a recorded reason, and the answers are
+not interchangeable. Field service legitimately schedules emergency work at 02:00, so a blanket
+refusal on working hours is a real operating change rather than a safe default.
+**Shipped meanwhile:** the one settled rule, unchanged.
+**Blocked on it:** every validation branch in the new scheduling commands. Guessing here would bury
+business policy in implementation, which the build handoff explicitly forbids.
+
+### ND-21 — Does a Work Order carry an estimated duration?
+
+**Raised:** 2026-08-27, Dispatch & Scheduler reconnaissance
+**Design holds:** duration-based placement and percent-booked capacity indicators.
+**Behavioral holds:** no estimated-duration or estimated-effort field exists on either the server or
+client Work Order type. `durationMinutes` is derived from `scheduledEnd − scheduledStart` — a fact
+about an *already-placed* job, never an estimate. This was audited once already and recorded in
+`dispatchSchedulingBoard.js`, which groups the ready queue by `priority` for exactly this reason.
+**The conflict:** without an estimate, a drag from the queue cannot propose an end time (the
+dispatcher must state one), and "percent booked" has a numerator that only exists after the fact.
+**Shipped meanwhile:** the ready queue groups by priority, and the drop handler proposes a default
+60-minute slot as a *suggestion the dispatcher confirms*, never an inferred fact.
+**The decision:** does a Work Order gain an estimated duration at creation — with the real
+data-entry cost that carries — or does the board keep asking?
+**Blocked on it:** truthful duration-based placement and any capacity arithmetic.
+
+### ND-22 — Are recurring working hours and one-off exceptions one authority or two?
+
+**Raised:** 2026-08-27, Dispatch & Scheduler reconnaissance
+**Design holds:** technician lanes shade non-working time, and blocked time (PTO, lunch, training,
+meetings, truck service, company closure) appears on the timeline.
+**Behavioral holds:** `fieldops_technicians` carries a single **live** `status` of
+`available | on_job | off_shift` and nothing else. There is no shift model, no calendar, and no
+exception model anywhere in the repository.
+**The conflict:** the build handoff says not to conflate a recurring weekly schedule with one-off
+exceptions "unless repository architecture clearly favours that model". Nothing in the repository
+favours either, because neither exists — so the question cannot be answered by precedent and has to
+be decided.
+**Shipped meanwhile:** the day board exposes `tech.status` so an `off_shift` row reads as
+non-work-available, and draws no time blocks at all.
+**Blocked on it:** the shape of the availability authority, its Rules blocks (Tier 2 either way), and
+whether availability validation reads one collection or two.
+
+### ND-23 — The Dispatch North Star design package is not in the repository
+
+**Raised:** 2026-08-27, Dispatch & Scheduler reconnaissance
+**Design holds:** *Dispatch and Schedule North Star P1v1* is the visual authority for this family.
+**Behavioral holds:** `docs/north-star/` contains `lists`, `opportunity` and `sales-agreement`. No
+Dispatch artifact has been handed to this repository.
+**The conflict:** none of substance — this is a **recorded gap**, not a disagreement. It is here so
+it is found now rather than at composition time, and so the family-2 precedent applies knowingly: a
+family composed without its artifact makes Owner visual acceptance load-bearing rather than
+confirmatory.
+**Blocked on it:** step 14 onward (North Star Dispatch composition). Backend scheduling authority is
+not blocked by it.
+
+**Update, 2026-08-27 (live Scheduling Functional Gate):** the artifact was searched for again before
+composition and was **not found anywhere reachable** — not in `docs/north-star/` (which holds
+`lists`, `opportunity` and `sales-agreement`), not in the delivery folders the Opportunity and Sales
+Agreement packages arrived through, and not in the published-artifact gallery. It has not been handed
+over in any form. ND-23 therefore still stands open in its original terms, and its blocking effect on
+composition is unchanged.
+
+### ND-24 — The collision policy is enforced on one placement path and not the other — **RESOLVED 2026-08-27: ratified, and closed structurally**
+
+**Owner ruling:** initial `Schedule` MUST enforce the same governed placement policy Reschedule
+already enforces. Explicitly *not* a new product decision — ND-20 established the policy for the
+scheduling domain, and this was a defect in how completely it was implemented. The Owner also
+directed the *shape* of the fix: **do not implement a second copy of the validation table inside
+`transitionWorkOrder`** — find the shared validation and make the existing path consume it.
+
+**What shipped:** the policy moved out of `schedulingCommands.ts`, where it had been a private
+function, into `functions/src/scheduling/placementPolicy.ts`. Both placement paths import and call
+it. The sanitized `SchedulingError → HttpsError` table moved to `scheduling/errorMapping.ts` for the
+same reason — `transitionWorkOrder` now raises those refusals and must not import a module whose top
+level defines seven `onCall` handlers to reach an error table.
+
+`Schedule` now refuses a past start, blocked time, an ineligible technician and an unknown one;
+overlap is unchanged; outside-working-hours **warns and commits**, with the warnings returned on the
+response as they already were for reschedule. The lifecycle meaning of `Schedule` is untouched —
+`READY_TO_DISPATCH → SCHEDULED`, still a transition. Only its placement validation changed.
+
+**Why it is closed structurally rather than merely fixed.** Nobody had written a disagreeing policy.
+`checkPlacement` was private to one module, so it was reachable only by the callers that happened to
+live there — the policy and the path that needed it were each correct and were never introduced to
+each other. A behavioural test would have caught the symptom and not the shape, so
+`test/schedulingPlacementAuthorityContract.test.mjs` reads the source and fails if a second
+definition of the policy appears, if a placement path stops calling it, if one starts raising a
+refusal the policy owns, or if `Schedule` discards the warnings. Adding a placement path means adding
+one line to that suite's list; forgetting is a red test rather than a defect a live gate finds later.
+
+**One behavioural consequence worth recording.** Two pre-existing emulator suites began failing on
+the fix, because their fixtures seeded a technician *persona* without a governed
+`fieldops_technicians` record and then scheduled onto it. `testKit.mjs`'s own comment described that
+asymmetry as deliberate; it was not, it was the defect. The fixtures were corrected and the comment
+rewritten. Placement now requires a governed technician record — a real narrowing, and the intended one.
+
+Evidence: emulator E2E suite 50/50 (12 new symmetry checks), scheduling domain lane 40/40, transition
+emulator suites 16/16, and the
+live Scheduling Functional Gate at **32/32 PASS** after redeploying `transitionWorkOrder` alone.
+
+<details>
+<summary>The finding as originally raised (2026-08-27)</summary>
+
+
+**Raised:** 2026-08-27, first run of the live Scheduling Functional Gate
+(`scripts/schedulingFunctionalGate.mjs`, 29/32 against the deployed sandbox).
+
+**What the gate found:** `transitionWorkOrder` action `Schedule` — the initial placement path —
+validates overlap only. `rescheduleWorkOrder` and `reassignScheduledWorkOrder` validate the full
+ND-20 table through `checkPlacement`. Live in the sandbox, a dispatcher can **Schedule** a Work Order
+to start in the past (gate `E1`) or into a technician's blocked time (gate `H4b`), and be refused for
+both if they instead **Reschedule** into the same window. Eligibility falls out of the same gap.
+
+**Why this is recorded rather than fixed in place:** two halves that point different ways.
+
+*Not a product question.* ND-20 already decided the policy, for the domain rather than for one entry
+point, and `checkPlacement`'s own comment asserts the symmetry that turns out to be missing — *"a
+window this command accepts is one Schedule would have accepted and vice versa"* is true for overlap
+and false in the reverse direction for everything else. Completing an existing ruling is not making a
+new one, so the direction of the fix is not in doubt.
+
+*But the blast radius is an Owner boundary.* Closing it changes the behavior of `transitionWorkOrder`
+— the platform's most sensitive transaction — and needs a Functions deploy. It also **narrows what a
+dispatcher can do today**: back-dating a placement and scheduling over PTO both stop working. Neither
+is obviously a loss, and ND-20 says both should already be refused, but withdrawing a capability that
+currently exists in a running environment is the Owner's call to make knowingly rather than an
+implementation detail to absorb.
+
+**Decisions actually needed:**
+1. Confirm `Schedule` should enforce the full ND-20 table (past start, blocked time, eligibility) —
+   or record the exception and narrow ND-20's table to say it applies to changes only.
+2. Authorize the Functions deploy that makes it live.
+
+**Blocked on it:** the Scheduling Functional Gate passing, and therefore — together with ND-23 —
+the North Star Dispatch composition. Full evidence:
+[`scheduling-functional-gate-findings.md`](./scheduling-functional-gate-findings.md).
+
+</details>
+
+**Composition remains blocked, on ND-23 alone.** The Scheduling authority is certified; the design
+source still has not been transferred.
+
+---
+
+## Resolved by the Dispatch & Scheduler build direction (Owner ruling, 2026-08-27)
+
+All six questions raised by the Dispatch & Scheduler reconnaissance were answered in one sitting.
+Recorded here in full rather than in the PR that acts on them, per this file's own reason for
+existing.
+
+### ND-18 — May a scheduled Work Order return to the Ready queue? — **RESOLVED: yes, from `SCHEDULED` only**
+
+**Answer:** `unscheduleWorkOrder` performs a controlled `SCHEDULED → READY_TO_DISPATCH` transition —
+the first reverse edge in ADR-002's table, deliberately admitted and deliberately narrow. It
+requires the current state to be exactly `SCHEDULED`, an authorized role, and a reason; it clears the
+scheduling projection, preserves the prior technician and window in audit, and returns the job to the
+Ready queue.
+
+It **refuses** from `DISPATCHED`, `ACCEPTED`, `EN_ROUTE`, `ARRIVED`, `WORK_IN_PROGRESS` or any later
+state. The Owner's reasoning, recorded because it is the load-bearing part: unlike Reschedule, this
+genuinely *does* affect lifecycle — returning a scheduled job to the queue changes its operational
+readiness — so it belongs in the state machine rather than beside it. Once a technician has been
+sent, the job is committed.
+
+**The precedent, named:** ADR-002's table may now run backwards. It does so at exactly one edge,
+from exactly one state, and any future reverse edge is its own decision rather than an appeal to this
+one.
+
+### ND-19 — Is `Reschedule` a lifecycle transition or a governed field command? — **RESOLVED: a separate trusted callable**
+
+**Answer:** `rescheduleWorkOrder` rewrites `scheduledStart` / `scheduledEnd` / `scheduledTechId`
+under an **unchanged** `SCHEDULED` status. It touches neither `TRANSITIONS` nor the client mirror.
+
+This matches how those three fields are already described in `transitionEngine.ts` — mutable
+*Planning* values, deliberately excluded from `ACTION_TIMESTAMP_FIELD` because they are a
+dispatcher's chosen future window, not the instant an action ran. Re-timing a job changes the plan;
+it does not change what has happened to the job.
+
+### ND-20 — Which scheduling conditions refuse, which warn? — **RESOLVED: one warns, three refuse**
+
+**Answer**, on top of the already-shipped same-technician overlap refusal:
+
+| Condition | Outcome |
+|---|---|
+| Same technician, overlapping window | **REFUSE** (already shipped) |
+| Outside the technician's working hours | **WARN** — allowed, surfaced |
+| Blocked time (PTO, training, closure…) | **REFUSE** |
+| Start time in the past | **REFUSE** |
+| Ineligible technician | **REFUSE** |
+
+Working hours are a planning aid, not a gate: field service legitimately schedules emergency work
+outside them, and a system that refused would be refusing real business. Blocked time is a
+commitment and is enforced as one.
+
+### ND-21 — Does a Work Order carry an estimated duration? — **RESOLVED: yes, `estimatedDurationMinutes`**
+
+**Answer:** an additive, **optional** planning estimate on the Work Order, settable at creation and
+editable through governed Work Order behavior.
+
+Bounded explicitly by the ruling, and these bounds are the decision:
+
+- It is **not** an execution timestamp.
+- It is **not** actual labor duration.
+- It is **not** billing authority.
+
+It exists to propose a schedule placement, suggest an end time, drive Day / Week / 2-Week geometry,
+feed technician capacity, and inform scheduling recommendations. Scheduling authority still stores
+`scheduledStart` and `scheduledEnd` as the placed fact; actual execution timestamps remain entirely
+separate. An estimate that later contradicts what happened is not wrong — it was an estimate.
+
+### ND-22 — One availability authority or two? — **RESOLVED: two collections**
+
+**Answer:** a recurring per-technician working schedule, and a separate dated blocked-time /
+exception record. They have different shapes and different lifecycles; folding them together would
+make every lunch break carry a recurrence rule it does not need.
+
+### ND-23 — The Dispatch North Star design package is not in the repository — **STANDS OPEN**
+
+Not answered, and correctly so — it is a recorded gap, not a question. Backend authority proceeds
+without it. Composition does not.
+
+---
+
+### Two consequences of these answers, recorded so they are not rediscovered
+
+**Authorization follows the existing pattern, not a new one.** `schedule`, `reschedule`,
+`unschedule` and `reassign` are all gated role-based through `ACTION_PERMISSIONS` (admin/dispatcher),
+exactly like the deployed `Schedule` and `Dispatch`. No new capability family is registered: doing so
+would introduce a second authorization pattern before any demonstrated need for finer separation.
+
+**The availability collections deny client reads as well as writes**, matching the
+`sales_orders` / `opportunities` posture. The Dispatch board therefore cannot read them directly —
+lane shading and capacity must arrive through a trusted read path, the same way the Sales Order read
+model works. The Rules blocks are authored in-repo and **not deployed**; `firestore.rules` has no CI
+deploy, so merged is not live until `firebase deploy --only firestore:rules` is run by the Owner.

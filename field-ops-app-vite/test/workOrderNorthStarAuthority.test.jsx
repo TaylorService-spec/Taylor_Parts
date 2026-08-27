@@ -65,18 +65,43 @@ describe("emphasizeFirst is a WEIGHT, not an authority", () => {
     }
   });
 
-  it("TODAY THE ENGINE NEVER OFFERS TWO — so the check above is recorded as having no teeth yet", () => {
-    // Measured, not assumed: across every status and role, the non-destructive action list is
-    // never longer than one. "At most one filled button" is therefore satisfied by the state
-    // machine rather than by the rendering rule, and the real proof of the rule lives in the
-    // stubbed suite below. This assertion exists so that the day a status offers two actions,
-    // THIS test fails and sends someone back to the emphasis rule with a live case.
-    const widest = Math.max(
-      ...["admin", "dispatcher", "technician"].flatMap((role) =>
-        STATUSES.map((s) => orderWorkflowActions(getAllowedActions(s, role, false)).primary.length),
-      ),
+  it("THE ENGINE NOW OFFERS TWO, AND THE EMPHASIS RULE — NOT THE STATE MACHINE — REDUCES IT TO ONE", () => {
+    // THIS TEST FIRED, AND THIS IS WHAT IT CAUGHT.
+    //
+    // It used to assert that the non-destructive action list is never longer than one, and it said
+    // so on purpose: "at most one filled button" was satisfied by the state machine rather than by
+    // the rendering rule, so the rule had no teeth. The assertion existed so that the day a status
+    // offered two actions, it would fail and send someone back to the emphasis rule with a live
+    // case. ND-18 was that day — SCHEDULED now offers Dispatch and Unschedule.
+    //
+    // What the live case exposed: `getAllowedActions` returns actions in ACTION_TO_STATUS key order,
+    // which puts Unschedule BEFORE Dispatch. "Emphasize the first" would therefore have filled the
+    // button that withdraws the plan and outlined the one that moves the job forward. So the rule
+    // stopped emphasizing by POSITION and started emphasizing by MEANING (workflowActionOrder.js's
+    // `emphasized`).
+    //
+    // The invariant this now protects is the real one: however many actions a status offers, exactly
+    // one is emphasized, and it is the one that advances the lifecycle.
+    const offered = ["admin", "dispatcher", "technician"].flatMap((role) =>
+      STATUSES.map((s) => orderWorkflowActions(getAllowedActions(s, role, false))),
     );
-    expect(widest).toBe(1);
+
+    for (const ordered of offered) {
+      // Never more than one emphasized action, whatever the list length.
+      const emphasizedCount = ordered.primary.filter((a) => a === ordered.emphasized).length;
+      expect(emphasizedCount).toBeLessThanOrEqual(1);
+      // And an emphasized action is always one that was actually offered.
+      if (ordered.emphasized) expect(ordered.primary).toContain(ordered.emphasized);
+    }
+
+    // The rule is load-bearing now, not decorative: at least one status genuinely offers two.
+    const widest = Math.max(...offered.map((o) => o.primary.length));
+    expect(widest).toBeGreaterThan(1);
+
+    // And on the status that does, the emphasis is the forward action.
+    const scheduled = orderWorkflowActions(getAllowedActions("SCHEDULED", "admin", false));
+    expect(scheduled.primary).toEqual(expect.arrayContaining(["Dispatch", "Unschedule"]));
+    expect(scheduled.emphasized).toBe("Dispatch");
   });
 
   it("DISPATCHES THE ACTION IT IS LABELLED WITH — the click carries a value, never a position", () => {

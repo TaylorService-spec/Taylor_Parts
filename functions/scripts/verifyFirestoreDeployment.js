@@ -12,6 +12,7 @@ const {
   extractRulesSource,
   interpretStatus,
   normalizeFunctionsInventory,
+  normalizeRulesNewlines,
   sha256,
   validateConfig,
   verifyDeploymentLog,
@@ -160,8 +161,13 @@ async function main(argv = process.argv.slice(2)) {
     throw new VerificationError("Evidence directory must be durable, not the temporary directory.");
   }
 
-  const governedSource = gitShow(config.governedCommit, "firestore.rules");
-  const mirrorSource = gitShow(config.governedCommit, "field-ops-app-vite/firestore.rules");
+  // Normalized on BOTH sides so the comparisons below are true by construction rather than by an
+  // assumption about what `git show` emits. `git show` does not apply end-of-line conversion, so this
+  // is a no-op on the governed side today -- it is here so the invariant "every Rules comparison in
+  // this file happens in one newline representation" cannot quietly stop holding. See
+  // normalizeRulesNewlines: newline representation is the ONLY equivalence introduced.
+  const governedSource = normalizeRulesNewlines(gitShow(config.governedCommit, "firestore.rules"));
+  const mirrorSource = normalizeRulesNewlines(gitShow(config.governedCommit, "field-ops-app-vite/firestore.rules"));
   if (governedSource !== mirrorSource) throw new VerificationError("Governed root and mirror Rules sources differ.");
   if (sha256(governedSource) !== config.governedRulesSha256) throw new VerificationError("Governed Git/LF Rules hash mismatch.");
 

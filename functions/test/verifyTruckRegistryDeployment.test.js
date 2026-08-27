@@ -26,6 +26,95 @@ test("fixture sanity: the governed rules bytes hash to the compiled pin", () => 
   assert.equal(sha256(GOVERNED_SOURCE), GOVERNED_RULES_SHA256);
 });
 
+// ---------- line-ending equivalence in the LIVE == GOVERNED gate ----------
+//
+// THE DEFECT THESE TESTS EXIST FOR, AND WHY THE OLD SUITE COULD NOT SEE IT.
+//
+// Git stores firestore.rules with LF and the pin above is derived from those LF bytes. A Windows
+// checkout materializes CRLF, and `firebase deploy` uploads the on-disk bytes verbatim -- so the
+// LIVE ruleset served by the Rules API is CRLF, and hashing it raw against an LF pin failed for a
+// ruleset that was character-for-character correct. Measured on eos-platform-sandbox 2026-08-27:
+// zero line-by-line differences between live and governed, and the verifier still refused.
+//
+// It went undetected because every fixture below USED to inject GOVERNED_SOURCE -- git's LF bytes --
+// as the fake live source. The fake could not reproduce what the real API serves, so the suite was
+// green against a check that could never pass in production.
+//
+// These drive the REAL runVerification path (the same extractRulesSource + sha256 + pin comparison
+// the live verifier uses). There is deliberately no test-only normalization helper: if the
+// production path stops normalizing, these go red.
+const CRLF_SOURCE = GOVERNED_SOURCE.replace(/\n/g, "\r\n");
+const CR_ONLY_SOURCE = GOVERNED_SOURCE.replace(/\n/g, "\r");
+
+test("line endings 1/6: LF live source vs LF governed pin PASSES", async () => {
+  const { deps } = makeDeps({ liveSource: GOVERNED_SOURCE });
+  const out = await runVerification(deps);
+  assert.equal(out.matrixTotal, 136);
+});
+
+test("line endings 2/6: CRLF live source vs LF governed pin PASSES -- the defect that actually occurred", async () => {
+  assert.notEqual(sha256(CRLF_SOURCE), GOVERNED_RULES_SHA256, "precondition: raw CRLF bytes must NOT hash to the pin, or this proves nothing");
+  const { deps } = makeDeps({ liveSource: CRLF_SOURCE });
+  const out = await runVerification(deps);
+  assert.equal(out.matrixTotal, 136);
+});
+
+test("line endings 3/6: CR-only live source vs LF governed pin PASSES", async () => {
+  assert.notEqual(sha256(CR_ONLY_SOURCE), GOVERNED_RULES_SHA256, "precondition: raw CR bytes must NOT hash to the pin");
+  const { deps } = makeDeps({ liveSource: CR_ONLY_SOURCE });
+  const out = await runVerification(deps);
+  assert.equal(out.matrixTotal, 136);
+});
+
+// The other half of the contract. Normalization forgives newline representation and NOTHING else --
+// if any of these three started passing, the verifier would be blind to a real Rules change, which is
+// strictly worse than the defect it was introduced to fix.
+test("line endings 4/6: a CHANGED CONDITION still FAILS, in any line ending", async () => {
+  const changed = GOVERNED_SOURCE.replace(
+    "match /technician_blocked_time/{blockId} {\n      allow read, write: if false;",
+    "match /technician_blocked_time/{blockId} {\n      allow read, write: if true;",
+  );
+  assert.notEqual(changed, GOVERNED_SOURCE, "precondition: the substitution must have applied");
+  for (const [label, src] of [["LF", changed], ["CRLF", changed.replace(/\n/g, "\r\n")]]) {
+    await assert.rejects(
+      runVerification(makeDeps({ liveSource: src }).deps),
+      /LIVE-EXTRACTED-SOURCE != GOVERNED/,
+      `a deny-all flipped to allow-all must be refused (${label})`,
+    );
+  }
+});
+
+test("line endings 5/6: an ADDED rule still FAILS", async () => {
+  const added = GOVERNED_SOURCE.replace(
+    "    match /technician_blocked_time/{blockId} {",
+    "    match /smuggled_collection/{docId} {\n      allow read, write: if true;\n    }\n    match /technician_blocked_time/{blockId} {",
+  );
+  assert.notEqual(added, GOVERNED_SOURCE, "precondition: the substitution must have applied");
+  await assert.rejects(runVerification(makeDeps({ liveSource: added }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
+  await assert.rejects(runVerification(makeDeps({ liveSource: added.replace(/\n/g, "\r\n") }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
+});
+
+test("line endings 6/6: a REMOVED rule still FAILS, and whitespace is NOT forgiven either", async () => {
+  const removed = GOVERNED_SOURCE.replace(
+    "    match /technician_working_availability/{technicianId} {\n      allow read, write: if false;\n    }\n",
+    "",
+  );
+  assert.notEqual(removed, GOVERNED_SOURCE, "precondition: the substitution must have applied");
+  await assert.rejects(runVerification(makeDeps({ liveSource: removed }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
+
+  // Normalization is newline REPRESENTATION only -- it does not trim, collapse blank lines, or
+  // reformat. A ruleset differing by real whitespace is a different ruleset.
+  const reindented = GOVERNED_SOURCE.replace(
+    "      allow read, write: if false;",
+    "          allow read, write: if false;",
+  );
+  assert.notEqual(reindented, GOVERNED_SOURCE);
+  await assert.rejects(runVerification(makeDeps({ liveSource: reindented }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
+
+  const blankLineAdded = GOVERNED_SOURCE.replace("rules_version", "rules_version") + "\n";
+  await assert.rejects(runVerification(makeDeps({ liveSource: blankLineAdded }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
+});
+
 // ---------- (a) matrix completeness, cardinality, uniqueness (non-tautological) ----------
 test("a. collections/personas/operations are exactly the governed sets", () => {
   const names = COLLECTIONS.map((c) => c.name);

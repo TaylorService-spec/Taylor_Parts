@@ -133,6 +133,16 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   // been answerable: sales_orders had exactly ONE live composite.
   'sales_orders|COLLECTION|accountId:ASCENDING,salesOrderNumber:DESCENDING',
   'sales_orders|COLLECTION|state:ASCENDING,accountId:ASCENDING,salesOrderNumber:DESCENDING',
+  // Dispatch & Scheduler (ND-22): finding the blocked-time records that could overlap a proposed
+  // window is `technicianId == x AND endMillis > start` -- an equality plus a range, which Firestore
+  // cannot serve from single-field indexes. The range is on endMillis rather than startMillis
+  // deliberately: narrowing on the start would drop a long absence that began before the window and
+  // is still running, which is the record most worth catching.
+  //
+  // Declared here and NOT deployed, like every other key on this list. Until it is, the blocked-time
+  // read fails at query time rather than silently returning nothing -- Firestore refuses a query it
+  // has no index for, which is the failure mode to want.
+  'technician_blocked_time|COLLECTION|technicianId:ASCENDING,endMillis:ASCENDING',
 ]);
 
 test('O-4: every declared index is either live or explicitly listed as pending deploy', () => {

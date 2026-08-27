@@ -16,6 +16,22 @@ export { getAccountPortfolioSummary } from "./account/accountPortfolioSummary";
 // capability (workOrder.parts.plan) is registered active:false (fail-closed for everyone) until a separate
 // Owner grant gate.
 export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPlan";
+// Dispatch & Scheduler -- the governed Scheduling domain (ND-18 through ND-22, Owner ruling
+// 2026-08-27). EXPORT IS NOT DEPLOY: these are exported for build and test only. Nothing in the
+// client calls them yet, the North Star Dispatch composition that will is a separate step, and
+// deploying them to any project is its own authorized action.
+//
+// Un-scheduling is NOT here -- it is a lifecycle transition and ships as transitionWorkOrder's
+// "Unschedule" action (ND-18). Re-timing and reassignment are plan changes and ship here (ND-19).
+export {
+  rescheduleWorkOrderCallable,
+  reassignScheduledWorkOrderCallable,
+  setWorkOrderEstimatedDurationCallable,
+  setTechnicianWorkingAvailabilityCallable,
+  createTechnicianBlockedTimeCallable,
+  deleteTechnicianBlockedTimeCallable,
+  readTechnicianAvailabilityCallable,
+} from "./scheduling/schedulingCallables";
 // Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
 // runs in production until a separate deploy + Owner grant.
