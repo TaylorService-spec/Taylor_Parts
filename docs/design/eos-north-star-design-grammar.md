@@ -223,6 +223,48 @@ Each carries provenance and a test that can fail. A check incapable of failing i
 | R20 | Every suggestion states reason, consequence and offers undo | `[NS]` |
 | R21 | AI is contractually silent in terms, counts and admin | `[NS]` |
 | R22 | AI proposes; the engine validates; a human approves | `[NS]` `[EOS]` |
+| R23 | **Lossless composition** — a governed record never disappears because it does not fit the preferred visual form | `[NS]` `[EOS]` |
+
+### R23 — lossless composition
+
+> **A governed record must not silently disappear merely because it falls outside the preferred
+> visual representation.**
+>
+> Where a record cannot be placed in the normal geometry, the composition must still either
+> **render it truthfully in a fallback representation**, or **state the condition preventing normal
+> placement**. Never neither.
+
+This rule is written from four defects, all in one family, all in the same week, and all found by
+driving the deployed page rather than by reading the code or running its tests. The Dispatch board
+could lose a Work Order in four distinct ways, and in every one of them the page looked *correct*:
+
+| The record | Why it vanished | What ships instead |
+| --- | --- | --- |
+| `SCHEDULED` with no window | no geometry to place it in | a "Scheduled without a window" band that names each one |
+| Placed at 02:00 | outside a fixed 7a–5p hour band | the band widens to whatever the day actually holds |
+| Placed on a Saturday | the week grid drew Mon–Fri | all seven days render, weekends de-emphasised |
+| Any technician's lane | the roster outgrew the screen | a technician selector that narrows the VIEW only |
+
+The common failure is not a bug in any one of them. It is that **a composition drawn from a typical
+case quietly becomes a rule about what can exist.** The artifact drew four technicians, a working
+day and a working week — none of which is a constraint the business observes. ND-20 says outright
+that field service schedules emergency work at 02:00; a board that accepts that placement, commits
+it, and then draws nothing has told the dispatcher it does not exist.
+
+**Why "state the condition" is an equal option, not a lesser one.** Sometimes there is genuinely no
+honest geometry — a record with no window cannot be given a position without inventing one. Saying so
+is the correct answer; inventing a position is not, and neither is silence. This is the same
+distinction §5's honest-state model draws between *absent*, *not applicable* and *unavailable*.
+
+**How to test it.** The falsifiable form is: for each governed record the surface is responsible for,
+assert it is reachable in the rendered output — not that the happy-path ones are. A test written
+against a typical fixture will pass on all four defects above. `test/dispatchBoardGeometry.test.mjs`
+carries the pattern: every widening case is asserted against a record deliberately placed outside the
+preferred form.
+
+**Applies to** missing schedule windows, placement outside a visible time band, weekend or
+out-of-range placement, missing grouping metadata, roster or list overflow, and any other case where
+a presentation constraint decides what a reader can see.
 
 ## 11. Implementation reality — standing gaps
 

@@ -43,6 +43,7 @@ import {
   DispatchViewSwitcher,
   DispatchWeekView,
 } from "./DispatchViews.jsx";
+import TechnicianFilter, { visibleTechnicians } from "./TechnicianFilter.jsx";
 import WorkOrderPreview from "./WorkOrderPreview";
 import DispatcherActivityFeed from "./DispatcherActivityFeed";
 
@@ -99,6 +100,9 @@ export default function DispatcherBoard() {
   const [busyWorkOrderId, setBusyWorkOrderId] = useState(null);
   const [boardMessage, setBoardMessage] = useState(null);
   const [pendingPlacement, setPendingPlacement] = useState(null);
+  // null = every technician. NOT a set holding everyone: a roster that grows would otherwise leave a
+  // new technician silently filtered OUT of a board whose owner believes they see the whole fleet.
+  const [technicianFilter, setTechnicianFilter] = useState(null);
 
   // The availability window spans what the CURRENT VIEW can show, so one read serves the day board,
   // the week grid and the fortnight band without any of them issuing their own.
@@ -168,6 +172,10 @@ export default function DispatcherBoard() {
   // blocked time: ND-20 allows work outside recorded hours, so a fixed 7a-5p window would commit an
   // 02:00 emergency and then draw nothing. Derived from the same two sources the lanes render from,
   // so the grid can always draw everything the lanes contain.
+  // The lanes the three views draw. Presentation only — availability is still read for the WHOLE
+  // roster, recommendations still score every technician, and the queue is untouched.
+  const lanes = useMemo(() => visibleTechnicians(technicians ?? [], technicianFilter), [technicians, technicianFilter]);
+
   const band = useMemo(
     () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
     [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId],
@@ -428,7 +436,13 @@ export default function DispatcherBoard() {
         anchorMillis={anchorMillis}
         onAnchorChange={(t) => setAnchorMillis(startOfDayMillis(t))}
         isToday={startOfDayMillis(anchorMillis) === startOfDayMillis(Date.now())}
-      />
+      >
+        <TechnicianFilter
+          technicians={technicians ?? []}
+          selectedIds={technicianFilter}
+          onChange={setTechnicianFilter}
+        />
+      </DispatchViewSwitcher>
 
       {boardMessage ? (
         // A REFUSAL is an alert; a success or a warning is a status. Both are announced, but only a
@@ -467,7 +481,7 @@ export default function DispatcherBoard() {
         <>
           {view === DISPATCH_VIEW.DAY ? (
             <DispatchLaneGrid
-              technicians={technicians ?? []}
+              technicians={lanes}
               workOrdersByTechnician={workOrdersByTechnician}
               availabilityByTechnicianId={availabilityByTechnicianId}
               availabilityLoading={availabilityLoading}
@@ -487,7 +501,7 @@ export default function DispatcherBoard() {
 
           {view === DISPATCH_VIEW.WEEK ? (
             <DispatchWeekView
-              technicians={technicians ?? []}
+              technicians={lanes}
               placedWorkOrders={placedWorkOrders}
               availabilityByTechnicianId={availabilityByTechnicianId}
               anchorMillis={anchorMillis}
@@ -515,7 +529,7 @@ export default function DispatcherBoard() {
 
           {view === DISPATCH_VIEW.FORTNIGHT ? (
             <DispatchTwoWeekLoad
-              technicians={technicians ?? []}
+              technicians={lanes}
               placedWorkOrders={placedWorkOrders}
               availabilityByTechnicianId={availabilityByTechnicianId}
               anchorMillis={anchorMillis}

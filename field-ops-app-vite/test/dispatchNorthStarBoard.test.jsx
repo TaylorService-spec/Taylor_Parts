@@ -97,6 +97,12 @@ function dragOnto(source, target) {
   fireEvent.drop(target);
 }
 
+/** Technician names as drawn on the DAY board's lanes. The selector menu lists everyone by design. */
+const laneNames = () => Array.from(document.querySelectorAll(".ns-dispatch-lane__name")).map((e) => e.textContent);
+/** Technician names as drawn on the Week / 2-week row headers. */
+const rowHeaderNames = () =>
+  Array.from(document.querySelectorAll(".ns-dispatch-week__identity, .ns-dispatch-load__identity")).map((e) => e.textContent);
+
 beforeEach(() => { vi.clearAllMocks(); });
 afterEach(() => cleanup());
 
@@ -410,5 +416,136 @@ describe("honest states", () => {
     render(<DispatcherBoard />);
     expect(await screen.findByText(/Working hours and blocked time could not be read/i)).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Ready to schedule/i })).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Frame 1a's technician selector. Omitted from the first build, and the omission only became
+// visible on the DEPLOYED board where 24 lanes turned the day grid into a long scroll.
+//
+// The assertions that matter are not "does it render" — they are the four things a filter must NOT
+// do. Narrowing what a dispatcher LOOKS at must never narrow what the system KNOWS: not the
+// availability it reads, not the technicians it recommends, not the work in the queue, and above all
+// not a single committed placement.
+describe("the technician selector", () => {
+  it("renders, and defaults to all technicians", async () => {
+    setup();
+    const trigger = await screen.findByRole("button", { name: /Technicians.*All technicians/is });
+    expect(trigger.textContent).toMatch(/All technicians \(2\)/);
+  });
+
+  it("narrows the visible lanes, and only the lanes", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /All technicians/i }));
+    // Hide R. Ochoa; J. Barela remains.
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+
+    await waitFor(() => expect(laneNames()).not.toContain("R. Ochoa"));
+    expect(laneNames()).toContain("J. Barela");
+    expect(screen.getByRole("button", { name: /1 of 2 technicians/i })).toBeTruthy();
+  });
+
+  it("'Show all technicians' restores every lane", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+    await waitFor(() => expect(laneNames()).not.toContain("R. Ochoa"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Show all technicians/i }));
+    await waitFor(() => expect(laneNames()).toContain("R. Ochoa"));
+    expect(screen.getByRole("button", { name: /All technicians \(2\)/i })).toBeTruthy();
+  });
+
+  it("does NOT lose or mutate a scheduled work order that is still visible", async () => {
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001248/);
+    const before = container.querySelector(".ns-dispatch-chip--wo").getAttribute("style");
+
+    fireEvent.click(screen.getByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" })); // NOT this job's technician
+    await waitFor(() => expect(laneNames()).not.toContain("R. Ochoa"));
+
+    // Same chip, same geometry: filtering is a view, not a re-placement.
+    expect(screen.getByText(/WO-2026-001248/)).toBeTruthy();
+    expect(container.querySelector(".ns-dispatch-chip--wo").getAttribute("style")).toBe(before);
+  });
+
+  it("leaves the Ready queue untouched — it is about work, not people", async () => {
+    setup();
+    await screen.findByText(/WO-2026-001239/);
+    fireEvent.click(screen.getByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "J. Barela" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+
+    // Every lane hidden, and the queue is exactly as it was.
+    await waitFor(() => expect(laneNames()).toHaveLength(0));
+    expect(screen.getByText(/WO-2026-001239/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Ready to schedule/i })).toBeTruthy();
+  });
+
+  it("invokes NO scheduling command — filtering is presentation only", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+    fireEvent.click(screen.getByRole("button", { name: /Show all technicians/i }));
+
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+    expect(rescheduleWorkOrder).not.toHaveBeenCalled();
+    expect(reassignScheduledWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not re-read availability for a narrower roster", async () => {
+    // The board keeps reading the WHOLE roster: a hidden technician's capacity stays known and stays
+    // correct the moment they are shown again. Re-reading per filter would also make the trusted
+    // read a function of a view control, which it is not.
+    setup();
+    await waitFor(() => expect(readTechnicianAvailability).toHaveBeenCalled());
+    const before = readTechnicianAvailability.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+    await waitFor(() => expect(laneNames()).not.toContain("R. Ochoa"));
+    expect(readTechnicianAvailability.mock.calls.length).toBe(before);
+    for (const [args] of readTechnicianAvailability.mock.calls) {
+      expect(args.technicianIds).toBeUndefined();
+    }
+  });
+
+  it("applies to Week and 2 Weeks too, so the three views still show one schedule", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /All technicians/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "R. Ochoa" }));
+    await waitFor(() => expect(laneNames()).not.toContain("R. Ochoa"));
+
+    for (const tab of [/^Week/, /2 weeks/]) {
+      fireEvent.click(screen.getByRole("tab", { name: tab }));
+      await waitFor(() => expect(rowHeaderNames()).toContain("J. Barela"));
+      expect(rowHeaderNames()).not.toContain("R. Ochoa");
+    }
+  });
+
+  it("lists a technician with no governed name truthfully, rather than hiding them", async () => {
+    // An unnamed record is still a technician work can be scheduled onto. Dropping it from the
+    // selector would make it unreachable; printing its document id would leak an id. It reads
+    // "Unknown technician" here exactly as it does on the lane.
+    useAuth.mockReturnValue({ role: "dispatcher" });
+    useWorkOrders.mockReturnValue({ data: [SCHEDULED_WO], loading: false, error: null });
+    useFirestoreCollection.mockReturnValue({ data: [TECH_A, { id: "tech-nameless" }], loading: false, error: null });
+    useAccountNames.mockReturnValue(new Map());
+    readTechnicianAvailability.mockResolvedValue(availabilityResult());
+    render(<DispatcherBoard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /All technicians/i }));
+    expect(screen.getByRole("checkbox", { name: "Unknown technician" })).toBeTruthy();
+    expect(screen.queryByText("tech-nameless")).toBeNull();
+  });
+
+  it("is keyboard reachable and closes on Escape", async () => {
+    setup();
+    const trigger = await screen.findByRole("button", { name: /All technicians/i });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(document.querySelector(".ns-dispatch-techfilter__trigger").getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "R. Ochoa" })).toBeNull());
   });
 });

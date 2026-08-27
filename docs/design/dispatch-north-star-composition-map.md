@@ -165,6 +165,18 @@ Presentation moves with no authority change.
 - Refusals rendered as sentences, never raw codes (1b), and read failures given their own sentences
   distinct from empty (1c).
 
+## What the live gate found, and the rule it produced
+
+Four ways this board could lose a governed Work Order, none caught by 2600 component tests, all four
+found by driving the deployed page: a placement with no window, a placement outside the drawn hour
+band, a placement on a weekend, and — for technicians rather than work — a roster that outgrew the
+screen with no way to narrow it.
+
+That is now **R23, lossless composition**, in
+[](./eos-north-star-design-grammar.md) §10, where family-level
+composition rules live. It is not a Dispatch rule; it is the general form of a mistake any family can
+make — a composition drawn from a typical case quietly becoming a rule about what can exist.
+
 ## STILL FUTURE / OUT OF SCOPE
 
 - **Map view.** No routing, travel-time, GPS or optimization authority exists, and none is being
@@ -178,6 +190,22 @@ Presentation moves with no authority change.
   becoming a workforce-management screen.
 - **Fleet-wide `% booked`** renders only when every technician in view has a recorded schedule; a
   fleet number averaged over unknown denominators would be a fabrication.
+
+**No longer future — the technician selector.** Frame 1a draws `All technicians (n) ▾` and the first
+build omitted it. The omission only became visible on the *deployed* board, where the sandbox's 24
+lanes turned the day grid into a long scroll before the queue ever appeared.
+
+It narrows the **lanes** and nothing else. Availability is still read for the whole roster, so a
+hidden technician's capacity stays known and stays correct the moment they are shown again;
+recommendations still score every technician, because a ranking that silently excluded people a
+dispatcher had filtered out of *view* would be a filter quietly changing advice; and the Ready queue
+is untouched, because it is about work rather than people. A filter that changed any of those would
+stop being a filter and become a second scheduling policy wearing a view control.
+
+"All" is a `null` sentinel rather than a set holding every id — a roster that grew would otherwise
+leave the new technician silently filtered **out** of a board whose owner believes they see everyone.
+That is R23 again, one layer up: the record is a person this time, and the presentation constraint is
+a stale selection rather than a hour band.
 
 ## FILES TO CHANGE
 
