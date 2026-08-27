@@ -1,3 +1,5 @@
+// Dedicated Sales Agreement intelligence proof. Kept in its own path-filtered lane because
+// commercial-commitment model boundaries must be visibly created and green before merge.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
