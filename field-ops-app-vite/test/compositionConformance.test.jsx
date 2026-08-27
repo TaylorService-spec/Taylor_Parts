@@ -104,6 +104,7 @@ const NORTH_STAR_RECORD_PAGES = [
   "modules/sales/SalesOrderDetail.jsx",         // family 2
   "modules/accounts/AccountDetail.jsx",         // family 3 (formerly Wave 2 conformant)
   "modules/sales/OpportunityDetail.jsx",        // family 4 (a NEW page, not a recomposition)
+  "modules/sales/SalesAgreementDetail.jsx",     // family 5 (a NEW routed record page)
 ];
 
 function walk(dir) {
