@@ -126,6 +126,15 @@ in P1v2.
 
 - **1440** — nav 224, content 1160, main 820 / rail 300 / gap 40. The rail and gap were reduced
   from P1v1's 340/56 so the agreed lines gained the space; the lines are the dominant content.
+
+  > **These three numbers are stated design intent, not implementation measurements — see ND-16.**
+  > The shipped grammar is `--rail-width: 252px` and
+  > `.ns-record-body { grid-template-columns: minmax(0,1fr) 340px; gap: 0 56px }`, shared by every
+  > North Star family. Owner ruling 2026-08-26: **the Sales Agreement implementation builds to the
+  > shipped 252 / 340 / 56**, so the new family matches the four already shipped. Whether the shared
+  > grammar should move toward these proportions for all families is the open question in ND-16.
+  > Everything else in this artifact — hierarchy, ranking, copy, states, responsive behaviour — is
+  > implementation authority as written.
 - **768** — identity group stacks; rail becomes a 232px column; the lines table sheds its Unit
   column and each line carries a **rendered** disclosure showing `unit × quantity`. Rows ≥44px
   because the disclosure is a touch target.
@@ -364,11 +373,11 @@ Named, and kept as gaps. A gap is not a design brief.
   catalogue read. **This stays a design recommendation, visibly classified as one** — the dagger
   footnote in 1A is the mechanism. Until governed readable-name resolution exists, the reference is
   the identity. **A duplicate display name must not be persisted onto the line to satisfy the mock.**
-- **SA-G5 — DECLINED is unreachable.** The state is modelled, its transition is legal, and its
+- **SA-G5 — DECLINED is unreachable.** *(Programme register: ND-14. Ruling: DECISIONS #134.)* The state is modelled, its transition is legal, and its
   label exists — but no command produces it. **No decline command is to be created, and Decline is
   never shown as an available user action**; the state study stays documented as *modelled,
   currently unreachable*. Later Owner/product question, per the decision section above.
-- **SA-G6 — No post-acceptance revision path.** ACCEPTED and DECLINED cannot be edited, and a
+- **SA-G6 — No post-acceptance revision path.** *(Programme register: ND-15. Ruling: DECISIONS #134.)* ACCEPTED and DECLINED cannot be edited, and a
   second agreement for the same Opportunity is transactionally refused. So under current authority
   EOS has **no** governed path for changing commercial commitment after terminal acceptance. P1v1
   asserted "a changed mind is a new agreement"; that behaviour is not supported and the copy is

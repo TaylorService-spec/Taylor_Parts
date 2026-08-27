@@ -334,6 +334,87 @@ between them prove the two surfaces read one derivation and one save path.
 
 ---
 
+### ND-14 — `DECLINED` is a modelled Sales Agreement state that nothing can produce
+
+**Raised:** 2026-08-26, by the Sales Agreement North Star P1v2 design pass (SA-G5)
+**Design holds:** a state the model names is a state the record page must be able to render
+honestly, so P1v2 designs it — as a compact state study, explicitly labelled *modelled, currently
+unreachable*.
+**Behavioral holds:** `salesAgreementLifecycle.ts` declares `DECLINED` in `SALES_AGREEMENT_STATES`,
+`checkAgreementTransition` permits `DRAFT → DECLINED`, and `salesAgreement.js` carries its label
+"Declined". But `functions/src/index.ts` exports exactly three Agreement commands — `create`,
+`updateDraft`, `accept`. **No callable produces `DECLINED`.** The state is reachable only by a
+direct document write.
+**Why it is not a bug to be fixed by the implementation pass:** creating a decline command is a new
+governed action with its own capability, audit event and refusal rules. That is a product decision,
+not a gap in a design.
+**Shipped meanwhile:** nothing. Decline is **never** offered as an available user action; the state
+study documents the condition and stops there.
+**The decision:** should EOS support a governed decline action — or should the unreachable
+`DECLINED` model state be removed and reconciled? Answering "remove it" is as legitimate as
+"build it"; what is not legitimate is leaving a vocabulary the system cannot reach.
+
+---
+
+### ND-15 — Commercially agreed terms cannot change after an Agreement goes terminal
+
+**Raised:** 2026-08-26, by the Sales Agreement North Star P1v2 design pass (SA-G6)
+**Design holds:** a commercial commitment object must be able to answer "the customer wants
+different terms" with something. P1v2 answers it with silence, deliberately, because the engine
+answers it with a refusal.
+**Behavioral holds:** two independent refusals compose into a dead end.
+`buildUpdateSalesAgreementDraft` is DRAFT-only and `checkAgreementTransition` makes `ACCEPTED` and
+`DECLINED` terminal, so the record cannot be edited. And `persistCreateSalesAgreement` step 3 does
+an in-transaction duplicate check that **refuses a second Agreement** for the same Opportunity:
+*"Opportunity X already has a Sales Agreement. Edit that draft rather than creating a second."*
+Editing is forbidden and creating is refused, so under current authority there is **no governed
+path** for changing commercial commitment after terminal acceptance.
+**What this corrects:** P1v1's copy asserted "a changed mind is a new agreement" and "a new
+conversation is a new agreement, drafted from the opportunity". Neither is supported. Both were
+removed from visual authority.
+**Shipped meanwhile:** nothing, and nothing may be invented. No **revise**, **supersede**,
+**duplicate**, **reopen**, **replace agreement**, or **create a second Agreement** affordance
+appears in the design, and none is in the implementation pass's scope.
+**The decision:** what is the governed business process when agreed terms must change after an
+Agreement reaches a terminal state? This needs deliberate domain design — amendment records,
+supersession lineage, or a relaxed one-per-Opportunity rule are materially different answers with
+different consequences for the Sales Order created from the superseded prices. **It must not be
+accidentally solved in the presentation layer**, which is exactly what P1v1's sentence did.
+
+---
+
+### ND-16 — The Sales Agreement design and the shipped record grammar disagree on three widths
+
+**Raised:** 2026-08-26, while preparing the Sales Agreement implementation work order
+**Design holds:** 1A composes **224px** application nav, a **300px** contextual rail and a **40px**
+gap, yielding an 820px commercial table inside a true 1440 frame. This was not arbitrary: the
+Owner's correction order §9 named these exact levers — "slightly narrower contextual rail, smaller
+gap, more compact application navigation" — because the agreed lines are the dominant content and
+must not be squeezed to preserve a rail number.
+**Behavioral holds:** `index.css` ships `--rail-width: 252px`,
+`.ns-page { max-width: 1360px; padding: 0 32px }` and
+`.ns-record-body { grid-template-columns: minmax(0, 1fr) 340px; gap: 0 56px }`. **`.ns-record-body`
+is shared by every North Star family** — Work Order, Sales Order, Account and Opportunity all
+compose through it. Its own comment records that the split is deliberately container-driven rather
+than viewport-driven, because "the application rail takes ~250-300px before this page gets any
+width" — a lesson learned from measuring the real shell, which a mockup cannot show.
+**So this is not a design error or an implementation error.** It is two authorities that each
+reasoned correctly from what they could see, reaching different numbers.
+**Owner ruling, 2026-08-26 — build to the shipped grammar:** the Sales Agreement implementation
+composes the **existing** 252 / 340 / 56 grammar, so the new family matches the four already
+shipped. The artifact's 224 / 300 / 40 stand as **stated design intent**, not as measurements the
+implementation must reproduce. Nothing accepted is re-opened and no family drifts.
+**The decision still open:** should the shared grammar move toward the design's proportions for
+*all* families — a narrower rail and tighter gap give every record's main column back ~56px — or is
+340/56 the right long-term split and the Sales Agreement artifact should be amended to match? The
+first re-opens four families' visual acceptance; the second costs the table width §9 asked for.
+**Blocked on this:** the correction of the Opportunity P1v2 artifact's own dimensional defect
+(its 1440-labelled frame renders at roughly 1640, drawing the composition at `.ns-page`'s 1360
+max-width). Deferred by the Owner the same day, because the right artboard to draw depends on which
+way this resolves.
+
+---
+
 ## The Opportunity design's own product decisions (O1–O6, from the P1v2 handoff)
 
 These are **Design's** register, carried here so they are visible alongside the programme's. They
