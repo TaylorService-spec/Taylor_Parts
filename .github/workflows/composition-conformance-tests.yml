@@ -393,7 +393,14 @@ jobs:
       # Lists P2 tranche 1 — Part Master, Equipment, Suppliers, Manufacturers. The Owner ruling
       # under test here is the pagination one: a list may not render a boundary its read does not
       # have, and Manufacturers reads the whole collection unbounded.
-      - name: Lists P2 tranche 1 (catalog/reference: no invented boundaries, no invented routes)
+      # QUOTED, and it has to be. An unquoted YAML scalar containing ": " is a parse error, and a
+      # workflow that does not parse does not fail loudly -- it produces a run with ZERO jobs and
+      # disappears from the pull request's checks entirely. This lane is the primary gate for the
+      # whole Lists programme, and for three commits it was absent from the PR while every other
+      # check stayed green. That is precisely the CI-INCOMPLETE condition the programme documents:
+      # a green PR whose expected lane was never created is not passing, and the only tell was that
+      # the run's `name` had fallen back to the file path.
+      - name: "Lists P2 tranche 1 (catalog/reference: no invented boundaries, no invented routes)"
         run: npx vitest run test/listsP2Tranche1.test.jsx
         working-directory: field-ops-app-vite
 
