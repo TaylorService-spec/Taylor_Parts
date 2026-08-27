@@ -69,7 +69,10 @@ const CANDIDATE_KEYS = new Set([
 
 const NUMERIC = /\d/;
 const MONEY_OR_COMMERCIAL = /[$£€¥]|\b(?:USD|EUR|GBP|CAD|AUD|JPY|price|priced at|discount|margin|tax|total|deposit|down payment|trade-in)\b/i;
-const ACCEPTANCE_OR_LEGAL = /\b(?:binding|bound|legally|enforceable|signed|signature|electronically|customer accepted|customer approved|customer agreed|customer consent|customer commitment)\b/i;
+// EOS records no customer-signature/assent fact. Include possessive wording explicitly; a boundary
+// that rejects "customer commitment" but accepts "customer's commitment" is a spelling filter, not
+// an evidence control.
+const ACCEPTANCE_OR_LEGAL = /\b(?:binding|bound|legally|enforceable|signed|signature|electronically|customer accepted|customer approved|customer agreed|customer consent|customer(?:'s)? commitment)\b/i;
 const DATE_TOKEN = /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/i;
 
 export function verifySalesAgreementModelInterpretation(
