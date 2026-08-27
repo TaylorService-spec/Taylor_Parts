@@ -1,10 +1,12 @@
 # The live Scheduling Functional Gate — first run, and what it found
 
-Status: **First run 29/32, 2026-08-27 — two backend defects, recorded as ND-24. Owner ratified the
-correction the same day; the fix is in this commit. The sandbox redeploy and the gate rerun happen
-AFTER this merges**, in that order, and this line is updated with the result rather than in advance
-of it. What follows is the original finding, kept intact — the record of what a live gate caught that
-three green test lanes did not is worth more than a tidy summary of it.
+Status: **CLOSED — 32/32 PASS, 2026-08-27.** First run scored 29/32 and found two backend defects,
+recorded as ND-24. The Owner ratified the correction the same day; the fix merged as
+[#1556](https://github.com/TaylorService-spec/Taylor_Parts/pull/1556) (`e8125177`),
+`transitionWorkOrder` was redeployed to `eos-platform-sandbox` alone, and the gate was rerun clean.
+**The Scheduling authority is certified.** What follows is the original finding, kept intact — the
+record of what a live gate caught that three green test lanes did not is worth more than a tidy
+summary of it.
 
 Tool: [`scripts/schedulingFunctionalGate.mjs`](../../scripts/schedulingFunctionalGate.mjs).
 Preconditions verified before the run: the eight Scheduling callables are `ACTIVE` on `nodejs22` in
@@ -148,8 +150,19 @@ record. Two pre-existing emulator suites began failing because their fixtures se
 asymmetry as deliberate, and it was not — it was this defect, documented as a feature. Fixtures
 corrected, comment rewritten.
 
-**Rerun: pending the sandbox redeploy of `transitionWorkOrder`.** `E1`, `E2` and `H4b` are the three
-checks that must flip, and 32/32 is the bar. Recorded here when it is run, not before.
+**Rerun: 32/32 PASS**, against `transitionWorkOrder` redeployed to `eos-platform-sandbox` and
+re-verified ACTIVE / nodejs22. The three checks flipped, and each now refuses for the reason it
+names rather than incidentally:
+
+| check | before | after |
+|---|---|---|
+| `E1` past start on Schedule | `200`, committed | `FAILED_PRECONDITION: A Work Order cannot be scheduled to start in the past.` |
+| `E2` refusal is inert | `SCHEDULED` | `READY_TO_DISPATCH` |
+| `H4b` blocked time on Schedule | `200`, committed | `FAILED_PRECONDITION: That technician has blocked time overlapping that window.` |
+
+That distinction is why `E1` carries its own guard against an overlap refusal being read as a
+past-start one. On the very first corrected run it *was* masked that way by a leftover placement, and
+a gate that accepted the wrong refusal would have certified a rule it never exercised.
 
 ## Consequence for the Dispatch North Star
 
