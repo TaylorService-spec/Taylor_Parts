@@ -948,6 +948,10 @@ async function verifyServiceActivity(browser, page, accountKey) {
   await withFailedRequests(AGG, () => true, async () => {
     const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
     const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
+    // The timeline getDocs runs over the Firestore WebChannel, which is slower
+    // than the 400-rejected count queries; wait for its first row to render so
+    // the count assertion below doesn't race ahead of the timeline.
+    await page.locator("ul.fo-activity-list > li").first().waitFor({ timeout: 12000 }).catch(() => {});
     const timelineRows = await page.locator("ul.fo-activity-list > li").count();
     niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
   });
