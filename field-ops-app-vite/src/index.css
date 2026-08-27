@@ -6014,3 +6014,47 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-size: 13px;
   color: var(--color-text-secondary);
 }
+
+/* ═══════════════════ SALES AGREEMENT RECORD (North Star family 5) ═══════════════════
+   STRICTLY ADDITIVE. Not one shared primitive is touched: `.ns-record-body` keeps its
+   `minmax(0,1fr) 340px` and 56px gap, `--rail-width` keeps 252px, and the page composes
+   `ns-page` / `ns-table` / `RuledSection` / `RecordIdentity` exactly as families 1-4 do.
+   The P1v2 artifact's 224 / 300 / 40 are design intent and stay recorded as ND-16 —
+   this file is not where that question gets answered.
+
+   What is here is the small amount of vocabulary family 5 genuinely adds: a commercial
+   line's reference-first identity, the two-block money ladder, and acceptance evidence. */
+
+/* The stored product reference IS the line's identity (SA-D5/SA-G4), so it reads as a code
+   rather than as prose. A resolved catalogue name sits beside it, quieter, never replacing it. */
+.ns-ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700;
+  letter-spacing: -0.01em; }
+.ns-line-name { color: var(--color-text-secondary); }
+.ns-line-sub { display: block; margin-top: 2px; font-size: 12.5px; color: var(--color-text-muted); }
+
+/* THE MONEY LADDER — two blocks with two jobs (SA-D8). The credits block is deliberately
+   subordinate: smaller, indented behind a rule, and never able to out-rank Total committed.
+   A Sales Agreement is a commercial commitment, not an invoice. */
+.ns-ladder { display: flex; flex-direction: column; align-items: flex-end; gap: 14px;
+  margin-top: 16px; }
+.ns-ladder__block { margin: 0; min-width: 280px; max-width: 100%; }
+.ns-ladder__block > div { display: flex; justify-content: space-between; gap: 28px;
+  padding: 3px 0; }
+.ns-ladder__block dt { color: var(--color-text-muted); }
+.ns-ladder__block dd { margin: 0; }
+.ns-ladder__total { border-top: 2px solid var(--color-text-primary); margin-top: 4px;
+  padding-top: 7px !important; font-weight: 700; font-size: 15px; }
+.ns-ladder__block--credits { border-left: 2px solid var(--color-border-subtle, #D9D3C6);
+  padding-left: 12px; font-size: 12.5px; color: var(--color-text-secondary); }
+.ns-ladder__block--credits .ns-section__note { text-align: left; margin-top: 6px; }
+
+/* ACCEPTANCE EVIDENCE — three labelled facts, scannable, not a policy paragraph (SA-D7). */
+.ns-evidence { display: flex; flex-wrap: wrap; gap: 12px 56px; margin: 0 0 14px; }
+.ns-evidence dt { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 3px; }
+.ns-evidence dd { margin: 0; font-size: 16px; font-weight: 600; }
+
+/* A refused action states WHY, in the reason its own authority produced — the view model's
+   sentence for a state block, the capability's for a permission one. Never interchanged. */
+.ns-action-reason { flex: 1 1 100%; margin: 4px 0 0; font-size: 12.5px;
+  color: var(--color-text-secondary); }

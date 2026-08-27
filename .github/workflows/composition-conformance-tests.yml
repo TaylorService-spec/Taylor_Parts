@@ -77,6 +77,13 @@ on:
       - "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
       - "field-ops-app-vite/test/opportunityNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/opportunityLifecycleControl.test.jsx"
+      # The North Star Sales Agreement family (family 5) — a new routed record page.
+      - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
+      - "field-ops-app-vite/src/domain/salesAgreementRead.js"
+      - "field-ops-app-vite/src/domain/salesAgreementView.js"
+      - "field-ops-app-vite/src/hooks/useSalesAgreementById.js"
+      - "field-ops-app-vite/src/modules/sales/SalesAgreementDetail.jsx"
+      - "field-ops-app-vite/test/salesAgreementNorthStarPage.test.jsx"
       - "functions/src/opportunity/opportunityReadService.ts"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
@@ -179,6 +186,13 @@ on:
       - "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
       - "field-ops-app-vite/test/opportunityNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/opportunityLifecycleControl.test.jsx"
+      # The North Star Sales Agreement family (family 5) — a new routed record page.
+      - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
+      - "field-ops-app-vite/src/domain/salesAgreementRead.js"
+      - "field-ops-app-vite/src/domain/salesAgreementView.js"
+      - "field-ops-app-vite/src/hooks/useSalesAgreementById.js"
+      - "field-ops-app-vite/src/modules/sales/SalesAgreementDetail.jsx"
+      - "field-ops-app-vite/test/salesAgreementNorthStarPage.test.jsx"
       - "functions/src/opportunity/opportunityReadService.ts"
       - "field-ops-app-vite/src/modules/equipment/CustomerEquipment.jsx"
       - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
@@ -253,6 +267,12 @@ jobs:
       # suite runs in CI only where a workflow names it (test/ciSuiteCoverage.test.mjs enforces it).
       - name: Opportunity North Star composition (one spine, one write path, no fabricated times)
         run: npx vitest run test/opportunityNorthStarPage.test.jsx test/opportunityLifecycleControl.test.jsx
+        working-directory: field-ops-app-vite
+
+      # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the
+      # COMPOSITION, which has no manifest and runs only where a workflow names it.
+      - name: Sales Agreement North Star composition (no spine, governed actions only, honest absence)
+        run: npx vitest run test/salesAgreementNorthStarPage.test.jsx
         working-directory: field-ops-app-vite
 
       # The five features converged into src/metadata/ (ADR-013), each with its mutation proof:
