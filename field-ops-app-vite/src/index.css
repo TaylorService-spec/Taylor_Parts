@@ -6083,3 +6083,127 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Commercial provenance, one line: where a Sales Order's committed prices came from (PR 5).
    Additive; no shared primitive touched. */
 .ns-provenance { margin: 4px 0 18px; font-size: 13px; }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   THE OPPORTUNITY COLLECTION — North Star List + State View (P1v4)
+   ──────────────────────────────────────────────────────────────────────────────────────────────
+   Additive. The header, rule pair, crumb and table are the primitives that already exist
+   (.ns-workspace, .ns-rulepair, .ns-table); what is new here is the STATE VIEW and the row rhythm.
+
+   NO CARD, NO RADIUS, NO SHADOW — same discipline as the rest of this block. A collection is a
+   sheet of rows, and the structure is whitespace and rules.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+.ns-collection__act { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+/* The disabled reason is VISIBLE text beside the control, never tooltip-only — a tooltip is
+   unreachable by keyboard and by touch, which is exactly the audience that most needs to know why
+   a control is inert. Same rule the lifecycle actions already follow. */
+.ns-collection__act-reason { margin: 0; max-width: 34ch; text-align: right; font-size: 12px;
+  color: var(--color-text-secondary); }
+
+/* ── The state view. Views of one collection, so they read as a set rather than as six buttons. */
+.ns-collection__views { display: flex; flex-wrap: wrap; gap: 2px; margin: 18px 0 0;
+  border-bottom: 1px solid var(--color-border); }
+.ns-view { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px;
+  border: 0; border-bottom: 2px solid transparent; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--color-text-secondary); margin-bottom: -1px; }
+.ns-view:hover { color: var(--color-text-primary); }
+/* THE ACTIVE VIEW IS MARKED BY WEIGHT AND A RULE, NOT BY COLOUR ALONE (WCAG 1.4.1): colour is not
+   the only channel, so it survives greyscale and colour-blind viewing. */
+.ns-view.is-active { color: var(--color-text-primary); font-weight: 600;
+  border-bottom-color: var(--color-text-primary); }
+.ns-view:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: -2px; }
+.ns-view__count { font-size: 11.5px; font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary); }
+.ns-view__count.is-attention { color: var(--verenward-bronze); font-weight: 700; }
+
+.ns-collection__result { margin: 14px 0 6px; font-size: 12.5px; color: var(--color-text-secondary); }
+.ns-collection__empty { padding: 8px 0 40px; }
+
+/* ── Rows. The whole row is the target; the reference cell is the anchor that makes it one. */
+.ns-row { cursor: pointer; }
+.ns-row:hover { background: var(--verenward-stone-card); }
+/* The row's focus ring is drawn from the ANCHOR inside it, because the anchor is the focusable
+   thing — the <tr> is deliberately not in the tab order (a second tab stop per row would announce
+   every row twice and put a fake button in the sequence). */
+.ns-row:focus-within { background: var(--verenward-stone-card);
+  outline: 2px solid var(--color-text-primary); outline-offset: -2px; }
+.ns-row__ref { display: inline-block; min-height: 24px; font-weight: 600;
+  color: var(--color-text-primary); text-decoration: none; font-variant-numeric: tabular-nums; }
+.ns-row__ref:hover { text-decoration: underline; }
+/* The secondary line: need, channel, stage position, the close note. Quieter, never a second
+   value — it qualifies the fact above it. */
+.ns-row__sub { display: block; margin-top: 2px; font-size: 11.5px;
+  color: var(--color-text-secondary); }
+.ns-row__strong { color: var(--color-text-primary); }
+.ns-row__stage { color: var(--color-text-primary); }
+.ns-row__stage.is-attention { color: var(--verenward-bronze); font-weight: 600; }
+.ns-row__stage.is-muted { color: var(--color-text-secondary); }
+.ns-row__attention.is-attention { color: var(--verenward-bronze); font-weight: 600; }
+/* An overdue date is marked by weight AND wording (the row also carries its reason in the
+   Attention column), so the colour is reinforcement rather than the only signal. */
+.ns-row__overdue { color: var(--verenward-bronze); font-weight: 600; }
+.ns-row.is-attention td { border-bottom-color: var(--color-border-strong); }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   THE FOLD. Eight columns is a desk view. Rather than let the table scroll sideways on a phone —
+   which hides the columns that carry the reason to act — the two supporting columns drop first,
+   and below the fold the row becomes a scan card. Nothing is hidden that is not also stated
+   elsewhere on the row: Agreement/Order and Owner both reappear in the card body.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1100px) {
+  .ns-collection__table .ns-col--owner { display: none; }
+}
+@media (max-width: 900px) {
+  .ns-collection__table .ns-col--commercial { display: none; }
+}
+
+@media (max-width: 768px) {
+  .ns-collection__act { align-items: flex-start; }
+  .ns-collection__act-reason { text-align: left; }
+  /* THE TABLE BECOMES CARDS. thead is removed from the accessibility tree as well as from view —
+     `display: none` on a header whose cells are no longer positionally meaningful is correct here,
+     because each cell below carries its own label. */
+  .ns-collection__table thead { display: none; }
+  .ns-collection__table, .ns-collection__table tbody, .ns-collection__table tr,
+  .ns-collection__table td { display: block; width: 100%; }
+  .ns-collection__table tr { padding: 14px 0; border-bottom: 1px solid var(--color-border); }
+  .ns-collection__table td { border: 0; padding: 2px 0; }
+  .ns-collection__table .ns-col--owner,
+  .ns-collection__table .ns-col--commercial { display: block; }
+  /* Every cell states which fact it is, since the column header is gone. The reference cell is
+     exempt: it is the row's identity and needs no label. */
+  .ns-collection__table td[data-label]::before { content: attr(data-label) " · ";
+    font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--color-text-secondary); }
+  .ns-collection__table td.ns-num { text-align: left; }
+  .ns-row__sub { display: inline; margin-left: 6px; }
+  /* The whole card is the target, and it clears the 44px floor by its own padding and content. */
+  .ns-row__ref { min-height: 32px; font-size: 15px; }
+}
+
+/* ── The collection toolbar. Narrows what is already loaded; it never re-reads. */
+.ns-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; }
+.ns-toolbar__search { flex: 1 1 280px; display: block; }
+.ns-toolbar__search input { width: 100%; min-height: 44px; padding: 0 12px; font: inherit;
+  font-size: 13.5px; color: var(--color-text-primary); background: var(--verenward-stone-card);
+  border: 1px solid var(--color-border); }
+.ns-toolbar__search input:focus-visible { outline: 2px solid var(--color-text-primary);
+  outline-offset: -2px; }
+/* An ACTIVE filter is marked by weight and a stronger edge as well as by its count, so the fact
+   that the list is narrowed never depends on colour alone. */
+.ns-toolbar .fo-button.is-active { font-weight: 600; border-color: var(--color-text-primary); }
+
+.ns-filtersheet { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0 0;
+  padding: 12px 14px; border: 1px solid var(--color-border);
+  background: var(--verenward-stone-card); }
+.ns-filtersheet legend { padding: 0 6px; font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-filtersheet__opt { display: inline-flex; align-items: center; gap: 7px; min-height: 44px;
+  font-size: 13.5px; color: var(--color-text-primary); cursor: pointer; }
+
+/* A label that exists for assistive technology only. The input still needs a name even when the
+   placeholder makes its purpose visually obvious — a placeholder is not a label. */
+.ns-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

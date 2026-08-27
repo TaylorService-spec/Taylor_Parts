@@ -77,6 +77,12 @@ on:
       - "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
       - "field-ops-app-vite/test/opportunityNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/opportunityLifecycleControl.test.jsx"
+      # The Opportunity COLLECTION (family 4, P1v4) — the list that replaced the workspace pane.
+      - "field-ops-app-vite/src/domain/opportunityListView.js"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/modules/sales/OpportunityList.jsx"
+      - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
+      - "field-ops-app-vite/test/opportunityCollectionPage.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -190,6 +196,12 @@ on:
       - "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
       - "field-ops-app-vite/test/opportunityNorthStarPage.test.jsx"
       - "field-ops-app-vite/test/opportunityLifecycleControl.test.jsx"
+      # The Opportunity COLLECTION (family 4, P1v4) — the list that replaced the workspace pane.
+      - "field-ops-app-vite/src/domain/opportunityListView.js"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/modules/sales/OpportunityList.jsx"
+      - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
+      - "field-ops-app-vite/test/opportunityCollectionPage.test.jsx"
       # The North Star Sales Agreement family (family 5) — a new routed record page.
       - "field-ops-app-vite/src/domain/salesAgreementNorthStar.js"
       - "field-ops-app-vite/src/domain/salesAgreementRead.js"
@@ -275,6 +287,12 @@ jobs:
       # suite runs in CI only where a workflow names it (test/ciSuiteCoverage.test.mjs enforces it).
       - name: Opportunity North Star composition (one spine, one write path, no fabricated times)
         run: npx vitest run test/opportunityNorthStarPage.test.jsx test/opportunityLifecycleControl.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The COLLECTION half of family 4. Separate step from the record above so a failure names which
+      # surface broke: they are two pages with different authority, not one suite.
+      - name: Opportunity collection (no pane, no per-row reads, no fabricated currency)
+        run: npx vitest run test/opportunityCollectionPage.test.jsx
         working-directory: field-ops-app-vite
 
       # Family 5. Its DERIVATION and READ SEAM run in the node manifest lane; this is the
