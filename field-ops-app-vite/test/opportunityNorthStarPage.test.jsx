@@ -270,6 +270,38 @@ describe("Opportunity P1v2 — identity and stage", () => {
     expect(link.getAttribute("href")).toBe("/customers/acct_doc_1");
   });
 
+  it("an owner the directory cannot resolve is STATED, never left blank", () => {
+    // FOUND LIVE on sandbox OPP-2026-000002: the header rendered "Owner" with nothing after it.
+    // ownerName() returns null when the directory has no entry, and the fact passed
+    // `<strong>{null}</strong>` -- a truthy element wrapping nothing, so RecordIdentity's
+    // "drop a fact with no value" filter could not tell it was empty. A label with no value is
+    // exactly the fail-blank the grammar exists to remove.
+    const { container } = mount({ ownerEmployeeId: "EMP-NOT-IN-DIRECTORY" });
+    const facts = container.querySelector(".ns-identity__facts").textContent;
+    expect(facts).toMatch(/Owner/);
+    // Something must follow the label, and it must not be the employee id.
+    expect(facts).not.toMatch(/Owner\s*(·|$)/);
+    expect(facts).not.toContain("EMP-NOT-IN-DIRECTORY");
+  });
+
+  it("no owner recorded and an unresolvable owner are different sentences", () => {
+    // The employee directory is admin/dispatcher-only, so "cannot resolve" is a normal outcome
+    // for a legitimate caller -- and a deal with no owner at all is a different fact about the
+    // record. Collapsing them would report a data gap as a permissions one, or the reverse.
+    const unresolved = mount({ ownerEmployeeId: "EMP-NOT-IN-DIRECTORY" });
+    const a = unresolved.container.querySelector(".ns-identity__facts").textContent;
+    unresolved.unmount();
+    const none = mount({ ownerEmployeeId: null });
+    const b = none.container.querySelector(".ns-identity__facts").textContent;
+    expect(a).not.toBe(b);
+    expect(b).toMatch(/Unassigned/);
+  });
+
+  it("a resolvable owner renders the person's name", () => {
+    const { container } = mount();
+    expect(container.querySelector(".ns-identity__facts").textContent).toMatch(/R\. Amado/);
+  });
+
   it("the activity gap is stated, never fabricated (O3)", () => {
     const { container } = mount();
     const activity = container.querySelector('[aria-label="Activity"]');
