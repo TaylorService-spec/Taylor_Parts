@@ -2557,3 +2557,80 @@ stands open.
 
 **Related:** DECISIONS #128 (the deny list covering release paths), #131 (absence of a check is
 unsafe evidence). Sandbox counterpart: PR #1530, `scripts/_releaseIdentityGate.mjs` — sandbox only.
+
+
+## #133 — RECORDED GAP, NO FIX AUTHORIZED: a release-boundary script change triggers no CI lane of its own
+
+**Date:** 2026-08-27
+**Status:** **OPEN — recorded, not fixed.** No workflow was added or edited.
+**Classification:** CI COVERAGE / RELEASE INFRASTRUCTURE. Same family as #124 (a suite registered
+nowhere, run by nothing) and #131 (an absent check suite is unsafe evidence), one directory over.
+
+### The problem, stated precisely
+
+CI lanes are path-filtered by **explicit file name**. Sixteen files under `scripts/` are named in a
+workflow filter and are covered. **The release boundary is not among them.** Named nowhere:
+
+```
+_releaseIdentityGate.mjs      _releaseProvenanceGuard.mjs    _sandboxDeployGuard.mjs
+verifyDeployArtifact.mjs      releaseProvenance.mjs          releaseRoot.mjs
+_sandboxRefresh.run.sh        _prodRelease.run.sh
+_sandboxQuickGate.sh          _sandboxRegressionGate.sh      _certificationRoutes.mjs
+verifySandboxFunctions.mjs    verifyDeployedCallablesFirebase.mjs
+sandboxFunctionsVerification.mjs   sandboxCredentials.mjs
+```
+
+There is no `scripts/**` glob in any workflow either — the globs that exist are narrow
+(`scripts/governance/**`, `scripts/fixtures/**`, `scripts/certificationWorld/**`, `scripts/repoGraph*`).
+
+**A correction to an earlier claim.** While proving PR #1530 this was first reported as "no workflow
+path-filters on `scripts/`", which is wider than the evidence. Most of `scripts/` is fine. The
+uncovered set is specific, and it is the release boundary.
+
+### The risk
+
+Coverage of these files today is **transitive and accidental**: suites that exercise them
+(`releaseProvenanceControl`, `sandboxGatePhases`, `verifyBuildBase`, `releaseIdentityRemoteRetry`)
+run in the `Full client node:test manifest (suites.json)` lane, which triggers on
+`field-ops-app-vite/test/**` and `suites.json` — **not** on the scripts they test.
+
+So a PR that changes a release gate **and nothing else** receives `build` and `gitleaks`, and no
+suite that exercises what it changed. The tests exist and are green; nothing runs them.
+
+This is not hypothetical. **PR #1530 changed `_releaseIdentityGate.mjs` and was covered only because
+it also registered a new suite in `suites.json`.** Had the same change shipped without a registered
+test — a comment fix, a timeout adjustment, a refactor — the manifest lane would not have fired.
+
+### Why it is easy to miss
+
+It presents as a small green PR. Per #131 the check to run is whether the EXPECTED lanes were
+created, and for a scripts-only change the honest expectation is currently "generic lanes only" —
+which is exactly what appears. Nothing looks wrong.
+
+### Current control
+
+The deny list (#128) prevents this loop from *running* a release path, and every protected action
+stays Owner-triggered. Those are unaffected. This gap is narrower: it is about whether a **change**
+to that tooling is tested before it merges, not about who may execute it.
+
+### Possible direction — **NOT AUTHORIZED**
+
+Recorded so the option is not lost, explicitly not as a decision:
+
+- a release-tooling CI lane triggered on the uncovered paths above, running the release/tooling
+  suites that already exist (`releaseProvenanceControl`, `sandboxGatePhases`, `verifyBuildBase`,
+  `releaseIdentityRemoteRetry`, `recordProvenance`);
+- **carrying its own hazard:** #128 records that a PR editing a workflow file can silently lose its
+  entire CI, and #131 records that this can happen without a workflow edit at all. Adding a lane is
+  therefore itself a change whose CI must be verified by lane creation, not by green checks.
+
+**Deliberately not proposed:** widening to a `scripts/**` glob. It would pull unrelated tooling into
+the release lane and make the trigger less legible, which is how a path filter stops being read.
+
+### OWNER DECISION REQUIRED
+
+> **Should a dedicated release-tooling CI lane be added, triggered on the release-boundary paths
+> above and running the existing release/tooling suites — or is transitive coverage via the node:test
+> manifest accepted, with lane-creation verified per #131 on every release-tooling PR?**
+
+**Related:** #124, #128, #131, #132. Surfaced while certifying PR #1530 (sandbox bounded retry).
