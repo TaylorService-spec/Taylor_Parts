@@ -2872,3 +2872,89 @@ back would silently restore the rejected behaviour with every test still green. 
 
 **Related:** #122 (the three authorities — the rule this entry follows), #135 (the collection this
 amends), and the family README, which records the departure beside the artifact it departs from.
+
+---
+
+## #137 — CI Assurance Selection Rule
+
+**Date:** 2026-08-29
+**Classification:** CI COVERAGE / GOVERNANCE. Same family as #124, #131 and #133.
+**Implementation authority:** `docs/ci/CI-ASSURANCE-CONTRACT.md`
+
+**Decision:** CI coverage is governed by contract-input selection, not by workflow or test existence
+alone.
+
+A validation contract is governed only when:
+
+1. it is registered and executable; and
+2. every authoritative repository input capable of affecting that contract causes the contract to be
+   selected.
+
+Tests and workflows MUST account for direct and indirect repository inputs they read, inspect,
+consume, or derive from.
+
+Historical green status is not evidence of governed coverage when relevant changes can bypass
+trigger or routing selection.
+
+Unknown or unclassified paths MUST fail closed under future CI routing.
+
+Assertions over intentionally mutable operational state MUST express durable invariants unless the
+exact state is itself governed authority.
+
+When an unrelated candidate exposes a pre-existing red-main condition:
+
+```
+HOLD candidate
+→ repair the defect in a separate focused PR
+→ restore main green
+→ update the original candidate onto repaired main
+→ revalidate its exact SHA
+→ merge only when applicable checks are green.
+```
+
+CI cost optimization may remove duplicate execution but MUST NOT weaken contract-input selection or
+create unobserved authoritative changes.
+
+GitHub remains the independent CI trust boundary unless a later governed decision explicitly changes
+that architecture.
+
+**Rationale:** a registered test can remain CI-blind when authoritative inputs are absent from its
+trigger or routing classification.
+
+This failure mode was demonstrated during CI-V2-1 by the orchestration collaboration contract:
+
+- the contract existed,
+- it was registered,
+- historical runs were green,
+- but a governed input changed without selecting the contract.
+
+A bounded trigger-coverage guard also found a second unwatched input that manual review missed.
+
+This establishes the permanent distinction:
+
+```
+REGISTERED != SELECTED != GOVERNED
+```
+
+### Relationship to existing governance — what this decision does NOT settle
+
+Recorded because this entry states a general rule in a family that already contains an **open Owner
+question**, and a general rule must not answer a specific question by implication.
+
+- **#124** (a suite that nothing runs is not coverage) and **#131** (an absent check suite is unsafe
+  evidence) are **extended, not replaced**. Both stand exactly as written. #124 governs
+  *registration*; #131 governs *suite creation*; this decision governs *selection*. They are three
+  different failure modes, and this entry adds the third rather than merging them.
+
+- **#133 remains OPEN and is NOT answered here.** #133 records that sixteen release-boundary files
+  under `scripts/` are named in no workflow filter, and asks the Owner whether a dedicated
+  release-tooling lane should be added or transitive coverage accepted. Read literally, the
+  governing rule above would imply the first answer. **That implication is explicitly withheld.**
+  This decision does not authorize a fix, does not add a lane, does not classify the release
+  boundary as compliant or non-compliant, and does not close #133. The Owner question stands
+  exactly as posed.
+
+  Stated plainly so a future session cannot mistake silence for resolution: **adopting #137 does not
+  make the #133 gap decided.** Anyone acting on #133 still needs the Owner ruling it asks for.
+
+**Related:** #124, #128, #131, #132, #133. Surfaced while completing CI-V2-1 (PRs #1567, #1568).
