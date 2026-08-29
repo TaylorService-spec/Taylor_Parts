@@ -40,7 +40,16 @@ const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const {
+  buildScheduledWindow,
+  buildTechnicianAvailability,
+} = require("./sandboxDispatchFixtures");
+
 const WOS = "fieldops_wos";
+// The governed recurring-hours authority (ND-22). Admin-SDK-only: firestore.rules denies ALL client
+// read and write, and this seed does not change that -- the board still reads it exclusively through
+// the trusted readTechnicianAvailability projection.
+const AVAILABILITY = "technician_working_availability";
 const YEAR = 2026; // deterministic: seeds must not vary by wall clock
 const SCENARIO_ID = "SBX-SCN-001";
 const SCENARIO_VERSION = "2.0.0";
@@ -120,6 +129,14 @@ async function main() {
   const db = getFirestore();
   const now = Timestamp.now();
   const by = "sandbox-transactional-seed";
+  // Today, 09:00-11:00 Phoenix -- inside the recorded shift seeded below, so the board draws a chip
+  // on a lane that has hours to draw it against. See sandboxDispatchFixtures.js for why it is
+  // anchored to the run instant rather than a literal date.
+  const win = buildScheduledWindow(now.toMillis());
+  const SCHEDULED_WINDOW = {
+    start: Timestamp.fromMillis(win.startMillis),
+    end: Timestamp.fromMillis(win.endMillis),
+  };
   const counts = {};
   const bump = (k) => { counts[k] = (counts[k] || 0) + 1; };
   const set = async (c, id, d) => { await db.collection(c).doc(id).set(d, { merge: true }); bump(c); };
@@ -162,6 +179,35 @@ async function main() {
   await set("fieldops_technicians", "tech-sbx-02", {
     name: "Sandbox Technician Two", status: "available", skills: ["refrigeration"],
     userId: null, createdAt: now, updatedAt: now, updatedBy: by,
+  });
+
+  // --- Technician working availability ----------------------------------
+  //
+  // `technician_working_availability` is the governed recurring-hours authority (ND-22). It is
+  // Admin-SDK-only -- firestore.rules denies ALL client read and write -- so this seed writes it the
+  // same way the trusted setTechnicianWorkingAvailability command does, and nothing about that
+  // boundary is weakened: the Dispatch board still reads it exclusively through the
+  // readTechnicianAvailability projection.
+  //
+  // WHY IT LIVES HERE AND NOT IN CERTIFICATION WORLD. This pack already owns tech-sbx-01/02, and
+  // certification world's dataset is version-pinned with an expected record count that a `verify`
+  // asserts exactly -- adding a collection there would change its fingerprint and could only take
+  // effect through a destructive `rebuild --confirm-reset`. This seeder is an idempotent upsert at
+  // fixed ids, so re-running it deterministically recreates these facts with no reset at all.
+  //
+  // ONE TECHNICIAN, DELIBERATELY. Recording hours for every technician would destroy the live case
+  // for the board's honesty rules -- "unrecorded availability says so" and "no lane renders a fake
+  // 0%" only mean something while an unrecorded technician exists to prove them on. One recorded and
+  // the rest unrecorded exercises BOTH paths on the same screen.
+  await set(AVAILABILITY, "tech-sbx-01", {
+    ...buildTechnicianAvailability({
+      technicianId: "tech-sbx-01",
+      // The field the governed command writes. Named for this seeder so the record's owner is
+      // legible from the document itself rather than inferred.
+      updatedByUid: by,
+      scenarioId: SCENARIO_ID,
+    }),
+    updatedAt: now,
   });
 
   // --- Work Orders across the GOVERNED lifecycle ------------------------
@@ -212,9 +258,18 @@ async function main() {
   // READY_TO_DISPATCH -> SCHEDULED -> DISPATCHED, so a dispatcher can only
   // dispatch from SCHEDULED. Seeding the wrong state made the dispatch path
   // untestable.
+  // A SCHEDULED Work Order MUST carry a window. The governed `Schedule` action requires
+  // scheduledStart, scheduledEnd and scheduledTechId together (transitionWorkOrder.ts refuses with
+  // invalid-argument otherwise), so a SCHEDULED document without a window is a state the real command
+  // could never have produced -- and the Dispatch board could not draw it. It rendered under
+  // "Scheduled without a window" instead, which is the board being honest about a fixture that was
+  // not. Found by the Dispatch Quick Gate: with this the only SCHEDULED Work Order in the sandbox,
+  // the board had no day to navigate to and no chip to place.
   await set(WOS, "wo-sbx-002", woBase(2, {
     status: "SCHEDULED",
     scheduledTechId: "tech-sbx-01",
+    scheduledStart: SCHEDULED_WINDOW.start,
+    scheduledEnd: SCHEDULED_WINDOW.end,
     complaint: "Preventive maintenance - replace water filter cartridge.",
     customerId: "acct-summit", locationId: "loc-summit-flag", equipmentId: "eq-cool-001",
     requiredPartId: "PRT-1005",

@@ -3079,3 +3079,45 @@ restates the #138 ruling. Both entries stay exactly as written; this is the corr
 **Verified against the repository at the time of writing, not only against the prose:** all fifteen
 files exist, and each was named in zero workflow path filters — which is the condition #138 exists
 to end. The lane implementing #138 is expected to select this exact set of fifteen.
+
+## #140 — OWNER RULING: technician registry status and scheduling-time availability are separate concepts
+
+**Ruled 2026-08-29.** A live probe against deployed sandbox authority showed that a technician
+carrying `status: "off_shift"` is accepted by governed placement and can be scheduled. The question
+put to the Owner was whether that is a defect. It is not.
+
+**The ruling.** A technician carrying any recognised governed status — `available`, `on_job`,
+`off_shift` — is a valid technician record and remains eligible to receive a **future** placement.
+`off_shift` does **not** mean "cannot be scheduled". It describes the technician's present roster
+state; future scheduling remains valid. A technician can be off shift today and legitimately
+scheduled next Tuesday.
+
+**The reason, which is the part worth keeping.** Current technician status must not be silently
+promoted into a future-calendar availability rule. Those are two different questions asked about two
+different moments, and collapsing them would let a live operational state quietly become a
+scheduling policy nobody decided.
+
+**Placement authority is therefore unchanged** (`functions/src/scheduling/placementPolicy.ts`):
+
+| Hard refusal | Warning, non-blocking |
+|---|---|
+| technician record missing | outside recorded working hours |
+| technician status unrecognised or absent | no working hours recorded |
+| start materially in the past | |
+| explicit blocked-time conflict | |
+| overlapping scheduled Work Order | |
+
+This preserves ND-20's collision policy exactly. Nothing in the runtime changed as a result of this
+ruling — it records why the existing behaviour is correct, so the next reader who notices an
+`off_shift` technician being scheduled does not "fix" it.
+
+**What this ruling does NOT license.** Richer eligibility — employment inactive, terminated,
+certification expired, territory mismatch, skill mismatch — is real and may be wanted later. None of
+it may be **inferred from `off_shift`**. Each requires its own governed eligibility authority, and
+that authority belongs on `placementPolicy.ts`'s single eligibility line rather than scattered across
+callers.
+
+**Relationship to existing governance.** ND-22 recorded that `fieldops_technicians` carries only a
+live `status` and that no shift model existed; it did not rule on whether that status gates future
+scheduling. This closes that gap. The status vocabulary itself remains
+`GOVERNED_TECHNICIAN_STATUSES` in `functions/src/scheduling/schedulingRepository.ts`.
