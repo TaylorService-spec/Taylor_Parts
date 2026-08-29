@@ -2872,3 +2872,140 @@ back would silently restore the rejected behaviour with every test still green. 
 
 **Related:** #122 (the three authorities — the rule this entry follows), #135 (the collection this
 amends), and the family README, which records the departure beside the artifact it departs from.
+
+---
+
+## #137 — CI Assurance Selection Rule
+
+**Date:** 2026-08-29
+**Classification:** CI COVERAGE / GOVERNANCE. Same family as #124, #131 and #133.
+**Implementation authority:** `docs/ci/CI-ASSURANCE-CONTRACT.md`
+
+**Decision:** CI coverage is governed by contract-input selection, not by workflow or test existence
+alone.
+
+A validation contract is governed only when:
+
+1. it is registered and executable; and
+2. every authoritative repository input capable of affecting that contract causes the contract to be
+   selected.
+
+Tests and workflows MUST account for direct and indirect repository inputs they read, inspect,
+consume, or derive from.
+
+Historical green status is not evidence of governed coverage when relevant changes can bypass
+trigger or routing selection.
+
+Unknown or unclassified paths MUST fail closed under future CI routing.
+
+Assertions over intentionally mutable operational state MUST express durable invariants unless the
+exact state is itself governed authority.
+
+When an unrelated candidate exposes a pre-existing red-main condition:
+
+```
+HOLD candidate
+→ repair the defect in a separate focused PR
+→ restore main green
+→ update the original candidate onto repaired main
+→ revalidate its exact SHA
+→ merge only when applicable checks are green.
+```
+
+CI cost optimization may remove duplicate execution but MUST NOT weaken contract-input selection or
+create unobserved authoritative changes.
+
+GitHub remains the independent CI trust boundary unless a later governed decision explicitly changes
+that architecture.
+
+**Rationale:** a registered test can remain CI-blind when authoritative inputs are absent from its
+trigger or routing classification.
+
+This failure mode was demonstrated during CI-V2-1 by the orchestration collaboration contract:
+
+- the contract existed,
+- it was registered,
+- historical runs were green,
+- but a governed input changed without selecting the contract.
+
+A bounded trigger-coverage guard also found a second unwatched input that manual review missed.
+
+This establishes the permanent distinction:
+
+```
+REGISTERED != SELECTED != GOVERNED
+```
+
+### Relationship to existing governance
+
+- **#124** governs **registration**: a suite that nothing runs is not coverage.
+- **#131** governs **suite creation / registration evidence**: an absent check suite is unsafe
+  evidence, not proof that a PR legitimately triggered nothing.
+- **#137** governs **selection**: authoritative inputs must select their responsible contracts.
+
+Three distinct failure modes. This entry adds the third; #124 and #131 stand exactly as written and
+are extended, not replaced.
+
+**#133 is now RESOLVED by Owner ruling** (2026-08-29), recorded in full as **#138**.
+
+The Owner rejects incidental/transitive selection for the release-tooling boundary identified in
+#133. The sixteen release-boundary inputs recorded there require explicit CI selection coverage. The
+chosen implementation direction is a dedicated release-tooling validation lane, triggered by those
+governed release-boundary inputs and running the existing non-mutating release/tooling suites.
+
+That ruling authorizes the **CI coverage architecture only**. It does NOT authorize release
+execution, deployment, production mutation, permission expansion, protected-action execution, or any
+weakening of #128. Implementation of that lane must occur in a separate focused PR and must itself
+be validated according to #131 and #137.
+
+**No permanent carve-out from #137 remains.**
+
+### Open #137-conformance finding (not a carve-out)
+
+`docs/ci/**` and `docs/DECISIONS.md` are watched by no workflow's trigger paths, so a change to the
+governance authority itself — including this entry — is selected by no path-filtered contract. By
+this decision's own standard that is a conformance gap, recorded here so it is treated as one.
+
+It is deliberately **not** repaired in the PR that introduces this decision, because a documentation
+PR may not change triggers. It is a separate finding for later focused treatment, and it must not
+become another exception: the distinction between this and a carve-out is that a carve-out excuses
+the gap permanently, while this records it as work.
+
+**Related:** #124, #128, #131, #132, #133, #138. Surfaced while completing CI-V2-1 (PRs #1567, #1568).
+
+---
+
+## #138 — OWNER RULING: release-tooling requires explicit CI selection
+
+**Date:** 2026-08-29 · **Scope:** CI coverage architecture only · **Authority:** Owner
+**Resolves:** #133, which was recorded OPEN ("RECORDED GAP, NO FIX AUTHORIZED") and is now decided.
+
+**Decision:** the release-tooling boundary identified in #133 requires **explicit CI selection**.
+
+**Transitive / incidental coverage is rejected.**
+
+A dedicated release-tooling validation lane will be used to select the existing **non-mutating**
+release/tooling suites whenever one of the governed release-boundary inputs changes.
+
+**The lane is validation only.** It does not gain deployment authority or permission to execute
+protected release actions.
+
+**#128 remains fully binding.**
+
+**Implementation occurs in a separate focused PR** — none is authorized by this entry — and that PR
+must itself be validated according to #131 (confirm the check suite was actually created) and #137
+(confirm the governed inputs select the contract).
+
+**Owner's reason, recorded because it is the general principle and not only this instance:** #133
+had already established that the release-boundary files can change without selecting the manifest
+validation lane. Coverage that happens only when another, coincidental file change selects a test is
+not governed assurance. #137 now names that distinction —
+
+```
+REGISTERED != SELECTED != GOVERNED
+```
+
+— so a release-boundary input must select its responsible contract **directly and predictably**,
+and #133 is therefore no longer an unresolved exception to #137.
+
+**Related:** #124, #128, #131, #133, #137.
