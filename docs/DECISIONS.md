@@ -3009,3 +3009,73 @@ REGISTERED != SELECTED != GOVERNED
 and #133 is therefore no longer an unresolved exception to #137.
 
 **Related:** #124, #128, #131, #133, #137.
+
+---
+
+## #139 — CORRECTION: #138 release-tooling boundary contains fifteen inputs, not sixteen
+
+**Date:** 2026-08-29
+**Scope:** CI governance factual correction
+**Corrects:** #138 (the cardinality as restated in #137's "Relationship to existing governance"
+section — see the locational note below)
+**Related:** #133, #137, #138
+
+**Correction:**
+
+The governed record states "the sixteen release-boundary inputs recorded there."
+
+That cardinality is incorrect.
+
+Decision #133 states that **sixteen** files under `scripts/` were ALREADY named in workflow filters
+and covered. It then **separately** identifies the release boundary as "Named nowhere" and
+enumerates **FIFTEEN** files. The sixteen and the fifteen are two different sets, and the sentence
+above collapsed them.
+
+The governed release-boundary input set is therefore the fifteen files explicitly enumerated in
+#133's uncovered block.
+
+This correction changes **no Owner ruling and no CI architecture**. The Owner ruling remains:
+
+- release-tooling requires explicit CI selection;
+- incidental/transitive coverage is rejected;
+- the dedicated lane is validation only;
+- #128 remains fully binding.
+
+The only correction is:
+
+```
+16 release-boundary inputs
+→
+15 release-boundary inputs.
+```
+
+**For avoidance of doubt, the governed set is:**
+
+```
+scripts/_certificationRoutes.mjs
+scripts/_prodRelease.run.sh
+scripts/_releaseIdentityGate.mjs
+scripts/_releaseProvenanceGuard.mjs
+scripts/_sandboxDeployGuard.mjs
+scripts/_sandboxQuickGate.sh
+scripts/_sandboxRefresh.run.sh
+scripts/_sandboxRegressionGate.sh
+scripts/releaseProvenance.mjs
+scripts/releaseRoot.mjs
+scripts/sandboxCredentials.mjs
+scripts/sandboxFunctionsVerification.mjs
+scripts/verifyDeployArtifact.mjs
+scripts/verifyDeployedCallablesFirebase.mjs
+scripts/verifySandboxFunctions.mjs
+```
+
+A sixteenth input MUST NOT be invented to make an implementation conform to the erroneous count.
+
+**Locational note, recorded because the ledger is append-only and a future reader will look for the
+sentence.** The erroneous phrase does not appear in #138's own body, which states no count at all.
+It appears once, in **#137's** "Relationship to existing governance" section, where that section
+restates the #138 ruling. Both entries stay exactly as written; this is the correcting record.
+
+**Verified against the repository at the time of writing, not only against the prose:** all fifteen
+files exist, and each was named in zero workflow path filters — which is the condition #138 exists
+to end. The lane implementing #138 is expected to select this exact set of fifteen.
