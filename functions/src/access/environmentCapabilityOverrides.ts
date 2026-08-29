@@ -145,6 +145,12 @@ export interface ActivationRegistryEnv {
   readonly role?: unknown;
   readonly firebase?: { readonly projectId?: unknown } | null;
   readonly capabilityActivationOverrides?: unknown;
+  /**
+   * Whether this environment's operational evidence is synthetic, and therefore whether a trusted
+   * Function may send it to the private model. Declared per environment in config/environments.json
+   * and mirrored into the snapshot below. Anything other than literal `true` means no.
+   */
+  readonly privateAiSyntheticOperationalInterpretation?: unknown;
 }
 export interface ActivationRegistry {
   readonly environments?: readonly ActivationRegistryEnv[];
@@ -191,6 +197,42 @@ export function resolveCapabilityOverrides(
   return result;
 }
 
+/**
+ * May the environment owning `projectId` send operational evidence to the private model?
+ *
+ * This is a DATA CLASSIFICATION question, not a feature flag: it asks whether the work orders this
+ * runtime can read are synthetic. Answering it wrongly does not degrade a feature, it sends real
+ * customer facts to a model, so every branch below refuses and only an explicit `true` on a matched
+ * non-production environment permits.
+ *
+ * PURE: no I/O, no process access -- the caller supplies the registry and the project id.
+ *
+ *  - missing/empty projectId          -> false
+ *  - projectId not in the registry    -> false (an unknown environment is never trusted)
+ *  - env.role === "production"        -> false unconditionally, ignoring what the data says
+ *  - flag absent, or any value that
+ *    is not literally `true`          -> false
+ *
+ * The production block is deliberately redundant with the registry data. Production declares false
+ * AND is refused by role, so neither the data nor the code has to be trusted on its own.
+ */
+export function resolveSyntheticOperationalInterpretation(
+  registry: ActivationRegistry | null | undefined,
+  projectId: string | null | undefined,
+): boolean {
+  if (typeof projectId !== "string" || projectId.length === 0) return false;
+  const environments = registry?.environments;
+  if (!Array.isArray(environments)) return false;
+
+  const env = environments.find(
+    (e) => typeof e?.firebase?.projectId === "string" && e.firebase.projectId === projectId,
+  );
+  if (!env) return false;
+  if (env.role === "production") return false;
+
+  return env.privateAiSyntheticOperationalInterpretation === true;
+}
+
 // Runtime registry SNAPSHOT that ships INSIDE the Functions deploy bundle.
 //
 // Why a snapshot and not a read of config/environments.json: only the
@@ -201,10 +243,15 @@ export function resolveCapabilityOverrides(
 // functions/test/environmentCapabilityOverrides.test.mjs. Drift fails the build.
 export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze({
   environments: Object.freeze([
-    Object.freeze({ role: "sandbox", firebase: Object.freeze({ projectId: null }) }),
+    Object.freeze({ role: "sandbox", firebase: Object.freeze({ projectId: null }),
+      privateAiSyntheticOperationalInterpretation: false }),
     Object.freeze({
       role: "sandbox",
       firebase: Object.freeze({ projectId: "eos-platform-sandbox" }),
+      // The sandbox runs prod-derived work-order fixtures. Its purpose line in the canonical
+      // registry says "synthetic data", but a purpose sentence describes an intention and this
+      // flag governs whether customer facts may reach a model, so the flag does not follow it.
+      privateAiSyntheticOperationalInterpretation: false,
       capabilityActivationOverrides: Object.freeze([
         "opportunity.write",
         "opportunity.read",
@@ -289,6 +336,10 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
       // purpose, not in a vocabulary another contract validates against.
       role: "sandbox",
       firebase: Object.freeze({ projectId: "demo-certworld" }),
+      // The one environment permitted to send operational evidence to the private model. Its
+      // data is seeded fixture data, and the demo- prefix is reserved by the emulator suite, so
+      // this project cannot exist outside a local emulator and cannot hold customer records.
+      privateAiSyntheticOperationalInterpretation: true,
       capabilityActivationOverrides: Object.freeze([
         "inventory.transfer.create",
         "inventory.transfer.dispatch",
@@ -305,10 +356,14 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "equipment.install",
       ]),
     }),
-    Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }) }),
+    Object.freeze({ role: "integration", firebase: Object.freeze({ projectId: null }),
+      privateAiSyntheticOperationalInterpretation: false }),
     // taylor-parts-production: role "production", NO capabilityActivationOverrides
     // key -- both the data (absence) and the code (role-keyed) block it.
-    Object.freeze({ role: "production", firebase: Object.freeze({ projectId: "taylor-parts" }) }),
+    Object.freeze({ role: "production", firebase: Object.freeze({ projectId: "taylor-parts" }),
+      // Declared false AND refused by role. Two independent blocks, so a future edit to
+      // either one cannot open this on its own.
+      privateAiSyntheticOperationalInterpretation: false }),
   ]) as readonly ActivationRegistryEnv[],
 });
 

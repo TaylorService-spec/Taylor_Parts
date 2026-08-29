@@ -116,6 +116,13 @@ export { getWorkOrderFieldContext } from "./getWorkOrderFieldContext";
 // fail-closed behind WORK_ORDER_READINESS_CONTEXT_READY until a separately authorized sandbox release.
 export { getWorkOrderReadinessContext } from "./ai/workOrderReadinessContext";
 
+// Private-AI interpretation of that same readiness context. EXPORT != DEPLOY, and here the export is
+// unusually far from a grant: the callable refuses in every environment the registry declares, which
+// is currently all of them, and the only environment classified as synthetic (demo-certworld) is an
+// emulator project that cannot be deployed to. It also cannot write, cannot dispatch a command, and
+// cannot recommend an action -- the verifier rejects any action the model names.
+export { interpretWorkOrderReadinessContext } from "./ai/workOrderReadinessContext";
+
 // --- F-RULES-1 surface: trusted technician job completion (Decision #39) ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
 // production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until

@@ -208,6 +208,19 @@ export function resolveEnvironment(registry, id, { requireFirebaseIdentity = tru
     }
   }
 
+  // Private AI data classification. Held to the same explicit-boolean rule as readiness, and for a
+  // stronger reason: this one decides whether an environment's operational evidence may leave EOS
+  // for a model at all. It is validated here but deliberately NOT returned below — it is a
+  // server-side classification the Functions runtime resolves from its own project identity, and
+  // projecting it into the browser bundle would imply the client has some say in it.
+  if (typeof env.privateAiSyntheticOperationalInterpretation !== 'boolean') {
+    throw new EnvironmentResolutionError(
+      'INCOMPLETE_PRIVATE_AI_CLASSIFICATION',
+      `Environment '${requested}' is missing boolean 'privateAiSyntheticOperationalInterpretation'. ` +
+        'Whether an environment may send operational evidence to a model must be declared, never inferred.',
+    );
+  }
+
   return {
     id: env.id,
     role: env.role,
