@@ -31,7 +31,14 @@ on:
       - "docs/orchestration/context/EOS-BOOTSTRAP.md"
       - "docs/orchestration/context/current-state.mjs"
       - "docs/orchestration/context/current-state.test.mjs"
+      - "docs/orchestration/context/trigger-coverage.test.mjs"
       - "docs/orchestration/context/current-state.json"
+      # THE INPUT THIS SUITE ASSERTS ON. current-state.test.mjs reads execution-backlog.md and
+      # derives the selector state from it, but this file was absent from the triggers — so PR
+      # #1344 changed the backlog, did not select this contract, and main stayed red for nine days
+      # with no run to say so. A registered contract is still CI-blind when its trigger does not
+      # include an input it reads (the DECISIONS #124 class, in a new costume).
+      - "docs/orchestration/execution-backlog.md"
       - "docs/orchestration/context/cold-start.mjs"
       - "docs/orchestration/context/cold-start.test.mjs"
       - "docs/orchestration/lib/coldStart.mjs"
@@ -58,6 +65,12 @@ on:
       - "docs/orchestration/lib/openaiReviewProvider.mjs"
       - "docs/orchestration/lib/openaiReviewProvider.test.mjs"
       - "docs/orchestration/lib/reviewWorkflowWiring.test.mjs"
+      # And the RUNNER that suite asserts on. reviewWorkflowWiring.test.mjs reads
+      # context/github-fact-review.mjs as SOURCE to check its wiring, but the only workflow that
+      # executes that runner (reciprocal-gpt-review.yml) is workflow_dispatch-only. So a change to
+      # the runner had NO automatic check anywhere. Same defect as the backlog above, found by the
+      # trigger-coverage guard rather than by hand.
+      - "docs/orchestration/context/github-fact-review.mjs"
       - "docs/orchestration/lib/reviewInputSafety.mjs"
       - "docs/orchestration/lib/reviewInputSafety.test.mjs"
       - "docs/orchestration/lib/reciprocalReviewLoop.mjs"
@@ -112,7 +125,14 @@ on:
       - "docs/orchestration/context/EOS-BOOTSTRAP.md"
       - "docs/orchestration/context/current-state.mjs"
       - "docs/orchestration/context/current-state.test.mjs"
+      - "docs/orchestration/context/trigger-coverage.test.mjs"
       - "docs/orchestration/context/current-state.json"
+      # THE INPUT THIS SUITE ASSERTS ON. current-state.test.mjs reads execution-backlog.md and
+      # derives the selector state from it, but this file was absent from the triggers — so PR
+      # #1344 changed the backlog, did not select this contract, and main stayed red for nine days
+      # with no run to say so. A registered contract is still CI-blind when its trigger does not
+      # include an input it reads (the DECISIONS #124 class, in a new costume).
+      - "docs/orchestration/execution-backlog.md"
       - "docs/orchestration/context/cold-start.mjs"
       - "docs/orchestration/context/cold-start.test.mjs"
       - "docs/orchestration/lib/coldStart.mjs"
@@ -139,6 +159,12 @@ on:
       - "docs/orchestration/lib/openaiReviewProvider.mjs"
       - "docs/orchestration/lib/openaiReviewProvider.test.mjs"
       - "docs/orchestration/lib/reviewWorkflowWiring.test.mjs"
+      # And the RUNNER that suite asserts on. reviewWorkflowWiring.test.mjs reads
+      # context/github-fact-review.mjs as SOURCE to check its wiring, but the only workflow that
+      # executes that runner (reciprocal-gpt-review.yml) is workflow_dispatch-only. So a change to
+      # the runner had NO automatic check anywhere. Same defect as the backlog above, found by the
+      # trigger-coverage guard rather than by hand.
+      - "docs/orchestration/context/github-fact-review.mjs"
       - "docs/orchestration/lib/reviewInputSafety.mjs"
       - "docs/orchestration/lib/reviewInputSafety.test.mjs"
       - "docs/orchestration/lib/reciprocalReviewLoop.mjs"
@@ -196,4 +222,4 @@ jobs:
         with:
           node-version: 22
       - name: Contracts + triage + bridge mock (node:test, zero-dependency)
-        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs docs/orchestration/lib/ownerFriction.test.mjs docs/orchestration/lib/contextMap.test.mjs docs/orchestration/context/build-package.test.mjs docs/orchestration/lib/coldStart.test.mjs docs/orchestration/context/current-state.test.mjs docs/orchestration/context/cold-start.test.mjs docs/orchestration/lib/wakeSupervisor.test.mjs docs/orchestration/lib/wakeState.test.mjs docs/orchestration/lib/wakeExecute.test.mjs docs/orchestration/lib/wakeLease.test.mjs docs/orchestration/lib/reanchor.test.mjs docs/orchestration/lib/reanchor-acceptance.test.mjs docs/orchestration/lib/reviewTrigger.test.mjs docs/orchestration/lib/reviewRouter.test.mjs docs/orchestration/lib/signalSupervisor.test.mjs docs/orchestration/lib/openaiReviewProvider.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs docs/orchestration/lib/reviewInputSafety.test.mjs docs/orchestration/lib/reciprocalReviewLoop.test.mjs docs/orchestration/lib/reciprocalPilotCycle.test.mjs docs/orchestration/lib/reviewArtifacts.test.mjs docs/orchestration/lib/reviewFactFeed.test.mjs docs/orchestration/lib/reviewDelta.test.mjs docs/orchestration/lib/reviewRecovery.test.mjs docs/orchestration/lib/reviewInstrumentation.test.mjs docs/orchestration/lib/reciprocalPilotInstrumented.test.mjs docs/orchestration/lib/benchmarkReadout.test.mjs docs/orchestration/lib/reviewFeedInvocation.test.mjs docs/orchestration/lib/reviewFeedWiring.test.mjs
+        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs docs/orchestration/lib/ownerFriction.test.mjs docs/orchestration/lib/contextMap.test.mjs docs/orchestration/context/build-package.test.mjs docs/orchestration/lib/coldStart.test.mjs docs/orchestration/context/current-state.test.mjs docs/orchestration/context/trigger-coverage.test.mjs docs/orchestration/context/cold-start.test.mjs docs/orchestration/lib/wakeSupervisor.test.mjs docs/orchestration/lib/wakeState.test.mjs docs/orchestration/lib/wakeExecute.test.mjs docs/orchestration/lib/wakeLease.test.mjs docs/orchestration/lib/reanchor.test.mjs docs/orchestration/lib/reanchor-acceptance.test.mjs docs/orchestration/lib/reviewTrigger.test.mjs docs/orchestration/lib/reviewRouter.test.mjs docs/orchestration/lib/signalSupervisor.test.mjs docs/orchestration/lib/openaiReviewProvider.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs docs/orchestration/lib/reviewInputSafety.test.mjs docs/orchestration/lib/reciprocalReviewLoop.test.mjs docs/orchestration/lib/reciprocalPilotCycle.test.mjs docs/orchestration/lib/reviewArtifacts.test.mjs docs/orchestration/lib/reviewFactFeed.test.mjs docs/orchestration/lib/reviewDelta.test.mjs docs/orchestration/lib/reviewRecovery.test.mjs docs/orchestration/lib/reviewInstrumentation.test.mjs docs/orchestration/lib/reciprocalPilotInstrumented.test.mjs docs/orchestration/lib/benchmarkReadout.test.mjs docs/orchestration/lib/reviewFeedInvocation.test.mjs docs/orchestration/lib/reviewFeedWiring.test.mjs
