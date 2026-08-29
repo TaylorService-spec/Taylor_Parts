@@ -1,0 +1,166 @@
+name: Release Tooling Validation
+
+# The release-boundary lane authorized by DECISIONS #138 (Owner ruling, 2026-08-29), which resolved
+# the gap recorded in #133.
+#
+# ════════════════════ WHAT THIS EXISTS TO STOP ════════════════════
+#
+# #133: fifteen files under `scripts/` form the release boundary and were named in NO workflow path
+# filter. Their suites exist and are green, but they run in the `Full client node:test manifest`
+# lane, which triggers on `field-ops-app-vite/test/**` — NOT on the scripts they test. So a PR that
+# changed a release gate AND NOTHING ELSE received `build` and `gitleaks`, and no suite that
+# exercised what it changed. PR #1530 was covered only because it happened to also register a new
+# suite; the same edit without one — a comment fix, a timeout change, a refactor — would have merged
+# untested.
+#
+# The Owner rejected that transitive coverage: coverage that happens only when a coincidental file
+# change selects a test is not governed assurance (#137, REGISTERED != SELECTED != GOVERNED).
+#
+# ════════════════════ WHAT THIS LANE IS NOT ════════════════════
+#
+# VALIDATION ONLY. It has no deployment authority and executes no protected release action. It does
+# not deploy, refresh a sandbox, touch production, read a real credential, or call an external
+# service. Every suite below runs offline: throwaway git repositories under `tmpdir()`, a stub HTTP
+# server bound to 127.0.0.1 on an ephemeral port, and source read as text. #128's deny list and the
+# Owner-triggered nature of every protected action are UNCHANGED and remain fully binding.
+#
+# It also needs no dependency install — every suite imports only node: builtins and relative
+# modules, verified transitively — so the lane is checkout + node, not checkout + npm ci.
+
+on:
+  pull_request:
+    paths:
+      # ── The fifteen governed release-boundary inputs recorded by #133 ──────────────────────────
+      # These are the point of the lane. A change to any one of them must select the contracts that
+      # assert on it — which is exactly what did not happen before #138.
+      - "scripts/_certificationRoutes.mjs"
+      - "scripts/_prodRelease.run.sh"
+      - "scripts/_releaseIdentityGate.mjs"
+      - "scripts/_releaseProvenanceGuard.mjs"
+      - "scripts/_sandboxDeployGuard.mjs"
+      - "scripts/_sandboxQuickGate.sh"
+      - "scripts/_sandboxRefresh.run.sh"
+      - "scripts/_sandboxRegressionGate.sh"
+      - "scripts/releaseProvenance.mjs"
+      - "scripts/releaseRoot.mjs"
+      - "scripts/sandboxCredentials.mjs"
+      - "scripts/sandboxFunctionsVerification.mjs"
+      - "scripts/verifyDeployArtifact.mjs"
+      - "scripts/verifyDeployedCallablesFirebase.mjs"
+      - "scripts/verifySandboxFunctions.mjs"
+      # ── The contracts themselves, and the guard that proves this list stays honest ─────────────
+      - "field-ops-app-vite/test/releaseProvenanceControl.test.mjs"
+      - "field-ops-app-vite/test/releaseIdentityRemoteRetry.test.mjs"
+      - "field-ops-app-vite/test/sandboxGatePhases.test.mjs"
+      - "field-ops-app-vite/test/shellScriptExecutability.test.mjs"
+      - "field-ops-app-vite/test/sandboxCredentials.test.mjs"
+      - "field-ops-app-vite/test/noLiteralControlBytes.test.mjs"
+      - "field-ops-app-vite/test/dynamicDetailCertification.test.mjs"
+      - "field-ops-app-vite/test/releaseToolingLaneCoverage.test.mjs"
+      # ── Indirect inputs the suites read ───────────────────────────────────────────────────────
+      # dynamicDetailCertification reads the probe as source; #137's Input Dependency Rule counts
+      # indirect reads, so it is watched rather than assumed.
+      - "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/probe.mjs"
+      - ".github/workflows/release-tooling-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/_certificationRoutes.mjs"
+      - "scripts/_prodRelease.run.sh"
+      - "scripts/_releaseIdentityGate.mjs"
+      - "scripts/_releaseProvenanceGuard.mjs"
+      - "scripts/_sandboxDeployGuard.mjs"
+      - "scripts/_sandboxQuickGate.sh"
+      - "scripts/_sandboxRefresh.run.sh"
+      - "scripts/_sandboxRegressionGate.sh"
+      - "scripts/releaseProvenance.mjs"
+      - "scripts/releaseRoot.mjs"
+      - "scripts/sandboxCredentials.mjs"
+      - "scripts/sandboxFunctionsVerification.mjs"
+      - "scripts/verifyDeployArtifact.mjs"
+      - "scripts/verifyDeployedCallablesFirebase.mjs"
+      - "scripts/verifySandboxFunctions.mjs"
+      - "field-ops-app-vite/test/releaseProvenanceControl.test.mjs"
+      - "field-ops-app-vite/test/releaseIdentityRemoteRetry.test.mjs"
+      - "field-ops-app-vite/test/sandboxGatePhases.test.mjs"
+      - "field-ops-app-vite/test/shellScriptExecutability.test.mjs"
+      - "field-ops-app-vite/test/sandboxCredentials.test.mjs"
+      - "field-ops-app-vite/test/noLiteralControlBytes.test.mjs"
+      - "field-ops-app-vite/test/dynamicDetailCertification.test.mjs"
+      - "field-ops-app-vite/test/releaseToolingLaneCoverage.test.mjs"
+      - "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/probe.mjs"
+      - ".github/workflows/release-tooling-validation.yml"
+  workflow_dispatch:
+
+# CI-V2-1 cancellation, applied only after this lane INDEPENDENTLY passed the S1-S8 screen rather
+# than inheriting the batch result:
+#   S1 secrets ............... none referenced.
+#   S2 writes / deploys ...... none. No deploy, no push, no external write.
+#   S3 self-hosted ........... no; ubuntu-latest.
+#   S4 declared permissions .. contents: read, declared below.
+#   S5 known side effect ..... none. No artifacts, no caches, no external state; every suite works
+#                              in tmpdir() or against a loopback stub server.
+#   S6 effective authority ... repository default_workflow_permissions = "read" (re-read at
+#                              authoring time, not assumed from the batch).
+#   S7 downstream ............ nothing consumes this lane. The estate's only workflow_run consumer,
+#                              eos-intake-execute.yml, listens to "EOS Issue Intake" and not to this.
+#   S8 hidden mutation ....... none; no gh/api/release/dispatch commands anywhere in the job.
+# => SAFE_TO_CANCEL_PR.
+#
+# A MAIN RUN CAN NEVER BE CANCELLED BY THIS POLICY. `event_name` is in the group, so a push run and
+# a pull_request run can never share one; and `cancel-in-progress` evaluates to false for anything
+# that is not a pull_request, so even a shared group could not cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege, stated explicitly. This is a RESTRICTION of the repository default, not an
+# expansion of it: the job reads the checkout and needs nothing else.
+permissions:
+  contents: read
+
+jobs:
+  release-tooling-validation:
+    name: Release tooling validation (offline; no deploy authority)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No install step: every suite below imports only node: builtins and relative modules,
+      # verified transitively through scripts/sandboxCredentials.mjs, scripts/releaseProvenance.mjs,
+      # scripts/releaseRoot.mjs and the run-field-ops-app-vite probe. Adding `npm ci` here would buy
+      # nothing and cost time on a lane whose entire purpose is that it runs often and cheaply.
+
+      - name: Release provenance and identity gates (node:test)
+        run: >-
+          node --test
+          test/releaseProvenanceControl.test.mjs
+          test/releaseIdentityRemoteRetry.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Sandbox gate phases and shell executability (node:test)
+        run: >-
+          node --test
+          test/sandboxGatePhases.test.mjs
+          test/shellScriptExecutability.test.mjs
+          test/dynamicDetailCertification.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Credential access boundary and source hygiene (node:test)
+        run: >-
+          node --test
+          test/sandboxCredentials.test.mjs
+          test/noLiteralControlBytes.test.mjs
+        working-directory: field-ops-app-vite
+
+      # #137 evidence. Proves the fifteen governed inputs actually select THIS lane, so the trigger
+      # list above cannot silently drift away from the contract it exists to select.
+      - name: Governed input selection is complete (#137)
+        run: node --test test/releaseToolingLaneCoverage.test.mjs
+        working-directory: field-ops-app-vite
