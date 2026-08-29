@@ -6283,3 +6283,281 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    placeholder makes its purpose visually obvious — a placeholder is not a label. */
 .ns-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ==========================================================================
+   DISPATCH & SCHEDULING — NORTH STAR P1
+   Visual authority: docs/north-star/dispatch-board/North Star - Dispatch Board P1.dc.html
+   Reconciliation:   docs/design/dispatch-north-star-composition-map.md
+
+   Every colour here resolves to an EXISTING --verenward-* token. The artifact's palette and this
+   stylesheet's ramp are the same palette -- #102B24 evergreen, #E8E2D6 stone, #C3BCAB the strong
+   hairline, #FCFAF6 the data surface, #B08A55 bronze -- so nothing new was introduced to match a
+   picture that was already drawn in the product's own colours.
+   ========================================================================== */
+
+.ns-dispatch__live { display: flex; align-items: center; gap: 7px; margin: 0;
+  font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.ns-dispatch__live-dot { width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-status-success, #237A45); flex: none; }
+
+.ns-dispatch__rule { margin: 4px 0 16px; font-size: var(--font-size-sm);
+  color: var(--color-text-secondary); max-width: 96ch; }
+
+/* The hatch key in the rule line and the blocked-time chips share one fill, so the legend and the
+   thing it explains cannot drift apart. */
+.ns-dispatch__hatch-key,
+.ns-dispatch-chip--blocked,
+.ns-dispatch-week__blocked,
+.ns-dispatch-load__cell--blocked {
+  background: repeating-linear-gradient(135deg,
+    var(--verenward-stone) 0 6px, var(--verenward-border) 6px 12px);
+}
+.ns-dispatch__hatch-key { display: inline-block; width: 26px; height: 11px;
+  vertical-align: -1px; outline: 1px solid var(--verenward-border-strong); }
+
+/* --- view switcher ------------------------------------------------------- */
+.ns-dispatch-views { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.ns-dispatch-views__group { display: flex; border: 1px solid var(--verenward-border-strong); }
+.ns-dispatch-views__tab { font: 600 12px var(--font-interface); padding: 8px 16px;
+  background: var(--verenward-stone-card); color: var(--color-text-secondary);
+  border: 0; cursor: pointer; min-height: 44px; }
+.ns-dispatch-views__tab--standalone { border: 1px solid var(--verenward-border-strong); }
+.ns-dispatch-views__tab--on { background: var(--verenward-evergreen); color: var(--verenward-stone-card); }
+.ns-dispatch-views__tab:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
+
+/* --- messages ------------------------------------------------------------ */
+.ns-dispatch__message { margin: 0 0 14px; padding: 9px 12px; font-size: var(--font-size-sm);
+  border-left: 3px solid var(--verenward-border-strong); background: var(--verenward-stone-card); }
+.ns-dispatch__message--ok { border-left-color: var(--color-status-success, #237A45); }
+/* A WARNING is not a failure. ND-20's out-of-hours placement COMMITTED; styling it as an error would
+   tell a dispatcher their action failed when it succeeded. Bronze is the guidance colour. */
+.ns-dispatch__message--warn { border-left-color: var(--color-brand-accent); }
+.ns-dispatch__message--error { border-left-color: var(--color-status-danger, #B23B3B); }
+.ns-dispatch__failure { margin: 0 0 12px; padding: 9px 12px; font-size: var(--font-size-sm);
+  border-left: 3px solid var(--color-status-danger, #B23B3B); background: var(--verenward-stone-card); }
+.ns-dispatch__loading, .ns-dispatch-denied { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+
+/* --- the lane grid ------------------------------------------------------- */
+.ns-dispatch-grid { margin-bottom: 22px; }
+.ns-dispatch-grid__head { display: grid; grid-template-columns: 170px minmax(0, 1fr);
+  border-bottom: 2px solid var(--verenward-evergreen); }
+.ns-dispatch-grid__hours { display: grid; grid-template-columns: repeat(10, 1fr); }
+.ns-dispatch-grid__hour { padding: 4px 6px; font: 600 10.5px var(--font-interface);
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-dispatch-grid__row { display: grid; grid-template-columns: 170px minmax(0, 1fr);
+  border-bottom: 1px solid var(--verenward-border); }
+.ns-dispatch-grid__row:last-child { border-bottom: 2px solid var(--verenward-evergreen); }
+
+.ns-dispatch-lane__identity { padding: 14px 12px 14px 0; min-width: 0; }
+.ns-dispatch-lane__name { font-size: 13.5px; font-weight: 700; }
+.ns-dispatch-lane__meta { font-size: 11.5px; color: var(--color-text-secondary); }
+.ns-dispatch-lane__meta-muted { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-lane__meta-strained { color: var(--color-brand-accent); }
+
+/* The hour gridlines are a repeating background over the SAME 10-column band the header draws, so
+   the two stay aligned at any width without either measuring the other. */
+.ns-dispatch-lane { position: relative; height: 74px; min-width: 0;
+  background-image: linear-gradient(to right, var(--verenward-stone) 1px, transparent 1px);
+  background-size: 10% 100%; }
+.ns-dispatch-lane--over { background-color: var(--verenward-stone-sunken); }
+
+.ns-dispatch-chip { position: absolute; top: 9px; height: 52px; box-sizing: border-box;
+  padding: 7px 10px; overflow: hidden; text-align: left; border: 0; min-width: 0; }
+.ns-dispatch-chip b { font: 700 11.5px var(--font-interface); display: block;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ns-dispatch-chip span { font-size: 10.5px; opacity: 0.85; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; display: block; }
+.ns-dispatch-chip--wo { background: var(--verenward-evergreen); color: var(--verenward-stone-card); cursor: grab; }
+.ns-dispatch-chip--wo:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: 1px; }
+.ns-dispatch-chip--selected { outline: 2px solid var(--color-brand-accent); outline-offset: 1px; }
+.ns-dispatch-chip--busy { opacity: 0.6; cursor: progress; }
+.ns-dispatch-chip--blocked { color: var(--color-text-secondary);
+  outline: 1px solid var(--verenward-border-strong); outline-offset: -1px; }
+.ns-dispatch-chip--blocked b { color: var(--color-text-secondary); }
+
+/* --- ready queue --------------------------------------------------------- */
+.ns-dispatch-queue { margin-top: 22px; padding-top: 4px; }
+.ns-dispatch-queue--over { background: var(--verenward-stone-sunken); outline: 2px dashed var(--verenward-border-strong); }
+.ns-dispatch-queue__title { font-family: var(--font-record-title); font-size: 19px; font-weight: 700;
+  margin: 0 0 4px; display: flex; align-items: baseline; gap: 8px; }
+.ns-dispatch-queue__count { font: 600 11px var(--font-interface); color: var(--color-text-inverse, #fff);
+  background: var(--color-status-danger, #B23B3B); padding: 2px 8px; border-radius: 999px; }
+.ns-dispatch-queue__note { font-size: var(--font-size-sm); color: var(--color-text-secondary); margin: 0 0 12px; }
+.ns-dispatch-queue__clear { font-size: var(--font-size-sm); color: var(--color-text-secondary);
+  border-top: 1px solid var(--verenward-border); padding-top: 14px; margin: 0; }
+.ns-dispatch-queue__cards { display: flex; gap: 12px; flex-wrap: wrap;
+  border-top: 1px solid var(--verenward-border); padding-top: 14px; }
+
+.ns-dispatch-card { min-width: 240px; flex: 0 1 260px; background: var(--verenward-stone-card);
+  outline: 1px solid var(--verenward-border-strong); outline-offset: -1px; padding: 10px 12px; cursor: grab; }
+.ns-dispatch-card--selected { outline: 2px solid var(--color-brand-accent); }
+.ns-dispatch-card--busy { opacity: 0.6; cursor: progress; }
+.ns-dispatch-card__line1 { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.ns-dispatch-card__priority { font: 700 10px var(--font-interface); color: var(--color-brand-accent); }
+.ns-dispatch-card__ref { font-size: 12.5px; }
+.ns-dispatch-card__type { font-size: 11.5px; color: var(--color-text-secondary); }
+.ns-dispatch-card__customer { font-size: 11.5px; color: var(--color-text-secondary); margin-top: 3px; }
+.ns-dispatch-card__unresolved { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-card__actions { display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.ns-dispatch-card__rec { font-size: 11.5px; }
+.ns-dispatch-card__score { color: var(--color-text-tertiary, #6B7A74); }
+
+/* --- week + fortnight ---------------------------------------------------- */
+.ns-dispatch-week, .ns-dispatch-load { margin-bottom: 22px; }
+.ns-dispatch-week__head, .ns-dispatch-week__row { display: grid;
+  grid-template-columns: 150px repeat(7, minmax(0, 1fr)); }
+.ns-dispatch-week__head { border-bottom: 2px solid var(--verenward-evergreen); }
+.ns-dispatch-week__row { border-bottom: 1px solid var(--verenward-border); }
+.ns-dispatch-week__dayhead { padding: 4px 8px; font: 600 10.5px var(--font-interface);
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-dispatch-week__today { color: var(--color-brand-accent); }
+.ns-dispatch-week__identity { padding: 10px 12px 10px 0; font-size: 13px; font-weight: 700; }
+.ns-dispatch-week__cell { border-left: 1px solid var(--verenward-stone); padding: 8px;
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-height: 44px; }
+.ns-dispatch-week__cell--droppable { background: var(--verenward-stone-sunken); }
+.ns-dispatch-week__chip { background: var(--verenward-evergreen); color: var(--verenward-stone-card);
+  padding: 4px 8px; font: 600 11px var(--font-interface); }
+.ns-dispatch-week__blocked { padding: 4px 8px; font: 600 11px var(--font-interface);
+  outline: 1px solid var(--verenward-border-strong); outline-offset: -1px; color: var(--color-text-secondary); }
+.ns-dispatch-week__open { font-size: 11px; color: var(--color-text-tertiary, #6B7A74); }
+/* Weekends are shown but quieter — present so nothing is hidden, recessive so the working week still
+   reads first. */
+.ns-dispatch-week__cell--weekend { background: var(--verenward-stone); }
+
+.ns-dispatch-load__head, .ns-dispatch-load__row { display: grid;
+  /* auto-fit rather than a fixed 10: the band gains a column when a weekend carries work. */
+  grid-template-columns: 150px repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; }
+.ns-dispatch-load__head { border-bottom: 2px solid var(--verenward-evergreen);
+  font: 600 10px var(--font-interface); text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-dispatch-load__identity-col, .ns-dispatch-load__dayhead { padding: 4px; }
+.ns-dispatch-load__identity { text-align: left; padding: 12px 0; font-size: 13px; }
+.ns-dispatch-load__weekbreak { border-right: 2px solid var(--verenward-evergreen); }
+.ns-dispatch-load__cell { padding: 12px 4px; font: 600 11px var(--font-interface);
+  text-align: center; border: 0; cursor: pointer; min-height: 44px; }
+.ns-dispatch-load__cell:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
+/* Four buckets, and UNKNOWN is one of them. It is the page ground rather than a paler shade of
+   booked, so an unrecorded shift cannot be misread as a quiet day. */
+.ns-dispatch-load__cell[data-load="low"] { background: #DCE5DF; }
+.ns-dispatch-load__cell[data-load="medium"] { background: #F2E3C2; }
+.ns-dispatch-load__cell[data-load="high"] { background: #E9CDCD; }
+.ns-dispatch-load__cell[data-load="unknown"] { background: var(--verenward-stone); }
+.ns-dispatch-load__unknown { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-load__legend { font-size: 11.5px; color: var(--color-text-secondary); margin: 12px 0 0; }
+
+.ns-dispatch-map { border: 1px solid var(--verenward-border-strong);
+  background: var(--verenward-stone-card); padding: 22px; margin-bottom: 22px; }
+.ns-dispatch-map__note { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); max-width: 72ch; }
+
+/* --- footer band --------------------------------------------------------- */
+.ns-dispatch__footer { margin-top: 26px; display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px; gap: 56px; }
+.ns-dispatch__footer-title { font: 700 11px var(--font-interface); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--color-text-secondary); margin: 0 0 8px;
+  border-bottom: 2px solid var(--verenward-evergreen); padding-bottom: 6px; }
+.ns-dispatch__rules p { font-size: var(--font-size-sm); color: var(--color-text-secondary);
+  line-height: 1.65; margin: 0; }
+
+/* --- placement dialog ---------------------------------------------------- */
+.ns-dispatch-dialog-scrim { position: fixed; inset: 0; background: rgba(16, 43, 36, 0.45);
+  display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 60; }
+.ns-dispatch-dialog { background: var(--verenward-stone-card); outline: 1px solid var(--verenward-border-strong);
+  padding: 22px 24px; width: min(520px, 100%); max-height: 90vh; overflow: auto;
+  display: grid; gap: 12px; }
+.ns-dispatch-dialog__title { font-family: var(--font-record-title); font-size: 19px; font-weight: 700; margin: 0; }
+.ns-dispatch-dialog__subject { margin: 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.ns-dispatch-dialog__field { display: grid; gap: 4px; font-size: var(--font-size-sm); }
+.ns-dispatch-dialog__field > span { font-weight: 600; }
+.ns-dispatch-dialog__field input, .ns-dispatch-dialog__field select, .ns-dispatch-dialog__field textarea {
+  font: inherit; padding: 8px 10px; min-height: 44px;
+  border: 1px solid var(--verenward-border-strong); background: var(--color-surface, #fff); }
+.ns-dispatch-dialog__field textarea { min-height: 72px; resize: vertical; }
+.ns-dispatch-dialog__error { margin: 0; font-size: var(--font-size-sm); padding: 8px 10px;
+  border-left: 3px solid var(--color-status-danger, #B23B3B); background: var(--verenward-stone-sunken); }
+.ns-dispatch-dialog__actions { display: flex; gap: 8px; margin-top: 4px; }
+.ns-dispatch-dialog__hint { margin: 0; font-size: 11.5px; color: var(--color-text-secondary); }
+
+/* --- responsive ---------------------------------------------------------- */
+@media (max-width: 1100px) {
+  .ns-dispatch__footer { grid-template-columns: 1fr; gap: 24px; }
+}
+@media (max-width: 900px) {
+  /* The lane grid is a CLOCK. Below the width where an hour reads as a distinguishable column, the
+     geometry stops being informative and starts being decoration -- so the identity column narrows
+     and the board scrolls horizontally rather than compressing ten hours into thumb-widths. */
+  .ns-dispatch-grid, .ns-dispatch-week, .ns-dispatch-load { overflow-x: auto; }
+  .ns-dispatch-grid__head, .ns-dispatch-grid__row { min-width: 720px; }
+  .ns-dispatch-week__head, .ns-dispatch-week__row { min-width: 820px; }
+  .ns-dispatch-load__head, .ns-dispatch-load__row { min-width: 820px; }
+  .ns-dispatch-card { flex: 1 1 100%; }
+}
+
+/* Scheduled work that carries no window. It cannot be drawn on a lane, and it must not vanish --
+   quiet enough not to compete with the board, present enough to be found and fixed. */
+.ns-dispatch-unplaced { margin-top: 20px; padding: 12px 14px;
+  border-left: 3px solid var(--color-brand-accent); background: var(--verenward-stone-card); }
+.ns-dispatch-unplaced__title { font: 700 11px var(--font-interface); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--color-text-secondary); margin: 0 0 4px; }
+.ns-dispatch-unplaced__note { margin: 0 0 8px; font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.ns-dispatch-unplaced__rows { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Background AND colour together: a class that re-grounds a button without restating its foreground
+   inherits whatever the surrounding text colour happens to be, which is how a control ends up
+   unreadable on a surface nobody tested it against. */
+.ns-dispatch-unplaced__row { font: 600 12px var(--font-interface); padding: 8px 12px; min-height: 44px;
+  background: var(--color-surface, #fff); color: var(--color-text-primary);
+  border: 1px solid var(--verenward-border-strong); cursor: pointer; }
+
+/* The five structural hooks the composition names. Declared rather than left phantom: a class in the
+   markup with no rule is a layout intention nobody can see, and the next reader cannot tell a
+   deliberate no-op from an omission. */
+.ns-dispatch { container-type: inline-size; container-name: ns-dispatch; }
+/* The lane grid's and week grid's identity gutters. They exist to reserve the column; the width is
+   owned by the parent grid-template, so these carry no width of their own on purpose. */
+.ns-dispatch-grid__identity-col,
+.ns-dispatch-week__identity-col { min-width: 0; }
+.ns-dispatch-queue__head { margin-bottom: 4px; }
+.ns-dispatch__session { min-width: 0; }
+
+/* Which day the board is showing. The Day tab names a SPECIFIC day, so there has to be a way to
+   choose it — without one the board could only ever reach the next fortnight. */
+.ns-dispatch-views__nav { display: flex; align-items: center; gap: 6px; }
+.ns-dispatch-views__step { font: 600 12px var(--font-interface); min-width: 44px; min-height: 44px;
+  padding: 8px 12px; background: var(--verenward-stone-card); color: var(--color-text-secondary);
+  border: 1px solid var(--verenward-border-strong); cursor: pointer; }
+.ns-dispatch-views__step:disabled { opacity: 0.5; cursor: default; }
+.ns-dispatch-views__step:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
+.ns-dispatch-views__jump { display: flex; align-items: center; gap: 6px; font-size: 11.5px;
+  color: var(--color-text-secondary); }
+.ns-dispatch-views__jump input { font: inherit; min-height: 44px; padding: 6px 8px;
+  background: var(--color-surface, #fff); color: var(--color-text-primary);
+  border: 1px solid var(--verenward-border-strong); }
+/* The "Go to" label. Visible rather than sr-only: a bare date field beside two arrows reads as an
+   unexplained control, and the word costs one line. */
+.ns-dispatch-views__jump-label { font: 600 11px var(--font-interface); letter-spacing: 0.08em;
+  text-transform: uppercase; }
+
+/* The technician selector — frame 1a puts it at the right of the view row, after a spacer, with an
+   uppercase TECHNICIANS label and a bordered control reading "All technicians (n) ▾". */
+.ns-dispatch-views__spacer { flex: 1; }
+.ns-dispatch-techfilter { position: relative; display: flex; align-items: center; gap: 10px; }
+.ns-dispatch-techfilter__label { font: 600 11px var(--font-interface); letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-secondary); }
+.ns-dispatch-techfilter__trigger { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-width: 190px; min-height: 44px; padding: 7px 14px;
+  font: 600 12.5px var(--font-interface); background: var(--verenward-stone-card);
+  color: var(--color-text-primary); border: 1px solid var(--verenward-border-strong); cursor: pointer; }
+.ns-dispatch-techfilter__trigger:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
+.ns-dispatch-techfilter__caret { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-techfilter__menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  min-width: 260px; max-height: 340px; overflow: auto; padding: 8px;
+  background: var(--verenward-stone-card); color: var(--color-text-primary);
+  border: 1px solid var(--verenward-border-strong); }
+.ns-dispatch-techfilter__all { width: 100%; text-align: left; min-height: 44px; padding: 8px 10px;
+  font: 600 12px var(--font-interface); background: var(--color-surface, #fff);
+  color: var(--color-text-primary); border: 1px solid var(--verenward-border-strong);
+  cursor: pointer; margin-bottom: 6px; }
+.ns-dispatch-techfilter__all:disabled { opacity: 0.5; cursor: default; }
+.ns-dispatch-techfilter__list { list-style: none; margin: 0; padding: 0; }
+.ns-dispatch-techfilter__option { display: flex; align-items: center; gap: 8px; min-height: 44px;
+  padding: 4px 10px; font-size: var(--font-size-sm); cursor: pointer; }
+.ns-dispatch-techfilter__option:hover { background: var(--verenward-stone-sunken); }

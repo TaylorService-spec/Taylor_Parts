@@ -137,9 +137,11 @@ const KNOWN_UNSTYLED = new Set([
   "fo-tone-text",
   // Non-fo-prefixed debt, pre-existing and unrelated to 887a0a50.
   "disp-pane--preview",
-  "disp-pane--queue",
-  "disp-pane--techs",
-  "disp-reassign-confirm",
+  // THREE ENTRIES RETIRED 2026-08-27 by the Dispatch North Star P1 composition, and retired is the
+  // right word: they are not fixed, their referents are gone. "disp-pane--queue" and
+  // "disp-pane--techs" belonged to dispatcherBoard/WorkOrderQueue.jsx and TechnicianBoard.jsx, both
+  // deleted; "disp-reassign-confirm" belonged to the old board's inline reassign modal, replaced
+  // by PlacementDialog. The backlog may only shrink, and this is it shrinking.
   "eos-auth__workspace-name",
   "wo-action-destructive",
   "wo-action-error",

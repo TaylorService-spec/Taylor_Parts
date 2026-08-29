@@ -1,310 +1,667 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useSessionActivityFeed } from "../../hooks/useSessionActivityFeed";
+import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
+import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
+import {
+  reassignScheduledWorkOrder,
+  rescheduleWorkOrder,
+} from "../../services/schedulingCommandClient.js";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
-import WorkOrderQueue from "./WorkOrderQueue";
-import { useAccountNames } from "../../hooks/useAccountNames";
-import WorkOrderPreview from "./WorkOrderPreview";
-import TechnicianBoard from "./TechnicianBoard";
-import DispatcherActivityFeed from "./DispatcherActivityFeed";
+import {
+  dayBand,
+  dayOccupancy,
+  fleetBookedPercent,
+  isPlaced,
+  laneCapacity,
+  placementWindow,
+  startOfDayMillis,
+} from "../../domain/dispatchBoardGeometry.js";
+import {
+  refusalContextFor,
+  schedulingRefusalMessage,
+  schedulingWarningMessages,
+} from "../../domain/schedulingRefusal.js";
+import { workOrderPastDueItem } from "../../domain/workOrderAttentionProjection.js";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
-import { WORK_ORDER_STATUS_VALUES, workOrderStatusLabel } from "../../domain/workOrderStatus";
-import { Button } from "../../shared/ui/primitives/index.js";
-import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import DispatchLaneGrid from "./DispatchLaneGrid.jsx";
+import ReadyToScheduleQueue from "./ReadyToScheduleQueue.jsx";
+import PlacementDialog, { PLACEMENT_INTENT } from "./PlacementDialog.jsx";
+import {
+  DISPATCH_VIEW,
+  DispatchMapView,
+  DispatchTwoWeekLoad,
+  DispatchViewSwitcher,
+  DispatchWeekView,
+} from "./DispatchViews.jsx";
+import TechnicianFilter, { visibleTechnicians } from "./TechnicianFilter.jsx";
+import WorkOrderPreview from "./WorkOrderPreview";
+import DispatcherActivityFeed from "./DispatcherActivityFeed";
 
-// Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
-// screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
-// or WorkOrderDetail.jsx/WorkOrderActions.jsx, all of which are
-// untouched by this feature and keep working exactly as before.
+// ════════════════════ DISPATCH & SCHEDULING — NORTH STAR P1 ════════════════════
 //
-// Named "dispatcherBoard", deliberately NOT "DispatcherWorkspace" --
-// that name already belongs to unrelated work on the still-unmerged
-// epic-2-work-order-interactive-ui branch; reusing it here would
-// recreate exactly the kind of naming collision this project has hit
-// repeatedly this session.
+// Visual authority: docs/north-star/dispatch-board/North Star - Dispatch Board P1.dc.html (frame 1a
+// canonical, 1e week/fortnight, 1b guarded moves, 1c honest states, 1d the slot matrix).
+// Reconciliation: docs/design/dispatch-north-star-composition-map.md.
 //
-// Single Firestore listener per collection (useWorkOrders() +
-// useFirestoreCollection(TECHNICIANS_COLLECTION)) -- no per-column or
-// per-technician listeners, matching this epic's performance
-// requirement. All filtering/search is client-side over the one
-// already-loaded workOrders array. Recommendations are computed once
-// per render via recommendTechniciansBatch() (technician aggregates
-// computed once, not once per queue card -- see that function's
-// header comment for the complexity difference at scale).
+// This replaces a master-detail board (queue on the left, technician COLUMNS on the right) with the
+// artifact's composition: an hour-header LANE GRID over the day, the ready queue beneath it, and the
+// board rules + session feed as a footer band. That is the change; everything governed underneath it
+// is reused rather than rebuilt.
 //
-// Drag-and-drop dispatch: on drop, this calls transitionWorkOrder()
-// directly (the same Cloud Function WorkOrderActions.jsx's Dispatch
-// button already calls) -- never writes Firestore directly, never
-// optimistically persists an assignment. The backend remains
-// authoritative: a drop is only enabled when
-// getAllowedActions(status, role, false) actually includes "Dispatch"
-// (i.e. only for SCHEDULED work orders, matching the real transition
-// table -- see ADR-002's "Work Order Lifecycle Authority" section).
-// Board refresh comes entirely from useWorkOrders()'s onSnapshot, same
-// as everywhere else in this app. `isDispatching` guards against a
-// rapid double-drop firing two concurrent transitionWorkOrder() calls
-// for the same Work Order.
+// ════════════════════ THE BOARD IS A FASTER HAND, NOT A NEW AUTHORITY ════════════════════
+//
+// Every gesture ends in a trusted command and the server decides. Nothing is written optimistically,
+// nothing is patched into the local array on success, and the live `useWorkOrders` subscription is
+// the ONLY thing that moves a chip — so what the board draws is always committed truth, including
+// after a refusal, where the previous placement is simply still there because nothing ever changed.
+//
+//   queue card  → lane          transitionWorkOrder "Schedule"        READY_TO_DISPATCH → SCHEDULED
+//   lane chip   → same lane     rescheduleWorkOrderCallable           status unchanged
+//   lane chip   → another lane  reassignScheduledWorkOrderCallable    window taken from the record
+//   lane chip   → queue         transitionWorkOrder "Unschedule"      SCHEDULED → READY_TO_DISPATCH
+//
+// The artifact maps its drop to the governed DISPATCH transition, because Dispatch was the only board
+// action that existed when it was drawn (2026-08-27 04:54 — about fourteen hours before the governed
+// Scheduling domain merged). A queue Work Order is READY_TO_DISPATCH and has no window at all, so
+// "drop onto a time slot in a technician's day" was always describing a Schedule. The composition map
+// records that divergence in full. Dispatch itself is untouched and stays reachable through the
+// preview pane — retiring a surface must never delete a governed capability with it.
+//
+// ════════════════════ AVAILABILITY IS READ, NOT SUBSCRIBED ════════════════════
+//
+// Both availability collections deny client reads (deployed; proved live by the Scheduling Functional
+// Gate). `useTechnicianAvailability` is the trusted projection and the only source of shift lines,
+// hatched blocked time and every percentage on this page. A technician with no record reads as
+// UNKNOWN and renders as "Shift not recorded" with no percentage — never 0%.
 export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
+  const { data: technicians, loading: techniciansLoading, error: techniciansError } =
+    useFirestoreCollection(TECHNICIANS_COLLECTION);
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
-  const { data: technicians, loading: techniciansLoading, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
+  const [view, setView] = useState(DISPATCH_VIEW.DAY);
+  const [anchorMillis, setAnchorMillis] = useState(() => startOfDayMillis(Date.now()));
   const [selectedId, setSelectedId] = useState(null);
-  const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [dispatchError, setDispatchError] = useState(null);
-  const [dispatchingWorkOrderId, setDispatchingWorkOrderId] = useState(null);
-  // H20 fix: reassigning a Work Order away from the technician it was Scheduled for is a distinct,
-  // audited, reason-required action (Owner ruling) -- never a silent side effect of a drag-drop or a
-  // picker selection. Both handleDispatchDrop call sites (WorkOrderPreview's picker button AND
-  // TechnicianBoard's drag-and-drop) funnel through this ONE function, so this is the single place that
-  // decides whether to dispatch immediately or hold for a reason -- {workOrder, technicianId} awaiting a
-  // typed reason, or null when nothing is pending.
-  const [pendingReassignment, setPendingReassignment] = useState(null);
-  const [reassignReasonInput, setReassignReasonInput] = useState("");
-  const queueRef = useRef(null);
+  const [dragging, setDragging] = useState(null);
+  const [dragOverLaneId, setDragOverLaneId] = useState(null);
+  const [queueDragOver, setQueueDragOver] = useState(false);
+  const [busyWorkOrderId, setBusyWorkOrderId] = useState(null);
+  const [boardMessage, setBoardMessage] = useState(null);
+  const [pendingPlacement, setPendingPlacement] = useState(null);
+  // null = every technician. NOT a set holding everyone: a roster that grows would otherwise leave a
+  // new technician silently filtered OUT of a board whose owner believes they see the whole fleet.
+  const [technicianFilter, setTechnicianFilter] = useState(null);
 
-  // Debounced search -- no shared debounce hook exists on main (only
-  // on an unmerged branch), so this is a small self-contained
-  // setTimeout debounce rather than a new shared abstraction.
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchInput.trim().toLowerCase()), 250);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
-
-  const filteredWorkOrders = useMemo(() => {
-    return workOrders.filter((wo) => {
-      if (statusFilter !== "ALL" && wo.status !== statusFilter) return false;
-      if (!debouncedSearch) return true;
-      const haystack = `${wo.woNumber ?? ""} ${wo.customerId ?? ""} ${wo.type ?? ""}`.toLowerCase();
-      return haystack.includes(debouncedSearch);
-    });
-  }, [workOrders, statusFilter, debouncedSearch]);
-
-  // Persistent selection: looked up by id from the live array every
-  // render, so it survives onSnapshot refreshes without any extra
-  // bookkeeping -- if the selected WO still exists, it's still
-  // selected; if it was removed/filtered out, selection just clears
-  // (falls back to null, WorkOrderPreview shows its empty state).
-  const selectedWorkOrder = filteredWorkOrders.find((wo) => wo.id === selectedId) ?? null;
-
-  useEffect(() => {
-    if (selectedId && !workOrders.some((wo) => wo.id === selectedId)) {
-      setSelectedId(null);
+  // The availability window spans what the CURRENT VIEW can show, so one read serves the day board,
+  // the week grid and the fortnight band without any of them issuing their own.
+  const availabilityWindow = useMemo(() => {
+    if (view === DISPATCH_VIEW.FORTNIGHT) {
+      return { startMillis: anchorMillis - 7 * 86_400_000, endMillis: anchorMillis + 21 * 86_400_000 };
     }
-  }, [workOrders, selectedId]);
+    if (view === DISPATCH_VIEW.WEEK) {
+      return { startMillis: anchorMillis - 7 * 86_400_000, endMillis: anchorMillis + 14 * 86_400_000 };
+    }
+    return { startMillis: startOfDayMillis(anchorMillis), endMillis: startOfDayMillis(anchorMillis) + 86_400_000 };
+  }, [view, anchorMillis]);
+
+  const {
+    byTechnicianId: availabilityByTechnicianId,
+    loading: availabilityLoading,
+    error: availabilityError,
+    refresh: refreshAvailability,
+  } = useTechnicianAvailability({
+    startMillis: availabilityWindow.startMillis,
+    endMillis: availabilityWindow.endMillis,
+    enabled: view !== DISPATCH_VIEW.MAP,
+  });
+
+  // ---- derived, all from the one live array -------------------------------------------------
+
+  const placedWorkOrders = useMemo(() => (workOrders ?? []).filter(isPlaced), [workOrders]);
+
+  // SCHEDULED work with NO window cannot be drawn on a lane — there is no geometry for it. It must
+  // not therefore vanish: it is a real work order in a real state, and a board that silently dropped
+  // it would hide exactly the record a dispatcher most needs to find. The governed Schedule path
+  // requires a window, so this is empty in practice; when it is not, the board says so rather than
+  // pretending the job does not exist.
+  const scheduledWithoutWindow = useMemo(
+    () => (workOrders ?? []).filter((wo) => wo.status === "SCHEDULED" && !isPlaced(wo)),
+    [workOrders],
+  );
+
+  const queueWorkOrders = useMemo(
+    () =>
+      (workOrders ?? [])
+        .filter((wo) => wo.status === "READY_TO_DISPATCH")
+        // Priority ascending (1 is highest), then oldest first — the artifact's "ranked by priority
+        // and age".
+        .sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9) || millisOf(a.createdAt) - millisOf(b.createdAt)),
+    [workOrders],
+  );
+
+  const workOrdersByTechnician = useMemo(() => {
+    const map = new Map();
+    for (const wo of placedWorkOrders) {
+      const start = placementWindow(wo)?.startMillis;
+      if (start == null) continue;
+      if (view === DISPATCH_VIEW.DAY && startOfDayMillis(start) !== startOfDayMillis(anchorMillis)) continue;
+      if (!map.has(wo.scheduledTechId)) map.set(wo.scheduledTechId, []);
+      map.get(wo.scheduledTechId).push(wo);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => placementWindow(a).startMillis - placementWindow(b).startMillis);
+    }
+    return map;
+  }, [placedWorkOrders, view, anchorMillis]);
+
+  // The drawn hour band, WIDENED by whatever this day actually holds.
+  //
+  // Computed here rather than from the date alone because it depends on the day's placements and
+  // blocked time: ND-20 allows work outside recorded hours, so a fixed 7a-5p window would commit an
+  // 02:00 emergency and then draw nothing. Derived from the same two sources the lanes render from,
+  // so the grid can always draw everything the lanes contain.
+  // The lanes the three views draw. Presentation only — availability is still read for the WHOLE
+  // roster, recommendations still score every technician, and the queue is untouched.
+  const lanes = useMemo(() => visibleTechnicians(technicians ?? [], technicianFilter), [technicians, technicianFilter]);
+
+  const band = useMemo(
+    () => dayBand(anchorMillis, dayOccupancy([...workOrdersByTechnician.values()].flat(), [...availabilityByTechnicianId.values()])),
+    [anchorMillis, workOrdersByTechnician, availabilityByTechnicianId],
+  );
+
+  // Scored for the queue AND for whatever is selected.
+  //
+  // Queue-only was a real regression: the preview's "Dispatch to…" picker renders only when it has
+  // recommendations, and Dispatch is legal from SCHEDULED — which is never in the queue. Scoring the
+  // queue alone therefore removed a governed capability from the board without removing a single
+  // line of the code that implements it. Retiring a surface's presentation must not delete a
+  // capability with it (the SA-G7 lesson, one family earlier).
+  const scoringTargets = useMemo(() => {
+    const selected = (workOrders ?? []).find((wo) => wo.id === selectedId);
+    return selected && !queueWorkOrders.some((wo) => wo.id === selected.id)
+      ? [...queueWorkOrders, selected]
+      : queueWorkOrders;
+  }, [queueWorkOrders, workOrders, selectedId]);
 
   const recommendationsByWorkOrderId = useMemo(
-    () => recommendTechniciansBatch(filteredWorkOrders, technicians, workOrders),
-    [filteredWorkOrders, technicians, workOrders]
+    () => recommendTechniciansBatch(scoringTargets, technicians ?? [], workOrders ?? []),
+    [scoringTargets, technicians, workOrders],
   );
 
-  // H20 fix: extracted so both the immediate (same-technician) path below AND confirmReassignment() share
-  // the exact same transitionWorkOrder() call and error handling -- one dispatch code path, not two.
-  async function dispatch(workOrder, technicianId, reassignReason) {
-    setDispatchingWorkOrderId(workOrder.id);
-    try {
-      await transitionWorkOrder(workOrder.id, "Dispatch", {
-        assignedTechId: technicianId,
-        ...(reassignReason ? { reassignReason } : {}),
+  const selectedWorkOrder = (workOrders ?? []).find((wo) => wo.id === selectedId) ?? null;
+  useEffect(() => {
+    if (selectedId && !(workOrders ?? []).some((wo) => wo.id === selectedId)) setSelectedId(null);
+  }, [workOrders, selectedId]);
+
+  // The header's workload sentence. Every number here is governed or it is absent: `pastDue` comes
+  // from the same projection the rest of the product uses, and the fleet percentage renders only
+  // when every technician in view has a recorded schedule (see fleetBookedPercent).
+  const summaryItems = useMemo(() => {
+    const items = [];
+    if (!workOrdersLoading && !workOrdersError) {
+      items.push({ label: `${queueWorkOrders.length} unassigned`, tone: queueWorkOrders.length ? "attention" : undefined });
+      const pastDue = (workOrders ?? []).filter((wo) => workOrderPastDueItem(wo)).length;
+      if (pastDue > 0) items.push({ label: `${pastDue} past due`, tone: "attention" });
+    }
+    const capacities = (technicians ?? []).map((t) =>
+      laneCapacity(availabilityByTechnicianId.get(t.id) ?? null, workOrdersByTechnician.get(t.id) ?? [], band),
+    );
+    const fleet = fleetBookedPercent(capacities);
+    if (fleet != null) items.push({ label: `fleet booked ${fleet}%` });
+    return items;
+  }, [
+    queueWorkOrders.length, workOrders, workOrdersLoading, workOrdersError,
+    technicians, availabilityByTechnicianId, workOrdersByTechnician, band,
+  ]);
+
+  // ---- the four governed placement commands -------------------------------------------------
+
+  const runPlacement = useCallback(
+    async ({ intent, workOrderId, technicianId, startMillis, endMillis, reason }) => {
+      const workOrder = (workOrders ?? []).find((wo) => wo.id === workOrderId);
+      if (!workOrder) return { ok: false, message: "That work order is no longer on the board." };
+
+      setBusyWorkOrderId(workOrderId);
+      setBoardMessage(null);
+      const context = refusalContextFor(technicians ?? [], technicianId ?? workOrder.scheduledTechId, workOrder);
+
+      try {
+        if (intent === PLACEMENT_INTENT.SCHEDULE) {
+          // The EXISTING governed Schedule path — the same transition every other surface uses. No
+          // second scheduling function was invented for the board (ND-24 was exactly that lesson).
+          const result = await transitionWorkOrder(workOrder.id, "Schedule", {
+            scheduledStart: startMillis,
+            scheduledEnd: endMillis,
+            scheduledTechId: technicianId,
+          });
+          announce(schedulingWarningMessages(result?.warnings, context), `${workOrder.woNumber} scheduled.`);
+          return { ok: true };
+        }
+
+        if (intent === PLACEMENT_INTENT.RESCHEDULE) {
+          const res = await rescheduleWorkOrder({
+            workOrderId: workOrder.id,
+            scheduledStart: startMillis,
+            scheduledEnd: endMillis,
+            ...(technicianId ? { scheduledTechId: technicianId } : {}),
+            reason,
+            // The optimistic-concurrency guard: the start this board BELIEVED it was moving. If
+            // somebody else moved it between render and drop, the server refuses STALE_WORK_ORDER
+            // rather than silently overwriting a placement this dispatcher never saw.
+            expectedScheduledStart: placementWindow(workOrder)?.startMillis,
+          });
+          if (res.errorStatus) return refusal(res, context);
+          announce(schedulingWarningMessages(res.result?.warnings, context), `${workOrder.woNumber} moved.`);
+          return { ok: true };
+        }
+
+        if (intent === PLACEMENT_INTENT.REASSIGN) {
+          const res = await reassignScheduledWorkOrder({
+            workOrderId: workOrder.id,
+            scheduledTechId: technicianId,
+            reason,
+          });
+          if (res.errorStatus) return refusal(res, context);
+          announce(schedulingWarningMessages(res.result?.warnings, context), `${workOrder.woNumber} reassigned.`);
+          return { ok: true };
+        }
+
+        if (intent === PLACEMENT_INTENT.UNSCHEDULE) {
+          // ND-18's governed reverse edge. MarkReady is NEVER used here: it targets the same status
+          // and would be a second, reason-free way out of SCHEDULED — the exact defect
+          // ACTION_ALLOWED_FROM exists to prevent.
+          await transitionWorkOrder(workOrder.id, "Unschedule", { unscheduleReason: reason });
+          setBoardMessage({ tone: "ok", text: `${workOrder.woNumber} returned to the queue.` });
+          return { ok: true };
+        }
+
+        return { ok: false, message: "That action is not available." };
+      } catch (err) {
+        // transitionWorkOrder throws; the scheduling callables return. Both end up as a sentence.
+        const code = err?.details?.code ?? null;
+        const message = code
+          ? schedulingRefusalMessage(code, stripPrefix(err?.code), context)
+          : workflowActionErrorMessage(err);
+        setBoardMessage({ tone: "error", text: message });
+        return { ok: false, message };
+      } finally {
+        setBusyWorkOrderId(null);
+        // A placement just consumed or released capacity; re-read so the lane is not still reporting
+        // the availability it had a moment ago.
+        refreshAvailability();
+      }
+
+      function refusal(res, ctx) {
+        const message = schedulingRefusalMessage(res.errorCode, res.errorStatus, ctx);
+        setBoardMessage({ tone: "error", text: message });
+        return { ok: false, message };
+      }
+
+      function announce(warnings, okText) {
+        // ND-20's warnings ride along with a SUCCESSFUL placement and must not be styled as failures
+        // — nor dropped, which would make an out-of-hours placement look unremarkable.
+        if (warnings.length) setBoardMessage({ tone: "warn", text: `${okText} ${warnings.join(" ")}` });
+        else setBoardMessage({ tone: "ok", text: okText });
+      }
+    },
+    [workOrders, technicians, refreshAvailability],
+  );
+
+  // ---- gestures -> intents -------------------------------------------------------------------
+
+  const intentForDrop = useCallback((workOrder, targetTechnicianId) => {
+    if (workOrder.status === "READY_TO_DISPATCH") return PLACEMENT_INTENT.SCHEDULE;
+    if (workOrder.status !== "SCHEDULED") return null;
+    return workOrder.scheduledTechId === targetTechnicianId
+      ? PLACEMENT_INTENT.RESCHEDULE
+      : PLACEMENT_INTENT.REASSIGN;
+  }, []);
+
+  const handleDropOnLane = useCallback(
+    (technicianId, fraction) => {
+      const workOrder = dragging;
+      setDragging(null);
+      setDragOverLaneId(null);
+      if (!workOrder) return;
+
+      const intent = intentForDrop(workOrder, technicianId);
+      if (!intent) {
+        setBoardMessage({
+          tone: "error",
+          text: `${workOrder.woNumber} cannot be moved from the board — it is ${statusWords(workOrder.status)}.`,
+        });
+        return;
+      }
+
+      const dropStart = band.startMillis + Math.round(fraction * (band.endMillis - band.startMillis));
+      // Snapped to the quarter hour: the pointer resolves to the minute, and a job starting at 9:07
+      // because of where a cursor landed is precision the gesture does not actually have.
+      const startMillis = Math.round(dropStart / 900_000) * 900_000;
+      const existing = placementWindow(workOrder);
+      const durationMinutes =
+        existing?.durationMinutes ?? workOrder.estimatedDurationMinutes ?? 120;
+
+      // Reassign takes its window from the RECORD, so it opens the gate without a time; the other two
+      // carry the dropped time in. All three land in the same dialog, which is the same gate the
+      // picker path opens (artifact 1b: "One gate serves drag and picker").
+      setPendingPlacement({
+        intent,
+        workOrder,
+        technicianId,
+        startMillis: intent === PLACEMENT_INTENT.REASSIGN ? null : startMillis,
+        durationMinutes,
       });
-    } catch (err) {
-      console.error(err);
-      // site-work r3 L: previously surfaced err.message verbatim, leaking raw
-      // Firebase/Functions codes. Route through the same safe-copy helper
-      // Dispatch.jsx's assign() uses for this identical transitionWorkOrder()
-      // "Dispatch" failure shape.
-      setDispatchError(workflowActionErrorMessage(err));
-    } finally {
-      setDispatchingWorkOrderId((id) => (id === workOrder.id ? null : id));
-    }
-  }
+    },
+    [dragging, intentForDrop, band],
+  );
 
-  // H20 fix: the single entry point both WorkOrderPreview's picker button AND TechnicianBoard's drag-drop
-  // call. The server is the real authority on whether this is a reassignment (it compares against
-  // wo.scheduledTechId at the moment Dispatch runs) -- this client-side check only decides whether to hold
-  // for a reason before calling dispatch(); the server still enforces the requirement itself regardless.
-  async function handleDispatchDrop(workOrder, technicianId) {
-    if (dispatchingWorkOrderId === workOrder.id) return;
-    setDispatchError(null);
-    const allowed = getAllowedActions(workOrder.status, role, false);
-    if (!allowed.includes("Dispatch")) {
-      setDispatchError(
-        `Cannot dispatch ${workOrder.woNumber ?? workOrder.id}: only SCHEDULED work orders can be dispatched (current status: ${workOrder.status}).`
-      );
+  const handleDropOnQueue = useCallback(() => {
+    const workOrder = dragging;
+    setDragging(null);
+    setQueueDragOver(false);
+    if (!workOrder) return;
+
+    // Only from SCHEDULED, and the client mirror of ACTION_ALLOWED_FROM is what says so. From
+    // DISPATCHED onward there is no reverse command — ND-3 still holds past that point, exactly as
+    // the artifact's board rules say, and the board must not offer one.
+    if (!getAllowedActions(workOrder.status, role, false).includes("Unschedule")) {
+      setBoardMessage({
+        tone: "error",
+        text: `${workOrder.woNumber} cannot be returned to the queue — it is ${statusWords(workOrder.status)}.`,
+      });
       return;
     }
-    if (workOrder.scheduledTechId && workOrder.scheduledTechId !== technicianId) {
-      setPendingReassignment({ workOrder, technicianId });
-      setReassignReasonInput("");
-      return;
-    }
-    await dispatch(workOrder, technicianId);
+    setPendingPlacement({ intent: PLACEMENT_INTENT.UNSCHEDULE, workOrder, technicianId: null });
+  }, [dragging, role]);
+
+  const confirmPlacement = useCallback(
+    async (payload) => {
+      const outcome = await runPlacement(payload);
+      // A refusal keeps the dialog open with its sentence, so the dispatcher can adjust rather than
+      // rebuild their intent. A success closes it; the live subscription moves the chip.
+      if (outcome.ok) setPendingPlacement(null);
+      else setPendingPlacement((p) => (p ? { ...p, errorMessage: outcome.message } : null));
+    },
+    [runPlacement],
+  );
+
+  // ---- honest states (artifact 1c) -----------------------------------------------------------
+
+  if (role !== "admin" && role !== "dispatcher") {
+    return (
+      <div className="ns-page">
+        <p className="ns-dispatch-denied">The Dispatch Board is not available to you.</p>
+      </div>
+    );
   }
 
-  async function confirmReassignment() {
-    if (!pendingReassignment || !reassignReasonInput.trim()) return;
-    const { workOrder, technicianId } = pendingReassignment;
-    setPendingReassignment(null);
-    await dispatch(workOrder, technicianId, reassignReasonInput.trim());
-    setReassignReasonInput("");
-  }
-
-  function cancelReassignment() {
-    setPendingReassignment(null);
-    setReassignReasonInput("");
-  }
-
-  // Keyboard navigation (Priority 4 accessibility + Priority 2 UX):
-  // Up/Down moves selection through the currently-filtered queue,
-  // Enter is a no-op beyond selection (the preview pane is always
-  // visible once selected, there's no separate "open" step), Escape
-  // clears selection. Scoped to the queue pane via onKeyDown so it
-  // doesn't hijack typing in the search input.
-  function handleQueueKeyDown(e) {
-    if (filteredWorkOrders.length === 0) return;
-    const currentIndex = filteredWorkOrders.findIndex((wo) => wo.id === selectedId);
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const next = filteredWorkOrders[Math.min(currentIndex + 1, filteredWorkOrders.length - 1)] ?? filteredWorkOrders[0];
-      setSelectedId(next.id);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const prev = filteredWorkOrders[Math.max(currentIndex - 1, 0)] ?? filteredWorkOrders[0];
-      setSelectedId(prev.id);
-    } else if (e.key === "Escape") {
-      setSelectedId(null);
-    }
-  }
-
-  const loading = workOrdersLoading || techniciansLoading;
+  const dayLabel = new Date(anchorMillis).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+  const weekLabel = new Date(anchorMillis).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
   return (
-    <div className="fo-panel">
-      <h2>Dispatcher Board</h2>
+    <div className="ns-page ns-dispatch">
+      <WorkspaceIdentity
+        crumb="Service → Dispatch Board"
+        title="Dispatch &amp; Scheduling"
+        summaryItems={summaryItems}
+      >
+        <p className="ns-dispatch__live">
+          <span className="ns-dispatch__live-dot" aria-hidden="true" /> Live — updates as work orders change
+        </p>
+      </WorkspaceIdentity>
 
-      <div className="disp-board-toolbar">
-        <input
-          type="text"
-          placeholder="Search work orders, customer, type..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          aria-label="Search work orders"
+      <p className="ns-dispatch__rule">
+        Drag a queue card onto a lane to schedule · between lanes to reassign · back to the queue to
+        return it. <span className="ns-dispatch__hatch-key" aria-hidden="true" /> Hatched is blocked
+        time — its own governed record, never a work order; drops onto it are refused.
+      </p>
+
+      <DispatchViewSwitcher
+        view={view}
+        onChange={setView}
+        dayLabel={dayLabel}
+        weekLabel={weekLabel}
+        anchorMillis={anchorMillis}
+        onAnchorChange={(t) => setAnchorMillis(startOfDayMillis(t))}
+        isToday={startOfDayMillis(anchorMillis) === startOfDayMillis(Date.now())}
+      >
+        <TechnicianFilter
+          technicians={technicians ?? []}
+          selectedIds={technicianFilter}
+          onChange={setTechnicianFilter}
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter by status">
-          <option value="ALL">All statuses</option>
-          {WORK_ORDER_STATUS_VALUES.map((s) => (
-            <option key={s} value={s}>
-              {workOrderStatusLabel(s)}
-            </option>
-          ))}
-        </select>
-      </div>
+      </DispatchViewSwitcher>
 
-      <DispatcherActivityFeed entries={activityEntries} />
-
-      {dispatchError && (
-        <div className="warning" role="alert">
-          {dispatchError}
-        </div>
-      )}
-
-      {/* H20 fix: a dispatcher MAY reassign a Work Order away from the technician it was Scheduled for,
-          but a reason is REQUIRED (Owner ruling) -- this blocks the drag-drop/picker dispatch until one is
-          typed, so a reassignment is always a visible, deliberate, accountable choice, never an accident. */}
-      {pendingReassignment && (
-        <div className="fo-form disp-reassign-confirm" role="group" aria-label="Reassignment reason required">
-          <p role="alert">
-            Reassigning {pendingReassignment.workOrder.woNumber ?? pendingReassignment.workOrder.id} from{" "}
-            {resolveTechnicianIdentity(pendingReassignment.workOrder.scheduledTechId, { technicians }).name}{" "}
-            to {resolveTechnicianIdentity(pendingReassignment.technicianId, { technicians }).name} —
-            a reason is required.
-          </p>
-          <textarea
-            value={reassignReasonInput}
-            onChange={(e) => setReassignReasonInput(e.target.value)}
-            placeholder="Why is this job being reassigned?"
-            aria-label="Reassignment reason"
-            rows={2}
-          />
-          <div className="fo-dispatch__reassign-actions">
-            <Button variant="primary" onClick={confirmReassignment} disabled={!reassignReasonInput.trim()}>
-              Confirm reassignment
-            </Button>
-            <Button variant="secondary" onClick={cancelReassignment}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <p className="fo-muted">Loading dispatcher board...</p>
-      ) : workOrdersError ? (
-        // Fail VISIBLY. A denied/unavailable work-order read used to fall
-        // through to "No work orders exist yet" -- a false empty board a
-        // dispatcher could read as nothing to do, missing real jobs with no
-        // indication anything failed.
-        <p className="fo-muted" role="alert">
-          {loadErrorMessage(workOrdersError, { entity: "work orders" })}
-        </p>
-      ) : techniciansError ? (
-        // Same fail-visibly fix as workOrdersError above, applied to the
-        // technicians read: a denied/unavailable technicians listener used to
-        // fall through to TechnicianBoard's "No technicians exist yet" empty
-        // state -- a dispatcher would read that as "there are no technicians"
-        // rather than "this read failed," with no recommendations, no drop
-        // targets, and no indication anything is wrong.
-        <p className="fo-muted" role="alert">
-          {loadErrorMessage(techniciansError, { entity: "technicians" })}
-        </p>
-      ) : workOrders.length === 0 ? (
-        <p className="fo-muted">No work orders exist yet. Create one from the Work Orders tab to see it here.</p>
-      ) : filteredWorkOrders.length === 0 ? (
-        <p className="fo-muted">No work orders match "{searchInput}" / the selected status filter. Try clearing the search or choosing "All statuses".</p>
-      ) : (
-        <div
-          className="disp-board-layout"
-          ref={queueRef}
-          onKeyDown={handleQueueKeyDown}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => e.preventDefault()}
+      {boardMessage ? (
+        // A REFUSAL is an alert; a success or a warning is a status. Both are announced, but only a
+        // refusal interrupts — a screen-reader user who just lost a placement needs to know now,
+        // and one who scheduled successfully does not need their reading interrupted to hear it.
+        <p
+          className={`ns-dispatch__message ns-dispatch__message--${boardMessage.tone}`}
+          role={boardMessage.tone === "error" ? "alert" : "status"}
         >
-          <WorkOrderQueue
-            workOrders={filteredWorkOrders}
+          {boardMessage.text}
+        </p>
+      ) : null}
+
+      {/* Each read failure gets its OWN sentence (1c). A failed Work Order read is never a
+          false-empty board, and a failed technician read never reads as "no technicians exist". */}
+      {workOrdersError ? (
+        <p className="ns-dispatch__failure" role="alert">
+          Work orders could not be loaded. Your work elsewhere is unaffected. {loadErrorMessage(workOrdersError)}
+        </p>
+      ) : null}
+      {techniciansError ? (
+        <p className="ns-dispatch__failure" role="alert">
+          Technicians could not be loaded, so the lanes cannot be drawn. {loadErrorMessage(techniciansError)}
+        </p>
+      ) : null}
+      {availabilityError ? (
+        <p className="ns-dispatch__failure" role="alert">
+          Working hours and blocked time could not be read, so shifts and capacity are not shown.
+          Scheduling still works and the server still enforces both.
+        </p>
+      ) : null}
+
+      {workOrdersLoading || techniciansLoading ? (
+        <p className="ns-dispatch__loading">Loading the board…</p>
+      ) : (
+        <>
+          {view === DISPATCH_VIEW.DAY ? (
+            <DispatchLaneGrid
+              technicians={lanes}
+              workOrdersByTechnician={workOrdersByTechnician}
+              availabilityByTechnicianId={availabilityByTechnicianId}
+              availabilityLoading={availabilityLoading}
+              band={band}
+              draggingWorkOrder={dragging}
+              onDropOnLane={handleDropOnLane}
+              onDragStartWorkOrder={setDragging}
+              onDragEndWorkOrder={() => { setDragging(null); setDragOverLaneId(null); setQueueDragOver(false); }}
+              onSelectWorkOrder={setSelectedId}
+              selectedWorkOrderId={selectedId}
+              dragOverLaneId={dragOverLaneId}
+              onDragOverLane={setDragOverLaneId}
+              onDragLeaveLane={() => setDragOverLaneId(null)}
+              busyWorkOrderId={busyWorkOrderId}
+            />
+          ) : null}
+
+          {view === DISPATCH_VIEW.WEEK ? (
+            <DispatchWeekView
+              technicians={lanes}
+              placedWorkOrders={placedWorkOrders}
+              availabilityByTechnicianId={availabilityByTechnicianId}
+              anchorMillis={anchorMillis}
+              nowMillis={Date.now()}
+              draggingWorkOrder={dragging}
+              onSelectDay={(d) => { setAnchorMillis(d); setView(DISPATCH_VIEW.DAY); }}
+              onDropOnTechnicianDay={(technicianId, dateMillis) => {
+                const workOrder = dragging;
+                setDragging(null);
+                if (!workOrder) return;
+                const intent = intentForDrop(workOrder, technicianId);
+                if (!intent) return;
+                // The week cell has no clock. The dialog opens on that day so the dispatcher names
+                // the hour — the artifact's own rule: "the window is set on the day board".
+                setPendingPlacement({
+                  intent,
+                  workOrder,
+                  technicianId,
+                  startMillis: intent === PLACEMENT_INTENT.REASSIGN ? null : dayBand(dateMillis).startMillis,
+                  durationMinutes: placementWindow(workOrder)?.durationMinutes ?? workOrder.estimatedDurationMinutes ?? 120,
+                });
+              }}
+            />
+          ) : null}
+
+          {view === DISPATCH_VIEW.FORTNIGHT ? (
+            <DispatchTwoWeekLoad
+              technicians={lanes}
+              placedWorkOrders={placedWorkOrders}
+              availabilityByTechnicianId={availabilityByTechnicianId}
+              anchorMillis={anchorMillis}
+              nowMillis={Date.now()}
+              onSelectDay={(d) => { setAnchorMillis(d); setView(DISPATCH_VIEW.DAY); }}
+            />
+          ) : null}
+
+          {view === DISPATCH_VIEW.MAP ? <DispatchMapView /> : null}
+
+          {scheduledWithoutWindow.length > 0 ? (
+            <section className="ns-dispatch-unplaced" aria-label="Scheduled without a window">
+              <h2 className="ns-dispatch-unplaced__title">Scheduled without a window</h2>
+              <p className="ns-dispatch-unplaced__note">
+                These are scheduled but carry no start and end, so they cannot be drawn on a lane.
+                Open one to give it a window.
+              </p>
+              <div className="ns-dispatch-unplaced__rows">
+                {scheduledWithoutWindow.map((wo) => (
+                  <button
+                    key={wo.id}
+                    type="button"
+                    className="ns-dispatch-unplaced__row"
+                    onClick={() => setSelectedId(wo.id)}
+                  >
+                    {wo.woNumber}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <ReadyToScheduleQueue
+            workOrders={queueWorkOrders}
+            recommendations={recommendationsByWorkOrderId}
+            technicians={technicians ?? []}
             customerNames={customerNames}
-            recommendationsByWorkOrderId={recommendationsByWorkOrderId}
-            technicians={technicians}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
+            selectedWorkOrderId={selectedId}
+            onSelectWorkOrder={setSelectedId}
+            onOpenPlacementPicker={(wo) =>
+              setPendingPlacement({
+                intent: PLACEMENT_INTENT.SCHEDULE,
+                workOrder: wo,
+                technicianId: (recommendationsByWorkOrderId.get(wo.id) ?? [])[0]?.techId ?? null,
+                startMillis: band.startMillis,
+                durationMinutes: wo.estimatedDurationMinutes ?? 120,
+              })
+            }
+            onDragStartWorkOrder={setDragging}
+            onDragEndWorkOrder={() => { setDragging(null); setDragOverLaneId(null); setQueueDragOver(false); }}
+            isDragOver={queueDragOver}
+            canReturnToQueue={Boolean(dragging && dragging.status === "SCHEDULED")}
+            onDragOverQueue={() => setQueueDragOver(true)}
+            onDragLeaveQueue={() => setQueueDragOver(false)}
+            onDropOnQueue={handleDropOnQueue}
+            busyWorkOrderId={busyWorkOrderId}
+            boardHasAnyWorkOrders={(workOrders ?? []).length > 0}
+            readFailed={Boolean(workOrdersError)}
           />
-          <WorkOrderPreview
-            workOrder={selectedWorkOrder}
-            technicians={technicians}
-            recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []}
-            onDispatchToTechnician={handleDispatchDrop}
-            isDispatching={dispatchingWorkOrderId === selectedWorkOrder?.id}
-          />
-          <TechnicianBoard
-            technicians={technicians}
-            selectedWorkOrder={selectedWorkOrder}
-            recommendations={selectedWorkOrder ? recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? [] : []}
-            allWorkOrders={workOrders}
-            onDropTechnician={handleDispatchDrop}
-            isDispatching={dispatchingWorkOrderId === selectedWorkOrder?.id}
-          />
-        </div>
+
+          <div className="ns-dispatch__footer">
+            <section className="ns-dispatch__rules">
+              <h3 className="ns-dispatch__footer-title">Board rules (unchanged authority)</h3>
+              <p>
+                A drop proposes the governed command through the existing engine — the board is a
+                faster hand, not a new authority. Illegal moves (a start in the past, a window that
+                overlaps other work or blocked time, a technician who cannot be scheduled) are refused
+                and the chip stays where it was, with the reason in words. Moving or reassigning a
+                scheduled job demands a typed reason. Dispatched work is a fact, not a drag handle:
+                there is no reverse command past that point.
+              </p>
+            </section>
+            <aside className="ns-dispatch__session">
+              <h3 className="ns-dispatch__footer-title">This session</h3>
+              <DispatcherActivityFeed entries={activityEntries} />
+            </aside>
+          </div>
+
+          {selectedWorkOrder ? (
+            <WorkOrderPreview
+              workOrder={selectedWorkOrder}
+              technicians={technicians ?? []}
+              recommendations={recommendationsByWorkOrderId.get(selectedWorkOrder.id) ?? []}
+              onDispatchToTechnician={async (workOrder, technicianId) => {
+                // DISPATCH — untouched by this migration and deliberately still reachable. Retiring
+                // the old board's presentation must not delete a governed capability with it.
+                setBusyWorkOrderId(workOrder.id);
+                try {
+                  await transitionWorkOrder(workOrder.id, "Dispatch", { assignedTechId: technicianId });
+                  setBoardMessage({ tone: "ok", text: `${workOrder.woNumber} dispatched.` });
+                } catch (err) {
+                  setBoardMessage({ tone: "error", text: workflowActionErrorMessage(err) });
+                } finally {
+                  setBusyWorkOrderId(null);
+                }
+              }}
+              isDispatching={busyWorkOrderId === selectedWorkOrder.id}
+            />
+          ) : null}
+        </>
       )}
+
+      {pendingPlacement ? (
+        <PlacementDialog
+          intent={pendingPlacement.intent}
+          workOrder={pendingPlacement.workOrder}
+          technicians={technicians ?? []}
+          defaultTechnicianId={pendingPlacement.technicianId}
+          defaultStartMillis={pendingPlacement.startMillis}
+          defaultDurationMinutes={pendingPlacement.durationMinutes ?? 120}
+          submitting={busyWorkOrderId === pendingPlacement.workOrder.id}
+          errorMessage={pendingPlacement.errorMessage ?? null}
+          onConfirm={confirmPlacement}
+          onCancel={() => setPendingPlacement(null)}
+        />
+      ) : null}
     </div>
   );
+}
+
+function millisOf(value) {
+  return value?.toMillis?.() ?? (typeof value === "number" ? value : 0);
+}
+
+// The GOVERNED display label, never a hand-rolled lowercase of the enum. A locally humanised status
+// is a second status vocabulary: it drifts from the real one the moment a label is reworded, and it
+// puts the raw enum on screen for any value the local transform does not know about.
+function statusWords(status) {
+  return workOrderStatusLabel(status) ?? "in a state that cannot be moved from here";
+}
+
+function stripPrefix(code) {
+  if (typeof code !== "string") return "";
+  return code.startsWith("functions/") ? code.slice("functions/".length) : code;
 }

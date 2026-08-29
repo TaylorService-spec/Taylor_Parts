@@ -1,0 +1,113 @@
+name: Dispatch North Star P1 Tests
+
+# The Dispatch & Scheduling board, composed against the North Star P1 artifact
+# (docs/north-star/dispatch-board/) over the CERTIFIED Scheduling authority.
+#
+# Its own workflow, not an addition to dispatch-scheduling-workspace-tests.yml: that lane covers a
+# DIFFERENT surface (modules/dispatch/DispatchSchedulingWorkspace.jsx and its weekly board), and
+# folding this in would mean a change to either surface reports as a failure of the other. A new
+# subsystem without its own workflow is CI-uncovered however green the repository looks — which this
+# repository has been bitten by before (DECISIONS #124: five suites registered nowhere, one of them a
+# North Star family's own contract suite, that had never run in CI at all).
+#
+# What these suites defend, and why each is worth a job:
+#
+#   GEOMETRY   a chip's position comes from its committed window, never from row order, and Day /
+#              Week / 2 Weeks cannot disagree about which day a placement is on.
+#   TRUTH      unrecorded availability stays UNKNOWN. It must never become 0% — the single most
+#              consequential rule in the Scheduling domain, and the easiest to lose to a `?? 0`.
+#   ROUTING    each gesture reaches the CORRECT governed command and no other; MarkReady is never a
+#              route out of SCHEDULED; the deny-all availability collections are never read directly.
+#   WORDS      refusals render as sentences, never raw backend codes, and ND-20's warnings survive a
+#              SUCCESSFUL placement instead of being dropped or restyled as failures.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/dispatcherBoard/**"
+      - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
+      - "field-ops-app-vite/src/domain/schedulingRefusal.js"
+      - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
+      - "field-ops-app-vite/src/domain/timestampMillis.js"
+      - "field-ops-app-vite/src/hooks/useTechnicianAvailability.js"
+      - "field-ops-app-vite/src/services/schedulingCommandClient.js"
+      - "field-ops-app-vite/test/dispatchBoardGeometry.test.mjs"
+      - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
+      - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/dispatch-north-star-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/dispatcherBoard/**"
+      - "field-ops-app-vite/src/domain/dispatchBoardGeometry.js"
+      - "field-ops-app-vite/src/domain/schedulingRefusal.js"
+      - "field-ops-app-vite/src/domain/schedulingWorkspace.js"
+      - "field-ops-app-vite/src/domain/timestampMillis.js"
+      - "field-ops-app-vite/src/hooks/useTechnicianAvailability.js"
+      - "field-ops-app-vite/src/services/schedulingCommandClient.js"
+      - "field-ops-app-vite/test/dispatchBoardGeometry.test.mjs"
+      - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
+      - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/dispatch-north-star-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+#
+# `event_name` is in the group so PR and main runs can never share one, and
+# `cancel-in-progress` is conditional so that even if they did, a merge landing on main
+# could not cancel the validation of the merge before it. Measured: 30 of 71 recent PR
+# runs on this estate were superseded by a newer push to the same PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+
+jobs:
+  dispatch-north-star-tests:
+    name: Dispatch North Star P1 (geometry + refusal vocabulary + board wiring)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Board geometry and capacity (node:test)
+        run: node --test test/dispatchBoardGeometry.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Refusal and warning vocabulary (node:test)
+        run: node --test test/dispatchSchedulingRefusal.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Board composition and command routing (vitest + jsdom)
+        run: npx vitest run test/dispatchNorthStarBoard.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Lint the touched surfaces (oxlint)
+        run: >-
+          npx oxlint
+          src/modules/dispatcherBoard
+          src/domain/dispatchBoardGeometry.js
+          src/domain/schedulingRefusal.js
+          src/hooks/useTechnicianAvailability.js
+          src/services/schedulingCommandClient.js
+        working-directory: field-ops-app-vite
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: field-ops-app-vite

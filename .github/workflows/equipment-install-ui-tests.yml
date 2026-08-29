@@ -138,6 +138,15 @@ on:
       - ".github/workflows/equipment-install-ui-tests.yml"
   workflow_dispatch:
 
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+#
+# `event_name` is in the group so PR and main runs can never share one, and
+# `cancel-in-progress` is conditional so that even if they did, a merge landing on main
+# could not cancel the validation of the merge before it. Measured: 30 of 71 recent PR
+# runs on this estate were superseded by a newer push to the same PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 

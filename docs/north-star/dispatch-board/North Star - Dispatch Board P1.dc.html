@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    .sect { font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+    .badge { background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px; }
+    .frame { background: #F3F0E9; outline: 1px solid #C3BCAB; }
+    .na { color: #6B7A74; }
+    .callout { font-size: 11px; color: #8A6D28; font-weight: 600; }
+    .card { background: #FCFAF6; outline: 1px solid #C3BCAB; outline-offset: -1px; padding: 10px 12px; }
+    .hatch { background: repeating-linear-gradient(135deg, #E8E2D6 0 6px, #DED7C8 6px 12px); outline: 1px solid #C3BCAB; outline-offset: -1px; color: #4A5B55; }
+    .chip { position: absolute; top: 9px; height: 52px; box-sizing: border-box; color: #FCFAF6; padding: 7px 10px; overflow: hidden; }
+    .chip b { font: 700 11.5px Inter, sans-serif; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chip span { font-size: 10.5px; opacity: 0.85; white-space: nowrap; }
+    .hourhead { display: grid; grid-template-columns: repeat(10, 1fr); font: 600 10.5px Inter, sans-serif; letter-spacing: 0.06em; color: #6B7A74; text-transform: uppercase; }
+    .lane { position: relative; height: 74px; background: linear-gradient(to right, #E8E2D6 1px, transparent 1px); background-size: 10% 100%; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 40px;" data-screen-label="Dispatch Board North Star P1">
+
+  <div id="db1a" style="width: 1672px;" data-screen-label="1a Desktop 1440 — day board">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span class="sect"><span class="badge">1a</span>Dispatch &amp; Scheduling — North Star P1 · desktop 1440 · day board (canonical)</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">The approved Proposed board elevated to North Star. Slots whose authority is missing render honest interim states (see <a href="#db1d">1d</a>) — never dropped, never faked.</span>
+    </div>
+    <div class="frame" style="display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Service</div>
+        <div style="padding: 5px 16px 5px 34px;">Work Orders</div>
+        <div style="margin: 2px 12px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Dispatch Board</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Administration</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 36px;">
+      <div style="max-width: 1160px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Service → Dispatch Board · Tue Aug 26</span>
+          <span style="font-size: 11.5px; color: #6B7A74;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #237A45; vertical-align: 1px;"></span> Live — updates as work orders change</span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 18px 0 12px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; margin: 0 0 6px; line-height: 1.05;">Dispatch &amp; Scheduling</h1>
+            <div style="font-size: 13px; color: #4A5B55;"><strong style="color: #B23B3B;">3 unassigned</strong> in the ready queue · <strong style="color: #A9740D;">1 past due</strong> needs a new window · fleet booked <strong style="color: #102B24;">64%</strong></div>
+          </div>
+          <div style="font-size: 12px; color: #6B7A74; max-width: 380px; text-align: right;">Drag a queue chip onto a lane to schedule · between lanes to reassign · back to the queue to unassign. <span class="hatch" style="display: inline-block; width: 26px; height: 11px; vertical-align: -1px;"></span> Hatched = blocked time — its own governed record, never a work order; drops onto it are refused.</div>
+        </header>
+        <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 16px;">
+          <div style="display: flex; border: 1px solid #C3BCAB;">
+            <span style="font: 600 12px Inter, sans-serif; padding: 8px 16px; background: #102B24; color: #FCFAF6;">Day · Tue 26</span>
+            <span style="font: 600 12px Inter, sans-serif; padding: 8px 16px; background: #FCFAF6; color: #4A5B55;">Week · Aug 25–29</span>
+            <span style="font: 600 12px Inter, sans-serif; padding: 8px 16px; background: #FCFAF6; color: #4A5B55;">2 weeks · load</span>
+          </div>
+          <span style="font: 600 12px Inter, sans-serif; padding: 8px 16px; background: #FCFAF6; border: 1px solid #C3BCAB; color: #4A5B55;">Map · locations</span>
+          <span style="flex: 1;"></span>
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Technicians</span>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 7px 14px; background: #FCFAF6; border: 1px solid #C3BCAB; min-width: 190px;">All technicians (4) <span style="float: right; color: #6B7A74;">▾</span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; border-bottom: 2px solid #102B24;">
+          <div></div>
+          <div class="hourhead"><div style="padding: 4px 6px;">7a</div><div style="padding: 4px 6px;">8a</div><div style="padding: 4px 6px;">9a</div><div style="padding: 4px 6px;">10a</div><div style="padding: 4px 6px;">11a</div><div style="padding: 4px 6px;">12p</div><div style="padding: 4px 6px;">1p</div><div style="padding: 4px 6px;">2p</div><div style="padding: 4px 6px;">3p</div><div style="padding: 4px 6px;">4p</div></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; border-bottom: 1px solid #D9D3C6;">
+          <div style="padding: 14px 12px 14px 0;"><div style="font-size: 13.5px; font-weight: 700;">J. Barela</div><div style="font-size: 11.5px; color: #6B7A74;">7a–4p · 42% booked · 0.5h blocked</div></div>
+          <div class="lane">
+            <div class="chip" style="left: 10%; width: 25%; background: #102B24;"><b>WO-2026-001248 · Service Call</b><span>Desert Sun · Broadway Plant</span></div>
+            <div class="chip hatch" style="left: 50%; width: 5%; color: #4A5B55;"><b style="color: #4A5B55;">Lunch</b></div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; border-bottom: 1px solid #D9D3C6;">
+          <div style="padding: 14px 12px 14px 0;"><div style="font-size: 13.5px; font-weight: 700;">T. Nguyen</div><div style="font-size: 11.5px; color: #A9740D;">7a–4p · 71% booked · 0.5h blocked</div></div>
+          <div class="lane">
+            <div class="chip" style="left: 0; width: 20%; background: #1C4638;"><b>WO-2026-001244 · PM</b><span>Canyon Creamery · Tempe</span></div>
+            <div class="chip" style="left: 60%; width: 30%; background: #102B24;"><b>WO-2026-001246 · Service Call</b><span>Sunset Yogurt · Chandler</span></div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 170px 1fr; border-bottom: 1px solid #D9D3C6;">
+          <div style="padding: 14px 12px 14px 0;"><div style="font-size: 13.5px; font-weight: 700;">R. Ochoa</div><div style="font-size: 11.5px; color: #6B7A74;">8a–5p · 33% booked · 2h blocked</div></div>
+          <div class="lane">
+            <div class="chip" style="left: 20%; width: 30%; background: #2B5B7A;"><b>WO-2026-001241 · Install</b><span>Rio Verde · Scottsdale</span></div>
+            <div class="chip hatch" style="left: 60%; width: 20%; color: #4A5B55;"><b style="color: #4A5B55;">Training</b><span style="color: #6B7A74;">C716 certification</span></div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 170px 1fr;">
+          <div style="padding: 14px 12px 14px 0;"><div style="font-size: 13.5px; font-weight: 700;">M. Diaz</div><div style="font-size: 11.5px; color: #6B7A74;">7a–4p · 28% booked · 1.5h blocked</div></div>
+          <div class="lane">
+            <div class="chip" style="left: 20%; width: 25%; background: #102B24;"><b>WO-2026-001243 · Service Call</b><span>Mesa Grande Schools</span></div>
+            <div class="chip hatch" style="left: 70%; width: 15%; color: #4A5B55;"><b style="color: #4A5B55;">Truck service</b><span style="color: #6B7A74;">Truck 9</span></div>
+          </div>
+        </div>
+        <div style="border-top: 2px solid #102B24; margin-top: 2px;"></div>
+        <div style="margin-top: 22px;">
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 4px;">Ready to schedule <span style="font: 600 11px Inter, sans-serif; color: #fff; background: #B23B3B; padding: 2px 8px; border-radius: 999px; vertical-align: 2px;">3</span></h2>
+          <p style="font-size: 12.5px; color: #6B7A74; margin: 0 0 12px;">Ranked by priority and age. Drop here to unassign. "Dispatch to…" on each card is the keyboard/touch path — the same governed command.</p>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; border-top: 1px solid #D9D3C6; padding-top: 14px;">
+            <div class="card" style="min-width: 240px; outline-color: #B23B3B; background: #FDECEC;">
+              <div style="display: flex; gap: 8px; align-items: baseline;"><span style="font: 700 10px Inter, sans-serif; color: #A9740D;">HIGH (2)</span><strong style="font-size: 12.5px;">WO-2026-001239</strong><span style="font-size: 11.5px; color: #6B7A74;">2h · PM</span></div>
+              <div style="font-size: 11.5px; color: #4A5B55; margin-top: 3px;">Desert Sun · Mesa Distribution</div>
+              <div style="font-size: 11px; margin-top: 3px; color: #B23B3B;">Past due — window missed Aug 17</div>
+              <div style="font-size: 11.5px; margin-top: 4px;">★ J. Barela <span class="na">(86%)</span> · <a href="#d">Dispatch to…</a></div>
+            </div>
+            <div class="card" style="min-width: 240px;">
+              <div style="display: flex; gap: 8px; align-items: baseline;"><span style="font: 700 10px Inter, sans-serif; color: #A9740D;">HIGH (2)</span><strong style="font-size: 12.5px;">WO-2026-001250</strong><span style="font-size: 11.5px; color: #6B7A74;">4h · Install</span></div>
+              <div style="font-size: 11.5px; color: #4A5B55; margin-top: 3px;">Desert Sun · Mesa Distribution</div>
+              <div style="font-size: 11px; margin-top: 3px; color: #A9740D;">Pairs with WO-2026-001239 (same site)</div>
+              <div style="font-size: 11.5px; margin-top: 4px;">★ T. Nguyen <span class="na">(71%)</span> · <a href="#d">Dispatch to…</a></div>
+            </div>
+            <div class="card" style="min-width: 240px;">
+              <div style="display: flex; gap: 8px; align-items: baseline;"><span style="font: 700 10px Inter, sans-serif; color: #6B7A74;">NORMAL (3)</span><strong style="font-size: 12.5px;">WO-2026-001252</strong><span style="font-size: 11.5px; color: #6B7A74;">1.5h · Service Call</span></div>
+              <div style="font-size: 11.5px; color: #4A5B55; margin-top: 3px;"><span class="na">Customer — name unavailable</span></div>
+              <div style="font-size: 11.5px; margin-top: 4px;" class="na">No technicians available to recommend</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 26px; display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 56px;">
+          <div style="font-size: 12.5px; color: #4A5B55; line-height: 1.65;">
+            <h3 style="font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 8px; border-bottom: 2px solid #102B24; padding-bottom: 6px;">Board rules (unchanged authority)</h3>
+            A drop proposes the governed transition through the existing engine — the board is a faster hand, not a new authority. Illegal moves (ineligible status, outside a shift, onto blocked time) are refused and the chip springs back with the reason in words. Reassigning off a scheduled technician demands a typed reason (<a href="#db1b">1b</a>). Dispatched chips are facts, not drag handles, until a governed Reschedule exists (ND-3/B1).
+          </div>
+          <aside>
+            <h3 style="font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 8px; border-bottom: 2px solid #102B24; padding-bottom: 6px;">This session</h3>
+            <div style="font-size: 12.5px; color: #4A5B55; line-height: 1.6;">10:41 — WO-2026-001247 dispatched to T. Nguyen<br>10:22 — WO-2026-001245 reassigned J. Barela → R. Ochoa · <em>"held at Desert Sun"</em></div>
+          </aside>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p style="font-size: 12px; color: #4A5B55; margin: 8px 0 0; max-width: 135ch;">This is the North Star: the full scheduling board. The composition stands whole; what current authority cannot yet feed renders an honest interim in the same slots (1d) rather than disappearing — shift line reads "Shift not recorded", lanes order jobs without clock geometry until schedule windows exist, nothing hatched renders until blocked-time records do, "% booked" and "fleet booked" stay absent until both exist. The live core (queue → lane dispatch, recommendations, reassignment gate, session feed, liveness) lights up day one.</p>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap;">
+    <div id="db1e" style="width: 900px;" data-screen-label="1e Week + two-week views">
+      <span class="sect"><span class="badge">1e</span>Week · balancing views (same North Star, coarser grain)</span>
+      <div class="frame" style="margin-top: 8px; padding: 16px 22px 20px;">
+        <div style="display: grid; grid-template-columns: 150px repeat(5, 1fr); border-bottom: 2px solid #102B24; font: 600 10.5px Inter, sans-serif; letter-spacing: 0.06em; color: #6B7A74; text-transform: uppercase;">
+          <div></div><div style="padding: 4px 8px;">Mon 25</div><div style="padding: 4px 8px;">Tue 26 · today</div><div style="padding: 4px 8px;">Wed 27</div><div style="padding: 4px 8px;">Thu 28</div><div style="padding: 4px 8px;">Fri 29</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 150px repeat(5, 1fr); border-bottom: 1px solid #D9D3C6;">
+          <div style="padding: 10px 12px 10px 0;"><div style="font-size: 13px; font-weight: 700;">J. Barela</div></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px; font: 600 11px Inter, sans-serif;"><span style="background: #102B24; color: #FCFAF6; padding: 4px 8px;">WO-…852 · 3h</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px; font: 600 11px Inter, sans-serif;"><span style="background: #102B24; color: #FCFAF6; padding: 4px 8px;">WO-…248 · 2.5h</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px; font: 600 11px Inter, sans-serif;"><span style="background: #1C4638; color: #FCFAF6; padding: 4px 8px;">WO-…868 · 4h</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px;"><span class="na" style="font-size: 11px;">open</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px; font: 600 11px Inter, sans-serif;"><span style="background: #102B24; color: #FCFAF6; padding: 4px 8px;">WO-…870 · 2h</span></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 150px repeat(5, 1fr);">
+          <div style="padding: 10px 12px 10px 0;"><div style="font-size: 13px; font-weight: 700;">R. Ochoa</div></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px; font: 600 11px Inter, sans-serif;"><span style="background: #2B5B7A; color: #FCFAF6; padding: 4px 8px;">WO-…846 · 5h</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px; font: 600 11px Inter, sans-serif;"><span style="background: #2B5B7A; color: #FCFAF6; padding: 4px 8px;">WO-…241 · 3h</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px;"><span class="hatch" style="font: 600 11px Inter, sans-serif; padding: 4px 8px;">PTO</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px;"><span class="hatch" style="font: 600 11px Inter, sans-serif; padding: 4px 8px;">PTO</span></div>
+          <div style="border-left: 1px solid #E8E2D6; padding: 8px;"><span class="na" style="font-size: 11px;">open</span></div>
+        </div>
+        <div style="border-top: 2px solid #102B24; margin-top: 2px; padding-top: 12px;">
+          <div style="display: grid; grid-template-columns: 150px repeat(10, 1fr); font: 600 10px Inter, sans-serif; color: #6B7A74; text-transform: uppercase; border-bottom: 2px solid #102B24;">
+            <div style="padding: 4px 0;">2-week load</div><div style="padding: 4px;">M 24</div><div style="padding: 4px;">T 25</div><div style="padding: 4px;">W 26</div><div style="padding: 4px;">T 27</div><div style="padding: 4px; border-right: 2px solid #102B24;">F 28</div><div style="padding: 4px;">M 31</div><div style="padding: 4px;">T 1</div><div style="padding: 4px;">W 2</div><div style="padding: 4px;">T 3</div><div style="padding: 4px;">F 4</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 150px repeat(10, 1fr); font: 600 11px Inter, sans-serif; text-align: center;">
+            <div style="text-align: left; padding: 12px 0; font-size: 13px;">J. Barela</div>
+            <div style="padding: 12px 4px; background: #DCE5DF;">62%</div><div style="padding: 12px 4px; background: #F2E3C2;">75%</div><div style="padding: 12px 4px; background: #DCE5DF;">42%</div><div style="padding: 12px 4px; background: #E8E2D6; color: #6B7A74;">0%</div><div style="padding: 12px 4px; background: #DCE5DF; border-right: 2px solid #102B24;">25%</div><div style="padding: 12px 4px; background: #DCE5DF;">40%</div><div style="padding: 12px 4px; background: #F2E3C2;">61%</div><div style="padding: 12px 4px; background: #DCE5DF;">30%</div><div style="padding: 12px 4px; background: #E8E2D6; color: #6B7A74;">0%</div><div style="padding: 12px 4px; background: #DCE5DF;">20%</div>
+          </div>
+        </div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 12px 0 0;">Week: drop a chip on a tech-day to schedule the day; the window is set on the day board. Two-week: balancing only — darker is more booked, hatched is blocked/PTO; click a day to jump. Both views read the same schedule data as the day board (DB-D1) and render nothing where it does not yet exist. The Map view is the same day in space — the existing dispatch-map concept mounts as the fourth view, kept in sync by the same live read.</p>
+      </div>
+    </div>
+    <div id="db1b" style="width: 620px;" data-screen-label="1b Guarded moves">
+      <span class="sect"><span class="badge">1b</span>Guarded moves</span>
+      <div class="frame" style="margin-top: 8px; padding: 18px 22px; display: grid; gap: 14px;">
+        <div class="card" style="border-left: 3px solid #B08A55;">
+          <strong style="font-size: 13px;">Reassignment requires a reason (Owner ruling H20)</strong>
+          <p style="font-size: 12.5px; color: #4A5B55; margin: 6px 0 8px;">Reassigning WO-2026-001245 from J. Barela to R. Ochoa — a reason is required.</p>
+          <div style="background: #fff; outline: 1px solid #C3BCAB; outline-offset: -1px; padding: 8px 10px; font-size: 12.5px; color: #6B7A74;">Why is this job being reassigned?</div>
+          <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <span style="font: 600 12px Inter, sans-serif; padding: 8px 14px; background: #DDD6C8; color: #6B7A74;">Confirm reassignment</span>
+            <span style="font: 600 12px Inter, sans-serif; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #1C4638;">Cancel</span>
+          </div>
+          <p style="font-size: 11.5px; color: #6B7A74; margin: 8px 0 0;">Confirm disabled until a reason is typed. One gate serves drag and picker; the server enforces it regardless.</p>
+        </div>
+        <div class="card" style="border-left: 3px solid #B23B3B;">
+          <strong style="font-size: 13px;">Refusals, in words</strong>
+          <p style="font-size: 12.5px; color: #4A5B55; margin: 6px 0 0;">"Cannot dispatch WO-2026-001239: only scheduled work orders can be dispatched (current status: Waiting for parts)." · "Refused: overlaps R. Ochoa's blocked time (Training)." The chip springs back; never raw backend codes.</p>
+        </div>
+        <div class="card">
+          <strong style="font-size: 13px;">No undo</strong>
+          <p style="font-size: 12.5px; color: #4A5B55; margin: 6px 0 0;">Dispatch is a forward transition with no reverse command (ND-3). The board confirms before acting rather than pretending a drop can be taken back.</p>
+        </div>
+      </div>
+      <div id="db1c" style="margin-top: 20px;">
+        <span class="sect"><span class="badge">1c</span>Honest states</span>
+        <div class="frame" style="margin-top: 8px; padding: 14px 18px; display: grid; gap: 8px; font-size: 12.5px;">
+          <div style="border-left: 3px solid #102B24; padding-left: 10px;"><strong>Loading</strong> — skeleton lanes + queue in the intact shell.</div>
+          <div style="border-left: 3px solid #B23B3B; padding-left: 10px;"><strong>WO read failed</strong> — "Work orders could not be loaded. Your work elsewhere is unaffected." Never a false-empty board.</div>
+          <div style="border-left: 3px solid #B23B3B; padding-left: 10px;"><strong>Technician read failed</strong> — its own sentence; never "No technicians exist yet".</div>
+          <div style="border-left: 3px solid #6B7A74; padding-left: 10px;"><strong>Queue clear</strong> — "✓ Every ready work order has a window and a technician." Distinct from true empty.</div>
+          <div style="border-left: 3px solid #8A6D28; padding-left: 10px;"><strong>Schedule data absent (interim)</strong> — lanes list each technician's jobs in order with durations, no clock geometry; the hour header does not render. Stated once above the lanes.</div>
+          <div style="border-left: 3px solid #B23B3B; padding-left: 10px;"><strong>Denied</strong> — "The Dispatch Board is not available to you." Nothing leaks.</div>
+          <div style="border-left: 3px solid #102B24; padding-left: 10px;"><strong>Dispatch in progress</strong> — the chip shows in-flight; double-drops ignored.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="db1d" style="width: 1320px;" data-screen-label="1d Implementation reality">
+    <span class="sect"><span class="badge">1d</span>Implementation reality — one composition, lit in stages. Slots are never dropped; each renders its truth.</span>
+    <div class="frame" style="margin-top: 8px; padding: 18px 24px;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+        <thead><tr>
+          <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; width: 300px;">Slot</th>
+          <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; width: 170px;">Classification</th>
+          <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 0; border-bottom: 2px solid #102B24; text-align: left;">Interim rendering until lit</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6;">Live board · queue → lane dispatch · picker path · refusals · reassignment reason gate · recommendations (scores) · session feed · keyboard nav</td><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; color: #237A45; font-weight: 600;">LIVE TODAY</td><td style="padding: 9px 0; border-bottom: 1px solid #D9D3C6;">Lights up day one (useWorkOrders · recommendTechniciansBatch · transitionWorkOrder "Dispatch" · H20 · useSessionActivityFeed).</td></tr>
+          <tr><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6;">Hour-window lanes, drag-to-time-slot scheduling, week drop-to-day, shift line, % booked, fleet booked</td><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; color: #B23B3B; font-weight: 600;">DB-D1 · PRODUCT BUILD</td><td style="padding: 9px 0; border-bottom: 1px solid #D9D3C6;">Lanes list jobs in order with durations (no clock geometry); hour header absent; shift line "Shift not recorded"; % booked and the header's fleet number absent. Needs governed shift records + a schedule-window write from a board drop.</td></tr>
+          <tr><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6;">Blocked time (lunch / training / PTO / truck service) — hatched, drop-refusing</td><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; color: #B23B3B; font-weight: 600;">DB-D2 · PRODUCT BUILD</td><td style="padding: 9px 0; border-bottom: 1px solid #D9D3C6;">Nothing hatched renders; "blocked" figures absent. Needs a governed blocked-time record type (absence/training/shop time) the board only renders.</td></tr>
+          <tr><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6;">Two-week load heat · Map view</td><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; color: #B23B3B; font-weight: 600;">RIDES ON DB-D1 (+ location reads)</td><td style="padding: 9px 0; border-bottom: 1px solid #D9D3C6;">View tabs render; selecting one states "Scheduling windows aren't recorded yet" in one sentence — never an empty grid pretending to be data.</td></tr>
+          <tr><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6;">Recommendation reasons beside scores</td><td style="padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; color: #8A6D28; font-weight: 600;">VERIFY AUTHORITY</td><td style="padding: 9px 0; border-bottom: 1px solid #D9D3C6;">Score only until the engine's factors are confirmed projectable as words. No fabricated explanation sentences.</td></tr>
+          <tr><td style="padding: 9px 12px 9px 0;">Moving a DISPATCHED chip (reschedule / re-dispatch)</td><td style="padding: 9px 12px 9px 0; color: #B23B3B; font-weight: 600;">BLOCKED BY ND-3 / B1</td><td style="padding: 9px 0;">Dispatched chips render as facts, not drag handles, until a governed Reschedule command exists.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

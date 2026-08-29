@@ -178,6 +178,47 @@ The original two reasons, for the record:
 2. **ND-23 stands open — and still does.** The *Dispatch and Schedule North Star P1v1* artifact is not in this
    repository and was not locatable. See the [open decisions](./north-star-open-product-decisions.md).
 
+## Clarification, 2026-08-27 — `TECHNICIAN_INELIGIBLE` is live-reachable
+
+**This corrects an interpretation, not a result.** Every gate outcome above stands.
+
+An earlier report of this domain's certification stated that `TECHNICIAN_INELIGIBLE` was
+*structurally unreachable* against the live estate, on the reasoning that `firestore.rules` refuses
+to create or update a `fieldops_technicians` document without a governed `status`. The first half of
+that is true; the conclusion drawn from it was not.
+
+Rules constrain **client** writes. Trusted tooling running on the Admin SDK bypasses them by design —
+that is what the Admin SDK is for. So a malformed technician record is perfectly reachable in the
+live estate whenever a seeder writes one, and one already had:
+`functions/scripts/certificationWorld/data/workforceLoad.mjs` wrote the *employee* vocabulary
+(`displayName` / `active` / `available`) into the *technician* collection, so eleven certification
+technicians (`cw-emp-012` … `cw-emp-022`) carried no `status` at all.
+
+Measured against deployed sandbox authority on 2026-08-27:
+
+```
+reschedule onto cw-emp-012  ->  REFUSED  TECHNICIAN_INELIGIBLE
+```
+
+The corrected statement:
+
+> Rules prevent malformed **client-created** technician records. Admin-SDK certification and seed
+> tooling can bypass those Rules. `TECHNICIAN_INELIGIBLE` is therefore live-reachable whenever
+> trusted tooling writes a malformed technician fixture.
+
+**The refusal is correct behaviour and nothing in the Scheduling domain changed because of this.**
+A technician with no governed status genuinely cannot be scheduled, and the command saying so is the
+domain working. What was wrong was the fixture, and it is fixed at the generator
+(`buildTechnicianRecords` now emits `{ name, phone, status }` from values already present on the
+employee record) rather than by relaxing the check. The eleven **existing** sandbox documents are
+unchanged by that fix — they predate it and are corrected only by the governed certification-world
+reseed, which is a separate, destructive, Owner-gated action.
+
+Consequence for acceptance, stated plainly: until that reseed runs, eleven of the sandbox's thirteen
+technicians render as "Unknown technician" and cannot be scheduled, so **Dispatch Owner visual
+acceptance remains blocked** — not by the board, which is reporting the data truthfully, but by the
+data.
+
 ## Reproducing
 
 ```bash

@@ -2872,3 +2872,271 @@ back would silently restore the rejected behaviour with every test still green. 
 
 **Related:** #122 (the three authorities — the rule this entry follows), #135 (the collection this
 amends), and the family README, which records the departure beside the artifact it departs from.
+
+---
+
+## #137 — CI Assurance Selection Rule
+
+**Date:** 2026-08-29
+**Classification:** CI COVERAGE / GOVERNANCE. Same family as #124, #131 and #133.
+**Implementation authority:** `docs/ci/CI-ASSURANCE-CONTRACT.md`
+
+**Decision:** CI coverage is governed by contract-input selection, not by workflow or test existence
+alone.
+
+A validation contract is governed only when:
+
+1. it is registered and executable; and
+2. every authoritative repository input capable of affecting that contract causes the contract to be
+   selected.
+
+Tests and workflows MUST account for direct and indirect repository inputs they read, inspect,
+consume, or derive from.
+
+Historical green status is not evidence of governed coverage when relevant changes can bypass
+trigger or routing selection.
+
+Unknown or unclassified paths MUST fail closed under future CI routing.
+
+Assertions over intentionally mutable operational state MUST express durable invariants unless the
+exact state is itself governed authority.
+
+When an unrelated candidate exposes a pre-existing red-main condition:
+
+```
+HOLD candidate
+→ repair the defect in a separate focused PR
+→ restore main green
+→ update the original candidate onto repaired main
+→ revalidate its exact SHA
+→ merge only when applicable checks are green.
+```
+
+CI cost optimization may remove duplicate execution but MUST NOT weaken contract-input selection or
+create unobserved authoritative changes.
+
+GitHub remains the independent CI trust boundary unless a later governed decision explicitly changes
+that architecture.
+
+**Rationale:** a registered test can remain CI-blind when authoritative inputs are absent from its
+trigger or routing classification.
+
+This failure mode was demonstrated during CI-V2-1 by the orchestration collaboration contract:
+
+- the contract existed,
+- it was registered,
+- historical runs were green,
+- but a governed input changed without selecting the contract.
+
+A bounded trigger-coverage guard also found a second unwatched input that manual review missed.
+
+This establishes the permanent distinction:
+
+```
+REGISTERED != SELECTED != GOVERNED
+```
+
+### Relationship to existing governance
+
+- **#124** governs **registration**: a suite that nothing runs is not coverage.
+- **#131** governs **suite creation / registration evidence**: an absent check suite is unsafe
+  evidence, not proof that a PR legitimately triggered nothing.
+- **#137** governs **selection**: authoritative inputs must select their responsible contracts.
+
+Three distinct failure modes. This entry adds the third; #124 and #131 stand exactly as written and
+are extended, not replaced.
+
+**#133 is now RESOLVED by Owner ruling** (2026-08-29), recorded in full as **#138**.
+
+The Owner rejects incidental/transitive selection for the release-tooling boundary identified in
+#133. The sixteen release-boundary inputs recorded there require explicit CI selection coverage. The
+chosen implementation direction is a dedicated release-tooling validation lane, triggered by those
+governed release-boundary inputs and running the existing non-mutating release/tooling suites.
+
+That ruling authorizes the **CI coverage architecture only**. It does NOT authorize release
+execution, deployment, production mutation, permission expansion, protected-action execution, or any
+weakening of #128. Implementation of that lane must occur in a separate focused PR and must itself
+be validated according to #131 and #137.
+
+**No permanent carve-out from #137 remains.**
+
+### Open #137-conformance finding (not a carve-out)
+
+`docs/ci/**` and `docs/DECISIONS.md` are watched by no workflow's trigger paths, so a change to the
+governance authority itself — including this entry — is selected by no path-filtered contract. By
+this decision's own standard that is a conformance gap, recorded here so it is treated as one.
+
+It is deliberately **not** repaired in the PR that introduces this decision, because a documentation
+PR may not change triggers. It is a separate finding for later focused treatment, and it must not
+become another exception: the distinction between this and a carve-out is that a carve-out excuses
+the gap permanently, while this records it as work.
+
+**Related:** #124, #128, #131, #132, #133, #138. Surfaced while completing CI-V2-1 (PRs #1567, #1568).
+
+---
+
+## #138 — OWNER RULING: release-tooling requires explicit CI selection
+
+**Date:** 2026-08-29 · **Scope:** CI coverage architecture only · **Authority:** Owner
+**Resolves:** #133, which was recorded OPEN ("RECORDED GAP, NO FIX AUTHORIZED") and is now decided.
+
+**Decision:** the release-tooling boundary identified in #133 requires **explicit CI selection**.
+
+**Transitive / incidental coverage is rejected.**
+
+A dedicated release-tooling validation lane will be used to select the existing **non-mutating**
+release/tooling suites whenever one of the governed release-boundary inputs changes.
+
+**The lane is validation only.** It does not gain deployment authority or permission to execute
+protected release actions.
+
+**#128 remains fully binding.**
+
+**Implementation occurs in a separate focused PR** — none is authorized by this entry — and that PR
+must itself be validated according to #131 (confirm the check suite was actually created) and #137
+(confirm the governed inputs select the contract).
+
+**Owner's reason, recorded because it is the general principle and not only this instance:** #133
+had already established that the release-boundary files can change without selecting the manifest
+validation lane. Coverage that happens only when another, coincidental file change selects a test is
+not governed assurance. #137 now names that distinction —
+
+```
+REGISTERED != SELECTED != GOVERNED
+```
+
+— so a release-boundary input must select its responsible contract **directly and predictably**,
+and #133 is therefore no longer an unresolved exception to #137.
+
+**Related:** #124, #128, #131, #133, #137.
+
+---
+
+## #139 — CORRECTION: #138 release-tooling boundary contains fifteen inputs, not sixteen
+
+**Date:** 2026-08-29
+**Scope:** CI governance factual correction
+**Corrects:** #138 (the cardinality as restated in #137's "Relationship to existing governance"
+section — see the locational note below)
+**Related:** #133, #137, #138
+
+**Correction:**
+
+The governed record states "the sixteen release-boundary inputs recorded there."
+
+That cardinality is incorrect.
+
+Decision #133 states that **sixteen** files under `scripts/` were ALREADY named in workflow filters
+and covered. It then **separately** identifies the release boundary as "Named nowhere" and
+enumerates **FIFTEEN** files. The sixteen and the fifteen are two different sets, and the sentence
+above collapsed them.
+
+The governed release-boundary input set is therefore the fifteen files explicitly enumerated in
+#133's uncovered block.
+
+This correction changes **no Owner ruling and no CI architecture**. The Owner ruling remains:
+
+- release-tooling requires explicit CI selection;
+- incidental/transitive coverage is rejected;
+- the dedicated lane is validation only;
+- #128 remains fully binding.
+
+The only correction is:
+
+```
+16 release-boundary inputs
+→
+15 release-boundary inputs.
+```
+
+**For avoidance of doubt, the governed set is:**
+
+```
+scripts/_certificationRoutes.mjs
+scripts/_prodRelease.run.sh
+scripts/_releaseIdentityGate.mjs
+scripts/_releaseProvenanceGuard.mjs
+scripts/_sandboxDeployGuard.mjs
+scripts/_sandboxQuickGate.sh
+scripts/_sandboxRefresh.run.sh
+scripts/_sandboxRegressionGate.sh
+scripts/releaseProvenance.mjs
+scripts/releaseRoot.mjs
+scripts/sandboxCredentials.mjs
+scripts/sandboxFunctionsVerification.mjs
+scripts/verifyDeployArtifact.mjs
+scripts/verifyDeployedCallablesFirebase.mjs
+scripts/verifySandboxFunctions.mjs
+```
+
+A sixteenth input MUST NOT be invented to make an implementation conform to the erroneous count.
+
+**Locational note, recorded because the ledger is append-only and a future reader will look for the
+sentence.** The erroneous phrase does not appear in #138's own body, which states no count at all.
+It appears once, in **#137's** "Relationship to existing governance" section, where that section
+restates the #138 ruling. Both entries stay exactly as written; this is the correcting record.
+
+**Verified against the repository at the time of writing, not only against the prose:** all fifteen
+files exist, and each was named in zero workflow path filters — which is the condition #138 exists
+to end. The lane implementing #138 is expected to select this exact set of fifteen.
+
+---
+
+## #140 — RECORDED GAP, NO DISPOSITION TAKEN: three orphaned `equipment_models` indexes remain live on sandbox
+
+**Date:** 2026-08-29
+**Status:** **OPEN — recorded, not fixed.** No index was deleted and none was declared.
+**Scope:** sandbox environment state
+**Related:** #108 (the governance breach this is the residue of), #133/#137 (a change that no
+contract sees), and the index-drift guard in `scripts/indexDriftGuard.mjs`.
+
+### What was measured
+
+Sandbox `eos-platform-sandbox`, read-only, 2026-08-29 — live composite indexes vs
+`firestore.indexes.json` at `9be177bb`:
+
+```
+declared but NOT live ... 8   -> real query failures; CREATED (see below)
+live but NOT declared ... 3   -> all equipment_models; LEFT IN PLACE, recorded here
+```
+
+The eight were created additively with `gcloud firestore indexes composite create`, deliberately
+**not** `firebase deploy --only firestore:indexes`: that command reconciles, so it would have
+created the eight and **silently deleted the three** in the same breath. All forty-seven live
+indexes are now READY and `declared-but-missing` is zero.
+
+### The three, and why they are not simply drift
+
+```
+equipment_models :: status ASC, manufacturerId ASC, displayName ASC
+equipment_models :: manufacturerId ASC, displayName ASC
+equipment_models :: status ASC, displayName ASC
+```
+
+They are the **residue of the breach recorded in #108**. PR #1206's metadata program declared an
+`equipmentModel` INDEX list view whose filters derived these three composites over a collection that
+**D4 governs**, they were declared in `firestore.indexes.json`, and they were deployed to sandbox.
+#1273 removed the declaration and #108 ruled that defining an entity confers no indexing authority
+over another program's collection.
+
+**The repository was corrected. The environment never was.** So the indexes exist live, serving a
+list view that no longer exists, declared by nobody.
+
+### Why no disposition is taken here
+
+Deleting them is a governance disposition on a D4-governed collection, and #108 corrected the
+declaration without ruling on the live residue. #108 records that D4 declares no compound index, so
+nothing is *known* to need them — but "nothing appears to need it" is the reasoning that produced
+the breach, and it is not sufficient authority to drop production-shaped state in an environment
+others are testing against. They cost storage and nothing else where they sit.
+
+**Owner disposition required**, one of: delete them from sandbox so the environment matches the
+repo; or declare them, which re-asserts an index claim over D4's collection and would have to
+overturn #108 as a named decision.
+
+### The hazard this leaves standing until then
+
+Any future `firebase deploy --only firestore:indexes` against sandbox **will delete these three**
+without being asked to, because reconciliation is the command's normal behaviour and not an error.
+That is the exact shape `indexDriftGuard.mjs` exists to catch, and its rule — the authorization must
+NAME every index to be deleted — is what should govern the day someone runs it.
