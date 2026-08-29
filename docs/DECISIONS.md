@@ -2936,25 +2936,76 @@ This establishes the permanent distinction:
 REGISTERED != SELECTED != GOVERNED
 ```
 
-### Relationship to existing governance — what this decision does NOT settle
+### Relationship to existing governance
 
-Recorded because this entry states a general rule in a family that already contains an **open Owner
-question**, and a general rule must not answer a specific question by implication.
+- **#124** governs **registration**: a suite that nothing runs is not coverage.
+- **#131** governs **suite creation / registration evidence**: an absent check suite is unsafe
+  evidence, not proof that a PR legitimately triggered nothing.
+- **#137** governs **selection**: authoritative inputs must select their responsible contracts.
 
-- **#124** (a suite that nothing runs is not coverage) and **#131** (an absent check suite is unsafe
-  evidence) are **extended, not replaced**. Both stand exactly as written. #124 governs
-  *registration*; #131 governs *suite creation*; this decision governs *selection*. They are three
-  different failure modes, and this entry adds the third rather than merging them.
+Three distinct failure modes. This entry adds the third; #124 and #131 stand exactly as written and
+are extended, not replaced.
 
-- **#133 remains OPEN and is NOT answered here.** #133 records that sixteen release-boundary files
-  under `scripts/` are named in no workflow filter, and asks the Owner whether a dedicated
-  release-tooling lane should be added or transitive coverage accepted. Read literally, the
-  governing rule above would imply the first answer. **That implication is explicitly withheld.**
-  This decision does not authorize a fix, does not add a lane, does not classify the release
-  boundary as compliant or non-compliant, and does not close #133. The Owner question stands
-  exactly as posed.
+**#133 is now RESOLVED by Owner ruling** (2026-08-29), recorded in full as **#138**.
 
-  Stated plainly so a future session cannot mistake silence for resolution: **adopting #137 does not
-  make the #133 gap decided.** Anyone acting on #133 still needs the Owner ruling it asks for.
+The Owner rejects incidental/transitive selection for the release-tooling boundary identified in
+#133. The sixteen release-boundary inputs recorded there require explicit CI selection coverage. The
+chosen implementation direction is a dedicated release-tooling validation lane, triggered by those
+governed release-boundary inputs and running the existing non-mutating release/tooling suites.
 
-**Related:** #124, #128, #131, #132, #133. Surfaced while completing CI-V2-1 (PRs #1567, #1568).
+That ruling authorizes the **CI coverage architecture only**. It does NOT authorize release
+execution, deployment, production mutation, permission expansion, protected-action execution, or any
+weakening of #128. Implementation of that lane must occur in a separate focused PR and must itself
+be validated according to #131 and #137.
+
+**No permanent carve-out from #137 remains.**
+
+### Open #137-conformance finding (not a carve-out)
+
+`docs/ci/**` and `docs/DECISIONS.md` are watched by no workflow's trigger paths, so a change to the
+governance authority itself — including this entry — is selected by no path-filtered contract. By
+this decision's own standard that is a conformance gap, recorded here so it is treated as one.
+
+It is deliberately **not** repaired in the PR that introduces this decision, because a documentation
+PR may not change triggers. It is a separate finding for later focused treatment, and it must not
+become another exception: the distinction between this and a carve-out is that a carve-out excuses
+the gap permanently, while this records it as work.
+
+**Related:** #124, #128, #131, #132, #133, #138. Surfaced while completing CI-V2-1 (PRs #1567, #1568).
+
+---
+
+## #138 — OWNER RULING: release-tooling requires explicit CI selection
+
+**Date:** 2026-08-29 · **Scope:** CI coverage architecture only · **Authority:** Owner
+**Resolves:** #133, which was recorded OPEN ("RECORDED GAP, NO FIX AUTHORIZED") and is now decided.
+
+**Decision:** the release-tooling boundary identified in #133 requires **explicit CI selection**.
+
+**Transitive / incidental coverage is rejected.**
+
+A dedicated release-tooling validation lane will be used to select the existing **non-mutating**
+release/tooling suites whenever one of the governed release-boundary inputs changes.
+
+**The lane is validation only.** It does not gain deployment authority or permission to execute
+protected release actions.
+
+**#128 remains fully binding.**
+
+**Implementation occurs in a separate focused PR** — none is authorized by this entry — and that PR
+must itself be validated according to #131 (confirm the check suite was actually created) and #137
+(confirm the governed inputs select the contract).
+
+**Owner's reason, recorded because it is the general principle and not only this instance:** #133
+had already established that the release-boundary files can change without selecting the manifest
+validation lane. Coverage that happens only when another, coincidental file change selects a test is
+not governed assurance. #137 now names that distinction —
+
+```
+REGISTERED != SELECTED != GOVERNED
+```
+
+— so a release-boundary input must select its responsible contract **directly and predictably**,
+and #133 is therefore no longer an unresolved exception to #137.
+
+**Related:** #124, #128, #131, #133, #137.
