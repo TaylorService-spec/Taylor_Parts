@@ -162,6 +162,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dispatchGridHeaderSticky.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/dispatchRiskVocabulary.test.mjs",
       "runner": "node"
     },

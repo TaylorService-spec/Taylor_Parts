@@ -6337,6 +6337,32 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   border-left: 3px solid var(--color-status-danger, #B23B3B); background: var(--verenward-stone-card); }
 .ns-dispatch__loading, .ns-dispatch-denied { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 
+/* THE COLUMN HEADER STAYS WITH THE LANES IT LABELS.
+ *
+ * A dispatcher with two dozen technicians scrolls the hour header off the top of the screen and is
+ * then dragging a job onto an unlabelled grid -- the one moment the board must be unambiguous is
+ * exactly the moment it stopped saying what the columns mean. Reported from the running board, where
+ * the technician list is long enough to reach well past a viewport.
+ *
+ * All three views get it, because all three have the same shape and the same failure: hours on the
+ * day grid, days on the week grid, days on the load grid.
+ *
+ * The background must be opaque -- a transparent sticky header lets lane chips scroll through it,
+ * which reads as corruption rather than as a header. It matches the page rather than the card,
+ * because that is what these grids sit on.
+ *
+ * Narrow screens are deliberately unchanged: below the breakpoint each grid becomes its own
+ * horizontal scrollport (see the media query at the end of this block), which makes it the sticky
+ * containing block too, so `top` has nothing to stick to. Horizontal legibility wins there, and the
+ * day view's own agenda fallback is the answer for small screens.
+ */
+.ns-dispatch-grid__head,
+.ns-dispatch-week__head,
+.ns-dispatch-load__head {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--color-surface-page);
+}
+
 /* --- the lane grid ------------------------------------------------------- */
 .ns-dispatch-grid { margin-bottom: 22px; }
 .ns-dispatch-grid__head { display: grid; grid-template-columns: 170px minmax(0, 1fr);
