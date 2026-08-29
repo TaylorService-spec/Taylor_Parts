@@ -19,6 +19,7 @@ import { dirname, resolve } from "node:path";
 import {
   resolveCapabilityOverrides,
   resolveRuntimeCapabilityOverrides,
+  resolveSyntheticOperationalInterpretation,
   __resetRuntimeCapabilityOverridesCacheForTest,
   SPINE_OVERRIDE_ELIGIBLE_IDS,
   ENVIRONMENT_ACTIVATION_REGISTRY,
@@ -180,6 +181,10 @@ test("shipped runtime snapshot matches the canonical registry projection", () =>
     overrides: Array.isArray(env.capabilityActivationOverrides)
       ? [...env.capabilityActivationOverrides].sort()
       : null,
+    // Read verbatim, not coerced. Comparing `=== true` on both sides would let the snapshot say
+    // "yes" and the deployment registry say nothing at all and still call that agreement, and this
+    // is the field that decides whether customer facts may reach a model.
+    privateAi: env.privateAiSyntheticOperationalInterpretation,
   });
   const canonical = CANONICAL_REGISTRY.environments.map(project);
   const canonicalProjects = new Set(canonical.map((e) => e.projectId));
@@ -193,6 +198,83 @@ test("shipped runtime snapshot matches the canonical registry projection", () =>
   assert.deepEqual(snapshotOnly.map((e) => e.projectId), ["demo-certworld"],
     "only the certification emulator may exist in the runtime snapshot alone");
   assert.equal(snapshotOnly[0].role, "sandbox", "and it is a sandbox-role environment");
+});
+
+// ---------------------------------------------------------------------------------------------
+// Private AI data classification
+//
+// Whether an environment's operational evidence may be sent to the private model. Failing this
+// open does not degrade a feature -- it sends real customer facts to a model -- so the tests are
+// written from the refusing side, and the one permitted environment is named explicitly.
+// ---------------------------------------------------------------------------------------------
+
+const synthetic = (projectId) =>
+  resolveSyntheticOperationalInterpretation(ENVIRONMENT_ACTIVATION_REGISTRY, projectId);
+
+test("only the certification emulator may send operational evidence to the model", () => {
+  assert.equal(synthetic("demo-certworld"), true);
+
+  // Every other project in the shipped snapshot, by name rather than by filter, so adding an
+  // environment that quietly permits itself fails here instead of passing a generic assertion.
+  assert.equal(synthetic("eos-platform-sandbox"), false, "sandbox work-order fixtures are prod-derived");
+  assert.equal(synthetic("taylor-parts"), false, "production is never permitted");
+});
+
+test("an absent or non-literal-true flag refuses", () => {
+  const registry = (env) => ({ environments: [env] });
+  const base = { role: "sandbox", firebase: { projectId: "p" } };
+
+  // Absent entirely: the case the deployment registry would hit if someone added an environment
+  // and forgot the field. resolveEnvironment.mjs makes that a build error too; this is the runtime.
+  assert.equal(resolveSyntheticOperationalInterpretation(registry(base), "p"), false);
+
+  for (const value of [undefined, null, false, 0, 1, "true", "yes", {}, []]) {
+    assert.equal(
+      resolveSyntheticOperationalInterpretation(
+        registry({ ...base, privateAiSyntheticOperationalInterpretation: value }), "p"),
+      false,
+      `${JSON.stringify(value) ?? String(value)} must not be read as permission`,
+    );
+  }
+  assert.equal(
+    resolveSyntheticOperationalInterpretation(
+      registry({ ...base, privateAiSyntheticOperationalInterpretation: true }), "p"),
+    true);
+});
+
+test("production is refused by role even when its registry data says otherwise", () => {
+  const poisoned = {
+    environments: [{
+      role: "production",
+      firebase: { projectId: "taylor-parts" },
+      privateAiSyntheticOperationalInterpretation: true,
+    }],
+  };
+  assert.equal(resolveSyntheticOperationalInterpretation(poisoned, "taylor-parts"), false,
+    "the role block must not trust the data it is guarding");
+});
+
+test("an unknown, empty or absent project identity refuses", () => {
+  for (const id of ["not-a-real-project", "", null, undefined, "demo-certworld-extra", "demo-"]) {
+    assert.equal(synthetic(id), false, `${String(id)} must not resolve as permitted`);
+  }
+  // Exact key, never a prefix -- the same rule the capability resolver holds.
+  assert.equal(synthetic("demo-certworld"), true);
+});
+
+test("a missing or malformed registry refuses", () => {
+  for (const registry of [null, undefined, {}, { environments: "x" }, { environments: null }]) {
+    assert.equal(resolveSyntheticOperationalInterpretation(registry, "demo-certworld"), false);
+  }
+});
+
+test("the deployment registry declares the classification false for every environment", () => {
+  // The canonical file is the authority the snapshot mirrors. If a future edit flips one of these
+  // to true, that is a data-classification decision and it should have to walk past this test.
+  for (const env of CANONICAL_REGISTRY.environments) {
+    assert.equal(env.privateAiSyntheticOperationalInterpretation, false,
+      `${env.id} declares itself permitted; that is an Owner data-classification decision`);
+  }
 });
 
 test("a snapshot-only entry can never be a deployable project", () => {
