@@ -3079,3 +3079,64 @@ restates the #138 ruling. Both entries stay exactly as written; this is the corr
 **Verified against the repository at the time of writing, not only against the prose:** all fifteen
 files exist, and each was named in zero workflow path filters — which is the condition #138 exists
 to end. The lane implementing #138 is expected to select this exact set of fifteen.
+
+---
+
+## #140 — RECORDED GAP, NO DISPOSITION TAKEN: three orphaned `equipment_models` indexes remain live on sandbox
+
+**Date:** 2026-08-29
+**Status:** **OPEN — recorded, not fixed.** No index was deleted and none was declared.
+**Scope:** sandbox environment state
+**Related:** #108 (the governance breach this is the residue of), #133/#137 (a change that no
+contract sees), and the index-drift guard in `scripts/indexDriftGuard.mjs`.
+
+### What was measured
+
+Sandbox `eos-platform-sandbox`, read-only, 2026-08-29 — live composite indexes vs
+`firestore.indexes.json` at `9be177bb`:
+
+```
+declared but NOT live ... 8   -> real query failures; CREATED (see below)
+live but NOT declared ... 3   -> all equipment_models; LEFT IN PLACE, recorded here
+```
+
+The eight were created additively with `gcloud firestore indexes composite create`, deliberately
+**not** `firebase deploy --only firestore:indexes`: that command reconciles, so it would have
+created the eight and **silently deleted the three** in the same breath. All forty-seven live
+indexes are now READY and `declared-but-missing` is zero.
+
+### The three, and why they are not simply drift
+
+```
+equipment_models :: status ASC, manufacturerId ASC, displayName ASC
+equipment_models :: manufacturerId ASC, displayName ASC
+equipment_models :: status ASC, displayName ASC
+```
+
+They are the **residue of the breach recorded in #108**. PR #1206's metadata program declared an
+`equipmentModel` INDEX list view whose filters derived these three composites over a collection that
+**D4 governs**, they were declared in `firestore.indexes.json`, and they were deployed to sandbox.
+#1273 removed the declaration and #108 ruled that defining an entity confers no indexing authority
+over another program's collection.
+
+**The repository was corrected. The environment never was.** So the indexes exist live, serving a
+list view that no longer exists, declared by nobody.
+
+### Why no disposition is taken here
+
+Deleting them is a governance disposition on a D4-governed collection, and #108 corrected the
+declaration without ruling on the live residue. #108 records that D4 declares no compound index, so
+nothing is *known* to need them — but "nothing appears to need it" is the reasoning that produced
+the breach, and it is not sufficient authority to drop production-shaped state in an environment
+others are testing against. They cost storage and nothing else where they sit.
+
+**Owner disposition required**, one of: delete them from sandbox so the environment matches the
+repo; or declare them, which re-asserts an index claim over D4's collection and would have to
+overturn #108 as a named decision.
+
+### The hazard this leaves standing until then
+
+Any future `firebase deploy --only firestore:indexes` against sandbox **will delete these three**
+without being asked to, because reconciliation is the command's normal behaviour and not an error.
+That is the exact shape `indexDriftGuard.mjs` exists to catch, and its rule — the authorization must
+NAME every index to be deleted — is what should govern the day someone runs it.
