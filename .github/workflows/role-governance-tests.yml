@@ -18,6 +18,10 @@ on:
       - "functions/src/access/**"
       - "field-ops-app-vite/src/access/**"
       - "functions/scripts/governance/**"
+      # The precedence sweep pins a hash of DECISIONS.md, so a DECISIONS-only change leaves the
+      # generated artifact stale unless this lane runs. That happened once already (#1545 edited
+      # DECISIONS.md without regenerating, and the drift surfaced on an unrelated branch).
+      - "docs/DECISIONS.md"
       - "functions/test/semanticMappingGuards.test.mjs"
       - "functions/test/generalManagerNoAdmin.test.mjs"
       - "functions/test/ownerDecisionPrecedence.test.mjs"
@@ -88,6 +92,10 @@ on:
       - "functions/src/access/**"
       - "field-ops-app-vite/src/access/**"
       - "functions/scripts/governance/**"
+      # The precedence sweep pins a hash of DECISIONS.md, so a DECISIONS-only change leaves the
+      # generated artifact stale unless this lane runs. That happened once already (#1545 edited
+      # DECISIONS.md without regenerating, and the drift surfaced on an unrelated branch).
+      - "docs/DECISIONS.md"
       - "functions/test/semanticMappingGuards.test.mjs"
       - "functions/test/generalManagerNoAdmin.test.mjs"
       - "functions/test/ownerDecisionPrecedence.test.mjs"
