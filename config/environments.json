@@ -63,7 +63,7 @@
       "role": "sandbox",
       "deployment": "platform",
       "status": "live",
-      "purpose": "Persistent non-production platform environment: synthetic data, governed test personas, full integrated application.",
+      "purpose": "Persistent non-production platform environment: governed test personas, full integrated application. Its dataset is NOT governed as synthetic -- the fixture pipeline that populates it is production-derived -- which is why privateAiSyntheticOperationalInterpretation is false here.",
       "privateAiSyntheticOperationalInterpretation": false,
       "firebase": {
         "apiKey": "AIzaSyAd3xie4pGTyzBhBpA8HT7E5M9OFnPYgTE",
