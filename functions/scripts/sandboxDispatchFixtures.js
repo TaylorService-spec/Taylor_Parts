@@ -27,9 +27,24 @@ const PHOENIX_UTC_OFFSET_HOURS = 7;
 /** The recorded shift, as local wall-clock. Matches what a dispatcher would actually enter. */
 const SANDBOX_SHIFT = Object.freeze({ start: "07:00", end: "16:00" });
 
-/** Where the placed Work Order sits inside that shift. Mid-morning, comfortably inside 07:00–16:00. */
+/** Where the first placed Work Order sits inside that shift. Mid-morning, comfortably inside 07:00–16:00. */
 const SCHEDULED_START_HOUR_LOCAL = 9;
 const SCHEDULED_DURATION_HOURS = 2;
+
+/**
+ * A SECOND placement, on a different technician, at a different hour of the same day.
+ *
+ * ONE CHIP CANNOT PROVE THE BOARD DRAWS TIME. The Dispatch Quick Gate asserts that chip geometry
+ * comes from the committed window rather than from row order, and the only observable difference is
+ * that two chips sit at DIFFERENT left offsets — a single chip is consistent with a board that
+ * places everything at 0%. So a representative day needs two placements, not one.
+ *
+ * Deliberately on the technician with NO recorded availability: it gives the board a placed job on an
+ * unrecorded lane, which is a real combination a dispatcher sees and is different from the first
+ * placement rather than a duplicate of it.
+ */
+const SECOND_START_HOUR_LOCAL = 13;
+const SECOND_DURATION_HOURS = 1.5;
 
 /** The calendar date `instantMillis` falls on, in `timeZone`. */
 function localDateParts(instantMillis, timeZone = SANDBOX_TIMEZONE) {
@@ -52,11 +67,22 @@ function localDateParts(instantMillis, timeZone = SANDBOX_TIMEZONE) {
  * Returned as epoch millis so the caller wraps them in whatever Timestamp type it uses, and so this
  * function stays assertable without Firestore.
  */
-function buildScheduledWindow(instantMillis) {
+function buildScheduledWindow(
+  instantMillis,
+  { startHourLocal = SCHEDULED_START_HOUR_LOCAL, durationHours = SCHEDULED_DURATION_HOURS } = {},
+) {
   const { year, month, day } = localDateParts(instantMillis);
-  const startUtcHour = SCHEDULED_START_HOUR_LOCAL + PHOENIX_UTC_OFFSET_HOURS;
+  const startUtcHour = startHourLocal + PHOENIX_UTC_OFFSET_HOURS;
   const startMillis = Date.UTC(year, month - 1, day, startUtcHour, 0, 0, 0);
-  return { startMillis, endMillis: startMillis + SCHEDULED_DURATION_HOURS * 3600_000 };
+  return { startMillis, endMillis: startMillis + durationHours * 3600_000 };
+}
+
+/** The second placement's window — same day, a different hour, so the two chips cannot coincide. */
+function buildSecondScheduledWindow(instantMillis) {
+  return buildScheduledWindow(instantMillis, {
+    startHourLocal: SECOND_START_HOUR_LOCAL,
+    durationHours: SECOND_DURATION_HOURS,
+  });
 }
 
 /**
@@ -87,8 +113,11 @@ module.exports = {
   SANDBOX_SHIFT,
   SCHEDULED_START_HOUR_LOCAL,
   SCHEDULED_DURATION_HOURS,
+  SECOND_START_HOUR_LOCAL,
+  SECOND_DURATION_HOURS,
   PHOENIX_UTC_OFFSET_HOURS,
   localDateParts,
   buildScheduledWindow,
+  buildSecondScheduledWindow,
   buildTechnicianAvailability,
 };

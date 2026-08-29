@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 const require_ = createRequire(import.meta.url);
 const {
   SANDBOX_TIMEZONE, SANDBOX_SHIFT, SCHEDULED_START_HOUR_LOCAL, SCHEDULED_DURATION_HOURS,
-  buildScheduledWindow, buildTechnicianAvailability, localDateParts,
+  buildScheduledWindow, buildSecondScheduledWindow, buildTechnicianAvailability, localDateParts,
 } = require_("../scripts/sandboxDispatchFixtures.js");
 
 const {
@@ -33,6 +33,7 @@ const availability = buildTechnicianAvailability({
 });
 const NOW = Date.now();
 const win = buildScheduledWindow(NOW);
+const win2 = buildSecondScheduledWindow(NOW);
 const HOUR = 3600_000;
 
 // ---------------------------------------------------------------------------------------------
@@ -119,6 +120,32 @@ test("every weekday draws a shift — a weekend placement is representable", () 
     assert.equal(minutesOutsideWorkingHours(availability, start, start + HOUR), 0,
       `day offset ${d} must be inside recorded hours`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// The second placement — what makes chip geometry provable
+// ---------------------------------------------------------------------------------------------
+
+test("a SECOND placement exists on the SAME day at a DIFFERENT hour", () => {
+  // One chip cannot prove the board draws time: a single chip is consistent with a board that places
+  // everything at 0%. The Quick Gate compares left offsets and requires more than one distinct value.
+  assert.notEqual(win2.startMillis, win.startMillis, "the two placements must not share a start");
+  const a = localWallClock(win.startMillis, SANDBOX_TIMEZONE);
+  const b = localWallClock(win2.startMillis, SANDBOX_TIMEZONE);
+  assert.equal(a.dateKey, b.dateKey, "both must fall on the SAME local day or the board draws one of them");
+  assert.notEqual(a.minutes, b.minutes, "different local hour — distinct left offsets");
+});
+
+test("the two placements do not overlap, so they are not a disguised double-booking", () => {
+  const overlap = win.startMillis < win2.endMillis && win2.startMillis < win.endMillis;
+  assert.equal(overlap, false);
+});
+
+test("the second placement is also inside recorded hours, measured against the real model", () => {
+  // It is seeded onto tech-sbx-02, which has NO recorded availability — so nothing warns about it in
+  // practice. Asserted against the recorded shift anyway: if a later change gives that technician
+  // hours, the placement should already sit inside them rather than start warning.
+  assert.equal(minutesOutsideWorkingHours(availability, win2.startMillis, win2.endMillis), 0);
 });
 
 // ---------------------------------------------------------------------------------------------

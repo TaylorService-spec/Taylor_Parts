@@ -42,6 +42,7 @@ const path = require("node:path");
 
 const {
   buildScheduledWindow,
+  buildSecondScheduledWindow,
   buildTechnicianAvailability,
 } = require("./sandboxDispatchFixtures");
 
@@ -136,6 +137,12 @@ async function main() {
   const SCHEDULED_WINDOW = {
     start: Timestamp.fromMillis(win.startMillis),
     end: Timestamp.fromMillis(win.endMillis),
+  };
+  // Same day, a different hour, so the two chips cannot land on the same left offset.
+  const win2 = buildSecondScheduledWindow(now.toMillis());
+  const SECOND_WINDOW = {
+    start: Timestamp.fromMillis(win2.startMillis),
+    end: Timestamp.fromMillis(win2.endMillis),
   };
   const counts = {};
   const bump = (k) => { counts[k] = (counts[k] || 0) + 1; };
@@ -305,6 +312,25 @@ async function main() {
     customerId: "acct-harbor", locationId: "loc-harbor-airport", equipmentId: "eq-ice-002",
     assignedTechId: "tech-sbx-01",
     dispatchedAt: now,
+  }));
+
+  // A SECOND placement, same day, different hour, different technician.
+  //
+  // One chip cannot prove the board draws TIME: a single chip is consistent with a board that places
+  // everything at 0%. The Dispatch Quick Gate asserts chip geometry comes from the committed window
+  // rather than row order, and distinct left offsets are the only observable difference -- so a
+  // representative day needs two placements.
+  //
+  // On tech-sbx-02, which deliberately has NO recorded availability: a placed job on an unrecorded
+  // lane is a real combination a dispatcher sees, and it differs from wo-sbx-002 rather than
+  // duplicating it. Different technician, so this is not a double-booking of the first.
+  await set(WOS, "wo-sbx-008", woBase(8, {
+    status: "SCHEDULED",
+    scheduledTechId: "tech-sbx-02",
+    scheduledStart: SECOND_WINDOW.start,
+    scheduledEnd: SECOND_WINDOW.end,
+    complaint: "Harbor Grill airport prep unit - quarterly preventive maintenance.",
+    customerId: "acct-harbor", locationId: "loc-harbor-airport", equipmentId: "eq-ice-002",
   }));
 
   // Not yet scheduled -- proves the dispatch board honestly refuses to offer
