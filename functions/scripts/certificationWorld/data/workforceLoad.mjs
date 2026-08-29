@@ -60,11 +60,53 @@ export const ACTIVE_JOB_STATUSES = Object.freeze(["assigned", "in_progress"]);
 const jobId = (technicianId, seq) => `cwjob_${technicianId}_${String(seq).padStart(2, "0")}`;
 
 /**
+ * The canonical technician vocabulary, which is NOT the employee vocabulary.
+ *
+ * A technician record is `{ id, name, phone, status }` -- stated in modules/technicians/
+ * Technicians.jsx's own header, enforced for client writes by firestore.rules, and documented at
+ * length in test/techniciansSurfaceEmployeeDivergence.test.jsx. `status` is a live job-assignment
+ * state, one of these three, and it is a different concept from an employee's `employmentStatus`.
+ *
+ * Duplicated as a literal rather than imported because this is a plain seed script and the authority
+ * (scheduling/schedulingRepository.ts's GOVERNED_TECHNICIAN_STATUSES) is TypeScript compiled to
+ * lib/ -- a seed script that could not run before a build would be worse. The mirror is not left to
+ * trust: certificationWorldTechnicianShape.test.mjs imports the REAL set and asserts every status
+ * emitted here is in it, so a drift fails the build rather than the sandbox.
+ */
+const TECHNICIAN_STATUS_AVAILABLE = "available";
+const TECHNICIAN_STATUS_OFF_SHIFT = "off_shift";
+
+/**
  * Technician registry records.
  *
  * completeAssignedJob refuses to act when a caller's fieldops_technicians record is missing -- it
  * calls that an inconsistent mapping and fails closed. A world with assigned jobs and no technician
  * records would therefore be one where no technician could ever complete anything.
+ *
+ * ============================ WHY THIS WRITES `name` AND `status` ============================
+ *
+ * It used to write `displayName`, `active` and `available` -- the EMPLOYEE vocabulary, into the
+ * TECHNICIAN collection. Those are two different shapes for two different concepts, and the
+ * divergence is governance-recognised (the Employee/User/Technician split is approved but
+ * unimplemented, so there is no derivation path between them: this generator is the only writer).
+ *
+ * The consequence was not cosmetic and reached production-shaped behaviour in the sandbox:
+ *
+ *   - `name` absent  -> resolveTechnicianIdentity correctly refused to print a raw document id and
+ *     every one of the eleven seeded technicians rendered as "Unknown technician" on the Dispatch
+ *     board and blank in the Employees admin surface.
+ *   - `status` absent -> governed scheduling placement refused all eleven with
+ *     TECHNICIAN_INELIGIBLE. A third of the sandbox roster could not be scheduled at all. Verified
+ *     live on eos-platform-sandbox 2026-08-27, not inferred.
+ *
+ * Nothing ever read the fields it was writing. `active` and `available` on a technician record are
+ * consumed by no application code, no certification harness and no verifier -- verifyWorkforceLoad
+ * counts these documents and reads every field it actually uses (certWorkload, certAvailable) off
+ * the EMPLOYEE record. So they are gone rather than carried: keeping them would leave two spellings
+ * of identity in one document and invite the next reader to pick the wrong one.
+ *
+ * Every value below already existed on the employee fixture. Nothing is invented, and no name is
+ * fabricated to make a screenshot look better.
  */
 export function buildTechnicianRecords(employees) {
   return employees
@@ -73,11 +115,20 @@ export function buildTechnicianRecords(employees) {
       collection: "fieldops_technicians",
       id: e.employeeId,
       data: {
+        // Identity + linkage. technicianId must equal the document id: transitionWorkOrder and
+        // completeAssignedJob both address technicians by that id, never by employeeId.
         technicianId: e.employeeId,
         employeeId: e.employeeId,
-        displayName: e.displayName,
-        active: e.active !== false,
-        available: e.certAvailable !== false,
+        // The canonical display field. The board reads `name` and nothing else.
+        name: e.displayName,
+        phone: e.certPhone,
+        // The live job-assignment state, which is what placement eligibility checks. An employee the
+        // fixture declares unavailable becomes off_shift rather than being omitted -- an absent
+        // technician record would break completeAssignedJob's mapping check, which is the whole
+        // reason these documents exist.
+        status: e.certAvailable !== false ? TECHNICIAN_STATUS_AVAILABLE : TECHNICIAN_STATUS_OFF_SHIFT,
+        // Provenance and reset scoping. `reset` is marker-scoped, so removing this would strand
+        // every record it writes beyond the reach of the governed cleanup path.
         dataProvenance: "SYNTHETIC_CERTIFICATION_FACT",
       },
     }));
