@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { workOrderTypeLabel } from "../../domain/workOrderType.js";
+import { SLOT_MS, isSlotSelectable, snapToSlot } from "../../domain/dispatchBoardGeometry.js";
 
 // Dispatch North Star P1 · frame 1b — the one gate that serves BOTH interaction paths.
 //
@@ -76,6 +77,10 @@ export default function PlacementDialog({
   const needsTechnician = intent === PLACEMENT_INTENT.SCHEDULE || intent === PLACEMENT_INTENT.REASSIGN;
   const needsTime = intent === PLACEMENT_INTENT.SCHEDULE || intent === PLACEMENT_INTENT.RESCHEDULE;
 
+  // VC-4. The earliest start this dialog may offer, snapped UP to the next whole slot. Computed on
+  // open rather than continuously: a floor that advanced while someone typed would move the field
+  // under them. The server re-checks on submit, so a stale floor costs a refusal, never a bad write.
+  const [earliestSelectableMillis] = useState(() => snapToSlot(Date.now() + SLOT_MS));
   const [reason, setReason] = useState("");
   const [technicianId, setTechnicianId] = useState(defaultTechnicianId ?? "");
   const [startLocal, setStartLocal] = useState(() => toLocalInput(defaultStartMillis));
@@ -97,6 +102,10 @@ export default function PlacementDialog({
     if (needsReason && reason.trim().length === 0) return "reason";
     if (needsTechnician && !technicianId) return "technician";
     if (needsTime && startMillis == null) return "time";
+    // VC-4. `min` on a datetime-local is advisory in several browsers and absent in jsdom, so the
+    // floor is enforced here as well. This is the one placement question the CLIENT may answer —
+    // the clock is not a policy — and the server still re-checks START_IN_PAST regardless.
+    if (needsTime && startMillis != null && !isSlotSelectable(startMillis, Date.now())) return "past";
     if (needsTime && !(durationMinutes > 0)) return "duration";
     return null;
   })();
@@ -149,9 +158,18 @@ export default function PlacementDialog({
                 ref={!needsTechnician ? firstFieldRef : null}
                 type="datetime-local"
                 value={startLocal}
+                // VC-4 — the accessible path gets the SAME past-slot prevention as the pointer path.
+                // A correction that only fixed dragging would have left the keyboard route offering
+                // exactly the placement the server refuses, which is the worse half of the defect.
+                min={toLocalInput(earliestSelectableMillis)}
+                step={SLOT_MS / 1000}
                 onChange={(e) => setStartLocal(e.target.value)}
                 disabled={submitting}
+                aria-describedby="ns-dispatch-dialog-past-note"
               />
+              <span id="ns-dispatch-dialog-past-note" className="ns-dispatch-dialog__hint">
+                Times already past cannot be chosen.
+              </span>
             </label>
             <label className="ns-dispatch-dialog__field">
               <span>Length</span>
@@ -195,6 +213,12 @@ export default function PlacementDialog({
           <Button variant="tertiary" onClick={onCancel} disabled={submitting}>Cancel</Button>
         </div>
 
+        {blockedBecause === "past" ? (
+          <p className="ns-dispatch-dialog__hint" role="alert">
+            That start time has already passed. Choose a later time — it will not be moved forward
+            for you.
+          </p>
+        ) : null}
         {blockedBecause === "reason" ? (
           <p className="ns-dispatch-dialog__hint">Confirm stays disabled until a reason is typed.</p>
         ) : null}

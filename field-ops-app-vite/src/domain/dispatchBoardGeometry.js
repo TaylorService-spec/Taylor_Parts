@@ -348,3 +348,88 @@ export function dayLoad(availabilityByDay, workOrdersByDay, days) {
     return { day, capacity, blocked: blocks.length > 0 };
   });
 }
+
+// ════════════════════ DIRECT MANIPULATION: SLOTS, PAST TIME, MOVE AND RESIZE ════════════════════
+//
+// Added for the Owner's P1v1 visual corrections (VC-2/VC-3/VC-4). All pure: they compute what a
+// gesture MEANT. None of them decides whether a placement is allowed — that stays server-side in
+// functions/src/scheduling/placementPolicy.ts, and these helpers exist so the board can avoid
+// OFFERING a target the server is certain to refuse, not so it can start judging placements itself.
+
+/** The board's manipulation grain. A pointer resolves to the minute; the gesture does not. */
+export const SLOT_MS = 900_000; // 15 minutes
+
+/**
+ * Mirrors PAST_START_TOLERANCE_MS in functions/src/scheduling/placementPolicy.ts.
+ *
+ * Deliberately the SAME number: a client that were stricter would grey out slots the server would
+ * have accepted, and a client that were looser would invite the refusal this correction exists to
+ * stop. The server remains the authority — this only keeps the invitation honest.
+ */
+export const PAST_START_TOLERANCE_MS = 60_000;
+
+/** The shortest placement a resize may produce. One slot; below this a chip stops being legible. */
+export const MIN_DURATION_MS = SLOT_MS;
+
+/** Snap an instant to the 15-minute grid. */
+export function snapToSlot(millis) {
+  return Math.round(millis / SLOT_MS) * SLOT_MS;
+}
+
+/**
+ * May a placement START here?
+ *
+ * VC-4: past slots on TODAY are not valid targets. This answers only that question — it says nothing
+ * about overlap, blocked time or technician eligibility, all of which remain the server's.
+ */
+export function isSlotSelectable(startMillis, nowMillis) {
+  if (!Number.isFinite(startMillis) || !Number.isFinite(nowMillis)) return false;
+  return startMillis >= nowMillis - PAST_START_TOLERANCE_MS;
+}
+
+/**
+ * How much of a band is already in the past, 0..1 — for shading today's dead region.
+ * 0 for any day that has not started, 1 for any day already over.
+ */
+export function pastFractionOfBand(band, nowMillis) {
+  if (!band || !Number.isFinite(nowMillis)) return 0;
+  const span = band.endMillis - band.startMillis;
+  if (span <= 0) return 0;
+  if (nowMillis <= band.startMillis) return 0;
+  if (nowMillis >= band.endMillis) return 1;
+  return (nowMillis - band.startMillis) / span;
+}
+
+/**
+ * Move a window, preserving its duration. Returns null when the window is absent — a windowless
+ * record (the R23 case) has no time to move, and inventing one here would be a second scheduler.
+ */
+export function moveWindow(window, deltaMillis) {
+  if (!window) return null;
+  const durationMillis = window.endMillis - window.startMillis;
+  const startMillis = snapToSlot(window.startMillis + deltaMillis);
+  return { startMillis, endMillis: startMillis + durationMillis };
+}
+
+/**
+ * Resize a window from its END, preserving its start. Never shorter than MIN_DURATION_MS: a
+ * zero-length placement would be refused by the server and is not a thing a dispatcher means.
+ */
+export function resizeWindow(window, deltaMillis) {
+  if (!window) return null;
+  const endMillis = Math.max(
+    snapToSlot(window.endMillis + deltaMillis),
+    window.startMillis + MIN_DURATION_MS,
+  );
+  return { startMillis: window.startMillis, endMillis };
+}
+
+/**
+ * The window a drop at `fraction` across `band` means, for a job of `durationMinutes`.
+ * Snapped, so a job does not start at 9:07 because of where a cursor landed.
+ */
+export function windowForDrop(band, fraction, durationMinutes) {
+  const raw = band.startMillis + Math.round(fraction * (band.endMillis - band.startMillis));
+  const startMillis = snapToSlot(raw);
+  return { startMillis, endMillis: startMillis + durationMinutes * 60_000 };
+}

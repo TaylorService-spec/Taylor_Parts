@@ -1,11 +1,13 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 
 import {
+  SLOT_MS,
   bandHours,
   blockedMinutesInBand,
   laneCapacity,
   placeInBand,
   placedBlockedTime,
+  pastFractionOfBand,
   placementWindow,
   shiftLabel,
 } from "../../domain/dispatchBoardGeometry.js";
@@ -34,6 +36,12 @@ import { workOrderTypeLabel } from "../../domain/workOrderType.js";
 // the server. `canAcceptDrop` only decides whether to show an INVITATION — the server refuses
 // regardless, and a lane that invited a drop the server would reject is a smaller sin than a lane
 // that hid one it would have accepted.
+
+// VC-3 — the bindings, stated where a user can find them. A shortcut nobody can discover is not an
+// accessible path, so this rides on the chip itself and is echoed in the board rules footer.
+const CHIP_KEY_HINT =
+  "Arrow keys move by 15 min (Shift = 1 hour) · Alt+Arrow resizes · R reassigns";
+
 function DispatchLaneGrid({
   technicians,
   workOrdersByTechnician,
@@ -50,8 +58,18 @@ function DispatchLaneGrid({
   onDragOverLane,
   onDragLeaveLane,
   busyWorkOrderId,
+  onAdjustPlacement,
+  onReassignRequest,
+  slotMillis = SLOT_MS,
+  nowMillis,
 }) {
   const hours = bandHours(band);
+  const resizeOriginRef = useRef(null);
+  // VC-4 — how much of THIS band is already gone. Rendered as a dead region so a dispatcher can see
+  // that those minutes are not targets, instead of discovering it from a refusal after the drop.
+  // Only today has one: pastFractionOfBand answers 0 for a future day and 1 for a finished one.
+  const now = Number.isFinite(nowMillis) ? nowMillis : Date.now();
+  const pastFraction = pastFractionOfBand(band, now);
 
   return (
     <div className="ns-dispatch-grid">
@@ -97,6 +115,15 @@ function DispatchLaneGrid({
               onDragLeave={canAccept ? () => onDragLeaveLane?.(tech.id) : undefined}
               onDrop={canAccept ? (e) => { e.preventDefault(); onDropOnLane?.(tech.id, dropFractionOf(e)); } : undefined}
             >
+              {pastFraction > 0 ? (
+                <div
+                  className="ns-dispatch-lane__past"
+                  style={{ width: `${Math.min(100, pastFraction * 100)}%` }}
+                  aria-hidden="true"
+                  title="Already passed — not a valid placement target"
+                />
+              ) : null}
+
               {/* Blocked time first, so a work-order chip drawn over the same minutes reads as the
                   collision it is rather than disappearing behind a hatch. */}
               {blocked.map(({ block, geometry }) => (
@@ -137,13 +164,68 @@ function DispatchLaneGrid({
                       onSelectWorkOrder?.(wo.id);
                     }}
                     onDragEnd={onDragEndWorkOrder}
+                    // VC-3 — the keyboard equivalent of VC-2's pointer manipulation. Every binding
+                    // lands in the SAME governed command its pointer twin does; none of them writes
+                    // anything here. Arrow keys are claimed only while a chip is focused, and only
+                    // with a modifier or on the horizontal axis, so ordinary tab/scroll navigation
+                    // is left alone — a board that swallowed plain arrows would break the page for
+                    // everyone to serve one gesture.
+                    onKeyDown={(e) => {
+                      if (isBusy || !onAdjustPlacement) return;
+                      const step = e.shiftKey ? 4 * slotMillis : slotMillis; // Shift = one hour
+                      if (e.key === "ArrowLeft" && !e.altKey) {
+                        e.preventDefault(); onAdjustPlacement(wo, "move", -step);
+                      } else if (e.key === "ArrowRight" && !e.altKey) {
+                        e.preventDefault(); onAdjustPlacement(wo, "move", step);
+                      } else if (e.key === "ArrowLeft" && e.altKey) {
+                        e.preventDefault(); onAdjustPlacement(wo, "resize", -step);
+                      } else if (e.key === "ArrowRight" && e.altKey) {
+                        e.preventDefault(); onAdjustPlacement(wo, "resize", step);
+                      } else if (e.key.toLowerCase() === "r") {
+                        e.preventDefault(); onReassignRequest?.(wo);
+                      }
+                    }}
                     aria-label={laneChipLabel(wo, identity.name, geometry)}
+                    aria-keyshortcuts="ArrowLeft ArrowRight Alt+ArrowLeft Alt+ArrowRight R"
+                    title={CHIP_KEY_HINT}
                   >
                     <b>{wo.woNumber} · {workOrderTypeLabel(wo.type)}</b>
                     <span>
                       {geometry.outsideBand ? "Extends outside the shown hours · " : ""}
                       {wo.customerName ?? "Customer — name unavailable"}
                     </span>
+                    {/* VC-2 — drag the trailing edge to change how long the job takes. Separate
+                        from the chip's own drag (which MOVES it): grabbing the edge must not also
+                        start a reschedule-by-move, hence stopPropagation on the drag start. */}
+                    {onAdjustPlacement ? (
+                      <span
+                        className="ns-dispatch-chip__resize"
+                        role="separator"
+                        aria-label={`Resize ${wo.woNumber}`}
+                        draggable={!isBusy}
+                        onClick={(e) => e.stopPropagation()}
+                        onDragStart={(e) => {
+                          e.stopPropagation();
+                          if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+                          resizeOriginRef.current = { id: wo.id, clientX: e.clientX };
+                        }}
+                        onDragEnd={(e) => {
+                          e.stopPropagation();
+                          const origin = resizeOriginRef.current;
+                          resizeOriginRef.current = null;
+                          if (!origin || origin.id !== wo.id) return;
+                          const laneEl = e.currentTarget.closest(".ns-dispatch-lane");
+                          const width = laneEl?.getBoundingClientRect?.().width ?? 0;
+                          if (!width) return;
+                          // Pixels → minutes through the band the lane actually draws, then snapped
+                          // by the domain helper. The grid never invents a duration of its own.
+                          const deltaMillis =
+                            ((e.clientX - origin.clientX) / width) * (band.endMillis - band.startMillis);
+                          if (Math.abs(deltaMillis) < slotMillis / 2) return;
+                          onAdjustPlacement(wo, "resize", deltaMillis);
+                        }}
+                      />
+                    ) : null}
                   </button>
                 );
               })}
