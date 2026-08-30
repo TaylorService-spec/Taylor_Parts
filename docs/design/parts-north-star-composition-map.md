@@ -504,3 +504,75 @@ that way at all.
 
 That guard's own header calls this *"a regex that can never match, and therefore a `not.toMatch` that
 can never fail"*. It described this defect before it happened.
+
+---
+
+# Part VIII — the gate caught up with Frame 1a (2026-08-30)
+
+**24/24 against deployed `52ed729d`.** The application was correct throughout. Four defects, all in
+the gate, and three of them mine from the same sitting.
+
+## 1. A gate must not pin a column name the ruling is free to change
+
+Check 4 looked for `[data-label="Part Number"]`. ND-30 approved Frame 1a's grammar, the part number
+became the primary line of the **Part** cell, and the gate timed out for fifteen seconds against a
+page that was right.
+
+**ND-26 governs the VALUE** — `internalPartNumber`, never the document key. It says nothing about
+what the column is *called*, and ND-30 is free to name it. Those are two contracts, and the gate now
+asserts them separately: **3a owns the visible grammar, 4 owns the value.** Proved on the live DOM
+before anything was changed: the xpath resolved to the right table, 25 rows, first-row labels
+`Part · Manufacturer · Category · Control · Status · Attention`, and **no `Part Number` label at all**.
+
+## 2. The row choice read a column ND-30 had moved
+
+Check 6a picked the row whose *Inventory Health* was not "No ledger activity" — a column Frame 1a
+moved off the catalogue. The selection silently found nothing and fell back to row 0, **quietly
+restoring the vacuous pass 6a exists to prevent.**
+
+It now **probes** a bounded set of candidate records for one that actually has a stock forecast. That
+depends on no catalogue column at all, so the next grammar change cannot re-break it. Live result:
+*probed 2, chose CW-P-0001*.
+
+## 3. A blanket find-and-replace, and a catch that hid it
+
+Scoping the catalogue to one resolved locator was right. Doing it with a string replace was not: it
+reached inside `openWorkspace`, which is hoisted above the `const` it now referenced — a
+**temporal-dead-zone `ReferenceError` on every call**.
+
+And it stayed invisible because the surrounding `catch {}` **discarded the error and substituted a
+friendlier sentence**: *"the Parts Catalog rendered no rows."* Two full runs were spent looking at the
+data. The second run's own diagnostic printed the catalogue **with 25 rows** in the same breath as
+claiming it had none — the contradiction that gave it away.
+
+Both are fixed: `openWorkspace` calls `catalogTable(page)`, and the catch now reports the underlying
+error alongside its context. **A catch that replaces the cause with a nicer sentence sends the next
+investigation to the wrong place.**
+
+The measurement that killed the wrong hypothesis is worth keeping: the catalogue's first row renders
+in **1.4–1.7s on a cold browser**, so the 25s wait was never the problem. Raising the timeout — the
+obvious move — would have made the gate pass while the ReferenceError was still there.
+
+## 4. `contains(@class, …)` matches BEM children
+
+The panel locator used `ancestor::*[contains(@class,"ns-workspace")][1]`, which also matches
+`ns-workspace__head`, `__titleblock` and `__titlerow` — and the ancestor axis returns the **nearest**
+first. It resolved to the title row: check 3b passed (the title and count live there) while 3c saw no
+chips. Now matched on the exact class token.
+
+That is two checks disagreeing about what surface they were measuring — the failure ND-30's *identify
+once* instruction was written to prevent, arriving through a subtler door.
+
+## Result
+
+```
+3a  Frame 1a's column grammar      PART · MANUFACTURER · CATEGORY · CONTROL · STATUS · ATTENTION
+3b  titled, labelled count         Parts Catalog | 62 parts in the catalogue
+3c  view chips with counts         All (62) · Active parts (52) · Needs attention (2) · Serialized (12)
+4   ND-26 value contract           rows=25 populated=25
+4b  Attention words or a dash      rows=25 leaked=[] blank=0
+6a  a part with ledger activity    probed 2, chose CW-P-0001
+```
+
+**Gate-only change — not bundle input, so no Hosting refresh.** The deployed SHA remains truthfully
+`52ed729d`, and the complete 24-check gate was run against it.
