@@ -159,8 +159,36 @@ test("MUTATION: a direct ledger write is detectable", () => {
   assert.equal(caught.length, 1, "a direct chained write must be detectable");
 });
 
-test("the applier refuses production and has no default target", () => {
-  const src = codeOnly(APPLIER);
-  assert.match(src, /role === "production"/, "the production refusal is gone");
-  assert.match(src, /--projectId is required/, "the applier would accept a missing target");
+test("the applier refuses production and has no default target", async () => {
+  // THE REFUSALS MOVED, AND THIS CHECK MOVED WITH THEM.
+  //
+  // This used to grep the applier's source for the literal `role === "production"` and
+  // `--projectId is required` that its own assertSafeTarget threw. That guard has been REPLACED by
+  // the shared executionTarget authority -- which refuses production by NAME as well as by role,
+  // and additionally binds each live target to its own flag -- so the strings are legitimately gone
+  // while every refusal they stood for is strictly stronger.
+  //
+  // Grep cannot tell a deleted guard from a superseded one: both look like an absent string. So
+  // this exercises the real exported decision instead of reading the file, which is what the check
+  // was always trying to establish and can no longer be satisfied by a file containing the right
+  // words.
+  const { authorizeInventoryApply } = await import(L("functions/scripts/certificationWorld/applyInventoryPlan.mjs"));
+  const saved = { ...process.env };
+  for (const k of ["FIRESTORE_EMULATOR_HOST", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT"]) delete process.env[k];
+  const refusal = (argv) => {
+    try { authorizeInventoryApply(argv); return null; } catch (err) { return err.message; }
+  };
+  try {
+    assert.match(refusal(["--projectId", "taylor-parts", "--apply", "--apply-live-certification"]) ?? "",
+      /production/i, "production must be refused whatever flags accompany it");
+    assert.match(refusal(["--projectId", "taylor-parts"]) ?? "",
+      /production/i, "production must be refused even for a read-only dry run");
+    assert.match(refusal(["--apply"]) ?? "",
+      /--projectId is required/, "the applier must refuse a missing target");
+    assert.match(refusal(["--projectId", "eos-platform-certification", "--apply"]) ?? "",
+      /--apply-live-certification/, "a live write must name the environment it writes to");
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    for (const [k, v] of Object.entries(saved)) process.env[k] = v;
+  }
 });

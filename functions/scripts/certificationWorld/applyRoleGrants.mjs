@@ -35,22 +35,30 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { GOVERNED_BUSINESS_ROLES: GB } = await import(L("functions/lib/access/governedBusinessRoles.js"));
-const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+const { resolveExecutionTarget, assertBothLiveFlags, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 const { loadSandboxPersona } = await import(L("scripts/sandboxCredentials.mjs"));
 
 const REGION = "us-central1";
 /** The administrator this script acts AS. A real principal, holding real authority, audited as itself. */
 const ACTOR_PERSONA = "owner";
 
-// Same strictly-stronger guard as the principal provisioner: no production, no unknown project, no
-// default. This one additionally never accepts a confirmation flag, for the same reason.
-function assertSandboxTarget(projectId) {
-  if (!projectId) throw new Error("--projectId is required. There is no default target for granting authority.");
-  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments || []).find((e) => e?.firebase?.projectId === projectId);
-  if (!env) throw new Error(`Unknown project "${projectId}" -- not in config/environments.json. Refusing.`);
-  if (env.role === "production") throw new Error(`"${projectId}" is PRODUCTION. This tool never grants production authority.`);
-  if (env.role !== "sandbox") throw new Error(`"${projectId}" has role "${env.role}". Sandbox only.`);
-  return { projectId, role: env.role };
+// TARGET AUTHORITY ONLY -- the runtime question is NOT solved here.
+//
+// This tool grants through the DEPLOYED grantRole callable and authenticates as a real principal
+// with a password. eos-platform-certification has neither: one Function is deployed there, and its
+// 47 principals are deliberately passwordless. That is an architecture problem with its own
+// analysis, and wiring a target guard does not pretend otherwise.
+//
+// The local role-only guard still had to go, for the reason it went everywhere else: two
+// sandbox-role worlds are indistinguishable to a role check. It matters more here than for data --
+// roleAssignments are keyed on durable Auth UIDs, so authority granted in the wrong world is not
+// something a rebuild takes back.
+export function authorizeGrantRun(argv) {
+  const apply = argv.includes("--apply");
+  const target = resolveExecutionTarget({ argv: ["node", "applyRoleGrants.mjs", ...argv], writes: apply });
+  if (apply) assertBothLiveFlags({ target, argv, act: "Granting Roles in" });
+  return { target, apply };
 }
 
 const OUTCOME = Object.freeze({
@@ -89,7 +97,8 @@ async function main() {
   const arg = (n) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : undefined; };
   const apply = argv.includes("--apply");
   const keyGeneration = Number(arg("keyGeneration") ?? 1);
-  const target = assertSandboxTarget(arg("projectId"));
+  // Authorize ahead of any network call or Firestore access.
+  const { target } = authorizeGrantRun(argv);
 
   console.log(`certification role grants :: ${apply ? "APPLY" : "DRY RUN"} :: ${target.projectId} (role=${target.role}, keyGeneration=${keyGeneration})`);
 
@@ -282,7 +291,13 @@ function writeManifest(manifest) {
   console.log("manifest written:", path.relative(REPO, out));
 }
 
-main().catch((err) => {
-  console.error("REFUSED:", err.message);
-  process.exitCode = 1;
-});
+// RUN ONLY WHEN INVOKED DIRECTLY, so authorizeGrantRun() can be imported by its test without the
+// tool executing on import -- an unguarded main() demands --projectId, refuses, and sets a non-zero
+// exit code on the test process.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error("REFUSED:", err.message);
+    process.exitCode = 1;
+  });
+}

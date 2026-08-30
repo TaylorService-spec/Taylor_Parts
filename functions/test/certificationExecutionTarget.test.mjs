@@ -13,7 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
@@ -581,4 +581,163 @@ test("PRINCIPALS: no weaker parallel guard survives -- the shared authority is t
   assert.equal(declaresOwnGuard, false,
     "provisionPrincipals must not declare its own target guard alongside executionTarget");
   assert.match(src, /resolveExecutionTarget/, "it must consult the shared authority");
+});
+
+// =================================================================================================
+// EVERY REMAINING CERTIFICATION LIVE WRITER, UNDER ONE AUTHORITY.
+//
+// Three tools were still deciding for themselves where they could write, each with its own
+// role-only guard: "is the registry role exactly sandbox?". That question stopped being able to
+// distinguish anything the moment eos-platform-certification existed, because it is ALSO role
+// sandbox. Under a role check, the command that stages the sandbox ledger and the command that
+// stages the certification ledger differ by one word, and neither line names which.
+//
+// applyInventoryPlan is the sharpest case: it produces every warehouse and truck balance the golden
+// scenarios are DEFINED by, so a mis-targeted run does not merely add rows, it silently redefines
+// what the certification evidence means.
+//
+// These drive the REAL exported decisions, for the reason the other CLI suites do: the shared gate
+// can be perfect and a tool can still not be calling it.
+// =================================================================================================
+const { authorizeInventoryApply } =
+  await import(L("functions/scripts/certificationWorld/applyInventoryPlan.mjs"));
+const { authorizeCorrection } =
+  await import(L("functions/scripts/certificationWorld/correctLiveWorld.mjs"));
+const { authorizeGrantRun } =
+  await import(L("functions/scripts/certificationWorld/applyRoleGrants.mjs"));
+const { assertBothLiveFlags } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+
+/** Each newly-governed writer, driven through its own real entry point. */
+const WRITERS = [
+  { name: "applyInventoryPlan", fn: authorizeInventoryApply },
+  { name: "correctLiveWorld", fn: authorizeCorrection },
+  { name: "applyRoleGrants", fn: authorizeGrantRun },
+];
+
+const run = (fn, args, env = {}) =>
+  withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined, ...env },
+    () => fn(args));
+const rejects = (fn, args, env = {}) => {
+  try { run(fn, args, env); return null; } catch (err) { return err; }
+};
+
+// -- THE MANDATED THREE, AND EVERY NEAR-MISS, FOR EVERY WRITER --------------------------------
+
+for (const w of WRITERS) {
+  test(`${w.name}: certification live run is ALLOWED with --projectId + --apply + the certification flag`, () => {
+    const r = run(w.fn, ["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+    assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+    assert.equal(r.target.isLive, true);
+    assert.equal(r.apply, true);
+  });
+
+  test(`${w.name}: --apply ALONE is refused`, () => {
+    const err = rejects(w.fn, ["--projectId", CERTIFICATION_PROJECT, "--apply"]);
+    assert.ok(err, "must refuse");
+    assert.match(err.message, /--apply-live-certification/);
+  });
+
+  test(`${w.name}: the certification flag ALONE is refused -- --apply is required separately`, () => {
+    const err = rejects(w.fn, ["--projectId", CERTIFICATION_PROJECT, CERTIFICATION_LIVE_FLAG]);
+    assert.ok(err === null || r0(err), "the named flag alone must never authorize a live write");
+    function r0(e) { return /requires BOTH --apply/.test(e.message); }
+    // Without --apply this resolves as a DRY RUN, which writes nothing -- also acceptable.
+    if (err === null) {
+      const r = run(w.fn, ["--projectId", CERTIFICATION_PROJECT, CERTIFICATION_LIVE_FLAG]);
+      assert.equal(r.apply, false, "must not be a live run");
+    }
+  });
+
+  test(`${w.name}: the SANDBOX flag cannot unlock certification`, () => {
+    const err = rejects(w.fn, ["--projectId", CERTIFICATION_PROJECT, "--apply", LIVE_FLAG]);
+    assert.ok(err, "must refuse");
+    assert.match(err.message, /--apply-live-certification/);
+  });
+
+  test(`${w.name}: sandbox live run is ALLOWED with its OWN flag`, () => {
+    const r = run(w.fn, ["--projectId", LIVE_SANDBOX_PROJECT, "--apply", LIVE_FLAG]);
+    assert.equal(r.target.projectId, LIVE_SANDBOX_PROJECT);
+    assert.equal(r.apply, true);
+  });
+
+  test(`${w.name}: the CERTIFICATION flag cannot unlock the sandbox`, () => {
+    const err = rejects(w.fn, ["--projectId", LIVE_SANDBOX_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+    assert.ok(err, "must refuse");
+    assert.match(err.message, /--apply-live-sandbox/);
+  });
+
+  test(`${w.name}: PRODUCTION is refused with every flag combination, dry run included`, () => {
+    const combos = [
+      ["--projectId", PRODUCTION_PROJECT],
+      ["--projectId", PRODUCTION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG],
+      ["--projectId", PRODUCTION_PROJECT, "--apply", LIVE_FLAG, CERTIFICATION_LIVE_FLAG],
+    ];
+    for (const args of combos) {
+      const err = rejects(w.fn, args);
+      assert.ok(err, `production must be refused for: ${args.join(" ")}`);
+      assert.match(err.message, /production/i);
+    }
+  });
+
+  test(`${w.name}: an UNKNOWN project is refused, never guessed`, () => {
+    const err = rejects(w.fn, ["--projectId", "eos-platform-certifcation", "--apply", CERTIFICATION_LIVE_FLAG]);
+    assert.ok(err);
+    assert.match(err.message, /Unknown project/);
+  });
+
+  test(`${w.name}: no --projectId is refused; there is no default target`, () => {
+    const err = rejects(w.fn, ["--apply", CERTIFICATION_LIVE_FLAG]);
+    assert.ok(err);
+    assert.match(err.message, /--projectId is required/);
+  });
+
+  test(`${w.name}: ambient credentials must agree with --projectId`, () => {
+    const err = rejects(w.fn, ["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG],
+      { GOOGLE_CLOUD_PROJECT: LIVE_SANDBOX_PROJECT });
+    assert.ok(err);
+    assert.match(err.message, /Ambient credentials/);
+  });
+
+  test(`${w.name}: a DRY RUN needs no live flag and is not a write`, () => {
+    // Requiring --apply-live-certification to preview would teach an operator to type the
+    // live-write flag for commands that write nothing, which is how the flag stops meaning anything.
+    const r = run(w.fn, ["--projectId", CERTIFICATION_PROJECT]);
+    assert.equal(r.apply, false);
+    assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+  });
+}
+
+// -- NO WEAKER PARALLEL PATH SURVIVES ANYWHERE ------------------------------------------------
+
+test("no certification tool declares its own target guard beside the shared authority", () => {
+  // The whole point of consolidating is that there is ONE place a project becomes writable. A
+  // reintroduced local guard would answer "is the role sandbox?" -- a question that cannot tell
+  // eos-platform-sandbox from eos-platform-certification, which is how this started.
+  const dir = path.resolve(REPO, "functions/scripts/certificationWorld");
+  const offenders = [];
+  for (const f of readdirSync(dir).filter((n) => n.endsWith(".mjs"))) {
+    const src = readFileSync(path.join(dir, f), "utf8");
+    if (/function\s+assert(Sandbox|Safe)Target\s*\(/.test(src)) offenders.push(f);
+  }
+  assert.deepEqual(offenders, [], "these still declare their own target guard");
+});
+
+// -- THE SHARED RULE ITSELF --------------------------------------------------------------------
+
+test("assertBothLiveFlags is a no-op for an emulator target", () => {
+  // An emulator needs no live flag; that is what an emulator is for. Demanding one would push
+  // people to type live-write flags during local development.
+  const t = gate(["--projectId", "demo-certworld", "--apply"], { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" });
+  assert.doesNotThrow(() => assertBothLiveFlags({ target: t, argv: ["--apply"], act: "Writing" }));
+});
+
+test("assertBothLiveFlags names the act, so the refusal says what was about to happen", () => {
+  const t = gate(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+  const err = (() => {
+    try { assertBothLiveFlags({ target: t, argv: ["--apply"], act: "Staging inventory movements" }); return null; }
+    catch (e) { return e; }
+  })();
+  assert.ok(err);
+  assert.match(err.message, /Staging inventory movements to eos-platform-certification/);
 });

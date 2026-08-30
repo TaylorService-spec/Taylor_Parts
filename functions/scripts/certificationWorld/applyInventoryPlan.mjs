@@ -21,15 +21,21 @@
 // ============================ SAFETY ============================
 //
 //   * DRY RUN BY DEFAULT. Writes only with --apply.
-//   * SANDBOX OR EMULATOR ONLY. Production refused unconditionally; there is no override flag.
+//   * TARGET NAMED BY FLAG. A live run needs BOTH --apply and the target's own --apply-live-*.
+//     Production refused unconditionally, by name and by role; there is no override flag.
 //   * NO DEFAULT PROJECT. A tool that picks a target when you forget to name one will eventually
 //     pick the wrong one.
 //   * IDEMPOTENT BY CONSTRUCTION. Keys are pure functions of intent, so a second run replays rather
 //     than duplicating -- and the run reports `alreadyApplied` rather than pretending it did work.
 //
-// Usage:
-//   node scripts/certificationWorld/applyInventoryPlan.mjs --projectId eos-platform-sandbox
-//   node scripts/certificationWorld/applyInventoryPlan.mjs --projectId eos-platform-sandbox --apply
+// Usage -- DRY RUN (reads and reports; no live-write authorization needed):
+//   node scripts/certificationWorld/applyInventoryPlan.mjs --projectId eos-platform-certification
+//
+// Usage -- LIVE. Each target has its OWN flag, and BOTH words are required:
+//   node scripts/certificationWorld/applyInventoryPlan.mjs \
+//        --projectId eos-platform-certification --apply --apply-live-certification
+//   node scripts/certificationWorld/applyInventoryPlan.mjs \
+//        --projectId eos-platform-sandbox --apply --apply-live-sandbox
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
@@ -42,7 +48,8 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { buildInventoryPlan, buildOpeningBalanceRecords, OPENING_BALANCE_COLLECTION, BASELINE_INITIALIZATION, projectBalances } = await import(L("functions/scripts/certificationWorld/data/inventoryPlan.mjs"));
 const { CERT_PARTS } = await import(L("functions/scripts/certificationWorld/data/partsCatalog.mjs"));
 const ledger = await import(L("functions/lib/inventoryLedger/operationalMovementRepository.js"));
-const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+const { resolveExecutionTarget, assertBothLiveFlags, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
 const argv = process.argv.slice(2);
 const flag = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
@@ -52,21 +59,32 @@ const PROJECT_ID = flag("--projectId");
 /** The ledger collection the repository writes into. */
 const LEDGER_COLLECTION = "inventory_transactions";
 
-function assertSafeTarget(projectId) {
-  if (!projectId) throw new Error("--projectId is required. There is no default target for inventory movements.");
-  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments || []).find((e) => e?.firebase?.projectId === projectId);
-  // An emulator target is named explicitly rather than inferred, so a typo cannot resolve to a real
-  // project by accident.
-  const isEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
-  if (!env && !isEmulator) throw new Error(`Unknown project "${projectId}" -- not in config/environments.json. Refusing.`);
-  if (env?.role === "production") throw new Error(`"${projectId}" is PRODUCTION. This tool never writes production inventory.`);
-  // The allow-list is EXPLICIT rather than "anything that is not production": a role nobody has
-  // thought about yet should stop this tool, not be waved through by an inverted check.
-  const WRITABLE_ROLES = new Set(["sandbox"]);
-  if (env && !WRITABLE_ROLES.has(env.role)) {
-    throw new Error(`"${projectId}" has role "${env.role}". Sandbox, certification or emulator only.`);
-  }
-  return { projectId, role: env?.role ?? "emulator", isEmulator };
+// ============================ TARGET AUTHORITY ============================
+//
+// This file used to carry its own assertSafeTarget: production refused, unknown projects refused,
+// registry role must be exactly "sandbox". Correct for as long as there was ONE sandbox-role
+// environment.
+//
+// eos-platform-certification is also role "sandbox". Under a role-only guard, the command that
+// stages the entire inventory ledger into the sandbox became the command that stages it into
+// certification by editing one word, with nothing on the line naming which project's ledger was
+// about to be written. This is the tool that produces every warehouse and truck balance the golden
+// scenarios are defined by, so a mis-targeted run does not merely add rows -- it silently redefines
+// what the certification evidence means.
+//
+// The local guard is GONE rather than kept beside the shared one. A parallel path that can
+// authorize a write independently is precisely what routing through a shared authority excludes.
+export function authorizeInventoryApply(argv) {
+  const apply = argv.includes("--apply");
+  // Production by name AND role, unknown projects, missing --projectId and ambient-credential
+  // disagreement are all refused in here, once. Emulator targets stay simple, as they always were.
+  const target = resolveExecutionTarget({
+    argv: ["node", "applyInventoryPlan.mjs", ...argv],
+    writes: apply,
+  });
+  // A live run demands BOTH words; a dry run demands neither and writes nothing.
+  if (apply) assertBothLiveFlags({ target, argv, act: "Staging inventory movements" });
+  return { target, apply };
 }
 
 /**
@@ -139,8 +157,10 @@ const toEvent = (m, actor) => ({
 });
 
 async function main() {
-  const target = assertSafeTarget(PROJECT_ID);
-  console.log(`target : ${target.projectId} (${target.isEmulator ? "EMULATOR" : `role=${target.role}`})`);
+  // AUTHORIZE BEFORE ANYTHING CONNECTS -- ahead of initializeApp, so a refused invocation never
+  // opens a client against the project it was refused for.
+  const { target } = authorizeInventoryApply(argv);
+  console.log(describeTarget(target));
   console.log(`mode   : ${APPLY ? "APPLY (writes)" : "DRY RUN (writes nothing)"}\n`);
 
   if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId: target.projectId });

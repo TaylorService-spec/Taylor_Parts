@@ -170,6 +170,51 @@ export function resolveReadOnlyTarget({ argv = process.argv } = {}) {
   return resolveExecutionTarget({ argv, writes: false });
 }
 
+/**
+ * THE STRICTER RULE THE HEAVY WRITERS USE, in ONE place.
+ *
+ * ============================ WHY THIS EXISTS ============================
+ *
+ * resolveExecutionTarget treats `--apply-live-certification` as implying `--apply`: the named flag
+ * expresses live intent, so demanding a second word is ceremony. That is a fine contract for a tool
+ * that writes a handful of records.
+ *
+ * It is the wrong contract for a tool that installs 1092 records, mints 47 durable identities, or
+ * stages the entire inventory ledger. Those demand BOTH words -- one saying "this is not a dry
+ * run", the other saying WHICH project -- so that neither a stray `--apply` nor a copied
+ * environment flag is sufficient on its own.
+ *
+ * ============================ WHY IT IS A FUNCTION AND NOT A CONVENTION ============================
+ *
+ * This rule was written twice before it was written here: once in certificationWorld.mjs and once
+ * in provisionPrincipals.mjs. Three more tools now need it. Six hand-copied implementations of a
+ * safety rule is the exact shape this file's own header warns about -- "nine of them end up correct
+ * and the tenth ends up subtly different. The tenth is the one that writes to production."
+ *
+ * So the rule lives here, beside the flag map it depends on, and a change to it happens in one
+ * place or not at all.
+ *
+ * @param {object} opts
+ * @param {object} opts.target  a resolved target from resolveExecutionTarget
+ * @param {string[]} opts.argv  the argv that produced it
+ * @param {string} opts.act     what is about to happen, for the refusal message ("Seeding", ...)
+ */
+export function assertBothLiveFlags({ target, argv, act = "Writing" }) {
+  if (!target?.isLive) return target;  // an emulator needs no live flag; that is what an emulator is
+  const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(target.projectId) ?? null;
+  if (!liveFlag) {
+    refuse(`Live execution is limited to ${[...LIVE_TARGET_FLAGS_BY_PROJECT.keys()].join(", ")}. `
+      + `Refusing "${target.projectId}".`);
+  }
+  const hasApply = argv.includes("--apply");
+  const hasNamed = argv.includes(liveFlag);
+  if (!hasApply || !hasNamed) {
+    refuse(`${act} to ${target.projectId} requires BOTH --apply and ${liveFlag}. `
+      + "Neither one alone reaches live data.");
+  }
+  return target;
+}
+
 /** One line, so every tool announces the same thing in the same shape. */
 export function describeTarget(t) {
   return `target : ${t.projectId} (${t.mode}${t.isEmulator ? ` ${t.emulatorHost}` : `, role=${t.role}`})`

@@ -42,7 +42,8 @@
 //
 // Usage:
 //   node scripts/certificationWorld/correctLiveWorld.mjs --projectId eos-platform-sandbox
-//   node scripts/certificationWorld/correctLiveWorld.mjs --projectId eos-platform-sandbox --apply
+//   node scripts/certificationWorld/correctLiveWorld.mjs --projectId eos-platform-certification
+//   node scripts/certificationWorld/correctLiveWorld.mjs --projectId eos-platform-certification \n//        --apply --apply-live-certification
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
@@ -56,7 +57,8 @@ const { buildWorld } = await import(L("functions/scripts/certificationWorld/buil
 const { MARKER_FIELD } = await import(L("functions/scripts/certificationWorld/manifest.mjs"));
 const { normalizeNameForSearch, SEARCH_NAME_FIELD, TIMESTAMPED_COLLECTIONS } =
   await import(L("functions/scripts/certificationWorld/domainContracts.mjs"));
-const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+const { resolveExecutionTarget, assertBothLiveFlags, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
 const argv = process.argv.slice(2);
 const flag = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
@@ -66,21 +68,28 @@ const PROJECT_ID = flag("--projectId");
 /** Fixture-owned fields: corrected only where the marker proves the record belongs to the world. */
 const MARKER_SCOPED_FIELDS = ["status", "relationshipTypes"];
 
-function assertSandboxTarget(projectId) {
-  if (!projectId) throw new Error("--projectId is required. There is no default target.");
-  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments || []).find((e) => e?.firebase?.projectId === projectId);
-  if (!env) throw new Error(`Unknown project "${projectId}" -- not in config/environments.json. Refusing.`);
-  if (env.role === "production") throw new Error(`"${projectId}" is PRODUCTION. This tool never writes production data.`);
-  if (env.role !== "sandbox") throw new Error(`"${projectId}" has role "${env.role}". Sandbox only.`);
-  return { projectId, role: env.role };
+// TARGET AUTHORITY. The local role-only guard is gone, for the reason it is gone everywhere else:
+// eos-platform-certification is also role "sandbox", so a role check cannot tell the two worlds
+// apart, and the correction that repairs one would repair -- or corrupt -- the other by editing a
+// single word.
+//
+// It matters MORE here than for a rebuild. This tool writes IN PLACE, to a world somebody
+// deliberately chose not to reset, precisely because that world carries state a rebuild would
+// destroy. A mis-targeted correction is therefore not undone by re-running anything.
+export function authorizeCorrection(argv) {
+  const apply = argv.includes("--apply");
+  const target = resolveExecutionTarget({ argv: ["node", "correctLiveWorld.mjs", ...argv], writes: apply });
+  if (apply) assertBothLiveFlags({ target, argv, act: "Correcting records in" });
+  return { target, apply };
 }
 
 const sameArray = (a, b) =>
   Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
 
 async function main() {
-  const target = assertSandboxTarget(PROJECT_ID);
-  console.log(`target : ${target.projectId} (role=${target.role})`);
+  // Authorize ahead of initializeApp, so a refused run never opens a client.
+  const { target } = authorizeCorrection(argv);
+  console.log(describeTarget(target));
   console.log(`mode   : ${APPLY ? "APPLY (writes)" : "DRY RUN (writes nothing)"}\n`);
 
   if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
@@ -181,7 +190,14 @@ async function main() {
   console.log(`\napplied ${written} correction(s).`);
 }
 
-main().catch((err) => {
-  console.error(`\nFAILED: ${err?.message || err}`);
-  process.exitCode = 1;
-});
+// RUN ONLY WHEN INVOKED DIRECTLY, so authorizeCorrection() can be imported by its test without the
+// tool executing on import -- an unguarded main() demands --projectId, refuses, and sets a non-zero
+// exit code on the test process. A script whose authorization decision cannot be imported without
+// running the script is a decision that does not get tested.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`\nFAILED: ${err?.message || err}`);
+    process.exitCode = 1;
+  });
+}
