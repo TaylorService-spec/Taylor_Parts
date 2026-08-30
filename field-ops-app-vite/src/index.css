@@ -1042,8 +1042,18 @@ button {
   cursor: pointer;
 }
 
+/* THE HOVER SET A BACKGROUND AND NOT A FOREGROUND, WHICH IS HOW IT BECAME UNREADABLE.
+   It set `background: var(--color-brand-secondary)` and nothing else. For a genuine filled button
+   that was a no-op -- the bare `button` rule above already sets the same fill AND `color: white`.
+   For every button styled by a CLASS it was destructive: `button:hover` has specificity 0-1-1 and
+   outranks any single-class rule (`.fo-chip`, a view tab, a count chip) at 0-1-0, so those controls
+   gained a dark evergreen fill while keeping their own dark text. Dark on dark.
+   Fixed by inverting the whole pair rather than dropping the hover: solid green WITH white text, so
+   the fill and the label always travel together. A background rule that can win without carrying
+   its foreground is a contrast bug waiting for the next class that sets dark text. */
 button:hover {
   background: var(--color-brand-secondary);
+  color: #FFFFFF;
 }
 
 .wo-status {
@@ -6121,7 +6131,19 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-view { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px;
   border: 0; border-bottom: 2px solid transparent; background: none; cursor: pointer;
   font: inherit; font-size: 13px; color: var(--color-text-secondary); margin-bottom: -1px; }
-.ns-view:hover { color: var(--color-text-primary); }
+/* HOVER IS SOLID GREEN WITH WHITE TEXT, INCLUDING THE COUNT.
+   This chip previously set only a COLOUR on hover -- `color: var(--color-text-primary)`, which is
+   near-black. It never asked for a background, but the global `button:hover` supplied one anyway:
+   at 0-1-1 that rule outranks `.ns-view` at 0-1-0, so the chip gained a dark evergreen fill, while
+   `.ns-view:hover` at 0-2-0 won the colour back to near-black. Dark text on a dark fill, unreadable,
+   and neither rule was wrong on its own -- the pair was.
+   Stating both halves here settles it at the level that owns the control, and the count is inverted
+   with the label so a number never stays dark on the green. */
+.ns-view:hover { background: var(--color-brand-secondary); color: #FFFFFF; }
+.ns-view:hover .ns-view__count { color: #FFFFFF; }
+/* The bronze attention count keeps its meaning on the green: bronze on evergreen is unreadable, so
+   it inverts to white and stays BOLD -- the weight is what carried "attention", not the hue alone. */
+.ns-view:hover .ns-view__count.is-attention { color: #FFFFFF; }
 /* THE ACTIVE VIEW IS MARKED BY WEIGHT AND A RULE, NOT BY COLOUR ALONE (WCAG 1.4.1): colour is not
    the only channel, so it survives greyscale and colour-blind viewing. */
 .ns-view.is-active { color: var(--color-text-primary); font-weight: 600;
