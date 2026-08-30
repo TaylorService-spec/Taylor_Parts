@@ -9,19 +9,20 @@
 // values rather than a second copy of them — the #1093 lesson (a label map that drifts
 // from the values it labels is how "0 Active" ends up beside a table of ACTIVE rows).
 //
-// OEM_STATUSES HAS NO EXISTING CLIENT COPY. Unlike the other four, `oemStatus`
-// (functions/src/partMaster/types.ts OEM_STATUSES) was never mirrored client-side —
-// partMasterView.js's read-view mapper does not even validate it. Declared fresh here
-// rather than left for the metadata definition to invent inline, for the same reason the
-// other four are not: a definition file is not where a vocabulary lives.
+// OEM_STATUSES USED TO HAVE NO CLIENT COPY, and was declared in this file rather than beside its
+// four siblings. That was the one exception to this module's own rule, and it closed when the Parts
+// North Star needed the word: the values now live in partMasterView.js with PART_STATUSES,
+// CONTROL_TYPES, STOCKING_CLASSES and UNIT_CODES, the read-view mapper validates oemStatus like the
+// rest, and this file holds only the labels -- which is the arrangement the paragraph above argues
+// for. Nothing here declares a value it also names.
 //
 // A metadata FieldDefinition imports its enumValues and enumLabels from here. It must
 // never carry a second label map of its own — that is exactly the mistake this file
 // exists to stop repeating.
 
-import { PART_STATUSES, CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES } from "./partMasterView.js";
+import { PART_STATUSES, CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES, OEM_STATUSES } from "./partMasterView.js";
 
-export { PART_STATUSES, CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES };
+export { PART_STATUSES, CONTROL_TYPES, STOCKING_CLASSES, UNIT_CODES, OEM_STATUSES };
 
 /** Stored value -> the words a user reads. */
 export const PART_STATUS_LABEL = Object.freeze({
@@ -45,14 +46,6 @@ export const STOCKING_CLASS_LABEL = Object.freeze({
   SERVICE: "Service",
   KIT: "Kit",
 });
-
-/**
- * No existing client copy of the values — see the file header. Sourced here rather than
- * from functions/src/partMaster/types.ts, which is a server-only package this client
- * bundle cannot import across the package boundary (the same constraint salesOrder.js's
- * currency note and scripts/listIndexCoverage.mjs's cross-package comment both name).
- */
-export const OEM_STATUSES = Object.freeze(["OEM", "AFTERMARKET", "UNKNOWN"]);
 
 export const OEM_STATUS_LABEL = Object.freeze({
   OEM: "OEM (Genuine)",

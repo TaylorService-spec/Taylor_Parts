@@ -8,6 +8,11 @@ export const PART_STATUSES = ["DRAFT", "ACTIVE", "INACTIVE", "SUPERSEDED", "DISC
 export const CONTROL_TYPES = ["STANDARD", "SERIALIZED", "LOT", "SERIALIZED_LOT"];
 export const STOCKING_CLASSES = ["STOCKED", "NON_STOCK", "SERVICE", "KIT"];
 export const UNIT_CODES = ["EACH", "KIT", "BOTTLE", "TUBE", "BOX", "CASE", "FOOT", "ROLL", "GALLON", "OUNCE", "POUND"];
+// The fifth enum, which had no client copy at all until a Parts surface needed a word for it. It
+// lives here with its four siblings rather than in partVocabulary.js -- that file's own header asks
+// for exactly this ("sourced from the same values rather than a second copy of them"), and a
+// vocabulary that declares its own values is the drift the vocabulary module exists to prevent.
+export const OEM_STATUSES = ["OEM", "AFTERMARKET", "UNKNOWN"];
 
 const str = (v) => (typeof v === "string" && v.length > 0 ? v : null);
 
@@ -21,6 +26,17 @@ export function toPartView(docId, data) {
   const stockingUnit = UNIT_CODES.includes(d.stockingUnit) ? d.stockingUnit : null;
   const controlType = CONTROL_TYPES.includes(d.controlType) ? d.controlType : null;
   const stockingClass = STOCKING_CLASSES.includes(d.stockingClass) ? d.stockingClass : null;
+  // OPTIONAL, and deliberately OUTSIDE the validity gate below: a Part with no manufacturer and no
+  // declared OEM status is a perfectly valid Part. Absent stays null, so a reader can tell "not
+  // recorded" from a value -- never coerced to "UNKNOWN", which is a RECORDED answer meaning
+  // something different.
+  //
+  // The stored key is primaryManufacturerId (functions/src/partMaster/partMasterRepository.ts:91);
+  // the domain type calls the same field manufacturerId. Reading d.manufacturerId here -- which is
+  // what PartDetail did for as long as it has had a Manufacturer row -- reads a key no document has.
+  const manufacturerId = str(d.primaryManufacturerId);
+  const manufacturerPartNumber = str(d.primaryManufacturerPartNumber);
+  const oemStatus = OEM_STATUSES.includes(d.oemStatus) ? d.oemStatus : null;
   if (partId === null || partId !== docId || internalPartNumber === null || name === null || status === null || stockingUnit === null || controlType === null || stockingClass === null) {
     return { invalid: true, docId, reason: "malformed Part record" };
   }
@@ -35,6 +51,9 @@ export function toPartView(docId, data) {
     stockingUnit,
     controlType,
     stockingClass,
+    manufacturerId,
+    manufacturerPartNumber,
+    oemStatus,
     version: Number.isInteger(d.version) ? d.version : 0,
   };
 }

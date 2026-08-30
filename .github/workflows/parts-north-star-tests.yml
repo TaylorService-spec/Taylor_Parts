@@ -1,0 +1,90 @@
+name: Parts North Star Tests
+
+# CI for the Parts North Star P1 migration (Inventory > Parts: the workspace at /inventory and the
+# record at /inventory/:sku).
+#
+# Two suites, covering two different kinds of claim:
+#
+#   partsNorthStarProjection.test.mjs  The projection contract, as the Owner's rulings of 2026-08-30
+#                                      state them. ND-25: no composer may grow an available/onHand/
+#                                      onOrder field, and warehouseQty keeps its STATIC_FALLBACK
+#                                      provenance so no renderer can mistake it for governed stock.
+#                                      ND-26: internalPartNumber and partId are carried side by side
+#                                      and never one under the other's name, including for a row with
+#                                      no canonical document. Plus the manufacturer key the reader
+#                                      must use (primaryManufacturerId, not manufacturerId) and the
+#                                      refusal to coerce an unknown oemStatus into "UNKNOWN".
+#   partsNorthStarIdentity.test.jsx    The three renders. Each of the corrected defects had the same
+#                                      shape -- a component read a key the projection does not carry,
+#                                      so a value silently never arrived and something plausible
+#                                      rendered instead. A widened projection that no component reads
+#                                      would fix nothing, so the renders are proved separately.
+#
+# The .mjs suite is ALSO registered in test/suites.json, so `npm test` runs it; it is named here as
+# well because this workflow is what makes the Parts family's own failures visible on a Parts PR.
+# Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/partMasterView.js"
+      - "field-ops-app-vite/src/domain/partVocabulary.js"
+      - "field-ops-app-vite/src/domain/partDetailView.js"
+      - "field-ops-app-vite/src/domain/partsCatalogView.js"
+      - "field-ops-app-vite/src/domain/partsCompatibilityAdapter.js"
+      - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
+      - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
+      - ".github/workflows/parts-north-star-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/partMasterView.js"
+      - "field-ops-app-vite/src/domain/partVocabulary.js"
+      - "field-ops-app-vite/src/domain/partDetailView.js"
+      - "field-ops-app-vite/src/domain/partsCatalogView.js"
+      - "field-ops-app-vite/src/domain/partsCompatibilityAdapter.js"
+      - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
+      - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
+      - ".github/workflows/parts-north-star-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  parts-north-star-tests:
+    name: Parts North Star P1 (projection + identity renders + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Projection contract — ND-25 and ND-26 as falsifiable rules (node:test)
+        run: node --test test/partsNorthStarProjection.test.mjs
+        working-directory: field-ops-app-vite
+      - name: The three identity renders (vitest + jsdom)
+        run: npx vitest run test/partsNorthStarIdentity.test.jsx
+        working-directory: field-ops-app-vite
+      - name: The existing Parts render gates still hold (vitest + jsdom)
+        run: npx vitest run test/partsListInvalid.test.jsx test/partDetailInvalid.test.jsx test/partsListHealthPanelNames.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/partMasterView.js src/domain/partVocabulary.js src/domain/partDetailView.js src/domain/partsCatalogView.js src/domain/partsCompatibilityAdapter.js src/modules/inventory/PartsList.jsx src/modules/inventory/PartDetail.jsx
+        working-directory: field-ops-app-vite

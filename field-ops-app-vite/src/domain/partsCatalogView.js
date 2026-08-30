@@ -160,7 +160,9 @@ export function composeGovernedPartsWorkspace(input = {}) {
  *   status: "OK" | "PERMISSION_DENIED" | "UNAVAILABLE" | (anything else -> incomplete).
  *   rows: canonical part view models ({ partId, name, category, stockingUnit, ... }).
  * @param {Array} input.staticCatalog  the static compatibility catalog (PARTS_CATALOG).
- * @returns {{ status: string, rows: Array<{sku,name,category,warehouseQty,identityState}>, meta: object }}
+ * @returns {{ status: string, rows: Array<{sku, internalPartNumber, name, description, category,
+ *              status, controlType, stockingClass, manufacturerId, oemStatus, warehouseQty,
+ *              identityState}>, meta: object }}
  *   status === "READY" iff every static sku is accounted for (CANONICAL_MATCH or
  *   approved STATIC_ONLY_EXCLUDED) with no blocking structural issue; else BLOCKED_*.
  */
@@ -179,8 +181,23 @@ export function buildPartsCatalogRows(input = {}) {
   const val = (f, k) => (f[k] ? f[k].value : null);
   const rows = ws.rows.map((r) => ({
     sku: r.key,
+    // ND-26 (Owner, 2026-08-30): the human-facing Part Number, carried alongside the routing key
+    // rather than in place of it. Null where the row has no canonical document; a caller renders
+    // that absence rather than falling back to the key, which is what made "Part Number" a column
+    // of document ids.
+    internalPartNumber: val(r.fields, "internalPartNumber"),
     name: val(r.fields, "name"),
+    description: val(r.fields, "description"),
     category: val(r.fields, "category"),
+    // Stored classification values. Words come from partVocabulary at the point of render.
+    status: val(r.fields, "status"),
+    controlType: val(r.fields, "controlType"),
+    stockingClass: val(r.fields, "stockingClass"),
+    manufacturerId: val(r.fields, "manufacturerId"),
+    oemStatus: val(r.fields, "oemStatus"),
+    // ND-25 (Owner, 2026-08-30): STILL CARRIED, and still not a stock authority. It is the static
+    // compatibility baseline, and no Parts surface may present it as on hand, available, or any
+    // other quantity. It survives here only for the consumers that already read it as a baseline.
     warehouseQty: val(r.fields, "warehouseQty"),
     identityState: r.identityState,
   }));

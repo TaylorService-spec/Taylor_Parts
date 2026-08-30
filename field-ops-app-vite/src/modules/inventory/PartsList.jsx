@@ -808,9 +808,25 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                     <td data-label="Part">
                       <Link to={partCatalogRoute(part)}>{part.name}</Link>
                     </td>
-                    {/* A BUSINESS IDENTIFIER, not a document id. The heading says Part Number
-                        because that is what a person reads off a shelf label. */}
-                    <td data-label="Part Number" className="fo-muted">{part.sku}</td>
+                    {/* IT WAS THE DOCUMENT ID. Owner ruling ND-26, 2026-08-30.
+
+                        The comment that stood here asserted "A BUSINESS IDENTIFIER, not a document
+                        id", and the cell rendered part.sku. But sku === key === partId throughout
+                        the adapter, and toPartView REQUIRES partId === docId -- so this column has
+                        been a column of document ids under a heading that says otherwise, on a page
+                        whose standard is recognition over IDs.
+
+                        The business Part Number is internalPartNumber. It is a different string by
+                        contract: mutable under governance, with its prior value backfilled as a
+                        historical alias when it changes. It was carried by the adapter one field
+                        away and read by nobody.
+
+                        A row with no canonical document has no Part Number, and says so. It does
+                        NOT fall back to the key -- substituting the id for the number is the exact
+                        mistake being corrected. */}
+                    <td data-label="Part Number" className="fo-muted">
+                      {part.internalPartNumber ?? <span className="fo-muted">Not recorded</span>}
+                    </td>
                     <td data-label="Category" className="fo-muted">{part.category}</td>
                     {/* AN UNLEDGERED PART HAS UNKNOWN AVAILABILITY. Owner ruling, 2026-08-24.
                         This cell has been wrong twice, in the same direction. It first rendered the

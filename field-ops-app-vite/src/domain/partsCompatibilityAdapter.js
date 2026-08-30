@@ -83,7 +83,8 @@ export function validateRowProvenance(row) {
  *
  * Inputs (all optional arrays/maps; nothing is mutated):
  *   - canonicalParts: [{ partId, internalPartNumber?, name?, category?, stockingUnit?,
- *                        status?, controlType?, stockingClass? }]
+ *                        status?, controlType?, stockingClass?, description?,
+ *                        manufacturerId?, manufacturerPartNumber?, oemStatus? }]
  *   - staticCatalogParts: [{ sku, name, category, unit, cost, price, reorderThreshold, warehouseQty }]
  *   - overlayBySku: { [sku]: { reserved?, released?, consumed?, availability? } }  // PRECOMPUTED upstream
  *   - workflowBySku: { [sku]: { reorderState?, purchasingState? } }
@@ -184,6 +185,14 @@ export function buildPartsWorkspace(inputs = {}) {
         ...(isStr(canonical.status) ? { status: field(canonical.status, "CANONICAL") } : {}),
         ...(isStr(canonical.controlType) ? { controlType: field(canonical.controlType, "CANONICAL") } : {}),
         ...(isStr(canonical.stockingClass) ? { stockingClass: field(canonical.stockingClass, "CANONICAL") } : {}),
+        // Descriptive/manufacturer facts, canonical-only by construction. The static compatibility
+        // catalogue carries none of them, so there is deliberately no STATIC_FALLBACK arm here: a
+        // legacy file has nothing to say about who made a part, and inventing one would be the
+        // silent promotion this adapter exists to prevent. Absent stays absent.
+        ...(isStr(canonical.description) ? { description: field(canonical.description, "CANONICAL") } : {}),
+        ...(isStr(canonical.manufacturerId) ? { manufacturerId: field(canonical.manufacturerId, "CANONICAL") } : {}),
+        ...(isStr(canonical.manufacturerPartNumber) ? { manufacturerPartNumber: field(canonical.manufacturerPartNumber, "CANONICAL") } : {}),
+        ...(isStr(canonical.oemStatus) ? { oemStatus: field(canonical.oemStatus, "CANONICAL") } : {}),
         ...staticFields,
         ...overlayFields,
       };
@@ -230,6 +239,10 @@ export function buildPartsWorkspace(inputs = {}) {
       ...(isStr(c.status) ? { status: field(c.status, "CANONICAL") } : {}),
       ...(isStr(c.controlType) ? { controlType: field(c.controlType, "CANONICAL") } : {}),
       ...(isStr(c.stockingClass) ? { stockingClass: field(c.stockingClass, "CANONICAL") } : {}),
+      ...(isStr(c.description) ? { description: field(c.description, "CANONICAL") } : {}),
+      ...(isStr(c.manufacturerId) ? { manufacturerId: field(c.manufacturerId, "CANONICAL") } : {}),
+      ...(isStr(c.manufacturerPartNumber) ? { manufacturerPartNumber: field(c.manufacturerPartNumber, "CANONICAL") } : {}),
+      ...(isStr(c.oemStatus) ? { oemStatus: field(c.oemStatus, "CANONICAL") } : {}),
       ...overlayOnly,
     };
     rows.push({ key: partId, identityState: "CANONICAL_ONLY", fields });
