@@ -57,7 +57,7 @@ import { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, worldFingerprint } fro
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // THE authority. Not a second opinion beside assertSandboxTarget -- its replacement. Keeping both
 // would mean two guards that can disagree, and the weaker one is the one an operator reaches.
-const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, describeTarget } =
+const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, assertBothLiveFlags, describeTarget } =
   await import(pathToFileURL(path.join(__dirname, "certificationWorld", "executionTarget.mjs")).href);
 
 function loadRegistry() {
@@ -118,15 +118,9 @@ export function authorizeInvocation(argv) {
   const target = resolveExecutionTarget({ argv: ["node", "certificationWorld.mjs", ...argv], writes });
 
   if (writes) {
-    const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(target.projectId) ?? null;
-    if (target.isLive) {
-      if (!args.apply || !argv.includes(liveFlag)) {
-        throw new Error(
-          `${args.mode} writes live data to ${target.projectId}. It requires BOTH --apply and `
-          + `${liveFlag}. Neither one alone reaches live Firestore, and --confirm-reset is not a `
-          + "substitute for either.");
-      }
-    }
+    // The BOTH-flags rule now lives in executionTarget.mjs beside the flag map, because five tools
+    // need it and five hand-copied safety rules is four opportunities to differ.
+    assertBothLiveFlags({ target, argv, act: `A ${args.mode} that writes` });
     if (args.mode === "reset" && !args.confirmReset) {
       throw new Error("reset is destructive: pass --confirm-reset (or --dry-run to preview).");
     }

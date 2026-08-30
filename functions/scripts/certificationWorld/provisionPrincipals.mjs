@@ -77,7 +77,7 @@ const USERS_COLLECTION = "users";
 // So the local guard is GONE, not kept beside the shared one. Two guards that can disagree are
 // one guard plus a weaker one an operator can reach, and a parallel path that can authorize a
 // write independently is exactly what "route through the shared authority" has to mean.
-const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, describeTarget } =
+const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, assertBothLiveFlags, describeTarget } =
   await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
 /**
@@ -115,14 +115,10 @@ export function authorizeProvisioning(argv) {
     writes: apply,
   });
 
-  if (apply && target.isLive) {
-    const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(target.projectId) ?? null;
-    if (!argv.includes(liveFlag)) {
-      throw new Error(
-        `Creating identities in ${target.projectId} requires BOTH --apply and ${liveFlag}. `
-        + "Neither one alone mints a principal, and --activate-logins is not a substitute for either.");
-    }
-  }
+  // The BOTH-flags rule is shared with every other heavy writer, in executionTarget.mjs. It was
+  // written by hand here and in certificationWorld.mjs before three more tools needed it; five
+  // copies of a safety rule is four chances for one of them to be subtly different.
+  if (apply) assertBothLiveFlags({ target, argv, act: "Creating identities in" });
 
   // The named flag alone must not be a live run. executionTarget infers --apply from it; this tool
   // does not, so the operator has to have typed both words.
