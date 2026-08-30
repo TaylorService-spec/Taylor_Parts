@@ -1,0 +1,59 @@
+name: EOS Private-AI Fail-Closed Contract
+
+# Standing executable invariants for the private-AI data boundary against the seeded Certification
+# World: data present but AI still refuses, no AI Firestore principal, closed envelope vocabulary,
+# fail-closed configuration. Deterministic only — no network, no credentials, no live project. The
+# live half is functions/scripts/certificationWorld/verifyPrivateAiFailClosed.mjs, run explicitly
+# during certification and security reviews.
+on:
+  pull_request:
+    paths:
+      - "functions/src/ai/**"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/scripts/certificationWorld.mjs"
+      - "functions/scripts/certificationWorld/**"
+      - "functions/test/certificationPrivateAiFailClosed.test.mjs"
+      - "functions/test/aiOperationalProvider.test.mjs"
+      - "functions/test/aiWorkOrderReadinessContext.test.mjs"
+      - "config/environments.json"
+      - ".github/workflows/private-ai-fail-closed-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/ai/**"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/scripts/certificationWorld.mjs"
+      - "functions/scripts/certificationWorld/**"
+      - "functions/test/certificationPrivateAiFailClosed.test.mjs"
+      - "functions/test/aiOperationalProvider.test.mjs"
+      - "functions/test/aiWorkOrderReadinessContext.test.mjs"
+      - "config/environments.json"
+      - ".github/workflows/private-ai-fail-closed-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+
+jobs:
+  private-ai-fail-closed:
+    name: Data present, AI still fails closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Private-AI fail-closed contract
+        run: npm run test:privateAiFailClosed
+        working-directory: functions

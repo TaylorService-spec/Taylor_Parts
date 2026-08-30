@@ -79,6 +79,21 @@ test("only synthetic, reviewed domains may cross the transport", () => {
   }
 });
 
+test("the envelope vocabulary is closed: an unknown field is refused, wherever it hides", () => {
+  // The envelope is the only data entrance to the model. A field outside the declared contract is
+  // the only place a Firestore path, collection name, credential, or query instruction could ride,
+  // so there may be no such place.
+  for (const bad of [
+    envelope({ firestorePath: "work_orders/wo-1" }),
+    envelope({ collection: "accounts" }),
+    envelope({ credentials: "GOOGLE_APPLICATION_CREDENTIALS" }),
+    envelope({ evidence: [{ key: "E1", kind: "K", summary: "S", documentPath: "parts/p-1" }] }),
+    envelope({ allowedRecommendation: { actionId: "a", label: "l", authority: "ALLOWED", query: "*" } }),
+  ]) {
+    assert.throws(() => assertOperationalEnvelope(bad), (error) => error.code === "AI_OPERATIONAL_ENVELOPE_INVALID");
+  }
+});
+
 test("empty fact or evidence fails before any provider call", () => {
   for (const bad of [
     envelope({ observedFact: "" }), envelope({ evidence: [] }),
