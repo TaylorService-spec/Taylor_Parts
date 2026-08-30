@@ -48,7 +48,21 @@
 
 import { OWNER_TYPES, type OwnerType } from "./typedOwner";
 
-export type OwnerClass = "PERSON" | "COMPANY" | "REFERENCE" | "EXCLUDED";
+// Owner ruling (2026-08-30): four ACTUAL ownership shapes, not two forced ones.
+//
+//   PERSON                 one employee is responsible
+//   COMPANY                one operating company is responsible
+//   PARTICIPATING_COMPANIES a governed transaction that legitimately spans companies. It is OWNABLE
+//                          -- it has a valid governed ownership shape -- but that shape is two
+//                          named participants, not one owner. Forcing "source always owns it" would
+//                          be a convention invented to satisfy a field, which is what the ruling
+//                          forbids.
+//   REFERENCE              intentionally company-neutral shared authority. No business owner.
+//
+// plus EXCLUDED for non-business authorities. The invariant is now:
+//
+//     EVERY OWNABLE GOVERNED BUSINESS RECORD HAS A VALID GOVERNED OWNERSHIP SHAPE.
+export type OwnerClass = "PERSON" | "COMPANY" | "PARTICIPATING_COMPANIES" | "REFERENCE" | "EXCLUDED";
 export type TransferBehavior = "HANDOFF" | "IMMUTABLE" | "N_A";
 export type CompanyScope = "SINGLE_COMPANY" | "CROSS_COMPANY_CAPABLE" | "COMPANY_NEUTRAL";
 
@@ -59,6 +73,12 @@ export interface OwnershipFamily {
   /** null for REFERENCE and EXCLUDED -- they have no owner type because they have no owner. */
   readonly ownerType: OwnerType | null;
   readonly ownerFields: readonly string[];
+  /**
+   * For PARTICIPATING_COMPANIES only: the two company references that TOGETHER constitute the
+   * record's ownership shape. Deliberately not `ownerFields` -- these are participants in a
+   * transaction, and a reader who saw them under "owner" would reasonably conclude one of them was.
+   */
+  readonly participatingFields?: readonly string[];
   readonly inheritanceSource: string | null;
   readonly transfer: TransferBehavior;
   readonly companyScope: CompanyScope;
@@ -184,11 +204,15 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     // stated as a primary business fact rather than derived from something else, so they are
     // populated from governed configuration and everything else in the inventory chain hangs off
     // them. Explicitly NOT from display names.
+    // MEASURED CORRECTION. The first plan listed four root families and 19 records. The derivation
+    // check found two of them are not roots at all:
+    //   stock_locations is a per-warehouse-per-part BALANCE record, not a place. 5/5 derive from
+    //     their warehouseId.
+    //   trucks carry homeWarehouseId. 2/2 derive from their home warehouse.
+    // Only warehouses and mobile_locations are primary. 12 root decisions, not 19.
     ...(
       [
         ["warehouse", "warehouses"],
-        ["stockLocation", "stock_locations"],
-        ["truck", "trucks"],
         ["mobileLocation", "mobile_locations"],
       ] as const
     ).map(([family, collection]) => ({
@@ -202,6 +226,35 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     })),
 
     // ═══════════════════════ COMPANY — location-derived (ruling D-10) ═══════════════════════
+    {
+      family: "stockLocation", collection: "stock_locations", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the warehouse the balance belongs to", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "warehouseId -- measured 5/5 DERIVABLE",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "Reclassified from root to derived. It is a per-warehouse-per-part balance, not a physical place.",
+    },
+    {
+      family: "truck", collection: "trucks", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the truck's home warehouse", transfer: "HANDOFF",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "homeWarehouseId -- a real governed reference, measured 2/2 DERIVABLE",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "Reclassified from root to derived. A truck belongs to the depot it works out of.",
+    },
+    {
+      // Owner ruling Q1: the company-scoped half of the supplier relationship. THE COLLECTION DOES
+      // NOT EXIST YET -- recorded here so the classification is stated before anything is built,
+      // rather than discovered when someone needs a place to put payment terms and reaches for the
+      // supplier master. Census scans it and finds nothing, which is the correct current answer.
+      family: "supplierCompanyTerms", collection: "supplier_company_terms",
+      ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the operating company the terms belong to",
+      transfer: "HANDOFF", companyScope: "SINGLE_COMPANY",
+      backfillSource: null,
+      unresolvedPolicy: "n/a -- the collection does not exist yet",
+      note: "supplierId + operatingCompanyId + accountNumber/pricing/payment/freight terms + status. Keeps the shared supplier master company-neutral while company-specific commercial facts get a home that can be owned.",
+    },
     {
       family: "inventoryTransaction", collection: "inventory_transactions", ownerClass: "COMPANY", ownerType: cmp,
       ownerFields: [], inheritanceSource: "the governed stock location's company", transfer: "IMMUTABLE",
@@ -248,12 +301,28 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
 
     // ═══════════════════════ COMPANY — CROSS-COMPANY CAPABLE (ruling D-10) ═══════════════════════
     {
-      family: "transferOrder", collection: "transfer_orders", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "UNRESOLVED -- see note", transfer: "IMMUTABLE",
+      // Owner ruling: PARTICIPATING COMPANIES, decided. A transfer order is a cross-company
+      // TRANSACTION, not a single-company-owned record. Its two participants derive from the
+      // governed source and destination location authorities.
+      //
+      // Deliberately NOT given a convention. "Source always owns it" and "destination always owns
+      // it" were both rejected: either would record a company as responsible for a movement it may
+      // only have received. If the business later assigns formal transaction responsibility, that
+      // is a decision to add, not one to assume.
+      //
+      // AND THE HANDOFF AUTHORITY MUST NOT TOUCH THESE. Changing a transfer's participants is
+      // transaction-domain state -- correcting where goods went -- not an ownership handoff. The
+      // `transfer: "N_A"` below is what enforces that: the handoff command refuses this family.
+      family: "transferOrder", collection: "transfer_orders",
+      ownerClass: "PARTICIPATING_COMPANIES", ownerType: null,
+      ownerFields: [],
+      participatingFields: ["sourceOperatingCompanyId", "destinationOperatingCompanyId"],
+      inheritanceSource: "the governed source and destination location authorities",
+      transfer: "N_A",
       companyScope: "CROSS_COMPANY_CAPABLE",
-      backfillSource: null,
-      unresolvedPolicy: "remains OWNERLESS -- a single owner may be the wrong shape for this family",
-      note: "A transfer has a source AND a destination location, and a Taylor->Ventana move is legitimate. Choosing either end as 'the owner' would record a false fact. This family likely needs PARTICIPATING-COMPANY fields rather than one owner -- an Owner decision, not an implementation choice.",
+      backfillSource: "origin.locationId and destination.locationId, once the physical roots carry companies -- measured 47/47 resolve to two distinct roots",
+      unresolvedPolicy: "remains without a participating pair until both roots carry companies",
+      note: "Taylor->Taylor, Ventana->Ventana, Taylor->Ventana and Ventana->Taylor are all valid. The shape holds all four.",
     },
 
     // ═══════════════════════ COMPANY — equipment (ruling D-12) ═══════════════════════
@@ -348,7 +417,14 @@ export function ownershipFamily(family: unknown): OwnershipFamily | null {
  * REFERENCE and EXCLUDED families are not counted, not censused, and not backfilled.
  */
 export function ownableFamilies(): readonly OwnershipFamily[] {
-  return OWNERSHIP_MATRIX.filter((f) => f.ownerClass === "PERSON" || f.ownerClass === "COMPANY");
+  return OWNERSHIP_MATRIX.filter(
+    (f) => f.ownerClass === "PERSON" || f.ownerClass === "COMPANY" || f.ownerClass === "PARTICIPATING_COMPANIES",
+  );
+}
+
+/** Families whose ownership shape is two named participants rather than one owner. */
+export function participatingCompanyFamilies(): readonly OwnershipFamily[] {
+  return OWNERSHIP_MATRIX.filter((f) => f.ownerClass === "PARTICIPATING_COMPANIES");
 }
 
 /** Families whose ownership may legitimately be transferred. The rest are historical or not owned. */

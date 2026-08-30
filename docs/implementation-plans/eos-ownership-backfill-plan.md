@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Owner decision — NOT authorized for execution
-status: Proposed
+status: Proposed — Revision 2 (measured)
 date: 2026-08-30
 owner: Claude Code
 related_adrs: []
@@ -150,3 +150,124 @@ between operating companies; a supplier *relationship* — terms, pricing, accou
 may well be company-specific. The census cannot tell which of those the collection represents.
 Classified company-neutral for now and flagged in the matrix; if `suppliers` carries commercial
 terms it belongs in COMPANY, and the 2 records move into Group 3.
+
+---
+
+# Revision 2 — measured, 2026-08-30
+
+Revision 1's groups were derived from the matrix. The referential derivation check
+(`sb-evidence/ownership-derivation-check-sandbox-2026-08-30.txt`) measured the data, and it moved a
+substantial number of records. The Owner's instruction — *"do not assume the full 138 are derivable
+until that check passes"* — was the right call: **it was not 138.**
+
+## What the derivation check measured
+
+199 records scanned across nine descendant families:
+
+| Collection | scanned | DERIVABLE | MISSING_REF | INVALID_REF | X-COMPANY | CONFLICT |
+|---|---|---|---|---|---|---|
+| `cycle_counts` | 24 | **24** | 0 | 0 | 0 | 0 |
+| `receiving_orders` | 2 | **2** | 0 | 0 | 0 | 0 |
+| `inventory_transactions` | 103 | **91** | 4 | 0 | 8 | 0 |
+| `transfer_orders` | 47 | 0 | 0 | 0 | **47** | 0 |
+| `stock_locations` | 5 | **5** | 0 | 0 | 0 | 0 |
+| `trucks` | 2 | **2** | 0 | 0 | 0 | 0 |
+| `mobile_locations` | 7 | 5 | 2 | 0 | 0 | 0 |
+| `reorder_requests` | 6 | 0 | **6** | 0 | 0 | 0 |
+| `reorder_purchase_orders` | 3 | 0 | **3** | 0 | 0 | 0 |
+| **total** | **199** | **129** | **15** | **0** | **55** | **0** |
+
+Zero INVALID_REFERENCE and zero CONFLICT: no record points at a warehouse that does not exist, and
+no record's two references disagree when they should have matched. The referential data is sound.
+
+## What changed from revision 1
+
+**Two families are not roots.** `stock_locations` turned out to be a per-warehouse-per-part *balance*
+record, not a physical place — 5/5 derive from `warehouseId`. `trucks` carry `homeWarehouseId` —
+2/2 derive. **The root decision count drops from 19 to 12** (5 warehouses + 7 mobile locations), and
+7 records move from "needs a decision" to "derives".
+
+**`reorder_requests` (6) and `reorder_purchase_orders` (3) carry no location reference of any kind.**
+Revision 1 listed both as location-derivable. They are not: a reorder request records a part, a
+quantity and a workflow, and never says where. The purchase order reaches a root only through the
+request, and a two-hop derivation over a broken first hop is not a derivation. **9 records move to
+"needs a business fact".**
+
+**`inventory_transactions` splits three ways.** 91 derive; 4 are legacy-shape entries with no
+location at all; 8 reference two distinct roots (a movement between two places) and are
+cross-company-capable in the same way a transfer is.
+
+**`mobile_locations` 2/7 are unreferenced** — the two `mobile-seed…` rows carry no home warehouse.
+They are roots themselves, so they need a decision, not a derivation.
+
+## Revised groups
+
+| Group | Records | Waiting for |
+|---|---|---|
+| **1. Derivable now** (person) | 522 | Nothing — `contacts` 339 + `locations` 183 from the parent Account owner |
+| **2. Derivable once the 12 roots carry companies** | 124 | 12 Owner decisions |
+| **3. Cross-company pair, once roots carry companies** | 55 | The same 12 decisions, then a participating pair rather than one owner |
+| **4. Needs a business fact** | 386 | New input — no source exists |
+
+### Group 2 detail (124)
+
+`inventory_transactions` 91 · `cycle_counts` 24 · `stock_locations` 5 · `trucks` 2 · `receiving_orders` 2.
+
+### Group 3 detail (55)
+
+`transfer_orders` 47 · `inventory_transactions` 8. These resolve to a **participating pair**
+(`sourceOperatingCompanyId` + `destinationOperatingCompanyId`), not one owner — Owner ruling Q3. All
+47 transfers reference two distinct roots today, so every one of them will carry a pair; whether any
+pair actually crosses the Taylor/Ventana boundary depends on the 12 root assignments.
+
+### Group 4 detail (386)
+
+| Collection | Records | Why |
+|---|---|---|
+| `equipment` | 288 | Ruling Q2 — no deterministic source authorized from current data |
+| `fieldops_jobs` + `fieldops_wos` | 75 | No company reference; technician and customer are prohibited proxies |
+| `reorder_requests` | 6 | **Newly measured** — no location reference exists |
+| `reorder_purchase_orders` | 3 | **Newly measured** — derives only through the above |
+| `accounts` | 3 | Non-fixture; explicit assignment only |
+| `invoices` | 1 | No upstream record carries an operating company |
+| `mobile_locations` | 2 | Seed rows with no home warehouse; they are roots and need a decision |
+| **plus the 12 root decisions** | 12 | Primary business facts |
+
+## Equipment fixture provenance (Owner ruling: sandbox equipment)
+
+**Measured: 278 of 288 equipment records are certification fixtures** (`dataProvenance:
+SYNTHETIC_CERTIFICATION_FACT`); 10 are not.
+
+**But zero of the 278 can receive a company fact from their fixture definition as it stands today.**
+The fixture (`functions/scripts/certificationWorld/data/equipmentAssets.mjs`) writes `accountId`,
+`locationId`, `manufacturer`, `model`, `equipmentModelId`, `serialNumber`, `status`, dates, and
+`lineOfBusiness: model.lineOfBusiness`. Every one of those is either irrelevant or a prohibited
+proxy — `lineOfBusiness` and the equipment model are both named in ruling Q2's forbidden list, and
+they are the only company-shaped values present.
+
+So this is not a case of promoting an existing fixture fact. It requires **adding a new explicit
+fact to the fixture definition**: a declared, stated Taylor-or-Ventana assignment per fleet or per
+account, authored as part of the synthetic world rather than inferred from it. The ruling permits
+exactly that ("defining the synthetic business fact at creation") — but the rule itself is a
+fixture-authoring decision about which company services which synthetic customer, and it is not
+mine to invent.
+
+**Recommendation:** declare it at the fleet level in `equipmentAssets.mjs` (each fleet definition
+gains an explicit `operatingCompanyId`), so a rebuild produces correctly-owned equipment and a
+marker-scoped applier can remediate the existing 278. The 10 non-fixture records stay untouched.
+**What is needed from the Owner is the rule, not the code.**
+
+## Still requiring a genuine business decision
+
+1. **12 physical roots** — `config/ownership/operating-company-roots.sandbox.json`, every value
+   `null`. Unblocks 124 + 55 records.
+2. **The equipment fixture rule** — which company services which synthetic fleet. Unblocks 278.
+3. **Service ownership source** — `fieldops_jobs` / `fieldops_wos` (75) have no company reference at
+   all. Either one is added at creation, or they stay ownerless.
+4. **`reorder_requests` location** (6+3) — newly discovered. Does a reorder request belong to a
+   stocking location in the business, and should it record one?
+5. **3 non-fixture accounts + 1 invoice + 2 seed mobile locations** — explicit assignment.
+6. **Production census** — still unmeasured; see
+   `docs/operations/production-ownership-census-operator-instructions.md`.
+
+Nothing above has been executed.

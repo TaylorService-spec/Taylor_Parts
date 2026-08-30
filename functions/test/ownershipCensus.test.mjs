@@ -19,7 +19,9 @@ const parts = ownershipFamily("part");
 const warehouses = ownershipFamily("warehouse");
 
 test("the census covers EVERY OWNABLE family, and only those (ruling D-8)", () => {
-  const ownable = OWNERSHIP_MATRIX.filter((f) => f.ownerClass === "PERSON" || f.ownerClass === "COMPANY");
+  const ownable = OWNERSHIP_MATRIX.filter(
+    (f) => f.ownerClass === "PERSON" || f.ownerClass === "COMPANY" || f.ownerClass === "PARTICIPATING_COMPANIES",
+  );
   assert.deepEqual(
     CENSUS_FAMILIES.map((f) => f.family),
     ownable.map((f) => f.family),
@@ -33,8 +35,16 @@ test("the census covers EVERY OWNABLE family, and only those (ruling D-8)", () =
       assert.equal(f.ownerType, null, `${f.family} is ${f.ownerClass} and must have no owner type`);
     }
   }
-  // And every censused family DOES have an owner type -- the census row's type column is never blank.
-  for (const f of CENSUS_FAMILIES) assert.ok(f.ownerType, `${f.family} is ownable and must declare an owner type`);
+  // Every censused family declares a usable shape: a single owner type, or -- for a cross-company
+  // transaction -- the participating pair that stands in place of one.
+  for (const f of CENSUS_FAMILIES) {
+    if (f.ownerClass === "PARTICIPATING_COMPANIES") {
+      assert.equal(f.ownerType, null, `${f.family} has a participating shape and must not claim one owner type`);
+      assert.equal(f.participatingFields?.length, 2, `${f.family} must name both participants`);
+    } else {
+      assert.ok(f.ownerType, `${f.family} is ownable and must declare an owner type`);
+    }
+  }
 });
 
 test("REFERENCE families are classified out of the invariant, not counted as ownerless", () => {

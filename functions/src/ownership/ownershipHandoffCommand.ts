@@ -93,6 +93,17 @@ export function buildOwnershipHandoff(
       `"${String(input.family)}" is not a governed ownership family`,
     );
   }
+  // Owner ruling Q3: "The handoff/ownership authority should not be used to change transfer
+  // participants. That is transaction-domain state, not an ownership handoff." A cross-company
+  // transaction IS ownable -- it has a valid governed shape -- so this is deliberately a DIFFERENT
+  // refusal from the not-ownable one below. Correcting where goods went is a transfer correction,
+  // and routing it through an ownership handoff would file it in the wrong domain's audit trail.
+  if (family.ownerClass === "PARTICIPATING_COMPANIES") {
+    throw new OwnershipHandoffError(
+      "FAMILY_PARTICIPATING_COMPANIES",
+      `${family.family} records participating companies, not an owner -- changing them is transaction-domain state, not an ownership handoff`,
+    );
+  }
   // Ruling D-8: a REFERENCE or EXCLUDED family has no owner, so there is nothing to hand off. This
   // is a DIFFERENT refusal from FAMILY_IMMUTABLE -- that one has an owner it may not move, this one
   // has no owner at all, and collapsing them would tell a caller the wrong thing about the domain.

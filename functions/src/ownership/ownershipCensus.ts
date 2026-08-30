@@ -22,6 +22,7 @@ import {
   type OwnerDerivation,
 } from "./typedOwner";
 import { OWNERSHIP_MATRIX, ownableFamilies, type OwnershipFamily } from "./ownershipMatrix";
+import { resolveOperatingCompany } from "./operatingCompanyAuthority";
 
 export const MAX_SAMPLE_IDS = 10;
 
@@ -99,6 +100,27 @@ export interface CensusDocument {
  * answer a gate like this must never produce.
  */
 export function classifyDocument(family: OwnershipFamily, data: Record<string, unknown>): OwnerDerivation {
+  // PARTICIPATING_COMPANIES resolves only when BOTH participants are present. One of two is not
+  // half-owned -- it is a transaction that does not yet say where it went, which is unresolved.
+  if (family.ownerClass === "PARTICIPATING_COMPANIES") {
+    const fields = family.participatingFields ?? [];
+    const present = fields.filter((f) => typeof data?.[f] === "string" && data[f].trim().length > 0);
+    if (present.length === 0) {
+      return { resolution: OWNERSHIP_RESOLUTION.OWNERLESS, owner: null, reason: "no participating companies recorded", code: null };
+    }
+    if (present.length < fields.length) {
+      return {
+        resolution: OWNERSHIP_RESOLUTION.UNRESOLVED, owner: null,
+        reason: `only ${present.length} of ${fields.length} participating companies recorded`, code: "INVALID",
+      };
+    }
+    const unresolved = present.filter((f) => resolveOperatingCompany(data[f]).company === null);
+    if (unresolved.length > 0) {
+      return { resolution: OWNERSHIP_RESOLUTION.UNRESOLVED, owner: null, reason: `participating company not governed: ${unresolved.join(", ")}`, code: "UNKNOWN" };
+    }
+    // No single `owner` is produced, and that is the point -- the shape IS the pair.
+    return { resolution: OWNERSHIP_RESOLUTION.RESOLVED, owner: null, reason: null, code: null };
+  }
   if (family.ownerFields.length === 0) {
     return {
       resolution: OWNERSHIP_RESOLUTION.OWNERLESS,

@@ -394,3 +394,70 @@ a seeding script fills silence, it does not reassign ownership.
 It is a post-provision applier, not part of `buildWorld()`, because a complete `accountOwner` needs
 provisioned user uids that the world builder does not have. Same shape and same reason as
 `applyRoleGrants.mjs`. Consequence: a `rebuild` wipes it and it must be re-run.
+
+---
+
+# Ownership shapes and measured derivation — 2026-08-30 (rulings Q1–Q4)
+
+## The vocabulary gained a fourth shape
+
+    PERSON · COMPANY · PARTICIPATING_COMPANIES · REFERENCE   (+ EXCLUDED)
+
+    EVERY OWNABLE GOVERNED BUSINESS RECORD HAS A VALID GOVERNED OWNERSHIP SHAPE.
+
+`transfer_orders` is the first family to use the new one (Q3). It is **ownable** — it has a valid
+governed shape — but that shape is `sourceOperatingCompanyId` + `destinationOperatingCompanyId`, two
+named participants rather than one owner. No convention was invented: neither "source always owns
+it" nor "destination always owns it", because either would record a company as responsible for a
+movement it may only have received.
+
+The handoff command refuses this family with its **own** error code
+(`FAMILY_PARTICIPATING_COMPANIES`), distinct from the not-ownable refusal. Changing where goods went
+is transaction-domain state, and routing it through an ownership handoff would file it in the wrong
+domain's audit trail.
+
+The census resolves a participating record only when **both** participants are present and governed.
+One of two is UNRESOLVED, not half-owned.
+
+## Suppliers (Q1)
+
+`suppliers` stays **REFERENCE** — a supplier both operating companies can use is not owned by one of
+them. Company-specific commercial facts get their own home: `supplier_company_terms`
+(`supplierId` + `operatingCompanyId` + account number / pricing / payment / freight terms / status),
+recorded in the matrix as **COMPANY**. The collection does not exist yet, and it is declared now so
+that the next person needing somewhere to put payment terms does not reach for the supplier master.
+
+## Physical roots: 12, not 19
+
+The referential derivation check corrected the first plan by measurement:
+
+- `stock_locations` is a per-warehouse-per-part **balance** record, not a place — 5/5 derive from
+  `warehouseId`;
+- `trucks` carry `homeWarehouseId` — 2/2 derive.
+
+Only `warehouses` (5) and `mobile_locations` (7) are primary.
+`config/ownership/operating-company-roots.sandbox.json` lists all 12 with `operatingCompanyId:
+null`. They are null because nothing on those records can supply a company — their names are display
+text, and inferring from display text is prohibited. Filling them in would have been invention.
+
+## The derivation check found what the plan had assumed
+
+199 descendant records: **129 DERIVABLE, 15 MISSING_REFERENCE, 0 INVALID_REFERENCE,
+55 POTENTIALLY_CROSS_COMPANY, 0 CONFLICT.**
+
+The two findings that changed the plan: `reorder_requests` (6) and `reorder_purchase_orders` (3)
+carry **no location reference of any kind** — the first plan listed both as location-derivable, and
+they are not. And `inventory_transactions` splits three ways: 91 derive, 4 are legacy-shape entries
+with no location, 8 reference two distinct roots and are cross-company-capable like a transfer.
+
+Zero INVALID_REFERENCE and zero CONFLICT is the good news underneath: no record points at a
+warehouse that does not exist, and no record's two references disagree when they should have
+matched.
+
+## Equipment fixture provenance
+
+278 of 288 equipment records are certification fixtures. **Zero of them can receive a company fact
+from the fixture definition as it stands** — the only company-shaped values it writes are
+`lineOfBusiness` and the equipment model, both named in ruling Q2's forbidden list. Adding the fact
+requires authoring a new explicit fixture rule (which company services which synthetic fleet), which
+the ruling permits but which is a business-authoring decision, not an implementation detail.

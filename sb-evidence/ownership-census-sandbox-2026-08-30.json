@@ -412,6 +412,38 @@
       }
     },
     {
+      "family": "mobileLocation",
+      "collection": "mobile_locations",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 7,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 7,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 7
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "cert-trk-01",
+          "cert-trk-02",
+          "cert-trk-03",
+          "cert-trk-04",
+          "cert-trk-05",
+          "mobile-seed1786749487428-101",
+          "mobile-seed1786749487428-102"
+        ]
+      }
+    },
+    {
       "family": "stockLocation",
       "collection": "stock_locations",
       "ownerClass": "COMPANY",
@@ -469,35 +501,25 @@
       }
     },
     {
-      "family": "mobileLocation",
-      "collection": "mobile_locations",
+      "family": "supplierCompanyTerms",
+      "collection": "supplier_company_terms",
       "ownerClass": "COMPANY",
       "ownerType": "COMPANY",
-      "scanned": 7,
+      "scanned": 0,
       "truncated": false,
       "counts": {
         "resolved": 0,
-        "ownerless": 7,
+        "ownerless": 0,
         "invalid": 0,
         "unknown": 0,
         "ambiguous": 0
       },
-      "reasons": {
-        "family has no ownership storage yet": 7
-      },
+      "reasons": {},
       "samples": {
         "invalid": [],
         "unknown": [],
         "ambiguous": [],
-        "ownerless": [
-          "cert-trk-01",
-          "cert-trk-02",
-          "cert-trk-03",
-          "cert-trk-04",
-          "cert-trk-05",
-          "mobile-seed1786749487428-101",
-          "mobile-seed1786749487428-102"
-        ]
+        "ownerless": []
       }
     },
     {
@@ -672,8 +694,8 @@
     {
       "family": "transferOrder",
       "collection": "transfer_orders",
-      "ownerClass": "COMPANY",
-      "ownerType": "COMPANY",
+      "ownerClass": "PARTICIPATING_COMPANIES",
+      "ownerType": "",
       "scanned": 47,
       "truncated": false,
       "counts": {
@@ -684,7 +706,7 @@
         "ambiguous": 0
       },
       "reasons": {
-        "family has no ownership storage yet": 47
+        "no participating companies recorded": 47
       },
       "samples": {
         "invalid": [],

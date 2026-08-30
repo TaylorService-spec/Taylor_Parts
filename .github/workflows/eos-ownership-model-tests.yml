@@ -20,6 +20,7 @@ on:
   pull_request:
     paths:
       - "functions/src/ownership/**"
+      - "functions/scripts/ownershipDerivationCheck.js"
       - "functions/src/access/auditEventWriter.ts"
       - "functions/src/types/access.ts"
       - "functions/src/opportunity/opportunityCommands.ts"
@@ -43,6 +44,7 @@ on:
     branches: [main]
     paths:
       - "functions/src/ownership/**"
+      - "functions/scripts/ownershipDerivationCheck.js"
       - "functions/src/access/auditEventWriter.ts"
       - "functions/src/types/access.ts"
       - "functions/src/salesOrder/salesOrderCommands.ts"

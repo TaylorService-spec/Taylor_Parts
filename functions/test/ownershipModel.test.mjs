@@ -28,6 +28,7 @@ import {
   typedOwner,
 } from "../lib/ownership/typedOwner.js";
 import { OWNERSHIP_MATRIX, crossCompanyFamilies, ownershipFamily } from "../lib/ownership/ownershipMatrix.js";
+import { classifyDocument } from "../lib/ownership/ownershipCensus.js";
 import {
   buildOwnershipHandoff,
   OwnershipHandoffError,
@@ -199,13 +200,43 @@ test("every ownable family declares a policy for records that cannot resolve", (
   }
 });
 
-test("D-10: transfer_orders is the cross-company family, and it proposes no single owner", () => {
+test("Q3: transfer_orders carries PARTICIPATING_COMPANIES, not one owner", () => {
   const transfers = ownershipFamily("transferOrder");
+  assert.equal(transfers.ownerClass, "PARTICIPATING_COMPANIES");
   assert.equal(transfers.companyScope, "CROSS_COMPANY_CAPABLE");
-  // A Taylor -> Ventana move has no single owning company. Picking an end would record a false
-  // fact, so there is deliberately no backfill source and the records stay ownerless.
-  assert.equal(transfers.backfillSource, null);
+  // No single owner type, and no ownerFields -- the shape IS the pair.
+  assert.equal(transfers.ownerType, null);
+  assert.deepEqual(transfers.ownerFields, []);
+  assert.deepEqual(transfers.participatingFields, ["sourceOperatingCompanyId", "destinationOperatingCompanyId"]);
   assert.deepEqual(crossCompanyFamilies().map((f) => f.family), ["transferOrder"]);
+});
+
+test("Q3: the handoff authority REFUSES a transfer -- participants are transaction state, not ownership", () => {
+  // "The handoff/ownership authority should not be used to change transfer participants."
+  assert.throws(
+    () =>
+      buildOwnershipHandoff(
+        { family: "transferOrder", recordId: "trf-1", previousOwner: null, newOwner: { type: "COMPANY", id: "ventana" }, source: "ADMIN_CORRECTION" },
+        { actorUid: "uid-admin" },
+      ),
+    // A distinct code from FAMILY_NOT_OWNABLE: a transfer IS ownable, it just is not handed off.
+    (e) => e instanceof OwnershipHandoffError && e.code === "FAMILY_PARTICIPATING_COMPANIES",
+  );
+});
+
+test("Q3: one participant of two is UNRESOLVED, not half-owned", () => {
+  const transfers = ownershipFamily("transferOrder");
+  assert.equal(classifyDocument(transfers, {}).resolution, "OWNERLESS");
+  assert.equal(classifyDocument(transfers, { sourceOperatingCompanyId: "taylor" }).resolution, "UNRESOLVED");
+  // Both present and governed: RESOLVED, and deliberately with NO single owner attached.
+  const both = classifyDocument(transfers, { sourceOperatingCompanyId: "taylor", destinationOperatingCompanyId: "ventana" });
+  assert.equal(both.resolution, "RESOLVED");
+  assert.equal(both.owner, null);
+  // An ungoverned participant does not pass.
+  assert.equal(
+    classifyDocument(transfers, { sourceOperatingCompanyId: "taylor", destinationOperatingCompanyId: "acme" }).resolution,
+    "UNRESOLVED",
+  );
 });
 
 // =========================== D-4: creation owner resolution ===========================
