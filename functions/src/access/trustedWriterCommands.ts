@@ -45,6 +45,7 @@ import type {
 import { getAuth } from "firebase-admin/auth";
 import { getApp } from "firebase-admin/app";
 import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
+import { ENVIRONMENT_ACTIVATION_REGISTRY, type ActivationRegistryEnv } from "./environmentCapabilityOverrides";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import {
   INVENTORY_CREATE_EXECUTOR_ROLE,
@@ -777,6 +778,151 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
         grantedBy: input.actorUid,
         grantedAt: FieldValue.serverTimestamp(),
         ...(input.approverUid !== undefined ? { approvedBy: input.approverUid } : {}),
+        status: "active",
+        accessVersionAtGrant: ctx.newAccessVersion,
+      });
+    },
+  });
+}
+
+// =====================================================================
+// CERTIFICATION AUTHORITY GENESIS -- the first role assignment in an empty
+// non-production world, and nothing else, ever.
+// =====================================================================
+//
+// ============================ THE PROBLEM THIS SOLVES, EXACTLY ============================
+//
+// `admin.roleAssignment.write` is carried by exactly ONE Role: `owner`, which is privileged.
+// Granting a privileged Role requires a second, distinct approver who ALSO holds
+// `admin.roleAssignment.write` through a privileged Role (verifyApproverIsPrivileged above), or --
+// in the newer flow below -- an AUTHENTICATED approver whose identity comes from their own session.
+//
+// In a freshly installed Certification World, `roleAssignments` is empty. There is no actor, no
+// approver, and no one who can authenticate. So the first grant is not merely inconvenient to
+// perform through the normal path: it is IMPOSSIBLE through it, by design, and correctly so. Every
+// subsequent grant is then trivially possible, because the fixture's other 86 grants are all
+// NON-privileged and need only a single authorized actor with no approver at all.
+//
+// That asymmetry is the whole design. This function performs exactly one grant -- the one the
+// governed path cannot reach in an empty world -- and hands every other grant back to grantRole().
+//
+// ============================ WHY THIS IS NOT A BACK DOOR ============================
+//
+//   ONE ROLE, NOT A PARAMETER. `roleId` is not an input. It is fixed to the single privileged Role
+//   that carries admin.roleAssignment.write, so this cannot be repurposed to grant anything else.
+//
+//   ONLY INTO A VACUUM. It refuses if ANY active role assignment already exists in the project.
+//   Not "if this principal already has one" -- ANY. A world with authority in it is a world whose
+//   authority came from somewhere, and genesis is not entitled to add a second source.
+//
+//   NON-PRODUCTION BY ROLE, RESOLVED SERVER-SIDE. The runtime's own project identity decides, from
+//   the environment registry -- never a caller-supplied argument. Production yields EMPTY overrides
+//   and is refused here outright, the same way the private-AI classification is refused.
+//
+//   IT TELLS THE TRUTH ABOUT ITSELF. The audit action is `bootstrapCertificationAuthority`, not
+//   `grantRole`, and the actor is a system genesis identity rather than a fabricated human. An
+//   audit trail that recorded this as an ordinary grant by a person who did not exist yet would be
+//   a lie in the one record whose entire purpose is to be trustworthy.
+//
+// After genesis, this function refuses forever and normal grantRole() carries every other grant
+// with its ordinary eligibility, audit and idempotency intact.
+
+/** The system identity recorded as actor for a genesis write. Deliberately not a UID shape. */
+export const CERTIFICATION_GENESIS_ACTOR = "system:certification-authority-genesis";
+
+/** The one Role genesis may establish: the only Role carrying admin.roleAssignment.write. */
+export const CERTIFICATION_GENESIS_ROLE_ID = "owner";
+
+export class GenesisNotPermittedError extends Error {
+  constructor(message: string) { super(message); this.name = "GenesisNotPermittedError"; }
+}
+
+export interface BootstrapCertificationAuthorityInput {
+  /** The principal receiving the genesis authority. Derived by the caller from the fixture. */
+  principalUid: string;
+  /** The employee id that principal is linked to, recorded in the audit summary for traceability. */
+  employeeId: string;
+  idempotencyKey: string;
+}
+
+/**
+ * Establish the FIRST role assignment in an otherwise-empty non-production world.
+ *
+ * Reuses runAccessMutationCommand, so genesis gets the same atomic guarantees as every other
+ * access mutation: the assignment, the accessVersion increment and exactly one Audit Event commit
+ * together or not at all, and claims synchronise afterwards. Writing the document from a script
+ * would have skipped all of it and produced a record indistinguishable from a governed grant while
+ * being nothing like one.
+ */
+export async function bootstrapCertificationAuthority(
+  input: BootstrapCertificationAuthorityInput,
+): Promise<CommandOutcome> {
+  assertValidIdempotencyKey(input.idempotencyKey);
+  assertNonEmptyString(input.principalUid, "principalUid");
+  assertNonEmptyString(input.employeeId, "employeeId");
+
+  // ── NON-PRODUCTION, decided from the runtime's own identity ──────────────────────────────────
+  //
+  // Keyed on the deployed project, which the platform sets and no caller can influence -- the same
+  // mechanism, and the same reasoning, as the private-AI classification gate.
+  const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? null;
+  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments ?? [])
+    .find((e: ActivationRegistryEnv) => typeof e?.firebase?.projectId === "string" && e.firebase.projectId === projectId);
+  if (!env) {
+    throw new GenesisNotPermittedError(
+      `genesis refuses an unregistered runtime project (${projectId ?? "none"})`);
+  }
+  if (env.role === "production") {
+    throw new GenesisNotPermittedError("genesis is never permitted in a production environment");
+  }
+
+  const db = getFirestore();
+
+  // ── ONLY INTO A VACUUM ───────────────────────────────────────────────────────────────────────
+  //
+  // ANY active assignment, not just one for this principal. Authority that already exists came
+  // from somewhere, and a second independent source of it is the thing this must never become.
+  const existing = await db.collection(ROLE_ASSIGNMENTS_COLLECTION)
+    .where("status", "==", "active").limit(1).get();
+  if (!existing.empty) {
+    const doc = existing.docs[0].data() as Record<string, unknown>;
+    throw new GenesisNotPermittedError(
+      `role authority is already initialized (active assignment "${doc.roleId}" for `
+      + `${doc.principalUid}). Genesis applies only to an empty world. Use grantRole.`);
+  }
+
+  const role = ASSIGNABLE_ROLES[CERTIFICATION_GENESIS_ROLE_ID];
+  if (!role?.privileged) {
+    // Defensive: if the catalog ever stopped marking this Role privileged, the asymmetry this
+    // function exists to resolve would no longer hold and genesis would be unnecessary.
+    throw new GenesisNotPermittedError(
+      `"${CERTIFICATION_GENESIS_ROLE_ID}" is not a privileged Role in this catalog`);
+  }
+
+  const assignmentRef = db.collection(ROLE_ASSIGNMENTS_COLLECTION).doc(input.idempotencyKey);
+  return runAccessMutationCommand(input.idempotencyKey, {
+    principalUid: input.principalUid,
+    auditInput: {
+      actorUid: CERTIFICATION_GENESIS_ACTOR,
+      action: "bootstrapCertificationAuthority",
+      targetType: "roleAssignment",
+      targetId: input.principalUid,
+      outcome: "applied",
+      summary: `GENESIS: established "${CERTIFICATION_GENESIS_ROLE_ID}" for ${input.employeeId} `
+        + `(${input.principalUid}) in an empty non-production world. No prior authority existed, `
+        + "so no actor or approver could be authenticated. Subsequent grants use grantRole.",
+      scope: { type: "global" },
+    },
+    apply: (txn, ctx) => {
+      txn.create(assignmentRef, {
+        principalUid: input.principalUid,
+        roleId: CERTIFICATION_GENESIS_ROLE_ID,
+        scope: { type: "global" },
+        // NOT `grantedBy: <some uid>`. No principal granted this, and saying one did would be the
+        // single most misleading field in the access model.
+        grantedBy: CERTIFICATION_GENESIS_ACTOR,
+        grantedAt: FieldValue.serverTimestamp(),
+        genesis: true,
         status: "active",
         accessVersionAtGrant: ctx.newAccessVersion,
       });

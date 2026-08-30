@@ -203,6 +203,14 @@ export type AuditAction =
   // the Admin UID is not the authenticated Admin approving.
   | "requestPrivilegedRole"
   | "decidePrivilegedRoleRequest"
+  // CERTIFICATION AUTHORITY GENESIS. The FIRST role assignment in an otherwise-empty
+  // non-production world, where no actor or approver can exist yet and grantRole is therefore
+  // structurally unreachable. Deliberately its OWN action rather than "grantRole" -- recording a
+  // genesis write as an ordinary grant by a person who did not exist would be a lie in the one
+  // record whose purpose is to be trustworthy. Same immutable Audit Event path, no parallel system
+  // (keep this comment free of the statement-terminator character -- mirror checks parse the union
+  //  up to the first one)
+  | "bootstrapCertificationAuthority"
   | "breakGlassRestore"
   | "createReportDefinition"
   | "renameReportDefinition"

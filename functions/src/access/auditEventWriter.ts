@@ -78,6 +78,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // mistake that made these commands fail at runtime while compiling cleanly.
   "requestPrivilegedRole",
   "decidePrivilegedRoleRequest",
+  // Certification authority genesis -- see the matching entry on the AuditAction union.
+  "bootstrapCertificationAuthority",
   "breakGlassRestore",
   "createReportDefinition",
   "renameReportDefinition",
