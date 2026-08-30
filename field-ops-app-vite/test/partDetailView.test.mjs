@@ -311,13 +311,20 @@ check("wiring: write surface preserved (reorder/PO/receive/cancel/void/actions i
     assert.ok(DETAIL_SRC.includes(sym), `${sym} must remain on the page`);
   }
 });
-check("wiring: blocked render path exists and precedes the Unknown-part path", () => {
+check("wiring: blocked render path exists and precedes the not-found path", () => {
   assert.ok(/isPartDetailBlocked\(detail\.status\)/.test(DETAIL_SRC));
-  // compare against the real JSX literal, not comment prose
-  const jsxUnknown = DETAIL_SRC.indexOf('Unknown part "{partId}"');
-  assert.ok(jsxUnknown > 0, "the Unknown-part JSX must still exist for genuinely unknown ids");
-  assert.ok(DETAIL_SRC.indexOf("isPartDetailBlocked(detail.status)") < jsxUnknown,
-    "a BLOCKED read must never fall through to 'Unknown part'");
+  // WHAT THIS PINS IS THE ORDER, not the wording. It was written against the literal
+  // 'Unknown part "{partId}"', which the Parts North Star migration replaced with a sentence that
+  // says which of the two problems this is -- the catalogue WAS readable, and holds no such id.
+  // Pinning the copy would have made an improvement to that sentence look like a regression, so
+  // the anchor is now the not-found branch itself. The rule is unchanged and still falsifiable:
+  // a BLOCKED read must never fall through to "no such part".
+  const notFoundBranch = DETAIL_SRC.indexOf("if (!part) {");
+  assert.ok(notFoundBranch > 0, "the not-found branch must still exist for genuinely unknown ids");
+  assert.ok(/No part is recorded under/.test(DETAIL_SRC),
+    "and it must still say so in words a reader can act on");
+  assert.ok(DETAIL_SRC.indexOf("isPartDetailBlocked(detail.status)") < notFoundBranch,
+    "a BLOCKED read must never fall through to not-found");
 });
 
 // ---- PURITY -----------------------------------------------------------------

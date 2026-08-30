@@ -47,7 +47,6 @@ const CONFORMANT_WORKSPACES = [
   "modules/equipment/EquipmentDetail.jsx", // Wave 3
   "modules/equipment/EquipmentRegister.jsx", // Wave 3
   "modules/inventory/Inventory.jsx", // Wave 4 (unrouted/dead code -- see final report)
-  "modules/inventory/PartDetail.jsx", // Wave 4
   "modules/inventory/PartsList.jsx", // Wave 4
   "modules/inventoryRole/PartsAssociateHome.jsx", // Wave 4
   "modules/inventoryRole/PartsManagerHome.jsx", // Wave 4
@@ -126,6 +125,11 @@ const NORTH_STAR_RECORD_PAGES = [
   "modules/accounts/AccountDetail.jsx",         // family 3 (formerly Wave 2 conformant)
   "modules/sales/OpportunityDetail.jsx",        // family 4 (a NEW page, not a recomposition)
   "modules/sales/SalesAgreementDetail.jsx",     // family 5 (a NEW routed record page)
+  // family 6 -- a RECOMPOSITION, not a new page: it left CONFORMANT_WORKSPACES above when it
+  // stopped hosting WorkspaceShell. Moving it required declaring it here in the same commit,
+  // which is exactly what GATE 2b2 exists to force and what it caught when this migration
+  // first ran.
+  "modules/inventory/PartDetail.jsx",           // family 7 (Parts record)
 ];
 
 // ════════════════════ NORTH STAR COLLECTION PAGES ════════════════════
