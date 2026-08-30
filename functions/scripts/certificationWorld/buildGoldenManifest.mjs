@@ -1,5 +1,12 @@
 #!/usr/bin/env node
-// THE GOLDEN MANIFEST — five scenarios, every figure read back from the world.
+// THE GOLDEN MANIFEST — every figure read back from the world, and compared to a stated expectation.
+//
+// COUNT CORRECTION: this header said "five scenarios" and the block below still describes G01..G05
+// as "the five". There are ELEVEN. Six more were added over time and the summary was never revised,
+// so a reader reasonably concluded the file covered five and stopped looking -- and the count is
+// exactly the thing a coverage claim rests on. The original five remain the clearest illustration
+// of WHY the scenarios exist, so that explanation is kept below, as an explanation rather than as
+// an inventory. data/goldenExpectation.mjs holds the authoritative register of all eleven.
 //
 // ============================ WHAT A GOLDEN SCENARIO IS FOR ============================
 //
@@ -26,11 +33,21 @@
 // only one of them is solved by waiting. A system that collapses inbound into on-hand, or warehouse
 // into company-owned, answers all five the same way and is wrong four times.
 //
-// ============================ NOTHING HERE IS DECLARED ============================
+// ============================ READ BACK, THEN COMPARED ============================
 //
-// Every quantity is read through readPartBalance and readPurchaseOrderProgress at build time. The
-// manifest records what the world says, so a manifest that disagrees with the world is a signal
-// rather than a second opinion.
+// Every quantity is read through readPartBalance and readPurchaseOrderProgress at build time, so
+// the manifest records what the world SAYS. That was once the whole design, and it was circular:
+// a recorder cannot certify the world it records. An applier that regressed and left G04's stock in
+// the warehouse instead of on the trucks would have its wrong number written down faithfully, under
+// a heading reading "False comfort", and the run would report success.
+//
+// So the read-back is now EVIDENCE, not truth. The figures are compared against
+// data/goldenExpectation.mjs -- computed from the repository plan fixtures with zero Firestore I/O,
+// and therefore true before any world exists. A mismatch sets a non-zero exit code.
+//
+// The comparison covers the five demand-backed scenarios today. The other six are named in
+// UNCOVERED_GOLDEN_IDS with the reason each one is not yet derivable, and reported in the output
+// and in the artifact, so a partial check cannot read as a complete one.
 //
 // EMULATOR OR eos-platform-sandbox, through the shared execution gate. Production is refused.
 import fs from "node:fs";
@@ -53,6 +70,8 @@ const { readPurchaseOrderProgress } =
   await import(L("functions/lib/inventoryReceiving/purchaseOrderProgressRead.js"));
 
 const OUT_DIR = path.resolve(REPO, "field-ops-app-vite/.certification");
+const { buildGoldenExpectation, diffScenario, COVERED_GOLDEN_IDS, UNCOVERED_GOLDEN_IDS } =
+  await import(L("functions/scripts/certificationWorld/data/goldenExpectation.mjs"));
 const { ledgerRowsForPart, mobileByTruck } =
   await import(L("functions/scripts/certificationWorld/ledgerMath.mjs"));
 
@@ -207,6 +226,38 @@ if (!__target) {
     }
   }
 
+  // ============================ COMPARISON, NOT SELF-CERTIFICATION ============================
+  //
+  // Everything above READ the world. On its own that is a recorder, and a recorder cannot certify
+  // what it records: if an applier regressed and left G04's stock in the warehouse instead of on
+  // the trucks, the loop above would faithfully write down the wrong number under a heading that
+  // says "False comfort" and report success.
+  //
+  // So the figures are now checked against an expectation that was stated BEFORE any of this
+  // existed, computed from the repository plan fixtures with zero Firestore I/O. Changing an
+  // expected value requires editing a plan fixture -- a reviewable repository change -- rather than
+  // re-running this script against a world that has quietly drifted.
+  //
+  // FAILS CLOSED. A mismatch, a missing scenario and a missing line are all differences; none of
+  // them is a skip. The manifest is still written either way, because the evidence of a FAILED run
+  // is exactly what somebody needs to read.
+  const expectation = buildGoldenExpectation();
+  const observedByGoldenId = new Map(manifest.scenarios.map((s) => [s.id, s]));
+  const differences = [];
+  for (const expected of expectation.scenarios) {
+    differences.push(...diffScenario(expected, observedByGoldenId.get(expected.goldenId)));
+  }
+  manifest.expectation = {
+    version: expectation.version,
+    fingerprint: expectation.fingerprint,
+    covered: COVERED_GOLDEN_IDS,
+    // The scenarios this comparison does NOT cover, carried into the artifact so a reader of the
+    // manifest cannot mistake a partial check for a complete one.
+    uncovered: UNCOVERED_GOLDEN_IDS,
+    differences,
+    result: differences.length === 0 ? "MATCH" : "MISMATCH",
+  };
+
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(OUT_DIR, "golden-manifest.json"), JSON.stringify(manifest, null, 2));
 
@@ -229,4 +280,17 @@ if (!__target) {
       + ` -> COMPLETE warehouse ${g03.complete.warehouse} short ${g03.complete.warehouseShortage}`);
   }
   console.log(`\n${manifest.scenarios.length} scenarios written to golden-manifest.json`);
+
+  // The comparison verdict, last and loudest. An operator who reads one line of this output should
+  // read the one that says whether the world matched what the repository expected of it.
+  const ex = manifest.expectation;
+  console.log(`\ngolden expectation ${ex.version} (fingerprint ${ex.fingerprint.hash}) :: ${ex.result}`);
+  console.log(`  covered  : ${ex.covered.join(", ")}`);
+  console.log(`  uncovered: ${Object.keys(ex.uncovered).join(", ")} -- no pre-write expectation yet`);
+  if (ex.differences.length) {
+    for (const d of ex.differences) console.log(`  ! ${d}`);
+    // A scenario run that disagrees with the repository is a FAILURE, not a note at the bottom of a
+    // report somebody skims. Anything else makes the comparison decorative.
+    process.exitCode = 1;
+  }
 }
