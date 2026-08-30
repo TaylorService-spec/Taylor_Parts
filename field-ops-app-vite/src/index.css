@@ -5585,7 +5585,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* The one-line disclosure under Solution: why lines carry no prices, and that Quoting is a stage
    rather than a document. */
-.ns-solution-note { margin: -18px 0 34px; max-width: 72ch; }
+/* THE NOTE UNDER SOLUTION.
+   `margin-top: -18px` here put this paragraph ON TOP of the last line of the Solution list. Measured
+   on the deployed record rather than guessed: the section's box ended at 612px and this note began
+   at 594px — an 18px overlap, exactly the pull-up.
+   The negative margin was calibrated against `.ns-section`'s 30px bottom margin, which would have
+   left a 12px gap. But Solution does not render as `.ns-section`; it renders through the legacy
+   `.fo-sales-detail__block`, whose bottom margin is ZERO. So the compensation had nothing to
+   compensate for and became a collision — the failure mode of any negative margin tuned against a
+   sibling it does not actually have. Positive spacing owns its own gap and cannot overlap. */
+.ns-solution-note { margin: 10px 0 34px; max-width: 72ch; }
 
 /* Rail section headings — step 3 of the type scale, set in the interface face because they label
    data rather than title a record. */

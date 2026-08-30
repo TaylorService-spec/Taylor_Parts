@@ -261,14 +261,12 @@ function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness,
 // Read body for a section: its fields as label/value rows (single-field sections render just the value).
 function SectionReadBody({ section }) {
   if (section.future && section.fields.length === 0) {
-    // P1v2's wording for the ratified seam. Says the same true thing the previous sentence said
-    // and adds WHY the slot is empty and what would fill it -- Design owns this copy.
-    return (
-      <p className="fo-muted">
-        Not configured — no qualification schema is ratified yet. This slot fills when Product
-        ratifies one; nothing is invented meanwhile.
-      </p>
-    );
+    // P1v2's wording for the ratified seam is exactly "Not configured". This had grown two further
+    // sentences explaining that no schema is ratified and that nothing is invented meanwhile --
+    // true, and addressed to an engineer rather than to the person reading the record. Trimmed back
+    // to the brief (Owner ruling, DECISIONS #137). The seam is unchanged: still empty, still
+    // waiting on Product, still inventing nothing.
+    return <p className="fo-muted">Not configured</p>;
   }
   if (section.fields.length === 0) {
     return <p className="fo-muted">None.</p>;

@@ -275,6 +275,26 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
                 : "Unassigned",
           },
           {
+            key: "salesOrder",
+            label: null,
+            // THE ORDER FACT, MOVED HERE FROM "When this closes" (Owner ruling, DECISIONS #137).
+            //
+            // That section was removed as explanatory prose, and this link was the one real fact
+            // inside it. The opportunity's OWN order back-link — written by the atomic Mark Won
+            // close — existed nowhere else on this page: `OpportunityAgreementCard` links only the
+            // AGREEMENT's order, which is a different relationship. Deleting the section without
+            // moving this would have removed a governed relationship from the product, which is the
+            // SA-G7 mistake exactly.
+            //
+            // Sits beside the agreement fact because it is the same KIND of fact: a related record
+            // this one produced. Same rules as that fact — rendered only when an order exists
+            // (never "Order: —"), the number as the label, the id as the route key and never shown.
+            // `salesOrderNumber` is resolved server-side by readOpportunityContext.
+            value: conversion?.hasOrder && conversion.salesOrderId
+              ? <>Order <strong><Link to={`/customers/opportunities/sales-order/${encodeURIComponent(conversion.salesOrderId)}`}>{conversion.salesOrderNumber ?? "Sales Order"}</Link></strong></>
+              : null,
+          },
+          {
             key: "agreement",
             label: null,
             // THE AGREEMENT FACT APPEARS ONLY WHEN ONE EXISTS. P1v2 is explicit: never
@@ -369,11 +389,13 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
         <div>
           {renderSection("need")}
           {renderSection("solution")}
+          {/* THE ONE-LINE DISCLOSURE — which is what P1v2 asked for, verbatim: "the one-line
+              disclosure explains estimated-value-only pricing". It had grown to four lines and a
+              short essay on EOS having no quote object. The kept half answers the question a reader
+              actually has when looking at a list of lines with no money on it; the dropped half
+              explained the data model, which is not this page's job. */}
           <p className="ns-gap-note ns-solution-note">
             Lines carry no prices — pricing on an opportunity is the single estimated value above.
-            Committed prices arrive with the accepted agreement and the Sales Order. “Quoting” is a
-            stage of this lifecycle, not a document: EOS has no quote object, so there is no quote
-            list to show.
           </p>
           {/* The next-action section is editable from the attention strip's link as well as here. */}
           {renderSection("nextAction")}
@@ -388,41 +410,6 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
           {/* ─────────────── WHEN THIS CLOSES (P1v2 §6). Both governed paths stated as fact.
               An agreement is NEVER a prerequisite and this page never implies the sequence is
               mandatory — repository truth, decision O6. */}
-          <section className="ns-section" aria-label="When this closes">
-            <div className="ns-section__head">
-              <h2 className="ns-section__title">
-                When this closes <span className="ns-section__note">· the governed conversion</span>
-              </h2>
-            </div>
-            <div className="ns-section__body ns-prose">
-              <p>
-                Two real paths, both governed. An <strong>accepted agreement</strong> produces a
-                priced Sales Order from its committed lines, or <strong>Mark Won</strong> runs the
-                atomic close directly — the order is created in the same transaction from this
-                opportunity’s own lines. An agreement is never a prerequisite.
-                {" "}
-                {conversion.hasOrder ? (
-                  <>
-                    This opportunity’s Sales Order is{" "}
-                    <Link to={`/customers/opportunities/sales-order/${conversion.salesOrderId}`}>
-                      {conversion.salesOrderNumber ?? "the linked order"}
-                    </Link>.
-                  </>
-                ) : conversion.agreementOrderId ? (
-                  <>
-                    No order was created from this opportunity directly; its agreement produced{" "}
-                    <Link to={`/customers/opportunities/sales-order/${conversion.agreementOrderId}`}>
-                      a Sales Order
-                    </Link>.
-                  </>
-                ) : (
-                  <>No order exists for this opportunity yet.</>
-                )}
-                {" "}
-                <strong>Mark Lost</strong> closes it with nothing created.
-              </p>
-            </div>
-          </section>
 
           {/* ─────────────── ACTIVITY — the honest gap (O3). Audits exist server-side; no read
               serves them here, and CRM activity is not an active capability. Nothing is invented,
@@ -450,7 +437,15 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
           {/* CUSTOMER. The account link and status only — the primary contact (O4) is an existing
               read that is deliberately NOT composed here: the design flags it as a confirmed
               addition because it adds a read to this surface, and the brief forbids broadening
-              this migration into CRM architecture work. */}
+              this migration into CRM architecture work.
+
+              THE EXPLANATION OF THAT ABSENCE IS GONE (Owner ruling, DECISIONS #137). This card
+              carried three lines telling the reader where contact facts come from and that none is
+              composed yet. That is a note to the next engineer printed on a salesperson's screen:
+              the reader cannot act on it, it is identical on every record, and it made a card whose
+              job is "who do I call" mostly about why it cannot say. The card now shows the customer
+              and stops. O4 stays OPEN and named here -- silence about a gap is not the same as
+              forgetting it, and `useContactsForAccount` already exists to close it. */}
           <section className="ns-section" aria-label="Customer">
             <div className="ns-section__head"><h3 className="ns-rail__title">Customer</h3></div>
             <div className="ns-section__body">
@@ -459,10 +454,6 @@ export default function OpportunityDetail({ readiness, hasCapability = () => fal
                   <Link to={`/customers/${view.accountId}`}>
                     <strong>{view.accountName ?? "Customer — name unavailable"}</strong>
                   </Link>
-                  <p className="ns-gap-note">
-                    Contact facts come from the Account’s own contacts — an opportunity stores no
-                    contact of its own, and none is composed here yet.
-                  </p>
                 </>
               ) : (
                 <HonestState state={HONEST_STATE.EMPTY} detail="No customer is recorded on this opportunity." />

@@ -461,34 +461,79 @@ describe("Opportunity P1v2 — the Sales Agreement relationship", () => {
 
 // ═══════════════════════════════════════════════════ SALES ORDER
 
+// REWRITTEN 2026-08-27 (Owner ruling, DECISIONS #137). These asserted the PROSE of a section named
+// "When this closes", which explained the two governed conversion paths in five lines of copy
+// identical on every record. The Owner removed it as documentation living inside a record.
+//
+// The behaviour it described is real and still asserted — what changed is that these now measure
+// the RELATIONSHIP rather than the sentence describing it. That distinction is the point: a test
+// that pins explanatory copy fails the moment the copy is reworded and passes even when the link
+// underneath it breaks.
 describe("Opportunity P1v2 — both commercial paths stay intact", () => {
-  it("the direct Won → Sales Order path is stated and linked when it exists", () => {
+  it("the direct Won → Sales Order back-link SURVIVES, in the header fact row", () => {
+    // THE REGRESSION THIS EXISTS FOR. The opportunity's own order back-link — written by the atomic
+    // Mark Won close — lived ONLY inside the removed section. OpportunityAgreementCard links the
+    // AGREEMENT's order, which is a different relationship, so deleting that section without moving
+    // this would have removed a governed relationship from the product entirely. That is SA-G7.
     const { container } = mount(
       { stage: "DECISION", outcome: "WON", salesOrderId: "so_doc_9" },
       {}, { salesOrderNumber: "SO-2026-000014" },
     );
-    const section = container.querySelector('[aria-label="When this closes"]');
-    expect(section.textContent).toMatch(/SO-2026-000014/);
-    expect(within(section).getByRole("link", { name: /SO-2026-000014/ }).getAttribute("href"))
-      .toBe("/customers/opportunities/sales-order/so_doc_9");
+    const link = within(container).getByRole("link", { name: /SO-2026-000014/ });
+    expect(link.getAttribute("href")).toBe("/customers/opportunities/sales-order/so_doc_9");
+    // The NUMBER is the label; the document id is the route key and is never shown (#106).
+    expect(container.textContent).not.toMatch(/so_doc_9/);
   });
 
-  it("the agreement-derived order is reported as the agreement's, not the opportunity's", () => {
+  it("states NO order fact when the opportunity has none — never \"Order: —\"", () => {
+    const { container } = mount({ salesOrderId: null });
+    // NO link to any Sales Order at all: there is no order, from either path, so nothing may claim
+    // one. Counted by href rather than by label, because the visible word "Order" is plain text
+    // beside the link and never part of the link's own name.
+    expect(container.querySelectorAll('a[href*="/sales-order/"]')).toHaveLength(0);
+    // Same rule the agreement fact follows: absence is silence in the header, not a placeholder.
+    expect(container.textContent).not.toMatch(/Order:\s*—/);
+  });
+
+  it("the agreement-derived order stays the AGREEMENT's, and is not claimed by the opportunity", () => {
     useSalesAgreement.mockReturnValue(agreementState({
       kind: "READY", id: "agr_doc_5", salesAgreementNumber: "SA-2026-000012", state: "ACCEPTED",
       currency: "USD", totalMinor: 2345000, salesOrderId: "so_doc_9", acceptedAtMillis: NOW, lines: [],
     }));
     const { container } = mount({ salesOrderId: null });
-    const section = container.querySelector('[aria-label="When this closes"]');
-    expect(section.textContent).toMatch(/its agreement produced/i);
+    // The agreement card owns this relationship and links it.
+    const card = container.querySelector(".ns-agreement, [aria-label*='agreement' i]") ?? container;
+    expect(within(card).getByRole("link", { name: /sales order/i }).getAttribute("href"))
+      .toBe("/customers/opportunities/sales-order/so_doc_9");
+    // Two different relationships: the opportunity did not produce this order, and the header fact
+    // — which reports the opportunity's OWN back-link — must not claim it did.
+    //
+    // COUNTED, not name-matched. The first version asserted "no link whose name starts with Order",
+    // but the header renders the word "Order" as plain text beside a link labelled with the NUMBER,
+    // so the accessible name never started with "Order" — the assertion passed against a header
+    // that was in fact claiming the agreement's order. Mutation-proved after the change, not before.
+    // Counting hrefs measures the relationship rather than the wording around it.
+    // EXACTLY ONE sales-order link on the whole page, and it is the card's. Counting only links to
+    // so_doc_9 was not enough: a header that wrongly adopted the agreement's order rendered its
+    // href from the opportunity's own (null) id, producing a BROKEN /sales-order/ link that the
+    // narrower count never saw. Counting every order link catches the duplicate and the broken one.
+    expect(container.querySelectorAll('a[href*="/sales-order/"]')).toHaveLength(1);
+    expect(container.querySelectorAll('a[href$="/sales-order/so_doc_9"]')).toHaveLength(1);
   });
 
-  it("the page never implies an agreement is a prerequisite for Won", () => {
-    const { container } = mount({ stage: "DECISION" });
-    const section = container.querySelector('[aria-label="When this closes"]');
-    expect(section.textContent).toMatch(/never a prerequisite/i);
-    // And Mark Won is offered with NO agreement present at all.
+  it("the page never implies an agreement is a PREREQUISITE for Won", () => {
+    mount({ stage: "DECISION" });
+    // Asserted as BEHAVIOUR rather than as a sentence saying so: Mark Won is offered, enabled, with
+    // no agreement present at all. The removed copy claimed this in words; the control proves it.
     expect(screen.getByRole("button", { name: /mark won/i }).disabled).toBe(false);
+  });
+
+  it("NO section explains the conversion mechanism back onto the record", () => {
+    const { container } = mount({ stage: "DECISION" });
+    // The Owner's objection was to a record page teaching the model instead of reporting the
+    // record. Pinned so the prose cannot drift back in under a new heading.
+    expect(container.querySelector('[aria-label="When this closes"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/Two real paths|never a prerequisite|atomic close/i);
   });
 });
 

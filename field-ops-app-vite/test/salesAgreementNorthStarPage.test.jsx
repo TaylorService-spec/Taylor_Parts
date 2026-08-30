@@ -258,17 +258,24 @@ describe("provenance and downstream", () => {
     expect(links).toContain("/customers/opportunities/opp_1842");
   });
 
-  it("links the Sales Order when one exists", () => {
-    ready({ ...ACCEPTED, salesOrderId: "so_15" });
+  it("links the Sales Order when one exists, and never shows its document id", () => {
+    ready({ ...ACCEPTED, salesOrderId: "so_15", salesOrderNumber: "SO-2026-000015" });
     const links = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(links).toContain("/customers/opportunities/sales-order/so_15");
+    // The id is the ROUTE KEY only. A mutation that labelled the link with `salesOrderId` survived
+    // this test until the assertion below existed: the href was still right, so the link check
+    // passed while the visible text was a Firestore id (DECISIONS #106).
+    expect(document.body.textContent).not.toContain("so_15");
   });
 
-  it("states the exact governed trigger when no order exists, and invents no Create", () => {
+  it("invents no Create when no order exists — this page does not produce orders", () => {
     ready(ACCEPTED);
-    expect(document.body.textContent).toContain("closed as won");
-    expect(document.body.textContent).toContain("requires this agreement to be accepted first");
+    // Was also asserting the two sentences of the removed "What this agreement became" section
+    // (Owner ruling, DECISIONS #137). The control's absence is the invariant that matters: the
+    // order is produced by the Opportunity's governed close-as-won, and a Create button here would
+    // be an authority this page does not have.
     expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/creates the sales order/i);
   });
 });
 
