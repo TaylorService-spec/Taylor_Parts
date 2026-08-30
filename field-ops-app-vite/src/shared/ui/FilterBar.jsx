@@ -1,5 +1,4 @@
-import { Check, X } from "lucide-react";
-import Icon from "./Icon.jsx";
+import { X } from "lucide-react";
 import IconButton from "./primitives/IconButton.jsx";
 
 // Epic 9 -- Platform Workspace Framework. Extracted from the
@@ -20,7 +19,17 @@ import IconButton from "./primitives/IconButton.jsx";
 // component gets its own, light-panel-appropriate styling instead of
 // cross-purposing a class designed for a different visual context.
 //
-// Design-system pass: the active chip now carries a leading check glyph
+// COLLECTION GRAMMAR PASS: this row now renders the shared North Star view chips
+// (.ns-collection__views / .ns-view), the same control OpportunityList shipped and the Owner
+// accepted -- so every list states its views in one visual language instead of four.
+//
+// The leading CHECK GLYPH described below is gone with the pill styling that needed it. Its job was
+// to keep "which filter is active" off colour alone; .ns-view.is-active does that with FONT WEIGHT
+// and a bottom rule, which survives greyscale and colour-blind viewing just as well. The semantics
+// are untouched: still a group of aria-pressed buttons, not a radiogroup, so this is a presentation
+// change and not a behavioural one for the five lists that share it.
+//
+// Superseded note, kept for the reasoning it records: the active chip once carried a check glyph
 // (icon + colour + text, never colour alone, per the shared tone
 // convention) so "which filter is active" reads before the label text
 // does, not just via a background-colour swap a colour-blind or
@@ -34,13 +43,24 @@ import IconButton from "./primitives/IconButton.jsx";
 // growing the row wider than its container; the inline overflow guard
 // below is a second line of defence so a single unbreakable label can
 // never push the page itself into horizontal scroll.
-export default function FilterBar({ options, activeKey, onChange, label = "Filters" }) {
+// `variant` — WHICH SURFACE IS ASKING, because a views row is not a generic filter row.
+//
+//   "views"  the collection grammar: the row of view chips a LIST states its views with.
+//   "chips"  the older pill group, for surfaces that filter a panel without being a collection.
+//
+// The distinction is enforced elsewhere: `listsP2Compose` asserts that no non-collection surface
+// renders a views row or a collection footer. Making every FilterBar a views row broke that
+// immediately — WarehouseManagerHome is a role Home, an Overview archetype, and its category filter
+// is not the same act as choosing which slice of a collection to read. The test was right and the
+// prop exists because of it.
+export default function FilterBar({ options, activeKey, onChange, label = "Filters", variant = "views" }) {
   const defaultKey = options[0]?.key;
   const isFiltered = activeKey != null && activeKey !== defaultKey;
+  const isViews = variant === "views";
 
   return (
     <div
-      className="fo-filter-bar"
+      className={isViews ? "ns-collection__views" : "fo-filter-bar"}
       role="group"
       aria-label={label}
     >
@@ -50,22 +70,26 @@ export default function FilterBar({ options, activeKey, onChange, label = "Filte
           <button
             key={option.key}
             type="button"
-            className={isActive ? "fo-filter-btn fo-filter-btn-active" : "fo-filter-btn"}
+            className={isViews
+              ? `ns-view ${isActive ? "is-active" : ""}`.trim()
+              : (isActive ? "fo-filter-btn fo-filter-btn-active" : "fo-filter-btn")}
             aria-pressed={isActive}
             onClick={() => onChange(option.key)}
           >
-            {isActive && (
-              <Icon
-                icon={Check}
-                size="dense"
-                className="fo-filter-btn__check-icon"
-              />
-            )}
             {option.label}
-            {option.count !== undefined ? (
-              <span className="fo-tabular-nums"> ({option.count})</span>
-            ) : (
-              ""
+            {/* THREE STATES, NOT TWO, and collapsing any pair of them tells a lie.
+                  undefined  this list has no counting dimension at all -> render NOTHING.
+                  null       a count was attempted and is unavailable -> render an em dash.
+                  number     the governed count, including a real 0.
+                "0" is a claim about the business; "—" is a claim about the READ; a bare label says
+                the question was never asked. An earlier version of this chip rendered null as
+                nothing, which quietly demoted "we could not count" to "there is nothing to count" —
+                three suites caught it, and they were right to. */}
+            {option.count === undefined ? null : (
+              <span className={isViews ? "ns-view__count" : "fo-tabular-nums"}>
+                {isViews ? (option.count === null ? "—" : option.count)
+                         : ` (${option.count === null ? "—" : option.count})`}
+              </span>
             )}
           </button>
         );

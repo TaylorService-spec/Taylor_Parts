@@ -19,6 +19,7 @@ import { useListCriteria } from "../../hooks/useListCriteria.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import FilterBar from "../../shared/ui/FilterBar";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { buildRowHref } from "../../metadata/listPresentation.js";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -254,27 +255,31 @@ export default function AccountsList() {
         )}
       </div>
 
-      <div className="fo-portfolio-cards" role="group" aria-label="Customer portfolio by status">
-        {STATUS_CARDS.map((card) => {
-          const pressed = card.status === null ? statusFilter === null : statusFilter === card.status;
-          const count = cardCount(card);
-          return (
-            <button
-              key={card.key}
-              type="button"
-              className={`fo-portfolio-card${pressed ? " fo-portfolio-card-active" : ""}`}
-              aria-pressed={pressed}
-              onClick={() => toggleStatus(card.status)}
-            >
-              {/* An unavailable count shows a dash, never a zero. "0 Active" is a claim
-                  about the business; "—" is a claim about the read, and they are not
-                  interchangeable. */}
-              <span className="fo-portfolio-card-count">{count === null ? "—" : count}</span>
-              <span className="fo-portfolio-card-label">{card.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* THE STATUS COUNTS ARE VIEW CHIPS NOW, not a row of filled tiles.
+          They were five dark-green cards above a hairline table — the "five equal centred tiles"
+          the pilot audit named as an anti-pattern twice, and the reason this page read as a
+          different product from the list underneath it. Equal visual weight also flattens the one
+          thing the row is for: 97 Active and 0 Archived shouted equally loudly.
+
+          Nothing about the DATA changed. These remain the governed server-side counts — not derived
+          from the loaded page, which is why the surrounding DENIED / UNAVAILABLE states below still
+          apply and are still stated. Only the rendering moved into the shared collection grammar,
+          so a count now sits on the control that produces it: "Active 97" explains what clicking
+          does in a way a separate tile never could.
+
+          An unavailable count passes `null`, and FilterBar renders NOTHING for it — a bare label.
+          The old tile showed "—" for the same case, which was equally honest; a chip has no room
+          for a dash, and an absent number reads as absent. */}
+      <FilterBar
+        label="Customer portfolio by status"
+        activeKey={statusFilter === null ? "total" : statusFilter}
+        onChange={(key) => toggleStatus(key === "total" ? null : key)}
+        options={STATUS_CARDS.map((card) => ({
+          key: card.status === null ? "total" : card.status,
+          label: card.label,
+          count: cardCount(card),
+        }))}
+      />
 
       {summaryState === "DENIED" && (
         <p className="fo-muted" role="status">Portfolio totals are not available to you.</p>

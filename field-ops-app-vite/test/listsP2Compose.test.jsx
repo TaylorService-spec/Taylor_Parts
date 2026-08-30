@@ -178,13 +178,50 @@ describe("a related list is not a collection page embedded inside Detail", () =>
     expect(offenders, `related/embedded surfaces must not wear the collection header:\n${offenders.join("\n")}`).toEqual([]);
   });
 
+  // The shared primitive that RENDERS the views row is not a surface that WEARS one. FilterBar
+  // necessarily contains the class name, the same way a button component contains "button".
+  // Naming it here costs the check nothing, because the check it would otherwise perform on
+  // FilterBar's callers is performed directly, below.
+  const VIEWS_ROW_IMPLEMENTATION = "shared/ui/FilterBar.jsx";
+
   it("no non-collection surface renders a views row or a collection footer", () => {
     // The parts a related section would acquire one at a time on its way to becoming a page.
     const offenders = surfaces.filter((r) => {
+      if (r === VIEWS_ROW_IMPLEMENTATION) return false;
       const src = read(join(SRC, r));
       return /ns-collection__views|ns-collection__result/.test(src);
     });
     expect(offenders, `related surfaces must not grow a views row or a result footer:\n${offenders.join("\n")}`).toEqual([]);
+  });
+
+  it("a surface cannot acquire a views row INDIRECTLY, through the shared primitive", () => {
+    // THE HOLE THE COLLECTION-GRAMMAR PASS OPENED, closed in the same change that opened it.
+    //
+    // FilterBar used to render one thing. It now renders the views row BY DEFAULT (`variant`
+    // defaults to "views"), so a related section could grow collection chrome by adding a plain
+    // <FilterBar> — no class name in its own source, nothing for the check above to see. The rule
+    // did not change; the way to break it did.
+    //
+    // Stated as the caller's obligation: a non-collection surface using FilterBar must say
+    // variant="chips". That is why the prop is not a boolean with a safe default — the surfaces
+    // that are NOT collections are the ones that have to declare themselves.
+    const offenders = surfaces
+      .filter((r) => r !== VIEWS_ROW_IMPLEMENTATION)
+      .filter((r) => /<FilterBar\b/.test(stripComments(read(join(SRC, r)))))
+      .filter((r) => !/<FilterBar\b[^>]*variant=["']chips["']/s.test(stripComments(read(join(SRC, r)))));
+    expect(
+      offenders,
+      `a non-collection surface rendering FilterBar must pass variant="chips":\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("that indirect check can actually fail — the default really is the views row", () => {
+    // A check incapable of failing is not evidence. If FilterBar's default ever became "chips",
+    // the check above would pass for every caller including a genuinely offending one, and would
+    // be guarding nothing. This asserts the premise the check rests on.
+    const primitive = stripComments(read(join(SRC, VIEWS_ROW_IMPLEMENTATION)));
+    expect(primitive).toMatch(/variant\s*=\s*"views"/);
+    expect(primitive).toMatch(/ns-collection__views/);
   });
 
   it("no related section issues its own list criteria or filter builder", () => {

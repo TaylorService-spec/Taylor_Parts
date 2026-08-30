@@ -642,7 +642,18 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
       </p>
-      <FilterBar options={queueFilterOptionsWithCounts} activeKey={queueFilter} onChange={setQueueFilter} />
+      {/* CHIPS, NOT VIEWS. This page is a pre-North-Star WorkspaceShell holding several panels, and
+          this row chooses a slice of the Inventory Health PANEL — not a view of a collection. The
+          views grammar states "this is the collection, and these are the ways to read it", which
+          needs a collection identity above it; this page has none. Wearing the chrome without the
+          header is the drift listsP2Compose exists to catch. See the gap named for this page in
+          the rollout note: it needs a collection pass, not a chip swap. */}
+      <FilterBar
+        variant="chips"
+        options={queueFilterOptionsWithCounts}
+        activeKey={queueFilter}
+        onChange={setQueueFilter}
+      />
       {reorderError && <p className="fo-muted">{reorderError}</p>}
       <LoadingEmptyState
         loading={loading}
@@ -757,7 +768,10 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         baseline, not live stock, until a part has ledger activity.
       </p>
 
-      <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
+      {/* Chips for the same reason as the queue row above: the catalog table is one panel of this
+          workspace, not the page's collection. Two rows on one page BOTH rendering the views
+          grammar would also state two collections where there is one page. */}
+      <FilterBar variant="chips" options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
       <LoadingEmptyState
         loading={loading}
