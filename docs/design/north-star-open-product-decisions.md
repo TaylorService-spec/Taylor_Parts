@@ -471,9 +471,9 @@ truthful rendering shipping meanwhile.
 | **O1** | `expectedValue` has no governed currency. Ratify one and store it, or keep the annotation? | A bare grouped number + "(no currency recorded)". A fabricated `$` was **found live on the pipeline surface** and removed. |
 | **O2** | Resolve the customer name in the governed read, or denormalise at write? | **Addressed for this surface:** `getOpportunityContext` resolves the name server-side via the existing `resolveAccountNames`. Where it still cannot resolve, "Customer — name unavailable" renders with the account link live. |
 | **O3** | Expose a bounded Opportunity activity read (stage changes, edits, Won/Lost)? | The Activity section states the gap in words and fabricates nothing. |
-| **O4** | Compose the Account's primary contact into the rail? It adds a read to this surface. | Not composed. The rail states where contact facts would come from. |
+| **O4** | Compose the Account's primary contact into the rail? It adds a read to this surface. | **DECLINED by the Owner, 2026-08-27** — *"leave the customer card as is"*. Not composed, and the rail no longer explains that it isn't (DECISIONS #137): the card shows the customer and stops. Do not re-propose without a fresh Owner ask — it was raised, recommended and declined. |
 | **O5** | Give the family a real per-record route. | **Done** — `/customers/opportunities/:opportunityId` over a new per-id governed read. |
-| **O6** | Should the two Sales Order creation paths converge? Is multi-agreement ever a requirement? | Neither converged nor pre-decided. "When this closes" states both paths as fact; the card reads the one governed agreement per opportunity. |
+| **O6** | Should the two Sales Order creation paths converge? Is multi-agreement ever a requirement? | Neither converged nor pre-decided — unchanged. The section that STATED both paths in prose ("When this closes") was removed as documentation-inside-a-record (DECISIONS #137); the paths themselves are untouched, and the order each produces is now reported as a header fact on the record that owns it. The card still reads the one governed agreement per opportunity. |
 
 ---
 
