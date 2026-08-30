@@ -1,0 +1,38 @@
+Referential derivation check — eos-platform-sandbox
+
+Known physical roots (12): warehouses: 5, mobile_locations: 7
+Company assignments are NOT required for this check and are NOT read.
+
+collection                  scan  DERIVABLE  MISSING  INVALID  X-COMPANY  CONFLICT
+----------------------------------------------------------------------------------
+cycle_counts                  24         24        0        0          0         0
+receiving_orders               2          2        0        0          0         0
+inventory_transactions       103         91        4        0          8         0
+transfer_orders               47          0        0        0         47         0
+stock_locations                5          5        0        0          0         0
+trucks                         2          2        0        0          0         0
+reorder_requests               6          0        6        0          0         0
+reorder_purchase_orders        3          0        3        0          0         0
+mobile_locations               7          5        2        0          0         0
+----------------------------------------------------------------------------------
+TOTAL                        199        129       15        0         55         0
+
+Reason classification (non-DERIVABLE):
+  inventory_transactions
+         4  no location reference present on this record
+         3  two roots: mobile-seed1786749487428-101 -> wh-main (cross-company depends on their assignments)
+         3  two roots: wh-main -> mobile-seed1786749487428-101 (cross-company depends on their assignments)
+         1  two roots: wh-north -> wh-main (cross-company depends on their assignments)
+         1  two roots: wh-main -> wh-north (cross-company depends on their assignments)
+  transfer_orders
+        23  two roots: wh-main -> wh-north (cross-company depends on their assignments)
+        23  two roots: wh-main -> mobile-seed1786749487428-101 (cross-company depends on their assignments)
+         1  two roots: mobile-seed1786749487428-101 -> wh-main (cross-company depends on their assignments)
+  reorder_requests
+         6  family carries no location reference
+  reorder_purchase_orders
+         3  family carries no location reference
+  mobile_locations
+         2  no location reference present on this record
+
+Only 129 record(s) can take a company from a physical root. This check is READ-ONLY and authorizes no backfill.

@@ -7,6 +7,9 @@
 // fulfillment). owner is a canonical Employee ref (ownerEmployeeId), not free text or a UID. Creation always
 // starts at IDENTIFIED, open (no outcome). Transitions are validated by checkTransition().
 
+import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
+import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
+import type { OwnerDerivation } from "../ownership/typedOwner";
 import {
   OPPORTUNITY_LINE_KINDS,
   isChannel,
@@ -55,7 +58,20 @@ export interface OpportunityLineInput {
 
 export interface CreateOpportunityInput {
   accountId: string;
-  ownerEmployeeId: string;
+  // EOS Ownership Model v1, ruling D-4 (2026-08-30): relaxed from required to OPTIONAL, additively.
+  // An existing caller that supplies a real id reaches exactly the code it always did. Omitting it
+  // now inherits the Customer (Account) owner via `inheritedOwner` below instead of failing, and
+  // when neither resolves the create still REFUSES -- ownership is never assigned to the caller.
+  ownerEmployeeId?: string;
+  // The governed upstream owner, derived by the CALLER from the Account it already read inside its
+  // own transaction (ownership/typedOwner.ts deriveAccountOwner). Passed in rather than read here
+  // so this builder stays pure, and read transactionally so the inherited owner cannot drift
+  // between the read and the write.
+  inheritedOwner?: OwnerDerivation | null;
+  // Ruling R-14: the operating company enters the commercial chain HERE, and is copied downstream.
+  // OPTIONAL and never inferred -- one salesperson and one customer may legitimately transact with
+  // either company, so nothing about the Account can decide this. A bad value is still rejected.
+  operatingCompanyId?: string;
   salesChannel: SalesChannel;
   need?: string;
   expectedValue?: number | null;
@@ -110,6 +126,8 @@ export interface BuiltOpportunity {
   need: string | null;
   expectedValue: number | null;
   expectedCloseAt: number | null;
+  /** Ruling R-14. null until supplied -- inert, and never defaulted to Taylor. */
+  operatingCompanyId: string | null;
   lines: OpportunityLineInput[];
   createdByUid: string;
   createdAtMillis: number;
@@ -124,8 +142,14 @@ export function buildCreateOpportunity(
 ): BuiltOpportunity {
   if (!input || typeof input !== "object") throw new OpportunityCommandError("INVALID", "Missing input");
   if (!nonEmpty(input.accountId)) throw new OpportunityCommandError("ACCOUNT_REQUIRED", "accountId is required");
-  if (!nonEmpty(input.ownerEmployeeId)) {
-    throw new OpportunityCommandError("OWNER_REQUIRED", "ownerEmployeeId (canonical Employee) is required");
+  // Ruling D-4. The OWNER_REQUIRED error code is preserved on the refusal path -- a caller that
+  // supplies nothing and has nothing to inherit still fails with the same code it always did, so
+  // existing error handling keeps working; only the message gained the reason.
+  let resolvedOwner: CreationOwnerResolution;
+  try {
+    resolvedOwner = resolveCreationOwner(input.ownerEmployeeId, input.inheritedOwner, "the Account");
+  } catch (e) {
+    throw new OpportunityCommandError("OWNER_REQUIRED", (e as Error).message);
   }
   if (!isChannel(input.salesChannel)) throw new OpportunityCommandError("CHANNEL_INVALID", "salesChannel is invalid");
   if (input.expectedValue !== undefined && input.expectedValue !== null && !finiteNum(input.expectedValue)) {
@@ -137,8 +161,9 @@ export function buildCreateOpportunity(
   const lines = Array.isArray(input.lines) ? input.lines.map((l, i) => validateLine(l, i)) : [];
   return {
     accountId: input.accountId.trim(),
-    ownerEmployeeId: input.ownerEmployeeId.trim(),
+    ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
+    operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId),
     stage: "IDENTIFIED",
     outcome: null,
     need: nonEmpty(input.need) ? input.need.trim() : null,

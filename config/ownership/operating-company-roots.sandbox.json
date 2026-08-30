@@ -1,0 +1,123 @@
+{
+  "$comment": [
+    "EOS Ownership Model v1 — the sandbox physical-root operating-company assignments.",
+    "",
+    "ASSIGNED by Owner ruling R-1 (2026-08-30). These are AUTHORED certification-world facts.",
+    "",
+    "THEY ARE NOT INFERRED, AND NO CODE MAY EVER INFER THEM. There is no 'north means Ventana'",
+    "function, no 'truck 04 and above means Ventana', no 'main means Taylor', and there must not be.",
+    "The ids simply map to company ids in this file. If a rule appears to exist in the data below, it",
+    "is a coincidence of authoring order and must not be implemented.",
+    "",
+    "WHY THE SPLIT. The certification world needs BOTH operating companies present across stationary",
+    "inventory, mobile inventory, same-company transactions and cross-company transactions. A",
+    "Taylor-only sandbox could not certify the ownership model at all: every transfer would be",
+    "same-company and the cross-company path would never execute once.",
+    "",
+    "MEASURED CORRECTION TO THE FIRST PLAN. It listed four root families and 19 records. The",
+    "referential derivation check found two of them are not roots:",
+    "  - stock_locations is a per-warehouse-per-part BALANCE record, not a place. 5/5 derive from",
+    "    their warehouseId.",
+    "  - trucks carry homeWarehouseId. 2/2 derive from their home warehouse.",
+    "Only warehouses and mobile_locations are primary: 12 decisions, not 19.",
+    "",
+    "APPLYING THESE TO LIVE SANDBOX RECORDS IS A SEPARATE AUTHORIZATION. This file is the decision.",
+    "Nothing has been written."
+  ],
+  "environment": "eos-platform-sandbox",
+  "status": "ASSIGNED by Owner ruling R-1, 2026-08-30 — configuration only, NOT applied to any record",
+  "governedCompanyIds": [
+    "taylor",
+    "ventana"
+  ],
+  "roots": {
+    "warehouses": [
+      {
+        "id": "wh-main",
+        "name": "Main Distribution Center",
+        "provenance": "seedSandboxBaseline",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "wh-north",
+        "name": "North Service Depot",
+        "provenance": "seedSandboxBaseline",
+        "operatingCompanyId": "ventana"
+      },
+      {
+        "id": "wh-retired",
+        "name": "Legacy Overflow Store",
+        "provenance": "seedSandboxBaseline",
+        "status": "INACTIVE",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "wh-sandbox-central",
+        "name": "Central Distribution",
+        "provenance": "sandbox seed",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "wh-sandbox-north",
+        "name": "North Satellite",
+        "provenance": "sandbox seed",
+        "operatingCompanyId": "ventana"
+      }
+    ],
+    "mobile_locations": [
+      {
+        "id": "cert-trk-01",
+        "name": "Truck 101 - North Valley",
+        "provenance": "certificationWorld fixture",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "cert-trk-02",
+        "name": "Truck 102 - East Valley",
+        "provenance": "certificationWorld fixture",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "cert-trk-03",
+        "name": "Truck 103 - West Valley",
+        "provenance": "certificationWorld fixture",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "cert-trk-04",
+        "name": "Truck 104 - Central Phoenix",
+        "provenance": "certificationWorld fixture",
+        "operatingCompanyId": "ventana"
+      },
+      {
+        "id": "cert-trk-05",
+        "name": "Truck 105 - Southeast Valley",
+        "provenance": "certificationWorld fixture",
+        "operatingCompanyId": "ventana"
+      },
+      {
+        "id": "mobile-seed1786749487428-101",
+        "name": "Truck 101 (seed)",
+        "provenance": "sandbox seed",
+        "operatingCompanyId": "taylor"
+      },
+      {
+        "id": "mobile-seed1786749487428-102",
+        "name": "Truck 102 (seed)",
+        "provenance": "sandbox seed",
+        "operatingCompanyId": "ventana"
+      }
+    ]
+  },
+  "derivedNotRoots": {
+    "$comment": "Measured DERIVABLE by scripts/ownershipDerivationCheck.js. Listed so nobody re-adds them as roots.",
+    "stock_locations": {
+      "count": 5,
+      "derivesFrom": "warehouseId"
+    },
+    "trucks": {
+      "count": 2,
+      "derivesFrom": "homeWarehouseId"
+    }
+  }
+}

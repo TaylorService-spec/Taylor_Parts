@@ -1,0 +1,117 @@
+name: EOS Ownership Model Tests
+
+# EOS Ownership Model v1 (Owner rulings D-1..D-5, 2026-08-30) -- pure-logic tests for the INERT
+# ownership authorities: the operating-company authority, the typed owner shape and its derivations
+# from existing storage, the ownership matrix, the handoff command, the creation-owner inheritance
+# rule, the census classifier, and the AuditAction union/runtime-array symmetry.
+#
+# WHY THIS WORKFLOW EXISTS AT ALL: a new subsystem that is not named by a workflow is CI-uncovered,
+# no matter how many suites it has. `functions/src/ownership/**` is new, so it gets its own job
+# rather than relying on a neighbouring workflow's path filter happening to cover it.
+#
+# The path list deliberately includes the three commercial creation paths and the audit writer,
+# because ruling D-4 relaxed their owner contracts and ruling D-5 extended the audit writer -- a
+# change to any of them can break the ownership tests without touching functions/src/ownership.
+#
+# No emulator, no deployment, no production access, no secrets. Everything here is inert: no Rules
+# enforce ownership, no writer stamps it, no backfill has run.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/ownership/**"
+      - "functions/scripts/ownershipDerivationCheck.js"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/opportunity/opportunityCommands.ts"
+      - "functions/src/opportunity/opportunityCallables.ts"
+      - "functions/src/opportunity/closeOpportunityAsWon.ts"
+      - "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
+      - "functions/src/salesOrder/salesOrderCommands.ts"
+      - "functions/scripts/seedOperatingCompanies.js"
+      - "functions/scripts/ownershipCensusDryRun.js"
+      - "functions/test/ownershipModel.test.mjs"
+      - "functions/test/ownershipCensus.test.mjs"
+      - "functions/test/ownershipHandoffAudit.test.mjs"
+      - "functions/test/ownershipProductionGuard.test.mjs"
+      - "functions/scripts/workOrderJobLineageCheck.js"
+      - "functions/scripts/ownershipBackfillSimulation.js"
+      - "functions/scripts/certificationWorld/data/serviceJobCompany.mjs"
+      - "functions/scripts/certificationWorld/data/equipmentAssets.mjs"
+      - "config/ownership/**"
+      - "functions/scripts/certificationWorld/seedAccountOwners.mjs"
+      - "field-ops-app-vite/src/domain/typedOwner.js"
+      - "field-ops-app-vite/src/domain/operatingCompanyAuthority.js"
+      - "field-ops-app-vite/test/ownershipDomainParity.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/eos-ownership-model-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/ownership/**"
+      - "functions/scripts/ownershipDerivationCheck.js"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/salesOrder/salesOrderCommands.ts"
+      - "functions/src/opportunity/**"
+      - "field-ops-app-vite/src/domain/typedOwner.js"
+      - "field-ops-app-vite/src/domain/operatingCompanyAuthority.js"
+      - ".github/workflows/eos-ownership-model-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-authorities:
+    name: Ownership authorities (build + run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Ownership model tests (build + run)
+        run: npm run test:ownership
+        working-directory: functions
+
+      # The commercial creation paths whose owner contracts ruling D-4 relaxed. Run here as well as
+      # in their own workflows, because the relaxation is what could break them and this is the
+      # workflow that fires on an ownership change.
+      - name: Commercial creation backward-compatibility
+        run: node --test test/opportunityCommands.test.mjs test/salesOrderCommands.test.mjs
+        working-directory: functions
+
+  ownership-client-parity:
+    name: Client/trusted mirror parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The parity suite reads the TypeScript mirror as SOURCE and imports the client module
+      # directly, so it needs no build and no dependencies on either side.
+      - name: Ownership domain parity
+        run: node --test test/ownershipDomainParity.test.mjs
+        working-directory: field-ops-app-vite

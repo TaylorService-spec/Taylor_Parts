@@ -1,0 +1,82 @@
+Ownership census — eos-platform-sandbox
+
+Scope: OWNABLE families only (ruling D-8). 27 of 51 declared families are ownable; REFERENCE and EXCLUDED families are classified out of the invariant, not counted as a backlog.
+
+collection                    class    type        scan RESOLVED OWNERLESS INVALID UNKNOWN  AMBIG  flags
+--------------------------------------------------------------------------------------------------------
+accounts                      PERSON   USER         103      100         3       0       0      0
+contacts                      PERSON   USER         339        0       339       0       0      0
+locations                     PERSON   USER         183        0       183       0       0      0
+opportunities                 PERSON   USER          14       14         0       0       0      0
+sales_agreements              PERSON   USER           5        5         0       0       0      0
+sales_orders                  PERSON   USER          17       17         0       0       0      0
+invoices                      COMPANY  COMPANY        1        0         1       0       0      0
+payments                      COMPANY  COMPANY        0        0         0       0       0      0
+payment_applications          COMPANY  COMPANY        0        0         0       0       0      0
+invoice_adjustments           COMPANY  COMPANY        0        0         0       0       0      0
+refunds                       COMPANY  COMPANY        0        0         0       0       0      0
+fieldops_jobs                 COMPANY  COMPANY       45        0        45       0       0      0
+fieldops_wos                  COMPANY  COMPANY       30        0        30       0       0      0
+reorder_requests              COMPANY  COMPANY        6        0         6       0       0      0
+warehouses                    COMPANY  COMPANY        5        0         5       0       0      0
+mobile_locations              COMPANY  COMPANY        7        0         7       0       0      0
+stock_locations               COMPANY  COMPANY        5        0         5       0       0      0
+trucks                        COMPANY  COMPANY        2        0         2       0       0      0
+supplier_company_terms        COMPANY  COMPANY        0        0         0       0       0      0
+inventory_transactions        COMPANY  COMPANY      103        0       103       0       0      0
+inventory_actions             COMPANY  COMPANY        0        0         0       0       0      0
+receiving_orders              COMPANY  COMPANY        2        0         2       0       0      0
+cycle_counts                  COMPANY  COMPANY       24        0        24       0       0      0
+purchase_orders               COMPANY  COMPANY        0        0         0       0       0      0
+reorder_purchase_orders       COMPANY  COMPANY        3        0         3       0       0      0
+transfer_orders               PARTICIPATING_COMPANIES              47        0        47       0       0      0
+equipment                     COMPANY  COMPANY      288        0       288       0       0      0
+--------------------------------------------------------------------------------------------------------
+TOTAL                                              1229      136      1093       0       0      0
+
+Reason classification (non-RESOLVED):
+  accounts
+          3  no accountOwner
+  contacts
+        339  family has no ownership storage yet
+  locations
+        183  family has no ownership storage yet
+  invoices
+          1  family has no ownership storage yet
+  fieldops_jobs
+         45  family has no ownership storage yet
+  fieldops_wos
+         30  family has no ownership storage yet
+  reorder_requests
+          6  family has no ownership storage yet
+  warehouses
+          5  family has no ownership storage yet
+  mobile_locations
+          7  family has no ownership storage yet
+  stock_locations
+          5  family has no ownership storage yet
+  trucks
+          2  family has no ownership storage yet
+  inventory_transactions
+        103  family has no ownership storage yet
+  receiving_orders
+          2  family has no ownership storage yet
+  cycle_counts
+         24  family has no ownership storage yet
+  reorder_purchase_orders
+          3  family has no ownership storage yet
+  transfer_orders
+         47  no participating companies recorded
+  equipment
+        288  family has no ownership storage yet
+
+Family classification (ruling D-8):
+  COMPANY     20 families
+  EXCLUDED    17 families
+  PARTICIPATING_COMPANIES 1 families
+  PERSON      6 families
+  REFERENCE   7 families
+  REFERENCE (company-neutral, not counted): parts, part_aliases, part_supplier_items, manufacturers, equipment_models, supplier_catalog, suppliers
+
+GATE: 1093 record(s) not resolved. Enforcement stays off.
+This census is READ-ONLY and authorizes nothing. Backfill remains a separate Owner gate.

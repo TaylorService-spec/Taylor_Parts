@@ -1,0 +1,38 @@
+Backfill SIMULATION — eos-platform-sandbox   (READ-ONLY, nothing is written)
+
+Authored physical roots: 12 | accounts with an owner: 100
+
+collection                 scanned  WOULD WRITE  already  protected   cap
+-------------------------------------------------------------------------
+contacts                       339            0      337          2   337
+locations                      183            0      180          3   180
+stock_locations                  5            0        5          0     5
+trucks                           2            0        2          0     2
+cycle_counts                    24            0       24          0    24
+receiving_orders                 2            0        2          0     2
+equipment                      288            0      278         10   278
+fieldops_jobs                   45            0       41          4    41
+inventory_transactions         103            0       99          4    99
+transfer_orders                 47            0       47          0    47
+-------------------------------------------------------------------------
+IN SCOPE                      1038            0     1015         23  1015
+
+Out of scope by ruling (never written):
+     30  fieldops_wos               no governed Job parent (R-12)
+     14  opportunities              non-fixture commercial, no company provenance (R-14)
+      5  sales_agreements           non-fixture commercial (R-14)
+     17  sales_orders               non-fixture commercial (R-14)
+      1  invoices                   non-fixture commercial (R-14)
+      6  reorder_requests           no governed warehouseId (R-13)
+      3  reorder_purchase_orders    blocked upstream by the reorder request (R-13)
+     76  total out of scope
+
+Protected within scope, by reason:
+      2  contacts: parent Account has no owner
+      3  locations: parent Account has no owner
+     10  equipment: non-fixture record -- left untouched by rule
+      4  fieldops_jobs: not an authored certification Job -- left untouched by rule
+      4  inventory_transactions: no resolvable location reference
+
+PROPOSED SANDBOX WRITE COUNT: 0 document(s). 1015 already set, 99 protected/out of scope.
+NOTHING WAS WRITTEN. This tool has no apply mode.

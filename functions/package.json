@@ -141,7 +141,8 @@
     "test:privateAiFailClosed": "npm run build && node --test test/certificationPrivateAiFailClosed.test.mjs test/aiOperationalProvider.test.mjs test/aiWorkOrderReadinessContext.test.mjs",
     "certify:privateAiFailClosed": "npm run build && node scripts/certificationWorld/verifyPrivateAiFailClosed.mjs --projectId eos-platform-certification",
     "test:aiRepository": "npm run build && node --test test/aiRepositoryProvider.test.mjs",
-    "test:aiSalesOrderInterpretation": "npm run build && node --test test/aiSalesOrderModelInterpretation.test.mjs"
+    "test:aiSalesOrderInterpretation": "npm run build && node --test test/aiSalesOrderModelInterpretation.test.mjs",
+    "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs test/ownershipProductionGuard.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

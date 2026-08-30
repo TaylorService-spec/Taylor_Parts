@@ -1,0 +1,118 @@
+{
+  "projectId": "eos-platform-sandbox",
+  "applied": false,
+  "written": 0,
+  "authorizedTotal": 1015,
+  "collections": [
+    {
+      "collection": "contacts",
+      "scanned": 339,
+      "eligible": 0,
+      "authorizedCap": 337,
+      "alreadyCorrect": 337,
+      "protectedBy": {
+        "parent Account has no owner": 2
+      },
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "locations",
+      "scanned": 183,
+      "eligible": 0,
+      "authorizedCap": 180,
+      "alreadyCorrect": 180,
+      "protectedBy": {
+        "parent Account has no owner": 3
+      },
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "stock_locations",
+      "scanned": 5,
+      "eligible": 0,
+      "authorizedCap": 5,
+      "alreadyCorrect": 5,
+      "protectedBy": {},
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "trucks",
+      "scanned": 2,
+      "eligible": 0,
+      "authorizedCap": 2,
+      "alreadyCorrect": 2,
+      "protectedBy": {},
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "cycle_counts",
+      "scanned": 24,
+      "eligible": 0,
+      "authorizedCap": 24,
+      "alreadyCorrect": 24,
+      "protectedBy": {},
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "receiving_orders",
+      "scanned": 2,
+      "eligible": 0,
+      "authorizedCap": 2,
+      "alreadyCorrect": 2,
+      "protectedBy": {},
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "equipment",
+      "scanned": 288,
+      "eligible": 0,
+      "authorizedCap": 278,
+      "alreadyCorrect": 278,
+      "protectedBy": {
+        "non-fixture record -- left untouched by rule": 10
+      },
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "fieldops_jobs",
+      "scanned": 45,
+      "eligible": 0,
+      "authorizedCap": 41,
+      "alreadyCorrect": 41,
+      "protectedBy": {
+        "not an authored certification Job -- left untouched by rule": 4
+      },
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "inventory_transactions",
+      "scanned": 103,
+      "eligible": 0,
+      "authorizedCap": 99,
+      "alreadyCorrect": 99,
+      "protectedBy": {
+        "no resolvable location reference": 4
+      },
+      "notes": {},
+      "eligibleIds": []
+    },
+    {
+      "collection": "transfer_orders",
+      "scanned": 47,
+      "eligible": 0,
+      "authorizedCap": 47,
+      "alreadyCorrect": 47,
+      "protectedBy": {},
+      "notes": {},
+      "eligibleIds": []
+    }
+  ]
+}

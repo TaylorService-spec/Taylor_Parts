@@ -526,6 +526,10 @@
       "runner": "node"
     },
     {
+      "file": "test/ownershipDomainParity.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/partDetailView.test.mjs",
       "runner": "node"
     },

@@ -29,6 +29,7 @@ import { OPPORTUNITIES_COLLECTION, SALES_ORDERS_COLLECTION } from "../constants/
 import { buildCreateSalesOrder, SalesOrderCommandError, type BuiltSalesOrder, type SalesOrderLineInput } from "../salesOrder/salesOrderCommands";
 import { allocateSalesOrderNumber } from "../salesOrder/salesOrderNumbering";
 import { isChannel, type SalesChannel } from "./opportunityLifecycle";
+import { deriveEmployeeRefOwner } from "../ownership/typedOwner";
 
 export const OPPORTUNITY_CREATE_SALES_ORDER_CAPABILITY = "opportunity.createSalesOrder";
 
@@ -54,6 +55,10 @@ export interface OpportunityDoc {
   opportunityNumber?: string | null;
   outcome?: string | null;
   accountId?: string;
+  // Declared so the Sales Order's owner inheritance (ruling D-4) reads a named field rather than
+  // an untyped property. The cast at the call site remains because a TS interface is not assignable
+  // to Record<string, unknown> -- the field being declared here is what makes the read honest.
+  ownerEmployeeId?: string | null;
   lines?: OpportunityLineDoc[];
   salesOrderId?: string | null;
   // The commercial commitment this Opportunity produced. Distinct from salesOrderId: one names the
@@ -64,7 +69,7 @@ export interface OpportunityDoc {
 
 export interface CreateSalesOrderFromOpportunityInput {
   opportunityId: string;
-  ownerEmployeeId: string;
+  ownerEmployeeId?: string;
   salesChannel: SalesChannel;
   locationId?: string;
   customerPO?: string;
@@ -190,6 +195,9 @@ export async function persistSalesOrderFromOpportunity(
       {
         accountId: opp.accountId,
         ownerEmployeeId: input.ownerEmployeeId,
+        // Ruling D-4: the Opportunity's own owner is the default for the Sales Order it produces.
+        // `opp` was read inside this transaction, so the inherited owner is the one in force at commit.
+        inheritedOwner: deriveEmployeeRefOwner(opp as unknown as Record<string, unknown>),
         salesChannel: input.salesChannel,
         // The CALLER's value still wins where it supplied one -- this callable's own contract has
         // always accepted a location and a PO. The Agreement fills what the caller left out rather
@@ -292,8 +300,13 @@ export const createSalesOrderFromOpportunity = onCall({ region: "us-central1" },
   if (typeof data.opportunityId !== "string" || data.opportunityId.trim().length === 0) {
     throw new HttpsError("invalid-argument", "opportunityId is required.");
   }
-  if (typeof data.ownerEmployeeId !== "string" || data.ownerEmployeeId.trim().length === 0) {
-    throw new HttpsError("invalid-argument", "ownerEmployeeId (canonical Employee) is required.");
+  // Ruling D-4: OPTIONAL now. An omitted owner inherits from the Opportunity and the builder still
+  // REFUSES if nothing resolves. A supplied-but-malformed value is still a bad payload, not an
+  // omission, so it is rejected rather than silently inherited over.
+  if (data.ownerEmployeeId !== undefined && data.ownerEmployeeId !== null) {
+    if (typeof data.ownerEmployeeId !== "string" || data.ownerEmployeeId.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "ownerEmployeeId, when provided, must be a non-empty string.");
+    }
   }
   if (!isChannel(data.salesChannel)) {
     throw new HttpsError("invalid-argument", "salesChannel is invalid.");
@@ -310,7 +323,8 @@ export const createSalesOrderFromOpportunity = onCall({ region: "us-central1" },
         tx,
         {
           opportunityId: data.opportunityId.trim(),
-          ownerEmployeeId: data.ownerEmployeeId.trim(),
+          // undefined travels through to the builder, which inherits the Opportunity owner.
+          ownerEmployeeId: typeof data.ownerEmployeeId === "string" ? data.ownerEmployeeId.trim() : undefined,
           salesChannel: data.salesChannel,
           locationId: data.locationId,
           customerPO: data.customerPO,

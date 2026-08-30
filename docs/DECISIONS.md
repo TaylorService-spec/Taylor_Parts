@@ -3270,3 +3270,59 @@ invites the next session to re-raise it as though nobody had looked. It was look
 carries the customer and stops, and that is the accepted state — not a gap awaiting closure. A fresh
 Owner ask is what reopens it. See the O-decision table in
 `docs/design/north-star-open-product-decisions.md`.
+
+## #142 — OWNER RULING: EOS Ownership Model v1 (D-1 … D-5, plus the non-collapse ruling)
+
+**Date:** 2026-08-30
+**Decision:** The approved invariant is *every governed business record has an owner*, typed as
+`owner.type` + `owner.id`, separate from Created By and Assigned To, never changing implicitly, and
+changing only by explicit auditable handoff. The Owner ratified five decisions the reconciliation
+(`docs/assessments/eos-ownership-model-reconciliation.md`) could not settle:
+
+- **D-1 — compose, do not replace.** The Account's existing 7-field `accountOwner` Person Assignment
+  map stays authoritative **storage**; the typed owner is **derived** from it. There is no second,
+  independently writable ownership authority, and writes keep going through the existing governed
+  paths until an ownership write authority is deliberately activated.
+- **D-2 — a new minimal `operating_companies` authority.** Nothing in the repo could safely answer
+  "which company owns this internal record": `operatingCompanyId` existed only in design prose,
+  there was no `companies` collection, and `lineOfBusiness` is multi-valued and informational so it
+  cannot answer a single-valued question. Seeded with the stable ids `taylor` and `ventana`.
+  Deliberately small, and explicitly not customer identity, title, line of business, tenant,
+  location, ownership history, or access scope.
+- **D-3 — equipment record owner is the operating company; title stays its own axis.** A CUSTOMER
+  may hold title to a unit without owning the internal EOS record. There is no CUSTOMER owner type
+  at all, so the collapse is unrepresentable rather than merely discouraged.
+- **D-4 — the three commercial creation contracts relax from required owner to optional owner with
+  governed inheritance,** backward-compatibly. Explicit owner wins; otherwise inherit the Customer
+  owner (Opportunity) or the Opportunity owner (downstream); otherwise **REFUSE**. Never fall back
+  to the actor, `createdBy`, the authenticated user, `assignedTo`, an arbitrary salesperson, an
+  admin, or the first available employee. The assistant case is the point: an assistant creating an
+  Opportunity for Rudy's customer produces `owner = Rudy`, `createdBy = the assistant`.
+- **D-5 — `OWNERSHIP_HANDOFF` is added to BOTH audit authorities** (the erased TypeScript union and
+  the runtime allow-list), carrying `objectId` for the record moved plus previous/new owner, source
+  (`DIRECT_HANDOFF` / `CUSTOMER_HANDOFF_REVIEW` / `ADMIN_CORRECTION`) and an optional reason —
+  composed into the existing governed audit structure, not a parallel subsystem. No fake `ScopeType`
+  was invented to represent a record.
+
+**Non-collapse (ratified):** `currentOwner` (a reorder-request role queue), coverage/territory,
+`explicitTitleHolder`, `assignedTo`, and `createdBy` are **presumed distinct** from ownership and
+may not be merged into it without a later family-specific reconciliation proving they are the same
+business authority.
+
+**Reason:** The reconciliation found six ownership-adjacent concepts already in place and none of
+them typed, plus one hole: the company leg of the invariant had no authority to resolve to. Ruling
+D-1 keeps the platform from rewriting a working, provenanced storage contract for uniformity's sake;
+D-2 fills the hole with the smallest authority that answers the question; D-3 and the non-collapse
+ruling protect four distinctions the codebase already pays to maintain; D-4 makes ownership follow
+the customer relationship rather than whoever happened to click; D-5 keeps one audit system.
+
+**Alternatives rejected:** migrating `accountOwner` to a typed owner field now (rejected under D-1 —
+a rewrite with no demonstrated architectural benefit); reusing `lineOfBusiness` or an Account as the
+company authority (rejected under D-2 — neither can answer the question, and one is multi-valued);
+treating `explicitTitleHolder` as the equipment owner (rejected under D-3 — a customer cannot own an
+internal EOS record); a generic free-form audit details bag (rejected under D-5 — unvalidated and
+unqueryable, a parallel audit subsystem in disguise).
+
+**Not done, deliberately:** no enforcement, no backfill, no Rules change, no deploy, no cascade, no
+silent assignment. The dry-run census must first report zero unresolved records — and that census
+needs a live data read, which is separately authorized.

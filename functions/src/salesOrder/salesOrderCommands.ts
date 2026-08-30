@@ -6,6 +6,9 @@
 // ownerEmployeeId, salesChannel, locationId?, sourceOpportunityId?); `unitPrice` is an OPTIONAL passive
 // pricing SNAPSHOT — this command invents no pricing/discount/tax authority. Created CONFIRMED.
 
+import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
+import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
+import type { OwnerDerivation } from "../ownership/typedOwner";
 import {
   SALES_ORDER_LINE_KINDS,
   isSalesChannel,
@@ -56,7 +59,17 @@ export interface SalesOrderLineInput {
 
 export interface CreateSalesOrderInput {
   accountId: string;
-  ownerEmployeeId: string;
+  // EOS Ownership Model v1, ruling D-4 (2026-08-30): relaxed from required to OPTIONAL, additively.
+  // "Opportunity owner is the default owner for NEW downstream commercial records" -- a caller that
+  // omits this inherits from `inheritedOwner` below. A caller that supplies it is unaffected.
+  ownerEmployeeId?: string;
+  // The governed upstream owner, derived by the CALLER from the Opportunity it already read inside
+  // its own transaction. Passed in rather than read here so this builder stays pure.
+  inheritedOwner?: OwnerDerivation | null;
+  // Ruling R-14: explicit, else COPIED from the upstream Opportunity/Agreement. Copied, not
+  // followed -- a later correction upstream must never rewrite an order already placed.
+  operatingCompanyId?: string;
+  inheritedOperatingCompanyId?: string | null;
   salesChannel: SalesChannel;
   locationId?: string;
   sourceOpportunityId?: string;
@@ -176,6 +189,8 @@ export interface BuiltSalesOrder {
   // matches the money model; a multi-currency source (account/company) is a
   // separate future seam.
   currency: string;
+  /** Ruling R-14. Copied from upstream at creation, then historical. null until supplied. */
+  operatingCompanyId: string | null;
   locationId: string | null;
   sourceOpportunityId: string | null;
   customerPO: string | null;
@@ -192,15 +207,23 @@ export interface BuiltSalesOrder {
 export function buildCreateSalesOrder(input: CreateSalesOrderInput, ctx: { actorUid: string; nowMillis: number }): BuiltSalesOrder {
   if (!input || typeof input !== "object") throw new SalesOrderCommandError("INVALID", "Missing input");
   if (!nonEmpty(input.accountId)) throw new SalesOrderCommandError("ACCOUNT_REQUIRED", "accountId is required");
-  if (!nonEmpty(input.ownerEmployeeId)) throw new SalesOrderCommandError("OWNER_REQUIRED", "ownerEmployeeId (canonical Employee) is required");
+  // Ruling D-4. OWNER_REQUIRED is preserved as the refusal code, so a caller that supplies nothing
+  // and has nothing to inherit fails exactly as it did before -- only the message gained the reason.
+  let resolvedOwner: CreationOwnerResolution;
+  try {
+    resolvedOwner = resolveCreationOwner(input.ownerEmployeeId, input.inheritedOwner, "the Opportunity");
+  } catch (e) {
+    throw new SalesOrderCommandError("OWNER_REQUIRED", (e as Error).message);
+  }
   if (!isSalesChannel(input.salesChannel)) throw new SalesOrderCommandError("CHANNEL_INVALID", "salesChannel is invalid");
   if (!Array.isArray(input.lines) || input.lines.length === 0) throw new SalesOrderCommandError("NO_LINES", "A Sales Order requires at least one line");
   const lines = input.lines.map((l, i) => validateLine(l, i));
   requireCompletePricing(lines);
   return {
     accountId: input.accountId.trim(),
-    ownerEmployeeId: input.ownerEmployeeId.trim(),
+    ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
+    operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId),
     currency: "USD",
     locationId: nonEmpty(input.locationId) ? input.locationId.trim() : null,
     sourceOpportunityId: nonEmpty(input.sourceOpportunityId) ? input.sourceOpportunityId.trim() : null,

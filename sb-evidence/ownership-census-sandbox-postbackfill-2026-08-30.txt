@@ -1,0 +1,72 @@
+Ownership census — eos-platform-sandbox
+
+Scope: OWNABLE families only (ruling D-8). 27 of 51 declared families are ownable; REFERENCE and EXCLUDED families are classified out of the invariant, not counted as a backlog.
+
+collection                    class    type        scan RESOLVED OWNERLESS INVALID UNKNOWN  AMBIG  flags
+--------------------------------------------------------------------------------------------------------
+accounts                      PERSON   USER         103      100         3       0       0      0
+contacts                      PERSON   USER         339      337         2       0       0      0
+locations                     PERSON   USER         183      180         3       0       0      0
+opportunities                 PERSON   USER          14       14         0       0       0      0
+sales_agreements              PERSON   USER           5        5         0       0       0      0
+sales_orders                  PERSON   USER          17       17         0       0       0      0
+invoices                      COMPANY  COMPANY        1        0         1       0       0      0
+payments                      COMPANY  COMPANY        0        0         0       0       0      0
+payment_applications          COMPANY  COMPANY        0        0         0       0       0      0
+invoice_adjustments           COMPANY  COMPANY        0        0         0       0       0      0
+refunds                       COMPANY  COMPANY        0        0         0       0       0      0
+fieldops_jobs                 COMPANY  COMPANY       45       41         4       0       0      0
+fieldops_wos                  COMPANY  COMPANY       30        0        30       0       0      0
+reorder_requests              COMPANY  COMPANY        6        0         6       0       0      0
+warehouses                    COMPANY  COMPANY        5        0         5       0       0      0
+mobile_locations              COMPANY  COMPANY        7        0         7       0       0      0
+stock_locations               COMPANY  COMPANY        5        5         0       0       0      0
+trucks                        COMPANY  COMPANY        2        2         0       0       0      0
+supplier_company_terms        COMPANY  COMPANY        0        0         0       0       0      0
+inventory_transactions        COMPANY  COMPANY      103       99         4       0       0      0
+inventory_actions             COMPANY  COMPANY        0        0         0       0       0      0
+receiving_orders              COMPANY  COMPANY        2        2         0       0       0      0
+cycle_counts                  COMPANY  COMPANY       24       24         0       0       0      0
+purchase_orders               COMPANY  COMPANY        0        0         0       0       0      0
+reorder_purchase_orders       COMPANY  COMPANY        3        0         3       0       0      0
+transfer_orders               PARTICIPATING_COMPANIES              47       47         0       0       0      0
+equipment                     COMPANY  COMPANY      288      278        10       0       0      0
+--------------------------------------------------------------------------------------------------------
+TOTAL                                              1229     1151        78       0       0      0
+
+Reason classification (non-RESOLVED):
+  accounts
+          3  no accountOwner
+  contacts
+          2  no owner
+  locations
+          3  no owner
+  invoices
+          1  family has no ownership storage yet
+  fieldops_jobs
+          4  no operatingCompanyId
+  fieldops_wos
+         30  family has no ownership storage yet
+  reorder_requests
+          6  family has no ownership storage yet
+  warehouses
+          5  family has no ownership storage yet
+  mobile_locations
+          7  family has no ownership storage yet
+  inventory_transactions
+          4  no operatingCompanyId
+  reorder_purchase_orders
+          3  family has no ownership storage yet
+  equipment
+         10  no operatingCompanyId
+
+Family classification (ruling D-8):
+  COMPANY     20 families
+  EXCLUDED    17 families
+  PARTICIPATING_COMPANIES 1 families
+  PERSON      6 families
+  REFERENCE   7 families
+  REFERENCE (company-neutral, not counted): parts, part_aliases, part_supplier_items, manufacturers, equipment_models, supplier_catalog, suppliers
+
+GATE: 78 record(s) not resolved. Enforcement stays off.
+This census is READ-ONLY and authorizes nothing. Backfill remains a separate Owner gate.
