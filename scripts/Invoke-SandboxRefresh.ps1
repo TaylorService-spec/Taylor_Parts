@@ -23,6 +23,18 @@
 # Deploys to eos-platform-sandbox ONLY. The underlying script aborts hard, at three separate points,
 # if the target ever resolves to production.
 
+# -HostingOnly forwards --hosting-only to the runbook, which skips the Functions build and every
+# Functions deploy batch and changes NOTHING else. The mode is decided and validated in ONE place --
+# the runbook -- so this launcher stays a launcher; it does not learn what the mode means.
+#
+# [CmdletBinding()] with no positional parameters makes an unrecognised argument a BINDING ERROR
+# rather than something quietly ignored, which is the same fail-closed rule the runbook applies to
+# its own flags.
+[CmdletBinding()]
+param(
+    [switch]$HostingOnly
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -76,8 +88,10 @@ try {
     # release. Single quotes inside the -lc string keep a path containing spaces intact.
     $runbookPosix = $runbook -replace '\\', '/'
     $rootPosix    = $repoRoot -replace '\\', '/'
+    $modeArg      = if ($HostingOnly) { ' --hosting-only' } else { '' }
     Write-Host "Release root: $repoRoot"
-    & $bash -lc "'$runbookPosix' --release-root '$rootPosix'"
+    if ($HostingOnly) { Write-Host "Release mode: HOSTING-ONLY (no Functions deploy)" }
+    & $bash -lc "'$runbookPosix' --release-root '$rootPosix'$modeArg"
     $code = $LASTEXITCODE
 }
 finally {

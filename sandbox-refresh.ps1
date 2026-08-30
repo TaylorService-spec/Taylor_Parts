@@ -1,7 +1,14 @@
 # EOS SANDBOX REFRESH -- the operator entry point.
 #
 # Usage, from anywhere:
-#   .\sandbox-refresh.ps1
+#   .\sandbox-refresh.ps1                 full refresh -- Functions, then Hosting
+#   .\sandbox-refresh.ps1 -HostingOnly    Hosting only -- no Functions deploy
+#
+# -HostingOnly exists because the two authorities have different release cadences. A release whose
+# diff touches no functions/ file still had to redeploy the entire Functions estate to ship a
+# frontend: authority that release does not need, and this repository's own documented failure mode
+# (a large batch exits non-zero after some functions have already updated). It changes the SCOPE and
+# nothing else -- every guard, build verification, artifact stamp and identity gate still runs.
 #
 # If PowerShell's execution policy blocks it (this does NOT require changing the machine-wide
 # policy, and does NOT require Administrator):
@@ -38,6 +45,14 @@
 # em dash in a COMMENT silently breaks string parsing further down the file. Keep every character
 # in this file inside plain ASCII.
 
+# [CmdletBinding()] with no positional parameters means an unrecognised argument is a BINDING ERROR,
+# not something silently dropped. A typo like -HostingOnl must not fall through to the full refresh
+# the operator was trying to avoid -- that is the one dangerous way this feature could fail.
+[CmdletBinding()]
+param(
+    [switch]$HostingOnly
+)
+
 $ErrorActionPreference = 'Stop'
 
 # THE REPOSITORY IS FOUND FROM THIS FILE, never from the caller's location. `cd` somewhere else and
@@ -51,6 +66,11 @@ Write-Host "========================================"
 Write-Host "EOS SANDBOX REFRESH"
 Write-Host "Repository: $repoRoot"
 Write-Host "Target: eos-platform-sandbox"
+if ($HostingOnly) {
+    Write-Host "Mode:   HOSTING-ONLY (Functions are not built or deployed)"
+} else {
+    Write-Host "Mode:   FULL (Functions, then Hosting)"
+}
 Write-Host "========================================"
 Write-Host ""
 
@@ -76,7 +96,7 @@ if (-not (Test-Path $launcher)) {
 # Hand off. Output is NOT captured or filtered -- the governed script's stdout and stderr go
 # straight to the console, because the deployed version.json it prints at the end is the thing the
 # operator actually has to read. A wrapper that swallowed it would hide the only real evidence.
-& $launcher
+if ($HostingOnly) { & $launcher -HostingOnly } else { & $launcher }
 $code = $LASTEXITCODE
 
 Write-Host ""
@@ -91,6 +111,12 @@ if ($code -ne 0) {
     if ($code -eq 3) {
         Write-Host "NOTHING WAS DEPLOYED. A pre-flight guard refused the release." -ForegroundColor Yellow
         Write-Host "Fix what the ABORT above names, then re-run." -ForegroundColor Yellow
+    } elseif ($HostingOnly) {
+        # NO FUNCTIONS RAN, so the usual warning would send the operator hunting for a partial
+        # Functions deploy that could not have happened. Saying the wrong reassuring thing is the
+        # same defect as saying nothing.
+        Write-Host "Hosting-only: NO Functions were built or deployed. Check which step failed above." -ForegroundColor Red
+        Write-Host "Every step is idempotent, so re-running is safe." -ForegroundColor Red
     } else {
         # A half-finished deploy IS the dangerous outcome: some functions may already have updated.
         # Re-running is safe (every step is idempotent), but read WHICH batch failed first.

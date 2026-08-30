@@ -18,6 +18,8 @@ on:
       - "sandbox-refresh.ps1"
       - "scripts/Invoke-SandboxRefresh.ps1"
       - "scripts/sandboxRefreshWrapper.test.mjs"
+      - "scripts/_sandboxRefresh.run.sh"
+      - "scripts/sandboxHostingOnlyMode.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
@@ -50,6 +52,8 @@ on:
       - "sandbox-refresh.ps1"
       - "scripts/Invoke-SandboxRefresh.ps1"
       - "scripts/sandboxRefreshWrapper.test.mjs"
+      - "scripts/_sandboxRefresh.run.sh"
+      - "scripts/sandboxHostingOnlyMode.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
@@ -102,6 +106,12 @@ jobs:
         run: node --test scripts/deploymentDrift.test.mjs
       - name: Sandbox refresh operator wrapper
         run: node --test scripts/sandboxRefreshWrapper.test.mjs
+      # Hosting-only release mode. Runs the REAL runbook against stubbed node/npm/firebase/git on
+      # PATH and asserts on the command log: Hosting deploys, no Functions batch runs, Rules and
+      # indexes are never deployed, the sandbox project stays pinned, every guard still executes,
+      # and an unrecognised flag refuses before anything happens. Nothing is deployed by this suite.
+      - name: Hosting-only sandbox release mode
+        run: node --test scripts/sandboxHostingOnlyMode.test.mjs
       # O-3 — locks the environment-configuration invariants: no production
       # hard-coding, no wildcard project acceptance, no role/deployment
       # conflation, no weakened production guard.
