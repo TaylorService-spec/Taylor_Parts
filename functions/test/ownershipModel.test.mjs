@@ -11,6 +11,7 @@
 //   ---  the non-collapse ruling: a handoff moves ONE record and cascades nothing
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   OPERATING_COMPANIES,
   OPERATING_COMPANY_IDS,
@@ -440,4 +441,90 @@ test("the summary names ids, never display names -- display names are not author
   );
   assert.match(event.summary, /USER:emp-2/);
   assert.match(event.summary, /\(none\)/);
+});
+
+// =========================== R-1 / R-2: the authored sandbox facts ===========================
+//
+// These guard the one thing the rulings were most emphatic about: the assignments are AUTHORED
+// CONFIGURATION, and no code may ever infer them from a name, an id, or an ordinal.
+
+test("R-1: all 12 sandbox physical roots are assigned to a governed company", () => {
+  const cfg = JSON.parse(readFileSync(new URL("../../config/ownership/operating-company-roots.sandbox.json", import.meta.url), "utf8"));
+  const roots = [...cfg.roots.warehouses, ...cfg.roots.mobile_locations];
+  assert.equal(roots.length, 12);
+  for (const r of roots) {
+    assert.equal(resolveOperatingCompany(r.operatingCompanyId).state, "RESOLVED", `${r.id} must name a governed company`);
+  }
+  // BOTH companies must be present, and across BOTH stationary and mobile inventory -- a
+  // Taylor-only sandbox cannot certify the model, because the cross-company path would never run.
+  for (const group of ["warehouses", "mobile_locations"]) {
+    const companies = new Set(cfg.roots[group].map((r) => r.operatingCompanyId));
+    assert.ok(companies.has("taylor") && companies.has("ventana"), `${group} must contain both companies`);
+  }
+});
+
+test("R-1: NOTHING infers a company from a root's name or id", () => {
+  // The rulings forbid "north means Ventana", "truck 04+ means Ventana", "main means Taylor".
+  // The structural guarantee is that the only mapping is the config file: no source module reads a
+  // root's name or parses its id to produce a company.
+  const cfg = JSON.parse(readFileSync(new URL("../../config/ownership/operating-company-roots.sandbox.json", import.meta.url), "utf8"));
+  const byName = cfg.roots.warehouses.filter((r) => /north/i.test(r.name));
+  // If a naming rule existed, every "north" warehouse would share a company. They deliberately do not
+  // all have to -- and this asserts the config is the authority, not the word.
+  assert.ok(byName.length >= 2, "fixture should contain more than one 'north' root for this to mean anything");
+  const forbidden = /north|main|central|satellite|truck\s*\d/i;
+  for (const src of ["../src/ownership/operatingCompanyAuthority.ts", "../src/ownership/ownershipDerivation.ts"]) {
+    const text = readFileSync(new URL(src, import.meta.url), "utf8").replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    assert.ok(!forbidden.test(text), `${src} must not branch on a location name`);
+  }
+});
+
+test("R-2: every certification fleet carries an explicit authored company, and the ordinal is retired", async () => {
+  const { FLEET_OPERATING_COMPANY, fleetOperatingCompany, fleetFor } = await import(
+    "../scripts/certificationWorld/data/equipmentAssets.mjs"
+  );
+  // Every fleet in the world is declared -- no fleet falls through to a computed value.
+  let units = { taylor: 0, ventana: 0, undeclared: 0 };
+  for (let i = 0; i < 100; i += 1) {
+    const fleet = fleetFor(i);
+    if (!fleet) continue;
+    const company = fleetOperatingCompany(i);
+    if (company === null) units.undeclared += fleet.count;
+    else units[company] += fleet.count;
+  }
+  assert.equal(units.undeclared, 0, "every fleet with units must have an authored company");
+  assert.equal(units.taylor + units.ventana, 278, "the fixture world holds 278 units");
+  assert.equal(Object.keys(FLEET_OPERATING_COMPANY).length, 85);
+
+  // The 2:1 rule was a ONE-TIME authoring mechanism. The map is literal values, so inserting an
+  // account in the middle cannot reassign anyone -- which is what a runtime ordinal would do.
+  const source = readFileSync(new URL("../scripts/certificationWorld/data/equipmentAssets.mjs", import.meta.url), "utf8");
+  const declaration = source.slice(source.indexOf("FLEET_OPERATING_COMPANY = Object.freeze({"), source.indexOf("export function fleetOperatingCompany"));
+  assert.ok(!/%|Math\.|index|ordinal/i.test(declaration), "the fleet map must be literal values, never a computation");
+});
+
+test("R-2: a fleet is assigned WHOLE -- one customer's machines share one company", async () => {
+  const { equipmentForAccount, fleetOperatingCompany } = await import(
+    "../scripts/certificationWorld/data/equipmentAssets.mjs"
+  );
+  for (const index of [0, 2, 3, 41]) {
+    const units = equipmentForAccount({ accountIndex: index, accountId: `a-${index}`, accountName: "X", locationIds: ["L1", "L2"] });
+    const companies = new Set(units.map((u) => u.data.operatingCompanyId));
+    assert.equal(companies.size, 1, `fleet ${index} must be one company`);
+    assert.equal([...companies][0], fleetOperatingCompany(index));
+  }
+});
+
+test("R-2: operatingCompanyId is NOT lineOfBusiness -- the fixture proves they can disagree", async () => {
+  const { equipmentForAccount } = await import("../scripts/certificationWorld/data/equipmentAssets.mjs");
+  const disagreements = [];
+  for (let i = 0; i < 100; i += 1) {
+    for (const u of equipmentForAccount({ accountIndex: i, accountId: `a-${i}`, accountName: "X", locationIds: ["L1"] })) {
+      const lobAsCompany = u.data.lineOfBusiness === "TAYLOR" ? "taylor" : "ventana";
+      if (lobAsCompany !== u.data.operatingCompanyId) disagreements.push(u.id);
+    }
+  }
+  // If these two ever agreed everywhere, someone would eventually "simplify" one into the other.
+  // A product line is not a company: a Taylor-line machine can belong to Ventana's books.
+  assert.ok(disagreements.length > 0, "the fixture must contain units whose product line and owning company differ");
 });

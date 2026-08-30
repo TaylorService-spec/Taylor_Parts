@@ -70,6 +70,57 @@ function ordinaryFleet(i) {
   return { count: 1 + (i % 2), mix: i % 4 === 2 ? "MIXED" : "TAYLOR" };
 }
 
+
+// ============================ OPERATING COMPANY — AN AUTHORED FIXTURE FACT ============================
+//
+// Owner ruling R-2 (2026-08-30). Every synthetic equipment asset carries an explicit
+// `operatingCompanyId`, copied from its FLEET's declaration below.
+//
+// IT IS NOT DERIVED FROM ANYTHING. Not the model, the manufacturer, `lineOfBusiness`, the customer,
+// the title holder, the serial prefix, or a location name -- every one of those is a prohibited
+// proxy, and `lineOfBusiness` in particular is the trap, because it sits right there on the record
+// and looks like an answer. It is a PRODUCT LINE, not a COMPANY: a Taylor-line machine can
+// perfectly well belong to Ventana's books.
+//
+// THE 2:1 RULE WAS AN AUTHORING MECHANISM, NOT A RUNTIME RULE. This map was generated ONCE by
+// walking the fleets in stable account-index order and assigning taylor/taylor/ventana repeating,
+// then PERSISTED here as literal values. Nothing computes it any more, and nothing may -- a runtime
+// that derived a company from a fleet's ordinal position would silently reassign every asset the
+// moment an account was inserted in the middle. Persisting the result is what retires the ordinal.
+//
+// Result: 85 fleets / 278 units -- 57 fleets and 190 units Taylor, 28 fleets and 88 units Ventana.
+// A fleet is assigned WHOLE: one customer's machines belong to one operating company.
+export const FLEET_OPERATING_COMPANY = Object.freeze({
+  0: "taylor", 1: "taylor", 2: "ventana", 3: "taylor", 5: "taylor",
+  6: "ventana", 7: "taylor", 9: "taylor", 10: "ventana", 11: "taylor",
+  12: "taylor", 13: "ventana", 14: "taylor", 16: "taylor", 17: "ventana",
+  18: "taylor", 19: "taylor", 20: "ventana", 21: "taylor", 22: "taylor",
+  23: "ventana", 24: "taylor", 25: "taylor", 26: "ventana", 27: "taylor",
+  28: "taylor", 29: "ventana", 31: "taylor", 32: "taylor", 33: "ventana",
+  34: "taylor", 35: "taylor", 36: "ventana", 38: "taylor", 39: "taylor",
+  40: "ventana", 41: "taylor", 42: "taylor", 43: "ventana", 44: "taylor",
+  45: "taylor", 46: "ventana", 47: "taylor", 49: "taylor", 50: "ventana",
+  51: "taylor", 53: "taylor", 54: "ventana", 55: "taylor", 56: "taylor",
+  57: "ventana", 58: "taylor", 60: "taylor", 61: "ventana", 62: "taylor",
+  64: "taylor", 65: "ventana", 66: "taylor", 67: "taylor", 68: "ventana",
+  69: "taylor", 71: "taylor", 72: "ventana", 73: "taylor", 75: "taylor",
+  76: "ventana", 77: "taylor", 78: "taylor", 79: "ventana", 80: "taylor",
+  82: "taylor", 83: "ventana", 84: "taylor", 86: "taylor", 87: "ventana",
+  88: "taylor", 89: "taylor", 90: "ventana", 91: "taylor", 93: "taylor",
+  94: "ventana", 95: "taylor", 97: "taylor", 98: "ventana", 99: "taylor",
+});
+
+/**
+ * The operating company that owns this account's fleet, or null.
+ *
+ * A LOOKUP, not a calculation. An account with a fleet but no entry returns null and its assets are
+ * built with no company rather than a guessed one -- an unowned synthetic asset is a visible gap,
+ * a wrongly-owned one is not.
+ */
+export function fleetOperatingCompany(accountIndex) {
+  return FLEET_OPERATING_COMPANY[accountIndex] ?? null;
+}
+
 export function fleetFor(accountIndex) {
   return FLEET_PROFILE[accountIndex] ?? ordinaryFleet(accountIndex);
 }
@@ -119,6 +170,8 @@ const WARRANTY_MONTHS = 24;
 export function equipmentForAccount({ accountIndex, accountId, accountName, locationIds, stressName = false }) {
   const fleet = fleetFor(accountIndex);
   if (!fleet || !locationIds.length) return [];
+  // Read once for the whole fleet, so every unit of one customer's fleet carries the same company.
+  const operatingCompanyId = fleetOperatingCompany(accountIndex);
 
   const out = [];
   for (let u = 0; u < fleet.count; u += 1) {
@@ -155,7 +208,12 @@ export function equipmentForAccount({ accountIndex, accountId, accountName, loca
         status: retired ? "RETIRED" : inactive ? "INACTIVE" : "ACTIVE",
         installedDate: new Date(installedMs).toISOString().slice(0, 10),
         warrantyExpiresDate: new Date(warrantyMs).toISOString().slice(0, 10),
+        // The PRODUCT LINE, kept because the Taylor/Ventana reporting separation is measured on it.
+        // Deliberately NOT the same fact as operatingCompanyId below.
         lineOfBusiness: model.lineOfBusiness,
+        // The authored ownership fact (ruling R-2). Omitted rather than guessed when a fleet has no
+        // declaration, so a gap reads as a gap.
+        ...(operatingCompanyId === null ? {} : { operatingCompanyId }),
         certAgeMonths: ageMonths,
         certAccountName: accountName,
         dataProvenance: "SYNTHETIC_CERTIFICATION_FACT",

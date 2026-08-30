@@ -1,0 +1,35 @@
+Backfill SIMULATION — eos-platform-sandbox   (READ-ONLY, nothing is written)
+
+Authored physical roots: 12
+Accounts with a resolvable owner: 100 of 103
+
+collection                  scanned  WOULD WRITE  already  blocked
+------------------------------------------------------------------
+contacts                        339          337        0        2
+locations                       183          180        0        3
+stock_locations                   5            5        0        0
+trucks                            2            2        0        0
+cycle_counts                     24           24        0        0
+receiving_orders                  2            2        0        0
+inventory_transactions          103           99        0        4
+transfer_orders                  47           47        0        0
+equipment                       288          278        0       10
+------------------------------------------------------------------
+TOTAL                           993          974                19
+
+Detail:
+  contacts
+         2  parent Account has no owner
+  locations
+         3  parent Account has no owner
+  inventory_transactions
+         4  no resolvable location reference
+         2  (of which 2 would carry a CROSS-COMPANY participating pair)
+  transfer_orders
+        24  (same-company: 24)
+        23  (CROSS-company: 23)
+  equipment
+        10  non-fixture record -- left untouched by rule
+
+PROPOSED SANDBOX WRITE COUNT: 974 document(s). 19 blocked.
+NOTHING WAS WRITTEN. This tool has no apply mode.

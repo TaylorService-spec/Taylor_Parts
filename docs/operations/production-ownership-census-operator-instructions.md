@@ -108,12 +108,16 @@ and must not be reported as a zero.
 Attach or state each of these:
 
 1. **The commands you ran**, verbatim — they should be exactly the ones above and nothing else.
-2. **The script cannot write.** `functions/scripts/ownershipCensusDryRun.js` contains no `set`,
-   `update`, `delete`, `batch`, `runTransaction` or `add`. Confirm with:
+2. **The script cannot write.** `functions/scripts/ownershipCensusDryRun.js` issues no Firestore
+   write of any kind. Confirm with:
 
    ```bash
-   grep -nE "\.(set|update|delete|add|batch|runTransaction)\(" functions/scripts/ownershipCensusDryRun.js || echo "NO WRITE CALLS PRESENT"
+   grep -nE "\b(db|collection\([^)]*\)|doc\([^)]*\))\.(set|update|delete|add)\(|\.batch\(|runTransaction\(" functions/scripts/ownershipCensusDryRun.js || echo "NO FIRESTORE WRITE CALLS PRESENT"
    ```
+
+   The pattern is deliberately anchored to Firestore handles. A bare `grep` for `.set(` or `.add(`
+   also matches in-memory `Map.set` and `Set.add`, which are not writes — a check that cries wolf
+   is a check an operator learns to ignore.
 
 3. **No deploy ran.** No `firebase deploy` in the session, and no change to `firestore.rules`,
    `firestore.indexes.json`, or any function source.

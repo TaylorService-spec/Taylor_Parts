@@ -79,6 +79,19 @@ export interface OwnershipFamily {
    * transaction, and a reader who saw them under "owner" would reasonably conclude one of them was.
    */
   readonly participatingFields?: readonly string[];
+  /**
+   * Ruling R-8: the ORTHOGONAL operating-company axis a PERSON-owned record may also carry.
+   *
+   * "Do not interpret operatingCompanyId as replacing salesperson ownership." A Sales Order owned by
+   * Rudy and booked to Taylor is one record with two true, independent facts:
+   *
+   *     ownerEmployeeId    = Rudy     -- sales ownership, who is responsible commercially
+   *     operatingCompanyId = taylor   -- company scope, whose books it lands in
+   *
+   * This column is NOT ownership. It exists so the financial lineage Sales Order -> Invoice ->
+   * Payment can inherit a company without anyone concluding the company displaced the salesperson.
+   */
+  readonly companyScopeField?: string;
   readonly inheritanceSource: string | null;
   readonly transfer: TransferBehavior;
   readonly companyScope: CompanyScope;
@@ -127,6 +140,10 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "opportunity", collection: "opportunities", ownerClass: "PERSON", ownerType: usr,
+      // Ruling R-8. NOT STORED TODAY -- this is the recorded company-scope gap: no commercial record
+      // carries an operating company, which is why every financial artifact downstream has a null
+      // backfillSource. Declared here so the axis exists in the model before anything depends on it.
+      companyScopeField: "operatingCompanyId",
       ownerFields: ["ownerEmployeeId"], inheritanceSource: "Customer (Account) owner", transfer: "HANDOFF",
       companyScope: "COMPANY_NEUTRAL",
       backfillSource: null, unresolvedPolicy: "n/a -- measured 100% RESOLVED",
@@ -134,12 +151,18 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "salesAgreement", collection: "sales_agreements", ownerClass: "PERSON", ownerType: usr,
+      // Ruling R-8 -- see the Opportunity row. Same axis, same gap.
+      companyScopeField: "operatingCompanyId",
       ownerFields: ["ownerEmployeeId"], inheritanceSource: "Opportunity owner", transfer: "HANDOFF",
       companyScope: "COMPANY_NEUTRAL",
       backfillSource: null, unresolvedPolicy: "n/a -- measured 100% RESOLVED",
     },
     {
       family: "salesOrder", collection: "sales_orders", ownerClass: "PERSON", ownerType: usr,
+      // Ruling R-8, and this row is the one that matters: the Sales Order is where the company must
+      // enter the commercial chain, because every financial artifact downstream inherits from it.
+      // ownerEmployeeId = Rudy and operatingCompanyId = taylor are both true on the same record.
+      companyScopeField: "operatingCompanyId",
       ownerFields: ["ownerEmployeeId"], inheritanceSource: "Opportunity owner", transfer: "HANDOFF",
       companyScope: "COMPANY_NEUTRAL",
       backfillSource: null, unresolvedPolicy: "n/a -- measured 100% RESOLVED",
@@ -175,27 +198,48 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     // performs it. That keeps the ownership/assignment distinction this whole model rests on, and
     // it is why assignedTechId is deliberately NOT an ownerField below.
     {
+      // Ruling R-3. The JOB is where the company enters the service lineage: explicit at creation, or
+      // inherited from a governed upstream service/commercial source. Never from the technician, the
+      // dispatcher, createdBy or assignedTo -- those are who DOES the work, which is precisely the
+      // distinction this model exists to hold.
       family: "workOrder", collection: "fieldops_jobs", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the operating company responsible for the service",
+      ownerFields: [], inheritanceSource: "explicit at creation, or the governed upstream service/commercial source company",
       transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
-      note: "assignedTechId stays ASSIGNMENT. If a person must ever commercially own a service record, that requires its own proof before USER ownership is used here.",
+      note: "MEASURED: 41 of 45 sandbox jobs are certification fixtures and can be explicitly authored, as equipment was. The other 4 are not, and stay unresolved. assignedTechId remains ASSIGNMENT.",
     },
     {
+      // Ruling R-3: a Work Order inherits its company from its parent Job, otherwise REFUSE.
+      //
+      // MEASURED BLOCKER: sandbox fieldops_wos carry NO parent job reference at all -- no jobId, no
+      // equivalent -- and 0 of 30 are certification fixtures. The inheritance the ruling specifies has
+      // nothing to inherit THROUGH. That is a lineage gap in the model, not a backfill gap in the data.
       family: "workOrderLegacy", collection: "fieldops_wos", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the operating company responsible for the service",
+      ownerFields: [], inheritanceSource: "parent Job operatingCompanyId",
       transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
-      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      unresolvedPolicy: "remains OWNERLESS -- no parent Job reference exists on the record to inherit through",
+      note: "Establishing the Job -> Work Order link is a PREREQUISITE to the ruling's inheritance, not a consequence of it.",
     },
 
     // ═══════════════════════ COMPANY — inventory obligation (ruling D-14) ═══════════════════════
     {
+      // Ruling R-4, and the derivation check is what forced it: a reorder request carries NO location
+      // reference of any kind today, so it can derive a company from nothing. The fix is at the
+      // record, not in a derivation -- it must say WHERE inventory needs replenishment.
+      //
+      //   warehouseId        where replenishment is needed. The WAREHOUSE deliberately, not a
+      //                      stock_location -- that is a warehouse+part BALANCE, not a place, and
+      //                      making a balance the location authority would repeat the exact category
+      //                      error the root correction already had to fix once.
+      //   operatingCompanyId derived from that warehouse at TRUSTED CREATION, then stored
+      //   requestedBy        the person who asked. Never the owner.
+      //   currentOwner       the role queue. Untouched, and still not ownership.
       family: "reorderRequest", collection: "reorder_requests", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the operating company responsible for the inventory obligation",
+      ownerFields: [], inheritanceSource: "the warehouse the replenishment is for, at trusted creation",
       transfer: "HANDOFF", companyScope: "SINGLE_COMPANY",
-      backfillSource: "the governed stock location's company, ONCE the physical roots carry one (ruling D-9)",
-      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
-      note: "currentOwner (role queue), requestedBy (actor) and assignedToUserId (processor) all remain separate and untouched.",
+      backfillSource: null,
+      unresolvedPolicy: "remains OWNERLESS -- measured 6/6 MISSING_REFERENCE, the record cannot say where",
+      note: "MEASURED DESIGN GAP: 6/6 sandbox requests carry no warehouseId. Adding it is a schema change to the reorder request, not a backfill.",
     },
 
     // ═══════════════════════ COMPANY — physical roots (ruling D-9) ═══════════════════════
@@ -295,8 +339,9 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
       family: "reorderPurchaseOrder", collection: "reorder_purchase_orders", ownerClass: "COMPANY", ownerType: cmp,
       ownerFields: [], inheritanceSource: "the buying company", transfer: "IMMUTABLE",
       companyScope: "SINGLE_COMPANY",
-      backfillSource: "the linked Reorder Request's company, once that resolves",
-      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      backfillSource: "the linked Reorder Request's operatingCompanyId, once the request carries one",
+      unresolvedPolicy: "remains OWNERLESS -- its only path to a company runs through a request that has none",
+      note: "Ruling R-4: a purchase order combining requests from MORE THAN ONE operating company must be REFUSED, or split into separate per-company POs. Taylor and Ventana purchasing obligations are never silently collapsed into one company-owned PO.",
     },
 
     // ═══════════════════════ COMPANY — CROSS-COMPANY CAPABLE (ruling D-10) ═══════════════════════

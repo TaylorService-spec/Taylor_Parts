@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Owner decision — NOT authorized for execution
-status: Proposed — Revision 2 (measured)
+status: Proposed — Revision 3 (simulated against authored facts)
 date: 2026-08-30
 owner: Claude Code
 related_adrs: []
@@ -271,3 +271,100 @@ marker-scoped applier can remediate the existing 278. The 10 non-fixture records
    `docs/operations/production-ownership-census-operator-instructions.md`.
 
 Nothing above has been executed.
+
+---
+
+# Revision 3 — simulated against authored facts, 2026-08-30
+
+Rulings R-1 … R-10 supplied the facts the plan was missing. With the 12 physical roots assigned and
+the equipment fleets authored, the backfill was **simulated read-only**
+(`sb-evidence/ownership-backfill-simulation-sandbox-2026-08-30.txt`). Nothing was written; the tool
+has no apply mode.
+
+## PROPOSED SANDBOX WRITE COUNT: 974 documents. 19 blocked.
+
+| Collection | scanned | WOULD WRITE | blocked | Source |
+|---|---|---|---|---|
+| `contacts` | 339 | **337** | 2 | parent Account owner |
+| `locations` | 183 | **180** | 3 | parent Account owner |
+| `equipment` | 288 | **278** | 10 | authored fixture fleet company |
+| `inventory_transactions` | 103 | **99** | 4 | location's authored company |
+| `transfer_orders` | 47 | **47** | 0 | origin + destination participating pair |
+| `cycle_counts` | 24 | **24** | 0 | counted location |
+| `stock_locations` | 5 | **5** | 0 | `warehouseId` |
+| `trucks` | 2 | **2** | 0 | `homeWarehouseId` |
+| `receiving_orders` | 2 | **2** | 0 | receiving location |
+| **total** | **993** | **974** | **19** | |
+
+## The cross-company path is now genuinely exercised
+
+The mixed root assignment did what it was for. Of 47 transfers: **24 same-company, 23 cross-company.**
+Of the 8 inventory transactions referencing two roots, **2 resolve to a genuine cross-company pair**
+and 6 to two locations of the same company.
+
+That distinction is only visible because the roots carry companies: the derivation check could see
+*two distinct roots*, but only the simulation can see *two distinct companies*. A Taylor-only
+sandbox would have produced 47 same-company transfers and certified nothing.
+
+## The 19 blocked, by reason
+
+| Reason | Records | Disposition |
+|---|---|---|
+| parent Account has no owner | 5 (2 contacts, 3 locations) | Correct. Ruling R-7 keeps the 3 non-fixture accounts ownerless as control records, and this is that decision propagating exactly as specified — unresolved, never a substitute owner. |
+| non-fixture equipment | 10 | Correct. Ruling R-2: never overwrite non-fixture equipment. |
+| no resolvable location reference | 4 | Correct. Ruling R-5: the four legacy inventory transactions stay unresolved. |
+
+**Every blocked record is blocked by a rule, not by a defect.** There is no "could not figure it
+out" bucket.
+
+## Residual ownerless after the proposed backfill
+
+Assuming all 974 writes were applied, these would remain — and each is a stated decision, not a gap:
+
+| Collection | Records | Why it stays |
+|---|---|---|
+| `fieldops_jobs` | 45 | R-3. 41 are fixtures and *could* be authored; that authoring has not been done because the ruling asked for provenance reconciliation first, not the assignment. 4 are non-fixture. |
+| `fieldops_wos` | 30 | R-3, blocked upstream. 0 are fixtures and **none carries a parent Job reference**, so the Job→WO inheritance has nothing to inherit through. |
+| `reorder_requests` | 6 | R-4. 6/6 carry no `warehouseId`. Needs a schema change, not a backfill. |
+| `reorder_purchase_orders` | 3 | R-4, blocked upstream by the above. |
+| `accounts` | 3 | R-7. Deliberate control records. |
+| `inventory_transactions` | 4 | R-5. Legacy shape, no location. |
+| `contacts` / `locations` | 5 | Downstream of the 3 control accounts. |
+| `invoices` | 1 | R-8. No Sales Order carries an operating company yet. |
+| **total residual** | **97** | |
+
+## The commercial company-scope gap (R-8)
+
+The matrix now records `companyScopeField: "operatingCompanyId"` on `opportunities`,
+`sales_agreements` and `sales_orders` — the orthogonal axis, **not** ownership. `ownerEmployeeId =
+Rudy` and `operatingCompanyId = taylor` are both true on one record.
+
+**The gap: none of the three stores it today.** That is why every financial artifact has a null
+backfill source — the lineage
+`Sales Order.operatingCompanyId → Invoice → Payment/Adjustment/Refund` has no first link. Closing it
+is a commercial-chain change (where does a Sales Order get its operating company?), and it is
+recorded here rather than guessed. It was **not** inferred from `lineOfBusiness`.
+
+## Service provenance (R-3), measured
+
+| | total | fixtures | non-fixture |
+|---|---|---|---|
+| `fieldops_jobs` | 45 | **41** | 4 |
+| `fieldops_wos` | 30 | **0** | 30 |
+
+41 jobs can be authored with an explicit company exactly as the equipment fleets were. But
+`fieldops_wos` has a harder problem than provenance: its documents carry `assignedTechId`,
+`scheduledTechId`, `customerId`, `locationId`, `salesOrderId` — and **no job reference at all**.
+Ruling R-3's `fieldops_wo.operatingCompanyId = parent Job.operatingCompanyId` cannot be implemented
+until that link exists. **Establishing the Job→Work Order relationship is a prerequisite, not a
+consequence.**
+
+## Still requiring a genuine business decision
+
+1. **Author the 41 service Job fixture companies** — same mechanism as equipment; needs the rule.
+2. **The Job→Work Order link** — 30 work orders have no parent. Prerequisite to R-3 inheritance.
+3. **`reorder_requests.warehouseId`** — schema addition; 6+3 records depend on it.
+4. **Sales Order `operatingCompanyId`** — where does a commercial record get its company? Unblocks
+   the whole financial lineage.
+5. **Production census** — still unmeasured; runbook ready.
+6. **Authorization to apply the 974 sandbox writes.** Not requested here.
