@@ -54,7 +54,31 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
   };
 
   return (
-    <div className="fo-panel">
+    // ══════════════ THE BODY GOES INSIDE THE WORKSPACE, NOT BESIDE IT ══════════════
+    //
+    // This page composed `<div className="fo-panel">` with a SELF-CLOSING `<WorkspaceIdentity />`
+    // and then the tab rail and panels as its siblings. Two things followed, and both were visible
+    // on the deployed page:
+    //
+    //   1. `.ns-workspace` carries the collection container — `max-width: 1360px; margin: 0 auto;
+    //      padding: 0 32px 80px`. Only the title block was inside it, so the title sat inset and
+    //      centred while the tab rail and every panel below ran hard against the left edge of the
+    //      viewport with no measure at all. The header and its own content were not on the same grid.
+    //   2. `.fo-panel` is the retired CARD treatment — elevated surface, 10px radius, drop shadow.
+    //      No other North Star collection page renders inside one, so this workspace read as a card
+    //      pasted onto the app while Opportunities, Work Orders, Accounts and the rest read as pages.
+    //
+    // `WorkspaceIdentity` takes `children` for exactly this reason and every shipped collection page
+    // uses it that way (`OpportunityList` is the reference). Nothing about the tabs, their roles,
+    // the keyboard handling or the mounted-panel behaviour changes — only what contains them.
+    <WorkspaceIdentity
+      crumb="Equipment"
+      title="Equipment"
+      // THE DESCRIPTION SAYS WHAT THE THREE TABS ARE, which is the question a header carrying no
+      // count leaves open. Verbatim from the locked 1a frame, and a standing fact about the set
+      // rather than a reading of its current state — it is not the workload summary.
+      description="Every serialized unit the business owns or services — installed at customers, available in company stock, and the account-scoped register that creates them."
+    >
       {/* THE COLLECTION HEADER, WITH NO COUNT — and the omission is the honest answer rather than
           a gap. This page hosts THREE tabs that answer three different questions: the business-wide
           installed register, the not-yet-connected serialized-asset surface, and an Account-scoped
@@ -63,15 +87,6 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
           nothing can be counted", and the same rule reaches the count itself.
           The Customer Equipment tab carries its OWN governed aggregate through ListViewHeader,
           where it is unambiguous because it sits over the rows it counts. */}
-      {/* THE DESCRIPTION SAYS WHAT THE THREE TABS ARE, which is the question a header carrying no
-          count leaves open. Verbatim from the locked 1a frame, and a standing fact about the set
-          rather than a reading of its current state — it is not the workload summary and does not
-          share that slot. */}
-      <WorkspaceIdentity
-        crumb="Equipment"
-        title="Equipment"
-        description="Every serialized unit the business owns or services — installed at customers, available in company stock, and the account-scoped register that creates them."
-      />
 
       {/* THE TAB RAIL. Structure, roles and keyboard handling are unchanged — only the treatment is
           new: the ratified rail (a rule the selected tab sits on) rather than three default buttons,
@@ -109,6 +124,6 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
       <div role="tabpanel" id="eq-panel-add" aria-labelledby="eq-tab-add" hidden={active !== "add"}>
         <EquipmentRegister />
       </div>
-    </div>
+    </WorkspaceIdentity>
   );
 }

@@ -1399,6 +1399,36 @@ that is an improvement: settling the resolvers turned check 9a from a PASS that 
 so there is nothing unresolved to measure. Three unmeasured checks, all named.
 
 
+### Two findings from the Owner's own eyes on the deployed page (2026-08-30)
+
+Both were on the family, both after the Quick Gate reported 29/0/3, and neither was something the
+gate was looking for. Recorded plainly: a green gate measured what it was told to measure.
+
+**1. The page was composed as a card, not a page — FIXED.** The workspace rendered
+`<div className="fo-panel">` with a self-closing `<WorkspaceIdentity />` and the tab rail and panels
+as its SIBLINGS. `.ns-workspace` is what carries the collection container — `max-width: 1360px;
+margin: 0 auto; padding: 0 32px 80px` — so only the title block was inside it: the title sat inset
+and centred while the rail and every row ran hard against the left edge with no measure. And
+`.fo-panel` is the retired card treatment (elevated surface, radius, drop shadow), which no other
+North Star collection renders inside. `WorkspaceIdentity` takes `children` for exactly this and every
+shipped collection page uses it that way; the two tab bodies dropped their own nested `.fo-panel`
+cards with it. Held by three structural assertions in
+`test/equipmentNorthStarWorkspace.test.jsx` — the rail and all three panels must be DESCENDANTS of
+`.ns-workspace`, no `.fo-panel` may wrap the collection, and there must be exactly one container so
+the inset is not applied twice. Mutation-proved: restoring the card wrapper fails the suite.
+
+**2. Stock cannot be created from anywhere in the application — RECORDED, not built.** See
+**ND-33**. `inventory.serializedAsset.acquire` is registered, built, wired, granted to a dedicated
+Role and sandbox-ACTIVATED, and no client surface calls it. The Owner ruled its placement the same
+day: **Inventory → Receiving**, not Equipment. Approved placement, client composition not yet built.
+
+**What this says about the gate.** It asserted the rulings it was given and passed honestly. It was
+not asked whether the page sits on the site's own grid, and it inspects only the DEFAULT tab's
+headings — so the second `Equipment` title inside the Add Equipment panel (EquipmentRegister hosts
+its own page shell) is still unmeasured, and is the one item from these two screenshots left open.
+A gate proves the claims it encodes; it does not notice a claim nobody made.
+
+
 ### Authority, unchanged
 
 No Firestore rule, index, Function, callable, capability, activation, role grant, collection, schema,

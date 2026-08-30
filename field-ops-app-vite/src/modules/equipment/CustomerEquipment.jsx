@@ -107,7 +107,12 @@ export default function CustomerEquipment() {
   }, [criteria, descriptorErrors]);
 
   return (
-    <div className="fo-panel">
+    // NOT `fo-panel`. This is the BODY of a tab inside the Equipment workspace, and `.fo-panel` is
+    // the retired card treatment — elevated surface, radius, drop shadow. Nested inside the
+    // workspace it drew a card around the register that no other North Star collection has, and it
+    // added a second inset on top of `.ns-workspace`'s own 32px so the rows did not line up with the
+    // title above them.
+    <div className="fo-equipment-tabbody">
       {/* NO "Customer Equipment" HEADING HERE. The selected tab immediately above already says it,
           and a panel that repeats its own tab's name states one thing twice — the "no duplicate
           page/section naming" rule of the North Star presentation grammar. The panel is named to
