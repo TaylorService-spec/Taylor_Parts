@@ -232,13 +232,22 @@ async function doVerify(db, quiet) {
   // nobody can sign in as anyone.
   const identityLinkage = await measureIdentityLinkage(db, found);
 
+  // ============================ CONTENT IS PART OF COMPLETENESS TOO ============================
+  //
+  // Read BEFORE classification, because classification now depends on it. The installed fingerprint
+  // comes from the deployment record rather than being recomputed from the live documents: that
+  // record is the artifact a later reader trusts, and it is the thing that must agree with the
+  // repository. Recomputing from live data would answer a different question -- "do these documents
+  // hash to X" -- and would quietly pass a world whose own deployment record says something else.
+  const stateSnap = await db.collection(STATE_COLLECTION).doc(STATE_DOC_ID).get().catch(() => null);
+  const deployed = stateSnap && stateSnap.exists ? stateSnap.data() : null;
+  const expectedFingerprint = worldFingerprint(records).hash;
+
   const result = classifyWorld({
     expected: { version: world.version, counts: countByCollection(records) },
     actual, versionsFound: versions, duplicateIds, invariantViolations, identityLinkage,
+    fingerprint: { expected: expectedFingerprint, installed: deployed ? (deployed.fingerprint ?? null) : null },
   });
-
-  const stateSnap = await db.collection(STATE_COLLECTION).doc(STATE_DOC_ID).get().catch(() => null);
-  const deployed = stateSnap && stateSnap.exists ? stateSnap.data() : null;
 
   if (!quiet) {
     console.log("\ncertification world: " + result.state);
@@ -249,6 +258,14 @@ async function doVerify(db, quiet) {
       : "(none)"));
     console.log("  expected records : " + records.length);
     console.log("  installed records: " + found.length);
+    // BOTH fingerprints, always -- not only on mismatch. The figure an operator needs to compare is
+    // the one they should never have to go and compute for themselves.
+    console.log("  expected fingerprint : " + expectedFingerprint);
+    console.log("  installed fingerprint: " + (deployed ? (deployed.fingerprint ?? "(none recorded)") : "(no deployment record)"));
+    if (deployed && deployed.expectedRecords !== records.length) {
+      console.log("  ! deployment record claims " + deployed.expectedRecords
+        + " expected records; the repository expects " + records.length);
+    }
     for (const f of result.findings) console.log("  ! " + f);
   }
   return { result, world, records, found, deployed };

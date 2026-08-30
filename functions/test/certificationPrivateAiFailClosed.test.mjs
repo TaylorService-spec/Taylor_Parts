@@ -45,9 +45,24 @@ const { worldFingerprint } = await import(L("functions/scripts/certificationWorl
 // compares the live eos-platform-certification project against. They are pinned HERE, in a test,
 // so that a change to the world is a conscious act that updates this file in the same PR — never a
 // silent drift that the fail-closed proof keeps endorsing.
+//
+// UPDATED FOR v1.7.0 (2026-08-30). EOS Ownership Model v1 added deterministic ownership content to
+// account and equipment records: no rows created, none deleted, so the count is STILL 1092 and the
+// content is different. This file is what noticed -- it was the only check pinning a fingerprint,
+// and it caught the drift that `verify` was reporting as COMPLETE.
+//
+// The dataset version moved with the content, and the fingerprint moved with the version, because
+// every record carries its marker version and the marker is hashed:
+//
+//   1.6.0 + pre-ownership content   005ebb1b
+//   1.6.0 + ownership content       ed95c91d   <- the drift this file detected
+//   1.7.0 + ownership content       fcc38a5f   <- the governed authority now
+//
+// ed95c91d was never a resting state: it is what the world hashed to for as long as content had
+// changed and the version had not. Recording all three keeps that legible.
 const CERT_PROJECT = "eos-platform-certification";
 const EXPECTED_RECORD_COUNT = 1092;
-const EXPECTED_FINGERPRINT = "005ebb1b";
+const EXPECTED_FINGERPRINT = "fcc38a5f";
 const EXPECTED_EMPLOYEES = 47;
 
 const world = expectedRecords();

@@ -42,7 +42,8 @@
 // ============================ SAFETY ============================
 //
 //   * DRY RUN BY DEFAULT. Writes only with --apply.
-//   * SANDBOX ONLY. Production is refused unconditionally and there is no override flag.
+//   * TARGET NAMED BY FLAG. A live run needs BOTH --apply and the target's own --apply-live-*.
+//     Production is refused unconditionally, by name and by role; there is no override flag.
 //   * MARKER-SCOPED. Only Certification World accounts are touched.
 //   * NEVER OVERWRITES. An account that already has a complete accountOwner is left exactly as it
 //     is — this fills silence, it does not reassign ownership. Reassignment is a HANDOFF, which is
@@ -58,10 +59,14 @@ import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
+
+const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+const { resolveExecutionTarget, assertBothLiveFlags, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
 const MARKER_FIELD = "certificationWorld";
 const SALES_ROLE = "salesperson";
@@ -71,25 +76,32 @@ const MANAGER_ROLE = "salesManager";
 // the fixture non-deterministic and every diff noisy. 2026-08-30T00:00:00Z, the ruling's date.
 const ASSIGNED_AT = Date.UTC(2026, 7, 30, 0, 0, 0);
 
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      out[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
-    }
-  }
-  return out;
-}
 
-function assertSandboxTarget(projectId) {
-  if (!projectId || projectId === "true") throw new Error("--projectId is required. There is no default target.");
-  if (projectId === "taylor-parts") throw new Error("REFUSING: taylor-parts is the customer production project.");
-  const registry = JSON.parse(fs.readFileSync(path.resolve(REPO, "config/environments.json"), "utf8"));
-  const env = registry.environments.find((e) => e.firebase && e.firebase.projectId === projectId);
-  if (!env) throw new Error(`REFUSING: '${projectId}' is not a known provisioned environment. Unknown projects fail closed.`);
-  if (env.role !== "sandbox") throw new Error(`REFUSING: environment '${env.id}' has role '${env.role}', not 'sandbox'.`);
-  return env;
+// ============================ TARGET AUTHORITY ============================
+//
+// This file arrived with its own role-only guard: production refused by name, unknown projects
+// refused, registry role must be exactly "sandbox". That was the established pattern when it was
+// written, and it is the pattern that stopped working the moment a SECOND sandbox-role environment
+// existed.
+//
+// eos-platform-certification is also role "sandbox". A role check cannot tell the two worlds apart,
+// so the command that seeds account owners in one becomes the command that seeds them in the other
+// by editing a single word -- with nothing on the line naming which world is about to be written.
+//
+// Every other Certification World writer was brought under executionTarget.mjs already. This one
+// landed afterwards and reintroduced the gap, which is exactly why the guard that catches it is a
+// test rather than a convention.
+//
+// The local guard is REMOVED, not kept beside the shared one: a parallel path that can authorize a
+// write independently is precisely what routing through a shared authority has to exclude.
+export function authorizeOwnerSeed(argv) {
+  const apply = argv.includes("--apply");
+  // Production by name AND by role, unknown projects, missing --projectId, and ambient credentials
+  // that disagree with the stated target are all refused in here, once.
+  const target = resolveExecutionTarget({ argv: ["node", "seedAccountOwners.mjs", ...argv], writes: apply });
+  // A live run demands BOTH words; a dry run demands neither and writes nothing.
+  if (apply) assertBothLiveFlags({ target, argv, act: "Seeding account owners in" });
+  return { target, apply };
 }
 
 /** The seven fields, all present or the record is not written. Mirrors isCompleteAccountOwner(). */
@@ -134,11 +146,13 @@ function fixtureIndex(accountId) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const env = assertSandboxTarget(args.projectId);
-  const apply = args.apply === "true";
+  const argv = process.argv.slice(2);
+  // AUTHORIZE BEFORE ANYTHING CONNECTS -- ahead of initializeApp, so a refused invocation never
+  // opens a client against the project it was refused for.
+  const { target, apply } = authorizeOwnerSeed(argv);
+  console.log(describeTarget(target));
 
-  if (getApps().length === 0) initializeApp({ credential: applicationDefault(), projectId: args.projectId });
+  if (getApps().length === 0) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
   const db = getFirestore();
 
   const employeeSnap = await db.collection("employees").get();
@@ -154,7 +168,6 @@ async function main() {
   }
   const assignor = managers[0];
 
-  console.log(`Target: ${env.id} (${args.projectId}), role=${env.role}`);
   console.log(`Owner cohort (${SALES_ROLE}, active, user-linked): ${owners.map((o) => o.employeeId).join(", ")}`);
   console.log(`Assignor (${MANAGER_ROLE}): ${assignor.employeeId} (${assignor.displayName})\n`);
 
@@ -215,7 +228,14 @@ async function main() {
   console.log(`\nAssigned ${written} account owner(s). Re-run without --apply to confirm 0 remain.`);
 }
 
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});
+// RUN ONLY WHEN INVOKED DIRECTLY, so the authorization decision can be imported by its test
+// without the tool executing on import -- an unguarded main() demands --projectId, refuses, and
+// kills the test process. A decision that cannot be imported without running the script is a
+// decision that does not get tested.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
+}

@@ -29,17 +29,18 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { accountSearchQueryShape } = await import(L("field-ops-app-vite/src/domain/accountSearch.js"));
 const { ACCOUNT_STATUS_VALUES, ACCOUNT_RELATIONSHIP_VALUES, QUERY_REQUIRED_FIELDS } =
   await import(L("functions/scripts/certificationWorld/domainContracts.mjs"));
-const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+const { resolveReadOnlyTarget, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
 const argv = process.argv.slice(2);
 const flag = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
-const PROJECT_ID = flag("--projectId");
-
-function assertKnownTarget(projectId) {
-  if (!projectId) throw new Error("--projectId is required.");
-  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments || []).find((e) => e?.firebase?.projectId === projectId);
-  if (!env) throw new Error(`Unknown project "${projectId}". Refusing.`);
-  return { projectId, role: env.role };
+// TARGET AUTHORITY. A read-only surface verifier, so it needs no live-write flag -- but its own
+// guard was the weakest of the whole set: it checked only that the project was REGISTERED, and did
+// not refuse production at all. Routing it through the shared read-only authority adds that refusal
+// (by name AND by role) alongside the ambient-credential agreement check, and removes the last place
+// a certification tool decided target policy for itself.
+export function authorizeSurfaceCheck(args = argv) {
+  return resolveReadOnlyTarget({ argv: ["node", "verifyLiveSurfaces.mjs", ...args] });
 }
 
 const results = [];
@@ -49,7 +50,8 @@ const check = (name, ok, detail) => {
 };
 
 async function main() {
-  const target = assertKnownTarget(PROJECT_ID);
+  const target = authorizeSurfaceCheck(argv);
+  console.log(describeTarget(target));
   console.log(`target: ${target.projectId} (role=${target.role})\n`);
   if (!getApps().length) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
   const db = getFirestore();
@@ -149,7 +151,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`\nFAILED: ${err?.message || err}`);
-  process.exitCode = 1;
-});
+// RUN ONLY WHEN INVOKED DIRECTLY, so the authorization decision can be imported by its test without
+// the tool executing on import -- an unguarded main() demands --projectId, refuses, and kills the
+// test process. A decision that cannot be imported without running the script is one that does not
+// get tested.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`\nFAILED: ${err?.message || err}`);
+    process.exitCode = 1;
+  });
+}

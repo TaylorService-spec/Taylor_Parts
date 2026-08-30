@@ -39,20 +39,27 @@ const { MARKER_FIELD } = await import(L("functions/scripts/certificationWorld/ma
 const { STATE_COLLECTION, STATE_DOC_ID } = await import(L("functions/scripts/certificationWorld/state.mjs"));
 const { ENVIRONMENT_ACTIVATION_REGISTRY, resolveSyntheticOperationalInterpretation } =
   await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
+const { resolveReadOnlyTarget, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
 const EXPECTED_LINKED_EMPLOYEES = 47;
 const EXACT_REFUSAL = { speak: false, origin: "EOS", reason: "INTERPRETATION_NOT_PERMITTED_HERE" };
 
 const argv = process.argv.slice(2);
 const flag = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
-const PROJECT_ID = flag("--projectId");
 
-function assertTarget(projectId) {
-  if (!projectId) throw new Error("--projectId is required.");
-  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments || []).find((e) => e?.firebase?.projectId === projectId);
-  if (!env) throw new Error(`Unknown project "${projectId}". Refusing.`);
-  if (env.role === "production") throw new Error("Refusing to run against a production environment.");
-  return { projectId, role: env.role };
+// TARGET AUTHORITY. This is a READ-ONLY verifier -- it invokes the private-AI callable, which
+// refuses before provider resolution and writes nothing -- so it needs no live-write flag. It still
+// belongs under the shared authority: its own guard refused production and unknown projects but,
+// like every other local guard, could not distinguish the two sandbox-role worlds. A verifier
+// pointed at the wrong world reports a PASS about a project nobody asked about, which is a quieter
+// failure than a misdirected write and no less misleading.
+//
+// resolveReadOnlyTarget refuses production by name AND by role, unknown projects, a missing
+// --projectId, and ambient credentials that disagree -- without demanding a live-write flag for a
+// command that only reads.
+export function authorizeVerification(args = argv) {
+  return resolveReadOnlyTarget({ argv: ["node", "verifyPrivateAiFailClosed.mjs", ...args] });
 }
 
 const results = [];
@@ -82,7 +89,8 @@ async function callableProbe(projectId, region, idToken) {
 }
 
 async function main() {
-  const target = assertTarget(PROJECT_ID);
+  const target = authorizeVerification(argv);
+  console.log(describeTarget(target));
   console.log(`PRIVATE-AI FAIL-CLOSED — LIVE CERTIFICATION (${target.projectId}, role=${target.role})\n`);
 
   // ── 1. THE REPOSITORY EXPECTATION. Computed fresh from source, never hardcoded here: the CI test
@@ -191,7 +199,14 @@ async function main() {
   return failed === 0 ? 0 : 1;
 }
 
-main().then((code) => process.exit(code)).catch((err) => {
-  console.error("verifyPrivateAiFailClosed failed: " + (err?.message || err));
-  process.exit(2);
-});
+// RUN ONLY WHEN INVOKED DIRECTLY, so the authorization decision can be imported by its test
+// without the tool executing on import -- an unguarded main() demands --projectId, refuses, and
+// kills the test process. A decision that cannot be imported without running the script is a
+// decision that does not get tested.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().then((code) => process.exit(code)).catch((err) => {
+    console.error("verifyPrivateAiFailClosed failed: " + (err?.message || err));
+    process.exit(2);
+  });
+}
