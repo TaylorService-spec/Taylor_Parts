@@ -42,7 +42,19 @@
 // ============================ SAFETY ============================
 //
 //   * DRY RUN BY DEFAULT. Writes only with --apply.
-//   * SANDBOX ONLY. Production is refused unconditionally and there is no override flag.
+//   * THE SHARED TARGET AUTHORITY decides what is writable — executionTarget.mjs, the one place a
+//     project becomes writable for every certification tool.
+//
+//     This script originally carried its OWN `assertSandboxTarget`, and that was a real defect, not
+//     a style violation: a local guard asks "is the role sandbox?", and that question cannot tell
+//     `eos-platform-sandbox` from `eos-platform-certification` — BOTH are role sandbox. A single
+//     mistyped project would have seeded account owners into the certification world. The shared
+//     authority names each live target and gives each its own flag, so a live write needs BOTH
+//     `--apply` AND the target's named flag (`--apply-live-sandbox`). Production is refused twice
+//     over, by name and by role.
+//
+//     `functions/test/certificationExecutionTarget.test.mjs` asserts no tool in this directory
+//     re-declares a local guard. It caught this one.
 //   * MARKER-SCOPED. Only Certification World accounts are touched.
 //   * NEVER OVERWRITES. An account that already has a complete accountOwner is left exactly as it
 //     is — this fills silence, it does not reassign ownership. Reassignment is a HANDOFF, which is
@@ -53,16 +65,10 @@
 //
 // Usage:
 //   node scripts/certificationWorld/seedAccountOwners.mjs --projectId eos-platform-sandbox
-//   node scripts/certificationWorld/seedAccountOwners.mjs --projectId eos-platform-sandbox --apply
+//   node scripts/certificationWorld/seedAccountOwners.mjs --projectId eos-platform-sandbox --apply --apply-live-sandbox
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.resolve(__dirname, "../../..");
-
+import { resolveExecutionTarget, assertBothLiveFlags, describeTarget } from "./executionTarget.mjs";
 const MARKER_FIELD = "certificationWorld";
 const SALES_ROLE = "salesperson";
 const MANAGER_ROLE = "salesManager";
@@ -80,16 +86,6 @@ function parseArgs(argv) {
     }
   }
   return out;
-}
-
-function assertSandboxTarget(projectId) {
-  if (!projectId || projectId === "true") throw new Error("--projectId is required. There is no default target.");
-  if (projectId === "taylor-parts") throw new Error("REFUSING: taylor-parts is the customer production project.");
-  const registry = JSON.parse(fs.readFileSync(path.resolve(REPO, "config/environments.json"), "utf8"));
-  const env = registry.environments.find((e) => e.firebase && e.firebase.projectId === projectId);
-  if (!env) throw new Error(`REFUSING: '${projectId}' is not a known provisioned environment. Unknown projects fail closed.`);
-  if (env.role !== "sandbox") throw new Error(`REFUSING: environment '${env.id}' has role '${env.role}', not 'sandbox'.`);
-  return env;
 }
 
 /** The seven fields, all present or the record is not written. Mirrors isCompleteAccountOwner(). */
@@ -134,11 +130,17 @@ function fixtureIndex(accountId) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const env = assertSandboxTarget(args.projectId);
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
   const apply = args.apply === "true";
+  // THE SHARED TARGET AUTHORITY, not a local one. A local "is the role sandbox?" check cannot tell
+  // eos-platform-sandbox from eos-platform-certification -- both are role sandbox -- so a local
+  // guard would let this seed write account owners into the certification world by typo. One place
+  // decides what is writable, and each live target carries its own named flag.
+  const target = resolveExecutionTarget({ argv: ["node", "seedAccountOwners.mjs", ...argv], writes: apply });
+  if (apply) assertBothLiveFlags({ target, argv, act: "Seeding account owners into" });
 
-  if (getApps().length === 0) initializeApp({ credential: applicationDefault(), projectId: args.projectId });
+  if (getApps().length === 0) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
   const db = getFirestore();
 
   const employeeSnap = await db.collection("employees").get();
@@ -154,7 +156,7 @@ async function main() {
   }
   const assignor = managers[0];
 
-  console.log(`Target: ${env.id} (${args.projectId}), role=${env.role}`);
+  console.log(describeTarget(target));
   console.log(`Owner cohort (${SALES_ROLE}, active, user-linked): ${owners.map((o) => o.employeeId).join(", ")}`);
   console.log(`Assignor (${MANAGER_ROLE}): ${assignor.employeeId} (${assignor.displayName})\n`);
 

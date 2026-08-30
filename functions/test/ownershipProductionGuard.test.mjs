@@ -35,8 +35,29 @@ const READ_ONLY_SCRIPTS = [
 ];
 
 test("every ownership-writing script refuses production, by name AND by registry role", () => {
+  // Asserts the GUARANTEE, not one mechanism for it. A script may satisfy this two ways:
+  //
+  //   DELEGATED  — it uses certificationWorld/executionTarget.mjs, the shared authority. This is
+  //                the STRONGER form and is preferred: the shared authority also distinguishes
+  //                eos-platform-sandbox from eos-platform-certification, which a local role check
+  //                cannot, and it requires a per-target named live flag.
+  //   LOCAL      — it performs the checks itself.
+  //
+  // The earlier version of this test demanded the LOCAL form of every script, and that was a defect
+  // in the test: when seedAccountOwners.mjs moved to the shared authority -- a strict improvement,
+  // required by certificationExecutionTarget.mjs -- this test failed the better implementation.
+  // A test that pins a mechanism blocks the mechanism from improving.
   for (const rel of WRITING_SCRIPTS) {
     const src = script(rel);
+    const delegated = /from "\.\/executionTarget\.mjs"|from "\.\.\/certificationWorld\/executionTarget\.mjs"/.test(src)
+      && /resolveExecutionTarget\s*\(/.test(src);
+
+    if (delegated) {
+      // A delegating script must actually GATE on the result, not merely import it.
+      assert.match(src, /assertBothLiveFlags\s*\(/, `${rel} delegates but never demands the live flags`);
+      continue;
+    }
+
     // Belt: the customer production project is named and refused explicitly.
     assert.match(src, /taylor-parts/, `${rel} must name the production project to refuse it`);
     assert.match(src, /REFUSING: taylor-parts is the customer production project/, `${rel} must refuse taylor-parts by name`);
@@ -49,6 +70,20 @@ test("every ownership-writing script refuses production, by name AND by registry
     // No default target -- a script that could run with no --projectId could run somewhere unintended.
     assert.match(src, /--projectId is required/, `${rel} must require an explicit target`);
   }
+});
+
+test("the shared execution-target authority is what the delegating scripts rely on", () => {
+  // If a script delegates, the thing it delegates TO must still carry the guarantees. Otherwise
+  // "delegated" above would be a way to opt out of the check rather than a stronger way to pass it.
+  const shared = readFileSync(join(here, "..", "scripts", "certificationWorld", "executionTarget.mjs"), "utf8");
+  assert.match(shared, /PRODUCTION_PROJECT = "taylor-parts"/, "the shared authority must name production");
+  assert.match(shared, /Refused by name/, "the shared authority must refuse production by name");
+  assert.match(shared, /role === "production"/, "the shared authority must refuse production by registry role");
+  assert.match(shared, /--projectId is required/, "the shared authority must require an explicit target");
+  assert.match(shared, /Unknown project/, "the shared authority must fail closed on an unknown project");
+  // The distinction a local guard cannot make: two different sandbox-role projects, two flags.
+  assert.match(shared, /LIVE_SANDBOX_PROJECT = "eos-platform-sandbox"/);
+  assert.match(shared, /CERTIFICATION_PROJECT = "eos-platform-certification"/);
 });
 
 test("the read-only tools contain no Firestore write call at all", () => {
