@@ -5222,7 +5222,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-state--na { font-style: italic; }
 
 /* ── The operational table. Thick head rule, hairline rows, tabular numerals, NEVER in a card. */
-.ns-table-wrap { overflow-x: auto; }
+/* `position: relative` MAKES THE SCROLLER A CONTAINING BLOCK, and that is load-bearing.
+   `.ns-visually-hidden` is `position: absolute` with no offsets, so it stays at its static position
+   -- which, inside a table wide enough to scroll, is hundreds of pixels to the right. With no
+   positioned ancestor its containing block was the INITIAL one, so it escaped this scroller and
+   extended documentElement.scrollWidth: at 375 the page scrolled sideways 122px to reveal a 1px
+   clipped label. body.scrollWidth stayed correct, which is why a body-based overflow check missed
+   it entirely. Containing it here fixes every ns-table, not just the two that exposed it. */
+.ns-table-wrap { overflow-x: auto; position: relative; }
 .ns-table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 .ns-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--color-text-secondary); font-weight: 600; padding: 8px 14px 8px 0; white-space: nowrap;
