@@ -32,6 +32,7 @@ on:
       - "functions/test/ownershipModel.test.mjs"
       - "functions/test/ownershipCensus.test.mjs"
       - "functions/test/ownershipHandoffAudit.test.mjs"
+      - "functions/scripts/certificationWorld/seedAccountOwners.mjs"
       - "field-ops-app-vite/src/domain/typedOwner.js"
       - "field-ops-app-vite/src/domain/operatingCompanyAuthority.js"
       - "field-ops-app-vite/test/ownershipDomainParity.test.mjs"

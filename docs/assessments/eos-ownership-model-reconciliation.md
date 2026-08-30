@@ -318,3 +318,79 @@ Per the Owner's instruction, expected ownerlessness is **not** permission to bac
 establishes facts; it does not name a deterministic Taylor-vs-Ventana source for any family, and
 none was inferred from `lineOfBusiness`, display text, title holder, customer, location name,
 creator, or assignment.
+
+---
+
+# Matrix reconciliation — post-census, 2026-08-30
+
+Owner rulings D-6 … D-16 reclassified the matrix against the measured census. The authoritative
+form is `functions/src/ownership/ownershipMatrix.ts`; this records what changed and why.
+
+## The invariant narrowed, on evidence
+
+    EVERY GOVERNED BUSINESS RECORD HAS AN OWNER
+      ->  EVERY **OWNABLE** GOVERNED BUSINESS RECORD HAS AN OWNER
+
+The census is what forced it. 130 sandbox records sit in families where "which company owns this?"
+has no true answer, because Taylor and Ventana legitimately use the same part, the same
+manufacturer, the same equipment model. The original wording would have been satisfied only by
+fabricating a fact, so ruling D-8 added the classification instead.
+
+## Four classes, 50 families
+
+| Class | Families | Meaning |
+|---|---|---|
+| PERSON | 6 | responsibility belongs to an employee |
+| COMPANY | 20 | responsibility belongs to Taylor or Ventana |
+| REFERENCE | 7 | governed, intentionally company-neutral, not an owned object |
+| EXCLUDED | 17 | not a business record: identity, access, audit, coverage, infrastructure |
+
+26 families are ownable and censused. EXCLUDED families are now *recorded* rather than omitted — a
+collection absent from the file entirely is indistinguishable from one nobody considered.
+
+## What was reclassified, and why
+
+- **Financial artifacts** (`invoices`, `payments`, `payment_applications`, `invoice_adjustments`,
+  `refunds`) — PERSON → **COMPANY** (D-15). A ledger entry belongs to the books it lands in, not to
+  the salesperson upstream. Commercial attribution stays fully available through the
+  Customer → Opportunity → Agreement → Sales Order lineage. Accounting ownership and sales credit
+  are different questions and must not share one field.
+- **Service records** (`fieldops_jobs`, `fieldops_wos`) — PERSON → **COMPANY** (D-13). The
+  responsible operating company owns the job; the technician performs it. `assignedTechId` is
+  deliberately not an `ownerField`, which is the ownership/assignment distinction this whole model
+  rests on.
+- **`reorder_requests`** — PERSON → **COMPANY** (D-14). The inventory obligation is the company's.
+  `currentOwner` (role queue), `requestedBy` (actor) and `assignedToUserId` (processor) all stay
+  separate and untouched.
+- **Catalog families** (`parts`, `part_aliases`, `part_supplier_items`, `manufacturers`,
+  `equipment_models`, `supplier_catalog`) — COMPANY → **REFERENCE** (D-11). Both operating companies
+  may legitimately use the same record.
+- **`transfer_orders`** — now **CROSS_COMPANY_CAPABLE** (D-10). A transfer has a source and a
+  destination and a Taylor↔Ventana move is legitimate, so a single owner may be the wrong shape.
+  It carries no backfill source on purpose.
+- **`equipment`** — stays COMPANY (D-12), stays distinct from `explicitTitleHolder`, and gets **no
+  mass assignment**. Every candidate source on the record is a prohibited proxy.
+
+## Five new columns
+
+`ownerClass`, `inheritanceSource`, `companyScope`, `backfillSource`, `unresolvedPolicy`.
+
+`backfillSource: null` is the most load-bearing value in the file. It is the honest statement that a
+family cannot be populated without new business input, and it is what stops a plan from inventing
+one. A test asserts that no `backfillSource` anywhere names a prohibited proxy.
+
+## The Account seed correction (D-6)
+
+`functions/scripts/certificationWorld/seedAccountOwners.mjs` — dry-run by default, sandbox-only,
+marker-scoped, never overwrites an existing owner, idempotent. Assignment is deterministic from a
+legitimate business fact: the employees whose governed roles actually include `salesperson`, sorted
+by employee id, selected round-robin by the account's fixture index. The assignor is the
+`salesManager`, and the script refuses rather than nominating one if no manager resolves.
+
+Applied to sandbox: **100 of 103 accounts assigned**, 25 each across four salespeople; a second run
+reported 0 to assign. The 3 unassigned are non-fixture accounts and are correctly left alone —
+a seeding script fills silence, it does not reassign ownership.
+
+It is a post-provision applier, not part of `buildWorld()`, because a complete `accountOwner` needs
+provisioned user uids that the world builder does not have. Same shape and same reason as
+`applyRoleGrants.mjs`. Consequence: a `rebuild` wipes it and it must be re-run.

@@ -1,99 +1,341 @@
-// EOS Ownership Model v1 — the OWNERSHIP MATRIX as code (Owner rulings D-1..D-5, 2026-08-30).
+// EOS Ownership Model v1 — the OWNERSHIP MATRIX as code, reconciled against the measured sandbox
+// census (Owner rulings D-8 … D-16, 2026-08-30).
 //
-// The reconciliation (docs/assessments/eos-ownership-model-reconciliation.md) produced the matrix
-// as a table for a human to ratify. This is the same table in a form the census script and the
-// handoff command both read, so "which families are governed, and how" has ONE answer rather than
-// one per consumer that can drift from the other.
+// ============================ WHAT THE CENSUS CHANGED ============================
 //
-// Each row records four facts and nothing else:
-//   collection    the Firestore collection
-//   ownerType     USER (a person) or COMPANY (an operating company)
-//   ownerFields   the EXISTING storage the typed owner is derived from, in the order tried.
-//                 An empty list means the family has no ownership storage yet -- a known gap, not
-//                 an error, and the census reports it as OWNERLESS rather than skipping it.
-//   transfer      HANDOFF (an explicit auditable transfer is legitimate) or IMMUTABLE (historical
-//                 -- an issued invoice, a posted ledger entry, a completed receipt keeps the owner
-//                 it was created with)
+// The first matrix classified every non-person record as COMPANY-owned. The census showed that was
+// wrong in a way counting could not fix: 130 sandbox records sit in families where the question
+// "which company owns this?" has no true answer, because Taylor and Ventana legitimately use the
+// SAME part, the same manufacturer, the same equipment model. Assigning one of them would have been
+// fabricating a fact to satisfy a sentence.
 //
-// It records NO inheritance rule. Inheritance is a property of a CREATION PATH, not of a
-// collection -- opportunityCommands.ts owns "a new Opportunity inherits the Account owner", and
-// duplicating it here would create the second authority ruling D-1 forbids.
+// So the invariant is now, per ruling D-8:
 //
-// EXCLUSIONS ARE DELIBERATE AND LISTED. users/employees/fieldops_technicians (identity),
-// permissions/roles/roleAssignments/accessRequests (access), auditEvents (the trail itself),
-// reportDefinitions (already private-by-owner, a platform record), sales_territories and
-// commercial_coverage_assignments (coverage is not ownership), and the infrastructure collections
-// (counters, idempotency keys, sync status, per-person scheduling) are NOT in this matrix. A
-// reader who wonders whether a missing collection was forgotten should find the answer in the
-// reconciliation's section D, which names every one and why.
+//     EVERY OWNABLE GOVERNED BUSINESS RECORD HAS AN OWNER.
 //
-// INERT: nothing here enforces anything. It is a description, consumed by a read-only census and
-// by a command that is not yet wired to a callable.
+// and every family declares whether it is ownable at all.
+//
+// ============================ THE FOUR CLASSES ============================
+//
+//   PERSON     business responsibility belongs to an employee
+//   COMPANY    business responsibility belongs to Taylor or Ventana
+//   REFERENCE  governed, intentionally company-neutral, not an owned business object. Both
+//              operating companies may legitimately use the same record. NOT ownerless-in-error --
+//              excluded from the invariant by classification, which is a different statement.
+//   EXCLUDED   not a business record at all: identity, access, audit, coverage, infrastructure
+//
+// ============================ THE OTHER FIVE COLUMNS ============================
+//
+//   ownerFields       the EXISTING storage the typed owner derives from. Empty = no storage yet.
+//   inheritanceSource where a NEW record's default owner comes from. Recorded here as a NAME, not a
+//                     rule -- the rule lives in the creation path (ruling D-1 forbids a second
+//                     authority), and this column exists so the backfill plan can be read whole.
+//   transfer          HANDOFF (explicit auditable transfer) / IMMUTABLE (historical) / N_A
+//   companyScope      SINGLE_COMPANY / CROSS_COMPANY_CAPABLE / COMPANY_NEUTRAL (ruling D-10 -- a
+//                     transfer between a Taylor and a Ventana site has no single owning company,
+//                     and picking one would be the false owner the ruling warns about)
+//   backfillSource    the DETERMINISTIC source a backfill could use, or null when none exists.
+//                     `null` is the most important value in this file: it is the honest statement
+//                     that a family cannot be populated without new business input, and it is what
+//                     stops a plan from inventing one.
+//   unresolvedPolicy  what happens to a record that cannot resolve. Always "remains OWNERLESS" for
+//                     an ownable family -- never a default, never a guess.
+//
+// NOTHING HERE IS INFERRED FROM A PROHIBITED PROXY. Ruling D-6/D-11/D-12 forbid deriving company or
+// person ownership from lineOfBusiness, display text, title holder, customer, location NAME,
+// creator, assignment, territory, coverage, activity, sales history, or auth uid. No column below
+// names any of them as a backfill source.
 
 import { OWNER_TYPES, type OwnerType } from "./typedOwner";
 
-export type TransferBehavior = "HANDOFF" | "IMMUTABLE";
+export type OwnerClass = "PERSON" | "COMPANY" | "REFERENCE" | "EXCLUDED";
+export type TransferBehavior = "HANDOFF" | "IMMUTABLE" | "N_A";
+export type CompanyScope = "SINGLE_COMPANY" | "CROSS_COMPANY_CAPABLE" | "COMPANY_NEUTRAL";
 
 export interface OwnershipFamily {
   readonly family: string;
   readonly collection: string;
-  readonly ownerType: OwnerType;
+  readonly ownerClass: OwnerClass;
+  /** null for REFERENCE and EXCLUDED -- they have no owner type because they have no owner. */
+  readonly ownerType: OwnerType | null;
   readonly ownerFields: readonly string[];
+  readonly inheritanceSource: string | null;
   readonly transfer: TransferBehavior;
+  readonly companyScope: CompanyScope;
+  readonly backfillSource: string | null;
+  readonly unresolvedPolicy: string;
+  /** Why this family is classified as it is, where the reason is not self-evident. */
+  readonly note?: string;
 }
 
 const usr = OWNER_TYPES.USER;
 const cmp = OWNER_TYPES.COMPANY;
 
-// `accountOwner` is named as the Account's owner field even though it is a MAP rather than a
-// scalar -- deriveAccountOwner() knows how to read it. The matrix names the storage, not its shape.
-export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze([
-  // A. Commercial -- person-owned.
-  { family: "account", collection: "accounts", ownerType: usr, ownerFields: ["accountOwner"], transfer: "HANDOFF" },
-  { family: "contact", collection: "contacts", ownerType: usr, ownerFields: [], transfer: "HANDOFF" },
-  { family: "location", collection: "locations", ownerType: usr, ownerFields: [], transfer: "HANDOFF" },
-  { family: "opportunity", collection: "opportunities", ownerType: usr, ownerFields: ["ownerEmployeeId"], transfer: "HANDOFF" },
-  { family: "salesAgreement", collection: "sales_agreements", ownerType: usr, ownerFields: ["ownerEmployeeId"], transfer: "HANDOFF" },
-  { family: "salesOrder", collection: "sales_orders", ownerType: usr, ownerFields: ["ownerEmployeeId"], transfer: "HANDOFF" },
-  { family: "invoice", collection: "invoices", ownerType: usr, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "payment", collection: "payments", ownerType: usr, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "paymentApplication", collection: "payment_applications", ownerType: usr, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "invoiceAdjustment", collection: "invoice_adjustments", ownerType: usr, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "refund", collection: "refunds", ownerType: usr, ownerFields: [], transfer: "IMMUTABLE" },
+const OWNERLESS_UNTIL_SUPPLIED = "remains OWNERLESS until an explicit company assignment is supplied";
+const OWNERLESS_UNTIL_UPSTREAM = "remains OWNERLESS until its upstream owner resolves";
+const NOT_OWNABLE = "not ownable -- excluded from the invariant by classification, not by omission";
 
-  // B. Service / operational. Work Orders live in two collections and both are governed -- a
-  // census that read only one would report a clean half of the family.
-  { family: "workOrder", collection: "fieldops_jobs", ownerType: usr, ownerFields: [], transfer: "HANDOFF" },
-  { family: "workOrderLegacy", collection: "fieldops_wos", ownerType: usr, ownerFields: [], transfer: "HANDOFF" },
-  { family: "reorderRequest", collection: "reorder_requests", ownerType: usr, ownerFields: [], transfer: "HANDOFF" },
+export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
+  [
+    // ═══════════════════════ PERSON ═══════════════════════
+    //
+    // Commercial responsibility that belongs to a named employee. The Account is the root of the
+    // whole chain (ruling D-4), which is why the sandbox's 0/103 accountOwner rate mattered so
+    // much more than its size suggested.
+    {
+      family: "account", collection: "accounts", ownerClass: "PERSON", ownerType: usr,
+      ownerFields: ["accountOwner"], inheritanceSource: null, transfer: "HANDOFF",
+      companyScope: "COMPANY_NEUTRAL",
+      backfillSource: "explicit assignment only -- ruling D-6 forbids inferring an Account owner from creator, territory, coverage, activity, sales history, or auth uid",
+      unresolvedPolicy: "remains OWNERLESS until an owner is explicitly assigned",
+      note: "The root of the person-owned inheritance chain. An ownerless Account makes inherited Opportunity creation REFUSE, by design.",
+    },
+    {
+      family: "contact", collection: "contacts", ownerClass: "PERSON", ownerType: usr,
+      ownerFields: [], inheritanceSource: "parent Account owner at creation", transfer: "HANDOFF",
+      companyScope: "COMPANY_NEUTRAL",
+      backfillSource: "parent Account owner via accountId -- deterministic, and a real relationship rather than a proxy",
+      unresolvedPolicy: OWNERLESS_UNTIL_UPSTREAM,
+    },
+    {
+      family: "location", collection: "locations", ownerClass: "PERSON", ownerType: usr,
+      ownerFields: [], inheritanceSource: "parent Account owner at creation", transfer: "HANDOFF",
+      companyScope: "COMPANY_NEUTRAL",
+      backfillSource: "parent Account owner via accountId -- Rules already enforce this parentage",
+      unresolvedPolicy: OWNERLESS_UNTIL_UPSTREAM,
+      note: "A CUSTOMER site, not one of ours. Distinct from warehouses/stock_locations, which are company-owned physical roots.",
+    },
+    {
+      family: "opportunity", collection: "opportunities", ownerClass: "PERSON", ownerType: usr,
+      ownerFields: ["ownerEmployeeId"], inheritanceSource: "Customer (Account) owner", transfer: "HANDOFF",
+      companyScope: "COMPANY_NEUTRAL",
+      backfillSource: null, unresolvedPolicy: "n/a -- measured 100% RESOLVED",
+      note: "Complete in sandbox (14/14) because ownerEmployeeId was required until D-4 relaxed it.",
+    },
+    {
+      family: "salesAgreement", collection: "sales_agreements", ownerClass: "PERSON", ownerType: usr,
+      ownerFields: ["ownerEmployeeId"], inheritanceSource: "Opportunity owner", transfer: "HANDOFF",
+      companyScope: "COMPANY_NEUTRAL",
+      backfillSource: null, unresolvedPolicy: "n/a -- measured 100% RESOLVED",
+    },
+    {
+      family: "salesOrder", collection: "sales_orders", ownerClass: "PERSON", ownerType: usr,
+      ownerFields: ["ownerEmployeeId"], inheritanceSource: "Opportunity owner", transfer: "HANDOFF",
+      companyScope: "COMPANY_NEUTRAL",
+      backfillSource: null, unresolvedPolicy: "n/a -- measured 100% RESOLVED",
+    },
 
-  // C. Company-owned. Every ownerFields list here is empty because operatingCompanyId is stored
-  // nowhere yet -- that is the finding the reconciliation surfaced and the reason ruling D-2
-  // created the authority. The census will report this whole section as OWNERLESS, which is the
-  // correct and expected answer for a first run, not a failure.
-  { family: "part", collection: "parts", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "partAlias", collection: "part_aliases", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "partSupplierItem", collection: "part_supplier_items", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "manufacturer", collection: "manufacturers", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "equipmentModel", collection: "equipment_models", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "supplier", collection: "suppliers", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "supplierCatalogItem", collection: "supplier_catalog", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  // Ruling D-3: this record's owner is the operating company. explicitTitleHolder stays a
-  // SEPARATE axis and is not an ownerField here -- a CUSTOMER may hold title without owning the
-  // internal EOS record, and reading title as ownership is the exact collapse the ruling forbids.
-  { family: "equipment", collection: "equipment", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "warehouse", collection: "warehouses", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "stockLocation", collection: "stock_locations", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "mobileLocation", collection: "mobile_locations", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "truck", collection: "trucks", ownerType: cmp, ownerFields: [], transfer: "HANDOFF" },
-  { family: "purchaseOrder", collection: "purchase_orders", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "reorderPurchaseOrder", collection: "reorder_purchase_orders", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "receivingOrder", collection: "receiving_orders", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "transferOrder", collection: "transfer_orders", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "cycleCount", collection: "cycle_counts", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "inventoryTransaction", collection: "inventory_transactions", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-  { family: "inventoryAction", collection: "inventory_actions", ownerType: cmp, ownerFields: [], transfer: "IMMUTABLE" },
-].map((row) => Object.freeze(row))) as readonly OwnershipFamily[];
+    // ═══════════════════════ COMPANY — financial (ruling D-15) ═══════════════════════
+    //
+    // RECLASSIFIED from PERSON. A ledger entry belongs to the books it lands in, not to the
+    // salesperson upstream of it. Commercial attribution is still fully available through the
+    // Customer -> Opportunity -> Agreement -> Sales Order lineage, which is the point: accounting
+    // ownership and sales credit are different questions and must not share one field.
+    ...(
+      [
+        ["invoice", "invoices"],
+        ["payment", "payments"],
+        ["paymentApplication", "payment_applications"],
+        ["invoiceAdjustment", "invoice_adjustments"],
+        ["refund", "refunds"],
+      ] as const
+    ).map(([family, collection]) => ({
+      family, collection, ownerClass: "COMPANY" as const, ownerType: cmp,
+      ownerFields: [] as readonly string[],
+      inheritanceSource: "the operating company whose books contain the transaction",
+      transfer: "IMMUTABLE" as const, companyScope: "SINGLE_COMPANY" as const,
+      backfillSource: null,
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "Owner is the company whose books hold it -- NOT the salesperson it descends from. No source exists yet because no upstream commercial record stores an operating company either.",
+    })),
+
+    // ═══════════════════════ COMPANY — service (ruling D-13) ═══════════════════════
+    //
+    // RECLASSIFIED from PERSON. The responsible operating company owns the job; the technician
+    // performs it. That keeps the ownership/assignment distinction this whole model rests on, and
+    // it is why assignedTechId is deliberately NOT an ownerField below.
+    {
+      family: "workOrder", collection: "fieldops_jobs", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the operating company responsible for the service",
+      transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "assignedTechId stays ASSIGNMENT. If a person must ever commercially own a service record, that requires its own proof before USER ownership is used here.",
+    },
+    {
+      family: "workOrderLegacy", collection: "fieldops_wos", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the operating company responsible for the service",
+      transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+    },
+
+    // ═══════════════════════ COMPANY — inventory obligation (ruling D-14) ═══════════════════════
+    {
+      family: "reorderRequest", collection: "reorder_requests", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the operating company responsible for the inventory obligation",
+      transfer: "HANDOFF", companyScope: "SINGLE_COMPANY",
+      backfillSource: "the governed stock location's company, ONCE the physical roots carry one (ruling D-9)",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "currentOwner (role queue), requestedBy (actor) and assignedToUserId (processor) all remain separate and untouched.",
+    },
+
+    // ═══════════════════════ COMPANY — physical roots (ruling D-9) ═══════════════════════
+    //
+    // The company boundary starts here. These four are the only families whose company can be
+    // stated as a primary business fact rather than derived from something else, so they are
+    // populated from governed configuration and everything else in the inventory chain hangs off
+    // them. Explicitly NOT from display names.
+    ...(
+      [
+        ["warehouse", "warehouses"],
+        ["stockLocation", "stock_locations"],
+        ["truck", "trucks"],
+        ["mobileLocation", "mobile_locations"],
+      ] as const
+    ).map(([family, collection]) => ({
+      family, collection, ownerClass: "COMPANY" as const, ownerType: cmp,
+      ownerFields: [] as readonly string[],
+      inheritanceSource: "none -- this IS the root",
+      transfer: "HANDOFF" as const, companyScope: "SINGLE_COMPANY" as const,
+      backfillSource: "explicit governed configuration, Owner-supplied per site or vehicle -- never the record's display name",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "A company-boundary root. Populating these unblocks the location-derived families below.",
+    })),
+
+    // ═══════════════════════ COMPANY — location-derived (ruling D-10) ═══════════════════════
+    {
+      family: "inventoryTransaction", collection: "inventory_transactions", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the governed stock location's company", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "the stock location's operatingCompanyId, once D-9 is populated",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+    },
+    {
+      family: "inventoryAction", collection: "inventory_actions", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the governed stock location's company", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "the stock location's operatingCompanyId, once D-9 is populated",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+    },
+    {
+      family: "receivingOrder", collection: "receiving_orders", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the receiving location's company", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "the destination location's operatingCompanyId, once D-9 is populated",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "Receiving has one destination, so it has one owning company. Unlike a transfer.",
+    },
+    {
+      family: "cycleCount", collection: "cycle_counts", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the counted location's company", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "the counted location's operatingCompanyId, once D-9 is populated",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+    },
+    {
+      family: "purchaseOrder", collection: "purchase_orders", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the buying company", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "the ship-to location's operatingCompanyId, once D-9 is populated -- to be confirmed against purchasing semantics",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+    },
+    {
+      family: "reorderPurchaseOrder", collection: "reorder_purchase_orders", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the buying company", transfer: "IMMUTABLE",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: "the linked Reorder Request's company, once that resolves",
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+    },
+
+    // ═══════════════════════ COMPANY — CROSS-COMPANY CAPABLE (ruling D-10) ═══════════════════════
+    {
+      family: "transferOrder", collection: "transfer_orders", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "UNRESOLVED -- see note", transfer: "IMMUTABLE",
+      companyScope: "CROSS_COMPANY_CAPABLE",
+      backfillSource: null,
+      unresolvedPolicy: "remains OWNERLESS -- a single owner may be the wrong shape for this family",
+      note: "A transfer has a source AND a destination location, and a Taylor->Ventana move is legitimate. Choosing either end as 'the owner' would record a false fact. This family likely needs PARTICIPATING-COMPANY fields rather than one owner -- an Owner decision, not an implementation choice.",
+    },
+
+    // ═══════════════════════ COMPANY — equipment (ruling D-12) ═══════════════════════
+    {
+      family: "equipment", collection: "equipment", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [], inheritanceSource: "the operating company that carries the record", transfer: "HANDOFF",
+      companyScope: "SINGLE_COMPANY",
+      backfillSource: null,
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "Stays company-owned and stays DISTINCT from explicitTitleHolder -- a CUSTOMER may hold title without owning the internal record. No deterministic source exists: every candidate on the record (customer, title holder, location name) is a prohibited proxy. No mass assignment.",
+    },
+
+    // ═══════════════════════ REFERENCE — company-neutral (ruling D-11) ═══════════════════════
+    //
+    // The question the ruling posed for each: "Can Taylor and Ventana both legitimately use the
+    // same record?" For all of these the answer is yes -- a part number, a manufacturer, an
+    // equipment model and a supplier's catalog entry describe the WORLD, not our side of it. Two
+    // operating companies referencing one part is the normal case, not a data problem.
+    //
+    // Classifying them REFERENCE removes them from the owner-required invariant. That is a
+    // deliberate narrowing of the original "every record" wording, per ruling D-8, and it is not
+    // the same statement as "these are ownerless".
+    ...(
+      [
+        ["part", "parts"],
+        ["partAlias", "part_aliases"],
+        ["partSupplierItem", "part_supplier_items"],
+        ["manufacturer", "manufacturers"],
+        ["equipmentModel", "equipment_models"],
+        ["supplierCatalogItem", "supplier_catalog"],
+      ] as const
+    ).map(([family, collection]) => ({
+      family, collection, ownerClass: "REFERENCE" as const, ownerType: null,
+      ownerFields: [] as readonly string[], inheritanceSource: null,
+      transfer: "N_A" as const, companyScope: "COMPANY_NEUTRAL" as const,
+      backfillSource: null, unresolvedPolicy: NOT_OWNABLE,
+      note: "Shared catalog/reference data. Both operating companies may legitimately use the same record.",
+    })),
+    {
+      // Held apart from the block above ON PURPOSE. A supplier's IDENTITY is shared, but a supplier
+      // RELATIONSHIP -- terms, pricing, account numbers, approval -- may well be company-specific.
+      // The census cannot answer which of those `suppliers` actually represents, and guessing would
+      // either fabricate ownership or wrongly exempt a company-scoped record. Flagged for ruling.
+      family: "supplier", collection: "suppliers", ownerClass: "REFERENCE", ownerType: null,
+      ownerFields: [], inheritanceSource: null, transfer: "N_A", companyScope: "COMPANY_NEUTRAL",
+      backfillSource: null,
+      unresolvedPolicy: "PROVISIONALLY not ownable -- pending the Owner ruling in the note",
+      note: "OPEN QUESTION. Supplier identity is shared; supplier terms may be per-company. If `suppliers` carries commercial terms, it is company-scoped and belongs in COMPANY, not REFERENCE.",
+    },
+
+    // ═══════════════════════ EXCLUDED — not business records ═══════════════════════
+    //
+    // Recorded rather than omitted, so a reader can see these were considered. A collection absent
+    // from this file entirely would be indistinguishable from one nobody thought about.
+    ...(
+      [
+        ["user", "users", "identity authority -- a subject of ownership, not an object"],
+        ["employee", "employees", "person authority -- a subject of ownership, not an object"],
+        ["technician", "fieldops_technicians", "person authority"],
+        ["permission", "permissions", "access authority, governed separately"],
+        ["role", "roles", "access authority, governed separately"],
+        ["roleAssignment", "roleAssignments", "access authority, governed separately"],
+        ["accessRequest", "accessRequests", "access authority, governed separately"],
+        ["auditEvent", "auditEvents", "the audit trail itself -- immutable, client-deny-all"],
+        ["reportDefinition", "reportDefinitions", "platform record with its own private-by-owner model -- do not disturb"],
+        ["salesTerritory", "sales_territories", "coverage is not ownership, credit, commission or security"],
+        ["coverageAssignment", "commercial_coverage_assignments", "coverage is not ownership"],
+        ["counter", "counters", "infrastructure"],
+        ["inventorySyncStatus", "inventory_sync_status", "infrastructure"],
+        ["locationTruckClaim", "location_truck_claims", "infrastructure"],
+        ["technicianAvailability", "technician_working_availability", "person-scoped scheduling"],
+        ["technicianBlockedTime", "technician_blocked_time", "person-scoped scheduling"],
+        ["operatingCompany", "operating_companies", "the company authority itself -- companies are not owned by companies"],
+      ] as const
+    ).map(([family, collection, note]) => ({
+      family, collection, ownerClass: "EXCLUDED" as const, ownerType: null,
+      ownerFields: [] as readonly string[], inheritanceSource: null,
+      transfer: "N_A" as const, companyScope: "COMPANY_NEUTRAL" as const,
+      backfillSource: null, unresolvedPolicy: NOT_OWNABLE, note,
+    })),
+  ].map((row) => Object.freeze(row)) as OwnershipFamily[],
+);
 
 const BY_FAMILY = new Map(OWNERSHIP_MATRIX.map((f) => [f.family, f] as const));
 
@@ -101,7 +343,29 @@ export function ownershipFamily(family: unknown): OwnershipFamily | null {
   return typeof family === "string" ? (BY_FAMILY.get(family) ?? null) : null;
 }
 
-/** Families whose ownership may legitimately be transferred. The rest are historical. */
+/**
+ * The families the owner-required invariant actually applies to (ruling D-8: every OWNABLE record).
+ * REFERENCE and EXCLUDED families are not counted, not censused, and not backfilled.
+ */
+export function ownableFamilies(): readonly OwnershipFamily[] {
+  return OWNERSHIP_MATRIX.filter((f) => f.ownerClass === "PERSON" || f.ownerClass === "COMPANY");
+}
+
+/** Families whose ownership may legitimately be transferred. The rest are historical or not owned. */
 export function transferableFamilies(): readonly OwnershipFamily[] {
   return OWNERSHIP_MATRIX.filter((f) => f.transfer === "HANDOFF");
+}
+
+/**
+ * Families where a single owning company may be the WRONG SHAPE (ruling D-10). Named as a function
+ * rather than left implicit, because a backfill plan must treat these differently from a family
+ * that merely lacks a source: one is waiting for data, the other is waiting for a model decision.
+ */
+export function crossCompanyFamilies(): readonly OwnershipFamily[] {
+  return OWNERSHIP_MATRIX.filter((f) => f.companyScope === "CROSS_COMPANY_CAPABLE");
+}
+
+/** Ownable families with no deterministic backfill source. These need business input, not code. */
+export function familiesWithoutBackfillSource(): readonly OwnershipFamily[] {
+  return ownableFamilies().filter((f) => f.backfillSource === null);
 }

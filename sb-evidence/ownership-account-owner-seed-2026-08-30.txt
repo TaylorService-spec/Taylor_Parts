@@ -1,0 +1,15 @@
+Target: platform-sandbox (eos-platform-sandbox), role=sandbox
+Owner cohort (salesperson, active, user-linked): cw-emp-034, cw-emp-035, cw-emp-036, cw-emp-037
+Assignor (salesManager): cw-emp-033 (Adaeze Vance)
+
+accounts scanned:        103
+  not fixture (skipped): 3
+  already owned:         100
+  no stable index:       0
+  to assign:             0
+
+planned distribution:
+
+first five:
+
+DRY RUN — nothing was written. Re-run with --apply to assign 0 account owner(s).

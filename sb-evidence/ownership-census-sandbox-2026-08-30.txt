@@ -1,46 +1,41 @@
 Ownership census — eos-platform-sandbox
 
-collection                    type        scan RESOLVED OWNERLESS INVALID UNKNOWN  AMBIG  flags
------------------------------------------------------------------------------------------------
-accounts                      USER         103        0       103       0       0      0
-contacts                      USER         339        0       339       0       0      0
-locations                     USER         183        0       183       0       0      0
-opportunities                 USER          14       14         0       0       0      0
-sales_agreements              USER           5        5         0       0       0      0
-sales_orders                  USER          17       17         0       0       0      0
-invoices                      USER           1        0         1       0       0      0
-payments                      USER           0        0         0       0       0      0
-payment_applications          USER           0        0         0       0       0      0
-invoice_adjustments           USER           0        0         0       0       0      0
-refunds                       USER           0        0         0       0       0      0
-fieldops_jobs                 USER          45        0        45       0       0      0
-fieldops_wos                  USER          30        0        30       0       0      0
-reorder_requests              USER           6        0         6       0       0      0
-parts                         COMPANY       52        0        52       0       0      0
-part_aliases                  COMPANY       21        0        21       0       0      0
-part_supplier_items           COMPANY        7        0         7       0       0      0
-manufacturers                 COMPANY        0        0         0       0       0      0
-equipment_models              COMPANY       48        0        48       0       0      0
-suppliers                     COMPANY        2        0         2       0       0      0
-supplier_catalog              COMPANY        0        0         0       0       0      0
-equipment                     COMPANY      288        0       288       0       0      0
-warehouses                    COMPANY        5        0         5       0       0      0
-stock_locations               COMPANY        5        0         5       0       0      0
-mobile_locations              COMPANY        7        0         7       0       0      0
-trucks                        COMPANY        2        0         2       0       0      0
-purchase_orders               COMPANY        0        0         0       0       0      0
-reorder_purchase_orders       COMPANY        3        0         3       0       0      0
-receiving_orders              COMPANY        2        0         2       0       0      0
-transfer_orders               COMPANY       47        0        47       0       0      0
-cycle_counts                  COMPANY       24        0        24       0       0      0
-inventory_transactions        COMPANY      103        0       103       0       0      0
-inventory_actions             COMPANY        0        0         0       0       0      0
------------------------------------------------------------------------------------------------
-TOTAL                                     1359       36      1323       0       0      0
+Scope: OWNABLE families only (ruling D-8). 26 of 50 declared families are ownable; REFERENCE and EXCLUDED families are classified out of the invariant, not counted as a backlog.
+
+collection                    class    type        scan RESOLVED OWNERLESS INVALID UNKNOWN  AMBIG  flags
+--------------------------------------------------------------------------------------------------------
+accounts                      PERSON   USER         103      100         3       0       0      0
+contacts                      PERSON   USER         339        0       339       0       0      0
+locations                     PERSON   USER         183        0       183       0       0      0
+opportunities                 PERSON   USER          14       14         0       0       0      0
+sales_agreements              PERSON   USER           5        5         0       0       0      0
+sales_orders                  PERSON   USER          17       17         0       0       0      0
+invoices                      COMPANY  COMPANY        1        0         1       0       0      0
+payments                      COMPANY  COMPANY        0        0         0       0       0      0
+payment_applications          COMPANY  COMPANY        0        0         0       0       0      0
+invoice_adjustments           COMPANY  COMPANY        0        0         0       0       0      0
+refunds                       COMPANY  COMPANY        0        0         0       0       0      0
+fieldops_jobs                 COMPANY  COMPANY       45        0        45       0       0      0
+fieldops_wos                  COMPANY  COMPANY       30        0        30       0       0      0
+reorder_requests              COMPANY  COMPANY        6        0         6       0       0      0
+warehouses                    COMPANY  COMPANY        5        0         5       0       0      0
+stock_locations               COMPANY  COMPANY        5        0         5       0       0      0
+trucks                        COMPANY  COMPANY        2        0         2       0       0      0
+mobile_locations              COMPANY  COMPANY        7        0         7       0       0      0
+inventory_transactions        COMPANY  COMPANY      103        0       103       0       0      0
+inventory_actions             COMPANY  COMPANY        0        0         0       0       0      0
+receiving_orders              COMPANY  COMPANY        2        0         2       0       0      0
+cycle_counts                  COMPANY  COMPANY       24        0        24       0       0      0
+purchase_orders               COMPANY  COMPANY        0        0         0       0       0      0
+reorder_purchase_orders       COMPANY  COMPANY        3        0         3       0       0      0
+transfer_orders               COMPANY  COMPANY       47        0        47       0       0      0
+equipment                     COMPANY  COMPANY      288        0       288       0       0      0
+--------------------------------------------------------------------------------------------------------
+TOTAL                                              1229      136      1093       0       0      0
 
 Reason classification (non-RESOLVED):
   accounts
-        103  no accountOwner
+          3  no accountOwner
   contacts
         339  family has no ownership storage yet
   locations
@@ -53,36 +48,33 @@ Reason classification (non-RESOLVED):
          30  family has no ownership storage yet
   reorder_requests
           6  family has no ownership storage yet
-  parts
-         52  family has no ownership storage yet
-  part_aliases
-         21  family has no ownership storage yet
-  part_supplier_items
-          7  family has no ownership storage yet
-  equipment_models
-         48  family has no ownership storage yet
-  suppliers
-          2  family has no ownership storage yet
-  equipment
-        288  family has no ownership storage yet
   warehouses
           5  family has no ownership storage yet
   stock_locations
           5  family has no ownership storage yet
-  mobile_locations
-          7  family has no ownership storage yet
   trucks
           2  family has no ownership storage yet
-  reorder_purchase_orders
-          3  family has no ownership storage yet
-  receiving_orders
-          2  family has no ownership storage yet
-  transfer_orders
-         47  family has no ownership storage yet
-  cycle_counts
-         24  family has no ownership storage yet
+  mobile_locations
+          7  family has no ownership storage yet
   inventory_transactions
         103  family has no ownership storage yet
+  receiving_orders
+          2  family has no ownership storage yet
+  cycle_counts
+         24  family has no ownership storage yet
+  reorder_purchase_orders
+          3  family has no ownership storage yet
+  transfer_orders
+         47  family has no ownership storage yet
+  equipment
+        288  family has no ownership storage yet
 
-GATE: 1323 record(s) not resolved. Enforcement stays off.
+Family classification (ruling D-8):
+  COMPANY     20 families
+  EXCLUDED    17 families
+  PERSON      6 families
+  REFERENCE   7 families
+  REFERENCE (company-neutral, not counted): parts, part_aliases, part_supplier_items, manufacturers, equipment_models, supplier_catalog, suppliers
+
+GATE: 1093 record(s) not resolved. Enforcement stays off.
 This census is READ-ONLY and authorizes nothing. Backfill remains a separate Owner gate.

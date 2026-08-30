@@ -93,6 +93,15 @@ export function buildOwnershipHandoff(
       `"${String(input.family)}" is not a governed ownership family`,
     );
   }
+  // Ruling D-8: a REFERENCE or EXCLUDED family has no owner, so there is nothing to hand off. This
+  // is a DIFFERENT refusal from FAMILY_IMMUTABLE -- that one has an owner it may not move, this one
+  // has no owner at all, and collapsing them would tell a caller the wrong thing about the domain.
+  if (family.ownerClass !== "PERSON" && family.ownerClass !== "COMPANY") {
+    throw new OwnershipHandoffError(
+      "FAMILY_NOT_OWNABLE",
+      `${family.family} is ${family.ownerClass} -- it has no owner to hand off`,
+    );
+  }
   if (family.transfer === "IMMUTABLE") {
     throw new OwnershipHandoffError(
       "FAMILY_IMMUTABLE",

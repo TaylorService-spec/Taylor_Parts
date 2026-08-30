@@ -27,7 +27,7 @@ import {
   isTypedOwner,
   typedOwner,
 } from "../lib/ownership/typedOwner.js";
-import { OWNERSHIP_MATRIX, ownershipFamily } from "../lib/ownership/ownershipMatrix.js";
+import { OWNERSHIP_MATRIX, crossCompanyFamilies, ownershipFamily } from "../lib/ownership/ownershipMatrix.js";
 import {
   buildOwnershipHandoff,
   OwnershipHandoffError,
@@ -162,12 +162,50 @@ test("non-collapse: no family reads currentOwner, assignedTo, createdBy, or a co
       assert.ok(!forbidden.includes(field), `${family.family} reads ${field} as ownership`);
     }
   }
-  // Coverage and territory are not in the matrix at all.
-  const collections = OWNERSHIP_MATRIX.map((f) => f.collection);
-  assert.ok(!collections.includes("sales_territories"));
-  assert.ok(!collections.includes("commercial_coverage_assignments"));
-  assert.ok(!collections.includes("auditEvents"));
-  assert.ok(!collections.includes("reportDefinitions"));
+  // Coverage, territory, the audit trail and report definitions ARE in the matrix now -- recorded
+  // as EXCLUDED rather than omitted, so a reader can see they were considered rather than
+  // forgotten. What must hold is that they are not ownable and carry no owner type.
+  for (const collection of ["sales_territories", "commercial_coverage_assignments", "auditEvents", "reportDefinitions"]) {
+    const row = OWNERSHIP_MATRIX.find((f) => f.collection === collection);
+    assert.ok(row, `${collection} should be recorded as EXCLUDED, not omitted`);
+    assert.equal(row.ownerClass, "EXCLUDED");
+    assert.equal(row.ownerType, null);
+  }
+});
+
+test("no backfill source anywhere names a prohibited proxy", () => {
+  // Rulings D-6/D-11/D-12 forbid deriving ownership from these. A matrix that named one as a
+  // backfill source would launder a prohibited inference into a plan.
+  const prohibited = /lineOfBusiness|display name|displayName|title holder|titleHolder|customer identity|creator|createdBy|auth uid|territory|coverage|sales history/i;
+  for (const f of OWNERSHIP_MATRIX) {
+    if (!f.backfillSource) continue;
+    // The Account row NAMES these to say they are forbidden. Allow a source that is explicitly a
+    // prohibition statement, reject one that proposes using them.
+    const isProhibitionStatement = /forbids|never the record's display name/i.test(f.backfillSource);
+    if (isProhibitionStatement) continue;
+    assert.ok(!prohibited.test(f.backfillSource), `${f.family} backfillSource names a prohibited proxy: ${f.backfillSource}`);
+  }
+});
+
+test("every ownable family declares a policy for records that cannot resolve", () => {
+  for (const f of OWNERSHIP_MATRIX) {
+    assert.ok(f.unresolvedPolicy && f.unresolvedPolicy.length > 0, `${f.family} has no unresolvedPolicy`);
+    if (f.ownerClass === "PERSON" || f.ownerClass === "COMPANY") {
+      assert.ok(f.ownerType, `${f.family} is ownable and must declare an owner type`);
+    } else {
+      assert.equal(f.ownerType, null, `${f.family} is ${f.ownerClass} and must not declare an owner type`);
+      assert.equal(f.transfer, "N_A", `${f.family} is ${f.ownerClass} and cannot be handed off`);
+    }
+  }
+});
+
+test("D-10: transfer_orders is the cross-company family, and it proposes no single owner", () => {
+  const transfers = ownershipFamily("transferOrder");
+  assert.equal(transfers.companyScope, "CROSS_COMPANY_CAPABLE");
+  // A Taylor -> Ventana move has no single owning company. Picking an end would record a false
+  // fact, so there is deliberately no backfill source and the records stay ownerless.
+  assert.equal(transfers.backfillSource, null);
+  assert.deepEqual(crossCompanyFamilies().map((f) => f.family), ["transferOrder"]);
 });
 
 // =========================== D-4: creation owner resolution ===========================
@@ -326,10 +364,15 @@ test("the handoff refuses an owner type the family does not take, a no-op, and a
   const base = { recordId: "r-1", previousOwner: null, source: "DIRECT_HANDOFF" };
   const ctx = { actorUid: "uid-admin" };
 
-  // A person cannot own `parts`; a company cannot own an Opportunity.
+  // A person cannot own a warehouse; a company cannot own an Opportunity.
   assert.throws(
-    () => buildOwnershipHandoff({ ...base, family: "part", newOwner: { type: "USER", id: "emp-1" } }, ctx),
+    () => buildOwnershipHandoff({ ...base, family: "warehouse", newOwner: { type: "USER", id: "emp-1" } }, ctx),
     (e) => e.code === "OWNER_TYPE_MISMATCH",
+  );
+  // And a REFERENCE family has no owner to hand off at all -- `parts` is company-neutral now.
+  assert.throws(
+    () => buildOwnershipHandoff({ ...base, family: "part", newOwner: { type: "COMPANY", id: "taylor" } }, ctx),
+    (e) => e.code === "FAMILY_NOT_OWNABLE",
   );
   assert.throws(
     () => buildOwnershipHandoff({ ...base, family: "opportunity", newOwner: { type: "COMPANY", id: "taylor" } }, ctx),
@@ -343,8 +386,14 @@ test("the handoff refuses an owner type the family does not take, a no-op, and a
       ),
     (e) => e.code === "NO_OP",
   );
+  // auditEvent IS in the matrix, as EXCLUDED -- so it refuses as NOT_OWNABLE, which says something
+  // true about the domain. A name that is in no matrix row at all is the UNKNOWN case.
   assert.throws(
     () => buildOwnershipHandoff({ ...base, family: "auditEvent", newOwner: { type: "USER", id: "emp-1" } }, ctx),
+    (e) => e.code === "FAMILY_NOT_OWNABLE",
+  );
+  assert.throws(
+    () => buildOwnershipHandoff({ ...base, family: "sandwich", newOwner: { type: "USER", id: "emp-1" } }, ctx),
     (e) => e.code === "FAMILY_UNKNOWN",
   );
   assert.throws(

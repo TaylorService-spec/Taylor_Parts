@@ -21,7 +21,7 @@ import {
   deriveEmployeeRefOwner,
   type OwnerDerivation,
 } from "./typedOwner";
-import { OWNERSHIP_MATRIX, type OwnershipFamily } from "./ownershipMatrix";
+import { OWNERSHIP_MATRIX, ownableFamilies, type OwnershipFamily } from "./ownershipMatrix";
 
 export const MAX_SAMPLE_IDS = 10;
 
@@ -52,6 +52,9 @@ export type ReasonTally = Record<string, number>;
 export interface CensusFamilyReport {
   family: string;
   collection: string;
+  ownerClass: string;
+  // Never null on a census row: only PERSON and COMPANY families are censused, and both carry an
+  // owner type. REFERENCE/EXCLUDED families -- the ones with a null type -- are not scanned at all.
   ownerType: string;
   scanned: number;
   truncated: boolean;
@@ -65,6 +68,7 @@ export interface CensusFamilyReport {
 export interface CensusFamilyError {
   family: string;
   collection: string;
+  ownerClass: string;
   ownerType: string;
   error: string;
 }
@@ -136,7 +140,8 @@ export function censusFamily(
   return {
     family: family.family,
     collection: family.collection,
-    ownerType: family.ownerType,
+    ownerClass: family.ownerClass,
+    ownerType: family.ownerType ?? "",
     scanned: documents.length,
     truncated,
     counts,
@@ -178,5 +183,14 @@ export function censusGate(reports: readonly (CensusFamilyReport | CensusFamilyE
   };
 }
 
-/** Every family the census must cover. Exported so the CLI cannot iterate a narrower list. */
-export const CENSUS_FAMILIES: readonly OwnershipFamily[] = OWNERSHIP_MATRIX;
+/**
+ * Every family the census must cover: the OWNABLE ones (ruling D-8). REFERENCE and EXCLUDED
+ * families are deliberately absent -- they are not ownerless-in-error, they are not owned, and
+ * counting them would report a backlog that no decision could ever clear.
+ *
+ * Exported so the CLI cannot iterate a narrower list of its own choosing.
+ */
+export const CENSUS_FAMILIES: readonly OwnershipFamily[] = ownableFamilies();
+
+/** The full matrix, for reporting the classification itself rather than the ownership counts. */
+export const ALL_FAMILIES: readonly OwnershipFamily[] = OWNERSHIP_MATRIX;

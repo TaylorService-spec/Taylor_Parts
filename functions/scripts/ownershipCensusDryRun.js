@@ -38,7 +38,7 @@ const { getFirestore } = require("firebase-admin/firestore");
 // The classification and gate logic live in lib/ownership/ownershipCensus.js, under typecheck and
 // under test (test/ownershipCensus.test.mjs). This file is only I/O and formatting -- the numbers
 // that decide whether enforcement may be enabled are not computed in an untested script.
-const { CENSUS_FAMILIES, censusFamily, censusGate } = require("../lib/ownership/ownershipCensus.js");
+const { ALL_FAMILIES, CENSUS_FAMILIES, censusFamily, censusGate } = require("../lib/ownership/ownershipCensus.js");
 
 function parseArgs(argv) {
   const out = {};
@@ -81,7 +81,7 @@ async function main() {
       // A collection that does not exist yet reads as empty, not as an error -- but a permission
       // or index failure is real and must NOT be counted as "zero unresolved". It is recorded as a
       // failed family so the gate cannot be passed on a family nobody could actually read.
-      rows.push({ family: family.family, collection: family.collection, ownerType: family.ownerType, error: err.message });
+      rows.push({ family: family.family, collection: family.collection, ownerClass: family.ownerClass, ownerType: family.ownerType ?? "", error: err.message });
     }
   }
 
@@ -94,8 +94,14 @@ async function main() {
   const col = (s, w) => String(s).padStart(w);
 
   console.log(`Ownership census — ${args.projectId}${limit ? ` (limit ${limit}/family)` : ""}\n`);
+  console.log(
+    `Scope: OWNABLE families only (ruling D-8). ${CENSUS_FAMILIES.length} of ${ALL_FAMILIES.length} ` +
+      "declared families are ownable; REFERENCE and EXCLUDED families are classified out of the " +
+      "invariant, not counted as a backlog.\n",
+  );
   const header =
     "collection".padEnd(30) +
+    "class".padEnd(9) +
     "type".padEnd(9) +
     col("scan", 7) +
     col("RESOLVED", 9) +
@@ -109,11 +115,12 @@ async function main() {
 
   for (const r of rows) {
     if (r.error) {
-      console.log(`${r.collection.padEnd(30)}${r.ownerType.padEnd(9)}  UNREADABLE: ${r.error}`);
+      console.log(`${r.collection.padEnd(30)}${r.ownerClass.padEnd(9)}${r.ownerType.padEnd(9)}  UNREADABLE: ${r.error}`);
       continue;
     }
     console.log(
       r.collection.padEnd(30) +
+        r.ownerClass.padEnd(9) +
         r.ownerType.padEnd(9) +
         col(r.scanned, 7) +
         col(r.counts.resolved, 9) +
@@ -128,7 +135,7 @@ async function main() {
   console.log("-".repeat(header.length));
   const scanned = rows.reduce((n, r) => n + (r.error ? 0 : r.scanned), 0);
   console.log(
-    "TOTAL".padEnd(39) +
+    "TOTAL".padEnd(48) +
       col(scanned, 7) +
       col(gate.totals.resolved, 9) +
       col(gate.totals.ownerless, 10) +
@@ -157,6 +164,16 @@ async function main() {
     for (const [reason, n] of entries) console.log(`    ${String(n).padStart(7)}  ${reason}`);
   }
   if (!anyReasons) console.log("  (none)");
+
+  // The classification itself, so the report says what was EXCLUDED from the count and why -- a
+  // gate that silently narrowed its own scope would be the same defect as one that silently
+  // truncated its scan.
+  const byClass = {};
+  for (const f of ALL_FAMILIES) byClass[f.ownerClass] = (byClass[f.ownerClass] ?? 0) + 1;
+  console.log("\nFamily classification (ruling D-8):");
+  for (const [k, n] of Object.entries(byClass).sort()) console.log(`  ${k.padEnd(11)} ${n} families`);
+  const neutral = ALL_FAMILIES.filter((f) => f.ownerClass === "REFERENCE").map((f) => f.collection);
+  console.log(`  REFERENCE (company-neutral, not counted): ${neutral.join(", ")}`);
 
   console.log(
     gate.assessable

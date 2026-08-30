@@ -16,20 +16,41 @@ import { ownershipFamily, OWNERSHIP_MATRIX } from "../lib/ownership/ownershipMat
 const accounts = ownershipFamily("account");
 const opportunities = ownershipFamily("opportunity");
 const parts = ownershipFamily("part");
+const warehouses = ownershipFamily("warehouse");
 
-test("the census covers EVERY family in the matrix -- a narrower list cannot be iterated", () => {
-  assert.equal(CENSUS_FAMILIES.length, OWNERSHIP_MATRIX.length);
+test("the census covers EVERY OWNABLE family, and only those (ruling D-8)", () => {
+  const ownable = OWNERSHIP_MATRIX.filter((f) => f.ownerClass === "PERSON" || f.ownerClass === "COMPANY");
   assert.deepEqual(
     CENSUS_FAMILIES.map((f) => f.family),
-    OWNERSHIP_MATRIX.map((f) => f.family),
+    ownable.map((f) => f.family),
   );
+  // REFERENCE and EXCLUDED are absent BY CLASSIFICATION, not by omission. Counting them would
+  // report a backlog no decision could ever clear -- there is no company that owns a part number.
+  const censused = new Set(CENSUS_FAMILIES.map((f) => f.family));
+  for (const f of OWNERSHIP_MATRIX) {
+    if (f.ownerClass === "REFERENCE" || f.ownerClass === "EXCLUDED") {
+      assert.ok(!censused.has(f.family), `${f.family} is ${f.ownerClass} and must not be censused`);
+      assert.equal(f.ownerType, null, `${f.family} is ${f.ownerClass} and must have no owner type`);
+    }
+  }
+  // And every censused family DOES have an owner type -- the census row's type column is never blank.
+  for (const f of CENSUS_FAMILIES) assert.ok(f.ownerType, `${f.family} is ownable and must declare an owner type`);
 });
 
-test("a family with no ownership storage counts as OWNERLESS, never as a clean zero", () => {
+test("REFERENCE families are classified out of the invariant, not counted as ownerless", () => {
+  // Ruling D-11: Taylor and Ventana may both legitimately use the same part. Assigning one of them
+  // would fabricate a fact to satisfy a sentence, so `parts` is company-NEUTRAL by classification.
+  assert.equal(parts.ownerClass, "REFERENCE");
+  assert.equal(parts.ownerType, null);
+  assert.equal(parts.companyScope, "COMPANY_NEUTRAL");
+  assert.match(parts.unresolvedPolicy, /not ownable/);
+});
+
+test("an ownable family with no ownership storage counts as OWNERLESS, never as a clean zero", () => {
   // Every company-owned family is in this state today. Reporting them as skipped-or-absent would
   // make the gate pass over the whole section.
-  assert.deepEqual(parts.ownerFields, []);
-  const out = classifyDocument(parts, { partNumber: "PRT-1" });
+  assert.deepEqual(warehouses.ownerFields, []);
+  const out = classifyDocument(warehouses, { name: "Main DC" });
   assert.equal(out.resolution, "OWNERLESS");
   assert.match(out.reason, /no ownership storage yet/);
 });
@@ -56,7 +77,9 @@ test("the five buckets are counted from the real derivations, and nothing is dou
 test("INVALID and UNKNOWN are separate columns, not one unresolved number", () => {
   // A malformed company id is data to repair; a well-formed unseeded one is a build that does not
   // recognise a legitimate value. Different work, so different columns.
-  const report = censusFamily({ ...parts, ownerFields: ["operatingCompanyId"] }, [
+  // `warehouse` is a COMPANY family (a physical company root, ruling D-9). `parts` is REFERENCE
+  // now, so it can no longer stand in for a company-owned family here.
+  const report = censusFamily({ ...ownershipFamily("warehouse"), ownerFields: ["operatingCompanyId"] }, [
     { id: "p1", data: { operatingCompanyId: "taylor" } },
     { id: "p2", data: { operatingCompanyId: "TAYLOR" } },
     { id: "p3", data: { operatingCompanyId: "third-company" } },
