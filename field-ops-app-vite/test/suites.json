@@ -570,6 +570,10 @@
       "runner": "node"
     },
     {
+      "file": "test/partsNorthStarProjection.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/partsShadowParity.test.mjs",
       "runner": "node"
     },

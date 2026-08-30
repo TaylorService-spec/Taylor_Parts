@@ -1424,6 +1424,13 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // query. `detail.part` above is the leaner display projection buildPartDetailView
   // produces and doesn't carry those fields.
   const canonicalPart = canonicalRead?.rows?.find((r) => r.partId === resolvedPartId) ?? null;
+  // DEFECT FIXED 2026-08-30 (Parts North Star P1). This row was gated on
+  // `canonicalPart?.manufacturerId` and could therefore never render: toPartView projected no
+  // manufacturer field at all, and the stored key is primaryManufacturerId, not manufacturerId --
+  // so the expression was wrong twice over and the Wave 6 decision below has never actually run.
+  // The projection now carries the value (domain/partMasterView.js), and the row reads it from the
+  // governed detail projection rather than re-deriving it from the raw read.
+  //
   // Wave 6 Owner Decision (2026-08-15): resolve the Manufacturer NAME via the trusted
   // inventory.catalog.read projection where it's available -- honest fallback to the raw
   // manufacturerId (never a fabricated name) when the catalog read isn't READY.
@@ -1525,11 +1532,11 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         <h3>Catalog</h3>
         <table className="fo-table">
           <tbody>
-            {canonicalPart?.manufacturerId && (
+            {part.manufacturerId && (
               <tr>
                 <td>Manufacturer</td>
                 <td>
-                  {manufacturerNamesById.get(canonicalPart.manufacturerId) ?? canonicalPart.manufacturerId}
+                  {manufacturerNamesById.get(part.manufacturerId) ?? part.manufacturerId}
                 </td>
               </tr>
             )}
@@ -1562,7 +1569,11 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
       {/* Barcode & Identifiers -- the missing front end for the governed part_aliases
           authority. Every control is protected/disabled and names the exact missing
           deployment, because the commands exist while no endpoint reaches them. */}
-      <PartIdentifiersSection partId={resolvedPartId} partNumber={canonicalPart?.partNumber} />
+      {/* ND-26 (Owner, 2026-08-30): the human-facing Part Number is internalPartNumber. This
+          prop was `canonicalPart?.partNumber` -- a key the projection has never carried under that
+          name -- so it was always undefined and the section silently labelled itself with the
+          document id instead. */}
+      <PartIdentifiersSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
 
       {loading ? (
         <p className="fo-muted">Loading stock position...</p>

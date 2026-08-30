@@ -56,8 +56,10 @@ export function isPartDetailBlocked(status) {
  * @param {Array} input.staticCatalog  the static compatibility catalog (PARTS_CATALOG).
  * @param {string} input.partId  the route param (=== sku === canonical partId).
  * @returns {{ status: string, part: object|null, meta: object }}
- *   READY  -> part = { partId, sku, name, category, unit, cost, price,
- *                      reorderThreshold, warehouseQty, identityState, provenance }
+ *   READY  -> part = { partId, sku, internalPartNumber, name, description, category, unit,
+ *                      status, controlType, stockingClass, manufacturerId,
+ *                      manufacturerPartNumber, oemStatus, cost, price, reorderThreshold,
+ *                      warehouseQty, identityState, provenance }
  *   others -> part = null.
  */
 export function buildPartDetailView(input = {}) {
@@ -100,8 +102,27 @@ export function buildPartDetailView(input = {}) {
     part: {
       partId: val("partId"),
       sku: row.key,
+      // ND-26 (Owner, 2026-08-30). internalPartNumber is the HUMAN-FACING Part Number; partId is the
+      // immutable document/routing key. They are different strings by contract -- internalPartNumber
+      // is mutable under governance, and its prior value is backfilled as a historical alias when it
+      // changes. They are carried side by side, and never one under the other's name.
+      //
+      // Null when the canonical row does not carry it (an approved STATIC_ONLY_EXCLUDED sku has no
+      // canonical document at all). A caller must render the absence, not substitute the key.
+      internalPartNumber: val("internalPartNumber"),
       name: val("name"),
+      description: val("description"),
       category: val("category"),
+      // Classification, in stored values. The WORDS are partVocabulary's job; a view model that
+      // carried labels would be a second vocabulary.
+      status: val("status"),
+      controlType: val("controlType"),
+      stockingClass: val("stockingClass"),
+      // Manufacturer identity, not a manufacturer NAME: resolving the id to a name needs the
+      // manufacturer catalogue read, which is a different authority and a different read.
+      manufacturerId: val("manufacturerId"),
+      manufacturerPartNumber: val("manufacturerPartNumber"),
+      oemStatus: val("oemStatus"),
       // canonical-preferred stocking unit (normalized code, e.g. "EACH"), replacing
       // the raw static token (e.g. "ea"). Canonical is authoritative on divergence.
       unit: val("stockingUnit"),
@@ -112,8 +133,16 @@ export function buildPartDetailView(input = {}) {
       warehouseQty: val("warehouseQty"),
       identityState: row.identityState,
       provenance: {
+        internalPartNumber: src("internalPartNumber"),
         name: src("name"),
+        description: src("description"),
         category: src("category"),
+        status: src("status"),
+        controlType: src("controlType"),
+        stockingClass: src("stockingClass"),
+        manufacturerId: src("manufacturerId"),
+        manufacturerPartNumber: src("manufacturerPartNumber"),
+        oemStatus: src("oemStatus"),
         unit: src("stockingUnit"),
         cost: src("cost"),
         price: src("price"),
