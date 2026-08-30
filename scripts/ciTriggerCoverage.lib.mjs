@@ -101,8 +101,13 @@ export function bucketChecks(checks) {
  *   NOT_CLEAN         settled, and something failed or a watched lane never ran.
  *   CLEAN             settled, every matching lane ran, none failed.
  */
-export function verdict({ checks, expected }) {
+export function verdict({ checks, expected, mergeable }) {
   const buckets = bucketChecks(checks);
+  // A CONFLICTING PR cannot produce checks at all: GitHub builds no merge commit, so no
+  // `pull_request` run is created -- not even for lanes with no path filter. This is what actually
+  // stranded PR #1619, and the tool sat on NOT_SETTLED waiting for runs that could never arrive.
+  // Reporting "not started" for a state that will never change is the same lie in a new costume.
+  if (mergeable === "CONFLICTING" && checks.length === 0) return { state: "CONFLICTED", buckets };
   if (checks.length === 0 && expected.length === 0) return { state: "NO_MATCHING_LANE", buckets };
   if (checks.length === 0) return { state: "NOT_SETTLED", buckets };
   if (buckets.PENDING.length > 0) return { state: "NOT_SETTLED", buckets };

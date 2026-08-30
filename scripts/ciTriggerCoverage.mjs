@@ -78,7 +78,7 @@ try {
   changed = sh("git", ["diff", "--name-only", mergeBase, "HEAD"]).split("\n").filter(Boolean);
 }
 
-const rollup = JSON.parse(sh("gh", ["pr", "view", prNumber, "--json", "statusCheckRollup,headRefOid"]));
+const rollup = JSON.parse(sh("gh", ["pr", "view", prNumber, "--json", "statusCheckRollup,headRefOid,mergeable"]));
 const head = rollup.headRefOid;
 const checks = rollup.statusCheckRollup ?? [];
 const ranJobNames = new Set(checks.map((c) => c.name));
@@ -113,7 +113,11 @@ console.log(`checks in rollup: ${checks.length}  (PASS ${byState.PASS.length} ·
 // cry-wolf failure this tool exists to avoid. It did precisely that on its own first use.
 //
 // So there are three answers, not two, and "not yet" is one of them.
-if (checks.length === 0 && expected.length === 0) {
+if (rollup.mergeable === "CONFLICTING" && checks.length === 0) {
+  console.log("CONFLICTED — the PR has merge conflicts, so GitHub creates no pull_request runs at all.");
+  console.log("Not even unfiltered lanes will appear. Resolve the conflict; checks cannot arrive before then.");
+  process.exitCode = 4;
+} else if (checks.length === 0 && expected.length === 0) {
   // A legitimate empty rollup: nothing in this PR's diff is watched by any pull_request workflow.
   // Distinct from "not started" -- here the checks are never coming, and saying NOT SETTLED would
   // wait forever for an event that cannot happen.

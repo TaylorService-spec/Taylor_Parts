@@ -104,3 +104,20 @@ test("workflowPaths: a declared filter is a list, an absent one is null", () => 
   // null means "watches everything", which is a different statement from "watches nothing".
   assert.equal(workflowPaths("on:\n  pull_request:\n  push:\n"), null);
 });
+
+test("DEFECT 6: a CONFLICTING PR can never produce checks, and must not read as 'not started'", () => {
+  // What actually stranded PR #1619. GitHub builds no merge commit for a conflicted PR, so it
+  // creates no pull_request runs -- not even for lanes with no path filter, which is why the
+  // absence looked like filtering and then like a slow start. The tool waited 40 minutes for runs
+  // that could never arrive. Saying "not started" about a state that will never change is the same
+  // lie as saying "passed" about a lane that never ran.
+  const expected = [{ present: false }];
+  assert.equal(verdict({ checks: [], expected, mergeable: "CONFLICTING" }).state, "CONFLICTED");
+  // Mergeable and empty is still just "not started".
+  assert.equal(verdict({ checks: [], expected, mergeable: "MERGEABLE" }).state, "NOT_SETTLED");
+  // And once checks DO exist, conflict is no longer the story the rollup tells.
+  assert.equal(
+    verdict({ checks: [{ name: "a", conclusion: "SUCCESS" }], expected: [{ present: true }], mergeable: "CONFLICTING" }).state,
+    "CLEAN",
+  );
+});
