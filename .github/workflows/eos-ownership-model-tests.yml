@@ -34,7 +34,6 @@ on:
       - "functions/test/ownershipCensus.test.mjs"
       - "functions/test/ownershipHandoffAudit.test.mjs"
       - "functions/test/ownershipProductionGuard.test.mjs"
-      - "functions/scripts/workOrderJobLineageCheck.js"
       - "functions/scripts/ownershipBackfillSimulation.js"
       - "functions/scripts/certificationWorld/data/serviceJobCompany.mjs"
       - "functions/scripts/certificationWorld/data/equipmentAssets.mjs"

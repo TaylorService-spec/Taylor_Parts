@@ -42,7 +42,7 @@ const ROOT_CONFIG = path.resolve(__dirname, "../../config/ownership/operating-co
 // Families the backfill does NOT touch, reported so the full picture is visible rather than only
 // the part that moves. Every one of these is deliberately excluded by a ruling.
 const OUT_OF_SCOPE = [
-  ["fieldops_wos", "no governed Job parent (R-12)"],
+  ["fieldops_wos", "NO_GOVERNED_COMPANY_SOURCE -- R-12 withdrawn, DECISIONS #143"],
   ["opportunities", "non-fixture commercial, no company provenance (R-14)"],
   ["sales_agreements", "non-fixture commercial (R-14)"],
   ["sales_orders", "non-fixture commercial (R-14)"],
