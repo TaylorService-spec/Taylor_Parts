@@ -421,7 +421,18 @@ export type AuditAction =
   | "setWorkOrderEstimatedDuration"
   | "setTechnicianWorkingAvailability"
   | "createTechnicianBlockedTime"
-  | "deleteTechnicianBlockedTime";
+  | "deleteTechnicianBlockedTime"
+  // EOS Ownership Model v1 (Owner ruling D-5, 2026-08-30) -- the explicit, auditable transfer of a
+  // governed business record from one owner to another. SCREAMING_SNAKE deliberately, because the
+  // Owner named this exact token in the ruling -- every other member here is verb+Noun, and the
+  // divergence is recorded rather than silently normalized. Ownership never changes implicitly, so
+  // this event is the ONLY legitimate record of a change, and the handoff command composes its
+  // facts (previousOwner/newOwner/source) into the existing details structure rather than starting
+  // a parallel audit subsystem. Runtime mirror lives in access/auditEventWriter.ts and the two
+  // MUST stay symmetrical -- the type is erased at build time, so a value arriving from a callable
+  // is checked against the runtime array or nowhere. Comment intentionally free of the
+  // statement-terminator character (adminCredentialEligibility slices this union at the first one)
+  | "OWNERSHIP_HANDOFF";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

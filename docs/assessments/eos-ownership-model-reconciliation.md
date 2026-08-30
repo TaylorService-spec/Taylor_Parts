@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Ratified
 date: 2026-08-30
 owner: Claude Code
 related_adrs: []
@@ -20,8 +20,10 @@ invariant: *every governed business record has an owner*; ownership is separate 
 and Assigned To; ownership never changes implicitly; every change is an explicit auditable
 handoff; typed `owner.type` + `owner.id`, never display names.
 
-This document is **reconciliation only**. No code, Rules, Functions or schema were changed.
-Per the authorization, backfill and enforcement are both gated behind review of what follows.
+The body of this document is **reconciliation only** — no code, Rules, Functions or schema were
+changed to write it, and it records the repository as it stood before any ownership work. The
+Owner's rulings and what they changed are in the **Addendum at the end**; read it before treating
+any "Today" column here as current. Backfill and enforcement remain gated either way.
 
 ## Scope of this assessment
 
@@ -188,3 +190,57 @@ action; dry-run mapping script; per-family Rules enforcement, split by risk.
 ## Open questions for Architecture Review
 
 D-1 through D-5 above. D-2 is blocking — section C of the matrix cannot proceed without it.
+
+---
+
+# Addendum — Owner rulings, 2026-08-30
+
+D-1 through D-5 were ratified the same day. The full text is DECISIONS #142; the authority map row
+is `docs/architecture/SYSTEM_AUTHORITIES.md`. What changed in the matrix above:
+
+- **D-1** — `accountOwner` stays authoritative storage; the typed owner is derived. Section A's
+  "Today" column is unchanged by design.
+- **D-2** — the missing company authority now exists as `operating_companies` with the governed ids
+  `taylor` / `ventana`. Section C is therefore unblocked *architecturally*, but every row in it
+  still reads OWNERLESS until `operatingCompanyId` is actually stored on those records — which is
+  backfill, and backfill is gated.
+- **D-3** — the equipment row's owner is the operating company. `explicitTitleHolder` is not an
+  ownership input and does not appear in the matrix's `ownerFields`.
+- **D-4** — Opportunity, Sales Agreement and Sales Order now inherit when no owner is supplied.
+  Their storage is unchanged; only the creation contracts relaxed.
+- **D-5** — `OWNERSHIP_HANDOFF` extends the existing audit writer.
+
+The owner type for person-owned families is **`USER`** (the ruling's word), not `EMPLOYEE` as this
+document originally proposed.
+
+## Open items carried forward
+
+**O-1 — the `USER` id namespace is the canonical Employee id.** The ruling named the *type*; it did
+not name the *identifier*. Every person-owned family already stores a canonical Employee id
+(`accountOwner.assignedToEmployeeId`, `ownerEmployeeId`), and only the Account additionally stores a
+linked user uid. Deriving a uid for an Opportunity would need a cross-collection lookup that can
+fail, which would make a *projection* fallible — and a fallible projection cannot be
+"read-normalized" as D-1 requires. The Employee id is the one identifier every family carries
+natively, so the derivation uses it. Confirmation wanted; changing it later is a change to one
+function.
+
+**O-2 — an explicit deny-all Rules block for `operating_companies`.** Firestore denies every client
+read and write to a collection no rule matches, so the collection is already fail-closed without a
+Rules change, which is why this pass made none. An explicit `allow read, write: if false` block
+matching the convention the `refunds` block uses would change no behavior and would make the denial
+legible to a reader of the Rules file rather than implied by absence. Tier 2, so it is not taken
+autonomously — and there is a second, harder reason to leave it: `firestore.rules` is **hash-anchored
+to the live deploy** (`functions/test/verifyTruckRegistryDeployment.test.js` asserts the committed
+file's sha256 against the governed live-deploy baseline). Any byte change, a comment included,
+diverges that hash and fails the verifier until a governed deploy updates the baseline. So even a
+behavior-free clarity edit here costs a Rules deploy. It is worth doing WITH the enforcement change,
+not before it.
+
+**O-3 — the census cannot be run from a repository session.** It needs Admin-SDK credentials against
+a real target, which is a separately authorized data action. The classifier is written, typed and
+unit-tested (`functions/test/ownershipCensus.test.mjs`) so the numbers it will produce are checkable
+before it is ever pointed at data.
+
+**O-4 — three modules each declare their own `ACCOUNTS_COLLECTION = "accounts"`.** A fourth was not
+added; consolidating them into `constants/collections.ts` is a worthwhile tidy that is not this
+change's business.

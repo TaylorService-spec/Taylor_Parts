@@ -70,6 +70,7 @@ import {
 import { buildTransitionPatch, OpportunityCommandError } from "./opportunityCommands";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./opportunityCallables";
 import { isChannel, type SalesChannel } from "./opportunityLifecycle";
+import { deriveEmployeeRefOwner } from "../ownership/typedOwner";
 
 // The shared OpportunityDoc describes only what Sales Order derivation needs. Closing as WON
 // also reads the LIFECYCLE fields, so this narrows the same document one step further rather
@@ -81,7 +82,7 @@ type WonOpportunityDoc = OpportunityDoc & {
 
 export interface CloseOpportunityAsWonInput {
   opportunityId: string;
-  ownerEmployeeId: string;
+  ownerEmployeeId?: string;
   salesChannel: SalesChannel;
   locationId?: string | null;
   customerPO?: string | null;
@@ -280,6 +281,10 @@ export async function persistCloseOpportunityAsWon(
       {
         accountId: opp.accountId,
         ownerEmployeeId: input.ownerEmployeeId,
+        // Ruling D-4: the Opportunity's own owner is the default for the Sales Order it produces.
+        // `opp` was read inside this transaction, so the inherited owner is the one in force at
+        // commit -- not one that could have been handed off between the read and the write.
+        inheritedOwner: deriveEmployeeRefOwner(opp as unknown as Record<string, unknown>),
         salesChannel: input.salesChannel,
         // The caller's own values still win where supplied; the Agreement fills what was left out.
         locationId: input.locationId ?? fromAgreement.locationId,
@@ -399,8 +404,15 @@ export const closeOpportunityAsWon = onCall({ region: "us-central1" }, async (re
   if (typeof data.opportunityId !== "string" || data.opportunityId.trim().length === 0) {
     throw new HttpsError("invalid-argument", "opportunityId is required.");
   }
-  if (typeof data.ownerEmployeeId !== "string" || data.ownerEmployeeId.trim().length === 0) {
-    throw new HttpsError("invalid-argument", "ownerEmployeeId (canonical Employee) is required.");
+  // Ruling D-4: ownerEmployeeId is now OPTIONAL here. An omitted owner is no longer rejected at the
+  // door -- it falls through to inheritance from the Opportunity, and the builder still REFUSES if
+  // nothing resolves. A supplied value is still shape-checked, because a caller that sends a
+  // non-string or a blank string means to set an owner and got it wrong -- that is a bad payload,
+  // not an omission, and silently inheriting over it would hide the mistake.
+  if (data.ownerEmployeeId !== undefined && data.ownerEmployeeId !== null) {
+    if (typeof data.ownerEmployeeId !== "string" || data.ownerEmployeeId.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "ownerEmployeeId, when provided, must be a non-empty string.");
+    }
   }
   if (!isChannel(data.salesChannel)) throw new HttpsError("invalid-argument", "salesChannel is invalid.");
   if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
@@ -416,7 +428,8 @@ export const closeOpportunityAsWon = onCall({ region: "us-central1" }, async (re
       tx,
       {
         opportunityId: data.opportunityId.trim(),
-        ownerEmployeeId: data.ownerEmployeeId.trim(),
+        // undefined travels through to the builder, which inherits the Opportunity's owner.
+        ownerEmployeeId: typeof data.ownerEmployeeId === "string" ? data.ownerEmployeeId.trim() : undefined,
         salesChannel: data.salesChannel,
         locationId: typeof data.locationId === "string" ? data.locationId.trim() : null,
         customerPO: typeof data.customerPO === "string" ? data.customerPO.trim() : null,

@@ -54,6 +54,7 @@ import {
   type DocumentData,
 } from "firebase-admin/firestore";
 import type { AuditAction, AuditOutcome, Scope, ScopeType } from "../types/access";
+import { isTypedOwner, type TypedOwner } from "../ownership/typedOwner";
 
 const AUDIT_EVENTS_COLLECTION = "auditEvents";
 const MAX_SUMMARY_LENGTH = 500;
@@ -224,6 +225,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "setTechnicianWorkingAvailability",
   "createTechnicianBlockedTime",
   "deleteTechnicianBlockedTime",
+  // EOS Ownership Model v1 (Owner ruling D-5, 2026-08-30) -- runtime mirror of the
+  // OWNERSHIP_HANDOFF AuditAction union member (types/access.ts). Symmetry between the two is the
+  // whole point: the union is erased at build time, so adding to only one compiles cleanly and
+  // fails at runtime. Asserted by test/ownershipHandoffAudit.test.mjs.
+  "OWNERSHIP_HANDOFF",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
@@ -309,7 +315,39 @@ export interface RecordAuditEventInput {
   droppedFieldIds?: string[];
   droppedPredicateFieldIds?: string[];
   truncated?: boolean;
+  // EOS Ownership Model v1 (Owner ruling D-5, 2026-08-30) -- the four ownership-handoff facts
+  // this writer had no field to carry. Added HERE, to the same writer, following the exact
+  // precedent Issue #325 set when it added five report-only fields: the ruling's instruction was
+  // to "compose these facts into that governed structure rather than inventing a parallel audit
+  // subsystem", and a generic free-form details bag would have been the parallel subsystem in
+  // disguise -- unvalidated, unqueryable, and able to carry anything.
+  //
+  // The ruling's other required facts already have homes and are NOT duplicated here:
+  //   objectId  -> objectId (above)   objectType -> targetType
+  //   actor     -> actorUid           timestamp  -> the writer's own server timestamp (`at`)
+  //
+  // previousOwner is nullable on purpose: the first handoff of a record that had no owner is a
+  // real, expected event, and forcing a placeholder there would fabricate an owner that never
+  // existed.
+  previousOwner?: TypedOwner | null;
+  newOwner?: TypedOwner;
+  handoffReason?: string;
+  handoffSource?: OwnershipHandoffSource;
 }
+
+// The closed set the ruling enumerated. A handoff must say which authority it came from -- an
+// admin correcting a mistake and a customer-review reassignment are different acts, and a later
+// reader of the trail cannot tell them apart from the owner values alone.
+export const OWNERSHIP_HANDOFF_SOURCES = [
+  "DIRECT_HANDOFF",
+  "CUSTOMER_HANDOFF_REVIEW",
+  "ADMIN_CORRECTION",
+] as const;
+
+export type OwnershipHandoffSource = (typeof OWNERSHIP_HANDOFF_SOURCES)[number];
+
+const OWNERSHIP_HANDOFF_ACTION: AuditAction = "OWNERSHIP_HANDOFF";
+const MAX_HANDOFF_REASON_LENGTH = 500;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -388,15 +426,89 @@ function assertValid(input: RecordAuditEventInput): void {
   const isReportAction = REPORT_AUDIT_ACTIONS.includes(input.action as AuditAction);
   const isReportRowFactAction = REPORT_ROW_FACT_ACTIONS.has(input.action as AuditAction);
 
-  if (isReportAction) {
+  // Ruling D-5: "Use objectId for the record being handed off." So OWNERSHIP_HANDOFF joins the
+  // report actions as a legitimate objectId carrier -- and, like them, REQUIRES it. A handoff
+  // event that does not name the record it moved is not an audit trail.
+  const isHandoffAction = input.action === OWNERSHIP_HANDOFF_ACTION;
+  if (isReportAction || isHandoffAction) {
     if (!input.objectId || typeof input.objectId !== "string") {
-      throw new AuditEventValidationError("objectId is required for a report AuditAction");
+      throw new AuditEventValidationError(
+        isHandoffAction
+          ? "objectId is required for OWNERSHIP_HANDOFF"
+          : "objectId is required for a report AuditAction",
+      );
     }
     if (input.objectId.length > MAX_FIELD_ID_LENGTH) {
       throw new AuditEventValidationError(`objectId exceeds ${MAX_FIELD_ID_LENGTH} characters`);
     }
   } else if (input.objectId !== undefined) {
-    throw new AuditEventValidationError("objectId is only valid for a report AuditAction");
+    throw new AuditEventValidationError(
+      "objectId is only valid for a report AuditAction or OWNERSHIP_HANDOFF",
+    );
+  }
+
+  // The four handoff fields are validated UNCONDITIONALLY, the same way the report fields are, so
+  // a caller can never attach ownership-shaped facts to an unrelated action by mistake.
+  if (isHandoffAction) {
+    if (!isTypedOwner(input.newOwner)) {
+      throw new AuditEventValidationError(
+        "newOwner is required for OWNERSHIP_HANDOFF and must be a typed owner",
+      );
+    }
+    // null is the legitimate "this record had no owner before" value. undefined is not -- an
+    // omitted previousOwner is a caller that forgot, and the two must not read the same in the
+    // trail.
+    if (input.previousOwner === undefined) {
+      throw new AuditEventValidationError(
+        "previousOwner is required for OWNERSHIP_HANDOFF (use null when the record had no owner)",
+      );
+    }
+    if (input.previousOwner !== null && !isTypedOwner(input.previousOwner)) {
+      throw new AuditEventValidationError("previousOwner must be a typed owner or null");
+    }
+    if (
+      input.previousOwner !== null &&
+      input.previousOwner.type === input.newOwner.type &&
+      input.previousOwner.id === input.newOwner.id
+    ) {
+      throw new AuditEventValidationError(
+        "previousOwner and newOwner are identical -- a handoff that moves nothing is not an event",
+      );
+    }
+    if (!OWNERSHIP_HANDOFF_SOURCES.includes(input.handoffSource as OwnershipHandoffSource)) {
+      throw new AuditEventValidationError(
+        `handoffSource must be one of: ${OWNERSHIP_HANDOFF_SOURCES.join(", ")}`,
+      );
+    }
+  } else {
+    for (const [field, value] of [
+      ["previousOwner", input.previousOwner],
+      ["newOwner", input.newOwner],
+      ["handoffReason", input.handoffReason],
+      ["handoffSource", input.handoffSource],
+    ] as const) {
+      if (value !== undefined) {
+        throw new AuditEventValidationError(`${field} is only valid for OWNERSHIP_HANDOFF`);
+      }
+    }
+  }
+
+  // Optional per the ruling, but held to the same length and secret guards `summary` gets -- it is
+  // the same class of free human text and reaches the same immutable store.
+  if (input.handoffReason !== undefined) {
+    if (typeof input.handoffReason !== "string" || input.handoffReason.trim().length === 0) {
+      throw new AuditEventValidationError("handoffReason must be a non-empty string when present");
+    }
+    if (input.handoffReason.length > MAX_HANDOFF_REASON_LENGTH) {
+      throw new AuditEventValidationError(
+        `handoffReason exceeds ${MAX_HANDOFF_REASON_LENGTH} characters`,
+      );
+    }
+    if (SECRET_LIKE_PATTERN.test(input.handoffReason)) {
+      throw new AuditEventValidationError(
+        "handoffReason appears to contain a secret/token/credential -- refusing to persist",
+      );
+    }
   }
 
   if (input.rowCount !== undefined) {
@@ -476,6 +588,12 @@ function buildAuditEventDoc(input: RecordAuditEventInput): DocumentData {
     doc.droppedPredicateFieldIds = input.droppedPredicateFieldIds;
   }
   if (input.truncated !== undefined) doc.truncated = input.truncated;
+  // Ownership handoff facts. previousOwner is written even when null -- the trail must be able to
+  // say "this record had no owner before", and an omitted field cannot say that.
+  if (input.previousOwner !== undefined) doc.previousOwner = input.previousOwner;
+  if (input.newOwner !== undefined) doc.newOwner = input.newOwner;
+  if (input.handoffReason !== undefined) doc.handoffReason = input.handoffReason;
+  if (input.handoffSource !== undefined) doc.handoffSource = input.handoffSource;
   return doc;
 }
 

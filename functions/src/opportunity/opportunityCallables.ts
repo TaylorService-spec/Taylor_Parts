@@ -29,8 +29,15 @@ import {
   type OpportunityDocState, type BuiltOpportunity,
 } from "./opportunityCommands";
 import { isOutcome, isStage, type TransitionIntent } from "./opportunityLifecycle";
+import { deriveAccountOwner } from "../ownership/typedOwner";
 
 export const OPPORTUNITY_WRITE_CAPABILITY = "opportunity.write";
+
+// Declared locally, matching opportunityReadService.ts's own local const. Three modules already
+// define this same string independently -- consolidating them into constants/collections.ts is a
+// worthwhile tidy but it is not this change's business, so this one follows the local precedent
+// rather than adding a fourth spelling.
+const ACCOUNTS_COLLECTION = "accounts";
 
 // Shared deterministic Audit Event id builder (same shape as coverageCallables.ts's mkAuditId): a retried
 // call with the same actorUid + idempotencyKey resolves to the SAME Audit Event document id, so the
@@ -196,18 +203,34 @@ export const createOpportunity = onCall({ region: "us-central1" }, async (reques
   if (data.idempotencyKey !== undefined && (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0)) {
     throw new HttpsError("invalid-argument", "idempotencyKey, when provided, must be a non-empty string.");
   }
-  let built;
+  const db = getFirestore();
+  const actorUid = request.auth.uid;
+  // Computed ONCE, outside the transaction. A transaction callback can run more than once on
+  // contention, and re-reading the clock there would give the retry a different createdAt than the
+  // attempt it replaced.
+  const nowMillis = Date.now();
+
+  // EOS Ownership Model v1, ruling D-4: the build moved INSIDE the transaction so the Account owner
+  // it may inherit is read under the same lock as the write that consumes it -- an owner read
+  // outside the transaction could be handed off by someone else before this Opportunity commits,
+  // and the new record would be born owned by the previous owner.
   try {
-    built = buildCreateOpportunity(data, {
-      actorUid: request.auth.uid,
-      nowMillis: Date.now(),
+    return await db.runTransaction(async (tx) => {
+      const explicitOwner = typeof data.ownerEmployeeId === "string" && data.ownerEmployeeId.trim().length > 0;
+      const accountId = typeof data.accountId === "string" ? data.accountId.trim() : "";
+      // Only read the Account when inheritance is actually in play. An existing caller that supplies
+      // an owner performs exactly the reads it always did -- the relaxation costs it nothing.
+      let inheritedOwner = null;
+      if (!explicitOwner && accountId.length > 0) {
+        const accountSnap = await tx.get(db.collection(ACCOUNTS_COLLECTION).doc(accountId));
+        inheritedOwner = deriveAccountOwner(accountSnap.exists ? accountSnap.data()! : null);
+      }
+      const built = buildCreateOpportunity({ ...data, inheritedOwner }, { actorUid, nowMillis });
+      return persistCreatedOpportunity(db, tx, built, actorUid, data.idempotencyKey);
     });
   } catch (err) {
     throw mapCommandError(err);
   }
-
-  const db = getFirestore();
-  return db.runTransaction((tx) => persistCreatedOpportunity(db, tx, built, request.auth!.uid, data.idempotencyKey));
 });
 
 interface TransitionOpportunityInput {
