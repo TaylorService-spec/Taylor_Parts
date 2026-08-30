@@ -1037,3 +1037,32 @@ balance source** as an explicit authority/composition change with its own tests:
 balance should *replace*, *supplement*, or *remain distinct from* the ledger-derived forecast is an
 open question, and semantics must not change silently when the capability flips. Recorded here rather
 than left to be rediscovered by whoever performs the activation.
+
+### ND-29 — "Reorder point 0" beside "Insufficient usage history" — **CLOSED 2026-08-30 on arrival: Not established**
+
+**Raised:** 2026-08-30, by this build, from the live Quick Gate render — reported as an observation
+rather than changed unilaterally, because no ruling covered it.
+**Owner ruling, same day:** a reorder point must not be presented as an operationally meaningful
+number when the same state says *"Insufficient usage history"*. A calculated/default zero and a
+genuinely governed reorder point of zero **are not the same business fact**. Show
+`Reorder point — Not established` (or an equivalent truthful unavailable treatment) unless EOS can
+establish that zero is itself the actual governed value. **Do not invent a reorder calculation as
+part of the correction.** Classified as a Parts presentation/derivation-semantics follow-up, not an
+inventory-authority change.
+
+**The escape clause is closed, by arithmetic.** `calculateReorderPoint` is
+`avgDailyUsage * leadTimeDays + avgDailyUsage * safetyFactor`, i.e.
+`avgDailyUsage * (leadTimeDays + safetyFactor)`, and `avgDailyUsage = totalConsumed / windowDays`.
+So `reorderPoint === 0` **⟺** `totalConsumed === 0` **⟺** `hasUsageHistory === false`. The three are
+identical conditions, not correlated ones. And the metadata register agrees from the other side —
+`PART_REORDER_POINT_IS_DERIVED`: *"calculated from usage, NOT stored on the Part"*. **There is no
+stored reorder point anywhere for a governed zero to come from.**
+
+**Shipped:** `partReorderPointDisplay` in `src/domain/partsNorthStar.js` — a pure chooser between the
+existing derived number and a sentence. It computes nothing, adjusts nothing and defaults nothing.
+It keys on **the input being absent**, not on the output happening to be zero, so it stays correct if
+the derivation ever grows a floor or a default.
+
+**Proof:** `test/partsReorderPointSemantics.test.jsx` (6) proves the arithmetic identity against the
+**real** engine across seven consumption patterns, plus the display rule; the record suite proves the
+render. Four mutation proofs, all caught.

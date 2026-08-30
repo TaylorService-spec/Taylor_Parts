@@ -153,6 +153,46 @@ describe("ND-25 — the record states no quantity it does not have", () => {
   });
 });
 
+// Owner ruling, 2026-08-30. The arithmetic behind this -- that a zero reorder point IS an absent
+// input -- is proved against the real engine in test/partsReorderPointSemantics.test.jsx. What is
+// proved here is that the record renders the sentence rather than the number.
+describe("the reorder point states what it does not know", () => {
+  it('shows "Not established", never 0, when there is no usage history', async () => {
+    ledger.healthEntries = [{
+      partId: DOC_ID,
+      stock: { availableStock: 6 },
+      usage: { avgDailyUsage: 0, totalConsumed: 0, daysObserved: 30 },
+      recommendation: { urgency: null, reorderPoint: 0, recommendedOrderQty: 0, daysRemaining: Infinity },
+    }];
+    await renderRecord();
+    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const row = within(forecast).getByText("Reorder point").closest("tr");
+    // THE VALUE CELL, asserted exactly. The defect this replaces was a bare 0 sitting beside the
+    // sentence explaining why it is zero, so "contains the words" is not enough -- the cell must
+    // hold the sentence and nothing else.
+    //
+    // Deliberately NOT a word-boundary regex. The first version of this line was written with a
+    // LITERAL 0x08 backspace where the escape belonged, which makes the pattern unmatchable and the
+    // negated assertion vacuous. test/noLiteralControlBytes.test.mjs caught it; an exact comparison
+    // cannot fail that way at all.
+    const valueCell = row.querySelectorAll("td")[1];
+    expect(valueCell.textContent.trim()).toBe("Not established");
+  });
+
+  it("shows the derived number unchanged when usage history exists", async () => {
+    ledger.healthEntries = [{
+      partId: DOC_ID,
+      stock: { availableStock: 6 },
+      usage: { avgDailyUsage: 0.4, totalConsumed: 12, daysObserved: 30 },
+      recommendation: { urgency: "MEDIUM", reorderPoint: 3.4, recommendedOrderQty: 6, daysRemaining: 15 },
+    }];
+    await renderRecord();
+    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const row = within(forecast).getByText("Reorder point").closest("tr");
+    expect(row.textContent).toContain("4");
+    expect(row.textContent).not.toContain("Not established");
+  });
+});
 describe("ND-27 — cost and price are refused", () => {
   it("no cost or price row appears on the record", async () => {
     await renderRecord();

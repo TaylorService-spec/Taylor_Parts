@@ -60,6 +60,7 @@ import {
   partUnitSection,
   partPurchasingSection,
   partActivityRows,
+  partReorderPointDisplay,
   PART_SECTION_STATE,
   PART_ACTIVITY_SCOPE_NOTE,
 } from "../../domain/partsNorthStar.js";
@@ -1473,6 +1474,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const unitSection = partUnitSection(part);
   const purchasing = partPurchasingSection();
   const activityRows = partActivityRows(partTransactions);
+  const reorderPointDisplay = partReorderPointDisplay(health);
 
   const reorderWorkflowCard =
     !reorderRequestLoading && !reorderRequestError && reorderRequest ? (
@@ -1651,7 +1653,18 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   </tr>
                   <tr>
                     <td>Reorder point</td>
-                    <td>{Math.ceil(health.recommendation.reorderPoint)}</td>
+                    {/* Owner ruling 2026-08-30. This cell rendered a bare 0 beside
+                        "Insufficient usage history" on the same card. The reorder point is
+                        avgDailyUsage times a constant, so a zero is ALWAYS the consequence of
+                        no usage and never a governed value -- partReorderPointDisplay carries
+                        the proof. Truthful absence over a numerically precise false comfort. */}
+                    <td>
+                      {reorderPointDisplay.established ? (
+                        reorderPointDisplay.value
+                      ) : (
+                        <span className="ns-state--na">{reorderPointDisplay.absence}</span>
+                      )}
+                    </td>
                   </tr>
                   <tr>
                     <td>Recommended reorder qty</td>
