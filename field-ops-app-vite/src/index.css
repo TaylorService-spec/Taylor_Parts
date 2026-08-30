@@ -6614,3 +6614,90 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-reason__actions {
   display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.9rem;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════
+   SERVICE OPERATIONS — North Star P1 (Overview archetype)
+
+   An EXTENSION of the ns-* vocabulary families 1-5 already ship, not a parallel system. The page
+   reuses .ns-page, .ns-page__utility, .ns-rulepair, .ns-identity, .ns-section, .ns-attention,
+   .ns-table, .ns-num, .ns-state, .ns-record-body and .ns-rail unchanged. What follows is only what
+   the Overview archetype needs and no record page did: a metric strip (grammar pattern 4, which had
+   no CSS home until now), a suggestion band, and the rail's own list.
+   ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Two tone words the family was missing. Same shape as .ns-tone--critical/info/positive above. */
+.ns-tone--warn { color: var(--color-warning); font-weight: 600; }
+.ns-tone--attention { color: var(--verenward-bronze); font-weight: 600; }
+.ns-muted { color: var(--color-text-secondary); }
+
+/* ── The work column. The rail is .ns-rail, supplied by .ns-record-body's container query. */
+.ns-work { min-width: 0; }
+
+/* ── Metric strip (pattern 4). Four cells, each opening on a rule -- the tiles are defined by the
+   rule above them, never by a card around them (R13: no card farms). */
+.ns-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px;
+  margin: 0 0 30px; }
+@container ns-record (min-width: 720px) { .ns-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@supports not (container-type: inline-size) {
+  @media (min-width: 1000px) { .ns-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+}
+.ns-metric { border-top: 1px solid var(--verenward-border-strong, var(--color-border)); padding: 10px 0 0; min-width: 0; }
+.ns-metric__label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-text-secondary); font-weight: 600; margin: 0 0 6px; }
+/* The display numeral is the serif, matching the record title scale. Data numerals inside tables
+   stay Inter/tabular (.ns-num) -- serif figures jitter in dense rows, which is why the split exists. */
+.ns-metric__value { font-family: var(--font-record-title); font-size: 34px; line-height: 1.05;
+  font-weight: 700; margin: 0 0 4px; }
+.ns-metric__value a { color: inherit; text-decoration: none; }
+.ns-metric__value a:hover { text-decoration: underline; }
+/* An unread number is smaller and quieter than a real one on purpose: it must never be mistaken at
+   a glance for a figure, least of all for zero. */
+.ns-metric__unknown { font-family: var(--font-interface); font-size: 15px; font-weight: 500;
+  color: var(--color-text-secondary); font-style: italic; }
+.ns-metric__exception { font-size: 11.5px; margin: 0; color: var(--color-text-secondary); }
+.ns-metric__exception a { color: inherit; }
+
+/* ── Attention: the governed section label above each group of rows. */
+.ns-attention__section-label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-text-secondary); font-weight: 600; margin: 14px 0 2px; }
+
+/* ── The sort control. A labelled select, sized to the section head's baseline. */
+.ns-select { font-family: var(--font-interface); font-size: 12.5px; font-weight: 600;
+  color: var(--color-text-primary); background: var(--color-surface-page);
+  border: 1px solid var(--color-border); border-radius: 0; padding: 4px 8px; }
+.ns-select:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* ── Suggestion band. The ruled panel is the grammar's third structural element, admitted for
+   suggestion bands (and editors/dialogs) only -- which is why this has a surface and the tables
+   around it do not. */
+.ns-suggestion__list { list-style: none; margin: 0; padding: 0; }
+.ns-suggestion__row { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+  padding: 7px 0; border-bottom: 1px solid var(--color-border); font-size: 12.5px; }
+.ns-suggestion__row:last-child { border-bottom: 0; }
+.ns-suggestion__fact { flex: 1 1 24ch; min-width: 0; }
+
+/* ── Activity rail. Carries no actions and no attention (pattern 8). */
+.ns-rail__label { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-text-secondary); font-weight: 600; margin: 0 0 10px; }
+.ns-rail__filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
+/* Filters are real buttons carrying aria-pressed, so the current view is announced and not only
+   coloured. The 44px floor is the touch target; density is earned on a wide pointer-driven screen,
+   the same rule the lifecycle band and crumb use. */
+.ns-rail__filter { font-family: var(--font-interface); font-size: 12px; font-weight: 600;
+  background: none; border: 0; padding: 0; cursor: pointer; color: var(--color-text-secondary);
+  min-height: 44px; }
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) { .ns-rail__filter { min-height: 0; } }
+.ns-rail__filter:hover { color: var(--color-text-primary); text-decoration: underline; }
+.ns-rail__filter.is-current { color: var(--color-text-primary); text-decoration: underline; }
+.ns-rail__filter:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ns-rail__list { list-style: none; margin: 0; padding: 0; }
+.ns-rail__entry { padding: 7px 0; border-bottom: 1px solid var(--color-border); font-size: 12px; }
+.ns-rail__entry:last-child { border-bottom: 0; }
+.ns-rail__entry-text { color: var(--color-text-primary); font-weight: 500; }
+.ns-rail__note { font-size: 11px; color: var(--color-text-secondary); margin: 12px 0 0; }
+
+/* The rail sits under the work column below the split, with a rule instead of a border, so it reads
+   as a following section rather than a column that lost its neighbour. */
+@container ns-record (min-width: 900px) {
+  .ns-rail { border-left: 1px solid var(--color-border); padding-left: 24px; }
+}

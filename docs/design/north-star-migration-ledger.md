@@ -946,3 +946,39 @@ due-date model for UNSCHEDULED work. Named gap, unchanged by this acceptance.
 The acceptance fixture estate is deliberately **left as the interaction pass left it**, drift
 included: `wo-sbx-008` at 495m is visually unusual and is the evidence that repeated governed
 resizes persisted. Restoring canonical fixtures is separate sandbox maintenance.
+
+---
+
+## Family 6 — Service Operations
+
+| | |
+|---|---|
+| **Composition** | `src/modules/controlTower/ControlTower.jsx` over `src/domain/serviceOperationsNorthStar.js` |
+| **Visual authority** | `North Star - Service Operations P1.dc.html` (frames 1a–1d) + `DESIGN-HANDOFF-SERVICE-OPERATIONS-P1.md`, filed at `docs/north-star/service-operations/` |
+| **Reconciliation** | [`service-operations-north-star-composition-map.md`](./service-operations-north-star-composition-map.md) — item-by-item, produced before any UI code changed |
+| **Proof** | `test/serviceOperationsNorthStar.test.jsx` (33), `test/serviceOperationsComposition.test.jsx` (20), plus the reconciled `test/workOrderAttentionPanel.test.jsx` (9) and `test/serviceOperationsRisk.test.jsx` (11) |
+| **Named decisions** | SO-N1…SO-N9 all ANSWERED by Owner ruling 2026-08-30 (behavioral truth wins in every case); SO-G4, SO-G5, SO-G6 carried; **SO-G7 opened by this migration** |
+| **CI** | `.github/workflows/service-operations-north-star-tests.yml`, path-filtered. Both new suites were caught as CI-uncovered by `ciSuiteCoverage.test.mjs` before they could ship. |
+| **Gate** | Local: 258/258 node suites, 2743/2743 vitest, `vite build` clean, oxlint clean. Not the acceptance gate. |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+
+### Why this family reads differently from families 1–5
+
+The other five migrated a **record** whose grammar the artifact and the engine broadly agreed on.
+This one migrated an **accumulation** — five sprints of appended blocks with no composition — and the
+artifact and the engine disagreed in nine specific places, every one of which would have required the
+page to state a fact the system does not hold.
+
+That is the substance of this row. The layout change is the visible part; the nine rulings are the
+part that keeps the page honest. Each is recorded in
+[`north-star-open-product-decisions.md`](./north-star-open-product-decisions.md) so a later session
+cannot reopen them as unresolved design questions, and each is pinned by a test so the page cannot
+quietly reacquire what was removed.
+
+### A gap this migration found rather than fixed
+
+**SO-G7.** An unreadable `createdAt` scores 0 for both the age and stagnation risk factors, so the
+work order drops below `detectStalledJobs`'s HIGH threshold and disappears from At risk entirely. The
+work order the system knows least about is the one it shows least — the inverse of R23. Pre-existing,
+not introduced here, and a domain authority change to fix. Pinned by a test rather than left as a
+comment.

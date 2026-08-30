@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    .sect { font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+    .badge { background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px; }
+    .frame { background: #F3F0E9; outline: 1px solid #C3BCAB; }
+    .na { color: #6B7A74; }
+    .micro { font: 600 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; }
+    .num { font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 34px; line-height: 1; }
+    .sev { font: 700 10.5px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+    table.ops { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    table.ops th { border-bottom: 2px solid #102B24; text-align: left; padding: 6px 10px 6px 0; font: 600 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55; }
+    table.ops td { border-bottom: 1px solid #E3DDD0; padding: 0 10px 0 0; height: 32px; font-variant-numeric: tabular-nums; }
+    table.ops td.r, table.ops th.r { text-align: right; padding-right: 24px; }
+    table.ops td.r:last-child, table.ops th.r:last-child { padding-right: 0; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;" data-screen-label="Service Operations North Star P1">
+
+  <div id="so1a" style="width: 1672px;" data-screen-label="1a Desktop 1440 — Service Operations overview (canonical)">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span class="sect"><span class="badge">1a</span>Service Operations — North Star P1 · desktop 1440 · Overview archetype (canonical)</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Same data, same panel invariants, recomposed: attention first, signal over noise. The work-order wall is cut (<a href="#so1d">1d</a>, SO-D2). Route <code>/service-operations</code>, key <code>controlTower</code> unchanged.</span>
+    </div>
+    <div class="frame" style="display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Service</div>
+        <div style="margin: 2px 12px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Service Operations</div>
+        <div style="padding: 5px 16px 5px 34px;">Work Orders</div>
+        <div style="padding: 5px 16px 5px 34px;">Dispatch Board</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Administration</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 36px;">
+      <div style="max-width: 1240px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Service → Service Operations · Sat Aug 30</span>
+          <span style="font-size: 11.5px; color: #6B7A74;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #237A45; vertical-align: 1px;"></span> Live — updates as work orders change</span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 18px 0 14px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; margin: 0 0 6px; line-height: 1.05;">Service Operations</h1>
+            <div style="font-size: 13px; color: #4A5B55;">The exceptions read across service — what needs a decision before the board or the record. Admin &amp; Dispatcher.</div>
+          </div>
+          <div style="display: flex; gap: 10px; flex: none;">
+            <a href="#so1a" style="font: 600 12.5px Inter, sans-serif; padding: 9px 18px; border: 1px solid #C3BCAB; background: #FCFAF6; text-decoration: none;">Work Orders</a>
+            <a href="#so1a" style="font: 600 12.5px Inter, sans-serif; padding: 9px 18px; background: #1C4638; color: #FCFAF6; text-decoration: none;">Open Dispatch Board</a>
+          </div>
+        </header>
+
+        <div style="display: grid; grid-template-columns: 1fr 300px; gap: 40px; align-items: start;">
+        <div style="min-width: 0;">
+
+          <div style="margin-bottom: 26px;">
+            <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 2px;">Needs attention <span style="font: 600 11px Inter, sans-serif; color: #fff; background: #B23B3B; padding: 2px 8px; border-radius: 999px; vertical-align: 2px;">5</span></h2>
+            <p style="font-size: 12px; color: #6B7A74; margin: 0 0 10px;">One attention surface — the unassigned-work-order warning and the attention projection merged. Renders nothing when clean (<a href="#so1b">1b</a>).</p>
+            <div style="border-top: 2px solid #102B24;">
+              <div style="display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #E3DDD0;">
+                <span class="sev" style="color: #B23B3B;">Urgent</span>
+                <span><strong>WO-2026-001239</strong> has no technician and its service window was missed Aug 17 · Desert Sun, Mesa Distribution · Dispatcher</span>
+                <a href="#so1a" style="font-weight: 600; font-size: 12.5px;">Schedule on board →</a>
+              </div>
+              <div style="display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #E3DDD0;">
+                <span class="sev" style="color: #B23B3B;">Urgent</span>
+                <span><strong>WO-2026-001252</strong> has been ready to dispatch for 2 days with no technician · Canyon Creamery, Tempe · Dispatcher</span>
+                <a href="#so1a" style="font-weight: 600; font-size: 12.5px;">Schedule on board →</a>
+              </div>
+              <div style="display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #E3DDD0;">
+                <span class="sev" style="color: #A9740D;">Stalled</span>
+                <span><strong>WO-2026-001246</strong> has been on site 6 hours with no status movement since 9:40a · Sunset Yogurt, Chandler · T. Nguyen</span>
+                <a href="#so1a" style="font-weight: 600; font-size: 12.5px;">Open work order →</a>
+              </div>
+              <div style="display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #E3DDD0;">
+                <span class="sev" style="color: #A9740D;">Stalled</span>
+                <span><strong>WO-2026-001248</strong> was dispatched yesterday and has not been started · Desert Sun, Broadway Plant · J. Barela</span>
+                <a href="#so1a" style="font-weight: 600; font-size: 12.5px;">Open work order →</a>
+              </div>
+              <div style="display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #E3DDD0;">
+                <span class="sev" style="color: #A9740D;">Parts blocked</span>
+                <span><strong>WO-2026-001241</strong> needs 2 planned parts that are neither staged nor on the truck · Rio Verde, Scottsdale · R. Ochoa</span>
+                <a href="#so1a" style="font-weight: 600; font-size: 12.5px;">Open work order →</a>
+              </div>
+              <div style="font-size: 11.5px; color: #8A6D28; padding: 8px 0 2px;">Parts blocked is a designed slot lighting on the parts-readiness read (SO-G5). Until <code>partsReadinessByWorkOrderId</code> is wired to this page, the section renders one honest line — “Parts readiness isn't connected to this page yet” — never a fabricated result and never silently dropped.</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 30px;">
+            <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;">
+              <div class="micro" style="margin-bottom: 6px;">Awaiting dispatch</div>
+              <div class="num">3</div>
+              <div style="font-size: 11.5px; margin-top: 6px;"><strong style="color: #B23B3B;">2 past readiness</strong> · <a href="#so1a">ready queue →</a></div>
+            </div>
+            <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;">
+              <div class="micro" style="margin-bottom: 6px;">In progress</div>
+              <div class="num">5</div>
+              <div style="font-size: 11.5px; margin-top: 6px;"><strong style="color: #A9740D;">2 stalled</strong> · <a href="#so1a">at-risk table ↓</a></div>
+            </div>
+            <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;">
+              <div class="micro" style="margin-bottom: 6px;">Technicians on shift</div>
+              <div class="num">4</div>
+              <div style="font-size: 11.5px; margin-top: 6px;"><strong style="color: #A9740D;">1 overloaded</strong> · <a href="#so1a">load table ↓</a></div>
+            </div>
+            <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;">
+              <div class="micro" style="margin-bottom: 6px;">Completed this week</div>
+              <div class="num">12</div>
+              <div style="font-size: 11.5px; margin-top: 6px;" class="na">no exceptions · <a href="#so1a">work orders →</a></div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0;">At risk</h2>
+              <span style="font-size: 11.5px; color: #6B7A74;">Sorted by <a href="#so1a">severity</a> · <a href="#so1a" class="na">age</a></span>
+            </div>
+            <table class="ops">
+              <thead><tr><th>Work order</th><th>Account</th><th>Severity</th><th class="r">Age</th><th>Why</th><th>Technician</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><strong>WO-2026-001239</strong></td><td>Desert Sun · Mesa Distribution</td><td><span class="sev" style="color: #B23B3B;">Critical</span></td><td class="r">~312h</td><td class="na">Past readiness with no technician · window missed</td><td class="na">Unassigned</td><td class="r"><a href="#so1a">Open →</a></td></tr>
+                <tr><td><strong>WO-2026-001252</strong></td><td>Canyon Creamery · Tempe</td><td><span class="sev" style="color: #B23B3B;">High</span></td><td class="r">~52h</td><td class="na">No technician 2+ days after ready</td><td class="na">Unassigned</td><td class="r"><a href="#so1a">Open →</a></td></tr>
+                <tr><td><strong>WO-2026-001246</strong></td><td>Sunset Yogurt · Chandler</td><td><span class="sev" style="color: #A9740D;">Medium</span></td><td class="r">~30h</td><td class="na">On site with no status movement</td><td>T. Nguyen</td><td class="r"><a href="#so1a">Open →</a></td></tr>
+                <tr><td><strong>WO-2026-001233</strong></td><td>Mesa Grande Schools</td><td><span class="sev" style="color: #A9740D;">Medium</span></td><td class="r na">age unknown</td><td class="na">createdAt unavailable — age not computed</td><td>M. Diaz</td><td class="r"><a href="#so1a">Open →</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-bottom: 30px;">
+            <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Technician load</h2>
+            <table class="ops">
+              <thead><tr><th>Technician</th><th>Status</th><th class="r">Active work orders</th><th>Load</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><strong>T. Nguyen</strong></td><td>On work order</td><td class="r">3</td><td><span class="sev" style="color: #A9740D;">Overloaded</span></td><td class="r"><a href="#so1a">Board lane →</a></td></tr>
+                <tr><td><strong>J. Barela</strong></td><td>On work order</td><td class="r">1</td><td class="na">Normal</td><td class="r"><a href="#so1a">Board lane →</a></td></tr>
+                <tr><td><strong>R. Ochoa</strong></td><td>Available</td><td class="r">1</td><td class="na">Normal</td><td class="r"><a href="#so1a">Board lane →</a></td></tr>
+                <tr><td><strong>M. Diaz</strong></td><td>Available</td><td class="r">1</td><td class="na">Normal</td><td class="r"><a href="#so1a">Board lane →</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="background: #F0E4C8; outline: 1px solid #C3BCAB; outline-offset: -1px; padding: 14px 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <div style="font: 700 12.5px Inter, sans-serif;">Recommended dispatch <span class="na" style="font-weight: 600;">— 3 open, 2 placeable</span></div>
+              <a href="#so1a" style="font: 600 11.5px Inter, sans-serif;">Collapse</a>
+            </div>
+            <div style="font-size: 12.5px; margin-top: 8px; display: grid; gap: 5px;">
+              <div><strong>WO-2026-001239</strong> → J. Barela <span class="na">(score 86 · closest certification match · lightest afternoon)</span> · <a href="#so1a">Review on board →</a></div>
+              <div><strong>WO-2026-001252</strong> → R. Ochoa <span class="na">(score 74 · holds C716 · 33% booked)</span> · <a href="#so1a">Review on board →</a></div>
+              <div><strong>WO-2026-001254</strong> → <span class="na">No eligible technician — required certification C716 not available today</span></div>
+            </div>
+            <div style="font-size: 11px; color: #8A6D28; margin-top: 9px;">Suggestions are read-only here. Assignment is the governed command on the Dispatch Board — reasons always shown, accept with undo there. This is the page's one suggestion slot.</div>
+          </div>
+
+        </div>
+        <aside style="border-left: 1px solid #D9D3C6; padding-left: 24px;">
+          <div class="micro" style="margin-bottom: 10px;">Activity</div>
+          <div style="font-size: 11.5px; margin-bottom: 12px;"><a href="#so1a" style="font-weight: 700;">All</a> · <a href="#so1a" class="na">Work order</a> · <a href="#so1a" class="na">Job</a> · <a href="#so1a" class="na">System</a></div>
+          <div style="display: grid; gap: 12px; font-size: 12px;">
+            <div><div style="font-weight: 600;">WO-2026-001246 marked on site</div><div class="na">T. Nguyen · 9:40a</div></div>
+            <div><div style="font-weight: 600;">WO-2026-001244 completed</div><div class="na">T. Nguyen · 9:05a</div></div>
+            <div><div style="font-weight: 600;">WO-2026-001248 dispatched to J. Barela</div><div class="na">Dispatcher · 8:20a</div></div>
+            <div><div style="font-weight: 600;">WO-2026-001252 marked ready</div><div class="na">System · Thu 4:12p</div></div>
+            <div><div style="font-weight: 600;">WO-2026-001239 window missed</div><div class="na">System · Aug 17</div></div>
+          </div>
+          <div style="font-size: 11px; color: #6B7A74; margin-top: 14px; border-top: 1px solid #E3DDD0; padding-top: 10px;">Derived from the loaded work-order snapshot — not an audit log.</div>
+        </aside>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="so1b" style="width: 1100px;" data-screen-label="1b Clean day — attention renders nothing">
+    <div style="margin-bottom: 8px;"><span class="sect"><span class="badge">1b</span>Clean day — the attention block renders nothing; zeros are shown only because they are known</span></div>
+    <div class="frame" style="padding: 0 40px 36px;">
+      <div style="max-width: 1000px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Service → Service Operations · Sat Aug 30</span>
+          <span style="font-size: 11.5px; color: #6B7A74;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #237A45; vertical-align: 1px;"></span> Live</span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 18px 0 14px;">
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; margin: 0; line-height: 1.05;">Service Operations</h1>
+          <div style="display: flex; gap: 10px;">
+            <a href="#so1b" style="font: 600 12.5px Inter, sans-serif; padding: 9px 18px; border: 1px solid #C3BCAB; background: #FCFAF6; text-decoration: none;">Work Orders</a>
+            <a href="#so1b" style="font: 600 12.5px Inter, sans-serif; padding: 9px 18px; background: #1C4638; color: #FCFAF6; text-decoration: none;">Open Dispatch Board</a>
+          </div>
+        </header>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 26px;">
+          <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;"><div class="micro" style="margin-bottom: 6px;">Awaiting dispatch</div><div class="num">0</div><div style="font-size: 11.5px; margin-top: 6px;" class="na">nothing waiting · <a href="#so1b">ready queue →</a></div></div>
+          <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;"><div class="micro" style="margin-bottom: 6px;">In progress</div><div class="num">4</div><div style="font-size: 11.5px; margin-top: 6px;" class="na">none stalled</div></div>
+          <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;"><div class="micro" style="margin-bottom: 6px;">Technicians on shift</div><div class="num">4</div><div style="font-size: 11.5px; margin-top: 6px;" class="na">none overloaded</div></div>
+          <div style="border-top: 1px solid #C3BCAB; padding-top: 10px;"><div class="micro" style="margin-bottom: 6px;">Completed this week</div><div class="num">12</div><div style="font-size: 11.5px; margin-top: 6px;" class="na">no exceptions · <a href="#so1b">work orders →</a></div></div>
+        </div>
+        <div style="margin-bottom: 8px;"><h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">At risk</h2>
+          <div style="border-top: 2px solid #102B24; padding: 12px 0; font-size: 12.5px; color: #6B7A74;">No work orders at risk. 8 open work orders exist and are moving normally.</div>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74;">The attention block, the past-readiness exception and the suggestion tray are absent — not empty boxes. Silence is the designed clean state.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="so1c" style="width: 1672px;" data-screen-label="1c Honest states">
+    <div style="margin-bottom: 8px;"><span class="sect"><span class="badge">1c</span>Honest states — loading · failed work-order read · degraded technician read (the one block on today's page worth keeping, kept)</span></div>
+    <div style="display: flex; gap: 24px;">
+      <div class="frame" style="width: 528px; padding: 0 28px 28px;">
+        <div style="padding: 14px 0 10px;" class="micro">Loading</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 26px; font-weight: 700; margin: 16px 0 20px;">Service Operations</h1>
+        <div style="font-size: 12.5px; color: #4A5B55;">Loading operations — counts are withheld until the first snapshot arrives. A zero is only reported when zero is known.</div>
+      </div>
+      <div class="frame" style="width: 528px; padding: 0 28px 28px;">
+        <div style="padding: 14px 0 10px;" class="micro">Work-order read failed</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 26px; font-weight: 700; margin: 16px 0 20px;">Service Operations</h1>
+        <div style="font-size: 12.5px;"><strong>Operations could not be loaded.</strong></div>
+        <div style="font-size: 12.5px; color: #4A5B55; margin-top: 6px;">Work orders couldn't be read. <strong>Your work elsewhere is unaffected.</strong></div>
+        <a href="#so1c" style="display: inline-block; margin-top: 14px; font: 600 12.5px Inter, sans-serif; padding: 8px 16px; border: 1px solid #C3BCAB; background: #FCFAF6; text-decoration: none;">Try again</a>
+      </div>
+      <div class="frame" style="width: 528px; padding: 0 28px 28px;">
+        <div style="padding: 14px 0 10px;" class="micro">Technician read failed independently</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 26px; font-weight: 700; margin: 16px 0 14px;">Service Operations</h1>
+        <div style="background: #F0E4C8; outline: 1px solid #C3BCAB; outline-offset: -1px; padding: 10px 14px; font-size: 12px; color: #4A5B55;">Technician names could not be loaded, so assignments below show identifiers instead.</div>
+        <div style="font-size: 12.5px; color: #6B7A74; margin-top: 14px;">Work orders still render; the technician-load table and overload exception state “unavailable” rather than computing over missing names.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="so1d" style="width: 1672px;" data-screen-label="1d Disposition — the seven review questions answered">
+    <div style="margin-bottom: 8px;"><span class="sect"><span class="badge">1d</span>Disposition — every block of today's page accounted for; the brief's seven questions answered</span></div>
+    <div class="frame" style="padding: 26px 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px;">
+      <div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 10px;">Today's render order → P1</h2>
+        <table class="ops">
+          <thead><tr><th style="width: 45%;">Today (ControlTower.jsx)</th><th>P1 disposition</th></tr></thead>
+          <tbody>
+            <tr><td>1 · bare <code>h2</code> header</td><td>Workspace header: kicker, rule pair, serif title, action cluster right</td></tr>
+            <tr><td>2 · technician degradation notice</td><td><strong>Kept</strong> — already honest-state done correctly (<a href="#so1c">1c</a>)</td></tr>
+            <tr><td>3 · five unlinked stat tiles</td><td>Four linked metrics, each with its exception count; Available + On WO merged into one Technicians fact</td></tr>
+            <tr><td>4 · bare ⚠ unassigned warning</td><td>Merged into the one attention block — severity word, fact, owner, deep link</td></tr>
+            <tr><td>5 · every WO as a full card + actions</td><td><strong>Cut (SO-D2)</strong> — the record renders once, in the migrated WO family; this page links, never re-renders it. Card action clusters retired with it</td></tr>
+            <tr><td>6 · Technician Load bare divs</td><td>Technician load table; Overloaded panel folded in as the Load column</td></tr>
+            <tr><td>7 · six equal-weight panels</td><td>Ranked: Attention promoted · At Risk = primary table · Dispatch Queue = the one suggestion tray · Overloaded folded into load · Activity → rail · Parts Overview <strong>cut (SO-D3)</strong> — the demand <em>rollup</em> belongs to Inventory/Operations, but parts <em>exceptions</em> re-enter as the attention block's Parts blocked section (SO-G5: honest interim line until the readiness read is wired)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 10px;">The seven questions</h2>
+        <div style="font-size: 12.5px; display: grid; gap: 9px;">
+          <div><strong>1 · Archetype.</strong> Overview. The board schedules, the record executes, Operations owns inventory — this page owns the cross-cutting exceptions read. Survives as a destination (SO-D1, Owner ratifies; delete remains on the table if the Owner prefers the board absorb it).</div>
+          <div><strong>2 · First screen.</strong> Attention block, then the four linked numbers. A dispatcher sees every open decision without scrolling.</div>
+          <div><strong>3 · Work-order list.</strong> No. Exceptions render as 32px table rows; the full list is the Work Orders family's job.</div>
+          <div><strong>4 · Six panels.</strong> Two earn the field of view (Attention, At Risk). One is the suggestion tray (Dispatch Queue). Two fold or demote (Overloaded → load column, Activity → rail). One leaves (Parts Overview).</div>
+          <div><strong>5 · Metrics.</strong> Awaiting dispatch / In progress / Technicians on shift / Completed — each with exception count and destination. Never five tiles, never unlinked.</div>
+          <div><strong>6 · Attention.</strong> One surface. The ⚠ warning becomes its Urgent section; renders nothing when clean.</div>
+          <div><strong>7 · Actions.</strong> Off the cards, off this page. Governed transitions live on the record and the board; the header's cluster is navigational, with Open Dispatch Board as the one filled primary.</div>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 14px; border-top: 1px solid #D9D3C6; padding-top: 10px;">Panel invariants preserved: every section is a pure renderer of an existing domain projection over the composition root's one snapshot — attention projection, jobRiskScoring, dispatchScoring, timelineBuilder. Nothing new is computed; nothing fetches for itself.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

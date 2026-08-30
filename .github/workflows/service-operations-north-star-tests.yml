@@ -1,0 +1,81 @@
+name: Service Operations North Star Tests
+
+# CI for the Service Operations North Star P1 recomposition (/service-operations, internal key
+# controlTower) -- the Overview archetype that replaced the page's append-order accumulation.
+#
+# Two suites, covering two different kinds of claim:
+#
+#   serviceOperationsNorthStar.test.jsx  The projection contract. Every Owner ruling SO-N1..SO-N9 as a
+#                                        falsifiable rule: attention carries no risk severity, no Urgent
+#                                        section, no fabricated activity timestamp or actor, no invented
+#                                        owner, on-shift excludes OFF_SHIFT, the governed WO route, and
+#                                        no undefined "past readiness". Also pins SO-G7 -- the upstream
+#                                        risk-scoring gap this migration found but did not fix.
+#   serviceOperationsComposition.test.jsx The rendered composition (1a), the clean day (1b), the honest
+#                                        loading/failed/degraded states (1c), and the architectural
+#                                        invariant asserted against SOURCE -- the composition root owns
+#                                        the reads, and no section imports a scoring module. The previous
+#                                        wording of that invariant had silently stopped matching the code
+#                                        because nothing tested it.
+#
+# The existing service-operations-risk-tests.yml keeps its own narrower scope (the jobRiskScoring render
+# path); this workflow owns the projection and the composition. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/serviceOperationsNorthStar.js"
+      - "field-ops-app-vite/src/domain/workOrderAttentionProjection.js"
+      - "field-ops-app-vite/src/modules/controlTower/**"
+      - "field-ops-app-vite/test/serviceOperationsNorthStar.test.jsx"
+      - "field-ops-app-vite/test/serviceOperationsComposition.test.jsx"
+      - "field-ops-app-vite/test/workOrderAttentionPanel.test.jsx"
+      - ".github/workflows/service-operations-north-star-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/serviceOperationsNorthStar.js"
+      - "field-ops-app-vite/src/domain/workOrderAttentionProjection.js"
+      - "field-ops-app-vite/src/modules/controlTower/**"
+      - "field-ops-app-vite/test/serviceOperationsNorthStar.test.jsx"
+      - "field-ops-app-vite/test/serviceOperationsComposition.test.jsx"
+      - "field-ops-app-vite/test/workOrderAttentionPanel.test.jsx"
+      - ".github/workflows/service-operations-north-star-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  service-operations-north-star-tests:
+    name: Service Operations North Star P1 (projection + composition + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Projection contract — SO-N1..SO-N9 as falsifiable rules (vitest)
+        run: npx vitest run test/serviceOperationsNorthStar.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Composition, honest states, and the architectural invariant (vitest + jsdom)
+        run: npx vitest run test/serviceOperationsComposition.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Attention block wiring (vitest + jsdom)
+        run: npx vitest run test/workOrderAttentionPanel.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/serviceOperationsNorthStar.js src/modules/controlTower
+        working-directory: field-ops-app-vite

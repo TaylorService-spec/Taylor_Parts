@@ -5,7 +5,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { getRiskBreakdown, computeJobRisk, detectStalledJobs } from "../src/domain/jobRiskScoring";
+import { MemoryRouter } from "react-router-dom";
 import AtRiskPanel from "../src/modules/controlTower/panels/AtRiskPanel";
+import { atRiskRows } from "../src/domain/serviceOperationsNorthStar";
 
 afterEach(cleanup);
 
@@ -47,41 +49,76 @@ describe("jobRiskScoring — toAgeHours regression + timestamp honesty", () => {
   });
 });
 
+// ── Render path ──────────────────────────────────────────────────────────────────────────────────
+//
+// The panel is now a pure presenter: the Service Operations composition root derives rows once via
+// domain/serviceOperationsNorthStar.js's atRiskRows() and hands them over. These tests drive the same
+// seam the page does — projection first, table second — so what they prove is what a dispatcher sees.
+//
+// The assertions are the originals, plus what the North Star P1 recomposition added: severity renders
+// as a WORD (the panel this replaces printed the raw enum "CRITICAL"), the account resolves to a name,
+// and the table is never wrapped in a card.
 describe("AtRiskPanel — Service Operations render path (was crashing)", () => {
-  it("renders stalled jobs without a runtime exception", () => {
-    // A clearly-stale job (100h old, awaiting dispatch) → HIGH/CRITICAL → appears in the panel.
-    // Governed WorkOrder docs carry `woNumber`, never `customer` (see functions/src/types/workOrder.ts) —
-    // fixtures here match that real shape rather than a legacy `customer` field.
-    const jobs = [{ id: "old", woNumber: "WO-2026-000042", status: "CREATED", createdAt: NOW - 100 * HOUR, workOrderId: "WO-1" }];
-    render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
-    expect(screen.getByText("At Risk Jobs")).toBeTruthy();
+  const renderTable = (workOrders, { technicians = [], accountNames, sort = "severity" } = {}) =>
+    render(
+      <MemoryRouter>
+        <AtRiskPanel rows={atRiskRows({ workOrders, technicians, accountNames, sort })} sort={sort} />
+      </MemoryRouter>,
+    );
+
+  it("renders stalled work orders without a runtime exception", () => {
+    const workOrders = [{ id: "old", woNumber: "WO-2026-000042", status: "CREATED", createdAt: NOW - 100 * HOUR }];
+    renderTable(workOrders);
+    expect(screen.getByRole("heading", { name: "At risk" })).toBeTruthy();
     expect(screen.getByText(/WO-2026-000042/)).toBeTruthy();
-    expect(screen.getAllByText(/since creation/i).length).toBeGreaterThan(0);
   });
 
   it("renders a real age for a valid timestamp — never a fabricated leading 0h", () => {
-    // A stale job with a VALID timestamp renders a real age. NOTE: AtRiskPanel derives age from live
-    // Date.now() (not the test's NOW), so the displayed hour count is large and drifts over real time — the
-    // assertion must therefore be robust to that. The honesty being guarded is "no fabricated ZERO age":
-    // a real count like 8870h legitimately contains the substring "0h", so anchor with \b so only a genuine
-    // leading "0h since creation" (a fabricated zero) can match. The unusable-timestamp ⇒ "age unknown" path
-    // is covered deterministically by the domain tests above.
-    const jobs = [{ id: "old", woNumber: "WO-2026-000043", status: "CREATED", createdAt: NOW - 100 * HOUR }];
-    render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
-    expect(screen.getAllByText(/since creation/i).length).toBeGreaterThan(0); // a real age renders
-    expect(screen.queryByText(/\b0h since creation/)).toBeNull(); // no fabricated zero-age
+    // atRiskRows derives age from live Date.now(), so the hour count is large and drifts; the honesty
+    // guarded here is "no fabricated ZERO age". A genuine count like ~8870h legitimately contains the
+    // substring "0h", so the assertion anchors on the whole cell rather than a substring.
+    const workOrders = [{ id: "old", woNumber: "WO-2026-000043", status: "CREATED", createdAt: NOW - 100 * HOUR }];
+    renderTable(workOrders);
+    expect(screen.getByText(/^~\d+h$/)).toBeTruthy();
+    expect(screen.queryByText("~0h")).toBeNull();
   });
 
-  it("labels a governed WorkOrder (no `customer` field) with its woNumber, not the raw Firestore doc id", () => {
-    // Regression: a real WorkOrder doc has no `customer` field (only `customerId`), so a label built as
-    // `job.customer || job.id` always fell back to the opaque auto-generated doc id. A dispatcher scanning
-    // this panel must see a human-readable work order number, never a raw id like this one.
+  it("labels a governed WorkOrder with its woNumber, not the raw Firestore doc id", () => {
     const rawDocId = "aZ9xK2mQpL7vT4wR8nJc";
-    const jobs = [
+    const workOrders = [
       { id: rawDocId, woNumber: "WO-2026-000099", customerId: "cust-1", status: "CREATED", createdAt: NOW - 100 * HOUR },
     ];
-    render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
+    renderTable(workOrders);
     expect(screen.getByText(/WO-2026-000099/)).toBeTruthy();
     expect(screen.queryByText(new RegExp(rawDocId))).toBeNull();
+  });
+
+  it("renders severity as a word, never the raw enum", () => {
+    const workOrders = [{ id: "old", woNumber: "WO-2026-000044", status: "CREATED", createdAt: NOW - 400 * HOUR }];
+    renderTable(workOrders);
+    expect(screen.getByText("Critical")).toBeTruthy();
+    expect(screen.queryByText("CRITICAL")).toBeNull();
+  });
+
+  it("resolves the account name and says 'Unassigned' rather than leaving a blank cell", () => {
+    const workOrders = [
+      { id: "old", woNumber: "WO-2026-000045", customerId: "C1", status: "CREATED", createdAt: NOW - 400 * HOUR },
+    ];
+    renderTable(workOrders, { accountNames: new Map([["C1", "Acme Foods"]]) });
+    expect(screen.getByText("Acme Foods")).toBeTruthy();
+    expect(screen.getByText("Unassigned")).toBeTruthy();
+  });
+
+  it("uses the one table pattern and is never wrapped in a card", () => {
+    const workOrders = [{ id: "old", woNumber: "WO-2026-000046", status: "CREATED", createdAt: NOW - 400 * HOUR }];
+    const { container } = renderTable(workOrders);
+    expect(container.querySelector("table.ns-table")).toBeTruthy();
+    expect(container.querySelector(".work-order-card")).toBeNull();
+    expect(container.querySelector(".fo-card")).toBeNull();
+  });
+
+  it("states the empty case in words rather than rendering a blank region", () => {
+    renderTable([]);
+    expect(screen.getByText(/No work orders at risk\./)).toBeTruthy();
   });
 });

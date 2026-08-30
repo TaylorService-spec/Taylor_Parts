@@ -131,6 +131,30 @@ export const NAV_DOMAINS = [
       { key: "salesOrders", label: "Sales Orders", path: "sales-orders" },
     ],
   },
+  // Platform Task 3 -- Service Operations, promoted from the former Service >
+  // Control Tower sub-item to its own top-level area at /service-operations. Its
+  // single index screen renders the SAME component (LEGACY_COMPONENTS
+  // ["controlTower"] -> ControlTower) via the STABLE "controlTower" legacyKey, so
+  // behavior, data access, and admin/dispatcher-only visibility are unchanged
+  // (technician/unauthorized roles fail closed exactly as before -- the index
+  // route isn't generated for them). Single-item sub-nav, same shape as the
+  // Customers domain.
+  //
+  // ORDER: it sits ABOVE Equipment and Service deliberately (Owner, 2026-08-30).
+  // Those two are expandable sections (Service carries three groups; Inventory
+  // below is the same shape), and a single-destination area reading as a peer
+  // *between* them made the rail look inconsistent -- one flat item wedged among
+  // sections, with Inventory's section starting again underneath it. The one flat
+  // destination goes first, then the sections. Nothing about visibility, paths or
+  // legacyKeys changes with the position; NAV_DOMAINS order is presentation only.
+  {
+    key: "serviceOperations",
+    label: "Service Operations",
+    path: "service-operations",
+    subnav: [
+      { key: "serviceOperations", label: "Service Operations", path: "", legacyKey: "controlTower" },
+    ],
+  },
   {
     // Equipment & Installed Asset Management -- Issue #232 unit E5.
     //
@@ -248,22 +272,6 @@ export const NAV_DOMAINS = [
       { key: "scheduling", label: "Scheduling", path: "scheduling", navHidden: true },
       { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling", navHidden: true },
       { key: "warranty", label: "Warranty", path: "warranty", navHidden: true },
-    ],
-  },
-  // Platform Task 3 -- Service Operations, promoted from the former Service >
-  // Control Tower sub-item to its own top-level area at /service-operations. Its
-  // single index screen renders the SAME component (LEGACY_COMPONENTS
-  // ["controlTower"] -> ControlTower) via the STABLE "controlTower" legacyKey, so
-  // behavior, data access, and admin/dispatcher-only visibility are unchanged
-  // (technician/unauthorized roles fail closed exactly as before -- the index
-  // route isn't generated for them). Single-item sub-nav, same shape as the
-  // Customers domain.
-  {
-    key: "serviceOperations",
-    label: "Service Operations",
-    path: "service-operations",
-    subnav: [
-      { key: "serviceOperations", label: "Service Operations", path: "", legacyKey: "controlTower" },
     ],
   },
   {

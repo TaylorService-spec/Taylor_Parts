@@ -1,73 +1,98 @@
 import { Link } from "react-router-dom";
 import StatusPill from "../../../shared/ui/StatusPill.jsx";
-import {
-  WO_ATTENTION_TYPE,
-  workOrderAttentionItems,
-  groupWorkOrderAttentionItemsBySection,
-} from "../../../domain/workOrderAttentionProjection";
-import { resolveTechnicianIdentity } from "../../../domain/actorDisplayName";
+import { WO_ATTENTION_TYPE } from "../../../domain/workOrderAttentionProjection";
+import { SECTION_ID } from "../../../domain/serviceOperationsNorthStar";
 
-// Wave 7 extension, PART 5 -- the WO / Dispatch Attention Panel, mirroring NotificationPanel.jsx's
-// transitional-bell role for Parts: a purely presentational consumer of
-// domain/workOrderAttentionProjection.js's normalized Attention Items. This panel computes NOTHING --
-// it calls the domain projection over the same { workOrders, technicians } snapshot ControlTower already
-// owns and renders the result, matching every other panel in this directory (AtRiskPanel /
-// DispatchQueuePanel / OverloadedTechPanel): "No panel may inline scoring/derivation logic."
+// The attention block — pattern 3, and the FIRST thing in the work area (Service Operations North
+// Star P1). A pure presenter: every row it renders was built by domain/serviceOperationsNorthStar.js's
+// serviceOperationsAttention(), which composes domain/workOrderAttentionProjection.js. This component
+// classifies nothing.
 //
-// `partsReadinessByWorkOrderId` is optional and defaults to {} -- ControlTower does not yet read the
-// per-part warehouse/truck/procurement dimensions workOrderPartsReadiness.js needs (that would be a new,
-// separate Firestore-read integration, out of this slice's scope), so the "Parts Blocked" section is
-// honestly empty until a caller wires that data in. This is the SAME "capability not enabled -> honest
-// degradation, never a fabricated result" pattern workOrderPartsReadiness.js itself uses for
-// truckInventory -- not a bug, a documented boundary.
+// ── The two rulings that shape what is NOT here ─────────────────────────────────────────────────
 //
-// `technicianLabel` now delegates to the SHARED resolver in domain/actorDisplayName.js. This panel's
-// version was the model for it: of the ten inline copies that existed across this app, it was the only
-// one that refused to print a bare id when a name was missing. These are Technician collection docs with
-// a plain `name` field, NOT Firebase auth uids, so this is not the F-UID-1 "raw uid" case that module
-// also guards -- it is the same UX rule, that an id is not a name.
-function technicianLabel(techId, technicians) {
-  // Delegates to the shared resolver this panel's own version was the model for -- it was the
-  // only one of ten copies that refused to print a raw id. Behaviour is unchanged.
-  return resolveTechnicianIdentity(techId, { technicians }).name;
-}
+// SO-N1 — NO RISK SEVERITY WORDS. The design drew "Urgent / Stalled / Parts blocked" severity labels
+// on these rows. This projection has no severity and deliberately never will: attention semantics
+// (does someone need to act?) and risk severity (how badly is this work order going?) are different
+// questions over different data, and workOrderAttentionProjection.js's own header warns that one
+// shared badge vocabulary across the two is how they come to mean nothing. What each row carries is
+// the governed distinction the projection actually makes — ACTION_ITEM vs NOTIFICATION — rendered as
+// "Action needed" / "In progress". Risk severity lives in the At risk table, one section down.
+//
+// SO-N2 — NO "URGENT" SECTION. The sections are WO_ATTENTION_SECTION_ORDER's four, in that order.
+// Unassigned work needing a dispatcher is already Ready to Schedule; deriving it a second time here
+// (`unfinished && !assignedTechId`) would show one work order twice under two names, and would put a
+// business derivation back into JSX.
+//
+// SO-N4 — NO OWNER. recipientRole is a role, not a person. A row states the work order, the account
+// and (where the governed item carries one) the technician. It never invents someone accountable.
+//
+// CLEAN RENDERS NOTHING. Not an empty box, not an "all clear" banner — the grammar's attention block
+// is absent when there is nothing to attend to, so a clean day looks clean instead of looking like a
+// panel that failed to load.
 
-function AttentionRow({ item, technicians }) {
+function AttentionRow({ item }) {
+  const actionNeeded = item.attentionType === WO_ATTENTION_TYPE.ACTION_ITEM;
+
   return (
-    <Link to={item.deepLink} className="work-order-card fo-controltower-attention-row">
-      <h3 className="fo-controltower-attention-row__title">
-        {item.woNumber}
-        {item.attentionType === WO_ATTENTION_TYPE.ACTION_ITEM ? (
-          <StatusPill tone="attention" label="Action needed" />
-        ) : (
-          <StatusPill tone="info" label="In progress" />
-        )}
-      </h3>
-      {item.techId ? <div className="fo-muted">{`Technician: ${technicianLabel(item.techId, technicians)}`}</div> : null}
-    </Link>
+    <li className={`ns-attention__item ${actionNeeded ? "is-blocking" : "is-attention"}`}>
+      <span className="ns-attention__severity">
+        {actionNeeded ? "Action needed" : "In progress"}
+      </span>
+      <span className="ns-attention__fact">
+        <strong>{item.woNumber}</strong>
+        {item.account ? <> · {item.account}</> : null}
+        {item.technicianName ? <> · {item.technicianName}</> : null}
+      </span>
+      <Link className="ns-attention__link" to={item.href}>
+        Open work order →
+      </Link>
+    </li>
   );
 }
 
-export default function WorkOrderAttentionPanel({ workOrders = [], technicians = [], partsReadinessByWorkOrderId = {} }) {
-  const items = workOrderAttentionItems({ workOrders, partsReadinessByWorkOrderId });
-  const sections = groupWorkOrderAttentionItemsBySection(items);
-  const total = items.length;
+export default function WorkOrderAttentionPanel({ attention }) {
+  const sections = attention?.sections ?? [];
+  const total = attention?.total ?? 0;
+  // SO-G5. The projection defines a Parts Blocked section, but this page supplies no
+  // partsReadinessByWorkOrderId, so that section can never populate here. Where there IS an attention
+  // list, an absent Parts section would be read as "and no parts problems" — a claim this page cannot
+  // make — so the boundary is stated inside the block. It disappears on its own the day a caller wires
+  // the readiness read in.
+  const partsUnavailable = attention?.partsReadinessConnected === false;
+
+  // CLEAN RENDERS NOTHING — including the parts disclosure. The grammar's attention block is absent
+  // when there is nothing to attend to, and a block containing only a capability note is still a
+  // block: it would put a permanent box on every clean day, which is the exact "no blank regions, no
+  // panels that look broken" case the honest-state model exists to prevent. An absent block makes no
+  // claim about parts either way; a present one that omitted the section would.
+  if (total === 0) return null;
 
   return (
-    <div className="tech-overview tech-overview--compact">
-      <h3>Work Order Attention{total > 0 ? ` (${total})` : ""}</h3>
-      {total === 0 ? (
-        <p className="fo-muted">No work orders need attention.</p>
-      ) : (
-        sections.map((section) => (
-          <div key={section.sectionLabel}>
-            <p className="fo-notification-panel-section">{section.sectionLabel}</p>
+    <section className="ns-section ns-attention" id={SECTION_ID.attention} aria-label="Needs attention">
+      <div className="ns-section__head">
+        <h2 className="ns-section__title">Needs attention</h2>
+        {total > 0 ? <StatusPill tone="attention" label={String(total)} asText /> : null}
+      </div>
+
+      {sections.map((section) => (
+        <div key={section.sectionLabel}>
+          <p className="ns-attention__section-label">{section.sectionLabel}</p>
+          <ul className="ns-attention__list">
             {section.items.map((item) => (
-              <AttentionRow key={item.attentionItemId} item={item} technicians={technicians} />
+              <AttentionRow key={item.attentionItemId} item={item} />
             ))}
-          </div>
-        ))
-      )}
-    </div>
+          </ul>
+        </div>
+      ))}
+
+      {partsUnavailable ? (
+        <div>
+          <p className="ns-attention__section-label">Parts Blocked</p>
+          <p className="ns-state ns-state--not-enabled">
+            Parts readiness isn&rsquo;t connected to this page yet.
+          </p>
+        </div>
+      ) : null}
+    </section>
   );
 }
