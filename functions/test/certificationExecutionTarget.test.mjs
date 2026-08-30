@@ -262,3 +262,158 @@ test("CERTIFICATION activates no capabilities", () => {
   const t = gate(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
   assert.equal(t.activationOverrides.size ?? t.activationOverrides.length, 0);
 });
+
+// =================================================================================================
+// THE INSTALLER'S OWN CLI CONTRACT.
+//
+// Everything above tests resolveExecutionTarget in isolation. That is necessary and it is not
+// sufficient: the gate can be perfect and the tool that installs the entire Certification World can
+// still not be calling it. That was literally true until this change -- certificationWorld.mjs
+// gated on a registry role of "sandbox" and nothing else, so once a SECOND sandbox-role environment
+// existed, `--projectId eos-platform-sandbox` became `--projectId eos-platform-certification` by
+// editing one word, with no flag on the line naming which world was about to be deleted.
+//
+// So these drive the REAL parser and the REAL authorization decision, through the exported entry
+// point main() itself uses. A future refactor that silently stops consulting the gate fails here.
+// =================================================================================================
+const { authorizeInvocation } = await import(L("functions/scripts/certificationWorld.mjs"));
+
+const cli = (args, env = {}) =>
+  withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined, ...env },
+    () => authorizeInvocation(args));
+const cliRefused = (args, env = {}) => {
+  try { cli(args, env); return null; } catch (err) { return err; }
+};
+
+const CERT_LIVE = ["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG];
+const SANDBOX_LIVE = ["--projectId", LIVE_SANDBOX_PROJECT, "--apply", LIVE_FLAG];
+
+// -- CERTIFICATION: the mandated three, and every near-miss --------------------------------------
+
+test("CLI: certification rebuild is ALLOWED with --projectId + --apply + the certification flag", () => {
+  const r = cli(["rebuild", ...CERT_LIVE, "--confirm-reset"]);
+  assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+  assert.equal(r.target.isLive, true);
+  assert.equal(r.writes, true);
+});
+
+test("CLI: certification reset is ALLOWED with the three flags plus --confirm-reset", () => {
+  const r = cli(["reset", ...CERT_LIVE, "--confirm-reset"]);
+  assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+  assert.equal(r.writes, true);
+});
+
+test("CLI: --apply ALONE cannot write to certification", () => {
+  // The generic flag says "not a dry run". It does not say WHERE, and the destination is the whole
+  // question once two sandbox-role worlds exist.
+  const err = cliRefused(["rebuild", "--projectId", CERTIFICATION_PROJECT, "--apply", "--confirm-reset"]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--apply-live-certification/);
+});
+
+test("CLI: the certification flag ALONE cannot write to certification", () => {
+  // executionTarget treats the named flag as implying --apply, which is a fine contract for a tool
+  // that writes a handful of records. This one deletes and reseeds 1000+, so it demands both words.
+  const err = cliRefused(["rebuild", "--projectId", CERTIFICATION_PROJECT, CERTIFICATION_LIVE_FLAG, "--confirm-reset"]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /requires BOTH --apply/);
+});
+
+test("CLI: the SANDBOX flag cannot unlock certification", () => {
+  const err = cliRefused(["rebuild", "--projectId", CERTIFICATION_PROJECT, "--apply", LIVE_FLAG, "--confirm-reset"]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--apply-live-certification/);
+});
+
+test("CLI: --confirm-reset ALONE cannot write to certification -- the old command is now refused", () => {
+  // THE REGRESSION THIS BLOCK EXISTS FOR. `rebuild --projectId eos-platform-certification
+  // --confirm-reset` used to be a complete, working, live destructive command. It must never be
+  // one again: a destructive acknowledgement is not a statement about destination.
+  const err = cliRefused(["rebuild", "--projectId", CERTIFICATION_PROJECT, "--confirm-reset"]);
+  assert.ok(err, "the pre-change command MUST now be refused");
+  assert.match(err.message, /requires BOTH --apply and --apply-live-certification/);
+});
+
+test("CLI: --confirm-reset is required IN ADDITION to the live flags, never instead of them", () => {
+  const err = cliRefused(["reset", ...CERT_LIVE]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--confirm-reset/);
+});
+
+// -- SANDBOX: the existing authority is preserved, and stays its own ------------------------------
+
+test("CLI: sandbox rebuild is ALLOWED with --projectId + --apply + the sandbox flag", () => {
+  const r = cli(["rebuild", ...SANDBOX_LIVE, "--confirm-reset"]);
+  assert.equal(r.target.projectId, LIVE_SANDBOX_PROJECT);
+  assert.equal(r.target.isLive, true);
+  assert.equal(r.writes, true);
+});
+
+test("CLI: the CERTIFICATION flag cannot unlock the sandbox", () => {
+  const err = cliRefused(["rebuild", "--projectId", LIVE_SANDBOX_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--confirm-reset"]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--apply-live-sandbox/);
+});
+
+// -- PRODUCTION, UNKNOWN, AMBIENT, NO TARGET: refused through the CLI too -------------------------
+
+test("CLI: PRODUCTION is refused with every flag combination", () => {
+  const combos = [
+    ["rebuild", "--projectId", PRODUCTION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--confirm-reset"],
+    ["rebuild", "--projectId", PRODUCTION_PROJECT, "--apply", LIVE_FLAG, "--confirm-reset"],
+    ["reset", "--projectId", PRODUCTION_PROJECT, "--apply", LIVE_FLAG, CERTIFICATION_LIVE_FLAG, "--confirm-reset"],
+    // read-only modes must refuse production too: verify opens a client against the target.
+    ["verify", "--projectId", PRODUCTION_PROJECT],
+    ["reset", "--projectId", PRODUCTION_PROJECT, "--dry-run"],
+  ];
+  for (const args of combos) {
+    const err = cliRefused(args);
+    assert.ok(err, "production must be refused for: " + args.join(" "));
+    assert.match(err.message, /production/i);
+  }
+});
+
+test("CLI: an UNKNOWN project is refused, never guessed", () => {
+  const err = cliRefused(["rebuild", "--projectId", "eos-platform-certifcation", "--apply", CERTIFICATION_LIVE_FLAG, "--confirm-reset"]);
+  assert.ok(err);
+  assert.match(err.message, /Unknown project/);
+});
+
+test("CLI: ambient credentials must agree with --projectId", () => {
+  const err = cliRefused(["rebuild", ...CERT_LIVE, "--confirm-reset"], { GOOGLE_CLOUD_PROJECT: LIVE_SANDBOX_PROJECT });
+  assert.ok(err);
+  assert.match(err.message, /Ambient credentials/);
+});
+
+test("CLI: no --projectId is refused; there is no default target", () => {
+  const err = cliRefused(["rebuild", "--apply", CERTIFICATION_LIVE_FLAG, "--confirm-reset"]);
+  assert.ok(err);
+  assert.match(err.message, /--projectId is required/);
+});
+
+// -- READ-ONLY MODES MUST NOT DEMAND WRITE AUTHORITY ---------------------------------------------
+
+test("CLI: verify needs NO live flag, against either sandbox-role world", () => {
+  // Making a read require --apply-live-certification would train an operator to type the live-write
+  // flag for a command that reads, which is how the flag stops meaning anything.
+  for (const p of [CERTIFICATION_PROJECT, LIVE_SANDBOX_PROJECT]) {
+    const r = cli(["verify", "--projectId", p]);
+    assert.equal(r.writes, false, "verify must not be a write mode for " + p);
+    assert.equal(r.target.projectId, p);
+  }
+});
+
+test("CLI: reset --dry-run previews without live-write authorization", () => {
+  const r = cli(["reset", "--projectId", CERTIFICATION_PROJECT, "--dry-run"]);
+  assert.equal(r.writes, false);
+});
+
+test("CLI: the governed flags are RECOGNISED by the parser, not rejected as unknown arguments", () => {
+  // Before this change the parser threw "unrecognized argument: --apply" -- the mandated command
+  // could not even be typed. Asserting the parser accepts them keeps that from silently returning.
+  for (const flag of ["--apply", CERTIFICATION_LIVE_FLAG, LIVE_FLAG]) {
+    const err = cliRefused(["verify", "--projectId", CERTIFICATION_PROJECT, flag]);
+    assert.ok(err === null || !/unrecognized argument/.test(err.message),
+      "parser must recognise " + flag);
+  }
+});
