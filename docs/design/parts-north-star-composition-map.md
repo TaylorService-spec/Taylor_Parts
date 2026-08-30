@@ -627,3 +627,48 @@ that impersonate a collection page, would each buy a resemblance by breaking som
 `fo-parts-list` had been in `cssClassCoverage`'s `KNOWN_UNSTYLED` list — a class in the markup with no
 rule behind it. Scoping the header spacing to this page gave it one, and the guard demanded it leave
 the orphan list. The backlog may only shrink, and it did.
+
+---
+
+# Part X — check 3b measured a hidden element (2026-08-30)
+
+**25/25 against deployed `2b090a7e`.** The product was correct as deployed; the gate was not.
+
+Check 3b read `page.locator("h1").first()`. **Every workspace page in this app renders two `<h1>`
+elements** — `AppShell`'s visually-hidden domain landmark (*Inventory*) and `PageHeader`'s visible
+page title (*Parts*). The hidden one comes first in the DOM, so the gate read *"Inventory"* and
+reported a Parts regression against a page that was right.
+
+That cost a three-commit search for a change that never happened: `title="Parts"` is byte-identical
+at `875b3f7e`, `e0078377` and `2b090a7e`, and the diff between them touches no `PartsList`,
+`WorkspaceShell`, `WorkspaceHeader`, `AppShell` or `PageHeader` file.
+
+Measured live, the hierarchy was never in doubt:
+
+```
+h1.fo-visually-hidden    "Inventory"   visible:false   top 108
+h1.fo-page-header__title "Parts"       visible:TRUE    top 109
+summary   62 parts in the catalogue · 52 active · 10 status not recorded · 2 need attention   195
+chips     All (62) · Active parts (52) · Needs attention (2) · Serialized (12)                228
+toolbar   Search · Filter · Sort                                                              276
+table     PART · MANUFACTURER · CATEGORY · CONTROL · STATUS · ATTENTION                       386
+Work group                                                                                   1861
+```
+
+No heading of any level sits between the title and the Work group. The first screen says *"I am in
+Parts."*
+
+## The correction is stricter, not weaker
+
+The contract was always the **visible** title, so it is now asserted as one: `.fo-page-header__title`,
+checked for visibility, reading exactly `Parts`, with the labelled count beneath it. The previous form
+would have passed on a hidden element — and did the opposite, which is the same defect wearing the
+other face.
+
+## A finding that is not Parts', and not this pass's to fix
+
+**Two `<h1>`s per page, on all 14 conformant workspaces.** `AppShell`'s own comment records why its
+landmark exists — *"the rail rewrite dropped it, leaving every page with NO [h1]"* — and `PageHeader`
+has always rendered the visible one. Both were added for good reasons and nobody reconciled them. It
+is a document-outline problem across the shell, pre-existing, outside Parts P1, and it is what made
+this failure look like a cross-family regression. It deserves a decision of its own.

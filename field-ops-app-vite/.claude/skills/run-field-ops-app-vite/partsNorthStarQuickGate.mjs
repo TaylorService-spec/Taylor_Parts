@@ -263,13 +263,30 @@ async function main() {
   //       truly represents").
   const panel = catalogPanel(page);
   const panelText = (await panel.count()) > 0 ? await panel.innerText() : "";
-  // The count is LABELLED, wherever it sits. ND-30: "label the count according to what it truly
-  // represents" -- a bare number over a list is the ambiguity that asks the reader to guess.
-  const pageTitle = (await page.locator("h1").first().innerText().catch(() => "")).trim();
+  // ── 3b: THE VISIBLE TITLE, and the labelled count beneath it.
+  //
+  // THIS ASSERTED h1.first() AND MEASURED THE WRONG ELEMENT. Every workspace page renders TWO
+  // <h1>s: AppShell's visually-hidden domain landmark ("Inventory") and PageHeader's visible page
+  // title ("Parts"). The hidden one comes first in the DOM, so the gate read "Inventory" and
+  // reported a regression against a page that was correct -- while three commits were searched for
+  // a change that had never happened.
+  //
+  // The contract was always the VISIBLE title, so it is now asserted as one: the element a reader
+  // actually sees, checked for visibility, reading "Parts". Stricter than before, not weaker --
+  // the previous form would have passed on a hidden element, and did the opposite.
+  //
+  // ND-30 also requires the count to be LABELLED: a bare number over a list asks the reader to
+  // guess what it counts.
+  const titleEl = page.locator(".fo-page-header__title").first();
+  const titleCount = await titleEl.count();
+  const pageTitle = titleCount > 0 ? (await titleEl.innerText()).trim() : "";
+  const titleVisible = titleCount > 0 ? await titleEl.isVisible() : false;
+  const countLabelled = /parts? in the catalogue/i.test(panelText);
   record(
-    "3b ND-30 the catalogue carries a labelled count under the page title",
-    /parts? in the catalogue/i.test(panelText) && /^parts$/i.test(pageTitle),
-    `h1="${pageTitle}" summary="${(panelText.split("\n")[0] ?? "").slice(0, 80)}"`,
+    "3b ND-30 the VISIBLE page title is Parts, with a labelled count beneath it",
+    titleVisible && pageTitle === "Parts" && countLabelled,
+    `visibleTitle="${pageTitle}" visible=${titleVisible} labelledCount=${countLabelled} ` +
+      `summary="${(panelText.split("\n")[0] ?? "").slice(0, 80)}"`,
   );
 
   // ── 3c: the view chips, and every count agreeing with its own filter. A chip whose number
