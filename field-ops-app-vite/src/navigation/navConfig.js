@@ -273,7 +273,17 @@ export const NAV_DOMAINS = [
     subnav: [
       // The catalog operating surface. Reachable by governed catalog authority (so an
       // inventoryCatalogAdministrator can exercise what it holds) OR by the unchanged compatibility path.
-      { key: "parts", label: "Parts", path: "", legacyKey: "inventory", capabilityAccess: CATALOG_SURFACE_CAPABILITIES },
+      //
+      // LABELLED "Parts Catalog" (Owner, 2026-08-30) because that is what the repository already
+      // calls this screen everywhere except the nav: `objectPermissionMap.js` registers the governed
+      // object as "Parts Catalog", its view model is `domain/partsCatalogView.js`, PartsList.jsx
+      // describes itself as the Parts Catalog, and the capability set gating this very line is
+      // CATALOG_SURFACE_CAPABILITIES. The nav was the one place saying "Parts".
+      //
+      // That gap is not cosmetic: a screen whose menu name differs from its governed object name is
+      // how a live surface gets mistaken for something else -- the same defect that nearly retired
+      // the dispatch Jobs screen in this PR, pointed the other way.
+      { key: "parts", label: "Parts Catalog", path: "", legacyKey: "inventory", capabilityAccess: CATALOG_SURFACE_CAPABILITIES },
       // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
       // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
       //
@@ -296,7 +306,19 @@ export const NAV_DOMAINS = [
       // limited and cursored at Firestore, and list state lives in the URL. That is the master-data
       // browse workflow the comment was preserving, so hiding the only screen that offers it would be
       // keeping the workflow and hiding the door.
-      { key: "partMaster", label: "Part Master", path: "part-master" },
+      //
+      // LABELLED "Catalog Admin" (Owner, 2026-08-30). "Part Master" named the DATA rather than the
+      // job, which left two screens over the same objects with no way to tell from the rail which
+      // one you wanted. The pair now reads as what it is: Parts Catalog is the catalogue; this is
+      // the administration OF it -- the catalogue-scale browse by master-data status/control/class
+      // that the entry above deliberately does not offer (it shows category/available/risk).
+      //
+      // VISIBILITY DELIBERATELY UNCHANGED (Owner, 2026-08-30). Admin and dispatcher both keep it,
+      // exactly as before. Restricting it to admin was considered and NOT taken: isNavItemVisible
+      // gates the ROUTE TABLE as well as the rail (App.jsx), so a role restriction here would deny
+      // dispatchers the screen rather than tidy their menu -- an authorization change, and one that
+      // should not ride along with a rename. Revisit once it is known whether dispatchers use it.
+      { key: "partMaster", label: "Catalog Admin", path: "part-master" },
       // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
       // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
       // NOTE: the `manufacturers` collection read is still Rules-closed (the governed read-authority
