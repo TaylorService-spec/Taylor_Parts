@@ -19,7 +19,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = path.resolve(HERE, "../scripts");
@@ -105,16 +105,40 @@ test("the provisioner itself has no delete path", () => {
   }
 });
 
-test("the provisioner refuses production unconditionally, with no confirmation escape", () => {
+test("the provisioner refuses production unconditionally, with no confirmation escape", async () => {
   // The governed provisionEmployeeAccess.js permits production WITH --confirmProduction, which is
   // right for a tool that provisions real staff. This one has no such job and must have no such
   // flag: a flag that can authorize production is a flag that can be typed by mistake.
   const source = codeOf("certificationWorld/provisionPrincipals.mjs");
   assert.equal(source.includes("confirmProduction"), false,
     "the certification provisioner must not accept a production confirmation flag");
-  assert.ok(source.includes("is a PRODUCTION environment"), "it must refuse production explicitly");
-  assert.ok(source.includes("Unknown project"), "it must refuse an unregistered project");
-  assert.ok(source.includes("There is no default target"), "it must refuse a missing --projectId");
+
+  // THE REFUSALS MOVED, AND THIS CHECK MOVED WITH THEM.
+  //
+  // This used to grep the provisioner's source for the literal strings its own assertSandboxTarget
+  // threw -- "is a PRODUCTION environment", "Unknown project", "There is no default target". That
+  // guard has been REPLACED by the shared executionTarget authority (which refuses production by
+  // name AND by role, rather than by role alone), so the strings are legitimately gone while every
+  // refusal they stood for is strictly stronger.
+  //
+  // A source-text assertion could not tell those two situations apart: a guard that was deleted and
+  // a guard that was superseded look identical to grep. So this now EXERCISES the decision instead
+  // of reading it, which is what the check was always trying to establish and can no longer be
+  // satisfied by a file merely containing the right words.
+  const { authorizeProvisioning } =
+    await import(pathToFileURL(path.join(SCRIPTS, "certificationWorld/provisionPrincipals.mjs")).href);
+  const refusal = (argv) => {
+    try { authorizeProvisioning(argv); return null; } catch (err) { return err.message; }
+  };
+
+  assert.match(refusal(["--projectId", "taylor-parts", "--apply", "--apply-live-certification"]) ?? "",
+    /production/i, "it must refuse production explicitly, whatever flags accompany it");
+  assert.match(refusal(["--projectId", "taylor-parts"]) ?? "",
+    /production/i, "production must be refused even for a read-only dry run");
+  assert.match(refusal(["--projectId", "not-a-registered-project"]) ?? "",
+    /Unknown project/, "it must refuse an unregistered project");
+  assert.match(refusal(["--apply"]) ?? "",
+    /--projectId is required/, "it must refuse a missing --projectId");
 });
 
 test("interactive-login activation cannot silently rotate a working credential", () => {

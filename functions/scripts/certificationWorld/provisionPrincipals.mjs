@@ -26,9 +26,14 @@
 // prints no secret, and stores no secret. Interactive login is a SEPARATE, explicit activation for
 // the few personas that need to sign in -- identity never depends on a password.
 //
-// Run:
-//   node scripts/certificationWorld/provisionPrincipals.mjs --projectId eos-platform-sandbox
-//   node scripts/certificationWorld/provisionPrincipals.mjs --projectId eos-platform-sandbox --apply
+// Run -- DRY RUN (reads and reports; needs no live-write authorization):
+//   node scripts/certificationWorld/provisionPrincipals.mjs --projectId eos-platform-certification
+//
+// Run -- LIVE identity creation. Each target has its OWN flag, and BOTH words are required:
+//   node scripts/certificationWorld/provisionPrincipals.mjs \
+//        --projectId eos-platform-certification --apply --apply-live-certification
+//   node scripts/certificationWorld/provisionPrincipals.mjs \
+//        --projectId eos-platform-sandbox --apply --apply-live-sandbox
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
@@ -39,7 +44,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { buildWorkforce, functionLabelFor } = await import(L("functions/scripts/certificationWorld/data/workforce.mjs"));
-const { ENVIRONMENT_ACTIVATION_REGISTRY } = await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
 
 // ============================ THE IDENTITY NAMESPACE ============================
 //
@@ -56,36 +60,82 @@ const emailFor = (employeeId) => `${employeeId}${CERT_EMAIL_DOMAIN}`;
 const EMPLOYEES_COLLECTION = "employees";
 const USERS_COLLECTION = "users";
 
+// ============================ TARGET AUTHORITY ============================
+//
+// This file used to carry its own `assertSandboxTarget`: production refused, unknown projects
+// refused, registry role must be exactly "sandbox". Strictly stronger than the governed staff
+// provisioning tool, and correct as far as it went -- for exactly as long as there was one
+// sandbox-role environment.
+//
+// eos-platform-certification is ALSO role "sandbox". Under a role-only guard the command that
+// mints 47 identities in the sandbox becomes the command that mints them in certification by
+// editing one word, and nothing on the line names which project is about to gain principals.
+// That is the same gap #1604 closed for the world installer, and identity is the layer the world
+// installer explicitly does NOT own -- principals survive a world reset, so a mistake here is not
+// undone by rebuilding anything.
+//
+// So the local guard is GONE, not kept beside the shared one. Two guards that can disagree are
+// one guard plus a weaker one an operator can reach, and a parallel path that can authorize a
+// write independently is exactly what "route through the shared authority" has to mean.
+const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+
 /**
- * Sandbox target assertion, STRICTLY STRONGER than the governed provisioning tool's.
+ * Decide whether THIS invocation may create or link identities, and against what. PURE: parses,
+ * adjudicates, throws. No Firebase app, no Auth client, no Firestore -- which is what lets the
+ * test suite drive the real CLI contract instead of asserting against resolveExecutionTarget in
+ * isolation and hoping this file still calls it.
  *
- * provisionEmployeeAccess.js permits production WITH an explicit --confirmProduction, which is
- * correct for a tool whose job includes provisioning real staff. This script has no such job and
- * therefore no such escape: production is refused unconditionally, an unregistered project is
- * refused, a project whose registry role is not "sandbox" is refused, and there is no default.
+ * ============================ THE RULES ============================
  *
- * A flag that can authorize production is a flag that can be typed by mistake.
+ * A DRY RUN needs no live-write authorization. It reads to report what WOULD happen, and demanding
+ * --apply-live-certification for it would train an operator to type the live flag for a command
+ * that writes nothing -- which is how the flag stops meaning anything.
+ *
+ * A LIVE RUN requires BOTH --apply and the target's own named flag, matching certificationWorld.mjs
+ * rather than executionTarget's looser default (which treats the named flag as implying --apply).
+ * Creating 47 durable Auth principals is not a handful of records, and the two words are
+ * independent: one says "not a dry run", the other says WHICH project.
+ *
+ * --activate-logins IS NOT AUTHORIZATION AND CANNOT SUBSTITUTE FOR ANY OF IT. It is a strictly
+ * narrower question asked after the target is already settled -- may these principals also receive
+ * an interactive credential -- and it is deliberately absent from every branch below. It already
+ * requires --apply on its own account; that is an additional condition, never an alternative one.
  */
-function assertSandboxTarget(projectId) {
-  if (!projectId) {
-    throw new Error("--projectId is required. There is no default target for identity creation.");
+export function authorizeProvisioning(argv) {
+  // --projectId is read by resolveExecutionTarget from argv itself. Parsing it here as well would
+  // be a second copy of the rule, and the copy is what drifts out of step.
+  const apply = argv.includes("--apply");
+  const activate = argv.includes("--activate-logins");
+
+  // Production by name AND by role, unknown projects, a missing --projectId, and ambient
+  // credentials that disagree with the stated target are all refused in here, once.
+  const target = resolveExecutionTarget({
+    argv: ["node", "provisionPrincipals.mjs", ...argv],
+    writes: apply,
+  });
+
+  if (apply && target.isLive) {
+    const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(target.projectId) ?? null;
+    if (!argv.includes(liveFlag)) {
+      throw new Error(
+        `Creating identities in ${target.projectId} requires BOTH --apply and ${liveFlag}. `
+        + "Neither one alone mints a principal, and --activate-logins is not a substitute for either.");
+    }
   }
-  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments || [])
-    .find((e) => e?.firebase?.projectId === projectId);
-  if (!env) {
-    throw new Error(`Unknown project "${projectId}" -- not present in config/environments.json. Refusing.`);
+
+  // The named flag alone must not be a live run. executionTarget infers --apply from it; this tool
+  // does not, so the operator has to have typed both words.
+  if (!apply && target.isLive) {
+    const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(target.projectId) ?? null;
+    if (liveFlag && argv.includes(liveFlag)) {
+      throw new Error(
+        `${liveFlag} was given without --apply. This tool requires both for a live run; pass --apply `
+        + "as well, or drop the live flag to perform a dry run.");
+    }
   }
-  if (env.role === "production") {
-    throw new Error(`"${projectId}" is a PRODUCTION environment. This tool never writes production identities.`);
-  }
-  if (env.role !== "sandbox") {
-    throw new Error(`"${projectId}" has role "${env.role}". Only sandbox environments may receive certification identities.`);
-  }
-  // NOTE: the COMPILED registry does not carry the human-readable `id`, only firebase.projectId
-  // and role. Reporting projectId is therefore the honest identifier here -- printing
-  // "environmentId: undefined" would be a cosmetic lie in the one line an operator reads to confirm
-  // they are pointed at the right place.
-  return { projectId, role: env.role };
+
+  return { target, apply, activate };
 }
 
 const OUTCOME = Object.freeze({
@@ -159,15 +209,12 @@ async function activateLogins(auth, rows) {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const arg = (name) => {
-    const i = argv.indexOf(`--${name}`);
-    return i >= 0 ? argv[i + 1] : undefined;
-  };
-  const apply = argv.includes("--apply");
-  const activate = argv.includes("--activate-logins");
-  const target = assertSandboxTarget(arg("projectId"));
+  // AUTHORIZE BEFORE ANYTHING INITIALIZES. This runs ahead of initializeApp/getAuth, so a refused
+  // invocation never opens an Auth client against the project it was refused for.
+  const { target, apply, activate } = authorizeProvisioning(argv);
 
   console.log(`certification principals :: ${apply ? "APPLY" : "DRY RUN"} :: ${target.projectId} (role=${target.role})`);
+  console.log(describeTarget(target));
   console.log(`identity namespace: *${CERT_EMAIL_DOMAIN}`);
 
   if (!getApps().length) {
@@ -359,7 +406,18 @@ async function main() {
   return rows;
 }
 
-main().catch((err) => {
-  console.error("REFUSED:", err.message);
-  process.exitCode = 1;
-});
+// RUN ONLY WHEN INVOKED DIRECTLY.
+//
+// authorizeProvisioning() above is imported by its test -- the guard that this tool actually
+// consults the shared execution authority rather than merely living next to it. An unguarded
+// main() runs the entire tool on import: it demands --projectId, refuses, and sets a non-zero exit
+// code on the test process. A script whose authorization decision cannot be imported without
+// executing the script is a decision that does not get tested.
+const invokedDirectly = process.argv[1]
+  && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error("REFUSED:", err.message);
+    process.exitCode = 1;
+  });
+}
