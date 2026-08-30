@@ -1,6 +1,5 @@
-import { INVENTORY_ACTIONS_COLLECTION, INVENTORY_ACTION_TYPE } from "./constants";
+import { INVENTORY_ACTIONS_COLLECTION } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
-import { auth } from "../firebase/firebase";
 
 // Sprint 2.1.9 -- Inventory Actions Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry documents the
@@ -28,38 +27,36 @@ import { auth } from "../firebase/firebase";
 // Order-driven stock movement.
 export const inventoryActionsStore = makeCollectionStore(INVENTORY_ACTIONS_COLLECTION);
 
-const VALID_ACTION_TYPES = new Set(Object.values(INVENTORY_ACTION_TYPE));
 
 // The only writer of an Inventory Action. Validated here, not just in
 // the UI, since this is the sole write path:
 // - Receive Stock requires a positive quantity.
 // - Adjust Stock allows a positive or negative (non-zero) quantity.
 // - Correct Mistake requires both a reason and notes.
-export function recordInventoryAction({ partId, transactionType, quantityDelta, reason, notes }) {
-  if (!VALID_ACTION_TYPES.has(transactionType)) {
-    throw new Error(`Invalid inventory action type: ${transactionType}`);
-  }
-
-  const numericDelta = Number(quantityDelta);
-  if (!Number.isFinite(numericDelta) || numericDelta === 0) {
-    throw new Error("Quantity must be a non-zero number.");
-  }
-  if (transactionType === INVENTORY_ACTION_TYPE.RECEIVE_STOCK && numericDelta <= 0) {
-    throw new Error("Receive Stock requires a positive quantity.");
-  }
-
-  const trimmedReason = reason?.trim() || "";
-  const trimmedNotes = notes?.trim() || "";
-  if (transactionType === INVENTORY_ACTION_TYPE.CORRECT_MISTAKE && (!trimmedReason || !trimmedNotes)) {
-    throw new Error("Correct Mistake requires both a reason and notes.");
-  }
-
-  return inventoryActionsStore.add({
-    partId,
-    transactionType,
-    quantityDelta: numericDelta,
-    reason: trimmedReason || null,
-    notes: trimmedNotes || null,
-    createdBy: auth.currentUser?.uid ?? null,
-  });
+/**
+ * RETIRED. Owner ruling, 2026-08-30: retire new inventory_actions writes; keep existing history
+ * readable.
+ *
+ * This function is kept, and kept exported, rather than deleted -- because deleting it would take
+ * the REASON with it, and the next person to want an inventory note on the Part record would
+ * simply write another one. It now refuses, and says why.
+ *
+ * WHY IT REFUSES. `inventory_actions` is not stock authority and is never reconciled with the
+ * governed ledger. Every entry was a second, parallel assertion that stock had moved, with no
+ * mechanism that could ever make the two agree. Its vocabulary was overtaken besides: Receiving
+ * owns receiving, Transfers own transfers, and the Cycle Count / governed adjustment paths own
+ * their movement.
+ *
+ * The historical documents are untouched, still read by useInventoryActionsForPart, and still
+ * catalogued for reporting. Nothing is deleted and nothing is migrated into the ledger.
+ *
+ * @throws always.
+ */
+export function recordInventoryAction() {
+  throw new Error(
+    "inventory_actions no longer accepts new entries (Owner ruling, 2026-08-30). It is not stock " +
+      "authority and is never reconciled with the governed ledger. Receiving, Transfers and the " +
+      "Cycle Count / governed adjustment paths own their movements; record it there. Existing " +
+      "history remains readable.",
+  );
 }
