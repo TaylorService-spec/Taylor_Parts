@@ -1,4 +1,5 @@
 import { useState } from "react";
+import RuledSection from "../ui/RuledSection.jsx";
 import { Button } from "../ui/primitives/index.js";
 import { usePartIdentifiers } from "../../hooks/usePartIdentifiers.js";
 import { PART_IDENTIFIER_UNAVAILABLE_REASON } from "../../config/partIdentifierReadiness.js";
@@ -226,8 +227,10 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
   const label = partNumber || partId || "this part";
 
   return (
-    <section aria-labelledby="part-identifiers-h">
-      <h3 id="part-identifiers-h">Barcode &amp; Identifiers</h3>
+    // PARTS NORTH STAR P1 -- the shared record-section grammar. The heading loses "Barcode &":
+    // a barcode is one of the identifier TYPES listed below, so naming it in the title made one
+    // member of the set look like half the subject.
+    <RuledSection title="Identifiers">
 
       <p className="fo-muted">
         Alternate identifiers this part is also known by — UPC/EAN/GTIN barcodes, a manufacturer part
@@ -324,6 +327,6 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
         value makes it a different identifier — deactivate the old one and add the new. Nothing is
         deleted; deactivation preserves the history.
       </p>
-    </section>
+    </RuledSection>
   );
 }

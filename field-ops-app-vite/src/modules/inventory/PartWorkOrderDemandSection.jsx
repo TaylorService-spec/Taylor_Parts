@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import RuledSection from "../../shared/ui/RuledSection.jsx";
 import { Link } from "react-router-dom";
 import { usePartWorkOrderDemand, PART_WORK_ORDER_DEMAND_STATE } from "../../hooks/usePartWorkOrderDemand";
 import { buildPartWorkOrderDemand } from "../../domain/partWorkOrderDemand";
@@ -52,8 +53,14 @@ export default function PartWorkOrderDemandSection({ partId }) {
   };
 
   return (
-    <div className="fo-card">
-      <h3>Work Order Demand</h3>
+    // PARTS NORTH STAR P1. The shared record-section grammar, and the design's own heading --
+    // "Open demand", with the sentence that keeps it from being read as a reservation riding
+    // beside the title rather than under the table, where it can be scrolled away from the
+    // numbers it qualifies.
+    <RuledSection
+      title="Open demand"
+      meta="Work orders that plan this part — planned demand, never a reservation."
+    >
 
       {demandRead.status === PART_WORK_ORDER_DEMAND_STATE.LOADING && (
         <p className="fo-muted">Loading Work Order demand…</p>
@@ -120,6 +127,6 @@ export default function PartWorkOrderDemandSection({ partId }) {
           </>
         );
       })()}
-    </div>
+    </RuledSection>
   );
 }
