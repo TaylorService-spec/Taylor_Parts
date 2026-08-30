@@ -48,12 +48,14 @@ const workflowsDir = path.resolve(here, "../../.github/workflows");
  * subsystem — and deleting the line here is the fix. Adding a line is not.
  */
 const KNOWN_UNNAMED = new Set([
-  "accountArSection.test.jsx", "accountPageComponents.test.jsx", "activeLabelConformance.test.jsx",
+  // activeLabelConformance / equipmentDetailAccountFailClosed / equipmentTimeline LEFT this list
+  // when equipment-north-star-tests.yml named them. An entry here is an admission that nothing runs
+  // the file; all three now run on every Equipment PR, so the admission would be false.
+  "accountArSection.test.jsx", "accountPageComponents.test.jsx",
   "activitySection.test.jsx", "administrationVersionDeploymentInfo.test.jsx",
   "appRailActiveServiceGroup.test.jsx", "appShellDrawerLocation.test.jsx",
   "compositionPrimitives.test.jsx", "designSystemFoundationPrimitives.test.jsx", "dispatchCancelledChip.test.jsx",
   "dispatchCancelledMessage.test.jsx", "emptyStateGuidance.test.jsx",
-  "equipmentDetailAccountFailClosed.test.jsx", "equipmentTimeline.test.jsx",
   "executionAnalyticsService.test.jsx", "executionCaptureOverPlanGuard.test.jsx",
   "fieldDispatchSafeCopySweep.test.jsx", "fieldErrorCopyLeak.test.jsx",
   "inventoryRoleReadErrorContract.test.jsx", "jobsNewWorkOrderActionGate.test.jsx",

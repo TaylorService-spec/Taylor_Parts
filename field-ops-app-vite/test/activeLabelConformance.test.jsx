@@ -58,7 +58,10 @@ const BARE_ACTIVE_ALLOWLIST = new Set([
   "metadata/definitions/transferOrder.js", // Record active
   "metadata/definitions/truck.js", // Record active (trucks.status, distinct from trucks.active boolean -- see truck.js comments)
   "metadata/definitions/warehouse.js", // Record active
-  "modules/equipment/EquipmentDetail.jsx", // Record active
+  // EquipmentDetail.jsx LEFT this list when the Equipment North Star deleted its private
+  // STATUS_LABEL copy -- the status word now comes from domain/equipmentStatus.js through
+  // equipmentRecordFacts, so the file has no bare "Active" site of its own left to allow. This is
+  // the burn-down GATE 2 exists to force.
   "modules/equipment/EquipmentEditModal.jsx", // Record active (form option)
   "modules/equipment/EquipmentRegister.jsx", // Record active
   "modules/equipment/equipmentStatusFilters.js", // Record active

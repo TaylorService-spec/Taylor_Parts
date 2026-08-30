@@ -196,9 +196,11 @@ const KNOWN_UNSTYLED = new Set([
   "fo-sched-day",
   "fo-sched-form",
   "fo-sched-main",
-  "fo-tag",
+  // "fo-tag" and "fo-timeline" left this backlog with the Equipment Activity Timeline's `<ol>`:
+  // the locked 1c frame draws that timeline as a Source · Date · Event table, which renders through
+  // the shared `ns-table` grammar. Both classes were used nowhere else, so they are no longer
+  // used-but-unstyled — they are simply gone.
   "fo-technician-save-error",
-  "fo-timeline",
   "fo-tone-muted",
   "fo-wizard",
   "fo-wizard-step-label",

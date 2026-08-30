@@ -230,6 +230,10 @@
       "runner": "node"
     },
     {
+      "file": "test/equipmentNorthStarProjection.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/equipmentRegister.test.mjs",
       "runner": "node"
     },

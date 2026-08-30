@@ -3,13 +3,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEquipmentDoc, useWorkOrdersForEquipment } from "../../hooks/useEquipment";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
-import {
-  equipmentDisplayName,
-  equipmentSummary,
-  isRetired,
-  equipmentStatusTone,
-} from "../../domain/equipment";
+import { isRetired, equipmentStatusTone } from "../../domain/equipment";
 import { trustedActionUnavailable } from "../../domain/equipment";
+import {
+  equipmentRecordFacts,
+  equipmentRecordIdentity,
+  equipmentRecordKicker,
+  equipmentRecordShellDefinition,
+} from "../../domain/equipmentNorthStar";
 import { updateEquipment } from "../../domain/equipmentRepository";
 import EquipmentEditModal from "./EquipmentEditModal";
 import EquipmentTimeline from "./EquipmentTimeline";
@@ -17,15 +18,15 @@ import InventoryControlSection from "./InventoryControlSection";
 import { buildEquipmentInventoryControlView } from "../../domain/equipmentInventoryControlAdapter";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
-import ActionRail from "../../shared/ui/ActionRail.jsx";
+import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import MetadataRecordPage from "../../metadata/MetadataRecordPage.jsx";
 import { equipmentRecordPage } from "../../metadata/definitions/equipmentPage.js";
 import { equipmentEntity } from "../../metadata/definitions/equipment.js";
 import { Button } from "../../shared/ui/primitives/index.js";
-import ContextBand from "../../shared/ui/ContextBand.jsx";
-import StatusPill from "../../shared/ui/StatusPill.jsx";
-import { EQUIPMENT_STATUS } from "../../domain/constants";
+
+// Derived ONCE, at module scope: the page definition does not depend on the record, and rebuilding
+// it per render would hand MetadataRecordPage a new object identity on every pass.
+const recordShell = equipmentRecordShellDefinition(equipmentRecordPage);
 
 // Issue #232 unit E7 -- the Equipment detail page (Spec §8), route /equipment/:equipmentId.
 //
@@ -47,11 +48,9 @@ import { EQUIPMENT_STATUS } from "../../domain/constants";
 // wrong serial number is still worth fixing after the asset leaves service). It edits
 // descriptive fields only; ownership and status are not its to change.
 
-const STATUS_LABEL = {
-  [EQUIPMENT_STATUS.ACTIVE]: "Active",
-  [EQUIPMENT_STATUS.INACTIVE]: "Inactive",
-  [EQUIPMENT_STATUS.RETIRED]: "Retired",
-};
+// THE PRIVATE STATUS_LABEL COPY IS GONE. It was one of the two byte-identical private maps
+// domain/equipmentStatus.js was created to replace, and it survived here because nothing forced the
+// question. The status word now comes from `equipmentRecordFacts`, which reads that one vocabulary.
 
 export default function EquipmentDetail() {
   const { equipmentId } = useParams();
@@ -131,51 +130,115 @@ export default function EquipmentDetail() {
 
   // §8 identity + status. The display name is the human reference; the id is never
   // rendered as one (§8), though it is legitimately in the URL.
-  const actions = (
-    <ActionRail
-      start={<Link to="/equipment" className="fo-back-link">&larr; Back to Equipment</Link>}
-      primary={
-        // Available, so it is a live control -- kept alongside the asset's identity
-        // rather than among the #15-gated lifecycle actions below.
-        <Button variant="primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
-      }
-    />
-  );
-  const context = (
-    <ContextBand
-      items={[
-        {
-          key: "status",
-          label: "Status",
-          value: (
-            <StatusPill
-              tone={equipmentStatusTone(equipment.status)}
-              label={STATUS_LABEL[equipment.status] ?? "Unknown"}
-              data-equipment-status={equipment.status ?? ""}
-            />
-          ),
-        },
-        { key: "summary", label: "Details", value: equipmentSummary(equipment) },
-      ]}
-    />
-  );
+  const identity = equipmentRecordIdentity(equipment);
+  const facts = equipmentRecordFacts(equipment);
+  const statusFact = facts.find((f) => f.isStatus) ?? null;
 
   // A pencil opens the SAME modal the Edit action opens, against the same command. There is no
   // per-field write path for Equipment and this does not invent one.
   const openEditFor = () => setEditing(true);
 
   return (
-    <WorkspaceShell title={equipmentDisplayName(equipment)} actions={actions} context={context} className="fo-equipment-detail">
-      <div className="fo-detail-grid">
+    // ══════════════════ THE NORTH STAR RECORD GRAMMAR ══════════════════
+    //
+    // `ns-page` + `RecordIdentity` REPLACE the workspace shell — they are mutually exclusive by gate
+    // (compositionConformance GATE 2b/2c), because running both doubles the page chrome and gives
+    // the page two competing h1 claims. This file therefore MOVES from CONFORMANT_WORKSPACES to
+    // NORTH_STAR_RECORD_PAGES in the same commit; GATE 2b² is what makes forgetting that a failure
+    // rather than a silent gap.
+    //
+    // Nothing about the reads, the commands or the gating changed. The identity header states the
+    // facts the ContextBand used to carry, the shared record shell keeps its own grid, and the three
+    // panels the design puts in the rail are the same three components that were in the grid.
+    <div className="ns-page fo-equipment-detail">
+      <div className="ns-page__utility">
+        <span className="ns-page__context">
+          <Link to="/equipment">Equipment</Link>
+          {identity.titleIsAbsent ? null : ` → ${identity.title}`}
+        </span>
+      </div>
+      <div className="ns-rulepair" />
+
+      <RecordIdentity
+        kicker={equipmentRecordKicker(equipment)}
+        // `name` is this collection's declared human reference. A unit with no name renders the
+        // truthful generic name; the document id is not accepted as a prop and cannot arrive here.
+        reference={identity.titleIsAbsent ? null : identity.title}
+        fallbackName={identity.title}
+        subtitle={identity.subtitle}
+        statusWords={statusFact?.value ?? null}
+        statusTone={equipmentStatusTone(equipment.status)}
+        facts={facts.filter((f) => !f.isStatus).map((f) => ({ key: f.key, label: f.label, value: f.value }))}
+        actions={
+          // Available, so it is a live control -- kept alongside the asset's identity rather than
+          // among the #15-gated lifecycle actions in the rail.
+          <Button variant="primary" data-equipment-action="edit" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        }
+      />
+      {/* The stored status value, kept addressable for the tests and gates that assert on it — it
+          used to travel on the ContextBand's StatusPill, which this header replaces. */}
+      <span hidden data-equipment-status={equipment.status ?? ""} />
+
+      <div className="ns-record-body">
+        <div>
+        {/* ═══ THE SHARED RECORD SHELL ═══
+            Identification and Service information were two hand-written <dl>s on this screen.
+            They are now the SAME grammar every other core object renders: two columns of
+            labelled fields on desktop, one on a phone, an em dash where a value is genuinely
+            absent, and a pencil only on the fields updateEquipment actually accepts.
+
+            The "Customer & location" panel in the rail is deliberately NOT folded in -- it
+            distinguishes a FAILED read from a genuinely-unknown one and offers a Retry, which
+            the generic grid has no slot for. Losing it would turn "we could not look" back into
+            "Unknown customer" stated as a fact.
+
+            THE DEFINITION IS SUBSETTED, not replaced: `equipmentRecordShellDefinition` removes the
+            one fact the identity header above now owns (status), so the record does not state its
+            state twice. Manufacturer, model and serial stay in BOTH places on purpose -- the locked
+            1c frame draws them that way, and the grid is the only place a pencil can live.
+
+            Editing routes to the SAME EquipmentEditModal this screen already opened, against the
+            same updateEquipment command. This adds no write authority. */}
+        <MetadataRecordPage
+          definition={recordShell}
+          record={equipment}
+          entityResolver={() => equipmentEntity}
+          onEditField={openEditFor}
+        />
+
+        {/* §8 linked Work Orders + §10 derived Service History. Both come from the same
+            bounded subscription; a failure is reported rather than rendered as "none",
+            because "this asset has no service history" is a claim we would be making.
+            §8/§10 + INV-EQ-P2 -- ONE unified Activity Timeline (service + inventory).
+            The inventory half is an injected source that stays inert -- honestly reported,
+            never fabricated -- until the Enterprise Inventory sources exist (EQ-G3). */}
+        <EquipmentTimeline
+          workOrders={workOrders}
+          equipmentId={equipmentId}
+          workOrdersLoading={woLoading}
+          workOrdersError={woError}
+        />
+        </div>
+
+        {/* ═══ THE RAIL ═══ the three panels the locked 1c frame puts beside the record: whose it
+            is and where, whether it is still under inventory control, and what can be done to it.
+            All three are the components that were already on this page; only their placement is
+            new. */}
+        <aside className="ns-rail">
         {/* §8 Account + installed Location. Both render their NAME; an unresolved
             reference says so rather than exposing the raw id.
             Both now distinguish a FAILED read from a genuinely-unknown one:
             LOCATION since #291, and ACCOUNT since site-work #4 -- a denied/failed
             read shows an actionable failure with retry instead of stating
             "Unknown customer"/"Unknown location" as a fact when we simply could
-            not look. */}
+            not look.
+
+            NO OPERATING-COMPANY ROW (EQ-G5). Taylor vs Ventana is not derivable from the Customer
+            -- a customer may own machines from both -- and nothing on the Equipment document
+            records it. `installedOperatingCompany()` is the seam a later governed ownership fact
+            composes into; until then this panel says nothing about it rather than guessing. */}
         <section className="fo-panel" aria-labelledby="equip-where">
           <h2 id="equip-where">Customer &amp; location</h2>
           <dl className="fo-detail-list">
@@ -210,26 +273,6 @@ export default function EquipmentDetail() {
           </dl>
         </section>
 
-        {/* ═══ THE SHARED RECORD SHELL ═══
-            Identification and Service information were two hand-written <dl>s on this screen.
-            They are now the SAME grammar every other core object renders: two columns of
-            labelled fields on desktop, one on a phone, an em dash where a value is genuinely
-            absent, and a pencil only on the fields updateEquipment actually accepts.
-
-            The "Customer & location" panel above is deliberately NOT folded in -- it
-            distinguishes a FAILED read from a genuinely-unknown one and offers a Retry, which
-            the generic grid has no slot for. Losing it would turn "we could not look" back into
-            "Unknown customer" stated as a fact.
-
-            Editing routes to the SAME EquipmentEditModal this screen already opened, against the
-            same updateEquipment command. This adds no write authority. */}
-        <MetadataRecordPage
-          definition={equipmentRecordPage}
-          record={equipment}
-          entityResolver={() => equipmentEntity}
-          onEditField={openEditFor}
-        />
-
         {/* Ventana lifecycle — two-condition inventory-control read (install complete AND sale
             close). The sale-close signal is a separate Sales Order authority not available on
             this surface and D-5 is unratified, so this renders an honest UNKNOWN with the reason
@@ -253,23 +296,8 @@ export default function EquipmentDetail() {
           {/* The reason is stated, not implied by a greyed-out button. */}
           <p className="fo-muted fo-action-reason" role="note">{unavailableReason}</p>
         </section>
+        </aside>
       </div>
-
-      {/* §8 linked Work Orders + §10 derived Service History. Both come from the same
-          bounded subscription; a failure is reported rather than rendered as "none",
-          because "this asset has no service history" is a claim we would be making. */}
-      {/* §8/§10 + INV-EQ-P2 -- ONE unified Activity Timeline (service + inventory),
-          replacing the year-grouped Service History. Reuses the same bounded Work
-          Order subscription (workOrders); the inventory half is an injected source
-          that stays inert -- honestly reported, never fabricated -- until the
-          Enterprise Inventory sources exist. A read failure is reported as unavailable,
-          never rendered as "no activity". */}
-      <EquipmentTimeline
-        workOrders={workOrders}
-        equipmentId={equipmentId}
-        workOrdersLoading={woLoading}
-        workOrdersError={woError}
-      />
 
       {/* Mounted only while open, so the form always seeds from the CURRENT record: a
           modal kept mounted and merely hidden would reopen holding whatever the user
@@ -285,18 +313,8 @@ export default function EquipmentDetail() {
           onClose={() => setEditing(false)}
         />
       ) : null}
-    </WorkspaceShell>
+    </div>
   );
 }
-
-// An absent optional field is reported as such rather than rendered blank -- "not
-// recorded" and "recorded as empty" read identically otherwise (Spec §1 optionals are
-// string|null).
-function Row({ label, value }) {
-  return (
-    <>
-      <dt>{label}</dt>
-      <dd>{value ? value : <span className="fo-muted">Not recorded</span>}</dd>
-    </>
-  );
-}
+// The `Row` helper that used to sit here was DEAD -- no caller anywhere in the tree, left behind by
+// the hand-written <dl>s the shared record shell replaced. It went with the shell it belonged to.

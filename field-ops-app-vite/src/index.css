@@ -857,6 +857,13 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-confirm-severity { display: flex; align-items: center; gap: 6px; margin: 0; }
 .fo-confirm-consequence { border-left: 3px solid var(--color-info); padding-left: 10px; margin: 0; }
 .fo-confirm-consequence--destructive { border-left-color: var(--color-danger); }
+/* The read-back before a write that cannot be undone. Set apart from the form above it by a rule
+   and a shift in ground, so the four labelled rows read as "this is what you are about to do"
+   rather than as four more fields to fill in. */
+.fo-confirm-readback { margin: 18px 0 4px; padding: 14px 16px;
+  border-top: 2px solid var(--color-text-primary); background: var(--color-surface-sunken); }
+.fo-confirm-readback h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.fo-confirm-readback .fo-detail-list { margin: 12px 0 0; }
 
 .fo-form-field { display: flex; flex-direction: column; gap: var(--space-1); }
 .fo-wizard-field-label { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-text-secondary); }
@@ -5242,6 +5249,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-table .ns-num, .ns-table th.ns-num { text-align: right; font-variant-numeric: tabular-nums;
   font-family: inherit; }
 .ns-table__note { font-size: 12.5px; color: var(--color-text-secondary); margin: 10px 0 0; }
+/* A group heading OVER a table (Available Equipment's business lines). Deliberately quieter than a
+   section title: it names a partition of one list, not a new section, and a heavier treatment would
+   read as three lists where there is one. */
+.ns-group__heading { font: 600 10.5px var(--font-interface); letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-secondary); margin: 22px 0 6px; }
 
 /* ── Lineage list */
 .ns-lineage { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -5289,9 +5301,28 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-workspace__count { font-size: 14px; font-weight: 600; color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums; }
 .ns-workspace__count-label { font-weight: 400; }
+/* The standing description of the set (Equipment North Star 1a). Sits between the title and the
+   summary line, and reads as prose rather than as a metric: measure-capped so it does not run the
+   full 1360px, and one step quieter than the summary it precedes. */
+.ns-workspace__description { font-size: 13.5px; line-height: 1.5; color: var(--color-text-secondary);
+  margin: 8px 0 0; max-width: 78ch; }
 .ns-workspace__summary { font-size: 13px; color: var(--color-text-secondary); margin: 6px 0 0; }
 .ns-workspace__summary .is-attention { color: var(--verenward-bronze); font-weight: 600; }
 .ns-workspace__action { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── The tab rail: a workspace whose populations answer DIFFERENT questions and therefore cannot be
+   one list. A rule the selected tab sits on, not a row of buttons — buttons read as actions, and
+   switching a view is not one. 44px minimum height so it is a real touch target, and the selected
+   state is carried by weight and the rule as well as by colour. */
+.ns-tabrail { display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch;
+  border-bottom: 1px solid var(--color-border); margin: 0 0 20px; }
+.ns-tabrail__tab { font: 600 12.5px var(--font-interface); letter-spacing: 0.02em;
+  padding: 10px 0; min-height: 44px; background: none; border: 0;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  color: var(--color-text-secondary); cursor: pointer; }
+.ns-tabrail__tab:hover { color: var(--color-text-primary); }
+.ns-tabrail__tab--on { color: var(--color-text-primary); border-bottom-color: var(--color-text-primary); }
+.ns-tabrail__tab:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: 2px; }
 
 /* ── Operational density. The workspace is scanned, so rows are tight and the table is never a card
    farm: "the North Star at working density is rules + type, not cards + whitespace." */

@@ -16,7 +16,7 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 // option) -- these helpers scope assertions to the row LIST specifically, so the filter's option
 // text never produces a false positive/negative for what the ROW itself renders.
 function rowList() {
-  return screen.getByRole("list", { name: /available serialized assets/i });
+  return screen.getByRole("table", { name: /available serialized assets/i });
 }
 
 // AvailableEquipment gained an Install action (PR: equipment install UI). These are its NEW
@@ -88,7 +88,9 @@ describe("Available Equipment location column -- the raw-id defect is gone when 
 //
 // The Structured Object UX standard supersedes that with a third option and a hard global rule:
 // FIRESTORE ID USER-VISIBLE = FALSE. An id that will not resolve is an ABSENCE, rendered
-// "Location: Unavailable" -- because a raw key in front of a person is not information. It cannot be
+// "Location unavailable" (the locked North Star copy; it read "Location: Unavailable" while the row
+// was a stack of labelled fields rather than a table cell) -- because a raw key in front of a person
+// is not information. It cannot be
 // searched by the name they know, it cannot be read aloud, and it teaches people to memorise internal
 // identifiers.
 //
@@ -104,7 +106,7 @@ describe("Available Equipment location column -- an unresolvable location is an 
     });
     render(<AvailableEquipment />);
     expect(within(rowList()).queryByText(/CUST-loc-42/)).toBeNull();
-    expect(within(rowList()).getByText("Unavailable")).toBeTruthy();
+    expect(within(rowList()).getByText("Location unavailable")).toBeTruthy();
   });
 
   it("the location resolver DENIED does not fail the whole Available Equipment tab", () => {
@@ -114,7 +116,7 @@ describe("Available Equipment location column -- an unresolvable location is an 
     expect(screen.queryByRole("alert")).toBeNull(); // location-resolver denial is not an Available Equipment failure
     // The ROW still renders -- which was always the point -- and its location is an honest absence.
     expect(within(rowList()).queryByText(/WH-9f2c8a1b/)).toBeNull();
-    expect(within(rowList()).getByText("Unavailable")).toBeTruthy();
+    expect(within(rowList()).getByText("Location unavailable")).toBeTruthy();
   });
 
   it("the location resolver UNAVAILABLE (transient failure) also degrades gracefully", () => {
@@ -123,7 +125,7 @@ describe("Available Equipment location column -- an unresolvable location is an 
     render(<AvailableEquipment />);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(within(rowList()).queryByText(/WH-9f2c8a1b/)).toBeNull();
-    expect(within(rowList()).getByText("Unavailable")).toBeTruthy();
+    expect(within(rowList()).getByText("Location unavailable")).toBeTruthy();
   });
 
   it("an asset with no location at all renders with neither a fabricated label nor a crash", () => {

@@ -63,9 +63,20 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
           nothing can be counted", and the same rule reaches the count itself.
           The Customer Equipment tab carries its OWN governed aggregate through ListViewHeader,
           where it is unambiguous because it sits over the rows it counts. */}
-      <WorkspaceIdentity crumb="Equipment" title="Equipment" />
+      {/* THE DESCRIPTION SAYS WHAT THE THREE TABS ARE, which is the question a header carrying no
+          count leaves open. Verbatim from the locked 1a frame, and a standing fact about the set
+          rather than a reading of its current state — it is not the workload summary and does not
+          share that slot. */}
+      <WorkspaceIdentity
+        crumb="Equipment"
+        title="Equipment"
+        description="Every serialized unit the business owns or services — installed at customers, available in company stock, and the account-scoped register that creates them."
+      />
 
-      <div role="tablist" aria-label="Equipment views" onKeyDown={onKeyDown}>
+      {/* THE TAB RAIL. Structure, roles and keyboard handling are unchanged — only the treatment is
+          new: the ratified rail (a rule the selected tab sits on) rather than three default buttons,
+          so the three populations read as one workspace's views instead of three controls. */}
+      <div className="ns-tabrail" role="tablist" aria-label="Equipment views" onKeyDown={onKeyDown}>
         {TABS.map((t) => {
           const selected = t.id === active;
           return (
@@ -74,6 +85,7 @@ export default function EquipmentWorkspace({ accessVersion: _accessVersion }) {
               ref={(el) => { tabRefs.current[t.id] = el; }}
               type="button"
               role="tab"
+              className={selected ? "ns-tabrail__tab ns-tabrail__tab--on" : "ns-tabrail__tab"}
               id={`eq-tab-${t.id}`}
               aria-selected={selected}
               aria-controls={`eq-panel-${t.id}`}

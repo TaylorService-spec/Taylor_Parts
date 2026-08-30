@@ -108,7 +108,11 @@ export default function CustomerEquipment() {
 
   return (
     <div className="fo-panel">
-      <h3>Customer Equipment</h3>
+      {/* NO "Customer Equipment" HEADING HERE. The selected tab immediately above already says it,
+          and a panel that repeats its own tab's name states one thing twice — the "no duplicate
+          page/section naming" rule of the North Star presentation grammar. The panel is named to
+          assistive technology by `aria-labelledby="eq-tab-customer"` on the tabpanel, which is the
+          accessible naming this heading was standing in for. */}
 
       {/* The picker read is capped. If it was, the Customer filter cannot offer every
           customer, and saying so is the difference between a short menu and a wrong one. */}
