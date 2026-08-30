@@ -14,15 +14,33 @@
 // half-built world, and guessing is how a partial dataset becomes a fourth thing matching no version
 // at all. Each operation here does one knowable thing and refuses the rest.
 //
-// Usage:
-//   node scripts/certificationWorld.mjs verify  --projectId eos-platform-sandbox
-//   node scripts/certificationWorld.mjs reset   --projectId eos-platform-sandbox --confirm-reset
-//   node scripts/certificationWorld.mjs rebuild --projectId eos-platform-sandbox --confirm-reset
+// Usage -- READ-ONLY (no live-write authorization, by design):
+//   node scripts/certificationWorld.mjs verify --projectId eos-platform-sandbox
+//   node scripts/certificationWorld.mjs reset  --projectId eos-platform-sandbox --dry-run
 //
-// SAFETY. Sandbox only. Production is refused three ways by the imported assertSandboxTarget: a
-// registry role of exactly "sandbox", an explicit refusal of the customer production project, and a
-// refusal of any project the registry does not know. --projectId has no default. Reset additionally
-// requires --confirm-reset, because a destructive default is an accident waiting for a tired operator.
+// Usage -- LIVE WRITE. Each target has its OWN flag, and both --apply and that flag are required:
+//   node scripts/certificationWorld.mjs rebuild --projectId eos-platform-sandbox \
+//        --apply --apply-live-sandbox --confirm-reset
+//   node scripts/certificationWorld.mjs rebuild --projectId eos-platform-certification \
+//        --apply --apply-live-certification --confirm-reset
+//
+// ============================ SAFETY, AND WHY IT MOVED ============================
+//
+// This tool used to gate on assertSandboxTarget alone: a registry role of exactly "sandbox", plus
+// refusals of production by name and of unknown projects. That was correct as far as it went, and
+// it stopped going far enough the moment a SECOND sandbox-role environment existed.
+//
+// eos-platform-certification is role "sandbox". So was eos-platform-sandbox. Under a role-only
+// guard the two are indistinguishable, and the command that rebuilds one becomes the command that
+// rebuilds the other by editing a single word -- with no flag anywhere on the line naming which
+// world is about to be deleted and reseeded. Every OTHER certification tool had already been
+// brought under executionTarget.mjs, whose whole point is that the target is named by a flag that
+// cannot be re-pointed. The tool that installs the entire world was the one still outside it.
+//
+// So the authority is now executionTarget.mjs, and there is no second role guard here. It refuses
+// production by name AND by role, refuses unknown projects, refuses a missing --projectId, refuses
+// ambient credentials that disagree with the stated target, and binds each live target to its own
+// flag. See authorizeInvocation() below for the one rule this file adds on top.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -37,20 +55,30 @@ import { classifyWorld, WORLD_STATE, SEED_POLICY } from "./certificationWorld/ve
 import { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, worldFingerprint } from "./certificationWorld/state.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Reuse the EXISTING exported guard rather than writing a seventh copy of it.
-const { assertSandboxTarget } = await import(pathToFileURL(path.join(__dirname, "seedSandboxFixtures.mjs")).href);
+// THE authority. Not a second opinion beside assertSandboxTarget -- its replacement. Keeping both
+// would mean two guards that can disagree, and the weaker one is the one an operator reaches.
+const { resolveExecutionTarget, LIVE_TARGET_FLAGS_BY_PROJECT, describeTarget } =
+  await import(pathToFileURL(path.join(__dirname, "certificationWorld", "executionTarget.mjs")).href);
 
 function loadRegistry() {
   return JSON.parse(readFileSync(path.resolve(__dirname, "../../config/environments.json"), "utf8"));
 }
 
+/** Modes that can delete, create or mutate live data. `verify` is not one of them. */
+const WRITE_MODES = new Set(["reset", "rebuild"]);
+
 function parseArgs(argv) {
-  const args = { mode: argv[0], confirmReset: false, dryRun: false };
+  const args = { mode: argv[0], confirmReset: false, dryRun: false, apply: false };
   for (let i = 1; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--projectId") args.projectId = argv[++i];
     else if (a === "--confirm-reset") args.confirmReset = true;
     else if (a === "--dry-run") args.dryRun = true;
+    // The live-intent flags are RECOGNISED here and ADJUDICATED by executionTarget.mjs, which reads
+    // them from argv itself. Parsing them into booleans here as well would be a second copy of the
+    // rule, and the copy is what drifts.
+    else if (a === "--apply") args.apply = true;
+    else if (a.startsWith("--apply-live-")) args.liveFlags = [...(args.liveFlags ?? []), a];
     else throw new Error("unrecognized argument: " + a);
   }
   if (!["verify", "reset", "rebuild"].includes(args.mode)) {
@@ -58,6 +86,53 @@ function parseArgs(argv) {
   }
   if (!args.projectId) throw new Error("--projectId is required. There is no default target.");
   return args;
+}
+
+/**
+ * Decide whether THIS invocation may run, and against what. Pure: parses, adjudicates, and throws.
+ * No database, no process exit -- which is why the test suite can drive the real CLI contract
+ * instead of asserting against resolveExecutionTarget in isolation and hoping the wiring matches.
+ *
+ * ============================ THE RULE THIS FILE ADDS ============================
+ *
+ * executionTarget.mjs treats `--apply-live-certification` as sufficient on its own: it implies live
+ * intent, so it implies --apply. That is a reasonable contract for a tool that writes a handful of
+ * records. This one deletes and reseeds an entire world, so it requires BOTH -- the generic
+ * "this is not a dry run" and the specific "and it is THIS environment". Two independent words have
+ * to be typed, and neither one alone reaches live Firestore.
+ *
+ * `--confirm-reset` is kept and is NOT part of that authorization. It acknowledges destruction, not
+ * target: a reset needs to know both that you meant to write live HERE and that you accept the
+ * delete. Letting it stand in for either live flag would make the destructive acknowledgement the
+ * thing that unlocks the destination, which is backwards.
+ */
+export function authorizeInvocation(argv) {
+  const args = parseArgs(argv);
+
+  // A read-only mode must never demand live-write authorization -- that would train operators to
+  // type --apply-live-certification for a command that reads. `reset --dry-run` previews only.
+  const writes = WRITE_MODES.has(args.mode) && !args.dryRun;
+
+  // Production (by name and by role), unknown projects, a missing --projectId, disagreeing ambient
+  // credentials, and the wrong environment's live flag are all refused in here, once.
+  const target = resolveExecutionTarget({ argv: ["node", "certificationWorld.mjs", ...argv], writes });
+
+  if (writes) {
+    const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(target.projectId) ?? null;
+    if (target.isLive) {
+      if (!args.apply || !argv.includes(liveFlag)) {
+        throw new Error(
+          `${args.mode} writes live data to ${target.projectId}. It requires BOTH --apply and `
+          + `${liveFlag}. Neither one alone reaches live Firestore, and --confirm-reset is not a `
+          + "substitute for either.");
+      }
+    }
+    if (args.mode === "reset" && !args.confirmReset) {
+      throw new Error("reset is destructive: pass --confirm-reset (or --dry-run to preview).");
+    }
+  }
+
+  return { args, target, writes };
 }
 
 function repoCommit() {
@@ -283,10 +358,13 @@ async function measureIdentityLinkage(db, found) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  // AUTHORIZE BEFORE ANYTHING CONNECTS. This runs ahead of initializeApp, so a refused invocation
+  // never opens a client against the project it was refused for.
+  const { args, target } = authorizeInvocation(process.argv.slice(2));
   const registry = loadRegistry();
-  const env = assertSandboxTarget(args.projectId, registry);
-  console.log("certification world :: " + args.mode + " :: " + env.id + " (" + args.projectId + ", role=" + env.role + ")");
+  const env = (registry.environments || []).find((e) => e?.firebase?.projectId === args.projectId);
+  console.log("certification world :: " + args.mode + " :: " + (env?.id ?? "unknown") + " (" + args.projectId + ", role=" + target.role + ")");
+  console.log(describeTarget(target));
 
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const db = getFirestore();
@@ -299,9 +377,8 @@ async function main() {
   }
 
   if (args.mode === "reset") {
-    if (!args.confirmReset && !args.dryRun) {
-      throw new Error("reset is destructive: pass --confirm-reset (or --dry-run to preview).");
-    }
+    // The --confirm-reset requirement now lives in authorizeInvocation, beside the live-flag rule,
+    // so every precondition for a destructive run is decided in one place and tested there.
     await doReset(db, { dryRun: args.dryRun });
     return;
   }

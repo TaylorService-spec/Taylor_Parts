@@ -63,7 +63,7 @@ export const CERTIFICATION_LIVE_FLAG = "--apply-live-certification";
  * and everything else about the gate -- production by name, production by role, unknown projects,
  * ambient-credential agreement -- applies to it unchanged.
  */
-const LIVE_TARGET_FLAGS = new Map([
+export const LIVE_TARGET_FLAGS_BY_PROJECT = new Map([
   [LIVE_SANDBOX_PROJECT, LIVE_FLAG],
   [CERTIFICATION_PROJECT, CERTIFICATION_LIVE_FLAG],
 ]);
@@ -112,9 +112,9 @@ export function resolveExecutionTarget({ argv = process.argv, writes = true } = 
 
   // ── Live targets are named, and each has its own flag ────────────────────────────────────────
   const isLive = !isEmulator;
-  const liveFlag = LIVE_TARGET_FLAGS.get(projectId) ?? null;
+  const liveFlag = LIVE_TARGET_FLAGS_BY_PROJECT.get(projectId) ?? null;
   if (isLive && !liveFlag) {
-    refuse(`Live execution is limited to ${[...LIVE_TARGET_FLAGS.keys()].join(", ")}. `
+    refuse(`Live execution is limited to ${[...LIVE_TARGET_FLAGS_BY_PROJECT.keys()].join(", ")}. `
       + `Refusing "${projectId}".`);
   }
 
