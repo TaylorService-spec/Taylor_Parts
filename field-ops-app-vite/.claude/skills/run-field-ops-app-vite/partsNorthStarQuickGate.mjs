@@ -29,7 +29,8 @@
 //    history table below. The first version of this gate selected `table.fo-table` globally, landed
 //    on the queue -- whose cells carry no data-label at all -- and waited five minutes for a Part
 //    Number cell that was never going to appear on that table. The page was healthy the whole time:
-//    62 parts in catalogue, 25 rows rendered, every one carrying data-label="Part Number".
+//    62 parts in catalogue, 25 rows rendered, every one carrying the part-number cell the grammar
+//    had at that time (see lesson 4 — ND-30 later renamed that column to "Part").
 //
 //    So every catalogue assertion here is anchored on the "Parts Catalog" heading, and each one
 //    carries an explicit timeout. A gate whose precondition is absent must say WHICH tables it did
@@ -52,10 +53,28 @@
 //    passed through its no-ledger branch WITHOUT EVER SEEING THE CONTROL. Two vacuous passes in a
 //    19/19 result.
 //
-//    So the record under test is now CHOSEN, not taken: the first row whose Inventory Health is
-//    something other than "No ledger activity". That part has movements to render and a forecast to
-//    gate the reorder control on, which is what makes checks 12 and 13 mean anything. When no such
+//    So the record under test is CHOSEN, not taken. It was first chosen by reading the catalogue’s
+//    Inventory Health column -- which ND-30 then moved off that table, silently restoring the very
+//    vacuous pass this lesson exists to prevent. It is now chosen by PROBING a bounded set of
+//    candidate records for one that actually has a stock forecast, which depends on no catalogue
+//    column at all, so the next grammar change cannot re-break it. That part has movements to render
+//    and a forecast to gate the reorder control on, which is what makes checks 12 and 13 mean
+//    anything. When no such
 //    row exists the gate says so in the detail rather than quietly reverting to a weak pass.
+
+// 4. A GATE MUST NOT PIN A COLUMN NAME THE RULING IS FREE TO CHANGE. Check 4 looked for a cell
+//    labelled "Part Number". ND-30 then approved Frame 1a's grammar -- Part · Manufacturer ·
+//    Category · Control · Status · Attention -- and the part number became the primary line of
+//    the Part cell. The product was right and the gate timed out for fifteen seconds against a
+//    label that no longer exists.
+//
+//    ND-26 governs the VALUE (internalPartNumber, never the document key). It says nothing about
+//    what the column is CALLED. Those are two contracts and this gate now asserts them
+//    separately: check 3a owns the visible grammar, check 4 owns the value.
+//
+//    The catalogue is also resolved ONCE, into `catalogue`, and every collection assertion is
+//    scoped to that one surface. Rediscovering it per check is how two checks came to disagree
+//    about which table they were measuring.
 
 // ============================ WHY THE SEARCH CHECK IS TYPED ============================
 //
@@ -116,8 +135,11 @@ async function openWorkspace(page) {
   await page.goto(`${ORIGIN}${WORKSPACE}`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('h3:has-text("Parts Catalog")', { timeout: 30000 });
   try {
+    // catalogTable(page), NOT the `catalogue` const in main(). This function is hoisted above it,
+    // so referencing it here is a temporal-dead-zone ReferenceError on every call -- which is what
+    // a blanket find-and-replace introduced, and what the catch below then disguised.
     await catalogTable(page).locator("tbody tr").first().waitFor({ state: "attached", timeout: 25000 });
-  } catch {
+  } catch (err) {
     const body = await page.locator("body").innerText();
     const tables = await page.locator("table.fo-table").evaluateAll((els) =>
       els.map((t) => ({
@@ -125,10 +147,14 @@ async function openWorkspace(page) {
         rows: t.querySelectorAll("tbody tr").length,
       })));
     const blocked = /do not have access to the canonical Parts catalog|currently unavailable|could not be verified against the canonical source/i.exec(body);
+    // THE UNDERLYING ERROR IS REPORTED, NOT REPLACED. A catch that substitutes a friendlier
+    // sentence for the real one reported a ReferenceError as "the catalogue rendered no rows" for
+    // two full runs, and sent the investigation at the data instead of at this file.
     throw new Error(
-      "the Parts Catalog rendered no rows. " +
+      "the Parts Catalog precondition failed. " +
         (blocked ? `The catalogue read is BLOCKED: "${blocked[0]}". ` : "No blocked-read message is on the page. ") +
-        `Tables found: ${JSON.stringify(tables)}`,
+        `Tables found: ${JSON.stringify(tables)}. ` +
+        `Underlying error: ${err?.message ?? err}`,
     );
   }
   await page.waitForTimeout(1500);
@@ -204,8 +230,12 @@ async function main() {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openWorkspace(page);
 
+  // IDENTIFIED ONCE. Every collection assertion below is scoped to this one surface rather than
+  // rediscovering it, so two checks can never disagree about which table they measured.
+  const catalogue = catalogTable(page);
+
   // ── 3: FRAME 1a's grammar, and ND-25's absence, read from the DEPLOYED headings.
-  const headings = (await catalogTable(page).locator("thead th").allInnerTexts()).map((t) => t.trim());
+  const headings = (await catalogue.locator("thead th").allInnerTexts()).map((t) => t.trim());
   const quantityHeadings = headings.filter((h) => /^(warehouse available|on hand|available)$/i.test(h));
   record("3  ND-25 workspace declares no quantity column", quantityHeadings.length === 0, `headings=[${headings.join(", ")}]`);
 
@@ -220,7 +250,12 @@ async function main() {
   // ── 3b: the title block. Frame 1a's counts must be present AND labelled -- a bare number over a
   //       list is the ambiguity ND-30 asked to be avoided ("label the count according to what it
   //       truly represents").
-  const panel = page.locator('xpath=//h3[normalize-space()="Parts Catalog"]/ancestor::*[contains(@class,"ns-workspace")][1]');
+  // EXACT CLASS TOKEN, not a substring. contains(@class,"ns-workspace") also matches the BEM
+  // children -- ns-workspace__head, ns-workspace__titleblock, ns-workspace__titlerow -- and the
+  // ancestor axis returns the NEAREST first, so this resolved to the title row and saw no chips.
+  const panel = page.locator(
+    'xpath=//h3[normalize-space()="Parts Catalog"]/ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ns-workspace ")][1]',
+  );
   const panelText = (await panel.count()) > 0 ? await panel.innerText() : "";
   record(
     "3b ND-30 the catalogue carries a titled, labelled count",
@@ -230,26 +265,50 @@ async function main() {
 
   // ── 3c: the view chips, and every count agreeing with its own filter. A chip whose number
   //       disagrees with what it selects is how a list lies about how much work there is.
-  const chips = await panel.locator(".fo-filterbar button, .fo-chip, [role=\"group\"] button").allInnerTexts().catch(() => []);
+  // fo-filter-bar is FilterBar’s chips-variant class (ns-collection__views is the collection-page
+  // variant this panel deliberately does not use -- see ND-30 in the composition map).
+  const chips = await panel.locator(".fo-filter-bar button").allInnerTexts().catch(() => []);
   const chipText = chips.map((c) => c.replace(/\s+/g, " ").trim());
   const hasViews = chipText.some((c) => /^all\b/i.test(c)) && chipText.some((c) => /needs attention/i.test(c));
   record("3c ND-30 the catalogue offers view chips with counts", hasViews, `chips=${JSON.stringify(chipText.slice(0, 6))}`);
 
-  // ── 4: the Part Number column is present and POPULATED on every row. See the header: whether the
-  //      cell reads internalPartNumber or partId is not decidable here when the fixture makes them
-  //      the same string, so this asserts what is observable and REPORTS the coincidence rather than
-  //      asserting an inequality that would fail a correct page.
-  const firstRow = catalogTable(page).locator("tbody tr").first();
-  const shownNumber = (await firstRow.locator('[data-label="Part Number"]').innerText({ timeout: 15000 })).trim();
+  // ── 4: THE VALUE CONTRACT, separate from the grammar contract check 3a owns.
+  //
+  //      Frame 1a puts the part number as the primary line of the Part cell, so that is where this
+  //      looks. It does not pin the column NAME -- ND-26 governs the value, and ND-30 is free to
+  //      name the column, which is exactly the collision that made the previous version of this
+  //      check time out against a correct page.
+  //
+  //      A missing cell fails FAST and says which labels the row actually carried, rather than
+  //      waiting out a timeout and reporting a locator string.
+  const firstRow = catalogue.locator("tbody tr").first();
+  const rowCount = await catalogue.locator("tbody tr").count();
+  const partCells = catalogue.locator('tbody tr [data-label="Part"]');
+  const partCellCount = await partCells.count();
+  if (partCellCount === 0) {
+    const labels = await firstRow.locator("[data-label]").evaluateAll((els) =>
+      els.map((e) => e.getAttribute("data-label")));
+    console.error(
+      `PRECONDITION: the catalogue has ${rowCount} rows but no cell labelled "Part". ` +
+        `The first row carries: ${JSON.stringify(labels)}`,
+    );
+    process.exit(2);
+  }
+
+  const shownNumber = (await firstRow.locator('[data-label="Part"] a').first().innerText({ timeout: 5000 })).trim();
   const href = (await firstRow.locator("a").first().getAttribute("href")) ?? "";
   const routeId = href.split("/").filter(Boolean).pop() ?? "";
 
-  const rowCount = await catalogTable(page).locator("tbody tr").count();
-  const populated = await catalogTable(page)
-    .locator('tbody tr [data-label="Part Number"]')
-    .evaluateAll((els) => els.filter((e) => e.textContent.trim().length > 0).length);
+  // The machine-readable half of the value contract: the product stamps the resolved part number
+  // onto the cell, so a populated attribute is the identity actually rendered rather than a
+  // string scraped out of two stacked lines.
+  const populated = await partCells.evaluateAll((els) =>
+    els.filter((e) => {
+      const stamped = e.querySelector("[data-part-number]")?.getAttribute("data-part-number") ?? "";
+      return stamped.trim().length > 0;
+    }).length);
   record(
-    "4  every catalogue row carries a populated Part Number",
+    "4  ND-26 every catalogue row renders a populated Part Number value",
     rowCount > 0 && populated === rowCount,
     `rows=${rowCount} populated=${populated} first="${shownNumber}"` +
       (shownNumber === routeId
@@ -296,26 +355,56 @@ async function main() {
   //      activity renders an empty Activity section and no reorder control, and checks 12 and 13
   //      then pass without inspecting anything.
   await openWorkspace(page);
-  const rowHealth = await catalogTable(page)
-    .locator("tbody tr")
-    .evaluateAll((trs) =>
-      trs.map((tr) => ({
-        health: (tr.querySelector('[data-label="Inventory Health"]')?.textContent ?? "").trim(),
-        number: (tr.querySelector('[data-label="Part Number"]')?.textContent ?? "").trim(),
-      })));
-  const ledgerIdx = rowHealth.findIndex((r) => r.health && !/no ledger activity/i.test(r.health));
-  const chosenIdx = ledgerIdx >= 0 ? ledgerIdx : 0;
-  const chosen = rowHealth[chosenIdx];
+
+  // CHOOSE A PART WITH LEDGER ACTIVITY, BY PROBING RATHER THAN BY READING A COLUMN.
+  //
+  // The previous version picked the row whose Inventory Health cell was not "No ledger activity".
+  // ND-30 moved that column off the catalogue entirely (it lives in the Work group's Operational
+  // Queue now), so the selection silently found nothing and fell back to row 0 -- quietly
+  // restoring the vacuous pass that check 6a exists to prevent.
+  //
+  // Probing the records instead depends on NO catalogue column, so the next grammar change cannot
+  // re-break it. Bounded to a handful of candidates: this is a gate, not a crawl.
+  const candidates = await catalogue.locator("tbody tr").evaluateAll((trs) =>
+    trs.slice(0, 6).map((tr) => ({
+      number: (tr.querySelector('[data-label="Part"] a')?.textContent ?? "").trim(),
+      href: tr.querySelector("a")?.getAttribute("href") ?? null,
+    })));
+
+  let chosen = null;
+  let chosenIdx = 0;
+  let probed = 0;
+  for (const [i, candidate] of candidates.entries()) {
+    if (!candidate.href) continue;
+    probed += 1;
+    await page.goto(`${ORIGIN}${candidate.href}`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".ns-identity__title", { timeout: 30000 });
+    await page.waitForTimeout(1500);
+    const forecastText = await page
+      .locator("section")
+      .filter({ has: page.locator("h2", { hasText: "Stock forecast" }) })
+      .first()
+      .innerText()
+      .catch(() => "");
+    if (forecastText && !/no stock forecast can be made/i.test(forecastText)) {
+      chosen = candidate;
+      chosenIdx = i;
+      break;
+    }
+  }
+  const ledgerIdx = chosen ? chosenIdx : -1;
+  if (!chosen) chosen = candidates[0] ?? { number: "", href: null };
+  await openWorkspace(page);
   record(
-    "6a a part WITH ledger activity was available to test",
+    "6a a part WITH ledger activity was found to test",
     ledgerIdx >= 0,
     ledgerIdx >= 0
-      ? `chose row ${chosenIdx} "${chosen.number}" health="${chosen.health}" — Activity and the reorder control are exercised`
-      : `NO row has ledger activity; falling back to row 0 "${chosen.number}". Checks 12 and 13 below are VACUOUS and prove nothing.`,
+      ? `probed ${probed}, chose row ${chosenIdx} "${chosen.number}" — Activity and the reorder control are exercised`
+      : `probed ${probed} candidates and NONE had a stock forecast; falling back to "${chosen.number}". Checks 12 and 13 below are VACUOUS and prove nothing.`,
   );
-  const recordRow = catalogTable(page).locator("tbody tr").nth(chosenIdx);
   const shownNumberForRecord = chosen.number;
-  await recordRow.locator("a").first().click();
+  await catalogue.locator("tbody tr").nth(chosenIdx).locator("a").first()
+    .click();
   await page.waitForSelector(".ns-page", { timeout: 30000 });
   await page.waitForTimeout(2500);
   const recordUrl = page.url();
