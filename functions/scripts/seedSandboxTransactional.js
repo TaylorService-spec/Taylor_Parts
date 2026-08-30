@@ -384,6 +384,33 @@ async function main() {
     customerId: "acct-summit", locationId: "loc-summit-flag", equipmentId: "eq-cool-001",
   }));
 
+  // ============================ R23 LOSSLESS COMPOSITION FIXTURE ============================
+  //
+  // THIS RECORD INTENTIONALLY REPRESENTS LEGACY OR IMPORTED SCHEDULED DATA that predates the current
+  // scheduling-window requirement. The governed Schedule command would REFUSE to create this state
+  // today: transitionWorkOrder requires scheduledStart, scheduledEnd and scheduledTechId together and
+  // answers invalid-argument otherwise. Nothing here is a supported creation path, and the presence of
+  // this fixture is not an argument that windowless scheduling should be allowed.
+  //
+  // It exists to prove R23 lossless board composition: a scheduled record that cannot be placed
+  // geometrically must remain VISIBLE as "Scheduled without a window" rather than disappear. A board
+  // that silently dropped it would hide exactly the record a dispatcher most needs to find, and that
+  // failure is invisible on an estate where every scheduled record happens to have a window.
+  //
+  // DO NOT normalize this fixture into a windowed placement unless the R23 acceptance case is
+  // replaced elsewhere. It was lost once already: wo-sbx-002 used to be the windowless case, and
+  // correctly giving it a real window removed the only proof of the fallback from the whole estate.
+  //
+  // Deliberately on tech-sbx-01, NOT tech-sbx-02 -- tech-sbx-02 is the clean unknown-availability
+  // comparison lane and stays focused on that one behaviour.
+  await set(WOS, "wo-sbx-011", woBase(11, {
+    status: "SCHEDULED",
+    scheduledTechId: "tech-sbx-01",
+    // scheduledStart / scheduledEnd deliberately ABSENT -- that absence IS the fixture.
+    complaint: "Legacy import - scheduled visit with no recorded time window.",
+    customerId: "acct-harbor", locationId: "loc-harbor-downtown", equipmentId: "eq-ice-001",
+  }));
+
   // NEGATIVE CASE: assigned to a DIFFERENT technician. The sandbox technician
   // must be offered nothing on this Work Order, and a transition attempt must
   // be denied server-side. Seeded so the deny path is provable, not assumed.

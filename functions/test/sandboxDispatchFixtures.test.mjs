@@ -290,6 +290,110 @@ test("only ONE technician is given recorded hours, so the unrecorded path stays 
   assert.ok(!/await set\(AVAILABILITY, "tech-sbx-02"/.test(src), "tech-sbx-02 must stay unrecorded");
 });
 
+// ---------------------------------------------------------------------------------------------
+// R23 — the windowless scheduled record must stay visible
+// ---------------------------------------------------------------------------------------------
+
+/** The seeder source, read once. These assertions are about what the pack SEEDS, not about shapes. */
+const seederSrc = require_("node:fs").readFileSync(
+  new URL("../scripts/seedSandboxTransactional.js", import.meta.url), "utf8",
+).replace(/\r\n/g, "\n");
+
+/** Every `set(WOS, "id", woBase(n, { ... }))` block in the pack, as { id, body }. */
+function seededWorkOrders() {
+  const out = [];
+  const re = /await set\(WOS, "(wo-sbx-\d+)", woBase\(\d+, \{([\s\S]*?)\n  \}\)\);/g;
+  let m;
+  while ((m = re.exec(seederSrc)) !== null) out.push({ id: m[1], body: m[2] });
+  return out;
+}
+
+test("exactly ONE seeded SCHEDULED fixture has no window, and it is wo-sbx-011 on tech-sbx-01", () => {
+  const scheduled = seededWorkOrders().filter((w) => /status: "SCHEDULED"/.test(w.body));
+  assert.ok(scheduled.length >= 5, `expected the full scheduled set, found ${scheduled.length}`);
+
+  const windowless = scheduled.filter((w) => !/scheduledStart:/.test(w.body));
+  assert.deepEqual(windowless.map((w) => w.id), ["wo-sbx-011"],
+    "exactly one windowless scheduled fixture, and it must be wo-sbx-011");
+
+  const r23 = windowless[0];
+  assert.match(r23.body, /scheduledTechId: "tech-sbx-01"/, "must stay on tech-sbx-01");
+  assert.doesNotMatch(r23.body, /scheduledEnd:/, "scheduledEnd must be absent too");
+  // tech-sbx-02 is the clean unknown-availability lane and must not carry this concern as well.
+  assert.doesNotMatch(r23.body, /tech-sbx-02/);
+});
+
+test("the four representative geometry fixtures all remain windowed", () => {
+  const byId = new Map(seededWorkOrders().map((w) => [w.id, w.body]));
+  for (const id of ["wo-sbx-002", "wo-sbx-008", "wo-sbx-009", "wo-sbx-010"]) {
+    const body = byId.get(id);
+    assert.ok(body, `${id} must still be seeded`);
+    assert.match(body, /scheduledStart:/, `${id} must keep its window`);
+    assert.match(body, /scheduledEnd:/, `${id} must keep its window`);
+  }
+});
+
+test("the fixture carries the legacy/import warning, so it is not normalized away again", () => {
+  // It was lost exactly once already: wo-sbx-002 was the windowless case until it was correctly
+  // given a window, which removed the only proof of the fallback from the entire estate.
+  const idx = seederSrc.indexOf('await set(WOS, "wo-sbx-011"');
+  // Comment continuation markers collapsed to a space, so an assertion cannot fail merely because a
+  // sentence wrapped across two lines — which is exactly how this test first went red.
+  const preamble = seederSrc.slice(Math.max(0, idx - 2000), idx).replace(/\n\s*\/\/ ?/g, " ");
+  assert.match(preamble, /legacy or imported/i, "must say what the record represents");
+  assert.match(preamble, /would REFUSE to create this state today/i,
+    "must say the governed command would refuse it — this is not a supported creation path");
+  assert.match(preamble, /DO NOT normalize this fixture/i, "must warn against removing the case");
+});
+
+test("the REAL board projection classifies it as scheduled-without-a-window, not filtered out", async () => {
+  // Uses the board's own exported predicate rather than re-describing its logic here. The board
+  // computes `status === "SCHEDULED" && !isPlaced(wo)` (DispatcherBoard.jsx); if isPlaced ever starts
+  // accepting a windowless record, or the R23 bucket's rule changes, this goes red.
+  const { isPlaced } = await import("../../field-ops-app-vite/src/domain/dispatchBoardGeometry.js");
+
+  const r23Record = { id: "wo-sbx-011", status: "SCHEDULED", scheduledTechId: "tech-sbx-01" };
+  assert.equal(isPlaced(r23Record), false, "a windowless record cannot be placed on a lane");
+  assert.ok(r23Record.status === "SCHEDULED" && !isPlaced(r23Record),
+    "so it lands in the R23 'Scheduled without a window' bucket rather than vanishing");
+
+  // And the windowed fixtures DO place, so the bucket is a genuine discriminator and not a
+  // classification everything falls into.
+  for (const [label, w] of [["first", win], ["second", win2], ["outsideBand", outsideBand], ["weekend", weekend]]) {
+    const placed = {
+      status: "SCHEDULED", scheduledTechId: "tech-sbx-01",
+      scheduledStart: new Date(w.startMillis), scheduledEnd: new Date(w.endMillis),
+    };
+    assert.equal(isPlaced(placed), true, `${label} must place on a lane`);
+  }
+});
+
+test("the windowless fixture takes no part in placement geometry", () => {
+  // It has no window, so it cannot overlap anything and cannot claim lane time. Asserted rather than
+  // assumed, because "it has no window" and "it therefore reserves nothing" are different claims and
+  // only the second one keeps tech-sbx-01's three real placements honest.
+  const r23Record = { status: "SCHEDULED", scheduledTechId: "tech-sbx-01" };
+  assert.equal(r23Record.scheduledStart, undefined);
+  assert.equal(r23Record.scheduledEnd, undefined);
+  for (const [label, w] of [["first", win], ["outsideBand", outsideBand], ["weekend", weekend]]) {
+    // There is no interval to compare, so no overlap can exist by construction.
+    assert.ok(Number.isFinite(w.startMillis) && r23Record.scheduledStart === undefined,
+      `${label} cannot overlap a record with no interval`);
+  }
+});
+
+test("the Schedule command contract is NOT weakened by this fixture", () => {
+  // The fixture represents data the command would refuse. Prove the command still refuses it, so
+  // nobody reads the fixture as licence to relax validation.
+  const src = require_("node:fs").readFileSync(
+    new URL("../src/transitionWorkOrder.ts", import.meta.url), "utf8",
+  ).replace(/\r\n/g, "\n");
+  assert.match(src, /Schedule requires scheduledStart, scheduledEnd, and scheduledTechId/,
+    "Schedule must still require all three fields");
+  assert.match(src, /scheduledEnd must be after scheduledStart/,
+    "and still require an ordered window");
+});
+
 test("a DECISIONS-only change triggers the lane that regenerates the artifact depending on it", () => {
   // THE STALE-ARTIFACT PATH THIS CLOSES. `precedenceSweep.mjs` pins a hash of docs/DECISIONS.md and
   // the role-governance lane both regenerates that artifact and fails on drift — but the lane did not
