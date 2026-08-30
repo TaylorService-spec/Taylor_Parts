@@ -3,7 +3,7 @@ name: Equipment North Star Tests
 # CI for the Equipment North Star P1v2.1 migration — the workspace at /equipment (three tabs over
 # three populations) and the record at /equipment/:equipmentId.
 #
-# Three suites, covering three different kinds of claim:
+# Four suites, covering four different kinds of claim:
 #
 #   equipmentNorthStarProjection.test.mjs  The derivation contract, as the locked design states it.
 #                                          EQ-G5: no surface may derive an operating company for an
@@ -23,8 +23,16 @@ name: Equipment North Star Tests
 #                                          tabs, no count, no duplicated panel naming, the 1b table's
 #                                          discrete cells, and that confirming still calls the one
 #                                          existing governed command.
+#   equipmentNorthStarQuickGateContract    The LIVE gate's own contract. The gate itself only runs
+#     .test.mjs                            against a deployed sandbox, so CI cannot execute it —
+#                                          but it CAN hold the properties that make it safe to run:
+#                                          it never presses Confirm installation, it refuses a
+#                                          missing or mismatched --expect and any non-sandbox
+#                                          origin, a skip is never counted as a pass, and neither
+#                                          ND-31's reason nor ND-32's values are pinned to a
+#                                          column name.
 #
-# The .mjs suite is ALSO registered in test/suites.json, so `npm test` runs it; it is named here as
+# Both .mjs suites are ALSO registered in test/suites.json, so `npm test` runs them; they are named here as
 # well because this workflow is what makes the Equipment family's own failures visible on an
 # Equipment PR. Offline: no emulator, deploy, or secrets.
 
@@ -42,6 +50,8 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
       - "field-ops-app-vite/src/metadata/definitions/equipmentPage.js"
       - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
+      - "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/equipmentNorthStarQuickGate.mjs"
+      - "field-ops-app-vite/test/equipmentNorthStarQuickGateContract.test.mjs"
       - "field-ops-app-vite/test/equipmentNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/equipmentNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/equipmentNorthStarWorkspace.test.jsx"
@@ -60,6 +70,8 @@ on:
       - "field-ops-app-vite/src/metadata/definitions/equipment.js"
       - "field-ops-app-vite/src/metadata/definitions/equipmentPage.js"
       - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
+      - "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/equipmentNorthStarQuickGate.mjs"
+      - "field-ops-app-vite/test/equipmentNorthStarQuickGateContract.test.mjs"
       - "field-ops-app-vite/test/equipmentNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/equipmentNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/equipmentNorthStarWorkspace.test.jsx"
@@ -99,6 +111,9 @@ jobs:
       - name: The workspace and the install read-back (vitest + jsdom)
         run: npx vitest run test/equipmentNorthStarWorkspace.test.jsx
         working-directory: field-ops-app-vite
+      - name: The Quick Gate's own contract — read-only, fail-closed, not vacuous (node:test)
+        run: node --test test/equipmentNorthStarQuickGateContract.test.mjs
+        working-directory: field-ops-app-vite
       - name: The existing Equipment render gates still hold (vitest + jsdom)
         run: npx vitest run test/equipmentWorkspace.test.jsx test/equipmentTimeline.test.jsx test/equipmentListMigration.test.jsx test/equipmentDetailAccountFailClosed.test.jsx
         working-directory: field-ops-app-vite
@@ -106,5 +121,5 @@ jobs:
         run: npx vitest run test/compositionConformance.test.jsx test/listsP2Tranche1.test.jsx test/rawIdPresentationGuard.test.jsx test/activeLabelConformance.test.jsx
         working-directory: field-ops-app-vite
       - name: Lint the touched surfaces (oxlint)
-        run: npx oxlint src/domain/equipmentNorthStar.js src/domain/displayTimestamp.js src/modules/equipment/ src/shared/ui/WorkspaceIdentity.jsx
+        run: npx oxlint src/domain/equipmentNorthStar.js src/domain/displayTimestamp.js src/modules/equipment/ src/shared/ui/WorkspaceIdentity.jsx .claude/skills/run-field-ops-app-vite/equipmentNorthStarQuickGate.mjs
         working-directory: field-ops-app-vite
