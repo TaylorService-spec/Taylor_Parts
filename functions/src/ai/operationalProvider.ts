@@ -95,10 +95,32 @@ const DOMAINS = new Set<OperationalDomain>([
   "WORK_ORDER", "SALES_ORDER", "ACCOUNT", "PARTS", "DISPATCH", "OPPORTUNITY", "SALES_AGREEMENT",
 ]);
 
+// The envelope is the ONLY data entrance to the model, so its vocabulary is closed. A field this
+// list does not name never crosses the transport, whatever a caller attached: there is no key that
+// could carry a Firestore path, a collection name, a credential, or a query instruction, because
+// there is no key at all beyond these. TypeScript enforces this at compile time for repository
+// callers; the runtime check is for the field that arrives anyway.
+const ENVELOPE_KEYS = new Set([
+  "schemaVersion", "classification", "synthetic", "source", "domain", "subjectReference",
+  "observedFact", "deterministicInterpretation", "deterministicBusinessConsequence",
+  "evidence", "allowedRecommendation", "mode", "maxOutputTokens",
+]);
+const EVIDENCE_KEYS = new Set(["key", "kind", "summary"]);
+const RECOMMENDATION_KEYS = new Set(["actionId", "label", "authority"]);
+
+function assertClosedVocabulary(value: object, allowed: ReadonlySet<string>, what: string): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", `Operational AI ${what} carries an unknown field.`);
+    }
+  }
+}
+
 export function assertOperationalEnvelope(request: OperationalInterpretationRequest): void {
   if (!request || request.schemaVersion !== 1) {
     throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI envelope is invalid.");
   }
+  assertClosedVocabulary(request, ENVELOPE_KEYS, "envelope");
   if (request.classification !== "SYNTHETIC" || request.synthetic !== true) {
     throw new OperationalAIError("AI_CLASSIFICATION_DENIED", "Operational model interpretation is currently limited to synthetic context.");
   }
@@ -116,11 +138,13 @@ export function assertOperationalEnvelope(request: OperationalInterpretationRequ
         typeof item.summary !== "string" || !item.summary.trim()) {
       throw new OperationalAIError("AI_OPERATIONAL_ENVELOPE_INVALID", "Operational AI evidence is invalid.");
     }
+    assertClosedVocabulary(item, EVIDENCE_KEYS, "evidence");
   }
   const recommendation = request.allowedRecommendation;
   if (recommendation && recommendation.authority !== "ALLOWED") {
     throw new OperationalAIError("AI_OPERATIONAL_ACTION_DENIED", "A non-authorized action may not cross the model boundary.");
   }
+  if (recommendation) assertClosedVocabulary(recommendation, RECOMMENDATION_KEYS, "recommendation");
 }
 
 function isNumericLoopbackEndpoint(endpoint: string): boolean {
