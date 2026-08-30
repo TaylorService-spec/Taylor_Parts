@@ -47,7 +47,21 @@ const { worldFingerprint } = await import(L("functions/scripts/certificationWorl
 // silent drift that the fail-closed proof keeps endorsing.
 const CERT_PROJECT = "eos-platform-certification";
 const EXPECTED_RECORD_COUNT = 1092;
-const EXPECTED_FINGERPRINT = "005ebb1b";
+// 005ebb1b -> ed95c91d (2026-08-30). EOS Ownership Model v1, Owner ruling R-2: every certification
+// equipment fixture now carries an authored `operatingCompanyId`, copied from its fleet's explicit
+// declaration in data/equipmentAssets.mjs. 278 equipment records gained one field.
+//
+// The COUNT and the EMPLOYEE total are deliberately unchanged, and that is the check that this is
+// what it claims to be: a field was added to existing records, no record was added, removed or
+// re-keyed. Proven by recomputation -- stripping `operatingCompanyId` from those 278 records
+// returns the fingerprint to exactly 005ebb1b, so this delta has one cause and no other drift is
+// hiding inside it.
+//
+// This pin is doing precisely the job its comment above describes. The world changed in PR #1602
+// and this file was NOT updated in that PR, because this workflow is path-filtered and did not run
+// against that head -- so the change reached main unendorsed. Updating it here is the conscious act
+// that was owed then. See DECISIONS #144 on why "PR head green" was insufficient evidence.
+const EXPECTED_FINGERPRINT = "ed95c91d";
 const EXPECTED_EMPLOYEES = 47;
 
 const world = expectedRecords();

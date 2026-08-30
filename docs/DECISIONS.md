@@ -3381,3 +3381,47 @@ lineage → Work Order company provenance → Production census → Enforcement 
 
 **Not rewritten:** #142's R-12 text stands as issued. This entry supersedes it rather than editing it,
 so the reasoning that produced the correction stays legible.
+
+## #144 — "PR head green" is not evidence a governance lane ran. PASS, NOT TRIGGERED and FAIL are three states
+
+**Date:** 2026-08-30
+**Decision:** Owner ruling. A merge gate must distinguish three outcomes for every required workflow,
+and a **NOT TRIGGERED** safety or governance lane must never be reported as equivalent to **PASS**
+merely because the PR UI is green.
+
+| State | Meaning |
+|---|---|
+| **PASS** | the workflow actually ran against the reviewed head and passed |
+| **NOT TRIGGERED** | the workflow did not run against the reviewed head |
+| **FAIL** | the workflow ran and failed |
+
+**Reason:** PR #1602 was reported and merged as "92/92 SUCCESS". That figure was faithfully copied
+from `gh pr view --json statusCheckRollup`, and it was still insufficient evidence: this repository's
+workflows are **path-filtered**, so a check only re-runs when the head commit touches a path it
+watches. Two governance lanes therefore never executed against #1602's final head, and both were
+carrying real failures that only surfaced on the next PR:
+
+1. **`certificationExecutionTarget`** — `seedAccountOwners.mjs` declared its own
+   `assertSandboxTarget`. A local guard asks "is the registry role `sandbox`?", which cannot
+   distinguish `eos-platform-sandbox` from `eos-platform-certification` because **both** are role
+   `sandbox`. One mistyped `--projectId` would have seeded 100 account owners into the certification
+   world. Fixed by delegating to the shared `certificationWorld/executionTarget.mjs`.
+2. **`private-ai-fail-closed`** — the Certification World fingerprint is pinned in
+   `certificationPrivateAiFailClosed.test.mjs` precisely so a change to the world is a conscious act
+   updating that file *in the same PR*. Ruling R-2 added `operatingCompanyId` to 278 equipment
+   fixtures, moving the fingerprint `005ebb1b` → `ed95c91d`, and #1602 did not update the pin. The
+   world changed unendorsed.
+
+Neither was a flake, and neither was caught by "92/92". The rollup was green because the checks that
+would have failed **were not asked to run**.
+
+**Standing rule:** before merging under a high-risk gate, confirm for each required safety/governance
+workflow that it actually executed against the reviewed head — not merely that the PR shows no red.
+A lane that did not run is an unknown, and an unknown is not a pass.
+
+**Alternatives rejected:** treating both failures as PR #1619's problem (rejected — they originated
+in #1602 and the merge report was the thing that failed); removing the path filters (rejected — not
+this change's call, and it would not fix the reporting error, only mask it by brute force).
+
+**Also recorded:** the individual `seedAccountOwners.mjs` defect is a separate finding from this
+reporting lesson, and is documented at its fix site rather than only here.
