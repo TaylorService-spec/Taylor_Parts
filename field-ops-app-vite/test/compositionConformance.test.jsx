@@ -47,7 +47,14 @@ const CONFORMANT_WORKSPACES = [
   // EquipmentDetail.jsx LEFT this list for NORTH_STAR_RECORD_PAGES (family 8) when it stopped
   // hosting WorkspaceShell. The move is what GATE 2b² exists to force: a page migrates by moving
   // between lists, never by quietly appearing on neither.
-  "modules/equipment/EquipmentRegister.jsx", // Wave 3
+  //
+  // EquipmentRegister.jsx LEFT it too, and for a different reason worth stating: it is not a page at
+  // all any more. It was a standalone route when Wave 3 declared it here; site-work #10 mounted it
+  // as the Add Equipment TAB of EquipmentWorkspace, and it kept rendering its own
+  // `WorkspaceShell title="Equipment"` inside a page that already had that title. Selecting the tab
+  // produced two visible Equipment page identities. The shell is gone, so the shell obligation goes
+  // with it — it is now declared in CONFORMANT_SURFACES as nested content, which keeps the fo-badge
+  // rule and drops the one it can no longer honestly satisfy. No exception was added to GATE 2.
   "modules/inventory/Inventory.jsx", // Wave 4 (unrouted/dead code -- see final report)
   "modules/inventory/PartsList.jsx", // Wave 4
   "modules/inventoryRole/PartsAssociateHome.jsx", // Wave 4
@@ -69,6 +76,10 @@ const CONFORMANT_SURFACES = [
   "modules/accounts/FinancialSummarySection.jsx", // Wave 2
   "modules/accounts/ServiceActivitySection.jsx", // Wave 2
   "modules/equipment/InventoryControlSection.jsx", // Wave 3
+  // MOVED here from CONFORMANT_WORKSPACES (Wave 3) by the Add-tab composition fix: nested tab
+  // content of EquipmentWorkspace, which owns the page identity. Status-standardized like any other
+  // conformant surface; it hosts no shell because it is not a page.
+  "modules/equipment/EquipmentRegister.jsx",
   "modules/inventory/truckManagement/OutcomeBanner.jsx", // Wave 4
   "modules/inventory/UsedInEquipmentSection.jsx", // Wave 4
   // TechnicianBoard.jsx was deleted by the Dispatch North Star P1 composition (Wave 5 entry retired).

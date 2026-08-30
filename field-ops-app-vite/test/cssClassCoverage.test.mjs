@@ -172,7 +172,9 @@ const KNOWN_UNSTYLED = new Set([
   "fo-duprules__object-label",
   "fo-equipment-compat",
   "fo-equipment-edit-fixed",
-  "fo-equipment-register",
+  // "fo-equipment-register" left this backlog when the Add Equipment tab stopped rendering its own
+  // page shell. It had no rule because `.fo-workspace` was supplying the layout; it now owns the
+  // flex column and 16px gap that shell provided, so it is styled and is no longer an orphan.
   "fo-equipment-save-error",
   "fo-error",
   "fo-field-label",

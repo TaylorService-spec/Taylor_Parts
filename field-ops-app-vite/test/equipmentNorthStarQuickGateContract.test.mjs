@@ -412,3 +412,30 @@ test("RACE — 'Loading…' is not an acceptable settled answer", () => {
     false,
   );
 });
+
+// ── THE DEFAULT-TAB BLIND SPOT. Check 1 only ever measured the state the gate started in, so the
+// second visible "Equipment" title that appeared when the Add Equipment tab was selected was
+// invisible to it. The Owner found it on the deployed page instead.
+
+test("ADD-TAB — identity is measured after selecting ALL THREE tabs, not just the default", () => {
+  for (const label of ["3a Customer Equipment", "3b Available Equipment", "3c Add Equipment"]) {
+    assert.ok(code.includes(label), `${label} identity assertion must exist`);
+  }
+  // Measured per tab, from one shared measurement helper rather than three drifting copies.
+  assert.match(code, /const measureIdentity = async \(\)/);
+  assert.match(code, /selected — exactly one visible Equipment identity/);
+});
+
+test("ADD-TAB — each panel is checked for a nested page shell, not just the one that had it", () => {
+  // `.fo-workspace` is WorkspaceShell's root; inside a tab it IS the defect.
+  assert.match(code, /panel\.locator\("\.fo-workspace"\)\.count\(\)/);
+  assert.match(code, /panel hosts no standalone page title/);
+});
+
+test("ADD-TAB — the invariant stays visibility+ownership, never a mounted h1 count", () => {
+  // The mounted panels legitimately hold their own headings. Reverting to a whole-DOM count would
+  // re-create the very first live false positive.
+  assert.doesNotMatch(code, /page\.locator\("h1"\)\.allInnerTexts/);
+  assert.match(code, /getBoundingClientRect/);
+  assert.match(code, /isCompetingHeading/);
+});

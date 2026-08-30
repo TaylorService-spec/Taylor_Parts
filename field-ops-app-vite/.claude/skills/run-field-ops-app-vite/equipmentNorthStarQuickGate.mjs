@@ -376,30 +376,42 @@ async function main() {
 
   await openWorkspace(page);
 
-  // ── 1: the route loads, and the workspace states its identity ONCE.
-  // VISIBLE, not mounted. `h1:visible` respects the `hidden` attribute the inactive tab panels
-  // carry, so the two h1s those panels legitimately hold are not counted — see
-  // workspaceIdentityVerdict for the false positive this replaces. The panels are NOT changed to
-  // satisfy the gate: keeping them mounted is what preserves each tab's state across a switch.
-  const headings = await page.locator("h1").evaluateAll((els) => els.map((el) => {
-    const box = el.getBoundingClientRect();
+  // ── 1: the route loads, and the workspace states its identity ONCE — ON EVERY TAB.
+  //
+  // Measured by GEOMETRY, not by `:visible`: the app shell's screen-reader heading is
+  // `fo-visually-hidden` (display:block, clipped to 1x1) and Playwright counts that visible, while a
+  // heading inside a `hidden` panel measures 0x0. One measurement covers both. The panels are NOT
+  // changed to satisfy the gate — keeping all three mounted is what preserves each tab's state.
+  //
+  // AND IT IS CHECKED AFTER SELECTING EACH TAB, because the default-tab-only version missed a real
+  // defect the Owner then found on the deployed page: `EquipmentRegister` was still rendering its own
+  // `WorkspaceShell title="Equipment"`, so selecting Add Equipment put a SECOND visible Equipment
+  // page identity inside the Equipment page. A gate that only ever looks at the state it starts in
+  // cannot see what a tab switch reveals.
+  const measureIdentity = async () => {
+    const headings = await page.locator("h1").evaluateAll((els) => els.map((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        text: el.textContent.trim(),
+        isWorkspaceTitle: el.classList.contains("ns-workspace__title"),
+        width: box.width, height: box.height,
+      };
+    }));
+    const onScreen = headings.filter(isCompetingHeading);
     return {
-      text: el.textContent.trim(),
-      isWorkspaceTitle: el.classList.contains("ns-workspace__title"),
-      // `display:none` anywhere up the tree — the hidden tab panels — yields a zero box too, so one
-      // measurement covers both the panels and the screen-reader heading.
-      width: box.width, height: box.height,
+      headings,
+      verdict: workspaceIdentityVerdict({
+        visibleWorkspaceTitles: onScreen.filter((h) => h.isWorkspaceTitle).map((h) => h.text),
+        otherVisibleH1s: onScreen.filter((h) => !h.isWorkspaceTitle).map((h) => h.text),
+      }),
     };
-  }));
-  const onScreen = headings.filter(isCompetingHeading);
-  const identityVerdict = workspaceIdentityVerdict({
-    visibleWorkspaceTitles: onScreen.filter((h) => h.isWorkspaceTitle).map((h) => h.text),
-    otherVisibleH1s: onScreen.filter((h) => !h.isWorkspaceTitle).map((h) => h.text),
-  });
+  };
+
+  const identity = await measureIdentity();
   record("1  workspace route loads with one VISIBLE Equipment identity",
-    identityVerdict.ok,
-    `${identityVerdict.detail} mountedH1s=${headings.length} `
-      + `notOnScreen=${JSON.stringify(headings.filter((h) => !isCompetingHeading(h)).map((h) => `${h.text}(${Math.round(h.width)}x${Math.round(h.height)})`))}`);
+    identity.verdict.ok,
+    `${identity.verdict.detail} mountedH1s=${identity.headings.length} `
+      + `notOnScreen=${JSON.stringify(identity.headings.filter((h) => !isCompetingHeading(h)).map((h) => `${h.text}(${Math.round(h.width)}x${Math.round(h.height)})`))}`);
 
   // ── 2: no count on this header. Three tabs answer three questions; one number beside one title
   //      would have to mean one of them and a reader cannot tell which.
@@ -415,6 +427,33 @@ async function main() {
       && tabNames.includes("Available Equipment")
       && tabNames.includes("Add Equipment"),
     `tabs=${JSON.stringify(tabNames)}`);
+
+  // ── 3a/3b/3c: ONE PAGE IDENTITY PER PAGE, ON EVERY TAB — and the Add tab owns no page shell.
+  //
+  // The invariant is VISIBILITY + OWNERSHIP, never a total h1 count across the mounted DOM. All
+  // three panels stay mounted so each keeps its state; a heading inside a hidden one is 0x0 and is
+  // not on screen. What must never happen is a second title a reader can actually see.
+  for (const [label, tabName, panelId] of [
+    ["3a Customer Equipment", "Customer Equipment", "customer"],
+    ["3b Available Equipment", "Available Equipment", "available"],
+    ["3c Add Equipment", "Add Equipment", "add"],
+  ]) {
+    await selectTab(page, tabName, panelId);
+    const perTab = await measureIdentity();
+    record(`${label} selected — exactly one visible Equipment identity`,
+      perTab.verdict.ok, perTab.verdict.detail);
+
+    // And the panel itself must not be a page: `.fo-workspace` is WorkspaceShell's root, and its
+    // presence inside a tab is the defect rather than a symptom of it. Checked on every tab, not
+    // only the one that had it, so the next tab to grow a shell is caught the same way.
+    const panel = panelById(page, panelId);
+    const nestedShells = await panel.locator(".fo-workspace").count();
+    const panelH1s = await panel.locator("h1").allInnerTexts();
+    record(`${label} panel hosts no standalone page title`,
+      nestedShells === 0 && panelH1s.length === 0,
+      `nestedWorkspaceShells=${nestedShells} panelH1s=${JSON.stringify(panelH1s)}`);
+  }
+  await selectTab(page, "Customer Equipment", "customer");
 
   // ── 4: THE COLLECTION IS RESOLVED ONCE. Every assertion below is scoped to this panel, so two
   //      checks can never disagree about which surface they measured.
