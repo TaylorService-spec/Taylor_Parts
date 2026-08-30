@@ -1172,7 +1172,35 @@ records the gate actually running, and supersedes the earlier line that said *"N
 | **Gate ruling applied** | Quick Gate, not Full Regression (Owner, 2026-08-30) |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the one authority a build cannot grant itself |
 
-**Acceptance surfaces:** `/inventory` and `/inventory/CW-P-0001`.
+### FRAME 1a WAS NOT BUILT, and offering `/inventory` for acceptance was wrong
+
+The Owner opened the sandbox at `/inventory` and said it looks nothing like the design view. It does
+not, and it was never going to: the **PartsList scope ruling of 2026-08-30** deliberately left the
+pre-North-Star multi-panel role home alone, and this build is the one that asked for that scope. So
+the workspace still renders Work / Parts / Flow groups with the reorder queues above a catalogue
+table — the agreed outcome, and nothing like frame 1a.
+
+**The error is not the scope. It is that the closeout listed `/inventory` as an Owner acceptance
+surface.** Frames 1a–1d were the acceptance criteria, and offering a surface that was deliberately
+not migrated to 1a — without saying so in the same breath — invited exactly the comparison that
+failed. A deferral that is not visible at the moment of acceptance is not a deferral, it is a
+surprise.
+
+**Acceptance surfaces, corrected — the RECORD family only:**
+
+| Frame | Surface | State |
+|---|---|---|
+| 1b desktop record | `/inventory/CW-P-0001` | **migrated**, ready for acceptance |
+| 1c handheld record | the same at 375 | **migrated**, ready for acceptance |
+| 1d honest states | reachable on the record | **migrated**, ready for acceptance |
+| **1a workspace** | `/inventory` | **NOT MIGRATED — do not accept against 1a** |
+
+Neither existing surface is frame 1a. `/inventory` is the role home. `/inventory/part-master`
+("Catalog Admin") is a flat admin table carrying Part Number / Name / Category / Control Type /
+Stocking Class / Unit / Status — closer to 1a's COLUMNS, but it is not a North Star page: no serif
+header block with counts, no view chips, no toolbar, no Attention column. **No surface in the
+product looks like frame 1a**, and what to do about that is the Owner's call, recorded as ND-30
+rather than assumed by this build.
 
 ### Two results in that run that are weaker than they look, named rather than counted
 
