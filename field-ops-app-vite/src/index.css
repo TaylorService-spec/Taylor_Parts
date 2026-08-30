@@ -6701,3 +6701,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @container ns-record (min-width: 900px) {
   .ns-rail { border-left: 1px solid var(--color-border); padding-left: 24px; }
 }
+
+/* Activity entry: the subject leads, the event follows, the account grounds it. A bare event label
+   ("Job assigned") repeated down a column says nothing -- which is exactly how this shipped. */
+.ns-rail__entry-ref { display: block; font-weight: 600; font-size: 12px; }
+.ns-rail__entry-ref a { color: var(--color-text-primary); }
+.ns-rail__entry-meta { display: block; font-size: 11px; color: var(--color-text-secondary); }

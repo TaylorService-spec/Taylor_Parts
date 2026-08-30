@@ -117,8 +117,8 @@ export default function ControlTower() {
     [workOrders, technicians],
   );
   const activity = useMemo(
-    () => activityEntries({ workOrders, filter: activityFilter }),
-    [workOrders, activityFilter],
+    () => activityEntries({ workOrders, accountNames, filter: activityFilter }),
+    [workOrders, accountNames, activityFilter],
   );
   const openWorkOrderCount = useMemo(
     () => workOrders.filter((wo) => fieldPhase(wo) !== FIELD_PHASE.FINISHED).length,

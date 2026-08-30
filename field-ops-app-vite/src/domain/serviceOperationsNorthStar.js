@@ -69,8 +69,17 @@ export const workOrderHref = (workOrderId) => `/service/work-orders/${workOrderI
 
 // Where the page's links go. Board routes come from navConfig's Service subnav paths; naming them
 // once keeps a relabelled nav item from silently breaking five call sites.
+//
+// THE WORK ORDERS LIST IS `/service`, NOT `/service/work-orders`. Its subnav entry declares
+// `path: ""`, so the list IS the Service domain index. Under /service only `work-orders/new` and
+// `work-orders/:workOrderId` are generated -- `/service/work-orders` matches NO route, and the app
+// falls through to the dashboard. This shipped that way and the Owner hit it immediately: the header
+// button and two metric links all landed on My Dashboard.
+//
+// The DETAIL link is unaffected and stays `/service/work-orders/:id` -- that one does match the
+// `:workOrderId` route, and it is what the attention projection's own deepLink builds.
 export const SERVICE_OPS_LINKS = Object.freeze({
-  workOrders: "/service/work-orders",
+  workOrders: "/service",
   dispatcherBoard: "/service/dispatcher-board",
 });
 
@@ -346,20 +355,46 @@ export const ACTIVITY_FILTER = Object.freeze({
   SYSTEM: "SYSTEM",
 });
 
-// Entries for the rail. Description only — no clock time (SO-N3) and no actor (SO-N5), because
-// neither is a fact this event model holds. The provenance line the composition renders under these
-// entries is not decoration: it is what makes a snapshot-derived list honest about being one.
-export function activityEntries({ workOrders = [], filter = ACTIVITY_FILTER.ALL } = {}) {
+// Entries for the rail. No clock time (SO-N3) and no actor (SO-N5), because neither is a fact this
+// event model holds. The provenance line the composition renders under these entries is not
+// decoration: it is what makes a snapshot-derived list honest about being one.
+//
+// ── WHAT HAPPENED, TO WHAT ──────────────────────────────────────────────────────────────────────
+//
+// describeEvent() returns a static per-type label -- "Job assigned", "Work order completed" -- and
+// nothing else. A column of those is unreadable: it says a thing happened without saying what it
+// happened to, so twenty entries look like twenty copies of the same sentence. The Owner said so on
+// sight of the live page, and was right.
+//
+// The subject is a JOIN, not a new fact and not a new read. Every event carries entity.id (the
+// governed Work Order document id, since buildTimeline is fed work orders) and metadata.job (the
+// record itself), and the composition root already holds both the work orders and the resolved
+// account names. So each entry can state its work order NUMBER and its account.
+//
+// It is a woNumber, never the document id. The panel this replaces printed `event.entity.id` under
+// each row -- a raw Firestore key where a business reference belongs (DECISIONS #106). Removing that
+// was right; removing it without putting the real reference back is what left the rail saying
+// nothing. When no woNumber can be resolved the entry renders its description alone rather than
+// falling back to the id -- lossless, and still never an id.
+export function activityEntries({ workOrders = [], accountNames, filter = ACTIVITY_FILTER.ALL } = {}) {
   const timeline = buildTimeline(workOrders);
+  const byId = workOrderById(workOrders);
   const filtered =
     filter === ACTIVITY_FILTER.ALL
       ? timeline
       : timeline.filter((event) => event.entity.type === filter);
 
-  return filtered.map((event, index) => ({
-    key: `${event.entity.type}-${event.entity.id}-${event.type}-${index}`,
-    description: describeEvent(event),
-    entityType: event.entity.type,
-    severity: event.severity,
-  }));
+  return filtered.map((event, index) => {
+    const wo = event.metadata?.job ?? byId.get(event.entity.id) ?? null;
+    const reference = wo?.woNumber ?? null;
+    return {
+      key: `${event.entity.type}-${event.entity.id}-${event.type}-${index}`,
+      description: describeEvent(event),
+      reference,
+      account: accountLabel(wo, accountNames),
+      href: wo?.id ? workOrderHref(wo.id) : null,
+      entityType: event.entity.type,
+      severity: event.severity,
+    };
+  });
 }

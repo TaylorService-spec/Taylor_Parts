@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ACTIVITY_FILTER } from "../../../domain/serviceOperationsNorthStar";
 
 const FILTERS = [
@@ -56,7 +57,17 @@ export default function ActivityTimelinePanel({ entries = [], filter, onFilterCh
         <ul className="ns-rail__list">
           {entries.map((entry) => (
             <li key={entry.key} className="ns-rail__entry">
+              {/* THE SUBJECT COMES FIRST. "Job assigned" on its own is a sentence with no object --
+                  a column of them reads as one repeated line. The work order number leads, the
+                  event follows, and the account gives it somewhere to belong. Never the document
+                  id: when no woNumber resolves, the description stands alone. */}
+              {entry.reference ? (
+                <span className="ns-rail__entry-ref">
+                  {entry.href ? <Link to={entry.href}>{entry.reference}</Link> : entry.reference}
+                </span>
+              ) : null}
               <span className="ns-rail__entry-text">{entry.description}</span>
+              {entry.account ? <span className="ns-rail__entry-meta">{entry.account}</span> : null}
             </li>
           ))}
         </ul>
