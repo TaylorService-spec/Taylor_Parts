@@ -19,7 +19,8 @@ const REPO = path.resolve(import.meta.dirname, "../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 
 const { resolveExecutionTarget, resolveReadOnlyTarget, ExecutionTargetRefused,
-  LIVE_SANDBOX_PROJECT, PRODUCTION_PROJECT, LIVE_FLAG } =
+  LIVE_SANDBOX_PROJECT, CERTIFICATION_PROJECT, PRODUCTION_PROJECT, LIVE_FLAG,
+  CERTIFICATION_LIVE_FLAG } =
   await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 const { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } =
   await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
@@ -182,4 +183,82 @@ test("a read-only tool still refuses production", () => {
     } catch (e) { return e; }
   })();
   assert.ok(err instanceof ExecutionTargetRefused, "reading production is still refused");
+});
+
+// ── THE DEPLOYABLE CERTIFICATION RUNTIME ──────────────────────────────────────────────────────
+//
+// Certification is the second live-writable target this gate has ever had. The tests that matter
+// are not "it works" -- they are the ones proving the second target did not turn one flag into a
+// skeleton key for both.
+
+test("CERTIFICATION is live-writable with its OWN flag", () => {
+  const t = gate(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.equal(t.projectId, CERTIFICATION_PROJECT);
+  assert.equal(t.isLive, true);
+  assert.equal(t.apply, true);
+});
+
+test("CERTIFICATION refuses --apply alone, exactly as the sandbox does", () => {
+  const err = refused(["--projectId", CERTIFICATION_PROJECT, "--apply"]);
+  assert.ok(err instanceof ExecutionTargetRefused);
+  assert.match(err.message, /requires --apply-live-certification/);
+});
+
+test("the SANDBOX flag does not unlock certification", () => {
+  // The whole reason the flags are separate. Somebody adapting a working sandbox command by
+  // changing only --projectId must be stopped, not accommodated.
+  const err = refused(["--projectId", CERTIFICATION_PROJECT, "--apply", LIVE_FLAG]);
+  assert.ok(err instanceof ExecutionTargetRefused);
+  assert.match(err.message, /requires --apply-live-certification/);
+});
+
+test("the CERTIFICATION flag does not unlock the sandbox", () => {
+  // And symmetrically. Neither flag is a general "yes, live" -- each names one environment.
+  const err = refused(["--projectId", LIVE_SANDBOX_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.ok(err instanceof ExecutionTargetRefused);
+  assert.match(err.message, /requires --apply-live-sandbox/);
+});
+
+test("there is no generic live flag", () => {
+  // If one is ever added, this fails -- which is the point. The refusal must not be satisfiable by
+  // a word that names no environment.
+  for (const generic of ["--apply-live", "--live", "--force-live"]) {
+    const err = refused(["--projectId", CERTIFICATION_PROJECT, "--apply", generic]);
+    assert.ok(err instanceof ExecutionTargetRefused, `${generic} must not unlock a live write`);
+  }
+});
+
+test("the sandbox is completely unaffected by certification existing", () => {
+  // Regression, stated as equality rather than as a fresh assertion about what the sandbox does.
+  const t = gate(["--projectId", LIVE_SANDBOX_PROJECT, "--apply", LIVE_FLAG]);
+  assert.equal(t.projectId, LIVE_SANDBOX_PROJECT);
+  assert.equal(t.isLive, true);
+  assert.equal(t.apply, true);
+});
+
+test("CERTIFICATION obeys every refusal the sandbox obeys", () => {
+  // Each of these already refuses for the sandbox. A new target that skipped any of them would be
+  // a hole shaped exactly like the environment nobody has looked at yet.
+
+  // ambient credentials naming a different project
+  assert.ok(refused(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG],
+    { GOOGLE_CLOUD_PROJECT: LIVE_SANDBOX_PROJECT }) instanceof ExecutionTargetRefused,
+    "ambient credentials must still have to agree with --projectId");
+
+  // a typo in the certification name is unknown, not "close enough"
+  const typo = refused(["--projectId", "eos-platform-certifcation", "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.ok(typo instanceof ExecutionTargetRefused);
+  assert.match(typo.message, /Unknown project/);
+
+  // and no project at all is still no default
+  const none = refused(["--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.ok(none instanceof ExecutionTargetRefused);
+  assert.match(none.message, /--projectId is required/);
+});
+
+test("CERTIFICATION activates no capabilities", () => {
+  // Nothing is deployed there, so an override set would be permissions for code that does not
+  // exist. The sandbox's list is not inherited -- the lookup is per-project, never by role.
+  const t = gate(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.equal(t.activationOverrides.size ?? t.activationOverrides.length, 0);
 });

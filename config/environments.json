@@ -141,6 +141,37 @@
       "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes."
     },
     {
+      "id": "platform-certification",
+      "role": "sandbox",
+      "deployment": "platform",
+      "status": "live",
+      "purpose": "Deployable synthetic certification runtime. It exists so the private-AI operational interpretation path can be exercised end to end against data that is genuinely synthetic, which platform-sandbox's production-derived fixtures are not. Its dataset is seeded only from the certification-world fixture authority; no production or production-derived record may be copied here.",
+      "privateAiSyntheticOperationalInterpretation": false,
+      "firebase": {
+        "apiKey": "AIzaSyBaBtNX3NBbedtjCz2K-ik7D5isuwar83Y",
+        "authDomain": "eos-platform-certification.firebaseapp.com",
+        "projectId": "eos-platform-certification",
+        "storageBucket": "eos-platform-certification.firebasestorage.app",
+        "messagingSenderId": "179665574030",
+        "appId": "1:179665574030:web:81bfe294a71af4848f91df",
+        "functionsRegion": "us-central1"
+      },
+      "readiness": {
+        "RECEIVING_TRANSPORT_READY": false,
+        "PART_IDENTIFIER_TRANSPORT_READY": false,
+        "INVENTORY_BALANCE_READ_READY": false,
+        "WORK_ORDER_READINESS_CONTEXT_READY": false,
+        "TRUCK_MANAGEMENT_WRITE_READY": false,
+        "TRUCK_DEACTIVATE_READY": false,
+        "TRUCK_DELETE_READY": false,
+        "PART_MASTER_WRITE_READY": false,
+        "MANUFACTURER_WRITE_READY": false,
+        "TRUSTED_COMPLETION_ENABLED": false
+      },
+      "surfaces": [],
+      "notes": "Provisioned 2026-08-30: Firestore (Standard, production mode, deny-by-default rules) and a Web app registration for the governed identity above. NOTHING IS DEPLOYED HERE YET -- no Functions, no Hosting, no data -- which is why every readiness flag is false and why the private-AI classification stays false until the certification dataset is actually installed and proven synthetic. The Web app exists to give the registry a complete governed identity; this environment serves no browser."
+    },
+    {
       "id": "platform-integration",
       "role": "integration",
       "deployment": "platform",

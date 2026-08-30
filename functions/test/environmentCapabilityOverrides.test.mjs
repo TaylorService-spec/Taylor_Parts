@@ -218,6 +218,12 @@ test("only the certification emulator may send operational evidence to the model
   // environment that quietly permits itself fails here instead of passing a generic assertion.
   assert.equal(synthetic("eos-platform-sandbox"), false, "sandbox work-order fixtures are prod-derived");
   assert.equal(synthetic("taylor-parts"), false, "production is never permitted");
+  // The deployable certification runtime exists but holds no data yet. It will become the one
+  // permitted DEPLOYED environment once its synthetic dataset is installed and proven; until then
+  // an empty project is not synthetic data, it is no data, and flipping this is a separate
+  // governed decision that has to walk past this line.
+  assert.equal(synthetic("eos-platform-certification"), false,
+    "certification is not permitted until its synthetic dataset is installed and proven");
 });
 
 test("an absent or non-literal-true flag refuses", () => {
