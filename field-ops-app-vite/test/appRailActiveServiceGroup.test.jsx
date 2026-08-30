@@ -9,7 +9,7 @@
 //
 // Fix 2: the scroll-active-item-into-view effect depended on
 // [activeDomainPath] only, so switching between two items WITHIN the same
-// already-expanded domain (e.g. Service > Scheduling -> Service > Warranty)
+// already-expanded domain (e.g. Service > Dispatcher Board -> Service > Warranty)
 // never re-ran it. This proves scrollIntoView fires again on an in-domain
 // route change, not just a domain change.
 import { afterEach, describe, it, expect, vi } from "vitest";
@@ -52,8 +52,13 @@ function Harness({ path }) {
 }
 
 describe("AppRail active Service group (Fix 3)", () => {
-  it("marks the Dispatch group active for /service/scheduling, not Work Management", () => {
-    render(<Harness path="/service/scheduling" />);
+  // Uses the Dispatcher Board rather than /service/scheduling, which this test used to drive.
+  // Scheduling was retired from the rail (navHidden, 2026-08-30) once the North Star board
+  // superseded it, and a hidden item cannot be the rail's active one. What is being asserted --
+  // that a Dispatch-group route activates Dispatch and NOT Work Management -- is unchanged; only
+  // the representative route moved to one the rail still draws.
+  it("marks the Dispatch group active for a Dispatch route, not Work Management", () => {
+    render(<Harness path="/service/dispatcher-board" />);
     const dispatchGroup = screen.getByRole("group", { name: "Dispatch" });
     const workManagementGroup = screen.getByRole("group", { name: "Work Management" });
     expect(dispatchGroup.getAttribute("aria-current")).toBe("true");
@@ -81,9 +86,12 @@ describe("AppRail active Service group (Fix 3)", () => {
 // a fresh <Harness path=".."/> at a later path is not equivalent to an
 // actual navigation and would not exercise the effect the same way a real
 // route change does.
+// Starts at the Dispatcher Board, not Scheduling: the rail's active item must be one the rail
+// DRAWS, and Scheduling is navHidden since 2026-08-30. The mount assertion below depends on there
+// being an active item to scroll to at all.
 function NavigableHarness() {
   return (
-    <MemoryRouter initialEntries={["/service/scheduling"]}>
+    <MemoryRouter initialEntries={["/service/dispatcher-board"]}>
       <Routes>
         <Route path="*" element={<NavigableRail />} />
       </Routes>
@@ -116,7 +124,7 @@ describe("AppRail in-domain active-item scroll (Fix 2)", () => {
       const callsAfterFirstMount = scrollIntoView.mock.calls.length;
       expect(callsAfterFirstMount).toBeGreaterThan(0);
 
-      // Same domain (service), different item -- Scheduling (Dispatch group)
+      // Same domain (service), different item -- Dispatcher Board (Dispatch group)
       // -> Warranty (Work Management group) -- this is exactly the
       // within-domain case the old [activeDomainPath]-only dependency array
       // missed: activeDomainPath stays "service" the whole time.

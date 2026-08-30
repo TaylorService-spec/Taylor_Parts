@@ -174,7 +174,20 @@ export const NAV_DOMAINS = [
       // Platform Task 2 -- "Dispatch" relabeled "Dispatch Queue" (its child slot
       // in the new Dispatch group). Path/legacyKey UNCHANGED, so its URL
       // (/service/dispatch) and role access are identical -- only the label moved.
-      { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch" },
+      // KEPT AND RENAMED "Jobs" (Owner, 2026-08-30). It was nearly retired with Scheduling and
+      // Dispatch Board as a third Schedule-only duplicate, and it is not one: `mobilePrimaryNav.js`
+      // already routes the phone's **Jobs** tab at this exact route, so it is a screen someone uses
+      // every day. The old label "Dispatch Queue" is what made it look like a spare dispatcher board.
+      //
+      // ONE SCREEN, ONE NAME. The same destination was called "Jobs" on the phone and "Dispatch
+      // Queue" on the desktop, which is how a live surface gets mistaken for a duplicate — the label
+      // now matches the mobile tab it shares a route with.
+      //
+      // Not to be confused with "Job Assignments" (/service/job-assignments) in Work Management:
+      // that is a READ list over work orders and technicians. This one performs the governed
+      // Dispatch transition and sets assignedTechId. Different jobs, similar words; the distinction
+      // is the write.
+      { key: "dispatch", label: "Jobs", path: "dispatch", legacyKey: "dispatch" },
       // Coordinated Operations — the user-consumable reads of the already-built coordinatedVisit /
       // coordinatedFieldMission projections (functions/src/fulfillment). NO new authority: the Sales Order is
       // the coordination anchor; Work Orders keep individual execution. Both read a SYNTHETIC source through
@@ -210,13 +223,30 @@ export const NAV_DOMAINS = [
       // retired /service/control-tower URL redirects to /service-operations
       // (App.jsx).
       { key: "dispatcherBoard", label: "Dispatcher Board", path: "dispatcher-board", legacyKey: "dispatcherBoard" },
-      { key: "scheduling", label: "Scheduling", path: "scheduling" },
-      // Wave 7 completion, PART 1 -- the combined Dispatch/Scheduling operating workspace (technician
-      // rows x horizontal time axis + a single below-the-board Ready-for-Work queue). ADDITIVE: it does
-      // NOT replace Dispatcher Board or Scheduling above (both keep their existing URLs/behavior); this
-      // is a new, third view over the SAME governed reads/writes those two already use. No legacyKey ->
-      // admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES (matches every other item in this group).
-      { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling" },
+
+      // ════════ THREE DISPATCH ENTRIES RETIRED FROM THE RAIL (Owner, 2026-08-30) ════════
+      //
+      // The Dispatch group showed FIVE entries and a dispatcher needs one. Each was individually
+      // justified when it was added and the justifications were true; what nobody did was ask
+      // whether they still held once the next one shipped.
+      //
+      // `Scheduling` was built to expose "the SCHEDULED gate that had no UI". `Dispatch Board`
+      // (dispatchScheduling) was Wave 7 PART 1, whose own comment said ADDITIVE, does NOT replace
+      // Dispatcher Board or Scheduling -- correct on the day, and written BEFORE the North Star
+      // board existed. The North Star Dispatcher Board (P1v1, Owner-accepted 2026-08-29) now reaches
+      // Schedule, Reschedule, Reassign, Unschedule AND Dispatch. Measured, not assumed:
+      //
+      //     Dispatcher Board   Schedule · Reschedule · Reassign · Unschedule · Dispatch
+      //     Scheduling         Schedule                                          <- subset
+      //     Dispatch Board     Schedule                                          <- subset
+      //     Dispatch Queue     Dispatch                                          <- subset
+      //
+      // NAVIGATION HONESTY, NOT CAPABILITY REMOVAL. `navHidden` is read by AppRail only; App.jsx's
+      // route generator does not check it, so every URL still resolves and every component still
+      // mounts. Nothing is deleted, no route redirects, no authority changes. Deleting the
+      // components is a separate decision that needs its own evidence.
+      { key: "scheduling", label: "Scheduling", path: "scheduling", navHidden: true },
+      { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling", navHidden: true },
       { key: "warranty", label: "Warranty", path: "warranty", navHidden: true },
     ],
   },
@@ -243,7 +273,17 @@ export const NAV_DOMAINS = [
     subnav: [
       // The catalog operating surface. Reachable by governed catalog authority (so an
       // inventoryCatalogAdministrator can exercise what it holds) OR by the unchanged compatibility path.
-      { key: "parts", label: "Parts", path: "", legacyKey: "inventory", capabilityAccess: CATALOG_SURFACE_CAPABILITIES },
+      //
+      // LABELLED "Parts Catalog" (Owner, 2026-08-30) because that is what the repository already
+      // calls this screen everywhere except the nav: `objectPermissionMap.js` registers the governed
+      // object as "Parts Catalog", its view model is `domain/partsCatalogView.js`, PartsList.jsx
+      // describes itself as the Parts Catalog, and the capability set gating this very line is
+      // CATALOG_SURFACE_CAPABILITIES. The nav was the one place saying "Parts".
+      //
+      // That gap is not cosmetic: a screen whose menu name differs from its governed object name is
+      // how a live surface gets mistaken for something else -- the same defect that nearly retired
+      // the dispatch Jobs screen in this PR, pointed the other way.
+      { key: "parts", label: "Parts Catalog", path: "", legacyKey: "inventory", capabilityAccess: CATALOG_SURFACE_CAPABILITIES },
       // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
       // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
       //
@@ -266,7 +306,19 @@ export const NAV_DOMAINS = [
       // limited and cursored at Firestore, and list state lives in the URL. That is the master-data
       // browse workflow the comment was preserving, so hiding the only screen that offers it would be
       // keeping the workflow and hiding the door.
-      { key: "partMaster", label: "Part Master", path: "part-master" },
+      //
+      // LABELLED "Catalog Admin" (Owner, 2026-08-30). "Part Master" named the DATA rather than the
+      // job, which left two screens over the same objects with no way to tell from the rail which
+      // one you wanted. The pair now reads as what it is: Parts Catalog is the catalogue; this is
+      // the administration OF it -- the catalogue-scale browse by master-data status/control/class
+      // that the entry above deliberately does not offer (it shows category/available/risk).
+      //
+      // VISIBILITY DELIBERATELY UNCHANGED (Owner, 2026-08-30). Admin and dispatcher both keep it,
+      // exactly as before. Restricting it to admin was considered and NOT taken: isNavItemVisible
+      // gates the ROUTE TABLE as well as the rail (App.jsx), so a role restriction here would deny
+      // dispatchers the screen rather than tidy their menu -- an authorization change, and one that
+      // should not ride along with a rename. Revisit once it is known whether dispatchers use it.
+      { key: "partMaster", label: "Catalog Admin", path: "part-master" },
       // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
       // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
       // NOTE: the `manufacturers` collection read is still Rules-closed (the governed read-authority

@@ -55,9 +55,12 @@ ok("admin: no ungrouped Service items (Control Tower promoted to Service Operati
   assert.deepEqual(m.ungrouped, []);
   assert.ok(!m.groups.some((g) => g.items.some((it) => it.key === "controlTower")));
 });
-ok("Dispatch Queue label applied; path unchanged", () => {
+ok("the Jobs label is applied; path unchanged", () => {
   const dq = groupByKey(groupsFor(ROLES.ADMIN), "dispatch").items.find((i) => i.key === "dispatch");
-  assert.equal(dq.label, "Dispatch Queue");
+  // Renamed from "Dispatch Queue" (Owner, 2026-08-30). One screen, one name: mobilePrimaryNav
+  // already labels this same route "Jobs" on the phone, and the split label is what made a live
+  // surface read as a spare dispatcher board. The PATH is what this test guards, and it is unchanged.
+  assert.equal(dq.label, "Jobs");
   assert.equal(dq.path, "dispatch");
   assert.equal(dq.legacyKey, "dispatch");
 });
@@ -117,7 +120,7 @@ ok("active group: 'scheduling' -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("scheduling", adminGroups), "dispatch"));
 ok("active group: 'dispatcher-board' -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatcher-board", adminGroups), "dispatch"));
-ok("active group: 'dispatch' (Dispatch Queue) -> Dispatch", () =>
+ok("active group: 'dispatch' (Jobs) -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatch", adminGroups), "dispatch"));
 ok("active group: 'dispatch-scheduling' (Dispatch Board) -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatch-scheduling", adminGroups), "dispatch"));
