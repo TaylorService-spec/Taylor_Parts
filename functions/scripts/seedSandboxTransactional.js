@@ -40,7 +40,19 @@ const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const {
+  buildScheduledWindow,
+  buildSecondScheduledWindow,
+  buildOutsideBandWindow,
+  buildWeekendWindow,
+  buildTechnicianAvailability,
+} = require("./sandboxDispatchFixtures");
+
 const WOS = "fieldops_wos";
+// The governed recurring-hours authority (ND-22). Admin-SDK-only: firestore.rules denies ALL client
+// read and write, and this seed does not change that -- the board still reads it exclusively through
+// the trusted readTechnicianAvailability projection.
+const AVAILABILITY = "technician_working_availability";
 const YEAR = 2026; // deterministic: seeds must not vary by wall clock
 const SCENARIO_ID = "SBX-SCN-001";
 const SCENARIO_VERSION = "2.0.0";
@@ -120,6 +132,32 @@ async function main() {
   const db = getFirestore();
   const now = Timestamp.now();
   const by = "sandbox-transactional-seed";
+  // Today, 09:00-11:00 Phoenix -- inside the recorded shift seeded below, so the board draws a chip
+  // on a lane that has hours to draw it against. See sandboxDispatchFixtures.js for why it is
+  // anchored to the run instant rather than a literal date.
+  const win = buildScheduledWindow(now.toMillis());
+  const SCHEDULED_WINDOW = {
+    start: Timestamp.fromMillis(win.startMillis),
+    end: Timestamp.fromMillis(win.endMillis),
+  };
+  // Same day, a different hour, so the two chips cannot land on the same left offset.
+  const win2 = buildSecondScheduledWindow(now.toMillis());
+  const SECOND_WINDOW = {
+    start: Timestamp.fromMillis(win2.startMillis),
+    end: Timestamp.fromMillis(win2.endMillis),
+  };
+  // Past the board's default display band, so the band has to widen to contain it.
+  const win3 = buildOutsideBandWindow(now.toMillis());
+  const OUTSIDE_BAND_WINDOW = {
+    start: Timestamp.fromMillis(win3.startMillis),
+    end: Timestamp.fromMillis(win3.endMillis),
+  };
+  // The first Saturday strictly after the run date -- a weekend whichever day this is seeded.
+  const win4 = buildWeekendWindow(now.toMillis());
+  const WEEKEND_WINDOW = {
+    start: Timestamp.fromMillis(win4.startMillis),
+    end: Timestamp.fromMillis(win4.endMillis),
+  };
   const counts = {};
   const bump = (k) => { counts[k] = (counts[k] || 0) + 1; };
   const set = async (c, id, d) => { await db.collection(c).doc(id).set(d, { merge: true }); bump(c); };
@@ -162,6 +200,35 @@ async function main() {
   await set("fieldops_technicians", "tech-sbx-02", {
     name: "Sandbox Technician Two", status: "available", skills: ["refrigeration"],
     userId: null, createdAt: now, updatedAt: now, updatedBy: by,
+  });
+
+  // --- Technician working availability ----------------------------------
+  //
+  // `technician_working_availability` is the governed recurring-hours authority (ND-22). It is
+  // Admin-SDK-only -- firestore.rules denies ALL client read and write -- so this seed writes it the
+  // same way the trusted setTechnicianWorkingAvailability command does, and nothing about that
+  // boundary is weakened: the Dispatch board still reads it exclusively through the
+  // readTechnicianAvailability projection.
+  //
+  // WHY IT LIVES HERE AND NOT IN CERTIFICATION WORLD. This pack already owns tech-sbx-01/02, and
+  // certification world's dataset is version-pinned with an expected record count that a `verify`
+  // asserts exactly -- adding a collection there would change its fingerprint and could only take
+  // effect through a destructive `rebuild --confirm-reset`. This seeder is an idempotent upsert at
+  // fixed ids, so re-running it deterministically recreates these facts with no reset at all.
+  //
+  // ONE TECHNICIAN, DELIBERATELY. Recording hours for every technician would destroy the live case
+  // for the board's honesty rules -- "unrecorded availability says so" and "no lane renders a fake
+  // 0%" only mean something while an unrecorded technician exists to prove them on. One recorded and
+  // the rest unrecorded exercises BOTH paths on the same screen.
+  await set(AVAILABILITY, "tech-sbx-01", {
+    ...buildTechnicianAvailability({
+      technicianId: "tech-sbx-01",
+      // The field the governed command writes. Named for this seeder so the record's owner is
+      // legible from the document itself rather than inferred.
+      updatedByUid: by,
+      scenarioId: SCENARIO_ID,
+    }),
+    updatedAt: now,
   });
 
   // --- Work Orders across the GOVERNED lifecycle ------------------------
@@ -212,9 +279,18 @@ async function main() {
   // READY_TO_DISPATCH -> SCHEDULED -> DISPATCHED, so a dispatcher can only
   // dispatch from SCHEDULED. Seeding the wrong state made the dispatch path
   // untestable.
+  // A SCHEDULED Work Order MUST carry a window. The governed `Schedule` action requires
+  // scheduledStart, scheduledEnd and scheduledTechId together (transitionWorkOrder.ts refuses with
+  // invalid-argument otherwise), so a SCHEDULED document without a window is a state the real command
+  // could never have produced -- and the Dispatch board could not draw it. It rendered under
+  // "Scheduled without a window" instead, which is the board being honest about a fixture that was
+  // not. Found by the Dispatch Quick Gate: with this the only SCHEDULED Work Order in the sandbox,
+  // the board had no day to navigate to and no chip to place.
   await set(WOS, "wo-sbx-002", woBase(2, {
     status: "SCHEDULED",
     scheduledTechId: "tech-sbx-01",
+    scheduledStart: SCHEDULED_WINDOW.start,
+    scheduledEnd: SCHEDULED_WINDOW.end,
     complaint: "Preventive maintenance - replace water filter cartridge.",
     customerId: "acct-summit", locationId: "loc-summit-flag", equipmentId: "eq-cool-001",
     requiredPartId: "PRT-1005",
@@ -250,6 +326,54 @@ async function main() {
     customerId: "acct-harbor", locationId: "loc-harbor-airport", equipmentId: "eq-ice-002",
     assignedTechId: "tech-sbx-01",
     dispatchedAt: now,
+  }));
+
+  // A SECOND placement, same day, different hour, different technician.
+  //
+  // One chip cannot prove the board draws TIME: a single chip is consistent with a board that places
+  // everything at 0%. The Dispatch Quick Gate asserts chip geometry comes from the committed window
+  // rather than row order, and distinct left offsets are the only observable difference -- so a
+  // representative day needs two placements.
+  //
+  // On tech-sbx-02, which deliberately has NO recorded availability: a placed job on an unrecorded
+  // lane is a real combination a dispatcher sees, and it differs from wo-sbx-002 rather than
+  // duplicating it. Different technician, so this is not a double-booking of the first.
+  await set(WOS, "wo-sbx-008", woBase(8, {
+    status: "SCHEDULED",
+    scheduledTechId: "tech-sbx-02",
+    scheduledStart: SECOND_WINDOW.start,
+    scheduledEnd: SECOND_WINDOW.end,
+    complaint: "Harbor Grill airport prep unit - quarterly preventive maintenance.",
+    customerId: "acct-harbor", locationId: "loc-harbor-airport", equipmentId: "eq-ice-002",
+  }));
+
+  // OUTSIDE THE DISPLAY BAND. 18:30-19:30, past the board's default 07:00-17:00 window
+  // (dispatchBoardGeometry.js). The band WIDENS to contain it rather than clipping the chip away,
+  // and that widening cannot be seen on an estate where every placement sits politely inside the
+  // default hours. It is also outside tech-sbx-01's recorded 07:00-16:00 shift, so it stands the
+  // ND-20 warning case up as a real record: governed placement WARNS and ALLOWS, and the board must
+  // show a legitimately placed evening job rather than an error.
+  await set(WOS, "wo-sbx-009", woBase(9, {
+    status: "SCHEDULED",
+    scheduledTechId: "tech-sbx-01",
+    scheduledStart: OUTSIDE_BAND_WINDOW.start,
+    scheduledEnd: OUTSIDE_BAND_WINDOW.end,
+    complaint: "Harbor Grill evening callout - walk-in cooler running warm after close.",
+    customerId: "acct-harbor", locationId: "loc-harbor-downtown", equipmentId: "eq-cool-001",
+  }));
+
+  // WEEKEND WORK. The first Saturday strictly after the run date, so it lands on a weekend whichever
+  // weekday the seed is run -- and never on the same day as the weekday placements. A board whose
+  // geometry quietly assumed Monday-Friday would swallow this record, and no weekday-only fixture set
+  // could reveal that. Inside the recorded shift (all seven days carry it), so this proves WEEKEND
+  // geometry without also being an off-hours case -- one fixture, one behaviour.
+  await set(WOS, "wo-sbx-010", woBase(10, {
+    status: "SCHEDULED",
+    scheduledTechId: "tech-sbx-01",
+    scheduledStart: WEEKEND_WINDOW.start,
+    scheduledEnd: WEEKEND_WINDOW.end,
+    complaint: "Summit weekend coverage - scheduled ice machine sanitation.",
+    customerId: "acct-summit", locationId: "loc-summit-flag", equipmentId: "eq-ice-002",
   }));
 
   // Not yet scheduled -- proves the dispatch board honestly refuses to offer
