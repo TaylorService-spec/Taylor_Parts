@@ -435,7 +435,15 @@ async function main() {
   try {
     const relink = execFileSync(
       process.execPath,
-      [path.join(__dirname, "certificationWorld", "provisionPrincipals.mjs"), "--projectId", args.projectId, "--apply"],
+      // THE LIVE FLAG IS FORWARDED, NOT OMITTED. provisionPrincipals.mjs is now under the same
+      // execution authority as this file, so it requires the target's own named flag as well as
+      // --apply -- a subprocess is not exempt from a gate the operator had to pass. This rebuild
+      // already proved live intent for THIS project in authorizeInvocation(), so the flag it
+      // forwards is the one that was actually typed, resolved from the target rather than
+      // hardcoded. Passing only --apply here would refuse, and the relink would fail silently
+      // behind a rebuild that otherwise looked complete.
+      [path.join(__dirname, "certificationWorld", "provisionPrincipals.mjs"),
+        "--projectId", args.projectId, "--apply", LIVE_TARGET_FLAGS_BY_PROJECT.get(args.projectId)],
       { encoding: "utf8", cwd: path.resolve(__dirname, "..") },
     );
     console.log(relink.split("\n").slice(-12).join("\n"));

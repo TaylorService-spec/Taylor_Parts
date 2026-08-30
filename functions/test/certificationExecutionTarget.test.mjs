@@ -13,6 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
@@ -416,4 +417,168 @@ test("CLI: the governed flags are RECOGNISED by the parser, not rejected as unkn
     assert.ok(err === null || !/unrecognized argument/.test(err.message),
       "parser must recognise " + flag);
   }
+});
+
+// =================================================================================================
+// THE IDENTITY TOOL'S OWN CLI CONTRACT.
+//
+// provisionPrincipals.mjs carried its own assertSandboxTarget until now: production refused,
+// unknown projects refused, registry role must be exactly "sandbox". Correct for exactly as long
+// as one sandbox-role environment existed.
+//
+// eos-platform-certification is ALSO role "sandbox", so under a role-only guard the command that
+// mints 47 identities in the sandbox became the command that mints them in certification by
+// editing one word. Identity is the layer a world reset deliberately does NOT own -- principals
+// survive a rebuild -- so a mistake here is not undone by rebuilding anything.
+//
+// These drive the REAL parser through the exported authorizeProvisioning(), for the same reason
+// the installer's tests do: the shared gate can be perfect and this file can still not be calling
+// it, which is precisely what was true before.
+// =================================================================================================
+const { authorizeProvisioning } = await import(L("functions/scripts/certificationWorld/provisionPrincipals.mjs"));
+
+const prov = (args, env = {}) =>
+  withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined, ...env },
+    () => authorizeProvisioning(args));
+const provRefused = (args, env = {}) => {
+  try { prov(args, env); return null; } catch (err) { return err; }
+};
+
+// -- DRY RUN is safe and needs no live authorization ---------------------------------------------
+
+test("PRINCIPALS: a dry run against certification is ALLOWED and is not a write", () => {
+  const r = prov(["--projectId", CERTIFICATION_PROJECT]);
+  assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+  assert.equal(r.apply, false, "a dry run must never report apply");
+  assert.equal(r.activate, false);
+});
+
+test("PRINCIPALS: a dry run needs no live flag for either sandbox-role world", () => {
+  for (const p of [CERTIFICATION_PROJECT, LIVE_SANDBOX_PROJECT]) {
+    const r = prov(["--projectId", p]);
+    assert.equal(r.apply, false);
+    assert.equal(r.target.projectId, p);
+  }
+});
+
+// -- CERTIFICATION: the mandated three, and every near-miss --------------------------------------
+
+test("PRINCIPALS: certification creation is ALLOWED with --projectId + --apply + the certification flag", () => {
+  const r = prov(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+  assert.equal(r.target.isLive, true);
+  assert.equal(r.apply, true);
+});
+
+test("PRINCIPALS: --apply ALONE cannot mint identities in certification", () => {
+  const err = provRefused(["--projectId", CERTIFICATION_PROJECT, "--apply"]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--apply-live-certification/);
+});
+
+test("PRINCIPALS: the certification flag ALONE is not a live run -- --apply is required separately", () => {
+  // executionTarget infers --apply from the named flag. This tool does not: minting 47 durable
+  // principals demands both words, matching certificationWorld.mjs rather than the looser default.
+  const err = provRefused(["--projectId", CERTIFICATION_PROJECT, CERTIFICATION_LIVE_FLAG]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /without --apply/);
+});
+
+test("PRINCIPALS: the SANDBOX flag cannot unlock certification", () => {
+  const err = provRefused(["--projectId", CERTIFICATION_PROJECT, "--apply", LIVE_FLAG]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--apply-live-certification/);
+});
+
+// -- SANDBOX keeps its own authority, and only its own -------------------------------------------
+
+test("PRINCIPALS: sandbox creation is ALLOWED with --projectId + --apply + the sandbox flag", () => {
+  const r = prov(["--projectId", LIVE_SANDBOX_PROJECT, "--apply", LIVE_FLAG]);
+  assert.equal(r.target.projectId, LIVE_SANDBOX_PROJECT);
+  assert.equal(r.apply, true);
+});
+
+test("PRINCIPALS: the CERTIFICATION flag cannot unlock the sandbox", () => {
+  const err = provRefused(["--projectId", LIVE_SANDBOX_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.ok(err, "must refuse");
+  assert.match(err.message, /--apply-live-sandbox/);
+});
+
+// -- --activate-logins IS NOT AUTHORIZATION ------------------------------------------------------
+
+test("PRINCIPALS: --activate-logins never produces an authorized live run on its own", () => {
+  // It is a narrower question asked AFTER the target is settled, and it writes real credentials.
+  // If it could stand in for a live flag, the credential-issuing switch would also be the switch
+  // that chooses which project receives credentials.
+  //
+  // THE PROPERTY IS "NEVER APPLY", NOT "ALWAYS THROW". Two different things make these safe and
+  // both are acceptable: an outright refusal, or a resolution that is a DRY RUN and therefore
+  // writes nothing (the script separately reports "--activate-logins requires --apply ... Nothing
+  // done."). Asserting a throw would have demanded a refusal the tool does not owe and does not
+  // need; asserting apply===false states what actually has to hold.
+  const combos = [
+    ["--projectId", CERTIFICATION_PROJECT, "--activate-logins"],
+    ["--projectId", CERTIFICATION_PROJECT, "--apply", "--activate-logins"],
+    ["--projectId", CERTIFICATION_PROJECT, "--activate-logins", LIVE_FLAG],
+    ["--projectId", LIVE_SANDBOX_PROJECT, "--activate-logins", CERTIFICATION_LIVE_FLAG],
+  ];
+  for (const args of combos) {
+    let outcome;
+    try { outcome = prov(args); } catch { continue; } // refused outright: safe
+    assert.equal(outcome.apply, false,
+      "--activate-logins must not authorize a live run for: " + args.join(" "));
+  }
+});
+
+test("PRINCIPALS: --activate-logins does not change a properly authorized run's target decision", () => {
+  const r = prov(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG, "--activate-logins"]);
+  assert.equal(r.target.projectId, CERTIFICATION_PROJECT);
+  assert.equal(r.apply, true);
+  assert.equal(r.activate, true, "the flag is still reported; it is simply not what authorized the run");
+});
+
+// -- PRODUCTION, UNKNOWN, AMBIENT, NO TARGET -----------------------------------------------------
+
+test("PRINCIPALS: PRODUCTION is refused with every flag combination, dry run included", () => {
+  const combos = [
+    ["--projectId", PRODUCTION_PROJECT],
+    ["--projectId", PRODUCTION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG],
+    ["--projectId", PRODUCTION_PROJECT, "--apply", LIVE_FLAG],
+    ["--projectId", PRODUCTION_PROJECT, "--apply", LIVE_FLAG, CERTIFICATION_LIVE_FLAG, "--activate-logins"],
+  ];
+  for (const args of combos) {
+    const err = provRefused(args);
+    assert.ok(err, "production must be refused for: " + args.join(" "));
+    assert.match(err.message, /production/i);
+  }
+});
+
+test("PRINCIPALS: an UNKNOWN project is refused, never guessed", () => {
+  const err = provRefused(["--projectId", "eos-platform-certifcation", "--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.ok(err);
+  assert.match(err.message, /Unknown project/);
+});
+
+test("PRINCIPALS: ambient credentials must agree with --projectId", () => {
+  const err = provRefused(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG],
+    { GOOGLE_CLOUD_PROJECT: LIVE_SANDBOX_PROJECT });
+  assert.ok(err);
+  assert.match(err.message, /Ambient credentials/);
+});
+
+test("PRINCIPALS: no --projectId is refused; there is no default target for identity creation", () => {
+  const err = provRefused(["--apply", CERTIFICATION_LIVE_FLAG]);
+  assert.ok(err);
+  assert.match(err.message, /--projectId is required/);
+});
+
+test("PRINCIPALS: no weaker parallel guard survives -- the shared authority is the only path", () => {
+  // The local assertSandboxTarget is gone rather than kept beside the shared gate. If it came back,
+  // a role-only check would authorize certification with no flag naming it, and this would fail.
+  const src = readFileSync(
+    path.resolve(REPO, "functions/scripts/certificationWorld/provisionPrincipals.mjs"), "utf8");
+  const declaresOwnGuard = /function\s+assertSandboxTarget\s*\(/.test(src);
+  assert.equal(declaresOwnGuard, false,
+    "provisionPrincipals must not declare its own target guard alongside executionTarget");
+  assert.match(src, /resolveExecutionTarget/, "it must consult the shared authority");
 });
