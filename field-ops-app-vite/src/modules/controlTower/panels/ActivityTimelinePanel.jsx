@@ -1,59 +1,71 @@
-import { useMemo, useState } from "react";
-import { buildTimeline } from "../../../domain/timelineBuilder";
-import { describeEvent } from "../../../domain/eventModel";
-import { EVENT_ICON } from "../../../domain/eventTypes";
-import { assertPanelProps } from "../../../domain/controlTower/types";
-import SignalBadge from "../../../shared/ui/SignalBadge";
+import { ACTIVITY_FILTER } from "../../../domain/serviceOperationsNorthStar";
 
 const FILTERS = [
-  { value: "ALL", label: "All" },
-  { value: "JOB", label: "Job" },
-  { value: "WORK_ORDER", label: "Work Order" },
-  { value: "SYSTEM", label: "System" },
+  { value: ACTIVITY_FILTER.ALL, label: "All" },
+  { value: ACTIVITY_FILTER.WORK_ORDER, label: "Work order" },
+  { value: ACTIVITY_FILTER.JOB, label: "Job" },
+  { value: ACTIVITY_FILTER.SYSTEM, label: "System" },
 ];
 
-// Read-only panel: renders the derived Operational Timeline from
-// domain/timelineBuilder.js (Sprint 3.5). Takes only
-// { jobs, technicians, workOrders } -- never fetches Firestore itself,
-// never mutates jobs/work orders. All event generation lives in
-// timelineBuilder.js; this component only filters for display and
-// renders -- it never builds events itself.
-export default function ActivityTimelinePanel({ jobs, technicians, workOrders }) {
-  if (import.meta.env.DEV) assertPanelProps({ jobs, technicians, workOrders });
-
-  const [filter, setFilter] = useState("ALL");
-
-  const timeline = useMemo(() => buildTimeline(jobs), [jobs]);
-
-  const filtered = useMemo(() => {
-    if (filter === "ALL") return timeline;
-    return timeline.filter((event) => event.entity.type === filter);
-  }, [timeline, filter]);
-
+// The activity rail. Entries come from domain/serviceOperationsNorthStar.js's activityEntries(),
+// which composes domain/timelineBuilder.js. The rail carries no actions and no attention — those
+// belong in the work area (grammar pattern 8).
+//
+// ── SO-N3 / SO-G6 — NO CLOCK TIME, AND THAT IS THE HONEST RENDERING ────────────────────────────
+//
+// timelineBuilder stamps EVERY milestone with the work order's `createdAt`, because that is the only
+// timestamp this schema holds: there is no assignedAt / startedAt / completedAt. Three milestones for
+// one work order therefore carry one identical time. Printing it beside each entry would tell a
+// dispatcher that three things happened at the same instant, which is a claim about the business the
+// data cannot support — false precision is worse than an absent field, because it cannot be seen to
+// be missing. Relative ORDER is real (sortEvents breaks ties by EVENT_SEQUENCE_RANK), so the list is
+// ordered and unstamped.
+//
+// The provenance line is load-bearing for the same reason: a list of events that looks like an audit
+// log will be read as one. This one is derived from whatever work orders are currently loaded.
+//
+// SO-N5 — no actor. The event model carries no actor identity, so no person, role or "System" is
+// attributed to any entry here.
+//
+// SO-G6 records the underlying gap: authoritative per-transition timestamps do not exist. It is not
+// solved by a presentation migration, and nothing here pretends otherwise.
+export default function ActivityTimelinePanel({ entries = [], filter, onFilterChange }) {
   return (
-    <div className="tech-overview tech-overview--compact">
-      <div className="fo-controltower-panel__header">
-        <h3>Activity Timeline</h3>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-          {FILTERS.map((f) => (
-            <option key={f.value} value={f.value}>
-              Filter: {f.label}
-            </option>
-          ))}
-        </select>
+    <aside className="ns-rail" aria-label="Activity">
+      <p className="ns-rail__label">Activity</p>
+
+      {/* Labeled links, not a bare <select> with no accessible name -- the filter states what it
+          filters, and the current view is marked rather than only coloured. */}
+      <div className="ns-rail__filters">
+        {FILTERS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`ns-rail__filter${filter === option.value ? " is-current" : ""}`}
+            aria-pressed={filter === option.value}
+            onClick={() => onFilterChange?.(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
-      {filtered.length === 0 ? (
-        <p className="fo-muted">No activity to show.</p>
+
+      {entries.length === 0 ? (
+        <p className="ns-state">No activity in the loaded work orders.</p>
       ) : (
-        filtered.map((event, index) => (
-          <div key={`${event.entity.type}-${event.entity.id}-${event.type}-${index}`} className="fo-card">
-            <span aria-hidden="true">{EVENT_ICON[event.type] ?? "•"}</span>{" "}
-            <strong>{describeEvent(event)}</strong>
-            <SignalBadge severity={event.severity}>{event.entity.type}</SignalBadge>
-            <div className="fo-muted">{event.entity.id}</div>
-          </div>
-        ))
+        <ul className="ns-rail__list">
+          {entries.map((entry) => (
+            <li key={entry.key} className="ns-rail__entry">
+              <span className="ns-rail__entry-text">{entry.description}</span>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+
+      <p className="ns-rail__note">
+        Derived from the loaded work-order snapshot — not an audit log. Entries are in order; the
+        system does not record a time for each step.
+      </p>
+    </aside>
   );
 }

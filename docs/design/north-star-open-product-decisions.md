@@ -806,3 +806,106 @@ would introduce a second authorization pattern before any demonstrated need for 
 lane shading and capacity must arrive through a trusted read path, the same way the Sales Order read
 model works. The Rules blocks are authored in-repo and **not deployed**; `firestore.rules` has no CI
 deploy, so merged is not live until `firebase deploy --only firestore:rules` is run by the Owner.
+
+---
+
+## Resolved by the Service Operations P1 build direction (Owner ruling, 2026-08-30)
+
+Nine conflicts between the Service Operations North Star P1 artifact and governed behavioral truth.
+The Owner's standing ruling for all nine: **where the design artifact conflicts with governed
+behavioral truth, governed behavioral truth wins — do not invent semantics in order to reproduce a
+mockup.** Full reconciliation in
+[`service-operations-north-star-composition-map.md`](./service-operations-north-star-composition-map.md).
+
+Recorded here so a later session finds them answered rather than reopening them as design questions.
+Each is pinned by a test in `test/serviceOperationsNorthStar.test.jsx`.
+
+### SO-N1 — Attention must not borrow risk-severity vocabulary — **RESOLVED: they stay separate**
+
+**Design held:** attention rows carry severity words — Urgent, Stalled, Parts blocked.
+**Behavioral held:** `workOrderAttentionProjection` assigns no severity, deliberately. Its header
+warns that a shared badge vocabulary across attention and risk creates "same badge, different
+meaning" confusion.
+**Resolved:** attention keeps its governed two-value taxonomy (ACTION_ITEM / NOTIFICATION → "Action
+needed" / "In progress") and its four governed section labels. Risk severity belongs to the At risk
+table and is derived only through `detectStalledJobs`. **No shared badge vocabulary across the two.**
+
+### SO-N2 — No new "Urgent" attention section — **RESOLVED: governed sections only**
+
+**Design held:** fold `unfinished && !assignedTechId` into attention as an Urgent section.
+**Behavioral held:** the governed sections are Ready to Schedule, Past Due, Scheduling Conflict, Parts
+Blocked. Unassigned work needing a dispatcher is already Ready to Schedule.
+**Resolved:** no Urgent section and no second derivation — it would double-count one work order under
+two names and return business logic to JSX. A real operational condition the projection does not
+represent is recorded as a domain gap, never patched in locally.
+
+### SO-N3 / SO-G6 — Activity must not show fabricated event times — **RESOLVED: no clock time**
+
+**Behavioral held:** `timelineBuilder` stamps every milestone with the work order's `createdAt`; there
+are no per-transition timestamps. Three milestones would render one identical time.
+**Resolved:** render the event and its `describeEvent` description; omit per-entry clock time; keep
+the provenance disclosure that this is snapshot-derived and not an audit log. **SO-G6** records the
+underlying gap — authoritative per-transition timestamps do not exist — and is not part of a
+presentation migration.
+
+### SO-N4 — Attention has no owner — **RESOLVED: omit**
+
+`recipientRole` is a role such as `DISPATCHER`. It is not a person and must never be presented as one.
+Routing language may state the audience truthfully; "Owner: Dispatcher" and any fabricated employee
+identity may not. No ownership derivation is authorized by this migration.
+
+### SO-N5 — Activity has no actor — **RESOLVED: omit**
+
+The event model contains no actor identity. No technician, dispatcher, employee or "System" may be
+inferred. The design's actor label is omitted for P1.
+
+### SO-N6 — No technician-preselected board deep link — **RESOLVED: navigate only**
+
+`TechnicianFilter` receives its selection through props and has no governed URL-param seam. The
+Technician load row action navigates to the existing Dispatcher Board and its wording says so —
+"Open board →", not a preselection promise. Governed URL-filter semantics are separately scoped.
+
+### SO-N7 — "Technicians on shift" — **RESOLVED: exclude OFF_SHIFT**
+
+`technicians.length` counts off-shift staff under a label saying they are working. The count is
+`status !== TECH_STATUS.OFF_SHIFT`. Overload continues to derive through the existing domain function;
+no second interpretation of technician status is created.
+
+### SO-N8 — Work Order route — **RESOLVED: the existing governed route**
+
+`/service/work-orders/:id`, via `item.deepLink`. `/work-orders/:id` does not exist and must not be
+introduced. Link-integrity coverage is retained because the route is permission-gated.
+
+### SO-N9 — "past readiness" is not a fact — **RESOLVED: do not ship it**
+
+No such repository or domain concept exists under any name. Awaiting dispatch uses the existing
+`AWAITING_DISPATCH` snapshot count; its secondary fact is the governed Ready to Schedule attention
+count, named exactly that. Not "past readiness", not "late readiness", not any new business concept.
+
+### SO-G5 — Parts readiness — **UNCHANGED, separately scoped**
+
+The projection defines Parts Blocked; ControlTower supplies no `partsReadinessByWorkOrderId`. The read
+is **not** added. Where an attention block renders, the boundary is stated: *"Parts readiness isn't
+connected to this page yet."*
+
+---
+
+## Open — raised by the Service Operations P1 build (2026-08-30)
+
+### SO-G7 — An unreadable `createdAt` hides a work order from At risk
+
+**Raised:** 2026-08-30, Service Operations North Star P1 implementation.
+**Design holds:** R23, lossless composition — an exception record never disappears because it lacks a
+field. The artifact draws the "age unknown" row for exactly this case.
+**Behavioral holds:** `jobRiskScoring` scores an unusable `createdAt` as 0 for both the age and
+stagnation factors. The total falls to `LOW`, and `detectStalledJobs` returns only `HIGH` and
+`CRITICAL` — so the work order is dropped from the table entirely.
+**The conflict:** the work order the system knows least about is the one it surfaces least. Missing
+data makes an exception invisible rather than visible-with-an-unknown, which inverts R23.
+**Shipped meanwhile:** nothing was widened. The projection's null-age handling is implemented and
+tested, so the rows render correctly the day the scoring changes; the current behaviour is pinned by
+`test/serviceOperationsNorthStar.test.jsx` so it stays visible rather than becoming folklore.
+**The decision:** should an unscoreable work order be surfaced as an exception in its own right
+(severity unknown), or is silence correct because nothing is known about it? Answering it means
+changing risk scoring — a domain authority change with its own consequences — **not** something a page
+may close.
