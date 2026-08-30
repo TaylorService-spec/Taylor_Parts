@@ -606,7 +606,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       title="Parts"
       actions={
         <ActionRail
-          start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />}
+          start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search part number, description, or category" />}
           primary={
             <Button variant="primary" onClick={() => setNewPartOpen(true)}>
               New Part
@@ -748,7 +748,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       />
 
       <h2 id="parts-group-parts">Parts</h2>
-      <p className="fo-muted">Look up a part -- identity, category, stock, and reorder risk.</p>
+      <p className="fo-muted">Look up a part — identity, category, and reorder risk.</p>
 
       <h3>Parts Catalog</h3>
       {/* INV-CONVERGENCE-E C1 -- three explicit states for the governed catalog:
@@ -763,9 +763,10 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       ) : (
       <>
       <p className="fo-muted">
-        {catalogRows.length} parts in catalog. Stock position and reorder status are derived from the inventory
-        ledger (same source as the Operations dashboard's Inventory Health panel) -- catalog data is a static
-        baseline, not live stock, until a part has ledger activity.
+        {catalogRows.length} parts in catalog. Inventory health is derived from the inventory ledger (the same
+        source as the Operations dashboard's Inventory Health panel). No stock quantity is shown here: the
+        governed balance read is single-part, so there is no list-scale quantity to answer from, and the
+        static catalogue is a baseline rather than a count.
       </p>
 
       {/* Chips for the same reason as the queue row above: the catalog table is one panel of this
@@ -795,7 +796,6 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                 <th>Part</th>
                 <th>Part Number</th>
                 <th>Category</th>
-                <th>Warehouse Available</th>
                 <th>Inventory Health</th>
               </tr>
             </thead>
@@ -828,28 +828,28 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                       {part.internalPartNumber ?? <span className="fo-muted">Not recorded</span>}
                     </td>
                     <td data-label="Category" className="fo-muted">{part.category}</td>
-                    {/* AN UNLEDGERED PART HAS UNKNOWN AVAILABILITY. Owner ruling, 2026-08-24.
-                        This cell has been wrong twice, in the same direction. It first rendered the
-                        static catalogue quantity welded to a "(baseline)" caveat, which nothing
-                        could sort, filter or report on. Separating the two made it readable and left
-                        the deeper problem: the NUMBER itself.
+                    {/* THE QUANTITY COLUMN IS GONE. Owner ruling ND-25, 2026-08-30 — Option (b),
+                        TRUTHFUL ABSENCE > FALSE COMFORT.
 
-                        The static catalogue proves a Part EXISTS. It does not prove we physically
-                        have N of it. A figure that is not a live warehouse count, sitting under a
-                        heading that reads as one, is FALSE_COMFORT on the exact column people scan
-                        when deciding what to reorder.
+                        Its history is the argument for removing it. It first rendered the static
+                        catalogue quantity welded to a "(baseline)" caveat; separating the two made
+                        it readable and left the deeper problem, the NUMBER itself; the ruling of
+                        2026-08-24 then replaced it with the ledger-derived figure and "Not known".
 
-                        And UNKNOWN is not zero either. "Nobody has looked at this shelf" and "this
-                        shelf is empty" are different facts, and only one of them is a reason to
-                        order. Part Master is the CATALOGUE authority; the ledger is the INVENTORY
-                        authority, and this cell now answers only from the second. */}
-                    <td data-label="Warehouse Available" data-raw={health ? health.stock.availableStock : null}>
-                      {health ? (
-                        health.stock.availableStock
-                      ) : (
-                        <span className="fo-muted">Not known</span>
-                      )}
-                    </td>
+                        That figure is a CLIENT-SIDE derivation over inventory_transactions, and it
+                        is available-shaped. ND-25 reserves quantitative inventory facts for the
+                        governed getPartBalance authority, which is single-part
+                        (PART_LIST_BALANCE_N1_GAP) and switched off — so there is no list-scale
+                        quantity projection to answer from, and the ruling says omit the column
+                        rather than answer from something else.
+
+                        Inventory Health stays. It is a qualitative signal, not a quantity: it says
+                        whether a part needs attention, never how many there are, and its three
+                        outcomes are three different statements about what is KNOWN. Removing it
+                        would take an operational judgment away without a ruling asking for it.
+
+                        A governed list projection may add quantitative inventory back separately —
+                        the ruling says so explicitly. */}
                     {/* INVENTORY HEALTH IS ITS OWN FIELD, and its three outcomes are three different
                         statements: the ledger has never seen this part; it has, but with no usage
                         history to plan from; or it has a computed urgency. Collapsing them into one

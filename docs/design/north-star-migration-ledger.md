@@ -982,3 +982,81 @@ work order drops below `detectStalledJobs`'s HIGH threshold and disappears from 
 work order the system knows least about is the one it shows least — the inverse of R23. Pre-existing,
 not introduced here, and a domain authority change to fix. Pinned by a test rather than left as a
 comment.
+
+---
+
+## Family 7 — Parts
+
+| | |
+|---|---|
+| **Composition** | `src/modules/inventory/PartDetail.jsx` over `src/domain/partsNorthStar.js`; workspace `src/modules/inventory/PartsList.jsx` (quantity column withdrawn, search corrected — its multi-panel shell is unchanged) |
+| **Visual authority** | `docs/north-star/parts/North Star - Parts P1.dc.html` (1a–1d) + `DESIGN-HANDOFF-PARTS-P1.md`, received 2026-08-30 |
+| **Reconciliation** | [`parts-north-star-composition-map.md`](./parts-north-star-composition-map.md) — 15 drawn elements checked, **9 not buildable as drawn**, produced before any UI code changed |
+| **Proof** | `test/partsNorthStarProjection.test.mjs` (11), `test/partsNorthStarIdentity.test.jsx` (4), `test/partsNorthStarRecord.test.jsx` (21), `test/partsNorthStarWorkspace.test.mjs` (10) |
+| **Mutation proofs** | **28 run, 27 caught**, source restored byte-identical after each. The one missed is recorded in [#1593](https://github.com/TaylorService-spec/Taylor_Parts/pull/1593)'s body rather than dropped: reverting the Manufacturer row's JSX alone is no longer observable, because the projection now supplies the same key to both objects. The two mutations that remove it *at the projection* are both caught. |
+| **Named decisions** | ND-25, ND-26, ND-27 raised and **CLOSED by the Owner the same day**; ND-28 raised and open |
+| **Implementation** | Four PRs: [#1590](https://github.com/TaylorService-spec/Taylor_Parts/pull/1590) reconciliation · [#1593](https://github.com/TaylorService-spec/Taylor_Parts/pull/1593) projection + defects · [#1596](https://github.com/TaylorService-spec/Taylor_Parts/pull/1596) record · this PR, workspace + closeout |
+| **Gate** | Not yet run. Sandbox refresh and Quick Gate outstanding. |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+
+### The design's central number did not exist
+
+Frames 1a and 1b are built on **On hand**, sourced — the handoff says so explicitly — from
+`warehouseQty`, whose own file header reads *"METADATA ONLY — NO STOCK AUTHORITY … NOT
+authoritative."* The Owner had ruled on that exact cell six days earlier and removed the number as
+FALSE_COMFORT. A migration that reproduced the mockup would have shipped the defect back as the
+centrepiece of the North Star, while carrying a handoff whose first non-negotiable rule is *"never
+manufacture inventory mathematics."*
+
+The Owner closed it as **ND-25, Option (b): TRUTHFUL ABSENCE > FALSE COMFORT.** The record states no
+quantity; the workspace column is withdrawn; three sections say why they are empty.
+
+### Capability inactive is not authority required
+
+Three of the four data sections in frame 1b read through capabilities registered `active: false` and
+granted to no role — balances, serialized units, location display. The handoff labelled their absence
+**AUTHORITY REQUIRED**. `getPartBalance` already returns `available` and `onOrder` from fulfillment's
+ratified functions; it is switched off, not missing. Two different states, two different sentences,
+two different owners — and §16 of the directive is why the distinction is load-bearing.
+
+### Six defects, all of one family, all pre-existing
+
+Every one was a value that never arrived, or a stored token that reached a reader:
+
+1. `PartDetail`'s **Manufacturer row could never render** — gated on `canonicalPart?.manufacturerId`,
+   which the projection never carried, under a key no document uses (`primaryManufacturerId`).
+2. `PartIdentifiersSection` was passed an always-`undefined` `partNumber`, so its fallback labelled
+   the section with the document id.
+3. `PartsList` **headed a column "Part Number" and rendered the document id into it**, under a comment
+   asserting it was not one.
+4. **Activity's Type column printed the raw enum** — `CONSUMED`, `TRANSFER_OUT`.
+5. **The Risk cell printed `urgency` raw**, while `PartsList` showed the word for the same value one
+   page away.
+6. **The parts search matched the document id and not the Part Number** — created by ND-26 and fixed
+   in the same pass, because a person reading `C712-COMP` off a row and finding nothing is the one
+   search a warehouse actually performs.
+
+`test/partsMasterDataEntryPoints.test.jsx` had been **green about #1 the whole time**: it mocked a
+canonical row that already carried `manufacturerId`, so it proved the name-resolution helper and not
+the row's reachability. A test can be green about a value the running system never produces.
+
+### GATE 2b² worked
+
+`PartDetail.jsx` left `CONFORMANT_WORKSPACES` when it stopped hosting `WorkspaceShell` and had to be
+declared in `NORTH_STAR_RECORD_PAGES` in the same commit. The gate written after families 1 and 2
+shipped into exactly that hole caught it on the first run.
+
+### Two existing assertions re-anchored, one superseded — none deleted
+
+- `partDetailView`'s ordering check pinned the literal `Unknown part "{partId}"` when its subject is
+  the **order**; re-anchored on the branch so improving the sentence stops looking like a regression.
+- `partsMasterDataEntryPoints` pinned button labels the design renames. Renamed, not rewired.
+- `inventoryHealthScaleSemantics`'s availability assertion is now in its **third** superseding form,
+  with the chain recorded in place, so a reader can see why the column left instead of guessing.
+
+### Authority, unchanged
+
+No new Firestore read, Function, index, Rules change, capability grant or activation, readiness
+constant, state-machine change or write path. The projection widening happens **inside the read the
+page already performs**. `partLookup.js`'s *lookup never moves inventory* invariant and every scanner
+invariant travel through untouched.

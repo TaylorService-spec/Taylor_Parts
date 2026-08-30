@@ -35,9 +35,11 @@ on:
       - "field-ops-app-vite/src/domain/partsNorthStar.js"
       - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/shared/search/searchProviders.js"
       - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
+      - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
       - ".github/workflows/parts-north-star-tests.yml"
   push:
     branches: [main]
@@ -50,9 +52,11 @@ on:
       - "field-ops-app-vite/src/domain/partsNorthStar.js"
       - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/shared/search/searchProviders.js"
       - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
+      - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
       - ".github/workflows/parts-north-star-tests.yml"
   workflow_dispatch:
 
@@ -85,6 +89,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: The three identity renders (vitest + jsdom)
         run: npx vitest run test/partsNorthStarIdentity.test.jsx
+        working-directory: field-ops-app-vite
+      - name: The workspace — ND-25's omission and ND-26's searchability (node:test)
+        run: node --test test/partsNorthStarWorkspace.test.mjs
         working-directory: field-ops-app-vite
       - name: The record composition — ND-25/26/27 at the render (vitest + jsdom)
         run: npx vitest run test/partsNorthStarRecord.test.jsx

@@ -574,6 +574,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/partsNorthStarWorkspace.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/partsShadowParity.test.mjs",
       "runner": "node"
     },
