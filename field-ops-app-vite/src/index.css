@@ -5318,6 +5318,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    one list. A rule the selected tab sits on, not a row of buttons — buttons read as actions, and
    switching a view is not one. 44px minimum height so it is a real touch target, and the selected
    state is carried by weight and the rule as well as by colour. */
+/* A tab's BODY inside a workspace. Deliberately not a card: `.ns-workspace` already supplies the
+   measure and the side padding, and the retired `.fo-panel` treatment nested inside it drew a
+   shadowed box around the register and pushed its rows out of line with the title above them. */
+.fo-equipment-tabbody { min-width: 0; }
+
 .ns-tabrail { display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch;
   border-bottom: 1px solid var(--color-border); margin: 0 0 20px; }
 .ns-tabrail__tab { font: 600 12.5px var(--font-interface); letter-spacing: 0.02em;

@@ -155,7 +155,8 @@ export default function AvailableEquipment() {
   );
 
   return (
-    <div className="fo-panel">
+    // NOT `fo-panel` — see CustomerEquipment's note. A tab body, not a card.
+    <div className="fo-equipment-tabbody">
       {/* NO "Available Equipment" HEADING. The selected tab above already says it, and the tabpanel
           carries `aria-labelledby="eq-tab-available"`, so the accessible name is unchanged. */}
       <p className="fo-muted" id="ae-filter-note">{AVAILABLE_FILTER_NOTE}</p>
