@@ -28,7 +28,10 @@ const READ_ONLY_SCRIPTS = [
   "ownershipCensusDryRun.js",
   "ownershipDerivationCheck.js",
   "ownershipBackfillSimulation.js",
-  "workOrderJobLineageCheck.js",
+  // workOrderJobLineageCheck.js was DELETED (DECISIONS #143): it measured "does this Work Order have
+  // a parent Job", a question the withdrawn R-12 model made meaningful and the corrected model does
+  // not. Its result is preserved in DECISIONS #143 and in sb-evidence. A tool that answers a question
+  // the domain no longer asks is a trap, not an asset.
 ];
 
 /**

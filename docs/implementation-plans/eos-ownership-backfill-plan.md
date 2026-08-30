@@ -324,7 +324,7 @@ Assuming all 974 writes were applied, these would remain — and each is a state
 | Collection | Records | Why it stays |
 |---|---|---|
 | `fieldops_jobs` | 45 | R-3. 41 are fixtures and *could* be authored; that authoring has not been done because the ruling asked for provenance reconciliation first, not the assignment. 4 are non-fixture. |
-| `fieldops_wos` | 30 | R-3, blocked upstream. 0 are fixtures and **none carries a parent Job reference**, so the Job→WO inheritance has nothing to inherit through. |
+| `fieldops_wos` | 30 | `NO_GOVERNED_COMPANY_SOURCE`. R-12 withdrawn (DECISIONS #143): this is a company-provenance gap, not a lineage defect. |
 | `reorder_requests` | 6 | R-4. 6/6 carry no `warehouseId`. Needs a schema change, not a backfill. |
 | `reorder_purchase_orders` | 3 | R-4, blocked upstream by the above. |
 | `accounts` | 3 | R-7. Deliberate control records. |
@@ -352,12 +352,19 @@ recorded here rather than guessed. It was **not** inferred from `lineOfBusiness`
 | `fieldops_jobs` | 45 | **41** | 4 |
 | `fieldops_wos` | 30 | **0** | 30 |
 
-41 jobs can be authored with an explicit company exactly as the equipment fleets were. But
-`fieldops_wos` has a harder problem than provenance: its documents carry `assignedTechId`,
-`scheduledTechId`, `customerId`, `locationId`, `salesOrderId` — and **no job reference at all**.
-Ruling R-3's `fieldops_wo.operatingCompanyId = parent Job.operatingCompanyId` cannot be implemented
-until that link exists. **Establishing the Job→Work Order relationship is a prerequisite, not a
-consequence.**
+41 jobs can be authored with an explicit company exactly as the equipment fleets were.
+
+`fieldops_wos` carries `assignedTechId`, `scheduledTechId`, `customerId`, `locationId` and
+`salesOrderId` — and no job reference. **This paragraph originally read that as a missing link and
+called establishing it a prerequisite. That was wrong, and DECISIONS #143 corrects it:** R-12 is
+withdrawn, `fieldops_wos` is the current Work Order authority and `fieldops_jobs` a distinct legacy
+domain, and the absence of a link between them is not a defect because no such lifecycle was ever
+required.
+
+A Work Order's company resolves from **its own** governed context. The 30 are reclassified
+`NO_GOVERNED_COMPANY_SOURCE` — a company-provenance gap. 11 of them carry a `salesOrderId` and become
+*potentially* derivable once the commercial company axis exists; that is to be **measured, not
+assumed**.
 
 ## Still requiring a genuine business decision
 
@@ -390,7 +397,7 @@ ownership migration. This is the **one final proposed write set**.
 | `stock_locations` | 5 | **5** | 0 | `warehouseId` |
 | `trucks` | 2 | **2** | 0 | `homeWarehouseId` |
 | `receiving_orders` | 2 | **2** | 0 | receiving location |
-| `fieldops_wos` | 30 | 0 | 30 | no parent Job exists |
+| `fieldops_wos` | 30 | 0 | 30 | no governed company source |
 | `opportunities` | 14 | 0 | 14 | non-fixture, no company provenance |
 | `sales_orders` | 17 | 0 | 17 | non-fixture |
 | `sales_agreements` | 5 | 0 | 5 | non-fixture |
@@ -444,7 +451,7 @@ no record can acquire two disagreeing owners.
 
 | Reason | Records |
 |---|---|
-| no parent Job reference, and `jobId` is never invented (R-12) | 30 |
+| `NO_GOVERNED_COMPANY_SOURCE` -- R-12 withdrawn, DECISIONS #143 | 30 |
 | non-fixture commercial record, no company provenance (R-14) | 37 |
 | non-fixture equipment, never overwritten (R-2) | 10 |
 | no `warehouseId`, schema addition required first (R-13) | 9 |
@@ -467,7 +474,7 @@ target — and that all four read-only tools contain no Firestore write call at 
 
 ## Still requiring a business decision
 
-1. **The Job to Work Order link.** 30 Work Orders have no parent, and one cannot be invented.
+1. **Work Order operating-company provenance.** 30 Work Orders have no governed company source. (R-12 is WITHDRAWN -- see DECISIONS #143. There is no Job link to add and no missing parent to repair.)
 2. **Commercial company provenance.** The whole chain is non-fixture; either a certification
    commercial scenario is authored, or these 37 stay unresolved indefinitely.
 3. **`reorder_requests.warehouseId`.** The domain authority is written and inert

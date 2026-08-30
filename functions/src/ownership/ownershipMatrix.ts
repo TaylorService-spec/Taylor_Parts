@@ -209,16 +209,28 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
       note: "MEASURED: 41 of 45 sandbox jobs are certification fixtures and can be explicitly authored, as equipment was. The other 4 are not, and stay unresolved. assignedTechId remains ASSIGNMENT.",
     },
     {
-      // Ruling R-3: a Work Order inherits its company from its parent Job, otherwise REFUSE.
+      // CORRECTED by DECISIONS #143. Ruling R-12 -- which would have added `fieldops_wos.jobId` and
+      // inherited company from a parent Job -- is WITHDRAWN. Its own condition ("if fieldops_jobs is
+      // the actual parent domain authority") is not met:
       //
-      // MEASURED BLOCKER: sandbox fieldops_wos carry NO parent job reference at all -- no jobId, no
-      // equivalent -- and 0 of 30 are certification fixtures. The inheritance the ruling specifies has
-      // nothing to inherit THROUGH. That is a lineage gap in the model, not a backfill gap in the data.
+      //   constants/collections.ts defines WORK_ORDERS_COLLECTION = "fieldops_wos"
+      //   the deployed createWorkOrder / transitionWorkOrder callables write THIS collection
+      //   completeAssignedJob.ts records that legacy fieldops_jobs carry a `workOrderId` field which
+      //     is THEIR UPWARD LINK to fieldops_wos
+      //
+      // So the link R-12 proposed points the opposite way to the one the code documents, and would
+      // have made the legacy collection the parent of the live one. THIS is the current Work Order
+      // authority; `fieldops_jobs` is a distinct legacy domain, not its parent.
+      //
+      // A Work Order therefore takes its company from its OWN governed context and stores it as a
+      // historical fact. Never from the technician, dispatcher, creator, assignedTo, customer owner,
+      // location name, lineOfBusiness, or a legacy Job coincidence.
       family: "workOrderLegacy", collection: "fieldops_wos", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "parent Job operatingCompanyId",
+      ownerFields: ["operatingCompanyId"],
+      inheritanceSource: "explicit at creation, or a governed upstream source that already carries one (e.g. a Sales Order)",
       transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
-      unresolvedPolicy: "remains OWNERLESS -- no parent Job reference exists on the record to inherit through",
-      note: "Establishing the Job -> Work Order link is a PREREQUISITE to the ruling's inheritance, not a consequence of it.",
+      unresolvedPolicy: "remains OWNERLESS -- NO_GOVERNED_COMPANY_SOURCE, which is a company-provenance gap and NOT a lineage defect",
+      note: "11 of 30 sandbox Work Orders carry a salesOrderId and become POTENTIALLY derivable once the commercial company axis is authored -- to be measured, never assumed. No jobId is added and no parent is invented.",
     },
 
     // ═══════════════════════ COMPANY — inventory obligation (ruling D-14) ═══════════════════════

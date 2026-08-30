@@ -3326,3 +3326,102 @@ unqueryable, a parallel audit subsystem in disguise).
 **Not done, deliberately:** no enforcement, no backfill, no Rules change, no deploy, no cascade, no
 silent assignment. The dry-run census must first report zero unresolved records — and that census
 needs a live data read, which is separately authorized.
+
+## #143 — CORRECTION: R-12 is WITHDRAWN. `fieldops_wos` is the Work Order authority, not `fieldops_jobs`
+
+**Date:** 2026-08-30
+**Decision:** Owner ruling, Option (c). `fieldops_wos` and `fieldops_jobs` are **not** to be modelled
+as a required parent/child ownership lineage.
+
+**SUPERSEDED** (DECISIONS #142 ruling R-12):
+- `fieldops_wos.jobId` as a governed parent reference — **not to be added**
+- Job → Work Order company inheritance — **withdrawn**
+- "30 Work Orders have no parent Job" as a lineage defect — **it was never a defect**
+
+**CURRENT:**
+- `fieldops_wos` is the **current governed Work Order authority** — `WORK_ORDERS_COLLECTION`, with the
+  deployed `createWorkOrder` / `transitionWorkOrder` callables.
+- `fieldops_jobs` is a **distinct legacy Job domain**, not the governing parent of Work Orders. The
+  existing `fieldops_jobs.workOrderId` may remain as a legacy upward association where populated; it
+  establishes no required lifecycle.
+- A Work Order's operating company resolves from **its own governed business context** and is stored
+  on the Work Order as a historical fact: explicit at creation, or from a governed upstream source
+  that already carries one (a Sales Order, a governed service source), otherwise REFUSE once
+  enforcement is active. Never from the technician, dispatcher, creator, assignedTo, customer owner,
+  location name, `lineOfBusiness`, or a legacy Job coincidence.
+- The 41 authored fixture companies on `fieldops_jobs` stand. Job ownership does **not** depend on
+  Work Order ownership, and company changes are **not** synchronised in either direction.
+
+**Reason:** R-12 was written conditionally — *"if `fieldops_jobs` is the actual parent domain
+authority"* — and the condition is not met. `constants/collections.ts` defines
+`WORK_ORDERS_COLLECTION = "fieldops_wos"`; the deployed Work Order callables write that collection;
+and `completeAssignedJob.ts` states the boundary in its own header, including that legacy
+`fieldops_jobs` documents carry a `workOrderId` field that is *their upward link to `fieldops_wos`*.
+The link direction R-12 would have added is the reverse of the one the code already documents, and
+it would have made the legacy collection the parent of the live one.
+
+Measured in sandbox: 0 of 45 Jobs carry `workOrderId`, 0 of 30 Work Orders carry `jobId`. Neither
+direction is populated, so the earlier 0/30 NO_CANDIDATE result was not a lost link — these are two
+domain concepts from two eras that were never in a parent/child relationship in this data.
+
+**Alternatives rejected:** adding `fieldops_wos.jobId` as R-12 specified (rejected — it inverts the
+documented model direction); promoting `fieldops_jobs` to parent authority (rejected — the live
+command surface belongs to `fieldops_wos`); treating the 30 Work Orders as broken lineage needing
+repair (rejected — there is nothing to repair).
+
+**Reclassification:** the 30 Work Orders' unresolved reason changes from "no governed Job parent" to
+**`NO_GOVERNED_COMPANY_SOURCE`** — a company-provenance gap, not a lineage defect. 11 of the 30 carry
+a `salesOrderId` and become *potentially* derivable once the commercial operating-company axis is
+authored; that must be **measured, not assumed**, by a read-only reconciliation classifying each Work
+Order as SALES_ORDER_DERIVABLE / OTHER_GOVERNED_SOURCE / EXPLICIT_COMPANY_REQUIRED /
+INVALID_REFERENCE.
+
+**Workstream order changed** accordingly: Reorder warehouse authority → Commercial operating-company
+lineage → Work Order company provenance → Production census → Enforcement gate.
+
+**Not rewritten:** #142's R-12 text stands as issued. This entry supersedes it rather than editing it,
+so the reasoning that produced the correction stays legible.
+
+## #144 — "PR head green" is not evidence a governance lane ran. PASS, NOT TRIGGERED and FAIL are three states
+
+**Date:** 2026-08-30
+**Decision:** Owner ruling. A merge gate must distinguish three outcomes for every required workflow,
+and a **NOT TRIGGERED** safety or governance lane must never be reported as equivalent to **PASS**
+merely because the PR UI is green.
+
+| State | Meaning |
+|---|---|
+| **PASS** | the workflow actually ran against the reviewed head and passed |
+| **NOT TRIGGERED** | the workflow did not run against the reviewed head |
+| **FAIL** | the workflow ran and failed |
+
+**Reason:** PR #1602 was reported and merged as "92/92 SUCCESS". That figure was faithfully copied
+from `gh pr view --json statusCheckRollup`, and it was still insufficient evidence: this repository's
+workflows are **path-filtered**, so a check only re-runs when the head commit touches a path it
+watches. Two governance lanes therefore never executed against #1602's final head, and both were
+carrying real failures that only surfaced on the next PR:
+
+1. **`certificationExecutionTarget`** — `seedAccountOwners.mjs` declared its own
+   `assertSandboxTarget`. A local guard asks "is the registry role `sandbox`?", which cannot
+   distinguish `eos-platform-sandbox` from `eos-platform-certification` because **both** are role
+   `sandbox`. One mistyped `--projectId` would have seeded 100 account owners into the certification
+   world. Fixed by delegating to the shared `certificationWorld/executionTarget.mjs`.
+2. **`private-ai-fail-closed`** — the Certification World fingerprint is pinned in
+   `certificationPrivateAiFailClosed.test.mjs` precisely so a change to the world is a conscious act
+   updating that file *in the same PR*. Ruling R-2 added `operatingCompanyId` to 278 equipment
+   fixtures, moving the fingerprint `005ebb1b` → `ed95c91d`, and #1602 did not update the pin. The
+   world changed unendorsed.
+
+Neither was a flake, and neither was caught by "92/92". The rollup was green because the checks that
+would have failed **were not asked to run**.
+
+**Standing rule:** before merging under a high-risk gate, confirm for each required safety/governance
+workflow that it actually executed against the reviewed head — not merely that the PR shows no red.
+A lane that did not run is an unknown, and an unknown is not a pass.
+
+**Alternatives rejected:** treating both failures as PR #1619's problem (rejected — they originated
+in #1602 and the merge report was the thing that failed); removing the path filters (rejected — not
+this change's call, and it would not fix the reporting error, only mask it by brute force).
+
+**Also recorded:** the individual `seedAccountOwners.mjs` defect is a separate finding from this
+reporting lesson, and is documented at its fix site rather than only here.

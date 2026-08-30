@@ -34,7 +34,8 @@ on:
       - "functions/test/ownershipCensus.test.mjs"
       - "functions/test/ownershipHandoffAudit.test.mjs"
       - "functions/test/ownershipProductionGuard.test.mjs"
-      - "functions/scripts/workOrderJobLineageCheck.js"
+      - "functions/test/ciTriggerCoverage.test.mjs"
+      - "scripts/ciTriggerCoverage.lib.mjs"
       - "functions/scripts/ownershipBackfillSimulation.js"
       - "functions/scripts/certificationWorld/data/serviceJobCompany.mjs"
       - "functions/scripts/certificationWorld/data/equipmentAssets.mjs"
@@ -96,6 +97,13 @@ jobs:
       # workflow that fires on an ownership change.
       - name: Commercial creation backward-compatibility
         run: node --test test/opportunityCommands.test.mjs test/salesOrderCommands.test.mjs
+        working-directory: functions
+
+      # The merge-gate tooling from DECISIONS #144. It shipped five defects, every one a false
+      # alarm, so its logic is pinned here rather than trusted -- a checker whose alarms are usually
+      # wrong is one people learn to ignore, which would leave the gate worse off than no tool.
+      - name: CI trigger-coverage logic
+        run: node --test test/ciTriggerCoverage.test.mjs
         working-directory: functions
 
   ownership-client-parity:
