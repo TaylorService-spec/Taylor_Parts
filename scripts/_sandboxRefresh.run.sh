@@ -94,6 +94,59 @@ case "$0" in
   *)            _EOS_DIR="." ;;
 esac
 SCRIPT_ROOT="$(cd "$_EOS_DIR/.." && pwd)"
+
+# ---------------------------------------------------------------------------------------------
+# RELEASE MODE -- parsed here, and UNKNOWN FLAGS ARE REFUSED.
+#
+# The default (no flag) is the full refresh: Functions, then Hosting, exactly as before. Nothing
+# about it changes.
+#
+# `--hosting-only` exists because the two authorities have different release cadences. A release
+# whose diff touches no `functions/` file still had to redeploy the ENTIRE Functions estate to ship
+# a frontend, which is unnecessary authority for that release and carries this repository's own
+# documented failure mode: a large batch exits non-zero after some functions have already updated,
+# leaving the estate half-new. Redeploying identical code is not free.
+#
+# THIS FAILS CLOSED, DELIBERATELY. An unrecognised flag is REFUSED rather than ignored, because the
+# dangerous version of this feature is a typo -- `--hostingonly`, `--hosting_only` -- silently
+# falling through to the full deploy the operator was trying to avoid. Silence would make the flag
+# look effective while the estate deployed anyway.
+#
+# `--release-root` and `--allow-commit` are recognised here only so they can be PASSED THROUGH:
+# releaseRoot.mjs and _releaseProvenanceGuard.mjs each scan "$@" for their own flag and ignore the
+# rest, which is why the whole argument list is still forwarded to both.
+HOSTING_ONLY=0
+_args=("$@")
+_i=0
+while [ $_i -lt ${#_args[@]} ]; do
+  case "${_args[$_i]}" in
+    --hosting-only)
+      HOSTING_ONLY=1
+      ;;
+    --release-root|--allow-commit|--fallback)
+      # Takes a value; skip it so the value is never itself parsed as a flag.
+      _i=$((_i + 1))
+      ;;
+    *)
+      echo "ABORT: unrecognised release flag: ${_args[$_i]}" >&2
+      echo "" >&2
+      echo "  Supported:" >&2
+      echo "    (no flag)        full refresh -- Functions, then Hosting" >&2
+      echo "    --hosting-only   Hosting only -- no Functions deploy" >&2
+      echo "" >&2
+      echo "  Nothing has been built, deployed or changed." >&2
+      exit 2
+      ;;
+  esac
+  _i=$((_i + 1))
+done
+
+if [ "$HOSTING_ONLY" -eq 1 ]; then
+  RELEASE_MODE="HOSTING-ONLY"
+else
+  RELEASE_MODE="FULL (Functions + Hosting)"
+fi
+
 REPO_ROOT="$(node "$SCRIPT_ROOT/scripts/releaseRoot.mjs" "$@" --fallback "$SCRIPT_ROOT")" || exit 4
 cd "$REPO_ROOT"
 
@@ -112,7 +165,19 @@ echo "Release root:   ${REPO_ROOT}"
 echo "Release commit: ${APPROVED_COMMIT}"
 echo "origin/main:    $(git rev-parse origin/main)"
 echo "Target:         eos-platform-sandbox"
+echo "Release mode:   ${RELEASE_MODE}"
 echo
+
+if [ "$HOSTING_ONLY" -eq 1 ]; then
+  echo "== [1/5] build functions lib == SKIPPED (hosting-only)"
+  # SKIPPING THIS IS PROVEN, NOT ASSUMED. `functions && npm run build` emits functions/lib, which is
+  # deploy input for the Functions estate and nothing else: no file under field-ops-app-vite/src
+  # imports from functions/, and neither vite.config.js nor the app's package.json references it.
+  # The Hosting artifact therefore cannot differ because this step did or did not run.
+  echo "== [2/5] deploy Functions == SKIPPED (hosting-only)"
+  echo "   No Functions authority is exercised by this release."
+  echo "   Verify with: git diff --stat <deployed-sha> HEAD -- functions/"
+else
 
 echo "== [1/5] build functions lib =="
 ( cd functions && npm run build )
@@ -145,6 +210,8 @@ deploy_batch "receiving: canonical multi-line reads" \
   "functions:getPurchaseOrderReceivingProgress,functions:listReceivablePurchaseOrders"
 # Everything else, after the scanner set is known good.
 deploy_batch "remaining estate" "functions"
+
+fi  # end of the Functions phase -- skipped entirely in hosting-only mode
 
 echo "== [3a/5] verify the build-base contract =="
 # MUST RUN BEFORE THE ENVIRONMENT BUILD. verifyBuildBase.mjs deletes dist/ and

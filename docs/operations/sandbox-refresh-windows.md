@@ -17,6 +17,37 @@ machine-wide policy and does **not** require Administrator:
 powershell -ExecutionPolicy Bypass -File .\sandbox-refresh.ps1
 ```
 
+## Hosting-only releases
+
+When the release changes the app but **nothing** under `functions/`:
+
+```powershell
+cd D:\Taylor_Parts-eos
+.\sandbox-refresh.ps1 -HostingOnly
+```
+
+This skips the functions build and every Functions deploy batch, and changes nothing else. Prove it
+applies before using it:
+
+```powershell
+git diff --stat <deployed-sha> HEAD -- functions/
+```
+
+Empty output means Hosting-only is the correct scope.
+
+**Why it exists.** The full refresh redeploys the entire Functions estate even when not one function
+changed. That is authority the release does not need, and it is not free: a large batch can exit
+non-zero *after* some functions have already updated, leaving the estate half-new. Redeploying
+identical code still carries that risk.
+
+**What it does NOT change.** Every guard still runs - release-root and agent-worktree refusal,
+the production-project refusal, the provenance guard, the build-base contract, sandbox artifact
+stamping, the release identity gate, and the live `/version.json` check. Rules and indexes are never
+deployed in either mode; the runbook only diffs them and tells you to get separate authorization.
+The scope narrows; the protection does not.
+
+A mistyped switch is **refused**, not ignored - it can never fall through to the full deploy.
+
 ## What runs underneath
 
 `sandbox-refresh.ps1` is an **operator adapter**, not a deployment. It contains no `firebase`
