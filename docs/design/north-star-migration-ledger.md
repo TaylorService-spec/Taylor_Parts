@@ -1328,6 +1328,42 @@ naming three previously-unrun suites in the new workflow removed them from `ciSu
 `cssClassCoverage`'s unstyled backlog. Every one of those lists may only shrink, and each shrank
 because the gate refused to let it stay stale.
 
+### The family's Quick Gate, written after the merge and proved fail-closed before it can run
+
+`equipmentNorthStarQuickGate.mjs` joins the dispatch, parts and serviceOperations gates —
+one per accepted family. It drives the DEPLOYED workspace and record as an admin and asserts the
+locked design's rulings against the running pages. It is read-only: it looks, switches tabs and
+follows links; it opens the install confirmation far enough to read it back and **never presses
+Confirm**, because installation is irreversible and no recovery authority exists.
+
+**Two checks read Firestore, and that is deliberate.** H2 (a calendar date must not shift a day) and
+H3 (a stored object must not be stringified) are claims about the relationship between what is
+STORED and what is SHOWN — reading only the screen cannot falsify either, because "Mar 13" looks
+correct unless you know the document says `2024-03-14`. Both fetch the record through the Firestore
+REST API with the SAME governed idToken the browser session holds: same principal, same Rules, no
+elevated credential. H2 compares against the stored value rather than a hard-coded fixture date, and
+SKIPs when the chosen record has no date-only value — inventing one would be fabricated evidence.
+
+**Three refusals, all exercised against the live origin before the release existed:**
+
+| Invocation | Result |
+|---|---|
+| `--expect 97b630e5` against the deployed `52ed729d` | `FAIL 0 release identity` · REFUSE · exit 2 |
+| no `--expect` at all | REFUSE · exit 2 — stricter than the Parts gate, which allows omitting it |
+| a production origin | REFUSE · exit 2, before any network read of that origin |
+
+That is a successful test of fail-closed behaviour, not a failed Equipment gate.
+
+**The Parts gate's four recorded defects were designed out rather than inherited.**
+`test/equipmentNorthStarQuickGateContract.test.mjs` (12) holds each one as a rule CI can enforce,
+since CI cannot run the gate itself: no pinned column name where the ruling protects the VALUE
+(ND-32 addresses cells by the index of their own deployed heading); ND-31 accepts any governed
+reference-state sentence rather than one literal string, because collapsing four reasons into one
+IS the regression; every surface resolved once and scoped; exact class tokens, never a substring
+that also matches BEM children; no silent `catch {}`; and a SKIP counted separately from a PASS so a
+run of skips cannot read as a green family.
+
+
 ### Authority, unchanged
 
 No Firestore rule, index, Function, callable, capability, activation, role grant, collection, schema,

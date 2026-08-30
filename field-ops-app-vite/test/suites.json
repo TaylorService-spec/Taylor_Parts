@@ -234,6 +234,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/equipmentNorthStarQuickGateContract.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/equipmentRegister.test.mjs",
       "runner": "node"
     },
