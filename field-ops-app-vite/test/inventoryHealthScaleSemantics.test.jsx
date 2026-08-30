@@ -169,8 +169,11 @@ test("urgency has ONE label authority, beside its tone map", () => {
 test("the Parts catalogue table recomposes into cards, with every cell labelled", () => {
   const src = read("src/modules/inventory/PartsList.jsx");
   expectMatch(src, /className="fo-table fo-table--stack"/);
-  // "Warehouse Available" left this list when ND-25 removed the column — see the test below.
-  for (const label of ["Part", "Part Number", "Category", "Inventory Health"]) {
+  // "Warehouse Available" left this list when ND-25 removed the column. "Part Number" and
+  // "Inventory Health" left it when ND-30 replaced the table with Frame 1a’s grammar: the part
+  // number is now the primary line of the Part cell, and health moved off this table to the Work
+  // group’s Inventory Operational Queue, which ranks by the same urgency.
+  for (const label of ["Part", "Manufacturer", "Category", "Control", "Status", "Attention"]) {
     expectMatch(src, new RegExp(`data-label="${label}"`), `${label} cell must carry its heading`);
   }
 });
@@ -209,21 +212,22 @@ test("the workspace states NO quantity — the third and strongest form of the s
   expectOk(computeAvailableStockByPart, "the derivation stays; only its display is withdrawn");
 });
 
-test("Inventory Health renders WORDS, never the stored urgency token", () => {
-  const src = read("src/modules/inventory/PartsList.jsx");
-  expectMatch(src, /label=\{inventoryUrgencyLabel\(urgency\)\}/);
-  // The raw value stays reachable on the cell for a filter or a test, and off the screen.
-  expectMatch(src, /data-raw=\{urgency \?\? \(health \? "NEEDS_PLANNING" : "NO_LEDGER_ACTIVITY"\)\}/);
-  expect(/label=\{health\.recommendation\.urgency\}/.test(src)).toBe(false);
-});
-
-test("the three health outcomes stay three different statements", () => {
-  const src = read("src/modules/inventory/PartsList.jsx");
-  // Never seen by the ledger / seen but unplannable / computed urgency. Collapsing them loses the
-  // distinction that decides what to do next.
-  expectMatch(src, /No ledger activity/);
-  expectMatch(src, /Needs planning/);
-  expectMatch(src, /inventoryUrgencyTone\(urgency\)/);
+// SUPERSEDED by ND-30 (Owner, 2026-08-30), in place rather than by deletion.
+//
+// These two pinned the Parts CATALOGUE table’s health cell: that it rendered words rather than the
+// stored urgency token, and that its three outcomes stayed three different statements. Frame 1a
+// replaced that table’s grammar with Part · Manufacturer · Category · Control · Status · Attention,
+// so the cell they guarded is no longer on this table.
+//
+// THE GUARANTEES DID NOT LAPSE, THEY MOVED WITH THE SIGNAL. Health is still rendered on this page by
+// InventoryHealthPanel, which the Work group shows above the catalogue and which has its own
+// assertions for exactly these properties. What is checked here is that the signal did not silently
+// leave the PAGE when it left the TABLE.
+test("Inventory Health’s vocabulary guarantee still has an owner after Frame 1a", () => {
+  const list = read("src/modules/inventory/PartsList.jsx");
+  expectMatch(list, /InventoryHealthPanel/, "health must still be surfaced on the workspace");
+  // ...and the catalogue table kept no half-migrated copy of it.
+  expect(list.includes("<th>Inventory Health</th>")).toBe(false);
 });
 
 test("a link inside a stacked card is a real tap target", () => {

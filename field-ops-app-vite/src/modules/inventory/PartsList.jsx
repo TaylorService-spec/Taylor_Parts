@@ -21,13 +21,24 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
-import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
-import StatusPill from "../../shared/ui/StatusPill.jsx";
-import { inventoryUrgencyTone, inventoryUrgencyLabel } from "../../domain/inventoryUrgencyTone.js";
+import { partsAttentionItems } from "../../domain/partsAttentionProjection.js";
+import { useManufacturerCatalog } from "../../hooks/useManufacturerCatalog";
+import { MANUFACTURER_CATALOG_VIEW_STATE, manufacturerCatalogViewState, manufacturerNameById } from "../../domain/manufacturerCatalogView";
+import {
+  partsAttentionByPartId,
+  partsCollectionSummary,
+  partsCollectionViews,
+  applyPartsCollectionView,
+  partsCollectionRow,
+  sortPartsCollectionRows,
+  PARTS_COLLECTION_VIEW,
+  PARTS_COLLECTION_SORT,
+  PARTS_COLLECTION_SORT_LABEL,
+} from "../../domain/partsNorthStar.js";
 import PartWriteModal from "../../shared/partMaster/PartWriteModal.jsx";
 import ManagerQueuePanel from "../../shared/reorder/ManagerQueuePanel.jsx";
 import { RequestCards, AssignedRequestDetail } from "../../shared/reorder/AssociateRequestPanel.jsx";
@@ -517,6 +528,9 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     return ["ALL", ...[...set].sort()];
   }, [catalogRows]);
   const [category, setCategory] = useState("ALL");
+  const [view, setView] = useState(PARTS_COLLECTION_VIEW.ALL);
+  const [sort, setSort] = useState(PARTS_COLLECTION_SORT.PART_NUMBER);
+  const [catalogQuery, setCatalogQuery] = useState("");
   const [page, setPage] = useState(0);
   const [queueFilter, setQueueFilter] = useState("ACTIONABLE");
   // Wave 6 -- master-data-in-Parts. `writeDeps` lets tests/preview inject a mocked
@@ -570,16 +584,46 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     }
   }
 
-  const healthByPartId = useMemo(() => {
-    const map = new Map();
-    for (const entry of healthEntries) map.set(entry.partId, entry);
-    return map;
-  }, [healthEntries]);
+
+  // ── FRAME 1a (ND-30). Composed from facts this page ALREADY holds: the governed catalogue rows
+  //    and the reorder_requests behind `pendingRequests`. No new read, no new state, no quantity.
+  const manufacturerCatalog = useManufacturerCatalog();
+  const manufacturerNames = useMemo(() => {
+    // Same governed resolution the record uses. A part with no manufacturer id resolves to nothing
+    // and the cell says so -- it never borrows another field to look populated.
+    return manufacturerCatalogViewState(manufacturerCatalog) === MANUFACTURER_CATALOG_VIEW_STATE.READY
+      ? manufacturerNameById(manufacturerCatalog.result.manufacturers)
+      : new Map();
+  }, [manufacturerCatalog]);
+
+  const attentionByPartId = useMemo(
+    () => partsAttentionByPartId(partsAttentionItems(pendingRequests ?? [])),
+    [pendingRequests],
+  );
+  const collectionSummary = useMemo(
+    () => partsCollectionSummary(catalogRows, attentionByPartId),
+    [catalogRows, attentionByPartId],
+  );
+  const collectionViews = useMemo(
+    () => partsCollectionViews(catalogRows, attentionByPartId),
+    [catalogRows, attentionByPartId],
+  );
 
   const filteredParts = useMemo(() => {
-    if (category === "ALL") return catalogRows;
-    return catalogRows.filter((part) => part.category === category);
-  }, [category, catalogRows]);
+    // View first, then category, then sort. Both filters are over rows already loaded; neither
+    // queries, and a view is a filter rather than a state (ND-30).
+    const inView = applyPartsCollectionView(catalogRows, view, attentionByPartId);
+    const inCategory = category === "ALL" ? inView : inView.filter((part) => part.category === category);
+    const q = catalogQuery.trim().toLowerCase();
+    const matched = q
+      ? inCategory.filter((part) =>
+          `${part.internalPartNumber ?? ""} ${part.name ?? ""} ${part.description ?? ""} ${part.category ?? ""}`
+            .toLowerCase()
+            .includes(q),
+        )
+      : inCategory;
+    return sortPartsCollectionRows(matched, sort);
+  }, [catalogRows, view, attentionByPartId, category, sort, catalogQuery]);
 
   const pageCount = Math.max(1, Math.ceil(filteredParts.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -748,9 +792,131 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       />
 
       <h2 id="parts-group-parts">Parts</h2>
-      <p className="fo-muted">Look up a part — identity, category, and reorder risk.</p>
+      <p className="fo-muted">Look up a part — identity, classification, and what needs attention.</p>
 
-      <h3>Parts Catalog</h3>
+      {/* ══════════ FRAME 1a — the Parts collection, composed INSIDE the role home (ND-30) ══════════
+
+          The Owner's ruling is precise about the shape of this: the collection grammar arrives in
+          the PANEL, and the Work group, the Flow group and the governed reorder queues stay exactly
+          where they are. So this is a section identity, not a second page identity -- no
+          WorkspaceIdentity, no second <h1>, no crumb. The page above it is still the role home.
+
+          NO On hand column. ND-25 remains controlling and no quantity may be introduced to
+          reproduce the static design. */}
+      <div className="ns-workspace">
+        <header className="ns-workspace__head">
+          <div className="ns-workspace__titleblock">
+            <div className="ns-workspace__titlerow">
+              <h3 className="ns-workspace__title">Parts Catalog</h3>
+              {/* COUNTED FOR WHAT IT IS. This page performs a whole-collection read, so the number
+                  is the catalogue -- and the label says so rather than implying a company-wide
+                  inventory universe nobody measured. */}
+              <span className="ns-workspace__count">
+                {collectionSummary.total}{" "}
+                <span className="ns-workspace__count-label">{collectionSummary.totalLabel}</span>
+              </span>
+            </div>
+            <p className="ns-workspace__summary">
+              {collectionSummary.active} active
+              {collectionSummary.statusUnknown > 0 ? (
+                <>
+                  {" · "}
+                  {/* NEITHER ACTIVE NOR INACTIVE. A row with no canonical document carries no status,
+                      and counting it as either would be the invention this family keeps refusing. */}
+                  {collectionSummary.statusUnknown} status not recorded
+                </>
+              ) : null}
+              {collectionSummary.needsAttention > 0 ? (
+                <>
+                  {" · "}
+                  <span className="is-attention">{collectionSummary.needsAttention} {collectionSummary.needsAttention === 1 ? "needs" : "need"} attention</span>
+                </>
+              ) : null}
+            </p>
+          </div>
+        </header>
+
+        {/* VIEW CHIPS. Each is a filter over rows already loaded -- a presentation filter, never a
+            state machine, and never a backend concept (ND-30). Counts ride along because a chip
+            without one asks the reader to click to find out whether clicking was worth it. */}
+        {/* CHIPS, NOT THE COLLECTION VIEWS ROW — and the distinction is load-bearing.
+
+            ND-30 asks for view chips here. The shipped Lists P2 COMPOSE contract says only a
+            declared collection PAGE may wear the collection views markup, and ND-30 is equally clear
+            that /inventory must NOT become one. Rendering the collection chrome would have made
+            this page claim an identity the same ruling withholds from it.
+
+            Both hold at once through FilterBar's chips variant: the reader gets the views and
+            their counts, and the page does not declare itself a collection. The chip row IS the
+            presentation; the collection markup was never the requirement.
+
+            variant="chips" is also the caller obligation listsP2Compose enforces -- a
+            non-collection surface must declare itself rather than inherit the views default. */}
+        <FilterBar
+          variant="chips"
+          options={collectionViews.map((v) => ({ key: v.key, label: v.label, count: v.count }))}
+          activeKey={view}
+          onChange={(value) => {
+            setView(value);
+            setPage(0);
+          }}
+        />
+
+        <div className="ns-toolbar">
+          <label className="ns-toolbar__search">
+            <span className="ns-visually-hidden">Search the parts catalogue</span>
+            {/* The placeholder names only what this filter actually matches -- part number,
+                description and category are all carried on the composed row. Barcodes and aliases
+                are NOT searched and are not claimed: that needs the identifier read, which is
+                registered active:false and granted to nobody. */}
+            <input
+              type="search"
+              value={catalogQuery}
+              onChange={(e) => {
+                setCatalogQuery(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Search part number, description, or category"
+            />
+          </label>
+          {/* FILTER. Category was a second chip row; Frame 1a draws ONE chip row and a Filter
+              control, and two rows of chips on one panel state two collections where there is
+              one. The options and their counts are unchanged — only the affordance moved. */}
+          <label className="fo-muted">
+            Filter{" "}
+            <select value={category} onChange={(e) => handleCategoryChange(e.target.value)}>
+              {filterOptions.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {opt.label} ({opt.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="fo-muted">
+            Sort{" "}
+            <select
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value);
+                setPage(0);
+              }}
+            >
+              {Object.values(PARTS_COLLECTION_SORT).map((key) => (
+                <option key={key} value={key}>
+                  {PARTS_COLLECTION_SORT_LABEL[key]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {/* NO SCAN BUTTON, and the reason is recorded rather than the element quietly dropped.
+            ND-30 permits the Scan entry point "where the existing governed scanner/navigation
+            supports it". The scanner is a Service-domain nav item gated by isNavItemVisible, which
+            needs the role, the legacy-key set and the operational context -- none of which reach
+            this component (useAuth exposes user/role/operationalRoles only). Rendering an ungated
+            link would offer a surface the reader may not hold, which is worse than its absence.
+            Threading the access context into this page is its own change. */}
       {/* INV-CONVERGENCE-E C1 -- three explicit states for the governed catalog:
           (1) canonical read in flight -> loading; (2) canonical read blocked
           (denied/unavailable/incomplete) -> a clear BLOCKED banner, never an empty
@@ -763,16 +929,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       ) : (
       <>
       <p className="fo-muted">
-        {catalogRows.length} parts in catalog. Inventory health is derived from the inventory ledger (the same
-        source as the Operations dashboard's Inventory Health panel). No stock quantity is shown here: the
+        Attention comes from the governed reorder-request projection. No stock quantity is shown here: the
         governed balance read is single-part, so there is no list-scale quantity to answer from, and the
         static catalogue is a baseline rather than a count.
       </p>
 
-      {/* Chips for the same reason as the queue row above: the catalog table is one panel of this
-          workspace, not the page's collection. Two rows on one page BOTH rendering the views
-          grammar would also state two collections where there is one page. */}
-      <FilterBar variant="chips" options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
       <LoadingEmptyState
         loading={loading}
@@ -792,75 +953,70 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               at a desk, which is why the scroll container above it is unchanged. */}
           <table className="fo-table fo-table--stack">
             <thead>
+              {/* FRAME 1a's grammar (ND-30): Part · Manufacturer · Category · Control · Status ·
+                  Attention. On hand is absent and stays absent -- ND-25. */}
               <tr>
                 <th>Part</th>
-                <th>Part Number</th>
+                <th>Manufacturer</th>
                 <th>Category</th>
-                <th>Inventory Health</th>
+                <th>Control</th>
+                <th>Status</th>
+                <th>Attention</th>
               </tr>
             </thead>
             <tbody>
               {pagedParts.map((part) => {
-                const health = healthByPartId.get(part.sku);
-                const urgency = health?.recommendation?.urgency ?? null;
+                const row = partsCollectionRow(part, { manufacturerNames, attentionByPartId });
                 return (
                   <tr key={part.sku}>
+                    {/* RECOGNITION OVER IDS. The link carries the human name; the Part Number rides
+                        beneath it, which is Frame 1a’s own arrangement and keeps one identity column
+                        rather than two. ND-26: a row with no canonical document has NO Part Number
+                        and says so -- it never falls back to the document key. */}
+                    {/* THE PART NUMBER LEADS, with the description beneath it -- Frame 1a’s own
+                        arrangement. That is recognition over IDs, not a contradiction of it: after
+                        ND-26 the number IS the human-facing business identity, and it is what a
+                        person reads off a shelf label. The document key appears nowhere.
+
+                        A row with no canonical document has no Part Number and says so; the
+                        description then leads, because a part with a name and no number is still
+                        recognisable. The key is never substituted. */}
                     <td data-label="Part">
-                      <Link to={partCatalogRoute(part)}>{part.name}</Link>
+                      <Link to={partCatalogRoute(part)}>
+                        {row.partNumber ?? row.name ?? "Unnamed part"}
+                      </Link>
+                      <div className="fo-muted" data-part-number={row.partNumber ?? ""}>
+                        {row.partNumber
+                          ? row.name
+                          : <span className="ns-state--na">Part Number not recorded</span>}
+                      </div>
                     </td>
-                    {/* IT WAS THE DOCUMENT ID. Owner ruling ND-26, 2026-08-30.
-
-                        The comment that stood here asserted "A BUSINESS IDENTIFIER, not a document
-                        id", and the cell rendered part.sku. But sku === key === partId throughout
-                        the adapter, and toPartView REQUIRES partId === docId -- so this column has
-                        been a column of document ids under a heading that says otherwise, on a page
-                        whose standard is recognition over IDs.
-
-                        The business Part Number is internalPartNumber. It is a different string by
-                        contract: mutable under governance, with its prior value backfilled as a
-                        historical alias when it changes. It was carried by the adapter one field
-                        away and read by nobody.
-
-                        A row with no canonical document has no Part Number, and says so. It does
-                        NOT fall back to the key -- substituting the id for the number is the exact
-                        mistake being corrected. */}
-                    <td data-label="Part Number" className="fo-muted">
-                      {part.internalPartNumber ?? <span className="fo-muted">Not recorded</span>}
+                    {/* A NAME, or an honest absence. Never the manufacturer id, and never another
+                        field borrowed to make the cell look populated. */}
+                    <td data-label="Manufacturer" className="fo-muted">
+                      {row.manufacturer ?? <span className="ns-state--na">Not recorded</span>}
                     </td>
-                    <td data-label="Category" className="fo-muted">{part.category}</td>
-                    {/* THE QUANTITY COLUMN IS GONE. Owner ruling ND-25, 2026-08-30 — Option (b),
-                        TRUTHFUL ABSENCE > FALSE COMFORT.
-
-                        Its history is the argument for removing it. It first rendered the static
-                        catalogue quantity welded to a "(baseline)" caveat; separating the two made
-                        it readable and left the deeper problem, the NUMBER itself; the ruling of
-                        2026-08-24 then replaced it with the ledger-derived figure and "Not known".
-
-                        That figure is a CLIENT-SIDE derivation over inventory_transactions, and it
-                        is available-shaped. ND-25 reserves quantitative inventory facts for the
-                        governed getPartBalance authority, which is single-part
-                        (PART_LIST_BALANCE_N1_GAP) and switched off — so there is no list-scale
-                        quantity projection to answer from, and the ruling says omit the column
-                        rather than answer from something else.
-
-                        Inventory Health stays. It is a qualitative signal, not a quantity: it says
-                        whether a part needs attention, never how many there are, and its three
-                        outcomes are three different statements about what is KNOWN. Removing it
-                        would take an operational judgment away without a ruling asking for it.
-
-                        A governed list projection may add quantitative inventory back separately —
-                        the ruling says so explicitly. */}
-                    {/* INVENTORY HEALTH IS ITS OWN FIELD, and its three outcomes are three different
-                        statements: the ledger has never seen this part; it has, but with no usage
-                        history to plan from; or it has a computed urgency. Collapsing them into one
-                        "Risk" word loses the distinction that decides what to do next. */}
-                    <td data-label="Inventory Health" data-raw={urgency ?? (health ? "NEEDS_PLANNING" : "NO_LEDGER_ACTIVITY")}>
-                      {!health ? (
-                        <span className="fo-muted">No ledger activity</span>
-                      ) : hasUsageHistory(health.usage) ? (
-                        <StatusPill tone={inventoryUrgencyTone(urgency)} label={inventoryUrgencyLabel(urgency)} />
+                    <td data-label="Category" className="fo-muted">
+                      {row.category ?? <span className="ns-state--na">Not recorded</span>}
+                    </td>
+                    {/* WORDS, from the one vocabulary. A stored token never reaches the reader. */}
+                    <td data-label="Control" className="fo-muted">
+                      {row.control ?? <span className="ns-state--na">Not recorded</span>}
+                    </td>
+                    <td data-label="Status">
+                      {row.status ?? <span className="ns-state--na">Not recorded</span>}
+                    </td>
+                    {/* ATTENTION, from the governed reorder-request projection and nothing else --
+                        no risk score, no prioritisation, no invented urgency (ND-30). Its words are
+                        the projection’s own sectionLabel. A part with nothing outstanding shows a
+                        dash, which is a statement that the projection was consulted. */}
+                    <td data-label="Attention">
+                      {row.attention ? (
+                        <span className={row.attention.actionRequired ? "is-attention" : "fo-muted"}>
+                          {row.attention.label}
+                        </span>
                       ) : (
-                        <StatusPill tone="unknown" label="Needs planning" />
+                        <span className="ns-state--na">—</span>
                       )}
                     </td>
                   </tr>
@@ -884,6 +1040,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       </LoadingEmptyState>
       </>
       )}
+      </div>
 
       <h2 id="parts-group-flow">Flow</h2>
       <p className="fo-muted">Where reorder requests have already landed in the lifecycle.</p>

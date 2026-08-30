@@ -112,8 +112,15 @@ check("PartsList catalog link is wired to partCatalogRoute(composed row), not na
     "the catalog table must map the composed pagedParts rows");
   assert.ok(/<tr key=\{part\.sku\}>/.test(PARTSLIST_SRC),
     "each catalog row must be keyed by the composed row's sku");
-  assert.ok(/<Link to=\{partCatalogRoute\(part\)\}>\{part\.name\}<\/Link>/.test(PARTSLIST_SRC),
-    "the catalog Link must route via partCatalogRoute(part) (sku), rendering part.name as label");
+  // SUPERSEDED by ND-30 (Owner, 2026-08-30). The ROUTING contract is unchanged and still pinned
+  // above -- the Link is still built from partCatalogRoute(part), still keyed by the composed sku.
+  // What changed is the LABEL: Frame 1a makes the Part Number the primary line with the description
+  // beneath it, so the link no longer renders part.name. Pinning the label would have made a
+  // grammar the Owner specified look like a routing regression.
+  assert.ok(PARTSLIST_SRC.includes("<Link to={partCatalogRoute(part)}>"),
+    "the catalog Link must still route via partCatalogRoute(part) (sku)");
+  assert.ok(PARTSLIST_SRC.includes("row.partNumber ?? row.name"),
+    "the link label must lead with the Part Number and fall back to the description, never the key");
   // negative guards: the catalog link must NOT route by display name or an index
   assert.ok(!/to=\{`\/inventory\/\$\{part\.name\}`\}/.test(PARTSLIST_SRC), "catalog link must not route by part.name");
   assert.ok(!/\.map\(\(part,\s*\w+\)\s*=>[^]*?to=\{`\/inventory\/\$\{\w+\}`\}/.test(PARTSLIST_SRC), "catalog link must not route by array index");

@@ -1067,7 +1067,7 @@ the derivation ever grows a floor or a default.
 **real** engine across seven consumption patterns, plus the display rule; the record suite proves the
 render. Four mutation proofs, all caught.
 
-### ND-30 — Frame 1a has no surface, and the workspace scope ruling is why
+### ND-30 — Frame 1a has no surface, and the workspace scope ruling is why — **CLOSED 2026-08-30: Option (b), Frame 1a inside `/inventory`**
 
 **Raised:** 2026-08-30, when the Owner opened the deployed sandbox at `/inventory` and said it looks
 nothing like the design view. It does not, and it was never going to.

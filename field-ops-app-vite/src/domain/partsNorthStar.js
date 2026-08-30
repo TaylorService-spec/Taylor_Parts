@@ -238,6 +238,180 @@ export function partPurchasingSection() {
   };
 }
 
+// ============================ FRAME 1a — THE PARTS COLLECTION ============================
+//
+// ND-30 (Owner, 2026-08-30): Frame 1a is composed INSIDE /inventory, as the Parts Catalog panel of
+// the existing role home. The Work and Flow groups and the governed reorder queues stay exactly
+// where they are — the collection grammar arrives in the panel, it does not replace the page.
+//
+// Everything below is presentation over facts the workspace ALREADY holds:
+//   rows       buildPartsCatalogRows over the governed canonical read (widened by #1593)
+//   attention  partsAttentionItems over the reorder_requests the page already subscribes to
+//
+// NO QUANTITY. ND-25 remains controlling and there is deliberately no On hand column, no total,
+// and no helper here that could produce one.
+// NO INVENTED SEMANTICS. No risk score, no prioritisation, no status authority, no new state.
+// A view chip is a filter over facts already loaded — never a state machine.
+
+/**
+ * partId -> the one attention fact to show on its row.
+ *
+ * The projection can yield several items for a part; the row shows the one that most demands
+ * action, because a cell has space for one and picking arbitrarily would misreport the rest.
+ * ACTION_ITEM outranks NOTIFICATION, and within a rank the projection's own order is preserved.
+ * Its words are the projection's `sectionLabel` — this module invents no vocabulary of its own.
+ */
+export function partsAttentionByPartId(items) {
+  const byPart = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item.partId !== "string") continue;
+    const actionRequired = item.attentionType === "ACTION_ITEM";
+    const existing = byPart.get(item.partId);
+    if (existing && (existing.actionRequired || !actionRequired)) continue;
+    byPart.set(item.partId, {
+      label: typeof item.sectionLabel === "string" ? item.sectionLabel : null,
+      actionRequired,
+      deepLink: typeof item.deepLink === "string" ? item.deepLink : null,
+    });
+  }
+  return byPart;
+}
+
+/**
+ * The counts under the title.
+ *
+ * LABELLED FOR WHAT THEY ACTUALLY COUNT. `total` is the composed catalogue this page has loaded —
+ * a whole-collection read, so it is the catalogue, and the label says "in the catalogue" rather
+ * than implying a company-wide inventory universe nobody measured.
+ *
+ * `active` counts rows whose status is KNOWN to be ACTIVE. A row carrying no status (an approved
+ * static-only sku has no canonical document) is counted neither active nor inactive, because
+ * neither is known. That is why this is not `total - inactive`.
+ */
+export function partsCollectionSummary(rows, attentionByPartId) {
+  const list = Array.isArray(rows) ? rows : [];
+  const attention = attentionByPartId instanceof Map ? attentionByPartId : new Map();
+  return {
+    total: list.length,
+    totalLabel: list.length === 1 ? "part in the catalogue" : "parts in the catalogue",
+    active: list.filter((r) => r && r.status === "ACTIVE").length,
+    statusUnknown: list.filter((r) => !r || typeof r.status !== "string").length,
+    needsAttention: list.filter((r) => r && attention.has(r.sku)).length,
+  };
+}
+
+/**
+ * The view chips.
+ *
+ * A chip appears only where its membership is decidable from the loaded rows. `Serialized` reads
+ * the governed controlType; `Needs attention` reads the governed reorder-request projection;
+ * `Active` reads the governed status. Each is a filter over what is already on the page — nothing
+ * here queries, and nothing here defines a state.
+ *
+ * Counts ride on the chips because a chip without one asks the reader to click to find out whether
+ * it was worth clicking.
+ */
+export const PARTS_COLLECTION_VIEW = Object.freeze({
+  ALL: "ALL",
+  ACTIVE: "ACTIVE",
+  NEEDS_ATTENTION: "NEEDS_ATTENTION",
+  SERIALIZED: "SERIALIZED",
+});
+
+export function partsCollectionViews(rows, attentionByPartId) {
+  const list = Array.isArray(rows) ? rows : [];
+  const attention = attentionByPartId instanceof Map ? attentionByPartId : new Map();
+  return [
+    { key: PARTS_COLLECTION_VIEW.ALL, label: "All", count: list.length },
+    // QUALIFIED, not bare. ADR-012 s2.2a: "Active" names four different concepts in this codebase,
+    // and this page shows reorder-request statuses beside the catalogue -- so a lone "Active" chip
+    // sits within reading distance of a second sense. Frame 1a draws the chip as "Active"; the
+    // vocabulary ruling is the stronger authority and the word costs nothing to disambiguate.
+    { key: PARTS_COLLECTION_VIEW.ACTIVE, label: "Active parts", count: list.filter((r) => r && r.status === "ACTIVE").length },
+    {
+      key: PARTS_COLLECTION_VIEW.NEEDS_ATTENTION,
+      label: "Needs attention",
+      count: list.filter((r) => r && attention.has(r.sku)).length,
+      isAttention: true,
+    },
+    { key: PARTS_COLLECTION_VIEW.SERIALIZED, label: "Serialized", count: list.filter((r) => r && r.controlType === "SERIALIZED").length },
+  ];
+}
+
+/** Apply a view. Pure filter, no sorting, no side effects. */
+export function applyPartsCollectionView(rows, viewKey, attentionByPartId) {
+  const list = Array.isArray(rows) ? rows : [];
+  const attention = attentionByPartId instanceof Map ? attentionByPartId : new Map();
+  if (viewKey === PARTS_COLLECTION_VIEW.ACTIVE) return list.filter((r) => r && r.status === "ACTIVE");
+  if (viewKey === PARTS_COLLECTION_VIEW.SERIALIZED) return list.filter((r) => r && r.controlType === "SERIALIZED");
+  if (viewKey === PARTS_COLLECTION_VIEW.NEEDS_ATTENTION) return list.filter((r) => r && attention.has(r.sku));
+  return list;
+}
+
+/** The sorts a client-side list can honestly offer over rows it has fully loaded. */
+export const PARTS_COLLECTION_SORT = Object.freeze({
+  PART_NUMBER: "PART_NUMBER",
+  NAME: "NAME",
+  CATEGORY: "CATEGORY",
+});
+
+export const PARTS_COLLECTION_SORT_LABEL = Object.freeze({
+  PART_NUMBER: "Part number",
+  NAME: "Description",
+  CATEGORY: "Category",
+});
+
+/**
+ * Sort, without mutating the caller's array.
+ *
+ * A row with no Part Number sorts LAST rather than first: an absent identifier is not a small one,
+ * and floating the least-identified rows to the top of a list people scan is the opposite of useful.
+ */
+export function sortPartsCollectionRows(rows, sortKey) {
+  const list = [...(Array.isArray(rows) ? rows : [])];
+  const text = (v) => (typeof v === "string" && v.length > 0 ? v : null);
+  const pick = (r) => {
+    if (sortKey === PARTS_COLLECTION_SORT.NAME) return text(r?.name);
+    if (sortKey === PARTS_COLLECTION_SORT.CATEGORY) return text(r?.category);
+    return text(r?.internalPartNumber);
+  };
+  return list.sort((a, b) => {
+    const av = pick(a);
+    const bv = pick(b);
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return av.localeCompare(bv);
+  });
+}
+
+/**
+ * One rendered row of Frame 1a's table: Part · Manufacturer · Category · Control · Status · Attention.
+ *
+ * DELIBERATELY NO QUANTITY (ND-25). The row model has no field that could carry one.
+ *
+ * `manufacturerNames` resolves the governed manufacturer id to its name. A part carrying no
+ * manufacturer returns null and the caller renders the absence — it never borrows the part number,
+ * the category, or anything else to fill the cell.
+ */
+export function partsCollectionRow(row, { manufacturerNames = new Map(), attentionByPartId = new Map() } = {}) {
+  const str = (v) => (typeof v === "string" && v.length > 0 ? v : null);
+  const manufacturerId = str(row?.manufacturerId);
+  const attention = attentionByPartId instanceof Map ? attentionByPartId.get(row?.sku) ?? null : null;
+  return {
+    sku: row?.sku ?? null,
+    // ND-26: the human-facing Part Number. Null stays null — never the document key.
+    partNumber: str(row?.internalPartNumber),
+    name: str(row?.name),
+    manufacturer: manufacturerId ? manufacturerNames.get(manufacturerId) ?? manufacturerId : null,
+    manufacturerResolved: manufacturerId ? manufacturerNames.has(manufacturerId) : false,
+    category: str(row?.category),
+    control: word(CONTROL_TYPE_LABEL, row?.controlType),
+    status: word(PART_STATUS_LABEL, row?.status),
+    attention,
+  };
+}
+
 // ============================ THE REORDER POINT ============================
 //
 // Owner ruling, 2026-08-30: a reorder point must not be presented as an operationally meaningful
