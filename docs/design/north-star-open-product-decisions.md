@@ -909,3 +909,77 @@ tested, so the rows render correctly the day the scoring changes; the current be
 (severity unknown), or is silence correct because nothing is known about it? Answering it means
 changing risk scoring — a domain authority change with its own consequences — **not** something a page
 may close.
+
+---
+
+## Open — raised by the Parts P1 composition map (2026-08-30)
+
+Full reconciliation: [`parts-north-star-composition-map.md`](./parts-north-star-composition-map.md).
+Design authority: [`docs/north-star/parts/`](../north-star/parts/).
+
+### ND-25 — May a Parts surface show a quantity at all today, and which one?
+
+**Raised:** 2026-08-30, reconciling the Parts P1 artifact against the shipped Parts surfaces.
+**Design holds:** frame 1a gives the workspace an **On hand** column and frame 1b gives the record
+header *"3 on hand across 2 locations"*. The handoff names the source explicitly — `warehouseQty`,
+whose provenance is `STATIC_FALLBACK` — and asks that the provenance marker be shown rather than the
+value hidden.
+**Behavioral holds:** that value comes from `src/data/partsCatalog.ts`, whose own header reads
+*"METADATA ONLY — NO STOCK AUTHORITY … generated from a synthetic test dataset … NOT authoritative."*
+The Owner ruled on this exact cell on **2026-08-24**, and the ruling is preserved above the cell it
+governs in `PartsList.jsx`: *"A figure that is not a live warehouse count, sitting under a heading
+that reads as one, is FALSE_COMFORT on the exact column people scan when deciding what to reorder."*
+The column therefore answers **"Not known"** where no ledger has spoken.
+**The conflict has a second edge.** What the column shows *instead* today is `availableStock`,
+derived client-side from `inventory_transactions` by `inventoryAnalyticsEngine` — an **available**-shaped
+number, which is precisely the column the design deliberately refuses to draw on the grounds that no
+availability authority exists. So design and shipped ruling disagree about both the value and its
+name, in opposite directions.
+**And the governed answer is switched off.** `getPartBalance` returns on-hand, reserved, available and
+on-order from fulfillment's ratified functions. `inventory.balance.read` is registered `active: false`
+and granted to no role, and the callable is exported but not deployed — so it is **capability
+inactive**, not authority-missing. It is also single-part (`PART_LIST_BALANCE_N1_GAP`), so it could
+serve the record long before it could serve the list.
+**Shipped meanwhile:** nothing. The Parts North Star migration renders no number under a quantity
+heading until this is answered.
+**The decision:** three coherent answers. Keep the derived available figure and let the design's
+no-Available rule yield to the earlier Owner ruling; show nothing quantitative on either surface until
+`getPartBalance` is activated; or show the derived figure under a heading that names its derivation.
+A build may not choose between an Owner ruling and an Owner design.
+
+### ND-26 — Which string is "the part number"?
+
+**Raised:** 2026-08-30, same reconciliation.
+**Design holds:** the part number is the governed identity, the record title and the breadcrumb leaf,
+and *"document ids never render."*
+**Behavioral holds:** `partId` is the immutable document id — `toPartView` requires `partId === docId`,
+and `sku === key === partId` throughout `partsCompatibilityAdapter`. `internalPartNumber` is a
+**separate** canonical field that is **mutable under governance**; when it changes, its previous value
+is backfilled as a historical alias (`functions/src/partMaster/partMasterCommands.ts:293`). They are
+definitively two different things.
+**The conflict:** today `PartsList.jsx:797` heads a column *Part Number* and renders `part.sku` into
+it, under a comment asserting *"A BUSINESS IDENTIFIER, not a document id."* It is the document id. The
+real part number is carried by the adapter one field away and unused. Rendering `internalPartNumber`
+instead satisfies the directive — but it makes the record's page title mutable, and makes the URL key
+and the displayed identity two different strings.
+**Shipped meanwhile:** nothing changed. The defect is recorded in the composition map rather than
+fixed under a styling migration.
+**The decision:** does the Parts record title, breadcrumb and workspace column read
+`internalPartNumber` — accepting a mutable title and a title/URL divergence — or does `partId` stay on
+screen with the "Part Number" heading corrected to say what it actually is?
+
+### ND-27 — May the legacy static cost be displayed on the Parts record?
+
+**Raised:** 2026-08-30, same reconciliation.
+**Design holds:** the rail's Purchasing context opens with **Cost — $2,480.00**, marked *baseline*, on
+the principle that provenance should be shown rather than the value hidden.
+**Behavioral holds:** `src/metadata/definitions/part.js` declares `unitCost` `displayable: false`,
+`reportable: false` **and** `exportable: false` — *"BLOCKED — the canonical Part carries no cost of any
+kind"* (`PART_INVENTORY_VALUATION_AUTHORITY_GAP`). The register blocks all three together deliberately,
+because *"blocking a column and leaving the CSV open is the same field reaching the same person by a
+longer route."* The drawn figure is the legacy static catalogue's, from the same non-authoritative file
+as ND-25's.
+**Shipped meanwhile:** the row is not rendered.
+**The decision:** does the register's refusal stand, so the Purchasing block loses its first row — or
+does the Owner rule that a legibly-marked legacy value is acceptable on this one surface, which
+re-opens a refusal that was made deliberately and made total?

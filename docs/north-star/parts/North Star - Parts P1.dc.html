@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 36px;">
+  <div id="P1a" style="width: 1100px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Parts workspace — Lists North Star grammar applied</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Full shell/toolbar/state grammar per Lists P1 — only the object-specific choices shown here</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 0 28px 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+        <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Inventory → Parts</span>
+        <span style="font-size: 11.5px; color: #6B7A74;">Updated moments ago</span>
+      </div>
+      <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+      <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 18px 0 10px;">
+        <div>
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Parts</h2>
+          <div style="font-size: 13px; color: #4A5B55;"><strong style="color: #102B24;">1,412 parts</strong> · 1,286 active · 9 need attention</div>
+        </div>
+        <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #102B24; color: #fff;">New Part</span>
+      </header>
+      <div style="display: flex; gap: 20px; border-bottom: 1px solid #C3BCAB; font-size: 13px;">
+        <span style="padding: 7px 2px; font-weight: 700; border-bottom: 3px solid #B08A55; margin-bottom: -1px;">Active <span style="color: #6B7A74; font-weight: 600;">1,286</span></span>
+        <span style="padding: 7px 2px; color: #4A5B55;">Needs Attention <span style="color: #B23B3B; font-weight: 600;">9</span></span>
+        <span style="padding: 7px 2px; color: #4A5B55;">Serialized</span>
+        <span style="padding: 7px 2px; color: #4A5B55;">All 1,412</span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; padding: 10px 0;">
+        <span style="font-size: 12.5px; color: #6B7A74; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; min-width: 320px;">Search part number, description, barcode, or alias</span>
+        <span style="font: 600 12.5px Inter, sans-serif; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #1C4638;">Filter</span>
+        <span style="font-size: 12.5px; color: #4A5B55;">Sort <strong style="color: #102B24;">Part number</strong> ▾</span>
+        <span style="flex: 1;"></span>
+        <span style="font: 600 12.5px Inter, sans-serif; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #1C4638;">Scan</span>
+      </div>
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead><tr><th class="ls">Part</th><th class="ls">Manufacturer</th><th class="ls">Category</th><th class="ls">Control</th><th class="ls">Status</th><th class="ls" style="text-align: right;">On hand</th><th class="ls" style="padding-right: 0;">Attention</th></tr></thead>
+        <tbody>
+          <tr style="background: #FCFAF6;"><td class="ls"><strong>X49463-3</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Scraper Blade Kit, C7xx series</span></td><td class="ls">Taylor</td><td class="ls">Kits</td><td class="ls" style="color: #4A5B55;">Standard</td><td class="ls"><span style="color: #237A45; font-weight: 600;">Active</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">38</td><td class="ls" style="padding-right: 0;"><span style="color: #8A6D28; font-weight: 600;">Below reorder point</span></td></tr>
+          <tr><td class="ls"><strong>016132</strong><br><span style="color: #6B7A74; font-size: 12.5px;">O-Ring, Feed Tube</span></td><td class="ls">Taylor</td><td class="ls">Seals</td><td class="ls" style="color: #4A5B55;">Standard</td><td class="ls"><span style="color: #237A45; font-weight: 600;">Active</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">214</td><td class="ls" style="padding-right: 0; color: #6B7A74;">—</td></tr>
+          <tr><td class="ls"><strong>C712-COMP</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Compressor Assembly, C712</span></td><td class="ls">Taylor</td><td class="ls">Refrigeration</td><td class="ls" style="color: #4A5B55;">Serialized</td><td class="ls"><span style="color: #237A45; font-weight: 600;">Active</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">3</td><td class="ls" style="padding-right: 0; color: #6B7A74;">—</td></tr>
+          <tr><td class="ls"><strong>X31350</strong><br><span style="color: #6B7A74; font-size: 12.5px;">Drive Belt, 441 series</span></td><td class="ls">Taylor</td><td class="ls">Drive</td><td class="ls" style="color: #4A5B55;">Standard</td><td class="ls"><span style="color: #6B7A74; font-weight: 600;">Superseded</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">6</td><td class="ls" style="padding-right: 0; color: #6B7A74;">—</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size: 12px; color: #6B7A74; padding-top: 8px;">On hand is the governed baseline quantity — a live multi-location inventory position is <strong style="color: #B08A55;">AUTHORITY REQUIRED (UD-3/UD-4)</strong>; no “Available” column is shown because no availability authority exists and On hand ≠ Available. Search covers part number, description, barcode and alias — the governed lookup already resolves all four. Scan is the existing scanner entry point: identification only, never a mutation.</div>
+    </div>
+  </div>
+
+  <div id="P1b" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b</span>Part detail — North Star record · desktop 1440 · serialized part, parts-manager session</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Annotations: every section classified in the handoff README (EOS FACT / EOS ACTION / VERIFY / AUTHORITY REQUIRED)</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Inventory</div>
+        <div style="margin: 2px 12px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Parts</div>
+        <div style="padding: 5px 16px 5px 34px;">Part Master</div>
+        <div style="padding: 5px 16px 5px 34px;">Warehouse Workspace</div>
+        <div style="padding: 5px 16px 5px 34px;">Warehouses</div>
+        <div style="padding: 5px 16px 5px 34px;">Truck Inventory</div>
+        <div style="padding: 5px 16px 5px 34px;">Transfers</div>
+        <div style="padding: 5px 16px 5px 34px;">Receiving</div>
+        <div style="padding: 5px 16px 5px 34px;">Cycle Counts</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Administration</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 60px;">
+      <div style="width: 1360px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Inventory → <a href="#p">Parts</a> → C712-COMP</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 4:52 PM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 24px 0 14px;">
+          <div style="min-width: 0; flex: 1 1 0;">
+            <p style="font: 600 12px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #B08A55; margin: 0 0 6px;">Part · Serialized · Stocked</p>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 40px; font-weight: 700; margin: 0 0 4px; line-height: 1.05;">C712-COMP</h1>
+            <p style="font-family: 'Source Serif 4', serif; font-size: 17px; margin: 0 0 10px; color: #4A5B55;">Compressor Assembly, Taylor C712</p>
+            <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4A5B55; align-items: baseline;">
+              <span style="color: #237A45; font-weight: 600;">Active</span>
+              <span>Taylor · Refrigeration · <strong style="color: #102B24;">Each</strong></span>
+              <span>OEM (Genuine)</span>
+              <span><strong style="color: #102B24;">3 on hand</strong> across 2 locations</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; border: 1px solid #C3BCAB; color: #1C4638;">Manage identifiers</span>
+            <span style="font: 600 13px Inter, sans-serif; padding: 9px 18px; background: #102B24; color: #fff;">Edit part</span>
+          </div>
+        </header>
+        <div style="border: 1px solid #B08A55; background: #FCFAF6; padding: 11px 16px; margin-bottom: 22px; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: baseline; font-size: 13.5px;">
+          <span style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #B08A55;">Attention</span>
+          <span><strong>2 open work orders plan this part</strong> (demand 3) against 3 on hand — see Demand below. <span style="color: #6B7A74;">Derived from the existing demand read; no reservation is implied.</span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 56px;">
+          <div>
+            <section style="margin-bottom: 34px;">
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Where it is <span style="font: 600 12px Inter, sans-serif; color: #6B7A74;">· location describes where units sit — it never implies custody or availability</span></h2>
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead><tr><th class="ls">Location</th><th class="ls">Type</th><th class="ls" style="text-align: right;">On hand</th><th class="ls" style="padding-right: 0;">Note</th></tr></thead>
+                <tbody>
+                  <tr><td class="ls" style="font-weight: 600;">Phoenix Parts Room</td><td class="ls" style="color: #4A5B55;">Warehouse</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">2</td><td class="ls" style="padding-right: 0; color: #6B7A74;">Bin R4-08</td></tr>
+                  <tr><td class="ls" style="font-weight: 600;">Truck 12 — J. Barela</td><td class="ls" style="color: #4A5B55;">Vehicle</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">1</td><td class="ls" style="padding-right: 0; color: #6B7A74;">Truck stock</td></tr>
+                </tbody>
+              </table>
+              <div style="font-size: 12px; color: #6B7A74; padding-top: 6px;">Warehouse and truck rows come from their own governed reads. An “Available” column is deliberately absent — <strong style="color: #B08A55;">AUTHORITY REQUIRED</strong>: no availability derivation exists, and on hand is never re-labeled available.</div>
+            </section>
+            <section style="margin-bottom: 34px;">
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Serialized units <span style="font: 600 12px Inter, sans-serif; color: #6B7A74;">· this part is serial-tracked — each unit is its own governed asset</span></h2>
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead><tr><th class="ls">Serial</th><th class="ls">Status</th><th class="ls">Location</th><th class="ls" style="padding-right: 0;">Context</th></tr></thead>
+                <tbody>
+                  <tr><td class="ls" style="font-weight: 600;">K1129981</td><td class="ls"><span style="color: #237A45; font-weight: 600;">In stock</span></td><td class="ls">Phoenix Parts Room</td><td class="ls" style="padding-right: 0; color: #6B7A74;">Received Aug 12 · PO-2026-0341</td></tr>
+                  <tr><td class="ls" style="font-weight: 600;">K1129987</td><td class="ls"><span style="color: #237A45; font-weight: 600;">In stock</span></td><td class="ls">Phoenix Parts Room</td><td class="ls" style="padding-right: 0; color: #6B7A74;">Received Aug 12 · PO-2026-0341</td></tr>
+                  <tr><td class="ls" style="font-weight: 600;">K1128204</td><td class="ls"><span style="color: #8A6D28; font-weight: 600;">On truck</span></td><td class="ls">Truck 12</td><td class="ls" style="padding-right: 0; color: #6B7A74;">Staged for WO-2026-001241</td></tr>
+                </tbody>
+              </table>
+              <div style="font-size: 12px; color: #6B7A74; padding-top: 6px;">Standard/lot parts render their own treatment instead (lot table for LOT; nothing for untracked). Serialized units are never counted as loose quantity.</div>
+            </section>
+            <section style="margin-bottom: 34px;">
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Open demand <span style="font: 600 12px Inter, sans-serif; color: #6B7A74;">· work orders that plan this part — planned demand, not a reservation</span></h2>
+              <div style="border-top: 1px solid #D9D3C6;">
+                <div style="display: grid; grid-template-columns: 170px 1fr 120px 110px; gap: 16px; padding: 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px;"><a href="#w1" style="font-weight: 600;">WO-2026-001241</a><span>Install 2× C712 — Desert Sun Beverage</span><span style="color: #2B5B7A; font-weight: 600;">Scheduled</span><span style="text-align: right; font-variant-numeric: tabular-nums;">Plans 2</span></div>
+                <div style="display: grid; grid-template-columns: 170px 1fr 120px 110px; gap: 16px; padding: 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px;"><a href="#w2" style="font-weight: 600;">WO-2026-001237</a><span>Compressor noise — Route 66 Frozen Custard</span><span style="color: #102B24; font-weight: 600;">In progress</span><span style="text-align: right; font-variant-numeric: tabular-nums;">Plans 1</span></div>
+              </div>
+            </section>
+            <section>
+              <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Activity <span style="font: 600 12px Inter, sans-serif; color: #6B7A74;">· the governed movement ledger — 20 most recent</span></h2>
+              <div style="border-top: 1px solid #D9D3C6;">
+                <div style="display: grid; grid-template-columns: 150px 130px 1fr 110px; gap: 16px; padding: 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13px;"><span style="color: #6B7A74;">Aug 22, 9:14 AM</span><span style="color: #8A6D28; font-weight: 600;">Transfer out</span><span>Phoenix Parts Room → Truck 12 · <a href="#t">TR-2026-0092</a> · M. Ortiz</span><span style="text-align: right; font-variant-numeric: tabular-nums;">−1</span></div>
+                <div style="display: grid; grid-template-columns: 150px 130px 1fr 110px; gap: 16px; padding: 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13px;"><span style="color: #6B7A74;">Aug 12, 2:03 PM</span><span style="color: #237A45; font-weight: 600;">Received</span><span>Phoenix Parts Room · <a href="#po">PO-2026-0341</a> · D. Reyes</span><span style="text-align: right; font-variant-numeric: tabular-nums;">+3</span></div>
+                <div style="display: grid; grid-template-columns: 150px 130px 1fr 110px; gap: 16px; padding: 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13px;"><span style="color: #6B7A74;">Jul 30, 8:40 AM</span><span style="color: #102B24; font-weight: 600;">Counted</span><span>Phoenix Parts Room · count sheet CS-118 · D. Reyes</span><span style="text-align: right; font-variant-numeric: tabular-nums;">= 1</span></div>
+              </div>
+              <div style="font-size: 12px; color: #6B7A74; padding-top: 6px;">Only the seven governed movement types render (received, adjusted, transfer out/in, counted, returned, scrapped) plus work-order consumption from its own ledger — each with its human reference (PO, transfer, count sheet, WO), the location, and the actor. Nothing is synthesized into a universal timeline.</div>
+            </section>
+          </div>
+          <aside>
+            <section style="margin-bottom: 30px; font-size: 13px; line-height: 1.7;">
+              <h3 class="rh">Classification</h3>
+              <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px;">
+                <dt style="color: #6B7A74;">Status</dt><dd style="margin: 0;">Active</dd>
+                <dt style="color: #6B7A74;">Control</dt><dd style="margin: 0;">Serialized</dd>
+                <dt style="color: #6B7A74;">Stocking</dt><dd style="margin: 0;">Stocked</dd>
+                <dt style="color: #6B7A74;">Unit</dt><dd style="margin: 0;">Each</dd>
+                <dt style="color: #6B7A74;">OEM</dt><dd style="margin: 0;">OEM (Genuine)</dd>
+              </dl>
+            </section>
+            <section style="margin-bottom: 30px; font-size: 13px; line-height: 1.6;">
+              <h3 class="rh">Identifiers</h3>
+              <div style="display: grid; gap: 5px;">
+                <span><strong>C712-COMP</strong> <span style="color: #6B7A74;">· internal part number</span></span>
+                <span><strong>047-712-88</strong> <span style="color: #6B7A74;">· Taylor manufacturer PN</span></span>
+                <span><strong>0 12345 67890 5</strong> <span style="color: #6B7A74;">· UPC barcode</span></span>
+                <span style="color: #6B7A74;"><s>TAY-COMP-712</s> · legacy — inactive (a scan won’t resolve it)</span>
+              </div>
+              <div style="margin-top: 8px;"><a href="#ids">Manage identifiers &amp; scan-to-test →</a></div>
+            </section>
+            <section style="margin-bottom: 30px; font-size: 13px; line-height: 1.7;">
+              <h3 class="rh">Purchasing context</h3>
+              <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px;">
+                <dt style="color: #6B7A74;">Cost</dt><dd style="margin: 0;">$2,480.00 <span style="color: #B08A55; font-size: 11px;" title="Baseline value pending the UD-3 commercial authority.">baseline</span></dd>
+                <dt style="color: #6B7A74;">Reorder at</dt><dd style="margin: 0;">2 <span style="color: #B08A55; font-size: 11px;">baseline</span></dd>
+                <dt style="color: #6B7A74;">On order</dt><dd style="margin: 0; color: #6B7A74;">Not readable from this page yet</dd>
+              </dl>
+              <p style="margin: 8px 0 0; color: #6B7A74; font-size: 12px;">Cost and reorder point are governed baseline values (their live authorities are pending — provenance is shown, never hidden). Open-PO and incoming quantities need a purchasing read this page doesn’t perform: honest absence, no invented replenishment math.</p>
+            </section>
+            <section style="font-size: 13px; line-height: 1.6;">
+              <h3 class="rh">Used on</h3>
+              <span><strong>Taylor C712</strong> · Soft Serve Freezer</span><br>
+              <span><strong>Taylor C713</strong> · Soft Serve Freezer</span>
+              <p style="margin: 8px 0 0; color: #6B7A74; font-size: 12px;">From the existing compatibility catalog — reference data, not a new database.</p>
+            </section>
+          </aside>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p style="font-size: 12px; color: #4A5B55; margin: 8px 0 0; max-width: 120ch;">Recognition over IDs: the part number is the governed identity and the title; the description is the serif subtitle; classification renders in vocabulary words (Active, Serialized, Stocked, Each — never raw enums). The three quantity truths stay separate: on hand (governed baseline), demand (planned, never a reservation), serialized units (assets, never loose quantity). Actions are the two that exist — Edit part (governed part-master write) and Manage identifiers (governed alias commands + scan-to-test). No Available, no replenishment math, no scan-mutates-inventory.</p>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap;">
+    <div id="P1c" style="width: 420px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1c</span>Handheld 375 — find it, count it, know where it is</span>
+      <div style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 12px 14px 20px;">
+        <div style="font: 600 10px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">Inventory → Parts</div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; margin: 6px 0 10px;"></div>
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <span style="flex: 1; color: #6B7A74; font-size: 12.5px; padding: 11px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px;">Search or scan a part</span>
+          <span style="font: 600 12.5px Inter, sans-serif; padding: 11px 14px; background: #102B24; color: #fff;">Scan</span>
+        </div>
+        <div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">C712-COMP</div>
+        <div style="font-size: 13px; margin-bottom: 2px;">Compressor Assembly, Taylor C712</div>
+        <div style="font-size: 12.5px; color: #4A5B55; margin-bottom: 10px;"><span style="color: #237A45; font-weight: 600;">Active</span> · Serialized · <strong>3 on hand</strong></div>
+        <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 10px 12px; margin-bottom: 6px; font-size: 12.5px;">
+          <div style="display: flex; justify-content: space-between;"><strong>Phoenix Parts Room</strong><span style="font-variant-numeric: tabular-nums;">2</span></div>
+          <div style="color: #6B7A74; font-size: 12px;">Warehouse · Bin R4-08</div>
+        </div>
+        <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 10px 12px; margin-bottom: 10px; font-size: 12.5px;">
+          <div style="display: flex; justify-content: space-between;"><strong>Truck 12 — J. Barela</strong><span style="font-variant-numeric: tabular-nums;">1</span></div>
+          <div style="color: #6B7A74; font-size: 12px;">Vehicle · staged for WO-2026-001241</div>
+        </div>
+        <div style="font-size: 12.5px; color: #4A5B55; border-top: 1px solid #D9D3C6; padding-top: 8px;">Serials: K1129981 · K1129987 · K1128204<br><span style="color: #6B7A74;">Identifiers, demand, and activity behind “More”.</span></div>
+        <p style="font-size: 11.5px; color: #6B7A74; margin: 10px 0 0;">Priority: identity → status/control/quantity → locations → serials. Scan identifies — the banner says so if a scanned identifier is inactive or unknown (the probe vocabulary). Targets ≥44px; no horizontal scroll.</p>
+      </div>
+    </div>
+    <div id="P1d" style="width: 640px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1d</span>Honest states &amp; identifier surface</span>
+      <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 20px 24px; margin-top: 8px; display: grid; gap: 14px; font-size: 12.5px;">
+        <div style="border-left: 3px solid #B23B3B; padding-left: 10px;"><strong>Blocked — permission.</strong> “You do not have access to the canonical Parts catalog.” Detail never falls back to static data; a blocked read blocks the page (the domain’s own fail-closed rule).</div>
+        <div style="border-left: 3px solid #B08A55; padding-left: 10px;"><strong>Blocked — unavailable / unverified.</strong> “The canonical Parts catalog is currently unavailable” vs “This part could not be verified against the canonical source, so its details are not shown.” Distinct from Not found.</div>
+        <div style="border-left: 3px solid #6B7A74; padding-left: 10px;"><strong>Not found.</strong> A legitimate “no such part” — different sentence, different fix, never conflated with a blocked read.</div>
+        <div style="border-left: 3px solid #6B7A74; padding-left: 10px;"><strong>Zero inventory, valid part.</strong> The record renders fully; Where-it-is says “No units on hand anywhere — last movement Aug 2 (scrapped).” A part with no stock is not a missing part.</div>
+        <div style="border-left: 3px solid #B08A55; padding-left: 10px;"><strong>Capability inactive.</strong> Sections whose read exists but isn’t granted/active render in place: “Serialized-asset detail isn’t available to you.” Structure preserved, nothing simulated.</div>
+        <div style="border-left: 3px solid #102B24; padding-left: 10px;"><strong>Identifier surface (existing, governed).</strong> Alias list with type words (“Manufacturer part number”, “UPC barcode”…), active/inactive state, add/deactivate/reactivate through the governed commands, and scan-to-test with its five honest outcomes — “resolves to THIS part” / “a DIFFERENT part” / “registered but INACTIVE” / “nothing registered” / “not a usable value”. Aliases and barcodes never become canonical identity.</div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>
