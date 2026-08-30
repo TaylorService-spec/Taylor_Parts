@@ -90,57 +90,83 @@ async function main() {
     return;
   }
 
-  const totals = { resolved: 0, unresolved: 0, ambiguous: 0, ownerless: 0 };
+  const gate = censusGate(rows);
+  const col = (s, w) => String(s).padStart(w);
+
   console.log(`Ownership census — ${args.projectId}${limit ? ` (limit ${limit}/family)` : ""}\n`);
-  console.log("family".padEnd(24) + "type".padEnd(9) + "resolved".padStart(9) + "unresolv".padStart(9) + "ambig".padStart(8) + "ownerless".padStart(11));
-  console.log("-".repeat(70));
+  const header =
+    "collection".padEnd(30) +
+    "type".padEnd(9) +
+    col("scan", 7) +
+    col("RESOLVED", 9) +
+    col("OWNERLESS", 10) +
+    col("INVALID", 8) +
+    col("UNKNOWN", 8) +
+    col("AMBIG", 7) +
+    "  flags";
+  console.log(header);
+  console.log("-".repeat(header.length));
+
   for (const r of rows) {
     if (r.error) {
-      console.log(`${r.family.padEnd(24)}${r.ownerType.padEnd(9)}  READ FAILED: ${r.error}`);
+      console.log(`${r.collection.padEnd(30)}${r.ownerType.padEnd(9)}  UNREADABLE: ${r.error}`);
       continue;
     }
-    for (const k of Object.keys(totals)) totals[k] += r.counts[k];
     console.log(
-      r.family.padEnd(24) +
+      r.collection.padEnd(30) +
         r.ownerType.padEnd(9) +
-        String(r.counts.resolved).padStart(9) +
-        String(r.counts.unresolved).padStart(9) +
-        String(r.counts.ambiguous).padStart(8) +
-        String(r.counts.ownerless).padStart(11) +
-        (r.truncated ? "   [TRUNCATED by --limit]" : ""),
+        col(r.scanned, 7) +
+        col(r.counts.resolved, 9) +
+        col(r.counts.ownerless, 10) +
+        col(r.counts.invalid, 8) +
+        col(r.counts.unknown, 8) +
+        col(r.counts.ambiguous, 7) +
+        (r.truncated ? "  TRUNCATED" : ""),
     );
   }
-  console.log("-".repeat(70));
+
+  console.log("-".repeat(header.length));
+  const scanned = rows.reduce((n, r) => n + (r.error ? 0 : r.scanned), 0);
   console.log(
-    "TOTAL".padEnd(33) +
-      String(totals.resolved).padStart(9) +
-      String(totals.unresolved).padStart(9) +
-      String(totals.ambiguous).padStart(8) +
-      String(totals.ownerless).padStart(11),
+    "TOTAL".padEnd(39) +
+      col(scanned, 7) +
+      col(gate.totals.resolved, 9) +
+      col(gate.totals.ownerless, 10) +
+      col(gate.totals.invalid, 8) +
+      col(gate.totals.unknown, 8) +
+      col(gate.totals.ambiguous, 7),
   );
 
-  const gate = censusGate(rows);
   if (gate.unreadable.length > 0) {
-    console.log(`\n${gate.unreadable.length} family/families could not be read: ${gate.unreadable.join(", ")}.`);
+    console.log(`\nUNREADABLE families (${gate.unreadable.length}): ${gate.unreadable.join(", ")}`);
+  }
+  if (gate.truncated.length > 0) {
+    console.log(`TRUNCATED families (${gate.truncated.length}): ${gate.truncated.join(", ")}`);
   }
 
-  console.log("\nOffending samples (up to 10 per bucket):");
+  // Reason CLASSIFICATION, not a document dump -- the ruling asks for the reason, "not necessarily
+  // every document ID if volume is large".
+  console.log("\nReason classification (non-RESOLVED):");
+  let anyReasons = false;
   for (const r of rows) {
     if (r.error) continue;
-    for (const bucket of ["ambiguous", "unresolved", "ownerless"]) {
-      if (r.samples[bucket].length > 0) {
-        console.log(`  ${r.family} / ${bucket}: ${r.samples[bucket].join(", ")}`);
-      }
-    }
+    const entries = Object.entries(r.reasons).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) continue;
+    anyReasons = true;
+    console.log(`  ${r.collection}`);
+    for (const [reason, n] of entries) console.log(`    ${String(n).padStart(7)}  ${reason}`);
   }
+  if (!anyReasons) console.log("  (none)");
 
   console.log(
     gate.assessable
-      ? "\nGATE: zero unresolved records and every family was read. Enforcement is assessable."
+      ? "\nGATE: zero non-resolved records, every family read in full. Enforcement is assessable."
       : `\nGATE: ${gate.blocking} record(s) not resolved` +
-          (gate.unreadable.length > 0 ? ` and ${gate.unreadable.length} family/families unreadable` : "") +
+          (gate.unreadable.length > 0 ? `, ${gate.unreadable.length} family/families unreadable` : "") +
+          (gate.truncated.length > 0 ? `, ${gate.truncated.length} truncated` : "") +
           ". Enforcement stays off.",
   );
+  console.log("This census is READ-ONLY and authorizes nothing. Backfill remains a separate Owner gate.");
 }
 
 main().catch((err) => {

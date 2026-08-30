@@ -25,12 +25,29 @@ import { OWNERSHIP_MATRIX, type OwnershipFamily } from "./ownershipMatrix";
 
 export const MAX_SAMPLE_IDS = 10;
 
+/**
+ * The census buckets, per the Owner's census ruling (2026-08-30). UNRESOLVED is REPORTED as its two
+ * constituent facts rather than as one number, because they call for different work:
+ *
+ *   resolved   exactly one governed owner was derived
+ *   ownerless  no ownership-bearing field is present at all -- a decision to make
+ *   invalid    a value IS present and is malformed or the wrong shape -- data to repair
+ *   unknown    a well-formed value naming nothing this build recognises -- nothing broken
+ *   ambiguous  two ownership-bearing fields resolve to DIFFERENT owners -- needs a human
+ *
+ * `invalid + unknown` is the old `unresolved` total, and nothing is double-counted: every document
+ * lands in exactly one bucket.
+ */
 export interface CensusCounts {
   resolved: number;
-  unresolved: number;
-  ambiguous: number;
   ownerless: number;
+  invalid: number;
+  unknown: number;
+  ambiguous: number;
 }
+
+/** Reason strings tallied per bucket, so a large family reports WHY without listing every id. */
+export type ReasonTally = Record<string, number>;
 
 export interface CensusFamilyReport {
   family: string;
@@ -39,7 +56,29 @@ export interface CensusFamilyReport {
   scanned: number;
   truncated: boolean;
   counts: CensusCounts;
-  samples: { unresolved: string[]; ambiguous: string[]; ownerless: string[] };
+  /** reason -> count, for every non-resolved document. The volume-safe form of the sample list. */
+  reasons: ReasonTally;
+  samples: { invalid: string[]; unknown: string[]; ambiguous: string[]; ownerless: string[] };
+}
+
+/** A family the census could not read. Distinct from an empty family, and it blocks the gate. */
+export interface CensusFamilyError {
+  family: string;
+  collection: string;
+  ownerType: string;
+  error: string;
+}
+
+const emptyCounts = (): CensusCounts => ({ resolved: 0, ownerless: 0, invalid: 0, unknown: 0, ambiguous: 0 });
+
+/** Which bucket a derivation lands in. The one place resolution+code becomes a column. */
+export function censusBucket(derivation: OwnerDerivation): keyof CensusCounts {
+  if (derivation.resolution === OWNERSHIP_RESOLUTION.RESOLVED) return "resolved";
+  if (derivation.resolution === OWNERSHIP_RESOLUTION.OWNERLESS) return "ownerless";
+  if (derivation.resolution === OWNERSHIP_RESOLUTION.AMBIGUOUS) return "ambiguous";
+  // UNRESOLVED without a code should be impossible -- every UNRESOLVED path sets one. Counting an
+  // uncoded one as INVALID keeps it visible rather than dropping it from the totals.
+  return derivation.code === "UNKNOWN" ? "unknown" : "invalid";
 }
 
 export interface CensusDocument {
@@ -57,7 +96,12 @@ export interface CensusDocument {
  */
 export function classifyDocument(family: OwnershipFamily, data: Record<string, unknown>): OwnerDerivation {
   if (family.ownerFields.length === 0) {
-    return { resolution: OWNERSHIP_RESOLUTION.OWNERLESS, owner: null, reason: "family has no ownership storage yet" };
+    return {
+      resolution: OWNERSHIP_RESOLUTION.OWNERLESS,
+      owner: null,
+      reason: "family has no ownership storage yet",
+      code: null,
+    };
   }
   const derivations = family.ownerFields.map((field) => {
     if (field === "accountOwner") return deriveAccountOwner(data);
@@ -73,16 +117,20 @@ export function censusFamily(
   documents: readonly CensusDocument[],
   truncated = false,
 ): CensusFamilyReport {
-  const counts: CensusCounts = { resolved: 0, unresolved: 0, ambiguous: 0, ownerless: 0 };
-  const samples: CensusFamilyReport["samples"] = { unresolved: [], ambiguous: [], ownerless: [] };
+  const counts = emptyCounts();
+  const reasons: ReasonTally = {};
+  const samples: CensusFamilyReport["samples"] = { invalid: [], unknown: [], ambiguous: [], ownerless: [] };
 
   for (const doc of documents) {
-    const { resolution, reason } = classifyDocument(family, doc.data);
-    const key = resolution.toLowerCase() as keyof CensusCounts;
+    const derivation = classifyDocument(family, doc.data);
+    const key = censusBucket(derivation);
     counts[key] += 1;
-    if (key !== "resolved" && samples[key].length < MAX_SAMPLE_IDS) {
-      samples[key].push(reason ? `${doc.id} (${reason})` : doc.id);
-    }
+    if (key === "resolved") continue;
+    // The reason TALLY is the volume-safe answer: a family with 40,000 ownerless rows reports one
+    // line saying so, instead of 40,000 ids or a truncated sample that hides the shape.
+    const reason = derivation.reason ?? "(no reason given)";
+    reasons[reason] = (reasons[reason] ?? 0) + 1;
+    if (samples[key].length < MAX_SAMPLE_IDS) samples[key].push(doc.id);
   }
 
   return {
@@ -92,6 +140,7 @@ export function censusFamily(
     scanned: documents.length,
     truncated,
     counts,
+    reasons,
     samples,
   };
 }
@@ -103,14 +152,30 @@ export function censusFamily(
  * as zero would let enforcement be enabled over records nobody managed to look at -- the exact
  * failure mode "do not deploy enforcement solely because the code exists" is guarding against.
  */
-export function censusGate(
-  reports: readonly (CensusFamilyReport | { family: string; error: string })[],
-): { blocking: number; unreadable: string[]; assessable: boolean } {
-  const unreadable = reports.filter((r): r is { family: string; error: string } => "error" in r).map((r) => r.family);
-  const blocking = reports
-    .filter((r): r is CensusFamilyReport => !("error" in r))
-    .reduce((n, r) => n + r.counts.unresolved + r.counts.ambiguous + r.counts.ownerless, 0);
-  return { blocking, unreadable, assessable: blocking === 0 && unreadable.length === 0 };
+export function censusGate(reports: readonly (CensusFamilyReport | CensusFamilyError)[]): {
+  blocking: number;
+  unreadable: string[];
+  truncated: string[];
+  totals: CensusCounts;
+  assessable: boolean;
+} {
+  const unreadable = reports.filter((r): r is CensusFamilyError => "error" in r).map((r) => r.family);
+  const ok = reports.filter((r): r is CensusFamilyReport => !("error" in r));
+  const totals = emptyCounts();
+  for (const r of ok) {
+    for (const k of Object.keys(totals) as (keyof CensusCounts)[]) totals[k] += r.counts[k];
+  }
+  const blocking = totals.ownerless + totals.invalid + totals.unknown + totals.ambiguous;
+  // A TRUNCATED family also blocks. A --limit run measured a page, not a population, and a gate
+  // decided on a page would be a guess wearing a number's clothes.
+  const truncated = ok.filter((r) => r.truncated).map((r) => r.family);
+  return {
+    blocking,
+    unreadable,
+    truncated,
+    totals,
+    assessable: blocking === 0 && unreadable.length === 0 && truncated.length === 0,
+  };
 }
 
 /** Every family the census must cover. Exported so the CLI cannot iterate a narrower list. */

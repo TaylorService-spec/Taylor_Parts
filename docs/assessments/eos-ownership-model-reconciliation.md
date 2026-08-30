@@ -244,3 +244,77 @@ before it is ever pointed at data.
 **O-4 — three modules each declare their own `ACCOUNTS_COLLECTION = "accounts"`.** A fourth was not
 added; consolidating them into `constants/collections.ts` is a worthwhile tidy that is not this
 change's business.
+
+---
+
+# Sandbox census — measured, 2026-08-30
+
+Owner-authorized read-only run (ruling O-3) against `eos-platform-sandbox`. Raw output:
+`sb-evidence/ownership-census-sandbox-2026-08-30.txt` / `.json`.
+
+**Totals: 1,359 scanned — 36 RESOLVED, 1,323 OWNERLESS, 0 INVALID, 0 UNKNOWN, 0 AMBIGUOUS,
+0 UNREADABLE, 0 TRUNCATED.**
+
+Every family was read in full. No malformed ownership value exists anywhere in the sandbox, and no
+record has two ownership facts that disagree — so the backlog is entirely *absent* ownership, not
+*broken* ownership. That is the cheaper of the two problems to be facing.
+
+## The finding
+
+**`accounts`: 103 records, 0 with an owner, reason "no accountOwner".**
+
+This is categorically different from every other OWNERLESS row. The other 1,220 are "family has no
+ownership storage yet" — the field does not exist to be filled. Accounts *has* the storage, the
+governed write path, the seven-field completeness invariant and the UI — and not one of the 103
+sandbox Accounts uses it.
+
+That matters because ruling D-4 makes the Account owner the **root of the whole person-owned
+inheritance chain**. On this data, a `createOpportunity` call that omits `ownerEmployeeId` REFUSES
+for every one of the 103 accounts, exactly as designed. The chain is correct and its root is empty.
+
+**Caveat, and it is load-bearing:** the sandbox is synthetic seeded data. A 0/103 rate very likely
+says the seed scripts never set `accountOwner`, not that the business does not assign account
+owners. Production would answer that, and this census does not.
+
+## Commercial families are already complete
+
+`opportunities` 14/14, `sales_agreements` 5/5, `sales_orders` 17/17 — 100% RESOLVED, because
+`ownerEmployeeId` was *required* until this change relaxed it. Those 36 records need no remediation
+of any kind.
+
+## By family
+
+| Collection | Owner type | Scanned | RESOLVED | OWNERLESS | Reason |
+|---|---|---|---|---|---|
+| `accounts` | USER | 103 | 0 | 103 | **no accountOwner** — storage exists, unused |
+| `opportunities` | USER | 14 | **14** | 0 | — |
+| `sales_agreements` | USER | 5 | **5** | 0 | — |
+| `sales_orders` | USER | 17 | **17** | 0 | — |
+| `contacts` | USER | 339 | 0 | 339 | no ownership storage yet |
+| `locations` | USER | 183 | 0 | 183 | no ownership storage yet |
+| `fieldops_jobs` | USER | 45 | 0 | 45 | no ownership storage yet |
+| `fieldops_wos` | USER | 30 | 0 | 30 | no ownership storage yet |
+| `reorder_requests` | USER | 6 | 0 | 6 | no ownership storage yet |
+| `invoices` | USER | 1 | 0 | 1 | no ownership storage yet |
+| `equipment` | COMPANY | 288 | 0 | 288 | no ownership storage yet |
+| `inventory_transactions` | COMPANY | 103 | 0 | 103 | no ownership storage yet |
+| `parts` | COMPANY | 52 | 0 | 52 | no ownership storage yet |
+| `equipment_models` | COMPANY | 48 | 0 | 48 | no ownership storage yet |
+| `transfer_orders` | COMPANY | 47 | 0 | 47 | no ownership storage yet |
+| `cycle_counts` | COMPANY | 24 | 0 | 24 | no ownership storage yet |
+| `part_aliases` | COMPANY | 21 | 0 | 21 | no ownership storage yet |
+| `mobile_locations` | COMPANY | 7 | 0 | 7 | no ownership storage yet |
+| `part_supplier_items` | COMPANY | 7 | 0 | 7 | no ownership storage yet |
+| `warehouses` / `stock_locations` | COMPANY | 5 / 5 | 0 | 5 / 5 | no ownership storage yet |
+| `reorder_purchase_orders` | COMPANY | 3 | 0 | 3 | no ownership storage yet |
+| `suppliers` / `receiving_orders` / `trucks` | COMPANY | 2 each | 0 | 2 each | no ownership storage yet |
+| `payments`, `payment_applications`, `invoice_adjustments`, `refunds`, `manufacturers`, `supplier_catalog`, `purchase_orders`, `inventory_actions` | — | 0 | 0 | 0 | empty in sandbox |
+
+Eight families are empty in the sandbox, so this run says nothing about them either way.
+
+## What the census does NOT establish
+
+Per the Owner's instruction, expected ownerlessness is **not** permission to backfill. The census
+establishes facts; it does not name a deterministic Taylor-vs-Ventana source for any family, and
+none was inferred from `lineOfBusiness`, display text, title holder, customer, location name,
+creator, or assignment.

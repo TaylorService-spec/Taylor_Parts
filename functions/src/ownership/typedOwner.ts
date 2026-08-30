@@ -31,10 +31,29 @@ export const OWNERSHIP_RESOLUTION = {
 
 export type OwnershipResolution = (typeof OWNERSHIP_RESOLUTION)[keyof typeof OWNERSHIP_RESOLUTION];
 
+/**
+ * Why an UNRESOLVED derivation failed. Owner census ruling (2026-08-30) asks for INVALID and
+ * UNKNOWN as separate columns, and they are separate facts:
+ *
+ *   INVALID — the stored value is malformed, missing, or the wrong shape. Something is broken.
+ *   UNKNOWN — the value is well-formed but names nothing this build recognises. Nothing is
+ *             broken; a company id may simply be newer than this deployment.
+ *
+ * They need different remediation, which is why they are not one bucket. `null` on a RESOLVED,
+ * OWNERLESS, or AMBIGUOUS outcome — those are not failures of lookup.
+ *
+ * Person-owned families produce INVALID only. Producing UNKNOWN for an employee id would require
+ * a cross-collection existence lookup, which Owner ruling O-1 explicitly excluded from ownership
+ * resolution ("would introduce a fallible cross-collection lookup into otherwise deterministic
+ * ownership resolution"). So a USER family's UNKNOWN count is structurally zero, not merely empty.
+ */
+export type UnresolvedCode = "INVALID" | "UNKNOWN";
+
 export interface OwnerDerivation {
   resolution: OwnershipResolution;
   owner: TypedOwner | null;
   reason: string | null;
+  code: UnresolvedCode | null;
 }
 
 const nonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
@@ -56,10 +75,16 @@ export function typedOwner(type: unknown, id: unknown): TypedOwner | null {
   return isTypedOwner(candidate) ? Object.freeze(candidate) : null;
 }
 
-const outcome = (resolution: OwnershipResolution, owner: TypedOwner | null, reason?: string): OwnerDerivation => ({
+const outcome = (
+  resolution: OwnershipResolution,
+  owner: TypedOwner | null,
+  reason?: string,
+  code?: UnresolvedCode,
+): OwnerDerivation => ({
   resolution,
   owner,
   reason: reason ?? null,
+  code: code ?? null,
 });
 
 /**
@@ -71,15 +96,15 @@ export function deriveAccountOwner(accountDoc: Record<string, unknown> | null | 
   const map = accountDoc?.accountOwner;
   if (map === null || map === undefined) return outcome(OWNERSHIP_RESOLUTION.OWNERLESS, null, "no accountOwner");
   if (typeof map !== "object" || Array.isArray(map)) {
-    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, "accountOwner is not a map");
+    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, "accountOwner is not a map", "INVALID");
   }
   const employeeId = (map as Record<string, unknown>).assignedToEmployeeId;
   if (!nonEmptyString(employeeId)) {
-    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, "accountOwner has no assignedToEmployeeId");
+    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, "accountOwner has no assignedToEmployeeId", "INVALID");
   }
   const owner = typedOwner(OWNER_TYPES.USER, employeeId);
   return owner === null
-    ? outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, "assignedToEmployeeId is not a usable id")
+    ? outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, "assignedToEmployeeId is not a usable id", "INVALID")
     : outcome(OWNERSHIP_RESOLUTION.RESOLVED, owner);
 }
 
@@ -91,11 +116,11 @@ export function deriveEmployeeRefOwner(
   const value = doc?.[field];
   if (value === null || value === undefined) return outcome(OWNERSHIP_RESOLUTION.OWNERLESS, null, `no ${field}`);
   if (!nonEmptyString(value)) {
-    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is empty or not a string`);
+    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is empty or not a string`, "INVALID");
   }
   const owner = typedOwner(OWNER_TYPES.USER, value);
   return owner === null
-    ? outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is not a usable id`)
+    ? outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is not a usable id`, "INVALID")
     : outcome(OWNERSHIP_RESOLUTION.RESOLVED, owner);
 }
 
@@ -110,11 +135,11 @@ export function deriveCompanyOwner(
   const value = doc?.[field];
   if (value === null || value === undefined) return outcome(OWNERSHIP_RESOLUTION.OWNERLESS, null, `no ${field}`);
   const { state } = resolveOperatingCompany(value);
-  if (state === "INVALID") return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is malformed`);
-  if (state === "UNKNOWN") return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} names no seeded company`);
+  if (state === "INVALID") return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is malformed`, "INVALID");
+  if (state === "UNKNOWN") return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} names no seeded company`, "UNKNOWN");
   const owner = typedOwner(OWNER_TYPES.COMPANY, value);
   return owner === null
-    ? outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is not a usable id`)
+    ? outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is not a usable id`, "INVALID")
     : outcome(OWNERSHIP_RESOLUTION.RESOLVED, owner);
 }
 
@@ -141,10 +166,16 @@ export function combineOwnerDerivations(outcomes: readonly (OwnerDerivation | nu
   }
   const unresolved = list.filter((o) => o.resolution === OWNERSHIP_RESOLUTION.UNRESOLVED);
   if (unresolved.length > 0) {
+    // INVALID wins over UNKNOWN when a record manages both: a broken value is the more urgent fact,
+    // and reporting it as merely unrecognised would understate the repair needed.
+    const code: UnresolvedCode = unresolved.some((o) => o.code === "INVALID")
+      ? "INVALID"
+      : (unresolved[0].code ?? "INVALID");
     return outcome(
       OWNERSHIP_RESOLUTION.UNRESOLVED,
       null,
       unresolved.map((o) => o.reason).filter(Boolean).join("; "),
+      code,
     );
   }
   const reasons = list.map((o) => o.reason).filter((r): r is string => Boolean(r));

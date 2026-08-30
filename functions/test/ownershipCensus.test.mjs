@@ -34,37 +34,67 @@ test("a family with no ownership storage counts as OWNERLESS, never as a clean z
   assert.match(out.reason, /no ownership storage yet/);
 });
 
-test("the four buckets are counted from the real derivations", () => {
+test("the five buckets are counted from the real derivations, and nothing is double-counted", () => {
   const report = censusFamily(accounts, [
     { id: "a1", data: { accountOwner: { assignedToEmployeeId: "emp-1" } } },
     { id: "a2", data: { accountOwner: { assignedToUserId: "uid-1" } } },
     { id: "a3", data: {} },
     { id: "a4", data: { accountOwner: "emp-9" } },
   ]);
-  assert.deepEqual(report.counts, { resolved: 1, unresolved: 2, ambiguous: 0, ownerless: 1 });
+  assert.deepEqual(report.counts, { resolved: 1, ownerless: 1, invalid: 2, unknown: 0, ambiguous: 0 });
   assert.equal(report.scanned, 4);
+  assert.equal(
+    Object.values(report.counts).reduce((a, b) => a + b, 0),
+    report.scanned,
+    "every document must land in exactly one bucket",
+  );
   assert.equal(report.truncated, false);
-  // Offenders are named, with the reason, so the backlog is actionable rather than a bare number.
-  assert.ok(report.samples.unresolved.some((s) => s.startsWith("a2 (")));
-  assert.deepEqual(report.samples.ownerless, ["a3 (no accountOwner)"]);
-  assert.deepEqual(report.samples.resolved, undefined);
+  assert.deepEqual(report.samples.ownerless, ["a3"]);
+  assert.ok(report.samples.invalid.includes("a2"));
 });
 
-test("the offender sample is capped at ten, and the COUNT is not", () => {
+test("INVALID and UNKNOWN are separate columns, not one unresolved number", () => {
+  // A malformed company id is data to repair; a well-formed unseeded one is a build that does not
+  // recognise a legitimate value. Different work, so different columns.
+  const report = censusFamily({ ...parts, ownerFields: ["operatingCompanyId"] }, [
+    { id: "p1", data: { operatingCompanyId: "taylor" } },
+    { id: "p2", data: { operatingCompanyId: "TAYLOR" } },
+    { id: "p3", data: { operatingCompanyId: "third-company" } },
+  ]);
+  assert.deepEqual(report.counts, { resolved: 1, ownerless: 0, invalid: 1, unknown: 1, ambiguous: 0 });
+  assert.deepEqual(report.samples.invalid, ["p2"]);
+  assert.deepEqual(report.samples.unknown, ["p3"]);
+});
+
+test("a USER family's UNKNOWN column is structurally zero -- O-1 forbids the lookup that would fill it", () => {
+  const report = censusFamily(opportunities, [
+    { id: "o1", data: { ownerEmployeeId: "emp-does-not-exist" } },
+    { id: "o2", data: { ownerEmployeeId: "" } },
+  ]);
+  // A nonexistent employee id still RESOLVES: ownership resolution is deterministic and does not
+  // do a cross-collection existence check (Owner ruling O-1). Only a malformed value is INVALID.
+  assert.equal(report.counts.unknown, 0);
+  assert.equal(report.counts.resolved, 1);
+  assert.equal(report.counts.invalid, 1);
+});
+
+test("the reason TALLY is the volume-safe report; the id sample is capped at ten", () => {
   const docs = Array.from({ length: 25 }, (_, i) => ({ id: `o${i}`, data: {} }));
   const report = censusFamily(opportunities, docs);
   assert.equal(report.counts.ownerless, 25);
+  // 40,000 ownerless rows must report as one line, not 40,000 ids or a misleading sample.
+  assert.deepEqual(report.reasons, { "no ownerEmployeeId": 25 });
   assert.equal(report.samples.ownerless.length, 10);
 });
 
-test("truncation is reported, never silent", () => {
-  const report = censusFamily(opportunities, [{ id: "o1", data: { ownerEmployeeId: "emp-1" } }], true);
-  assert.equal(report.truncated, true);
-});
-
-test("the gate: any unresolved, ambiguous, or ownerless record keeps enforcement off", () => {
+test("the gate: any non-resolved record keeps enforcement off", () => {
   const clean = censusFamily(opportunities, [{ id: "o1", data: { ownerEmployeeId: "emp-1" } }]);
-  assert.deepEqual(censusGate([clean]), { blocking: 0, unreadable: [], assessable: true });
+  const g = censusGate([clean]);
+  assert.equal(g.blocking, 0);
+  assert.deepEqual(g.unreadable, []);
+  assert.deepEqual(g.truncated, []);
+  assert.equal(g.assessable, true);
+  assert.equal(g.totals.resolved, 1);
 
   const dirty = censusFamily(opportunities, [{ id: "o2", data: {} }]);
   const gate = censusGate([clean, dirty]);
@@ -73,12 +103,22 @@ test("the gate: any unresolved, ambiguous, or ownerless record keeps enforcement
 });
 
 test("the gate: A FAMILY NOBODY COULD READ ALSO BLOCKS IT", () => {
-  // This is the important one. A permission or index failure that counted as zero would let
-  // enforcement be enabled over records that were never looked at -- "do not deploy enforcement
-  // solely because the code exists", seen from the data side.
+  // A permission or index failure that counted as zero would let enforcement be enabled over
+  // records nobody looked at -- "do not deploy enforcement solely because the code exists", seen
+  // from the data side.
   const clean = censusFamily(opportunities, [{ id: "o1", data: { ownerEmployeeId: "emp-1" } }]);
-  const gate = censusGate([clean, { family: "equipment", error: "PERMISSION_DENIED" }]);
+  const gate = censusGate([clean, { family: "equipment", collection: "equipment", ownerType: "COMPANY", error: "PERMISSION_DENIED" }]);
   assert.equal(gate.blocking, 0);
   assert.deepEqual(gate.unreadable, ["equipment"]);
+  assert.equal(gate.assessable, false);
+});
+
+test("the gate: A TRUNCATED FAMILY ALSO BLOCKS IT", () => {
+  // A --limit run measured a page, not a population. A gate decided on a page is a guess wearing a
+  // number's clothes, so truncation is reported and it blocks.
+  const partial = censusFamily(opportunities, [{ id: "o1", data: { ownerEmployeeId: "emp-1" } }], true);
+  const gate = censusGate([partial]);
+  assert.equal(gate.blocking, 0);
+  assert.deepEqual(gate.truncated, ["opportunity"]);
   assert.equal(gate.assessable, false);
 });
