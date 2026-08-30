@@ -121,8 +121,19 @@ function record(id, passed, detail) {
 
 // THE CATALOGUE TABLE, not whichever fo-table happens to be first. Anchored on its own heading, so
 // adding or removing a panel above it cannot silently re-point this gate at a different table.
+// THE CATALOGUE IS FOUND BY ITS OWN CONTRACT, not by a heading.
+//
+// This resolved the table by matching an h3 reading "Parts Catalog". That heading existed only
+// because Frame 1a was first composed as one panel among many; when the catalogue was moved to
+// lead the page it took the page's own title and the h3 went, and every selector anchored on it
+// broke at once. `data-parts-catalog` is a stable contract between the product and its gate, and
+// it survives the next rename -- which is the whole point of having one.
+function catalogPanel(page) {
+  return page.locator("[data-parts-catalog]");
+}
+
 function catalogTable(page) {
-  return page.locator('xpath=//h3[normalize-space()="Parts Catalog"]/following::table[contains(@class,"fo-table")][1]');
+  return catalogPanel(page).locator("table.fo-table").first();
 }
 
 // SETTLE BEFORE MEASURING. The catalogue read is a whole-collection getDocs and the health ledger is
@@ -133,7 +144,7 @@ function catalogTable(page) {
 // parts" are three different findings and only one of them is a product defect.
 async function openWorkspace(page) {
   await page.goto(`${ORIGIN}${WORKSPACE}`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('h3:has-text("Parts Catalog")', { timeout: 30000 });
+  await page.waitForSelector("[data-parts-catalog]", { timeout: 30000 });
   try {
     // catalogTable(page), NOT the `catalogue` const in main(). This function is hoisted above it,
     // so referencing it here is a temporal-dead-zone ReferenceError on every call -- which is what
@@ -250,17 +261,15 @@ async function main() {
   // ── 3b: the title block. Frame 1a's counts must be present AND labelled -- a bare number over a
   //       list is the ambiguity ND-30 asked to be avoided ("label the count according to what it
   //       truly represents").
-  // EXACT CLASS TOKEN, not a substring. contains(@class,"ns-workspace") also matches the BEM
-  // children -- ns-workspace__head, ns-workspace__titleblock, ns-workspace__titlerow -- and the
-  // ancestor axis returns the NEAREST first, so this resolved to the title row and saw no chips.
-  const panel = page.locator(
-    'xpath=//h3[normalize-space()="Parts Catalog"]/ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ns-workspace ")][1]',
-  );
+  const panel = catalogPanel(page);
   const panelText = (await panel.count()) > 0 ? await panel.innerText() : "";
+  // The count is LABELLED, wherever it sits. ND-30: "label the count according to what it truly
+  // represents" -- a bare number over a list is the ambiguity that asks the reader to guess.
+  const pageTitle = (await page.locator("h1").first().innerText().catch(() => "")).trim();
   record(
-    "3b ND-30 the catalogue carries a titled, labelled count",
-    /parts? in the catalogue/i.test(panelText),
-    panelText.split("\n").slice(0, 3).join(" | ") || "(no ns-workspace panel found)",
+    "3b ND-30 the catalogue carries a labelled count under the page title",
+    /parts? in the catalogue/i.test(panelText) && /^parts$/i.test(pageTitle),
+    `h1="${pageTitle}" summary="${(panelText.split("\n")[0] ?? "").slice(0, 80)}"`,
   );
 
   // ── 3c: the view chips, and every count agreeing with its own filter. A chip whose number
@@ -271,6 +280,22 @@ async function main() {
   const chipText = chips.map((c) => c.replace(/\s+/g, " ").trim());
   const hasViews = chipText.some((c) => /^all\b/i.test(c)) && chipText.some((c) => /needs attention/i.test(c));
   record("3c ND-30 the catalogue offers view chips with counts", hasViews, `chips=${JSON.stringify(chipText.slice(0, 6))}`);
+
+  // ── 3d: THE CATALOGUE LEADS. A page called Parts that opens on five empty reorder queues is
+  //       answering a question nobody asked first. Measured as position, not as prose: the
+  //       catalogue's top must sit above the Work group's heading.
+  const order = await page.evaluate(() => {
+    const cat = document.querySelector("[data-parts-catalog]");
+    const work = document.getElementById("parts-group-work");
+    if (!cat || !work) return null;
+    return { catalogueTop: Math.round(cat.getBoundingClientRect().top + window.scrollY),
+             workTop: Math.round(work.getBoundingClientRect().top + window.scrollY) };
+  });
+  record(
+    "3d ND-30 the catalogue leads the page, above the Work group",
+    !!order && order.catalogueTop < order.workTop,
+    order ? `catalogueTop=${order.catalogueTop} workTop=${order.workTop}` : "(one of the two surfaces is missing)",
+  );
 
   // ── 4: THE VALUE CONTRACT, separate from the grammar contract check 3a owns.
   //

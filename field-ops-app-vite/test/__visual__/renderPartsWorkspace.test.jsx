@@ -6,7 +6,7 @@
 //
 // Skipped unless VISUAL=1.
 import { describe, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -65,8 +65,14 @@ beforeEach(() => { vi.clearAllMocks(); });
 describe.skipIf(!process.env.VISUAL)("visual harness — Parts workspace (Frame 1a)", () => {
   it("writes the workspace to a static page", async () => {
     fetchPartMasterList.mockResolvedValue({ ok: true, parts: PARTS, invalid: [] });
-    const { container, findByText } = render(<PartsList accessVersion={1} />);
-    await findByText("Parts Catalog");
+    const { container, findByRole } = render(<PartsList accessVersion={1} />);
+    // Waited on by its own contract rather than by a heading the design is free to rename —
+    // "Parts Catalog" was exactly such a heading, and it is gone now that the catalogue leads the
+    // page and wears the page's title.
+    await findByRole("table");
+    await waitFor(() => {
+      if (!container.querySelector("[data-parts-catalog]")) throw new Error("catalogue not rendered");
+    });
 
     const css = fs.readFileSync(path.resolve("src/index.css"), "utf-8");
     const out = `<!doctype html><meta charset="utf-8">
