@@ -18,6 +18,7 @@ import {
   dispatchSuggestions,
   serviceOperationsAttention,
   serviceOperationsMetrics,
+  SERVICE_OPS_LINKS,
   severityWord,
   technicianLoadRows,
   workOrderHref,
@@ -335,5 +336,65 @@ describe("dispatch suggestions are read-only and honest about no candidate", () 
     expect(suggestions.openCount).toBe(1);
     expect(suggestions.placeableCount).toBe(0);
     expect(suggestions.rows[0].technicianName).toBeNull();
+  });
+});
+
+// ── Defects the Owner found on the live sandbox, 2026-08-30 ──────────────────────────────────────
+//
+// Both shipped in #1589 and both are pinned here, because both were the kind of mistake that looks
+// fine in a unit test asserting only that "a link exists" or "an entry renders".
+describe("live defects — the Work Orders link and the activity subject", () => {
+  it("the Work Orders link goes to /service, the route that actually holds the list", () => {
+    // Its subnav entry declares path: "" -- the list IS the Service domain index. Under /service
+    // only work-orders/new and work-orders/:workOrderId are generated, so /service/work-orders
+    // matched no route and fell through to the dashboard.
+    expect(SERVICE_OPS_LINKS.workOrders).toBe("/service");
+    expect(SERVICE_OPS_LINKS.workOrders).not.toBe("/service/work-orders");
+  });
+
+  it("every metric link is a route the app actually serves", () => {
+    const attention = serviceOperationsAttention({ workOrders: [readyWo], technicians: TECHS, accountNames: NAMES });
+    const metrics = serviceOperationsMetrics({ workOrders: [readyWo], technicians: TECHS, attention });
+    for (const metric of metrics) {
+      expect(["/service", "/service/dispatcher-board"]).toContain(metric.href);
+    }
+  });
+
+  it("the DETAIL route is unaffected — it does match :workOrderId", () => {
+    expect(workOrderHref("WO-9")).toBe("/service/work-orders/WO-9");
+  });
+
+  it("an activity entry states WHICH work order, not just what happened", () => {
+    const entries = activityEntries({
+      workOrders: [{ id: "W1", woNumber: "WO-1001", status: "COMPLETED", customerId: "C1", createdAt: 1_754_600_000_000 }],
+      accountNames: NAMES,
+    });
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      expect(entry.description).toBeTruthy();
+      expect(entry.reference).toBe("WO-1001"); // the subject, without which the label is useless
+      expect(entry.account).toBe("Acme Foods");
+    }
+  });
+
+  it("the activity subject is a woNumber and NEVER the document id", () => {
+    const entries = activityEntries({
+      workOrders: [{ id: "aZ9xK2mQpL7vT4wR8nJc", woNumber: "WO-2002", status: "COMPLETED", createdAt: 1_754_600_000_000 }],
+    });
+    for (const entry of entries) {
+      expect(entry.reference).toBe("WO-2002");
+      expect(entry.reference).not.toBe("aZ9xK2mQpL7vT4wR8nJc");
+    }
+  });
+
+  it("with no resolvable woNumber the entry keeps its description and states no reference", () => {
+    // Lossless, and still never an id -- the panel this replaces printed entity.id here.
+    const entries = activityEntries({
+      workOrders: [{ id: "NO-NUMBER", status: "COMPLETED", createdAt: 1_754_600_000_000 }],
+    });
+    for (const entry of entries) {
+      expect(entry.description).toBeTruthy();
+      expect(entry.reference).toBeNull();
+    }
   });
 });
