@@ -205,6 +205,72 @@ async function main() {
     tallies.push(t);
   }
 
+  // ---------------------------------------------------------------- service jobs (R-11)
+  {
+    const { serviceJobOperatingCompany } = await import("./certificationWorld/data/serviceJobCompany.mjs");
+    const t = newTally("fieldops_jobs", "operatingCompanyId (fixture job)");
+    const snap = await db.collection("fieldops_jobs").get();
+    for (const doc of snap.docs) {
+      t.scanned += 1;
+      const data = doc.data();
+      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
+      const company = serviceJobOperatingCompany(doc.id);
+      if (company === null) { block(t, "not an authored certification Job -- left untouched by rule"); continue; }
+      t.wouldWrite += 1;
+    }
+    tallies.push(t);
+  }
+
+  // ---------------------------------------------------------------- work orders (R-12)
+  {
+    // Company inherits from the parent Job. Measured: no Work Order has one, and none can be
+    // invented -- the lineage check found 0 EXACT_PARENT across all 30.
+    const t = newTally("fieldops_wos", "operatingCompanyId (from parent Job)");
+    const jobIds = new Set((await db.collection("fieldops_jobs").get()).docs.map((d) => d.id));
+    const snap = await db.collection("fieldops_wos").get();
+    for (const doc of snap.docs) {
+      t.scanned += 1;
+      const data = doc.data();
+      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
+      if (!nonEmpty(data.jobId) || !jobIds.has(data.jobId)) { block(t, "no parent Job reference -- jobId is never invented"); continue; }
+      t.wouldWrite += 1;
+    }
+    tallies.push(t);
+  }
+
+  // ---------------------------------------------------------------- commercial chain (R-14)
+  for (const collection of ["opportunities", "sales_agreements", "sales_orders", "invoices"]) {
+    const t = newTally(collection, "operatingCompanyId (commercial lineage)");
+    const snap = await db.collection(collection).get();
+    for (const doc of snap.docs) {
+      t.scanned += 1;
+      const data = doc.data();
+      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
+      // A non-fixture commercial record with no company provenance stays unresolved (R-14).
+      if (data[MARKER_FIELD] === undefined && data.dataProvenance !== "SYNTHETIC_CERTIFICATION_FACT") {
+        block(t, "non-fixture commercial record -- no legitimate company provenance");
+        continue;
+      }
+      block(t, "fixture commercial record with no authored company scenario");
+    }
+    tallies.push(t);
+  }
+
+  // ---------------------------------------------------------------- reorder chain (R-13)
+  for (const collection of ["reorder_requests", "reorder_purchase_orders"]) {
+    const t = newTally(collection, "warehouseId + operatingCompanyId");
+    const snap = await db.collection(collection).get();
+    for (const doc of snap.docs) {
+      t.scanned += 1;
+      const data = doc.data();
+      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
+      if (!nonEmpty(data.warehouseId)) { block(t, "no warehouseId -- schema addition required first"); continue; }
+      if (!rootCompany.has(data.warehouseId)) { block(t, "warehouse not authored"); continue; }
+      t.wouldWrite += 1;
+    }
+    tallies.push(t);
+  }
+
   // ---------------------------------------------------------------- report
   const header = "collection".padEnd(26) + "scanned".padStart(9) + "WOULD WRITE".padStart(13) + "already".padStart(9) + "blocked".padStart(9);
   console.log(header);

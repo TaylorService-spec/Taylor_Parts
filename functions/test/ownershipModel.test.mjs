@@ -528,3 +528,115 @@ test("R-2: operatingCompanyId is NOT lineOfBusiness -- the fixture proves they c
   // A product line is not a company: a Taylor-line machine can belong to Ventana's books.
   assert.ok(disagreements.length > 0, "the fixture must contain units whose product line and owning company differ");
 });
+
+// =========================== R-11 … R-15: the final lineage rulings ===========================
+
+test("R-11: all 41 service Job fixtures carry an authored company, 27/14, and the solver is gone", async () => {
+  const { SERVICE_JOB_OPERATING_COMPANY, serviceJobOperatingCompany } = await import(
+    "../scripts/certificationWorld/data/serviceJobCompany.mjs"
+  );
+  const values = Object.values(SERVICE_JOB_OPERATING_COMPANY);
+  assert.equal(values.length, 41);
+  assert.equal(values.filter((v) => v === "taylor").length, 27);
+  assert.equal(values.filter((v) => v === "ventana").length, 14);
+  for (const v of values) assert.equal(resolveOperatingCompany(v).state, "RESOLVED");
+  // A non-fixture job is absent and returns null -- never a guessed company.
+  assert.equal(serviceJobOperatingCompany("some-non-fixture-job"), null);
+
+  // Literal values only. A runtime that recomputed from technician order would reassign jobs the
+  // moment a technician was added.
+  const src = readFileSync(new URL("../scripts/certificationWorld/data/serviceJobCompany.mjs", import.meta.url), "utf8");
+  const decl = src.slice(src.indexOf("Object.freeze({"), src.indexOf("export function serviceJobOperatingCompany"));
+  assert.ok(!/%|Math\.|technicianId|index/i.test(decl), "the job map must be literal values, never a computation");
+});
+
+test("R-11: a technician never carries jobs for two companies", async () => {
+  const { SERVICE_JOB_OPERATING_COMPANY } = await import("../scripts/certificationWorld/data/serviceJobCompany.mjs");
+  const byTech = new Map();
+  for (const [jobId, company] of Object.entries(SERVICE_JOB_OPERATING_COMPANY)) {
+    // Fixture job ids are cwjob_<employeeId>_<seq>.
+    const tech = jobId.replace(/^cwjob_/, "").replace(/_\d+$/, "");
+    if (!byTech.has(tech)) byTech.set(tech, new Set());
+    byTech.get(tech).add(company);
+  }
+  assert.equal(byTech.size, 11);
+  for (const [tech, companies] of byTech) {
+    assert.equal(companies.size, 1, `${tech} must not work for two operating companies`);
+  }
+});
+
+test("R-14: the commercial company axis is explicit or inherited, and NEVER inferred", async () => {
+  const { resolveCommercialCompanyScope, CommercialCompanyScopeError } = await import(
+    "../lib/ownership/commercialCompanyScope.js"
+  );
+  assert.equal(resolveCommercialCompanyScope("taylor"), "taylor");
+  // Inheritance: the upstream value is COPIED when nothing explicit is supplied.
+  assert.equal(resolveCommercialCompanyScope(undefined, "ventana"), "ventana");
+  // Explicit wins over inherited -- an order may legitimately be booked to the other company.
+  assert.equal(resolveCommercialCompanyScope("ventana", "taylor"), "ventana");
+  // Absent is null, not an error: the model is inert and a validator must not smuggle in enforcement.
+  assert.equal(resolveCommercialCompanyScope(undefined, undefined), null);
+  // A bad value is still a caller error, not a reason to fall back to null.
+  assert.throws(() => resolveCommercialCompanyScope("TAYLOR"), CommercialCompanyScopeError);
+  assert.throws(() => resolveCommercialCompanyScope("Taylor Freezer of Arizona"), CommercialCompanyScopeError);
+});
+
+test("R-14/R-15: the two axes are independent on one record", () => {
+  const built = buildCreateOpportunity(
+    { accountId: "acct-1", ownerEmployeeId: "emp-rudy", operatingCompanyId: "taylor", salesChannel: "RETAIL" },
+    { actorUid: "uid-assistant", nowMillis: 1 },
+  );
+  // Who owns the sale, and which company conducts it, are both true and neither displaced the other.
+  assert.equal(built.ownerEmployeeId, "emp-rudy");
+  assert.equal(built.operatingCompanyId, "taylor");
+  assert.equal(built.createdByUid, "uid-assistant");
+
+  // R-15: the Account contributes the OWNER and nothing else. An account-derived owner does not
+  // bring a company with it -- a customer may transact with either company on the next sale.
+  const inherited = buildCreateOpportunity(
+    { accountId: "acct-1", inheritedOwner: deriveAccountOwner({ accountOwner: { assignedToEmployeeId: "emp-rudy" } }), salesChannel: "RETAIL" },
+    { actorUid: "uid-assistant", nowMillis: 1 },
+  );
+  assert.equal(inherited.ownerEmployeeId, "emp-rudy");
+  assert.equal(inherited.operatingCompanyId, null, "an inherited owner must NOT bring a company with it");
+});
+
+test("R-14: a Sales Order copies the company at creation and is unaffected without one", () => {
+  const lines = [{ kind: "PART", ref: "PRT-1", orderedQty: 1, unitPrice: 100 }];
+  const copied = buildCreateSalesOrder(
+    { accountId: "a", ownerEmployeeId: "emp-1", inheritedOperatingCompanyId: "ventana", salesChannel: "RETAIL", lines },
+    { actorUid: "u", nowMillis: 1 },
+  );
+  assert.equal(copied.operatingCompanyId, "ventana");
+  assert.equal(copied.ownerEmployeeId, "emp-1");
+
+  // BACKWARD COMPATIBLE: an existing caller supplying no company is unchanged.
+  const legacy = buildCreateSalesOrder(
+    { accountId: "a", ownerEmployeeId: "emp-1", salesChannel: "RETAIL", lines },
+    { actorUid: "u", nowMillis: 1 },
+  );
+  assert.equal(legacy.operatingCompanyId, null);
+});
+
+test("R-13: a reorder request derives its company from the WAREHOUSE, and a PO cannot mix companies", async () => {
+  const { resolveReorderLocation, resolvePurchaseOrderCompany, ReorderLocationError } = await import(
+    "../lib/ownership/reorderRequestLocationAuthority.js"
+  );
+  assert.deepEqual(resolveReorderLocation("wh-main", "taylor"), { warehouseId: "wh-main", operatingCompanyId: "taylor" });
+  // Inert: no warehouse means no company, not an error.
+  assert.deepEqual(resolveReorderLocation(undefined), { warehouseId: null, operatingCompanyId: null });
+  // A warehouse whose company is ungoverned is wrong, not merely missing.
+  assert.throws(() => resolveReorderLocation("wh-main", "acme"), ReorderLocationError);
+
+  assert.equal(resolvePurchaseOrderCompany(["taylor", "taylor"]), "taylor");
+  // R-13: mixed purchasing is REFUSED, not modelled as participating companies. A transfer spans two
+  // companies because goods move; a purchase order is one company's commitment to a supplier.
+  assert.throws(
+    () => resolvePurchaseOrderCompany(["taylor", "ventana"]),
+    (e) => e instanceof ReorderLocationError && e.code === "PO_MIXED_COMPANY",
+  );
+  assert.throws(
+    () => resolvePurchaseOrderCompany([null, undefined]),
+    (e) => e.code === "PO_COMPANY_UNRESOLVED",
+  );
+});

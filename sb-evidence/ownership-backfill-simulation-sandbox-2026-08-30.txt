@@ -14,8 +14,16 @@ receiving_orders                  2            2        0        0
 inventory_transactions          103           99        0        4
 transfer_orders                  47           47        0        0
 equipment                       288          278        0       10
+fieldops_jobs                    45           41        0        4
+fieldops_wos                     30            0        0       30
+opportunities                    14            0        0       14
+sales_agreements                  5            0        0        5
+sales_orders                     17            0        0       17
+invoices                          1            0        0        1
+reorder_requests                  6            0        0        6
+reorder_purchase_orders           3            0        0        3
 ------------------------------------------------------------------
-TOTAL                           993          974                19
+TOTAL                          1114         1015                99
 
 Detail:
   contacts
@@ -30,6 +38,22 @@ Detail:
         23  (CROSS-company: 23)
   equipment
         10  non-fixture record -- left untouched by rule
+  fieldops_jobs
+         4  not an authored certification Job -- left untouched by rule
+  fieldops_wos
+        30  no parent Job reference -- jobId is never invented
+  opportunities
+        14  non-fixture commercial record -- no legitimate company provenance
+  sales_agreements
+         5  non-fixture commercial record -- no legitimate company provenance
+  sales_orders
+        17  non-fixture commercial record -- no legitimate company provenance
+  invoices
+         1  non-fixture commercial record -- no legitimate company provenance
+  reorder_requests
+         6  no warehouseId -- schema addition required first
+  reorder_purchase_orders
+         3  no warehouseId -- schema addition required first
 
-PROPOSED SANDBOX WRITE COUNT: 974 document(s). 19 blocked.
+PROPOSED SANDBOX WRITE COUNT: 1015 document(s). 99 blocked.
 NOTHING WAS WRITTEN. This tool has no apply mode.

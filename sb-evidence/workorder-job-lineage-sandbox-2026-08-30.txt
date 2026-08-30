@@ -1,0 +1,22 @@
+Work Order -> Job lineage reconciliation — eos-platform-sandbox   (READ-ONLY)
+
+Jobs: 45 (41 fixture)
+Work Orders: 30 (0 fixture)
+
+classification            count
+-------------------------------
+EXACT_PARENT                  0
+MULTIPLE_CANDIDATES           0
+NO_CANDIDATE                 30
+-------------------------------
+TOTAL                        30
+
+Reason:
+     19  only coincidental overlap with 3 Job(s) -- insufficient by rule
+      3  only coincidental overlap with 1 Job(s) -- insufficient by rule
+      3  only coincidental overlap with 5 Job(s) -- insufficient by rule
+      3  only coincidental overlap with 4 Job(s) -- insufficient by rule
+      1  no Job shares even a coincidental customer, location or technician
+      1  only coincidental overlap with 2 Job(s) -- insufficient by rule
+
+0 Work Order(s) could take a company from a parent Job. READ-ONLY -- no jobId was invented, written, or proposed.

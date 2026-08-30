@@ -7,6 +7,7 @@
 // pricing SNAPSHOT — this command invents no pricing/discount/tax authority. Created CONFIRMED.
 
 import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
+import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
 import type { OwnerDerivation } from "../ownership/typedOwner";
 import {
   SALES_ORDER_LINE_KINDS,
@@ -65,6 +66,10 @@ export interface CreateSalesOrderInput {
   // The governed upstream owner, derived by the CALLER from the Opportunity it already read inside
   // its own transaction. Passed in rather than read here so this builder stays pure.
   inheritedOwner?: OwnerDerivation | null;
+  // Ruling R-14: explicit, else COPIED from the upstream Opportunity/Agreement. Copied, not
+  // followed -- a later correction upstream must never rewrite an order already placed.
+  operatingCompanyId?: string;
+  inheritedOperatingCompanyId?: string | null;
   salesChannel: SalesChannel;
   locationId?: string;
   sourceOpportunityId?: string;
@@ -184,6 +189,8 @@ export interface BuiltSalesOrder {
   // matches the money model; a multi-currency source (account/company) is a
   // separate future seam.
   currency: string;
+  /** Ruling R-14. Copied from upstream at creation, then historical. null until supplied. */
+  operatingCompanyId: string | null;
   locationId: string | null;
   sourceOpportunityId: string | null;
   customerPO: string | null;
@@ -216,6 +223,7 @@ export function buildCreateSalesOrder(input: CreateSalesOrderInput, ctx: { actor
     accountId: input.accountId.trim(),
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
+    operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId),
     currency: "USD",
     locationId: nonEmpty(input.locationId) ? input.locationId.trim() : null,
     sourceOpportunityId: nonEmpty(input.sourceOpportunityId) ? input.sourceOpportunityId.trim() : null,

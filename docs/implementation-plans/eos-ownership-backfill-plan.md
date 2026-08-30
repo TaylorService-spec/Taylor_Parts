@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Owner decision — NOT authorized for execution
-status: Proposed — Revision 3 (simulated against authored facts)
+status: Proposed — Revision 4 (complete migration, one final write set)
 date: 2026-08-30
 owner: Claude Code
 related_adrs: []
@@ -368,3 +368,108 @@ consequence.**
    the whole financial lineage.
 5. **Production census** — still unmeasured; runbook ready.
 6. **Authorization to apply the 974 sandbox writes.** Not requested here.
+
+---
+
+# Revision 4 — the complete migration, simulated once (2026-08-30)
+
+Rulings R-11 through R-15 closed the three structural gaps that would otherwise have forced a second
+ownership migration. This is the **one final proposed write set**.
+
+## PROPOSED SANDBOX WRITE COUNT: 1,015 documents. 99 blocked. Nothing written.
+
+| Collection | scanned | WOULD WRITE | blocked | Source |
+|---|---|---|---|---|
+| `contacts` | 339 | **337** | 2 | parent Account owner |
+| `locations` | 183 | **180** | 3 | parent Account owner |
+| `equipment` | 288 | **278** | 10 | authored fixture fleet |
+| `inventory_transactions` | 103 | **99** | 4 | location's authored company |
+| `transfer_orders` | 47 | **47** | 0 | participating pair |
+| `fieldops_jobs` | 45 | **41** | 4 | authored fixture Job company |
+| `cycle_counts` | 24 | **24** | 0 | counted location |
+| `stock_locations` | 5 | **5** | 0 | `warehouseId` |
+| `trucks` | 2 | **2** | 0 | `homeWarehouseId` |
+| `receiving_orders` | 2 | **2** | 0 | receiving location |
+| `fieldops_wos` | 30 | 0 | 30 | no parent Job exists |
+| `opportunities` | 14 | 0 | 14 | non-fixture, no company provenance |
+| `sales_orders` | 17 | 0 | 17 | non-fixture |
+| `sales_agreements` | 5 | 0 | 5 | non-fixture |
+| `reorder_requests` | 6 | 0 | 6 | no `warehouseId` yet |
+| `reorder_purchase_orders` | 3 | 0 | 3 | blocked upstream |
+| `invoices` | 1 | 0 | 1 | non-fixture |
+| **total** | **1,114** | **1,015** | **99** | |
+
+## The gate answers
+
+**Service Jobs.** 41 of 45 resolvable, authored in
+`functions/scripts/certificationWorld/data/serviceJobCompany.mjs` — 27 Taylor / 14 Ventana, solved
+exactly against the 2:1 target and persisted as literal values. Grouped by technician so no
+technician works for two companies; the grouping is not a rule, and nothing computes it. The 4
+non-fixture Jobs are absent from the map and stay unresolved.
+
+**Work Orders.** 0 EXACT_PARENT, 0 MULTIPLE_CANDIDATES, **30 NO_CANDIDATE**. Company-resolvable:
+**0**. The reconciliation is structural rather than a threshold judgement: Jobs serve `cw-acct-*`
+customers, Work Orders serve `acct-harbor` / `acct-summit` / `probe-c`, and the two sets do not
+intersect at all. 0 of 30 are fixtures and none carries a `jobId`.
+
+The coincidence counts are the evidence for the ruling: 19 Work Orders coincide with 3 Jobs apiece,
+three with 5, three with 4. Matching on customer or technician would have picked one arbitrary
+parent out of up to five.
+
+**Reorder requests.** 0 of 6 have explicit warehouse provenance. None is a certification fixture and
+none carries a scenario id. Two mention "wh-main" in `reviewNotes` free text — **deliberately not
+used**: prose in a note is display text, and reading a governed reference out of it is precisely the
+inference every ruling has forbidden. **Reorder POs company-resolvable: 0**, blocked upstream.
+
+**Commercial chain.** Opportunities with `operatingCompanyId`: **0 of 14**. Agreements: **0 of 5**.
+Sales Orders: **0 of 17**. Invoice: **0 of 1**.
+
+One fact explains all of it: **the entire commercial chain is non-fixture and sits under
+`acct-harbor`** — one of the three control accounts R-7 deliberately leaves ownerless. There is no
+certification commercial scenario to reconcile, so R-14's preferred sandbox remediation has nothing
+to attach to. Per the ruling, all 37 stay unresolved.
+
+**Equipment.** 278 fixture, all resolvable; 10 protected non-fixture. Unchanged.
+
+**Final counts by shape.** PERSON 517 writes (contacts, locations). COMPANY 451 (equipment 278,
+inventory 99, jobs 41, cycle counts 24, stock locations 5, trucks 2, receiving 2).
+PARTICIPATING_COMPANIES 47 transfers — 24 same-company, 23 cross-company.
+
+**INVALID / UNKNOWN / AMBIGUOUS: 0, and expected to remain 0.** Every write derives from a governed
+authority or an authored fixture, and both are validated against `resolveOperatingCompany` before
+use — a value that failed validation would raise rather than write. Nothing derives from a proxy, so
+no record can acquire two disagreeing owners.
+
+## The 99 blocked, every one by a rule
+
+| Reason | Records |
+|---|---|
+| no parent Job reference, and `jobId` is never invented (R-12) | 30 |
+| non-fixture commercial record, no company provenance (R-14) | 37 |
+| non-fixture equipment, never overwritten (R-2) | 10 |
+| no `warehouseId`, schema addition required first (R-13) | 9 |
+| parent Account has no owner (R-7 control accounts) | 5 |
+| no resolvable location reference, legacy shape (R-5) | 4 |
+| not an authored certification Job (R-11) | 4 |
+
+**There is no "could not figure it out" bucket.**
+
+## Confirmation on production
+
+**No applier exists.** That is the strongest available answer to "the proposed applier cannot touch
+production": there is nothing that can write. The simulation has no `--apply` mode, and
+`functions/test/ownershipProductionGuard.test.mjs` asserts it cannot quietly acquire one.
+
+The guard an applier must inherit is already shipped, and is now **asserted rather than promised**.
+The same suite pins that every ownership-writing script refuses `taylor-parts` by name, refuses any
+project whose registry role is `production`, fails closed on an unknown project, and has no default
+target — and that all four read-only tools contain no Firestore write call at all.
+
+## Still requiring a business decision
+
+1. **The Job to Work Order link.** 30 Work Orders have no parent, and one cannot be invented.
+2. **Commercial company provenance.** The whole chain is non-fixture; either a certification
+   commercial scenario is authored, or these 37 stay unresolved indefinitely.
+3. **`reorder_requests.warehouseId`.** The domain authority is written and inert
+   (`functions/src/ownership/reorderRequestLocationAuthority.ts`); the 6 records need the field.
+4. **Authorization to apply the 1,015 sandbox writes.**

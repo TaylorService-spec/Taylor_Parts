@@ -8,6 +8,7 @@
 // starts at IDENTIFIED, open (no outcome). Transitions are validated by checkTransition().
 
 import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
+import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
 import type { OwnerDerivation } from "../ownership/typedOwner";
 import {
   OPPORTUNITY_LINE_KINDS,
@@ -67,6 +68,10 @@ export interface CreateOpportunityInput {
   // so this builder stays pure, and read transactionally so the inherited owner cannot drift
   // between the read and the write.
   inheritedOwner?: OwnerDerivation | null;
+  // Ruling R-14: the operating company enters the commercial chain HERE, and is copied downstream.
+  // OPTIONAL and never inferred -- one salesperson and one customer may legitimately transact with
+  // either company, so nothing about the Account can decide this. A bad value is still rejected.
+  operatingCompanyId?: string;
   salesChannel: SalesChannel;
   need?: string;
   expectedValue?: number | null;
@@ -121,6 +126,8 @@ export interface BuiltOpportunity {
   need: string | null;
   expectedValue: number | null;
   expectedCloseAt: number | null;
+  /** Ruling R-14. null until supplied -- inert, and never defaulted to Taylor. */
+  operatingCompanyId: string | null;
   lines: OpportunityLineInput[];
   createdByUid: string;
   createdAtMillis: number;
@@ -156,6 +163,7 @@ export function buildCreateOpportunity(
     accountId: input.accountId.trim(),
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
+    operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId),
     stage: "IDENTIFIED",
     outcome: null,
     need: nonEmpty(input.need) ? input.need.trim() : null,

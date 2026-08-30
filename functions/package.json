@@ -140,7 +140,7 @@
     "test:certificationIdentity": "node --test test/certificationIdentityStability.test.mjs test/certificationIdentitySurvivesReset.test.mjs",
     "test:aiRepository": "npm run build && node --test test/aiRepositoryProvider.test.mjs",
     "test:aiSalesOrderInterpretation": "npm run build && node --test test/aiSalesOrderModelInterpretation.test.mjs",
-    "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs"
+    "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs test/ownershipProductionGuard.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
