@@ -103,8 +103,22 @@ const laneNames = () => Array.from(document.querySelectorAll(".ns-dispatch-lane_
 const rowHeaderNames = () =>
   Array.from(document.querySelectorAll(".ns-dispatch-week__identity, .ns-dispatch-load__identity")).map((e) => e.textContent);
 
-beforeEach(() => { vi.clearAllMocks(); });
-afterEach(() => cleanup());
+// THE CLOCK IS PINNED, and that is a correctness fix rather than a convenience.
+//
+// VC-4 makes past slots on TODAY invalid targets, so a suite whose fixtures sit at 09:00 "today"
+// passed before lunch and failed after it. That is a test asserting the wall clock — the same
+// mistake DECISIONS #137 names: a moment pinned as if it were a contract. Freezing now at 06:00
+// makes every fixture below deterministically in the FUTURE, so these tests assert the GESTURE.
+// The past-slot behaviour gets its own tests, which move the clock deliberately.
+const PINNED_NOW = (() => { const d = new Date(); d.setHours(6, 0, 0, 0); return d.getTime(); })();
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // shouldAdvanceTime keeps @testing-library's waitFor polling; a frozen clock deadlocks it.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(PINNED_NOW);
+});
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 // ---------------------------------------------------------------------------------------------
 describe("the North Star composition", () => {
@@ -195,8 +209,9 @@ describe("each gesture reaches the correct governed command", () => {
     await screen.findByText(/WO-2026-001239/);
 
     dragOnto(screen.getByText(/WO-2026-001239/).closest("article"), container.querySelector('[data-technician-id="tech-a"]'));
-    fireEvent.click(await screen.findByRole("button", { name: /^Schedule$/ }));
-
+    // VC-1: no confirmation step. Schedule takes no reason server-side, and the drag already said
+    // technician, start and duration — so the drop IS the command. A dialog here would only re-ask
+    // what the gesture just answered, which is the defect this correction removes.
     await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
     const [id, action, extra] = transitionWorkOrder.mock.calls[0];
     expect(id).toBe(QUEUE_WO.id);
@@ -212,7 +227,7 @@ describe("each gesture reaches the correct governed command", () => {
 
     dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-a"]'));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "customer moved the appointment" } });
-    fireEvent.click(screen.getByRole("button", { name: /Confirm new time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Move$/ }));
 
     await waitFor(() => expect(rescheduleWorkOrder).toHaveBeenCalled());
     const payload = rescheduleWorkOrder.mock.calls[0][0];
@@ -229,7 +244,7 @@ describe("each gesture reaches the correct governed command", () => {
 
     dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-b"]'));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "held at Desert Sun" } });
-    fireEvent.click(screen.getByRole("button", { name: /Confirm reassignment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Reassign$/ }));
 
     await waitFor(() => expect(reassignScheduledWorkOrder).toHaveBeenCalled());
     const payload = reassignScheduledWorkOrder.mock.calls[0][0];
@@ -271,12 +286,18 @@ describe("reason gates", () => {
     await screen.findByText(/WO-2026-001248/);
     dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-b"]'));
 
-    const confirm = screen.getByRole("button", { name: /Confirm reassignment/i });
+    // The reason-only prompt carries no placement fields, so the DISABLED BUTTON is the gate — the
+    // explanatory hint belonged to the full PlacementDialog, which a drag no longer opens (VC-1).
+    const confirm = screen.getByRole("button", { name: /^Reassign$/ });
     expect(confirm.disabled).toBe(true);
-    expect(screen.getByText(/Confirm stays disabled until a reason is typed/i)).toBeTruthy();
+    // And it must not have become a placement form again: no technician, time or length controls.
+    const prompt = screen.getByRole("dialog");
+    expect(within(prompt).queryByLabelText(/Technician/i)).toBeNull();
+    expect(within(prompt).queryByLabelText(/Starts/i)).toBeNull();
+    expect(within(prompt).queryByLabelText(/Length/i)).toBeNull();
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "held at site" } });
-    expect(screen.getByRole("button", { name: /Confirm reassignment/i }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: /^Reassign$/ }).disabled).toBe(false);
   });
 
   it("whitespace is not a reason", async () => {
@@ -284,7 +305,7 @@ describe("reason gates", () => {
     await screen.findByText(/WO-2026-001248/);
     dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-b"]'));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
-    expect(screen.getByRole("button", { name: /Confirm reassignment/i }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /^Reassign$/ }).disabled).toBe(true);
   });
 
   it("an initial Schedule needs no reason — nothing is being withdrawn", async () => {
@@ -327,7 +348,7 @@ describe("backend truth is what renders", () => {
 
     dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-a"]'));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "moving it" } });
-    fireEvent.click(screen.getByRole("button", { name: /Confirm new time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Move$/ }));
 
     // Scoped to the DIALOG: the board surfaces the same refusal in its own message band, and both
     // are alerts on purpose — a lost placement should interrupt. The dialog is what must keep it.
@@ -348,7 +369,7 @@ describe("backend truth is what renders", () => {
 
     dragOnto(chipOf(), container.querySelector('[data-technician-id="tech-a"]'));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "moving it" } });
-    fireEvent.click(screen.getByRole("button", { name: /Confirm new time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Move$/ }));
     await within(await screen.findByRole("dialog")).findByRole("alert");
 
     // Nothing was written and nothing was patched locally, so the chip is still exactly where the
@@ -547,5 +568,213 @@ describe("the technician selector", () => {
     expect(document.querySelector(".ns-dispatch-techfilter__trigger").getAttribute("aria-expanded")).toBe("true");
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("checkbox", { name: "R. Ochoa" })).toBeNull());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// Owner visual corrections VC-1 / VC-2 / VC-3 / VC-4.
+//
+// The arithmetic behind these lives in test/dispatchVisualCorrections.test.mjs. What is asserted
+// HERE is the wiring the Owner actually complained about: that a gesture reaches a governed command
+// without being made to re-state itself in a form first.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+describe("VC-1 — a gesture is not re-asked for what it already said", () => {
+  it("a queue drop schedules directly: no dialog, no confirmation step", async () => {
+    transitionWorkOrder.mockResolvedValue({ id: QUEUE_WO.id, status: "SCHEDULED", warnings: [] });
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001239/);
+
+    dragOnto(screen.getByText(/WO-2026-001239/).closest("article"), container.querySelector('[data-technician-id="tech-a"]'));
+
+    await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
+    // The command fired without any dialog being opened at all.
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a same-lane move asks for the reason and NOTHING else", async () => {
+    rescheduleWorkOrder.mockResolvedValue({ result: { warnings: [] } });
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001248/);
+
+    dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-a"]'));
+
+    const prompt = await screen.findByRole("dialog");
+    // Exactly one input: the reason. The technician, start, length and date the drag already
+    // determined are NOT re-presented as editable fields — that was the defect.
+    expect(within(prompt).getAllByRole("textbox")).toHaveLength(1);
+    expect(within(prompt).queryByRole("combobox")).toBeNull();
+    expect(prompt.querySelector('input[type="datetime-local"]')).toBeNull();
+
+    fireEvent.change(within(prompt).getByRole("textbox"), { target: { value: "customer asked for later" } });
+    fireEvent.click(within(prompt).getByRole("button", { name: /^Move$/ }));
+    await waitFor(() => expect(rescheduleWorkOrder).toHaveBeenCalled());
+    expect(rescheduleWorkOrder.mock.calls[0][0].reason).toBe("customer asked for later");
+  });
+
+  it("the reason is REQUIRED, because the server requires it — not softened to make the drag flow", async () => {
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001248/);
+    dragOnto(screen.getByText(/WO-2026-001248/).closest("button"), container.querySelector('[data-technician-id="tech-a"]'));
+
+    const prompt = await screen.findByRole("dialog");
+    expect(within(prompt).getByRole("button", { name: /^Move$/ }).disabled).toBe(true);
+    fireEvent.change(within(prompt).getByRole("textbox"), { target: { value: "   " } });
+    expect(within(prompt).getByRole("button", { name: /^Move$/ }).disabled).toBe(true);
+    expect(rescheduleWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("the accessible non-drag path still exists and still collects a real placement", async () => {
+    setup();
+    await screen.findByText(/WO-2026-001239/);
+    // The queue card's own button opens the FULL picker — that path genuinely has to ask, because
+    // no gesture supplied a technician or a time.
+    fireEvent.click(screen.getAllByRole("button", { name: /Schedule…/i })[0]);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/Technician/i)).toBeTruthy();
+    expect(dialog.querySelector('input[type="datetime-local"]')).toBeTruthy();
+  });
+});
+
+describe("VC-2 / VC-3 — direct manipulation reaches the governed command", () => {
+  it("a keyboard nudge moves the job 15 minutes and asks only for the reason", async () => {
+    rescheduleWorkOrder.mockResolvedValue({ result: { warnings: [] } });
+    setup();
+    const chip = (await screen.findByText(/WO-2026-001248/)).closest("button");
+
+    fireEvent.keyDown(chip, { key: "ArrowRight" });
+
+    const prompt = await screen.findByRole("dialog");
+    fireEvent.change(within(prompt).getByRole("textbox"), { target: { value: "route balancing" } });
+    fireEvent.click(within(prompt).getByRole("button", { name: /^Move$/ }));
+
+    await waitFor(() => expect(rescheduleWorkOrder).toHaveBeenCalled());
+    const payload = rescheduleWorkOrder.mock.calls[0][0];
+    // Same command the pointer reaches, moved by exactly one slot, duration preserved.
+    expect(payload.scheduledStart).toBe(todayAt(9) + 900_000);
+    expect(payload.scheduledEnd).toBe(todayAt(11) + 900_000);
+    expect(payload.reason).toBe("route balancing");
+  });
+
+  it("Alt+arrow RESIZES: the start holds and only the end moves", async () => {
+    rescheduleWorkOrder.mockResolvedValue({ result: { warnings: [] } });
+    setup();
+    const chip = (await screen.findByText(/WO-2026-001248/)).closest("button");
+
+    fireEvent.keyDown(chip, { key: "ArrowRight", altKey: true });
+
+    const prompt = await screen.findByRole("dialog");
+    fireEvent.change(within(prompt).getByRole("textbox"), { target: { value: "job needs longer" } });
+    fireEvent.click(within(prompt).getByRole("button", { name: /^Move$/ }));
+
+    await waitFor(() => expect(rescheduleWorkOrder).toHaveBeenCalled());
+    const payload = rescheduleWorkOrder.mock.calls[0][0];
+    expect(payload.scheduledStart).toBe(todayAt(9));
+    expect(payload.scheduledEnd).toBe(todayAt(11) + 900_000);
+  });
+
+  it("R starts a reassignment, and the reassign command never restates the window", async () => {
+    reassignScheduledWorkOrder.mockResolvedValue({ result: { warnings: [] } });
+    setup();
+    const chip = (await screen.findByText(/WO-2026-001248/)).closest("button");
+
+    fireEvent.keyDown(chip, { key: "r" });
+    const prompt = await screen.findByRole("dialog");
+    fireEvent.change(within(prompt).getByRole("textbox"), { target: { value: "tech called out" } });
+    fireEvent.click(within(prompt).getByRole("button", { name: /^Reassign$/ }));
+
+    await waitFor(() => expect(reassignScheduledWorkOrder).toHaveBeenCalled());
+    const payload = reassignScheduledWorkOrder.mock.calls[0][0];
+    expect(payload.scheduledStart).toBeUndefined();
+    expect(payload.scheduledEnd).toBeUndefined();
+  });
+
+  it("the bindings are discoverable rather than hidden", async () => {
+    setup();
+    const chip = (await screen.findByText(/WO-2026-001248/)).closest("button");
+    expect(chip.getAttribute("aria-keyshortcuts")).toMatch(/ArrowLeft/);
+    expect(chip.getAttribute("title")).toMatch(/15 min/);
+    expect(screen.getByText(/resizes/i)).toBeTruthy();
+  });
+
+  it("ordinary keys are left alone — the board does not hijack the keyboard", async () => {
+    setup();
+    const chip = (await screen.findByText(/WO-2026-001248/)).closest("button");
+    fireEvent.keyDown(chip, { key: "Tab" });
+    fireEvent.keyDown(chip, { key: "ArrowDown" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(rescheduleWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("a windowless scheduled record cannot be nudged into having a time (R23 holds)", async () => {
+    const windowless = { ...SCHEDULED_WO, id: "wo-nowindow", woNumber: "WO-2026-009999", scheduledStart: null, scheduledEnd: null };
+    setup({ workOrders: [windowless, QUEUE_WO] });
+    await screen.findByText(/Scheduled without a window/i);
+    expect(rescheduleWorkOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe("VC-4 — a time already past is not a target, on any path", () => {
+  it("a drop into the past is refused in words and never becomes a command", async () => {
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001239/);
+    // Move the clock to the end of the day: every slot the board can offer is now behind us.
+    vi.setSystemTime(todayAt(23, 45));
+
+    dragOnto(screen.getByText(/WO-2026-001239/).closest("article"), container.querySelector('[data-technician-id="tech-a"]'));
+
+    expect(await screen.findByText(/already passed/i)).toBeTruthy();
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the refusal does NOT quietly move the request to the next free slot", async () => {
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001239/);
+    vi.setSystemTime(todayAt(23, 45));
+    dragOnto(screen.getByText(/WO-2026-001239/).closest("article"), container.querySelector('[data-technician-id="tech-a"]'));
+
+    // Snapping forward would change what the dispatcher asked for, so nothing is scheduled at all.
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+    expect(screen.getByText(/will not move it forward/i)).toBeTruthy();
+  });
+
+  it("a keyboard nudge into the past is refused too", async () => {
+    setup();
+    const chip = (await screen.findByText(/WO-2026-001248/)).closest("button");
+    vi.setSystemTime(todayAt(23, 45));
+
+    fireEvent.keyDown(chip, { key: "ArrowLeft" });
+
+    // Asserted SYNCHRONOUSLY: the guard runs in the key handler, so the refusal is on screen
+    // before this line. findByText would poll, and polling advances the fake clock.
+    // Scoped to the ALERT: a refusal is announced in two places (the visible line and the live
+    // region), which is correct behaviour and would make a bare text query ambiguous.
+    expect(screen.getByRole("alert").textContent).toMatch(/start in the past/i);
+    expect(rescheduleWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("the accessible picker refuses a past start as well", async () => {
+    setup();
+    await screen.findByText(/WO-2026-001239/);
+    fireEvent.click(screen.getAllByRole("button", { name: /Schedule…/i })[0]);
+    const dialog = await screen.findByRole("dialog");
+
+    const input = dialog.querySelector('input[type="datetime-local"]');
+    expect(input.getAttribute("min")).toBeTruthy();       // the floor is declared to the browser
+    fireEvent.change(input, { target: { value: "2020-01-01T09:00" } });
+    fireEvent.change(within(dialog).getByLabelText(/Technician/i), { target: { value: "tech-a" } });
+
+    // ...and enforced independently, because `min` is advisory in several browsers and absent in jsdom.
+    expect(within(dialog).getByText(/already passed/i)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: /^Schedule$/ }).disabled).toBe(true);
+    expect(transitionWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it("future slots remain usable — the guard is a floor, not a freeze", async () => {
+    transitionWorkOrder.mockResolvedValue({ id: QUEUE_WO.id, status: "SCHEDULED", warnings: [] });
+    const { container } = setup();
+    await screen.findByText(/WO-2026-001239/);
+    dragOnto(screen.getByText(/WO-2026-001239/).closest("article"), container.querySelector('[data-technician-id="tech-a"]'));
+    await waitFor(() => expect(transitionWorkOrder).toHaveBeenCalled());
   });
 });

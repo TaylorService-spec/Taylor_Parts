@@ -15,19 +15,25 @@ import {
 } from "../../services/schedulingCommandClient.js";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import {
+  SLOT_MS,
   dayBand,
   dayOccupancy,
   fleetBookedPercent,
   isPlaced,
+  isSlotSelectable,
   laneCapacity,
+  moveWindow,
   placementWindow,
+  resizeWindow,
   startOfDayMillis,
+  windowForDrop,
 } from "../../domain/dispatchBoardGeometry.js";
 import {
   refusalContextFor,
   schedulingRefusalMessage,
   schedulingWarningMessages,
 } from "../../domain/schedulingRefusal.js";
+import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { workOrderPastDueItem } from "../../domain/workOrderAttentionProjection.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
@@ -36,6 +42,7 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import DispatchLaneGrid from "./DispatchLaneGrid.jsx";
 import ReadyToScheduleQueue from "./ReadyToScheduleQueue.jsx";
 import PlacementDialog, { PLACEMENT_INTENT } from "./PlacementDialog.jsx";
+import ReasonPrompt from "./ReasonPrompt.jsx";
 import {
   DISPATCH_VIEW,
   DispatchMapView,
@@ -100,6 +107,10 @@ export default function DispatcherBoard() {
   const [busyWorkOrderId, setBusyWorkOrderId] = useState(null);
   const [boardMessage, setBoardMessage] = useState(null);
   const [pendingPlacement, setPendingPlacement] = useState(null);
+  // VC-1: the compact reason-only step. Distinct from pendingPlacement, which still drives the FULL
+  // picker — the accessible non-drag path genuinely has to collect a placement, so it keeps its
+  // fields. A drag does not, and must not be sent through the same form.
+  const [pendingReason, setPendingReason] = useState(null);
   // null = every technician. NOT a set holding everyone: a roster that grows would otherwise leave a
   // new technician silently filtered OUT of a board whose owner believes they see the whole fleet.
   const [technicianFilter, setTechnicianFilter] = useState(null);
@@ -345,26 +356,88 @@ export default function DispatcherBoard() {
         return;
       }
 
-      const dropStart = band.startMillis + Math.round(fraction * (band.endMillis - band.startMillis));
-      // Snapped to the quarter hour: the pointer resolves to the minute, and a job starting at 9:07
-      // because of where a cursor landed is precision the gesture does not actually have.
-      const startMillis = Math.round(dropStart / 900_000) * 900_000;
       const existing = placementWindow(workOrder);
       const durationMinutes =
         existing?.durationMinutes ?? workOrder.estimatedDurationMinutes ?? 120;
+      // Snapped to the quarter hour: the pointer resolves to the minute, and a job starting at 9:07
+      // because of where a cursor landed is precision the gesture does not actually have.
+      const dropped = windowForDrop(band, fraction, durationMinutes);
 
-      // Reassign takes its window from the RECORD, so it opens the gate without a time; the other two
-      // carry the dropped time in. All three land in the same dialog, which is the same gate the
-      // picker path opens (artifact 1b: "One gate serves drag and picker").
-      setPendingPlacement({
-        intent,
+      // VC-4. A slot already past is not a target. The board used to accept the drop and then
+      // pre-fill a form the server was certain to refuse with START_IN_PAST — the refusal was
+      // guaranteed before the dispatcher typed anything. Refused HERE, and deliberately NOT snapped
+      // forward: moving the time to the next free slot would silently change what was asked for.
+      if (intent !== PLACEMENT_INTENT.REASSIGN && !isSlotSelectable(dropped.startMillis, Date.now())) {
+        setBoardMessage({
+          tone: "error",
+          text: "That time has already passed. Pick a later slot — the board will not move it forward for you.",
+        });
+        return;
+      }
+
+      // VC-1. The gesture already said technician, start and duration. What happens next depends
+      // only on whether the governed command needs something the gesture CANNOT supply.
+      if (intent === PLACEMENT_INTENT.SCHEDULE) {
+        // Schedule takes no reason server-side, so there is nothing left to ask. Commit.
+        runPlacement({
+          intent,
+          workOrderId: workOrder.id,
+          technicianId,
+          startMillis: dropped.startMillis,
+          endMillis: dropped.endMillis,
+        });
+        return;
+      }
+
+      // Reschedule and Reassign both REQUIRE a reason (schedulingCommands.ts parseReason). That is
+      // the one thing a drag cannot express, so it is the only thing asked for.
+      setPendingReason(
+        intent === PLACEMENT_INTENT.REASSIGN
+          // Reassign takes its window from the RECORD — a reassignment that also re-timed the job
+          // would be two changes wearing one reason.
+          ? { intent, workOrder, technicianId }
+          : { intent, workOrder, technicianId, startMillis: dropped.startMillis, endMillis: dropped.endMillis },
+      );
+    },
+    [dragging, intentForDrop, band, runPlacement],
+  );
+
+  /**
+   * VC-2/VC-3 — direct manipulation of a placed chip, pointer or keyboard, same governed command.
+   *
+   * `mode` is what the gesture MEANT: "move" keeps the duration and shifts both edges, "resize"
+   * keeps the start and moves the end. Both end at rescheduleWorkOrderCallable; neither invents a
+   * duration write path (setWorkOrderEstimatedDuration is a PLANNING estimate, not a placement).
+   */
+  const adjustPlacement = useCallback(
+    (workOrder, mode, deltaMillis) => {
+      const current = placementWindow(workOrder);
+      if (!current) {
+        // The R23 windowless case. There is no time to move, and inventing one here would schedule
+        // by side effect — it must go through a real placement instead.
+        setBoardMessage({
+          tone: "error",
+          text: `${workOrder.woNumber} has no scheduled window to adjust. Give it a time first.`,
+        });
+        return;
+      }
+      const next = mode === "resize"
+        ? resizeWindow(current, deltaMillis)
+        : moveWindow(current, deltaMillis);
+
+      if (!isSlotSelectable(next.startMillis, Date.now())) {
+        setBoardMessage({ tone: "error", text: "That would start in the past. Pick a later time." });
+        return;
+      }
+      setPendingReason({
+        intent: PLACEMENT_INTENT.RESCHEDULE,
         workOrder,
-        technicianId,
-        startMillis: intent === PLACEMENT_INTENT.REASSIGN ? null : startMillis,
-        durationMinutes,
+        technicianId: workOrder.scheduledTechId ?? null,
+        startMillis: next.startMillis,
+        endMillis: next.endMillis,
       });
     },
-    [dragging, intentForDrop, band],
+    [],
   );
 
   const handleDropOnQueue = useCallback(() => {
@@ -397,6 +470,31 @@ export default function DispatcherBoard() {
     [runPlacement],
   );
 
+  /**
+   * VC-1 — the reason-only step commits the placement the GESTURE already described.
+   *
+   * On refusal the prompt stays open carrying the sanitized sentence, and the chip has not moved:
+   * nothing is written optimistically, so "return the chip to its original position" is simply what
+   * happens when the live subscription never reports a change.
+   */
+  const confirmReason = useCallback(
+    async (reason) => {
+      const pending = pendingReason;
+      if (!pending) return;
+      const outcome = await runPlacement({
+        intent: pending.intent,
+        workOrderId: pending.workOrder.id,
+        technicianId: pending.technicianId,
+        startMillis: pending.startMillis,
+        endMillis: pending.endMillis,
+        reason,
+      });
+      if (outcome.ok) setPendingReason(null);
+      else setPendingReason((p) => (p ? { ...p, errorMessage: outcome.message } : null));
+    },
+    [pendingReason, runPlacement],
+  );
+
   // ---- honest states (artifact 1c) -----------------------------------------------------------
 
   if (role !== "admin" && role !== "dispatcher") {
@@ -424,8 +522,11 @@ export default function DispatcherBoard() {
 
       <p className="ns-dispatch__rule">
         Drag a queue card onto a lane to schedule · between lanes to reassign · back to the queue to
-        return it. <span className="ns-dispatch__hatch-key" aria-hidden="true" /> Hatched is blocked
-        time — its own governed record, never a work order; drops onto it are refused.
+        return it. Drag a chip&rsquo;s trailing edge to change how long it takes. With a chip focused:
+        <kbd>←</kbd>/<kbd>→</kbd> move it 15 min (<kbd>Shift</kbd> = 1 hour), <kbd>Alt</kbd>+arrow
+        resizes, <kbd>R</kbd> reassigns. <span className="ns-dispatch__hatch-key" aria-hidden="true" />{" "}
+        Hatched is blocked time — its own governed record, never a work order; drops onto it are
+        refused. Times already past today are not targets.
       </p>
 
       <DispatchViewSwitcher
@@ -496,6 +597,9 @@ export default function DispatcherBoard() {
               onDragOverLane={setDragOverLaneId}
               onDragLeaveLane={() => setDragOverLaneId(null)}
               busyWorkOrderId={busyWorkOrderId}
+              onAdjustPlacement={adjustPlacement}
+              onReassignRequest={(wo) => setPendingReason({ intent: PLACEMENT_INTENT.REASSIGN, workOrder: wo, technicianId: wo.scheduledTechId ?? null })}
+              slotMillis={SLOT_MS}
             />
           ) : null}
 
@@ -646,8 +750,40 @@ export default function DispatcherBoard() {
           onCancel={() => setPendingPlacement(null)}
         />
       ) : null}
+
+      {pendingReason ? (
+        <ReasonPrompt
+          title={
+            pendingReason.intent === PLACEMENT_INTENT.REASSIGN
+              ? "Reassign this work order"
+              : "Move this work order"
+          }
+          context={reasonPromptContext(pendingReason, technicians ?? [])}
+          confirmLabel={pendingReason.intent === PLACEMENT_INTENT.REASSIGN ? "Reassign" : "Move"}
+          submitting={busyWorkOrderId === pendingReason.workOrder.id}
+          errorMessage={pendingReason.errorMessage ?? null}
+          onConfirm={confirmReason}
+          onCancel={() => setPendingReason(null)}
+        />
+      ) : null}
     </div>
   );
+}
+
+/**
+ * The read-only sentence above the reason field. A SENTENCE, not fields — these values came from the
+ * gesture and are not editable here; restating them as inputs is the defect this correction removes.
+ */
+function reasonPromptContext(pending, technicians) {
+  const name = resolveTechnicianIdentity(pending.technicianId, { technicians })?.name ?? "this technician";
+  if (pending.intent === PLACEMENT_INTENT.REASSIGN) {
+    return `${pending.workOrder.woNumber} → ${name}, keeping its current time.`;
+  }
+  const at = new Date(pending.startMillis).toLocaleString(undefined, {
+    weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+  const minutes = Math.round((pending.endMillis - pending.startMillis) / 60_000);
+  return `${pending.workOrder.woNumber} → ${name}, ${at} for ${minutes} min.`;
 }
 
 function millisOf(value) {

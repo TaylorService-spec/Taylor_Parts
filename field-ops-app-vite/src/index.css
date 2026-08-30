@@ -6561,3 +6561,64 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-techfilter__option { display: flex; align-items: center; gap: 8px; min-height: 44px;
   padding: 4px 10px; font-size: var(--font-size-sm); cursor: pointer; }
 .ns-dispatch-techfilter__option:hover { background: var(--verenward-stone-sunken); }
+
+/* ── Dispatch P1v1 · Owner visual corrections VC-2/VC-3/VC-4 ───────────────────────────────── */
+
+/* VC-4. The minutes of TODAY that have already passed. Drawn as a dead region rather than left
+   looking droppable: the board used to accept a drop here and hand back a placement the server was
+   always going to refuse with START_IN_PAST. Non-interactive by construction — it sits under the
+   chips and takes no pointer events, so it dims the lane without swallowing a drop on a chip. */
+.ns-dispatch-lane__past {
+  position: absolute; inset-block: 0; inset-inline-start: 0; pointer-events: none; z-index: 0;
+  background: repeating-linear-gradient(135deg,
+    var(--verenward-stone) 0 3px, transparent 3px 8px);
+  opacity: 0.55;
+  border-inline-end: 1px solid var(--verenward-border-strong);
+}
+
+/* VC-2. The trailing-edge resize grip. Deliberately narrow and only visible on hover/focus of its
+   chip: it is a second gesture on an element that is already draggable, and an always-on handle
+   would compete with the chip's own affordance for the same few pixels. */
+.ns-dispatch-chip__resize {
+  position: absolute; inset-block: 0; inset-inline-end: 0; width: 8px;
+  cursor: ew-resize; opacity: 0; transition: opacity 120ms ease;
+  background: linear-gradient(to right, transparent, var(--verenward-border-strong));
+  border-start-end-radius: inherit; border-end-end-radius: inherit;
+}
+.ns-dispatch-chip--wo:hover .ns-dispatch-chip__resize,
+.ns-dispatch-chip--wo:focus-visible .ns-dispatch-chip__resize { opacity: 1; }
+@media (hover: none) {
+  /* Touch has no hover to reveal it, and a grip nobody can find is worse than none. */
+  .ns-dispatch-chip__resize { opacity: 1; width: 12px; }
+}
+
+/* VC-1. The reason-only prompt. Sized to the one field it asks for — if this ever grows placement
+   inputs again it has become PlacementDialog and the correction has been undone. */
+.ns-dispatch-reason__scrim {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--verenward-ink) 42%, transparent);
+}
+.ns-dispatch-reason {
+  width: min(30rem, calc(100vw - 2rem));
+  background: var(--color-surface); color: var(--color-text-primary);
+  border: 1px solid var(--verenward-border-strong); border-radius: 10px;
+  padding: 1.15rem 1.25rem 1rem; box-shadow: 0 18px 40px rgb(0 0 0 / 22%);
+}
+.ns-dispatch-reason__title { margin: 0 0 0.2rem; font-size: 1.05rem; font-weight: 650; }
+.ns-dispatch-reason__context {
+  margin: 0 0 0.85rem; font-size: 0.85rem; color: var(--color-text-secondary);
+}
+.ns-dispatch-reason__label {
+  display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem;
+  color: var(--color-text-secondary);
+}
+.ns-dispatch-reason__input {
+  width: 100%; padding: 0.5rem 0.6rem; font: inherit;
+  color: var(--color-text-primary); background: var(--color-surface);
+  border: 1px solid var(--verenward-border-strong); border-radius: 6px;
+}
+.ns-dispatch-reason__input:focus-visible { outline: 2px solid var(--verenward-ink); outline-offset: 1px; }
+.ns-dispatch-reason__error { margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--color-danger, #a3282f); }
+.ns-dispatch-reason__actions {
+  display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.9rem;
+}

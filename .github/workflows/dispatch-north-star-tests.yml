@@ -32,6 +32,7 @@ on:
       - "field-ops-app-vite/src/hooks/useTechnicianAvailability.js"
       - "field-ops-app-vite/src/services/schedulingCommandClient.js"
       - "field-ops-app-vite/test/dispatchBoardGeometry.test.mjs"
+      - "field-ops-app-vite/test/dispatchVisualCorrections.test.mjs"
       - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
       - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
       - "field-ops-app-vite/package.json"
@@ -48,6 +49,7 @@ on:
       - "field-ops-app-vite/src/hooks/useTechnicianAvailability.js"
       - "field-ops-app-vite/src/services/schedulingCommandClient.js"
       - "field-ops-app-vite/test/dispatchBoardGeometry.test.mjs"
+      - "field-ops-app-vite/test/dispatchVisualCorrections.test.mjs"
       - "field-ops-app-vite/test/dispatchSchedulingRefusal.test.mjs"
       - "field-ops-app-vite/test/dispatchNorthStarBoard.test.jsx"
       - "field-ops-app-vite/package.json"
@@ -87,7 +89,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Board geometry and capacity (node:test)
-        run: node --test test/dispatchBoardGeometry.test.mjs
+        run: node --test test/dispatchBoardGeometry.test.mjs test/dispatchVisualCorrections.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Refusal and warning vocabulary (node:test)
