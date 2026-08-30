@@ -1,6 +1,6 @@
 // Wave 6 -- master-data-in-Parts. Proves the new entry points actually mount the
 // shared PartWriteModal from within the Parts experience (PartsList "New Part",
-// PartDetail "Edit Part Details"/"Change Status") -- an authorized user never has
+// PartDetail "Edit part"/"Change status") -- an authorized user never has
 // to navigate to the separate Part Master screen to do normal Part master-data
 // work. Mocks PartWriteModal itself (its own governed-flow behavior is covered by
 // test/partWriteModal.test.jsx) so these stay focused on WIRING: the right button
@@ -76,12 +76,15 @@ describe("PartsList -- New Part entry point", () => {
 });
 
 describe("PartDetail -- Edit/Status entry points", () => {
-  it("Edit Part Details and Change Status buttons open the modal in the matching mode, for THIS part", async () => {
+  // RENAMED, not rewired. The Parts North Star P1 composition takes the design's shorter labels
+  // ("Edit part" / "Change status"); the commands, the modal modes and the part they act on are
+  // unchanged, which is what this test is actually for.
+  it("Edit part and Change status buttons open the modal in the matching mode, for THIS part", async () => {
     fetchPartMasterList.mockResolvedValue(READY);
     render(<PartDetail />);
-    await screen.findByRole("button", { name: /edit part details/i });
+    await screen.findByRole("button", { name: /^edit part$/i });
 
-    fireEvent.click(screen.getByRole("button", { name: /edit part details/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^edit part$/i }));
     expect(screen.getByTestId("part-write-modal").textContent).toBe("edit");
     expect(captured[captured.length - 1].mode).toBe("edit");
     expect(captured[captured.length - 1].part.partId).toBe("TST-9001");

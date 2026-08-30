@@ -181,3 +181,100 @@ Engineering proof is not acceptance. This family will end at **`AWAITING_OWNER_V
 and it cannot begin until **ND-25, ND-26 and ND-27** are answered — the first decides what the
 workspace's principal column may say, the second decides what the record is called, and the third
 decides whether a rail section exists.
+
+---
+
+# Part II — the Owner's rulings, and what shipped (2026-08-30)
+
+ND-25, ND-26 and ND-27 were closed the same day they were raised. This section is appended rather
+than folded into Part I, so the reconciliation that preceded the rulings stays readable as what it
+was: an argument made without knowing the answer.
+
+## The rulings
+
+| | Ruling | Effect on the composition |
+|---|---|---|
+| **ND-25** | **Option (b).** No Parts surface may present `warehouseQty` as stock authority. No client-side N-part balance derivation and no relabelled `availableStock` to satisfy the mockup. Quantitative inventory facts reach a surface only through `getPartBalance`, once activated, labelled by their real semantics. Omit the workspace quantity column in P1. **TRUTHFUL ABSENCE > FALSE COMFORT.** | The record header states no quantity. Where-it-is states why it cannot list locations. The static baseline rows are gone. |
+| **ND-26** | **Option (a).** `internalPartNumber` is the human-facing Part Number; `partId` stays the immutable document and routing key. A mutable business-facing title is acceptable. Never label `partId` "Part Number". | The record title, the breadcrumb leaf and the workspace column. The three defects were authorised as presentation/projection corrections. |
+| **ND-27** | **Refuse display.** `unitCost` stays blocked from display, report and export. Remove the static Unit Cost row. Do not loosen cost governance as part of this migration. | The Purchasing block carries no cost row — and no price row either: `sellPrice` is blocked by the same clause of the register for the same reason. |
+
+## What shipped, against the nine rulings of Part I
+
+| # | Disposition |
+|---|---|
+| P-N1 | **Resolved by ND-25.** No quantity in the identity layer, and the static baseline appears nowhere. |
+| P-N2, P-N3 | Rendered as **capability inactive** in `INVENTORY_BALANCE_UNAVAILABLE_REASON`'s own words — one sentence, not two, and not "authority required". |
+| P-N4 | *Where it is* renders its heading, the location-is-not-custody sentence, and why it cannot list locations. **No empty table.** |
+| P-N5 | The unit section is gated on the Part's own tracking mode through `resolveTrackingModeFromControlType`, so `SERIALIZED_LOT` fails closed instead of collapsing into `SERIAL`. Serial, lot, untracked and unsupported each render their own treatment; untracked renders **no section at all**. |
+| P-N6 | *Activity* reads `inventory_transactions` and names it as the work-order and receiving ledger. The seven-type contract is not named as though it could be read. |
+| P-N7 | **Resolved by ND-27.** No cost row, no price row. `money()` had no consumer left and was removed. |
+| P-N8 | The derived reorder point stays inside the forecast section, named by its derivation. The static threshold is gone. |
+| P-N9 | Deferred to the workspace, which is the surface that carries the search control. |
+| P-N12 | Shipped in [#1593](https://github.com/TaylorService-spec/Taylor_Parts/pull/1593). |
+
+## Three more enum leaks, found while composing
+
+The reconciliation found three defects. Composing the page found three more of the same family, all
+in cells that had been rendering database values at a reader:
+
+1. **Activity's Type column printed the raw enum** — `CONSUMED`, `TRANSFER_OUT`. It now prints words
+   from `LEDGER_TYPE_LABEL`, and an unrecognised type reads "Movement" rather than its token.
+2. **The Risk cell printed `health.recommendation.urgency` raw** — while `PartsList` showed the word
+   for the same value one page away. One vocabulary now serves both.
+3. **`test/partsMasterDataEntryPoints.test.jsx` proved the manufacturer *name resolution* and not the
+   row's reachability** — it mocked a canonical row that already carried `manufacturerId`, so it
+   passed for the entire period the production row could not render. A test can be green about a
+   value the running system never produces.
+
+## ND-28 — the ledger-derived stock forecast has no ruling yet
+
+ND-25 says quantitative inventory facts may appear only through `getPartBalance`. Taken to its
+literal end that removes the **Stock Position** card entirely — and with it `RequestReorderControl`,
+which is gated on `health.recommendation` and is the entry point to the governed reorder-request
+workflow. That workflow is live, governed and working; it is not a mockup element, and deleting a
+working command surface is not something a presentation migration may decide.
+
+**Shipped meanwhile, on the reading that the ruling prohibits *substitution* rather than the
+forecast's existence:** the card stays, renamed **Stock forecast**, with every figure named by its
+derivation (*"Derived from this part's movements in the work-order and receiving ledger — not a
+governed stock position"*), and `Available (ledger-derived)` renamed **Ledger-derived stock** so no
+cell carries the word the ruling reserves. It is **not** promoted into the record's identity layer,
+which is what ND-25's prohibition is aimed at. A part with no ledger movements gets a sentence saying
+no forecast can be made — explicitly *"not a statement about how many exist"*.
+
+**The decision:** is that reading right? Or does ND-25 mean the forecast card should go, taking the
+reorder request's entry point with it until `getPartBalance` is activated and can gate it instead?
+This build will not remove a working governed workflow on its own reading of a ruling aimed at a
+different surface.
+
+## Proof
+
+| Suite | What it makes falsifiable |
+|---|---|
+| `test/partsNorthStarProjection.test.mjs` (11) | ND-25 as a shape rule (no composer may grow `available`/`onHand`/`onOrder`; `warehouseQty` keeps `STATIC_FALLBACK`), ND-26 as an identity rule, the manufacturer key, and the refusal to coerce an unknown `oemStatus` |
+| `test/partsNorthStarIdentity.test.jsx` (4) | The three corrected renders |
+| `test/partsNorthStarRecord.test.jsx` (21) | The record composition: title, kicker, no quantity in the identity, no cost or price anywhere, the four honest states as four sentences, one unit treatment per tracking mode, a rail that never repeats the header, words where enums leaked, and no liveness claim |
+
+**Mutation proofs: 23 run, 22 caught,** source restored byte-identical after each. The one missed is
+recorded in [#1593](https://github.com/TaylorService-spec/Taylor_Parts/pull/1593)'s body rather than
+quietly dropped: reverting the Manufacturer row's JSX alone is no longer observable, because the
+projection now supplies the same key to both objects. The behavioural fix is in the projection, and
+both mutations that remove it there are caught.
+
+CI: `.github/workflows/parts-north-star-tests.yml`, path-filtered to the five domain modules, the two
+components and the three suites. `test/ciSuiteCoverage.test.mjs` passes — no suite here runs nowhere.
+
+Local at implementation: **259/259 node suites, 2774/2774 vitest tests, `vite build` clean, oxlint
+clean.**
+
+## The shell obligation, declared rather than escaped
+
+`PartDetail.jsx` left `CONFORMANT_WORKSPACES` when it stopped hosting `WorkspaceShell`, and had to be
+declared in `NORTH_STAR_RECORD_PAGES` in the same commit. **GATE 2b² caught it** — the gate written
+after families 1 and 2 shipped into exactly that hole. It worked.
+
+## Still to come
+
+The **workspace** (`PartsList.jsx`) — its quantity column omitted per ND-25, its Part Number column
+already corrected, and its search placeholder narrowed to what the lookup resolves (P-N9). Then the
+ledger row, sandbox refresh and Quick Gate.

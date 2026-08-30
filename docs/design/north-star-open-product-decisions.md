@@ -917,7 +917,7 @@ may close.
 Full reconciliation: [`parts-north-star-composition-map.md`](./parts-north-star-composition-map.md).
 Design authority: [`docs/north-star/parts/`](../north-star/parts/).
 
-### ND-25 — May a Parts surface show a quantity at all today, and which one?
+### ND-25 — May a Parts surface show a quantity at all today, and which one? — **CLOSED 2026-08-30: Option (b), truthful absence**
 
 **Raised:** 2026-08-30, reconciling the Parts P1 artifact against the shipped Parts surfaces.
 **Design holds:** frame 1a gives the workspace an **On hand** column and frame 1b gives the record
@@ -947,7 +947,7 @@ no-Available rule yield to the earlier Owner ruling; show nothing quantitative o
 `getPartBalance` is activated; or show the derived figure under a heading that names its derivation.
 A build may not choose between an Owner ruling and an Owner design.
 
-### ND-26 — Which string is "the part number"?
+### ND-26 — Which string is "the part number"? — **CLOSED 2026-08-30: internalPartNumber**
 
 **Raised:** 2026-08-30, same reconciliation.
 **Design holds:** the part number is the governed identity, the record title and the breadcrumb leaf,
@@ -968,7 +968,7 @@ fixed under a styling migration.
 `internalPartNumber` — accepting a mutable title and a title/URL divergence — or does `partId` stay on
 screen with the "Part Number" heading corrected to say what it actually is?
 
-### ND-27 — May the legacy static cost be displayed on the Parts record?
+### ND-27 — May the legacy static cost be displayed on the Parts record? — **CLOSED 2026-08-30: refuse display**
 
 **Raised:** 2026-08-30, same reconciliation.
 **Design holds:** the rail's Purchasing context opens with **Cost — $2,480.00**, marked *baseline*, on
@@ -983,3 +983,27 @@ as ND-25's.
 **The decision:** does the register's refusal stand, so the Purchasing block loses its first row — or
 does the Owner rule that a legibly-marked legacy value is acceptable on this one surface, which
 re-opens a refusal that was made deliberately and made total?
+
+### ND-28 — Does ND-25 remove the ledger-derived stock forecast, and the reorder request with it?
+
+**Raised:** 2026-08-30, composing the Parts North Star record under ND-25.
+**The ruling says:** quantitative inventory facts may appear only through the governed
+`getPartBalance` authority once its capability is intentionally activated, and a client-derived
+`availableStock` may not be substituted or renamed to satisfy the design.
+**What that collides with:** the **Stock Position** card is built entirely on
+`inventoryAnalyticsEngine`'s client-side derivation over `inventory_transactions` — ledger-derived
+stock, average daily usage, days remaining, reorder point, recommended quantity — and
+`RequestReorderControl` is gated on `health.recommendation`. That control is the entry point to the
+**governed reorder-request workflow**, which is live and working. Read literally, ND-25 deletes a
+working command surface.
+**Shipped meanwhile,** on the reading that the ruling prohibits *substitution into the identity
+layer* rather than the forecast's existence: the card stays, renamed **Stock forecast**, its heading
+naming its derivation (*"Derived from this part's movements in the work-order and receiving ledger —
+not a governed stock position"*), and `Available (ledger-derived)` renamed **Ledger-derived stock** so
+no cell carries the word the ruling reserves. It is absent from the record header, which is where
+ND-25's prohibition bites. A part with no ledger movements gets a sentence saying no forecast can be
+made, explicitly *"not a statement about how many exist"*.
+**The decision:** is that reading correct — or does ND-25 mean the forecast card should go, taking
+the reorder request's entry point with it until `getPartBalance` is activated and can gate it
+instead? A build may not remove a working governed workflow on its own reading of a ruling aimed at a
+different surface.
