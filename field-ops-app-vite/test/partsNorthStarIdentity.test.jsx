@@ -98,8 +98,12 @@ const CANONICAL = {
   version: 1,
 };
 
-function partNumberCell() {
-  return document.querySelector('[data-label="Part Number"]');
+// FRAME 1a (ND-30) MOVED THIS. There is no longer a separate "Part Number" column: the number is
+// the PRIMARY line of the Part cell with the description beneath it, which is Frame 1a’s own
+// arrangement. The assertion is unchanged in substance -- the cell must hold internalPartNumber and
+// never the document key -- only where it looks has moved.
+function partCell() {
+  return document.querySelector('[data-label="Part"]');
 }
 
 describe("ND-26 — the Parts workspace stops printing the document id under 'Part Number'", () => {
@@ -108,7 +112,7 @@ describe("ND-26 — the Parts workspace stops printing the document id under 'Pa
     render(<PartsList />);
     await screen.findByText("Scraper Blade Kit");
 
-    const cell = partNumberCell();
+    const cell = partCell();
     expect(cell).not.toBeNull();
     expect(cell.textContent).toContain("X49463-3");
     // The regression this replaces: the same cell rendered part.sku, which IS the document id
@@ -132,8 +136,8 @@ describe("ND-26 — the Parts workspace stops printing the document id under 'Pa
     render(<FreshPartsList />);
     await screen.findByText("Excluded Part");
 
-    const cell = partNumberCell();
-    expect(cell.textContent).toContain("Not recorded");
+    const cell = partCell();
+    expect(cell.textContent).toContain("Part Number not recorded");
     expect(cell.textContent).not.toContain("TST-1047");
   });
 });

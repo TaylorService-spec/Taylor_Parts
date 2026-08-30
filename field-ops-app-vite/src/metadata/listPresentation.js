@@ -192,6 +192,34 @@ export function cellValue(column, row, { resolveReference, resolveMoneyCell } = 
     const resolved = typeof resolveReference === "function" ? resolveReference(column.fieldId, raw, row) : undefined;
     return normalizeReferenceResult(resolved).label;
   }
+  // ═══════════ AN OBJECT IS NOT A VALUE, AND ITS SERIALIZATION IS NOT A DISPLAY ═══════════
+  //
+  // Every branch above turns a known shape into words. This is what is left, and it used to return
+  // whatever it was handed. For a primitive that is right — a STRING is its own display, and so is
+  // a NUMBER. For an OBJECT it is catastrophic, and the Equipment record showed exactly how:
+  //
+  //     Created   Timestamp(seconds=1786163702, nanoseconds=367000000)
+  //     Updated   Timestamp(seconds=1786163702, nanoseconds=367000000)
+  //
+  // `equipment.js` declares createdAt/updatedAt as NUMBER, deliberately and with its reasoning
+  // recorded: firestore.rules asserts `data.createdAt is number`, so the GOVERNED write path stores
+  // epoch milliseconds, and declaring TIMESTAMP would claim storage semantics the collection does
+  // not have. That declaration is right about the contract. A sandbox document held a Timestamp
+  // anyway — written by a path that did not go through those Rules — so a shape the field's own
+  // contract forbids reached a renderer that stringified it.
+  //
+  // The fix is not to re-type the field on the strength of one non-conforming document, and it is
+  // not to guess that any object carrying `seconds` is a date. It is to REFUSE: a value whose shape
+  // contradicts its declared type cannot be turned into words without guessing at what it means,
+  // and the honest answer is to say so rather than print the database's own serialization at a
+  // person who cannot act on it. The value stays recoverable where it belongs — in the document,
+  // and in audit.
+  //
+  // ADDRESS is the precedent one type over: MetadataRecordPage already special-cases it because
+  // `String({street: …})` renders "[object Object]". That caught the defect for one type; this
+  // closes the class, in the layer BOTH the lists and the record pages read through. On a list it
+  // also stops React being handed an object as a cell child.
+  if (raw !== null && typeof raw === "object") return ABSENCE_TEXT[ABSENCE.UNREADABLE];
   return raw;
 }
 

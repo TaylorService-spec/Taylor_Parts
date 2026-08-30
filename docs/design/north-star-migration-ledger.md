@@ -1121,7 +1121,7 @@ that closed the family's last open question and the state of its gate.
 | **ND-28-F** | **OPEN follow-up.** When `getPartBalance` is activated, reconcile the forecast composition against the governed balance — replace, supplement, or remain distinct — as an explicit authority change with its own tests. Semantics must not change silently when the capability flips. |
 | **PartsList scope** | Owner-agreed: the pre-North-Star multi-panel shell stays. Its four-panel role-home composition and governed reorder queues are a Lists P2 / role-workspace recomposition. **Parts P1 does not absorb it.** |
 | **Gate ruling** | **Quick Gate, not Full Regression** — Owner, 2026-08-30. Basis: presentation-layer changes, projection corrections, family-local defect corrections; no callable authority, capability activation, Rules, index, or transactional/state-machine change. |
-| **Gate** | `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs` — 16 checks, written and its release-identity guard proved. **Not yet run against the release.** |
+| **Gate** | `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs`. Superseded by the closeout below: it grew to 20 checks after three gate defects, and PASSED 20/20 against `79df93c1`. |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — unchanged, and blocked on the refresh below. |
 
 ### The refresh this family is waiting on
@@ -1158,6 +1158,76 @@ Functions batch exiting non-zero after some functions have already updated is th
 documented failure mode. Every guard, build verification, artifact stamp and identity gate still runs;
 only the scope changes.
 
+### Family 7 — the Quick Gate passed (2026-08-30)
+
+Appended, not rewritten: the rows above record what was built and what it was waiting on. This
+records the gate actually running, and supersedes the earlier line that said *"Not yet run."*
+
+| | |
+|---|---|
+| **Deployed SHA** | `79df93c1` — sandbox `platform-sandbox`/`sandbox`, buildTime 2026-08-30T12:55:09.833Z |
+| **Gate** | `partsNorthStarQuickGate.mjs --expect 79df93c1` — **20/20 PASS**, desktop 1440 and handheld 375, runtime clean |
+| **Verified independently** | Owner ran it; this build re-ran it and read `/version.json` first-hand rather than recording a result it had not seen |
+| **Rulings** | ND-25, ND-26, ND-27, ND-28, ND-29 — **all CLOSED** |
+| **Gate ruling applied** | Quick Gate, not Full Regression (Owner, 2026-08-30) |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the one authority a build cannot grant itself |
+
+### FRAME 1a WAS NOT BUILT, and offering `/inventory` for acceptance was wrong
+
+The Owner opened the sandbox at `/inventory` and said it looks nothing like the design view. It does
+not, and it was never going to: the **PartsList scope ruling of 2026-08-30** deliberately left the
+pre-North-Star multi-panel role home alone, and this build is the one that asked for that scope. So
+the workspace still renders Work / Parts / Flow groups with the reorder queues above a catalogue
+table — the agreed outcome, and nothing like frame 1a.
+
+**The error is not the scope. It is that the closeout listed `/inventory` as an Owner acceptance
+surface.** Frames 1a–1d were the acceptance criteria, and offering a surface that was deliberately
+not migrated to 1a — without saying so in the same breath — invited exactly the comparison that
+failed. A deferral that is not visible at the moment of acceptance is not a deferral, it is a
+surprise.
+
+**Acceptance surfaces, corrected — the RECORD family only:**
+
+| Frame | Surface | State |
+|---|---|---|
+| 1b desktop record | `/inventory/CW-P-0001` | **migrated**, ready for acceptance |
+| 1c handheld record | the same at 375 | **migrated**, ready for acceptance |
+| 1d honest states | reachable on the record | **migrated**, ready for acceptance |
+| **1a workspace** | `/inventory` | **NOT MIGRATED — do not accept against 1a** |
+
+Neither existing surface is frame 1a. `/inventory` is the role home. `/inventory/part-master`
+("Catalog Admin") is a flat admin table carrying Part Number / Name / Category / Control Type /
+Stocking Class / Unit / Status — closer to 1a's COLUMNS, but it is not a North Star page: no serif
+header block with counts, no view chips, no toolbar, no Attention column. **No surface in the
+product looks like frame 1a**, and what to do about that is the Owner's call, recorded as ND-30
+rather than assumed by this build.
+
+### Two results in that run that are weaker than they look, named rather than counted
+
+- **Check 4 and check 7 cannot decide the ND-26 field contract on this data.** The certification
+  fixture makes `partId` and `internalPartNumber` the *same string* (`CW-P-0000`), so "the cell shows
+  the Part Number, not the document id" is unfalsifiable live. The gate says so in its own output.
+  The contract is proved in `partsNorthStarProjection` and `partsNorthStarIdentity`, whose fixtures
+  make the two differ, and both are mutation-proved.
+- **Check 11 saw a `STANDARD` part.** The serialized and lot treatments were not exercised live; they
+  are covered by `partsNorthStarRecord.test.jsx`. Owner ruled this not required for P1 acceptance.
+
+### Checked during closeout, and NOT a defect
+
+The handheld full-page capture shows the fixed `fo-tabbar` sitting mid-content. That is an artefact of
+`fullPage` screenshots with `position: fixed`, not an overlap. Measured at the true page bottom at
+375×812: the last rail section ends at **y=646**, the bar begins at **y=739** — 93px clearance,
+`occluded: false`. Recorded because the screenshot looks like a defect and the next reader deserves
+the measurement rather than a second investigation.
+
+### Follow-ups that survive acceptance
+
+| | |
+|---|---|
+| **ND-28-F** | OPEN — when `getPartBalance` is activated, reconcile the Stock forecast against the governed balance (replace / supplement / remain distinct) as an explicit authority change with its own tests. Semantics must not change silently. |
+| **P-G1** | OPEN — every Parts surface reads the whole `parts` collection; a cold record deep-link is slow. Its own performance concern, not absorbed into Parts P1. |
+| **Serialized / lot live exercise** | Not required for P1. Focused Parts family tests remain the proof. |
+
 ---
 
 ## Family 8 — Equipment
@@ -1167,8 +1237,8 @@ only the scope changes.
 | **Composition** | Record `src/modules/equipment/EquipmentDetail.jsx` over `src/domain/equipmentNorthStar.js`; workspace `src/modules/equipment/EquipmentWorkspace.jsx` (three tabs, unchanged) with `CustomerEquipment.jsx`, `AvailableEquipment.jsx`, `EquipmentTimeline.jsx`, `InstallAtCustomer.jsx` |
 | **Visual authority** | `docs/north-star/equipment/North Star - Equipment P1v2.dc.html` (1a–1e) + `DESIGN-HANDOFF-EQUIPMENT-P1v2.1.md`, received 2026-08-30. Revision label **EQUIPMENT NORTH STAR P1v2.1 — DESIGN LOCKED** |
 | **Reconciliation** | [`equipment-north-star-composition-map.md`](./equipment-north-star-composition-map.md) — 22 drawn elements checked, **16 already built and correct**, 4 needing composition work, **2 not buildable as drawn**; produced before any UI code changed |
-| **Proof** | `test/equipmentNorthStarProjection.test.mjs` (27), `test/equipmentNorthStarRecord.test.jsx` (19), `test/equipmentNorthStarWorkspace.test.jsx` (17), plus the re-anchored `equipmentTimeline`, `equipmentListMigration`, `availableEquipmentInstall`, `availableEquipmentLocationDisplay`, `listsP2Tranche1`, `rawIdPresentationGuard` and `activeLabelConformance` suites |
-| **Named decisions** | **ND-30** (unresolved location: four reasons, not one string) and **ND-31** (identity cell: columns, not a concatenated summary) — both raised and open. Both are cases where the repository is ahead of the artifact |
+| **Proof** | `test/equipmentNorthStarProjection.test.mjs` (27), `test/equipmentNorthStarRecord.test.jsx` (21), `test/equipmentNorthStarWorkspace.test.jsx` (17) and 3 new assertions in the shared `test/metadataListPresentation.test.mjs`, plus the re-anchored `equipmentTimeline`, `equipmentListMigration`, `availableEquipmentInstall`, `availableEquipmentLocationDisplay`, `listsP2Tranche1`, `rawIdPresentationGuard`, `activeLabelConformance`, `coreRecordPages` and `accountRecordPage` suites |
+| **Named decisions** | **ND-31** (unresolved location: four reasons, not one string) and **ND-32** (identity cell: columns, not a concatenated summary) — both raised and open. Both are cases where the repository is ahead of the artifact |
 | **Gate** | Not yet run. Sandbox refresh and Quick Gate outstanding |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
 
@@ -1188,7 +1258,7 @@ Roles and both are in the sandbox `capabilityActivationOverrides`. The design co
 in P1v2 (EQ-G1/EQ-G2); the handoff's warning about stale comments landed on the repository. Nothing
 about the read, the gating or the fail-closed default changed — only the sentences describing them.
 
-### Two defects, both a stored token or a wrong value reaching a reader
+### Three defects, every one a stored token or a wrong value reaching a reader
 
 1. **The activity timeline printed raw enums.** `e.type` and `e.status` went to the screen unmapped,
    so a row read `Service · WO-873 · REPAIR · IN_PROGRESS` while every other Work Order surface in
@@ -1204,6 +1274,49 @@ about the read, the gating or the fail-closed default changed — only the sente
 Also removed: `EquipmentDetail.jsx`'s private `STATUS_LABEL` copy (one of the two
 `domain/equipmentStatus.js` was created to replace, which had survived because nothing forced the
 question), and a dead `Row()` helper with no caller.
+
+### A third defect, found by the Owner on the live sandbox — and it was never Equipment-only
+
+The Owner sent a screenshot of the deployed Equipment record showing, in its Record section:
+
+```
+Created   Timestamp(seconds=1786163702, nanoseconds=367000000)
+Updated   Timestamp(seconds=1786163702, nanoseconds=367000000)
+```
+
+**Why the type declaration was right and the render was still wrong.** `equipment.js` types
+`createdAt`/`updatedAt` as **NUMBER**, with its reasoning recorded in place: `firestore.rules`
+asserts `data.createdAt is number`, so the governed write path stores epoch milliseconds, and
+declaring TIMESTAMP would claim storage semantics the collection does not have. The sandbox document
+holds a Firestore Timestamp anyway — written by a path that did not go through those Rules. No
+branch of `cellValue` claimed the shape, the generic fallback returned it, and `MetadataRecordPage`
+handed it to `String()`.
+
+**The fix is a refusal, not a guess.** Not a re-typed field on the strength of one non-conforming
+document, and not "any object carrying `seconds` is a date". A value whose shape contradicts its
+declared type is **not displayable**, and `ABSENCE.UNREADABLE` — *"Recorded in an unreadable
+format"* — says so. Deliberately **not** an em dash: that would claim there is no value, and the
+whole point is that there is one.
+
+**It is a shared-layer change, and that is the news.** `cellValue` is what every metadata list AND
+every record page reads through, so this reached **six record pages**, not one. `MetadataRecordPage`
+already special-cased ADDRESS for exactly this reason (`String({street: …})` renders
+`[object Object]`) — the defect had been caught for one type and left open as a class.
+
+**Proof:** `test/metadataListPresentation.test.mjs` (3 new) asserts the refusal in the shared layer,
+that it is not a blanket refusal (a conforming number, and **zero**, still render), and that the
+sentence does not carry the shape it refused. `test/equipmentNorthStarRecord.test.jsx` (2 new) fixes
+the record on the **shape the live sandbox actually holds** and asserts the exact string from the
+screenshot never renders. Three mutation proofs: removing the shared guard fails the shared suite;
+removing both guards reproduces `Timestamp(seconds=…)` on the page. Removing the record-page guard
+**alone** is not observable — the shared guard returns first — and that is recorded rather than
+dressed up: it is defence-in-depth on the line that actually performed the stringification.
+
+**The layout half of the same screenshot needed nothing.** The collapsed middle column and the
+five-line wrap of "Ice Machine C713 — Unit 1" are `fo-detail-grid`, the three-panel row this
+migration replaced with `ns-record-body` (main column + rail). That screenshot is `main`, not this
+branch.
+
 
 ### Three burn-down lists shrank, and one gate caught the migration
 

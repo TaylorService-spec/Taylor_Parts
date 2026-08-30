@@ -41,7 +41,7 @@ not a universal one. The design corrected exactly this in P1v2 (EQ-G1, EQ-G2) an
 the repository's comments are the stale artifact. Correcting them is documentation, not authority.
 
 The mirror image is **the unresolved-reference vocabulary**, where the repository is ahead of the
-design and stays ahead — see **ND-30** below.
+design and stays ahead — see **ND-31** below.
 
 Twenty-two drawn elements were checked against the function that would have to supply them. **Sixteen
 are already built and correct.** Four need presentation/composition work. Two cannot be rendered as
@@ -109,8 +109,8 @@ Account.
 
 | Drawn | Why not | Ruling |
 |---|---|---|
-| Unresolved location renders the single string **"Location unavailable"** in the 1a table (1a) | The metadata list runtime resolves references through `referenceResolution.js`, which distinguishes NOT_FOUND / DENIED / LOADING / ERROR and renders a different sentence for each. Collapsing them to one string would re-introduce the exact defect that module was written to remove — telling an operator their data is broken when the truth is that their role is narrow | **ND-30** — repository truth preserved. The *invariant* the design is protecting (never a raw id, never a guessed name) holds and is tested. The record page (1c) keeps the literal `"Location unavailable"`, because there the failure state genuinely is one |
-| Identity cell as `Name · Manufacturer Model · S/N …` (1a) | The design draws a muted concatenated summary in the identity column *while also* drawing Manufacturer and Model as their own columns. The family-wide rule — stated in `equipment.js`'s own gap register, and in the design's own 1b note ("SIX ATTRIBUTES, SIX FIELDS") — forbids concatenating business attributes into one opaque string. The repository already gives each attribute a column, including `serialNumber` | **ND-31** — repository truth preserved. Duplicate names are disambiguated by the *adjacent columns*, which is strictly more useful than a muted summary: they are also sortable and scannable down their own edge. No concatenation is introduced |
+| Unresolved location renders the single string **"Location unavailable"** in the 1a table (1a) | The metadata list runtime resolves references through `referenceResolution.js`, which distinguishes NOT_FOUND / DENIED / LOADING / ERROR and renders a different sentence for each. Collapsing them to one string would re-introduce the exact defect that module was written to remove — telling an operator their data is broken when the truth is that their role is narrow | **ND-31** — repository truth preserved. The *invariant* the design is protecting (never a raw id, never a guessed name) holds and is tested. The record page (1c) keeps the literal `"Location unavailable"`, because there the failure state genuinely is one |
+| Identity cell as `Name · Manufacturer Model · S/N …` (1a) | The design draws a muted concatenated summary in the identity column *while also* drawing Manufacturer and Model as their own columns. The family-wide rule — stated in `equipment.js`'s own gap register, and in the design's own 1b note ("SIX ATTRIBUTES, SIX FIELDS") — forbids concatenating business attributes into one opaque string. The repository already gives each attribute a column, including `serialNumber` | **ND-32** — repository truth preserved. Duplicate names are disambiguated by the *adjacent columns*, which is strictly more useful than a muted summary: they are also sortable and scannable down their own edge. No concatenation is introduced |
 
 ---
 

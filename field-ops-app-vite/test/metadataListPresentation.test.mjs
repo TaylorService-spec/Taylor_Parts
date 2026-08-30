@@ -491,3 +491,37 @@ test("a REFERENCE column never puts the id in a cell, but the row's own routing 
     assert.notEqual(cell.value, "acc-1");
   }
 });
+
+// ═══════════ AN OBJECT IS NOT A VALUE, AND ITS SERIALIZATION IS NOT A DISPLAY ═══════════
+//
+// The Equipment record rendered `Timestamp(seconds=1786163702, nanoseconds=367000000)` in its
+// Created and Updated rows. `equipment.js` declares those fields NUMBER — correctly: firestore.rules
+// asserts `data.createdAt is number`. A document written outside that path held a Firestore
+// Timestamp, no branch above claimed it, and the generic fallback handed the object straight to
+// `String()`.
+//
+// The remedy is a refusal rather than a guess. Asserted HERE, in the shared layer, because both the
+// record pages and every metadata list read through this one function.
+test("a stored OBJECT on a primitive column is refused, never stringified", () => {
+  const timestamp = {
+    seconds: 1786163702,
+    nanoseconds: 367000000,
+    toString: () => "Timestamp(seconds=1786163702, nanoseconds=367000000)",
+  };
+  const shown = cellValue({ fieldId: "createdAt", type: "NUMBER" }, { createdAt: timestamp });
+  assert.equal(shown, "Recorded in an unreadable format");
+  assert.doesNotMatch(String(shown), /Timestamp\(seconds=|\[object Object\]|1786163702/);
+});
+
+test("the refusal is not a blanket one — a conforming value of the same field still renders", () => {
+  assert.equal(cellValue({ fieldId: "createdAt", type: "NUMBER" }, { createdAt: 1786163702367 }), 1786163702367);
+  // Zero is a value, and the absent-check above this branch must not have swallowed it.
+  assert.equal(cellValue({ fieldId: "qty", type: "NUMBER" }, { qty: 0 }), 0);
+  assert.equal(cellValue({ fieldId: "name", type: "STRING" }, { name: "Soft Serve Freezer 2" }), "Soft Serve Freezer 2");
+});
+
+test("the refusal says nothing about the shape it refused", () => {
+  // The sentence must not carry the serialization it exists to keep off the screen.
+  const shown = cellValue({ fieldId: "x", type: "STRING" }, { x: { secret: "value" } });
+  assert.doesNotMatch(shown, /secret|value|\{|\}/);
+});

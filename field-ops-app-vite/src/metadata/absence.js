@@ -41,6 +41,22 @@ export const ABSENCE = Object.freeze({
   UNRESOLVED: "UNRESOLVED",
   /** The platform cannot determine it — distinct from nobody having entered it. */
   UNKNOWN: "UNKNOWN",
+  /**
+   * A value IS stored, and its shape contradicts what the field declares, so it cannot be turned
+   * into words without guessing at what it means.
+   *
+   * Distinct from UNKNOWN, and the distinction is the point of this module: UNKNOWN says the
+   * platform could not work the answer out; this says the platform HAS the answer and cannot read
+   * it. The remedies differ — one is a question for the business, the other is a data or contract
+   * defect somebody should go and fix.
+   *
+   * Added after the Equipment record rendered `Timestamp(seconds=1786163702, nanoseconds=…)` in its
+   * Created and Updated rows. `equipment.js` declares those fields NUMBER because firestore.rules
+   * asserts `data.createdAt is number`; a document written outside that path held a Timestamp, and
+   * the generic renderer stringified it. Printing a database serialization at a reader is the
+   * defect class this whole layer exists to prevent — so the renderer now refuses, in words.
+   */
+  UNREADABLE: "UNREADABLE",
 });
 
 /** What each absence says to a person. Plain words; no state names, no ids, no dashes. */
@@ -49,6 +65,9 @@ export const ABSENCE_TEXT = Object.freeze({
   [ABSENCE.NOT_AVAILABLE_TO_USER]: "Not available to your role",
   [ABSENCE.UNRESOLVED]: "Unavailable",
   [ABSENCE.UNKNOWN]: "Not known",
+  // Says what happened without naming the shape: "Timestamp(seconds=…)" is exactly what must not
+  // reach the screen, so the sentence describing it must not carry it either.
+  [ABSENCE.UNREADABLE]: "Recorded in an unreadable format",
 });
 
 const isBlank = (v) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");

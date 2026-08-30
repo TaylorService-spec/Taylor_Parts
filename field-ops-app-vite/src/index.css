@@ -5307,7 +5307,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-workspace__description { font-size: 13.5px; line-height: 1.5; color: var(--color-text-secondary);
   margin: 8px 0 0; max-width: 78ch; }
 .ns-workspace__summary { font-size: 13px; color: var(--color-text-secondary); margin: 6px 0 0; }
-.ns-workspace__summary .is-attention { color: var(--verenward-bronze); font-weight: 600; }
+/* ATTENTION READS THE SAME WHEREVER IT APPEARS. Scoped to the summary line only, this rule left the
+   Frame 1a table's Attention cell rendering an action item as ordinary text -- the one column a
+   parts manager scans for work, with nothing to catch the eye. Widened to the workspace block so the
+   count and the row it refers to carry one treatment. */
+.ns-workspace .is-attention { color: var(--verenward-bronze); font-weight: 600; }
 .ns-workspace__action { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ── The tab rail: a workspace whose populations answer DIFFERENT questions and therefore cannot be

@@ -39,6 +39,16 @@ const EQUIPMENT = {
   warrantyExpiresDate: "2024-03-14",
   assetTag: null,
   notes: null,
+  // THE SHAPE THE LIVE SANDBOX ACTUALLY HOLDS, not the one the field declares. equipment.js types
+  // createdAt/updatedAt as NUMBER because firestore.rules asserts `data.createdAt is number`; the
+  // sandbox document carries a Firestore Timestamp, written by a path that did not go through
+  // those Rules. The record page stringified it and rendered
+  // "Timestamp(seconds=1786163702, nanoseconds=367000000)" in its Created and Updated rows.
+  //
+  // This fixture exists so that cannot come back. The earlier version of this suite mocked a
+  // well-formed record and was green about a page that was rendering a database object.
+  createdAt: { seconds: 1786163702, nanoseconds: 367000000, toString: () => "Timestamp(seconds=1786163702, nanoseconds=367000000)" },
+  updatedAt: { seconds: 1786163702, nanoseconds: 367000000, toString: () => "Timestamp(seconds=1786163702, nanoseconds=367000000)" },
 };
 
 function stub({ equipment = EQUIPMENT, account = {}, locations = {} } = {}) {
@@ -66,6 +76,26 @@ describe("the record identity", () => {
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1.textContent).toBe("Soft Serve Freezer 2");
     expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
+  });
+
+  it("NEVER stringifies a stored object — a database serialization is not a display", () => {
+    stub();
+    const { container } = renderRecord();
+    // The exact string the live Equipment record was showing.
+    expect(container.textContent).not.toMatch(/Timestamp\(seconds=/);
+    expect(container.textContent).not.toMatch(/\[object Object\]/);
+    expect(container.textContent).not.toContain("1786163702");
+    expect(container.textContent).not.toContain("nanoseconds");
+    // And it does not lie about it either: an em dash would say "there is no value here", and there
+    // is one — it simply cannot be read in the shape the field declares.
+    expect(screen.getAllByText("Recorded in an unreadable format").length).toBe(2);
+  });
+
+  it("a WELL-FORMED value of the same field still renders, so the guard is not a blanket refusal", () => {
+    stub({ equipment: { ...EQUIPMENT, createdAt: 1786163702367, updatedAt: 1786163702367 } });
+    const { container } = renderRecord();
+    expect(container.textContent).not.toMatch(/Recorded in an unreadable format/);
+    expect(container.textContent).toContain("1786163702367");
   });
 
   it("NEVER renders the document id as content, anywhere on the page", () => {

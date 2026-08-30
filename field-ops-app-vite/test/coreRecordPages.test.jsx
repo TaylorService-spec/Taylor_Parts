@@ -178,7 +178,10 @@ describe("collapsed is not hidden", () => {
 
 describe("truthful rendering survives the migration", () => {
   it("a missing value is an em dash, marked absent", () => {
-    expect(SHELL).toMatch(/\? "—" :/);
+    // Re-anchored: the ternary became multi-line when a stored OBJECT gained its own branch — an
+    // object is refused in words rather than stringified, after `Timestamp(seconds=…)` reached the
+    // Equipment record. The em dash still means exactly what it meant, and that is the claim.
+    expect(SHELL).toMatch(/\? "—"/);
     expect(SHELL).toMatch(/isMissing/);
   });
 

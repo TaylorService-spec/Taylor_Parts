@@ -1067,6 +1067,45 @@ the derivation ever grows a floor or a default.
 **real** engine across seven consumption patterns, plus the display rule; the record suite proves the
 render. Four mutation proofs, all caught.
 
+### ND-30 — Frame 1a has no surface, and the workspace scope ruling is why — **CLOSED 2026-08-30: Option (b), Frame 1a inside `/inventory`**
+
+**Raised:** 2026-08-30, when the Owner opened the deployed sandbox at `/inventory` and said it looks
+nothing like the design view. It does not, and it was never going to.
+
+**How this happened, plainly.** The **PartsList scope ruling** of the same day left the pre-North-Star
+multi-panel role home alone — a scope *this build asked for* and the Owner agreed to. The consequence
+was never stated where it mattered: **frame 1a was therefore not built at all**, and the closeout then
+offered `/inventory` as an acceptance surface against frames 1a–1d. That is the error. Not the scope
+— the invitation to accept a surface that was deliberately excluded from the thing being accepted.
+
+**Where the product actually stands.** Two Parts collection surfaces exist and neither is 1a:
+
+| Surface | What it is | Distance from 1a |
+|---|---|---|
+| `/inventory` ("Parts Catalog") | The role home: Work / Parts / Flow groups, reorder queues above a catalogue table | Far. Not a collection page at all. |
+| `/inventory/part-master` ("Catalog Admin") | A flat admin table — Part Number, Name, Category, Control Type, Stocking Class, Unit, Status | Closer on **columns**; no serif header block with counts, no view chips, no toolbar with Scan, no Attention column, not a North Star page shell. |
+
+**What frame 1a asks for** that neither provides: the serif *Parts* title block with governed counts,
+the view chips, the toolbar (Search / Filter / Sort / Scan), and a single operational table reading
+Part · Manufacturer · Category · Control · Status · Attention. Every one of those facts is now
+available to the projection after #1593 — **except On hand, which ND-25 forbids.** So 1a is buildable
+as a presentation change, minus its quantity column.
+
+**The decision, which this build will not make:**
+
+- **(a) Accept the record family only.** 1b/1c/1d are migrated, gated 20/20 and ready. Frame 1a is
+  recorded as deliberately not migrated, and Parts P1 closes without it.
+- **(b) Bring the catalogue panel inside `/inventory` up to 1a** — serif header block with counts,
+  view chips, toolbar with Scan, the 1a columns minus On hand — while leaving the Work and Flow
+  groups in place. Presentation-only, medium size, does not touch the governed reorder queues.
+- **(c) Full Lists P2 recomposition of `/inventory`** into a collection page, relocating the reorder
+  queues. Largest, and it touches governed queue surfaces.
+- **(d) Make `/inventory/part-master` the 1a surface** and leave `/inventory` as the role home. Cheapest
+  route to something that looks like the design — but it collides with the nav labels the Owner set on
+  2026-08-30, so it is a product decision about which surface is *the* Parts list, not a styling one.
+
+**Shipped meanwhile:** nothing changed. The ledger's acceptance surfaces are corrected to the record
+family only, so no one is asked to accept `/inventory` against a frame it was never built to.
 ---
 
 ## Open — raised by the Equipment P1v2.1 composition map (2026-08-30)
@@ -1077,7 +1116,7 @@ reconciliation. Neither changes an authority; both are recorded here rather than
 because a reader comparing the shipped page against the artifact will see the difference and is
 entitled to know it was a decision.
 
-### ND-30 — Does an unresolved location on the installed register say one thing or four?
+### ND-31 — Does an unresolved location on the installed register say one thing or four?
 
 **Raised:** 2026-08-30, by the Equipment North Star P1v2.1 composition map.
 
@@ -1107,7 +1146,7 @@ raw key never reaches the row. `test/equipmentNorthStarRecord.test.jsx` — the 
 location read renders the failure with Retry, and a *succeeded* read that resolves to nothing still
 says "Unknown location".
 
-### ND-31 — Is the installed row's identity cell a name, or a name plus a summary?
+### ND-32 — Is the installed row's identity cell a name, or a name plus a summary?
 
 **Raised:** 2026-08-30, by the Equipment North Star P1v2.1 composition map.
 

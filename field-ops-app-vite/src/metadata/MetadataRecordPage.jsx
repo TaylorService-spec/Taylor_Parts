@@ -8,6 +8,7 @@ import { formatAddress } from "../domain/address.js";
 import { findField } from "./entityDefinition.js";
 import { buildQueryDescriptor } from "./listRuntime.js";
 import { buildListPresentation, cellValue, buildRowHref } from "./listPresentation.js";
+import { ABSENCE, ABSENCE_TEXT } from "./absence.js";
 import { fetchPage as fetchFirestorePage } from "./firestoreListSource.js";
 import { fetchPage as fetchCallablePage } from "./callableListSource.js";
 import MetadataListGrid from "./MetadataListGrid.jsx";
@@ -244,7 +245,17 @@ function FieldGroup({ section, record, entity, page = null, onEditField = null, 
       label: field?.label ?? fieldId,
       // MISSING RENDERS TRUTHFULLY. An em dash says "there is no value here"; a blank cell says
       // nothing at all and reads as a rendering bug.
-      display: value === null || value === undefined || value === "" ? "—" : String(value),
+      //
+      // AND `String(value)` NEVER SEES AN OBJECT. `cellValue` now refuses one — an object is not a
+      // value and its serialization is not a display (see the branch at the foot of
+      // listPresentation.js's cellValue, added after `Timestamp(seconds=…)` reached the Equipment
+      // record's Created and Updated rows). This is the second guard rather than the only one,
+      // because this is the line that actually performed the stringification, and a future branch
+      // added above could hand it an object again. It is deliberately NOT reported as an em dash:
+      // "there is no value here" would be false, and the whole point is that there IS one.
+      display: value === null || value === undefined || value === ""
+        ? "—"
+        : typeof value === "object" ? ABSENCE_TEXT[ABSENCE.UNREADABLE] : String(value),
       isMissing: value === null || value === undefined || value === "",
       editable: edit.editable,
       // A field a person cannot edit stays VISIBLE, with the reason available. Hiding it would
