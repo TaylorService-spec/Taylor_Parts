@@ -982,3 +982,52 @@ work order drops below `detectStalledJobs`'s HIGH threshold and disappears from 
 work order the system knows least about is the one it shows least — the inverse of R23. Pre-existing,
 not introduced here, and a domain authority change to fix. Pinned by a test rather than left as a
 comment.
+
+### Family 6 — Owner acceptance, 2026-08-30
+
+Appended, not rewritten: the row above records what was shipped and proved; this records what the
+Owner then did with it.
+
+| | |
+|---|---|
+| **Acceptance** | **CLOSED 2026-08-30** — Owner visual acceptance given on the live sandbox composition |
+| **Accepted deployed SHA** | `0a5aeca3` |
+| **Sandbox identity** | `platform-sandbox` / `sandbox`, buildTime 2026-08-30T11:23:24.012Z |
+| **Accepted URL** | https://eos-platform-sandbox.web.app/service-operations |
+| **Final corrective gate** | **25/25 PASS** — RAW_ID PASS · 1440 PASS · 375 PASS · runtime/console errors PASS |
+| **Corrective PRs after the first refresh** | #1592 (routing + activity subject), #1594 (table-scroller containment) |
+| **Reusable gate** | `.claude/skills/run-field-ops-app-vite/serviceOperationsNorthStarGate.mjs` |
+
+**What acceptance did NOT resolve.** SO-G5, SO-G6 and SO-G7 remain **OPEN** and separately scoped.
+Nothing about them was solved by this acceptance, and the accepted page states the SO-G5 boundary on
+its own face rather than hiding it.
+
+### Two defects the engineering gate missed, and the Owner did not
+
+Recorded because the pattern is more useful than the fixes.
+
+**#1592 — a link verified by reading, not by following.** The header *Work orders* button and two
+metrics pointed at `/service/work-orders`, which matches no route: the Work Orders list is the
+Service domain index (`path: ""`). All three fell through to My Dashboard. Every test asserted the
+links *existed*. The Owner clicked one. The gate now FOLLOWS the header link rather than reading its
+`href`, because a plausible-looking route that resolves to nothing is exactly what an href assertion
+cannot see.
+
+**#1592 — an event with no subject.** `describeEvent()` returns a static per-type label, so the
+activity rail rendered a column of "Job assigned" / "Job completed" with nothing to attach them to.
+The panel it replaced printed `event.entity.id` there — a raw document key — and removing that was
+right; removing it *without putting the real reference back* is what left the rail saying nothing.
+Entries now lead with the work order number and carry the account.
+
+**#1594 — a hidden label that scrolled the page sideways.** Found by the live corrective gate at
+375, after two *other* failures in the same run turned out to be measurement artifacts — the kind of
+run where the third finding is easiest to dismiss. `.ns-visually-hidden` is `position: absolute`
+with no offsets, so inside a scrolling table it sat 122px past the viewport; with no positioned
+ancestor it escaped `.ns-table-wrap`'s `overflow-x: auto` and extended `documentElement.scrollWidth`
+to 497 against a 375 viewport. `body.scrollWidth` stayed exactly correct, which is why the
+certification sweep reported the route clean — correctly, by its own measure — and why jsdom could
+never have seen it. Fixed at the shared primitive, so it holds for every `ns-table`.
+
+**The transferable lesson:** three defects on an accepted-looking page, none visible to a component
+test, all visible in a real browser at a real width to someone actually using the surface. The gate
+now measures `documentElement.scrollWidth` and follows its links, and says in its own comments why.
