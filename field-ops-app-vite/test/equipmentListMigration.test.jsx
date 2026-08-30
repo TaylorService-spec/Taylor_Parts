@@ -143,12 +143,24 @@ describe("installed equipment and available stock are not one status model", () 
     expect(available).not.toMatch(/^import .*equipmentIndexList/m);
   });
 
-  it("Available Equipment renders six discrete fields, not a sentence", () => {
+  // SUPERSEDED FORM, and the claim is unchanged. The original pinned the two names that carried the
+  // discrete-fields composition at the time — `StructuredFields` and `availableUnitFields`. The
+  // Equipment North Star P1v2.1 recomposed this surface as the locked 1b TABLE, so the composer is
+  // now `availableRowCells` and the fields are cells. What is being proved is the same property it
+  // was written for and the one that actually matters: five business attributes are five separate
+  // things, never one concatenated string.
+  it("Available Equipment renders discrete fields, not a sentence", () => {
     const available = read("src/modules/equipment/AvailableEquipment.jsx");
-    expect(available).toMatch(/StructuredFields/);
+    expect(available).toMatch(/availableRowCells/);
+    // Each attribute lands in its own labelled cell.
+    for (const label of ["Unit", "Serial", "Model", "Condition", "Location"]) {
+      expect(available, label).toMatch(new RegExp(`data-label="${label}"`));
+    }
     // "Taylor C161 · S/N CW-C161-0001 · AVAILABLE · wh-main" put a raw location key in front of a
-    // person twice — once as a place, once with a parenthetical admitting it was not one.
-    expect(available).toMatch(/availableUnitFields/);
+    // person twice — once as a place, once with a parenthetical admitting it was not one. The
+    // location cell renders the composer's ABSENCE, never a stored id read off the row.
+    expect(available).toMatch(/cells\.locationAbsence/);
+    expect(available).not.toMatch(/\{\s*\w+\.currentLocationId/);
   });
 });
 

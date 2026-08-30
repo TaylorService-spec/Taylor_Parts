@@ -91,7 +91,7 @@ describe("Available Equipment", () => {
 
   it("shows the Install action for an authorized installer", () => {
     render(<AvailableEquipment />);
-    expect(screen.getAllByRole("button", { name: /Install \/ Assign to Customer/i }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: /^Install at customer$/i }).length).toBe(2);
   });
 
   it("HIDES the Install action entirely when the capability is absent", () => {
@@ -99,7 +99,7 @@ describe("Available Equipment", () => {
     // ends in a refusal -- the defect SalesOrderActions had before its own capability gate.
     useEquipmentInstallCapability.mockReturnValue({ canInstall: false });
     render(<AvailableEquipment />);
-    expect(screen.queryByRole("button", { name: /Install \/ Assign to Customer/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Install at customer$/i })).toBeNull();
     // The inventory itself is still visible -- seeing what the company owns is a different question.
     expect(screen.getAllByText("Taylor C161").length).toBeGreaterThan(0);
   });
@@ -145,7 +145,7 @@ describe("InstallAtCustomer", () => {
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
     expect(screen.getByText(/cannot be undone/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Install at customer/i }).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: /Confirm installation/i }).disabled).toBe(false);
   });
 
   it("ALREADY_INSTALLED is shown as a state, and no retry is offered", async () => {
@@ -155,7 +155,7 @@ describe("InstallAtCustomer", () => {
     render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
-    fireEvent.click(screen.getByRole("button", { name: /Install at customer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm installation/i }));
     expect(await screen.findByText(/already installed at a customer/i)).toBeTruthy();
   });
 
@@ -165,7 +165,7 @@ describe("InstallAtCustomer", () => {
     render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} onInstalled={onInstalled} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
-    fireEvent.click(screen.getByRole("button", { name: /Install at customer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirm installation/i }));
     expect(await screen.findByText(/^Installed\.$/)).toBeTruthy();
     expect(onInstalled).toHaveBeenCalledWith("eq_1", { replayed: false });
   });
@@ -176,7 +176,7 @@ describe("InstallAtCustomer", () => {
     render(<InstallAtCustomer unit={unit} accounts={accounts} canInstall onClose={() => {}} />);
     fireEvent.change(screen.getByRole("combobox", { name: /^Customer$/i }), { target: { value: "acct-a" } });
     fireEvent.change(screen.getByRole("combobox", { name: /Customer location/i }), { target: { value: "loc-a1" } });
-    const button = screen.getByRole("button", { name: /Install at customer/i });
+    const button = screen.getByRole("button", { name: /Confirm installation/i });
     fireEvent.click(button);
     fireEvent.click(button);
     fireEvent.click(button);

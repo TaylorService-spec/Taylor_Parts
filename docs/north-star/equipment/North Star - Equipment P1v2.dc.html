@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    .sect { font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+    .badge { background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px; }
+    .frame { background: #F3F0E9; outline: 1px solid #C3BCAB; }
+    .na { color: #6B7A74; }
+    .micro { font: 600 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; }
+    table.ops { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    table.ops th { border-bottom: 2px solid #102B24; text-align: left; padding: 6px 10px 6px 0; font: 600 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55; }
+    table.ops td { border-bottom: 1px solid #E3DDD0; padding: 0 10px 0 0; height: 32px; font-variant-numeric: tabular-nums; }
+    table.ops td.r, table.ops th.r { text-align: right; padding-right: 24px; }
+    table.ops td.r:last-child, table.ops th.r:last-child { padding-right: 0; }
+    .rulepair { border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px; }
+    .btn-o { font: 600 12.5px Inter, sans-serif; padding: 9px 18px; border: 1px solid #C3BCAB; background: #FCFAF6; text-decoration: none; color: #1C4638; }
+    .btn-p { font: 600 12.5px Inter, sans-serif; padding: 9px 18px; background: #1C4638; color: #FCFAF6; text-decoration: none; }
+    .word { font: 600 12px Inter, sans-serif; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;" data-screen-label="Equipment North Star P1v2.1 — design locked">
+
+  <div id="eq1a" style="width: 1400px;" data-screen-label="1a Equipment workspace — Customer Equipment (canonical)">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span class="sect"><span class="badge">1a</span>Equipment workspace · Customer Equipment tab (default) · desktop 1440 · Lists grammar · P1v2</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Route <code>/equipment</code>, three tabs unchanged — three populations, never merged. Workspace header carries no count — one number beside one title would be ambiguous; the tab's own governed aggregate counts (repo law, kept).</span>
+    </div>
+    <div class="frame" style="padding: 0 40px 40px;">
+      <div style="max-width: 1280px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Equipment · Sat Aug 30</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Admin &amp; Dispatcher</span>
+        </div>
+        <div class="rulepair"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 18px 0 0;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; margin: 0 0 6px; line-height: 1.05;">Equipment</h1>
+            <div style="font-size: 13px; color: #4A5B55;">Every serialized unit the business owns or services — installed at customers, available in company stock, and the account-scoped register that creates them.</div>
+          </div>
+        </header>
+        <div style="display: flex; gap: 28px; border-bottom: 1px solid #C3BCAB; margin: 18px 0 20px; font: 600 13px Inter, sans-serif;">
+          <span style="padding: 8px 0; border-bottom: 3px solid #B08A55; color: #102B24;">Customer Equipment</span>
+          <a href="#eq1b" style="padding: 8px 0; text-decoration: none; color: #6B7A74;">Available Equipment</a>
+          <a href="#eq1d" style="padding: 8px 0; text-decoration: none; color: #6B7A74;">Add Equipment</a>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; gap: 20px;">
+          <div style="display: flex; gap: 10px; align-items: baseline;">
+            <span style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700;">Installed equipment <span style="font: 600 13px Inter, sans-serif; color: #6B7A74;">312</span></span>
+            <span style="font-size: 11.5px; color: #6B7A74;">governed aggregate over these filters — null on failure, never a tally of loaded rows</span>
+          </div>
+          <div style="display: flex; gap: 14px; font-size: 12px;">
+            <span class="na">Views:</span> <a href="#eq1a" style="font-weight: 700;">All installed</a> · <a href="#eq1a" class="na">Retired</a> · <a href="#eq1a" class="na">Save view…</a>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+          <span class="word" style="padding: 5px 12px; background: #102B24; color: #fff;">Customer: Desert Sun ✕</span>
+          <span class="word" style="padding: 5px 12px; border: 1px solid #C3BCAB; background: #FCFAF6; color: #4A5B55;">+ Add filter</span>
+          <span class="word" style="padding: 5px 12px; border: 1px solid #C3BCAB; background: #FCFAF6; color: #4A5B55;">Sort: Name A→Z</span>
+          <a href="#eq1a" style="font-size: 12px;">Clear filters</a>
+          <span style="font-size: 11.5px; color: #6B7A74; margin-left: auto;">Filters are server-side: Customer (picker of names, never a typed id) and Status. Manufacturer/model stay display columns — no filter semantics are added merely because a column exists.</span>
+        </div>
+        <div style="font-size: 12px; color: #4A5B55; margin-bottom: 6px;">8 installed units for Desert Sun, name A→Z — result context sits directly above the rows it describes (Lists P2 anatomy).</div>
+        <table class="ops">
+          <thead><tr><th style="width: 30%;">Equipment</th><th>Customer</th><th>Location</th><th>Manufacturer</th><th>Model</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><a href="#eq1c" style="font-weight: 700;">Soft Serve Freezer 2</a> <span class="na">· Taylor C712 · S/N K1122873</span></td><td>Desert Sun</td><td>Broadway Plant</td><td>Taylor</td><td>C712</td><td class="word" style="color: #237A45;">Active</td></tr>
+            <tr><td><a href="#eq1c" style="font-weight: 700;">Soft Serve Freezer 1</a> <span class="na">· Taylor C712 · S/N K1122870</span></td><td>Desert Sun</td><td>Broadway Plant</td><td>Taylor</td><td>C712</td><td class="word" style="color: #237A45;">Active</td></tr>
+            <tr><td><a href="#eq1c" style="font-weight: 700;">Shake Machine 1</a> <span class="na">· Taylor 8756 · S/N K0998411</span></td><td>Desert Sun</td><td>Mesa Distribution</td><td>Taylor</td><td>8756</td><td class="word" style="color: #A9740D;">Inactive</td></tr>
+            <tr><td><a href="#eq1c" style="font-weight: 700;">Grill 2</a> <span class="na">· Taylor L810 · S/N L2244810</span></td><td>Desert Sun</td><td class="na">Location unavailable</td><td>Taylor</td><td>L810</td><td class="word" style="color: #237A45;">Active</td></tr>
+            <tr><td><a href="#eq1c" style="font-weight: 700;">Batch Freezer 1</a> <span class="na">· Taylor 104 · S/N K0771204</span></td><td>Desert Sun</td><td>Broadway Plant</td><td>Taylor</td><td>104</td><td class="word" style="color: #6B7A74;">Retired</td></tr>
+          </tbody>
+        </table>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px;">
+          <span style="font-size: 12px; color: #6B7A74;">Duplicate names are legal — the muted manufacturer · model · serial summary keeps two “Soft Serve Freezer” rows tellable apart without ever rendering a document id. Serial is context, not identity — it is not guaranteed unique. No Taylor/Ventana operating-company badge on installed units: that fact is not derivable from the Customer (EQ-G5).</span>
+          <a href="#eq1a" class="btn-o" style="display: inline-block;">Load more</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="eq1b" style="width: 1400px;" data-screen-label="1b Available Equipment — full runtime state model + governed install">
+    <div style="margin-bottom: 8px;"><span class="sect"><span class="badge">1b</span>Available Equipment — governed Serialized Asset inventory (company stock, not installed Equipment) · full runtime state model (EQ-G1 corrected)</span></div>
+    <div style="display: flex; gap: 24px; align-items: stretch;">
+      <div class="frame" style="width: 380px; flex: none; padding: 0 28px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Runtime states — all five designed</div>
+        <div class="rulepair"></div>
+        <div style="display: grid; gap: 12px; font-size: 12.5px; margin-top: 14px;">
+          <div><span class="word">Loading</span><div class="na" style="margin-top: 2px;">“Loading Available Equipment…” — nothing asserted yet.</div></div>
+          <div><span class="word" style="color: #237A45;">Ready</span><div class="na" style="margin-top: 2px;">The governed read supplies assets — the composition at right.</div></div>
+          <div><span class="word">Empty</span><div class="na" style="margin-top: 2px;">“No serialized assets are currently available for assignment.” — filtered-empty says so separately.</div></div>
+          <div><span class="word" style="color: #B23B3B;">Denied</span><div class="na" style="margin-top: 2px;">“You are not able to view available Serialized Assets.” — fail-closed per role, one possible state, not the universal condition.</div></div>
+          <div><span class="word" style="color: #A9740D;">Unavailable</span><div class="na" style="margin-top: 2px;">“The Available Equipment read could not be completed. Try again later.” — a transient failure, never rendered as denial or as empty.</div></div>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 14px; border-top: 1px solid #E3DDD0; padding-top: 10px;">The governed trusted read exists and is sandbox-activatable. The design carries no claim about which state any environment shows today.</div>
+      </div>
+      <div class="frame" style="flex: 1; padding: 0 32px 28px;">
+        <div style="padding: 14px 0 10px;" class="micro">Ready — company stock, grouped by business line</div>
+        <div class="rulepair"></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 16px 0 4px;">
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700; margin: 0;">Available Equipment</h2>
+          <span style="font-size: 12px; color: #4A5B55;">6 of 6 available — Taylor: 4 · Ventana: 2 <span class="na">(both lines always named, including at zero)</span></span>
+        </div>
+        <div style="font-size: 12px; color: #6B7A74; margin-bottom: 14px;">Company inventory — no customer filter, by definition. Search + type / manufacturer / model / condition / location filters over the governed fields. Line grouping uses the existing governed composition: Serialized Asset → whole-unit Part → canonical Equipment Model identity → manufacturer → the existing declared manufacturer-to-operating-line mapping → Taylor / Ventana / Unclassified. The line is not stored on the asset, and nothing is inferred from the Customer.</div>
+        <div class="micro" style="margin-bottom: 6px;">Taylor <span style="color: #102B24;">(4)</span></div>
+        <table class="ops" style="margin-bottom: 18px;">
+          <thead><tr><th>Serial</th><th>Model</th><th>Condition</th><th>Location</th><th class="r"></th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight: 700;">CW-C161-0001</td><td>Taylor C161</td><td class="word">Available</td><td>Main warehouse</td><td class="r"><a href="#eq1b2" style="font-weight: 600;">Install at customer →</a></td></tr>
+            <tr><td style="font-weight: 700;">CW-C712-0044</td><td>Taylor C712</td><td class="word">Available</td><td class="na">Location unavailable</td><td class="r"><a href="#eq1b2" style="font-weight: 600;">Install at customer →</a></td></tr>
+          </tbody>
+        </table>
+        <div class="micro" style="margin-bottom: 6px;">Ventana <span style="color: #102B24;">(2)</span></div>
+        <table class="ops">
+          <tbody>
+            <tr><td style="font-weight: 700;">VN-8100-0007</td><td>Ventana 8100</td><td class="word">Available</td><td>Main warehouse</td><td class="r"><a href="#eq1b2" style="font-weight: 600;">Install at customer →</a></td></tr>
+          </tbody>
+        </table>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 14px; border-top: 1px solid #E3DDD0; padding-top: 10px;">A location the governed resolver cannot resolve renders as an absence — “Location unavailable” — never a raw id taught as a place, never a guessed type (EQ-G2, presentation rule kept).</div>
+      </div>
+      <div class="frame" id="eq1b2" style="width: 400px; flex: none; padding: 0 28px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Install at customer — governed command, confirmed</div>
+        <div class="rulepair"></div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 700; margin: 16px 0 4px;">Confirm installation</h2>
+        <div style="font-size: 12px; color: #6B7A74; margin-bottom: 14px;">This assigns the unit to the customer and takes it out of available stock. Reassignment is not yet a general workflow — confirm the handoff deliberately.</div>
+        <dl style="font-size: 13px; margin: 0 0 16px; display: grid; gap: 10px; border-top: 2px solid #102B24; padding-top: 12px;">
+          <div><dt class="micro">Unit</dt><dd style="margin: 2px 0 0; font-weight: 600;">Taylor C161 <span class="na" style="font-weight: 400;">· S/N CW-C161-0001</span></dd></div>
+          <div><dt class="micro">Customer</dt><dd style="margin: 2px 0 0; font-weight: 600;">Desert Sun</dd></div>
+          <div><dt class="micro">Installation location</dt><dd style="margin: 2px 0 0; font-weight: 600;">Broadway Plant</dd></div>
+        </dl>
+        <div style="display: flex; gap: 10px;">
+          <a href="#eq1b" class="btn-p">Confirm installation</a>
+          <a href="#eq1b" class="btn-o">Cancel</a>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 14px; border-top: 1px solid #E3DDD0; padding-top: 10px;">Backed by the existing governed <code>equipment.install</code> authority — the server re-checks capability and the availability invariant inside its transaction. The button exists only for users holding the capability. No second install workflow; no recovery command in P1.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="eq1c" style="width: 1400px;" data-screen-label="1c Unit record">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span class="sect"><span class="badge">1c</span>Unit record · <code>/equipment/:equipmentId</code> · the record renders once, here</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Same reads as today: one doc subscription, one equipmentId-scoped Work Order query, Account/Location lookups. Recomposed, nothing invented.</span>
+    </div>
+    <div class="frame" style="padding: 0 40px 40px;">
+      <div style="max-width: 1280px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;"><a href="#eq1a" style="text-decoration: none;">Equipment</a> → Soft Serve Freezer 2</span>
+        </div>
+        <div class="rulepair"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 18px 0 14px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 34px; font-weight: 700; margin: 0 0 6px; line-height: 1.05;">Soft Serve Freezer 2</h1>
+            <div style="font-size: 13px; color: #4A5B55;"><span class="word" style="color: #237A45;">Active</span> · Taylor C712 · S/N K1122873 · <a href="#eq1c" style="font-weight: 600;">Desert Sun</a> · Broadway Plant</div>
+          </div>
+          <a href="#eq1c" class="btn-p" style="flex: none;">Edit</a>
+        </header>
+        <div style="display: grid; grid-template-columns: 1fr 340px; gap: 48px; align-items: start;">
+          <div>
+            <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Identification &amp; service information</h2>
+            <div style="font-size: 12px; color: #6B7A74; margin-bottom: 10px;">The shared record shell every core object renders — labelled fields, an em dash where a value is genuinely absent, a pencil only on fields the edit command accepts. Edit routes to the one edit modal; no per-field write path is invented.</div>
+            <dl style="font-size: 13px; margin: 0 0 8px; display: grid; grid-template-columns: 160px 1fr 160px 1fr; gap: 8px 18px; border-top: 2px solid #102B24; padding-top: 12px;">
+              <dt class="na">Name</dt><dd style="margin: 0; font-weight: 600;">Soft Serve Freezer 2 ✎</dd>
+              <dt class="na">Manufacturer</dt><dd style="margin: 0;">Taylor ✎</dd>
+              <dt class="na">Serial number</dt><dd style="margin: 0;">K1122873 ✎</dd>
+              <dt class="na">Model</dt><dd style="margin: 0;">C712 ✎</dd>
+              <dt class="na">Asset tag</dt><dd style="margin: 0;" class="na">—</dd>
+              <dt class="na">Warranty expires</dt><dd style="margin: 0;">Mar 14, 2024</dd>
+              <dt class="na">Notes</dt><dd style="margin: 0;" class="na">—</dd>
+              <dt class="na"></dt><dd style="margin: 0;"></dd>
+            </dl>
+            <div style="font-size: 11.5px; color: #6B7A74; margin-bottom: 26px;">Warranty Expires is the governed <code>warrantyExpiresDate</code> fact, rendered exactly as recorded — no “in warranty” / “expired” judgment, days remaining, or coverage semantics are derived (EQ-D2 closed; richer warranty status is outside P1).</div>
+            <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">Activity timeline</h2>
+            <div style="background: #FCFAF6; outline: 1px solid #E3DDD0; outline-offset: -1px; padding: 8px 12px; font-size: 12px; color: #4A5B55; margin-bottom: 10px;">Inventory history (receiving, transfers, installation, ledger) is not yet connected — only service activity is shown. Nothing here is simulated. <span class="na">(EQ-G3 — the note is repo copy, kept verbatim)</span></div>
+            <table class="ops">
+              <thead><tr><th style="width: 90px;">Source</th><th style="width: 120px;">Date</th><th>Event</th><th></th></tr></thead>
+              <tbody>
+                <tr><td class="word">Service</td><td>Aug 26, 2026</td><td>Repair · In progress</td><td class="r"><a href="#eq1c" style="font-weight: 600;">WO-873 →</a></td></tr>
+                <tr><td class="word">Service</td><td>May 12, 2026</td><td>Repair · Completed</td><td class="r"><a href="#eq1c" style="font-weight: 600;">WO-702 →</a></td></tr>
+                <tr><td class="word">Service</td><td>Jan 8, 2026</td><td>Repair · Completed</td><td class="r"><a href="#eq1c" style="font-weight: 600;">WO-588 →</a></td></tr>
+                <tr><td class="word">Service</td><td>Nov 2, 2025</td><td>Maintenance · Completed</td><td class="r"><a href="#eq1c" style="font-weight: 600;">WO-511 →</a></td></tr>
+              </tbody>
+            </table>
+            <div style="font-size: 11.5px; color: #6B7A74; margin-top: 10px;">Newest first, source-tagged. A failed service read renders “Activity unavailable”, never “No activity yet” — the two are different facts.</div>
+          </div>
+          <aside style="border-left: 1px solid #D9D3C6; padding-left: 24px; display: grid; gap: 22px; align-content: start;">
+            <div>
+              <div class="micro" style="margin-bottom: 8px;">Customer &amp; location</div>
+              <dl style="font-size: 13px; margin: 0; display: grid; gap: 6px;">
+                <div><dt class="na" style="display: inline;">Customer · </dt><dd style="display: inline; margin: 0;"><a href="#eq1c" style="font-weight: 600;">Desert Sun</a></dd></div>
+                <div><dt class="na" style="display: inline;">Installed location · </dt><dd style="display: inline; margin: 0;">Broadway Plant</dd></div>
+              </dl>
+              <div style="font-size: 11.5px; color: #6B7A74; margin-top: 8px;">Kept apart from the record shell on purpose: each read fails independently with its own Retry — “we could not look” never renders as “Unknown customer”. No operating-company badge here: Taylor vs Ventana is not derivable from the Customer; the seam composes the governed ownership fact when it exists (EQ-G5).</div>
+            </div>
+            <div>
+              <div class="micro" style="margin-bottom: 8px;">Inventory control</div>
+              <div style="font-size: 12.5px;"><span class="word" style="color: #6B7A74;">Unknown</span></div>
+              <div style="font-size: 11.5px; color: #6B7A74; margin-top: 6px;">The two-condition read (install complete AND sale close) needs a sale-close signal this surface doesn't have — an honest unknown with the reason, never a fabricated Controlled/Exited state. Not a P1 gap to solve.</div>
+            </div>
+            <div>
+              <div class="micro" style="margin-bottom: 8px;">Lifecycle actions</div>
+              <div style="display: grid; gap: 8px;">
+                <span class="btn-o" style="text-align: center; opacity: 0.45; cursor: default;">Move</span>
+                <span class="btn-o" style="text-align: center; opacity: 0.45; cursor: default;">Retire</span>
+              </div>
+              <div style="font-size: 11.5px; color: #6B7A74; margin-top: 8px;">Present but unavailable, with the reason stated — the trusted-writer functions are not deployed (EQ-G4). Hiding them would claim the asset can never move; enabling them would promise a write nothing can perform. Edit sits apart because it is genuinely available — including on a retired asset.</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="eq1d" style="width: 1400px;" data-screen-label="1d Honest states">
+    <div style="margin-bottom: 8px;"><span class="sect"><span class="badge">1d</span>Honest states — the distinctions the platform draws, kept and completed</span></div>
+    <div style="display: flex; gap: 24px; margin-bottom: 24px;">
+      <div class="frame" style="flex: 1; padding: 0 24px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Add Equipment — nothing asked yet</div>
+        <div class="rulepair"></div>
+        <div style="font-size: 12.5px; margin-top: 14px; font-weight: 700;">Choose a customer</div>
+        <div style="font-size: 12.5px; color: #4A5B55; margin-top: 4px;">Select a customer to see the equipment installed at their locations.</div>
+        <div style="font-size: 11px; color: #6B7A74; margin-top: 12px;">The account bounds the query (§7) — until one is chosen nothing has been read, and the page says so rather than reading the whole collection. “+ New Equipment” exists only once a customer is fixed.</div>
+      </div>
+      <div class="frame" style="flex: 1; padding: 0 24px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Filtered-empty vs database-empty</div>
+        <div class="rulepair"></div>
+        <div style="font-size: 12.5px; margin-top: 14px; font-weight: 700;">No matching equipment</div>
+        <div style="font-size: 12.5px; color: #4A5B55; margin-top: 4px;">No equipment matches the current search and filters. <a href="#eq1d">Clear filters</a></div>
+        <div style="font-size: 11px; color: #6B7A74; margin-top: 12px;">Distinct from “No equipment is recorded for this customer.” — the remedy differs: clear the filters vs add a record.</div>
+      </div>
+      <div class="frame" style="flex: 1; padding: 0 24px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Failure ≠ not found</div>
+        <div class="rulepair"></div>
+        <div style="font-size: 12.5px; margin-top: 14px; font-weight: 700;">This equipment could not be found.</div>
+        <div style="font-size: 12.5px; color: #4A5B55; margin-top: 4px;">vs a read failure with Retry — one means we looked and it isn't there; the other means we could not look.</div>
+        <div style="font-size: 11px; color: #6B7A74; margin-top: 12px;">A denied read is never relabelled “not found” — the asset may simply not be yours to see.</div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 24px;">
+      <div class="frame" style="flex: 1; padding: 0 24px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Reference resolution ladder</div>
+        <div class="rulepair"></div>
+        <dl style="font-size: 12.5px; margin: 14px 0 0; display: grid; gap: 8px;">
+          <div><dt class="word" style="display: inline;">Resolved · </dt><dd style="display: inline; margin: 0;">Broadway Plant — the human-readable name.</dd></div>
+          <div><dt class="word" style="display: inline; color: #A9740D;">Failed read · </dt><dd style="display: inline; margin: 0;">“Location unavailable” + Retry — we could not look.</dd></div>
+          <div><dt class="word" style="display: inline; color: #6B7A74;">Proven unset · </dt><dd style="display: inline; margin: 0;">“Unknown location” — only when the read succeeded and the reference resolves to nothing.</dd></div>
+        </dl>
+        <div style="font-size: 11px; color: #6B7A74; margin-top: 12px;">A database key is never a fallback business label, and a location type is never guessed.</div>
+      </div>
+      <div class="frame" style="flex: 1; padding: 0 24px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Available Equipment states</div>
+        <div class="rulepair"></div>
+        <div style="font-size: 12.5px; margin-top: 14px;">Loading · Ready · Empty · Denied · Unavailable — all five designed in <a href="#eq1b">1b</a>, each with its own copy. Empty splits filtered vs genuine; Denied and Unavailable are different facts and never share a rendering.</div>
+      </div>
+      <div class="frame" style="flex: 1; padding: 0 24px 24px;">
+        <div style="padding: 14px 0 10px;" class="micro">Inventory control — honest unknown</div>
+        <div class="rulepair"></div>
+        <div style="font-size: 12.5px; margin-top: 14px;"><span class="word" style="color: #6B7A74;">Unknown</span> — with the reason: the required sale-close authority is not available on this surface. Controlled / Exited are rendered only when the existing authority can prove them.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="eq1e" style="width: 1400px;" data-screen-label="1e Disposition + ledger (P1v2)">
+    <div style="margin-bottom: 8px;"><span class="sect"><span class="badge">1e</span>Disposition — every block of Proposed - Equipment.dc.html accounted for · ledger reconciled (P1v2)</span></div>
+    <div class="frame" style="padding: 26px 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px;">
+      <div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 10px;">Proposed concept → P1v2</h2>
+        <table class="ops">
+          <thead><tr><th style="width: 46%;">Proposed block</th><th>Disposition</th></tr></thead>
+          <tbody>
+            <tr><td>Register table + status chips</td><td>Customer Equipment tab in Lists grammar (1a) — server-side Customer/Status filters, governed count, saved views</td></tr>
+            <tr><td>“Register unit” button</td><td>Add Equipment tab — account-scoped by design; create exists only once a customer is fixed (1d)</td></tr>
+            <tr><td>Repairs 12mo · repair spend % of replace · “repair-heavy” flags</td><td><strong>Deferred — EQ-D1.</strong> No governed analytics authority; not rendered</td></tr>
+            <tr><td>Warranty status</td><td><strong>Rendered — EQ-D2 closed.</strong> <code>warrantyExpiresDate</code> is an existing governed Equipment fact, shown as recorded (1c). Richer warranty semantics are outside P1</td></tr>
+            <tr><td>“Flag serial for OP-2026-00058” suggestion</td><td><strong>Deferred — EQ-D3.</strong> No equipment→opportunity relationship exists; not invented for P1</td></tr>
+            <tr><td>Received on PO · installed by WO lineage</td><td>Belongs to the unified timeline's inventory half — honestly “not yet connected” today (EQ-G3), lights when Enterprise Inventory sources exist</td></tr>
+            <tr><td>Compatible parts (14 →)</td><td><strong>Deferred — EQ-D4.</strong> The compatibility authority exists elsewhere in EOS; whether it belongs on the unit record is a separate Owner call</td></tr>
+            <tr><td>Received → Installed → In service stepper</td><td>Folded into status word + timeline; the stored lifecycle is Active/Inactive/Retired — a four-step stepper would overstate what the domain records</td></tr>
+            <tr><td>Move / reinstall · Retire actions</td><td>Kept as designed slots, honestly disabled with the stated reason (1c, EQ-G4)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 10px;">Decision / gap ledger — P1v2</h2>
+        <table class="ops">
+          <thead><tr><th style="width: 34%;">Item</th><th style="width: 18%;">Status</th><th>Rationale</th></tr></thead>
+          <tbody>
+            <tr><td><strong>EQ-D1</strong> Repair economics</td><td class="word" style="color: #A9740D;">Deferred</td><td class="na">Needs a later governed analytics authority</td></tr>
+            <tr><td><strong>EQ-D2</strong> Warranty</td><td class="word" style="color: #237A45;">Closed</td><td class="na"><code>warrantyExpiresDate</code> exists; displayed as recorded</td></tr>
+            <tr><td><strong>EQ-D3</strong> Equipment→Opportunity</td><td class="word" style="color: #A9740D;">Deferred</td><td class="na">No direct relationship for P1</td></tr>
+            <tr><td><strong>EQ-D4</strong> Compatible-parts placement</td><td class="word" style="color: #A9740D;">Deferred</td><td class="na">Data domain exists; record placement is a separate decision</td></tr>
+            <tr><td><strong>EQ-G1</strong> Available Equipment read</td><td class="word" style="color: #237A45;">Corrected</td><td class="na">Governed trusted read exists, sandbox-activatable; all five runtime states designed rather than universal DENIED</td></tr>
+            <tr><td><strong>EQ-G2</strong> Location display read</td><td class="word" style="color: #237A45;">Corrected</td><td class="na">Governed resolver exists, sandbox-activatable; unresolved values still never expose raw ids</td></tr>
+            <tr><td><strong>EQ-G3</strong> Timeline inventory half</td><td class="word" style="color: #A9740D;">Open</td><td class="na">Not yet connected; repo note kept verbatim</td></tr>
+            <tr><td><strong>EQ-G4</strong> Lifecycle Functions</td><td class="word" style="color: #A9740D;">Open</td><td class="na">Undeployed; actions disabled with the stated reason</td></tr>
+            <tr><td><strong>EQ-G5</strong> Operating company</td><td class="word" style="color: #B23B3B;">Open — authority seam</td><td class="na">Taylor/Ventana is never inferred from the Customer; the seam composes the governed ownership fact when it exists</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 14px; border-top: 1px solid #D9D3C6; padding-top: 10px;">P1v2 invents no backend or platform authority: no schema, rules, indexes, Functions, capabilities, grants, or state machines. Presentation-layer migration only — every section renders an existing read; the three populations stay three tabs; the record renders once.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

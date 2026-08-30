@@ -1,0 +1,110 @@
+name: Equipment North Star Tests
+
+# CI for the Equipment North Star P1v2.1 migration — the workspace at /equipment (three tabs over
+# three populations) and the record at /equipment/:equipmentId.
+#
+# Three suites, covering three different kinds of claim:
+#
+#   equipmentNorthStarProjection.test.mjs  The derivation contract, as the locked design states it.
+#                                          EQ-G5: no surface may derive an operating company for an
+#                                          INSTALLED unit — not from the customer, not from the
+#                                          location, not from the manufacturer. EQ-G2: an
+#                                          unresolvable location is an absence, never the raw key.
+#                                          EQ-D2: warrantyExpiresDate is shown as recorded and
+#                                          nothing is derived from it. EQ-D1/D3/D4 stay absent.
+#                                          Plus the Work Order vocabulary the timeline had been
+#                                          bypassing, and the install read-back's four rows.
+#   equipmentNorthStarRecord.test.jsx      The record render. A widened projection no component
+#                                          reads would prove nothing, so the identity header, the
+#                                          warranty date, the independent Customer/Location failure
+#                                          states and the still-disabled lifecycle actions are
+#                                          proved at the render.
+#   equipmentNorthStarWorkspace.test.jsx   The workspace render and the install confirmation: three
+#                                          tabs, no count, no duplicated panel naming, the 1b table's
+#                                          discrete cells, and that confirming still calls the one
+#                                          existing governed command.
+#
+# The .mjs suite is ALSO registered in test/suites.json, so `npm test` runs it; it is named here as
+# well because this workflow is what makes the Equipment family's own failures visible on an
+# Equipment PR. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/equipmentNorthStar.js"
+      - "field-ops-app-vite/src/domain/equipment.js"
+      - "field-ops-app-vite/src/domain/equipmentStatus.js"
+      - "field-ops-app-vite/src/domain/equipmentTimelineView.js"
+      - "field-ops-app-vite/src/domain/equipmentInventoryControlAdapter.js"
+      - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
+      - "field-ops-app-vite/src/domain/displayTimestamp.js"
+      - "field-ops-app-vite/src/modules/equipment/**"
+      - "field-ops-app-vite/src/metadata/definitions/equipment.js"
+      - "field-ops-app-vite/src/metadata/definitions/equipmentPage.js"
+      - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
+      - "field-ops-app-vite/test/equipmentNorthStarProjection.test.mjs"
+      - "field-ops-app-vite/test/equipmentNorthStarRecord.test.jsx"
+      - "field-ops-app-vite/test/equipmentNorthStarWorkspace.test.jsx"
+      - ".github/workflows/equipment-north-star-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/equipmentNorthStar.js"
+      - "field-ops-app-vite/src/domain/equipment.js"
+      - "field-ops-app-vite/src/domain/equipmentStatus.js"
+      - "field-ops-app-vite/src/domain/equipmentTimelineView.js"
+      - "field-ops-app-vite/src/domain/equipmentInventoryControlAdapter.js"
+      - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
+      - "field-ops-app-vite/src/domain/displayTimestamp.js"
+      - "field-ops-app-vite/src/modules/equipment/**"
+      - "field-ops-app-vite/src/metadata/definitions/equipment.js"
+      - "field-ops-app-vite/src/metadata/definitions/equipmentPage.js"
+      - "field-ops-app-vite/src/shared/ui/WorkspaceIdentity.jsx"
+      - "field-ops-app-vite/test/equipmentNorthStarProjection.test.mjs"
+      - "field-ops-app-vite/test/equipmentNorthStarRecord.test.jsx"
+      - "field-ops-app-vite/test/equipmentNorthStarWorkspace.test.jsx"
+      - ".github/workflows/equipment-north-star-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  equipment-north-star-tests:
+    name: Equipment North Star P1v2.1 (derivation + record + workspace + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: The derivation contract — EQ-G2/G5 and D1/D2/D3/D4 as falsifiable rules (node:test)
+        run: node --test test/equipmentNorthStarProjection.test.mjs
+        working-directory: field-ops-app-vite
+      - name: The record composition, at the render (vitest + jsdom)
+        run: npx vitest run test/equipmentNorthStarRecord.test.jsx
+        working-directory: field-ops-app-vite
+      - name: The workspace and the install read-back (vitest + jsdom)
+        run: npx vitest run test/equipmentNorthStarWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+      - name: The existing Equipment render gates still hold (vitest + jsdom)
+        run: npx vitest run test/equipmentWorkspace.test.jsx test/equipmentTimeline.test.jsx test/equipmentListMigration.test.jsx test/equipmentDetailAccountFailClosed.test.jsx
+        working-directory: field-ops-app-vite
+      - name: The shell/collection membership gates (vitest)
+        run: npx vitest run test/compositionConformance.test.jsx test/listsP2Tranche1.test.jsx test/rawIdPresentationGuard.test.jsx test/activeLabelConformance.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces (oxlint)
+        run: npx oxlint src/domain/equipmentNorthStar.js src/domain/displayTimestamp.js src/modules/equipment/ src/shared/ui/WorkspaceIdentity.jsx
+        working-directory: field-ops-app-vite

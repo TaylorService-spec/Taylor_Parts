@@ -198,7 +198,11 @@ describe("Equipment: the workspace header carries no count, and that is the hone
     // Three tabs answer three different questions — the business-wide installed register, the
     // not-yet-connected serialized-asset surface, and an Account-scoped create flow. One number
     // beside one title would have to mean one of them, and a reader cannot tell which.
-    expect(EQUIPMENT_WORKSPACE).toMatch(/<WorkspaceIdentity crumb="Equipment" title="Equipment" \/>/);
+    // Re-anchored by the Equipment North Star P1v2.1, which added the locked 1a description
+    // sentence to this same header. The CLAIM is unchanged, and it is the assertion below: this
+    // header carries no count.
+    expect(EQUIPMENT_WORKSPACE).toMatch(/<WorkspaceIdentity\s+crumb="Equipment"/);
+    expect(EQUIPMENT_WORKSPACE).toMatch(/title="Equipment"/);
     expect(code(EQUIPMENT_WORKSPACE)).not.toMatch(/count=/);
   });
 

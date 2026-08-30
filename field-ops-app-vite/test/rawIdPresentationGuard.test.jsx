@@ -321,6 +321,13 @@ describe("the Available Equipment regression is gone from the source", () => {
     // The RENDERED parenthetical is gone. The explanatory comment describing the old bug stays, and
     // should — a reader needs to know what this replaced and why.
     expect(src).not.toMatch(/locationResolved \? " \(unresolved/);
-    expect(src).toMatch(/StructuredFields/);
+    // SUPERSEDED FORM. This pinned `StructuredFields` as the composition that replaced the prose
+    // line. The Equipment North Star P1v2.1 replaced it again, with the locked 1b table over
+    // `availableRowCells` — which applies the identical absence rule, and which the row-level proof
+    // in test/equipmentListMigration.test.jsx now pins cell by cell. What this file is guarding is
+    // that the row is a COMPOSITION and not a sentence, and that is still what is asserted.
+    expect(src).toMatch(/availableRowCells/);
+    // And the absence itself: the unresolved location renders the composer's absence, never the key.
+    expect(src).toMatch(/cells\.locationAbsence/);
   });
 });

@@ -19,13 +19,14 @@
 //                                 again inside its transaction
 //
 // The server is the authority for all of it. This exists so a person is not walked into a refusal.
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import {
   EMPTY_INSTALL_FORM, INSTALL_SUBMIT,
   buildInstallRequest, deriveInstallAction, interpretInstallResult,
   selectCustomer, selectLocation, validateInstallForm,
 } from "../../domain/equipmentInstallForm";
+import { installConfirmationSummary, INSTALL_CONFIRMATION_CONSEQUENCE } from "../../domain/equipmentNorthStar";
 import { callInstallSerializedAsset } from "../../services/equipmentInstallCallableClient";
 import { Button } from "../../shared/ui/primitives";
 
@@ -65,6 +66,9 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
 
   const chosenAccount = accounts?.find?.((a) => a.id === form.accountId) ?? null;
   const chosenLocation = locationOptions.find((l) => l.id === form.locationId) ?? null;
+  // Null until BOTH choices are made, so a half-populated read-back can never be presented as
+  // something to confirm. Composed in the pure layer, not here.
+  const confirmation = installConfirmationSummary({ unit, account: chosenAccount, location: chosenLocation });
 
   async function install() {
     // GUARDED AGAINST THE DOUBLE-CLICK before anything else. The idempotency key makes a duplicate
@@ -141,12 +145,35 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
       ) : null}
       {problemFor("location") ? <p className="fo-error" role="alert">{problemFor("location")}</p> : null}
 
-      {chosenAccount && chosenLocation ? (
-        <p className="fo-confirm-consequence fo-confirm-consequence--destructive">
-          Install <strong>{unit?.title}</strong> (S/N {unit?.serialNo}) at{" "}
-          <strong>{chosenAccount.name ?? chosenAccount.id}</strong> — {chosenLocation.name ?? chosenLocation.id}.
-          {" "}This cannot be undone.
-        </p>
+      {/* ══════════════ THE CONFIRMATION COMPOSITION (locked design, 1b) ══════════════
+          The last screen before a write that cannot be undone reads the whole thing back as four
+          LABELLED rows — Unit, Serial number, Customer, Installation location — rather than as one
+          sentence a reader skims. A sentence is what this surface had, and it was honest; it was
+          also the only place the chosen location was ever stated, at the end of a clause, next to
+          the words "cannot be undone".
+
+          It is a READ-BACK, not a second step: the same dialog, the same command, the same
+          idempotency key. Nothing about the write changed, and no confirmation state was added that
+          could disagree with the form it is reading.
+
+          NEITHER NAME FALLS BACK TO AN ID. `installConfirmationSummary` renders "Name unavailable"
+          for a record with no name, because a person confirming a permanent assignment must not be
+          shown a database key as the customer they are assigning to. */}
+      {confirmation ? (
+        <section className="fo-confirm-readback" aria-labelledby="install-confirm-heading">
+          <h4 id="install-confirm-heading">Confirm installation</h4>
+          <p className="fo-confirm-consequence fo-confirm-consequence--destructive">
+            {INSTALL_CONFIRMATION_CONSEQUENCE}
+          </p>
+          <dl className="fo-detail-list">
+            {confirmation.map((row) => (
+              <Fragment key={row.key}>
+                <dt>{row.label}</dt>
+                <dd data-install-confirm={row.key}>{row.value}</dd>
+              </Fragment>
+            ))}
+          </dl>
+        </section>
       ) : null}
 
       {submit.message ? (
@@ -159,8 +186,13 @@ export default function InstallAtCustomer({ unit, accounts, canInstall, onClose,
       ) : null}
 
       <div className="fo-form-actions">
-        <Button onClick={install} disabled={!action.enabled} title={action.reason ?? undefined}>
-          {submit.status === INSTALL_SUBMIT.SUBMITTING ? "Installing…" : "Install at customer"}
+        {/* PRIMARY: "Confirm installation" — the design's words, and they say what the press does
+            rather than naming the screen it is on. The label only becomes a confirmation once there
+            is something to confirm; before both choices are made it still describes the intent. */}
+        <Button variant="primary" onClick={install} disabled={!action.enabled} title={action.reason ?? undefined}>
+          {submit.status === INSTALL_SUBMIT.SUBMITTING
+            ? "Installing…"
+            : confirmation ? "Confirm installation" : "Install at customer"}
         </Button>
         <Button variant="secondary" onClick={onClose}>
           {submit.status === INSTALL_SUBMIT.INSTALLED ? "Close" : "Cancel"}

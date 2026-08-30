@@ -43,6 +43,28 @@ export function formatTimestamp(value, { unknown = "Unknown" } = {}) {
  * Same "never render Invalid Date" rule as its siblings.
  */
 export function formatDateOnly(value, { unknown = "Unknown" } = {}) {
+  // ════════════ A CALENDAR DATE IS NOT AN INSTANT, AND CONVERTING IT MOVED IT ════════════
+  //
+  // A stored `YYYY-MM-DD` — the shape equipment.warrantyExpiresDate, equipment.installedDate and
+  // purchaseOrder.expectedArrivalDate all use — is a DAY, not a moment. `Date.parse` reads a bare
+  // date as UTC midnight, and rendering that instant in a negative-offset zone lands on the
+  // PREVIOUS day: a warranty recorded as 2024-03-14 rendered "Mar 13, 2024" for every reader west
+  // of Greenwich. Found by the Equipment North Star's own "render the recorded date only" check.
+  //
+  // So a date-only string is formatted in the CALENDAR it was written in, never routed through an
+  // instant. Every other shape — Firestore Timestamps, epoch numbers, full ISO strings with a time
+  // — is a genuine moment and keeps its existing coercion exactly.
+  const calendarDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof value === "string" ? value.trim() : "");
+  if (calendarDay) {
+    const [, year, month, day] = calendarDay;
+    // Local-midnight construction: the same civil date goes in and comes out, in any zone.
+    const local = new Date(Number(year), Number(month) - 1, Number(day));
+    const text = Number.isFinite(local.getTime())
+      ? local.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+      : "Invalid Date";
+    return text === "Invalid Date" ? unknown : text;
+  }
+
   const ms = toMillis(value);
   if (ms === null) return unknown;
   const text = new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });

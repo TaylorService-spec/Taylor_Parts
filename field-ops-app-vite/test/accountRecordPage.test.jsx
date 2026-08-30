@@ -87,7 +87,8 @@ describe("a missing value renders truthfully", () => {
     // A blank cell says nothing at all and reads as a rendering bug; an em dash says "there is no
     // value here", which is a fact about the record.
     expect(SHELL).toMatch(/isMissing: value === null \|\| value === undefined \|\| value === ""/);
-    expect(SHELL).toMatch(/\? "—" :/);
+    // Re-anchored: multi-line since a stored OBJECT gained its own branch. Same claim.
+    expect(SHELL).toMatch(/\? "—"/);
     expect(SHELL).toMatch(/item\.isMissing \? "fo-record-field__value fo-muted"/);
   });
 });

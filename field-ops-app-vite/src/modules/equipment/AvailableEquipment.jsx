@@ -10,21 +10,32 @@
 // told the user the Serialized Asset registry "is not available yet" -- stale copy once Wave 7 shipped
 // the identity contract, the governed read, and SERIAL receiving. The default source is now the real
 // governed hook; `inertSerializedAssetSource` is test-only (see access/serializedAssetSource.js).
-// `inventory.serializedAsset.read` is registered `active:false` / granted to no Role as of this build,
-// so this surface fails closed to the DENIED state in every environment until a later, separately
-// authorized grant + activation -- that is expected, not a bug (see the hook's own header).
+//
+// ════════════ A STALE AUTHORITY CLAIM, CORRECTED (Equipment North Star P1v2.1) ════════════
+//
+// Two paragraphs here used to assert that `inventory.serializedAsset.read` and
+// `inventory.location.display.read` were "granted to no Role as of this build", and concluded that
+// this surface "fails closed to the DENIED state in EVERY environment". Both halves were true when
+// written and neither is true now, measured rather than assumed:
+//
+//   * `access/governedBusinessRoles.ts` grants `inventory.serializedAsset.read` to eight governed
+//     Roles, and `inventory.location.display.read` to the least-privilege lookup Role.
+//   * `config/environments.json` lists BOTH in the sandbox `capabilityActivationOverrides`.
+//
+// The catalog's `active: false` is the PRODUCTION posture, not a universal one. So DENIED is ONE of
+// five possible runtime states here, not the condition of the surface -- which is exactly what the
+// locked design corrected as EQ-G1/EQ-G2, and why `deriveAvailableState` models all five. A comment
+// is not an authority; nothing about the read, the gating or the fail-closed default changed with
+// this correction.
 //
 // LOCATION: the governed Serialized Asset read returns only the raw, authoritative
 // `currentLocationId` scalar -- no resolved display label and no `{type, locationId}` reference
 // (see domain/availableEquipmentGovernedProjection.js's header for the full callout). PART 11A adds
 // a SEPARATE trusted resolver (hooks/useLocationDisplaySource.js -> the governed getLocationDisplay
 // read) that turns the distinct raw ids on the fetched rows into a WAREHOUSE/MOBILE display label
-// where one is governedly resolvable; an id neither authority recognizes stays UNRESOLVED and the
-// row keeps rendering its raw id (composeAvailableRow's existing fallback) -- never a guessed type.
-// `inventory.location.display.read` is registered `active:false` / granted to no Role as of this
-// build, so in every environment today the location column still shows the raw id (the resolver
-// itself fails closed to DENIED) -- this wiring is repo-only until a later, separately authorized
-// grant + activation, exactly like the Available Equipment read itself at its own introduction.
+// where one is governedly resolvable. An id neither authority recognizes is an ABSENCE -- the row
+// renders "Location unavailable" and never the raw key, and never a guessed type (EQ-G2). The
+// resolver still fails closed to DENIED, which reaches the reader as that same absence.
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
@@ -56,8 +67,12 @@ import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import LoadingState from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives";
-import StructuredFields from "../../shared/ui/StructuredFields.jsx";
-import { availableUnitFields } from "../../domain/structuredFields.js";
+// `availableUnitFields` (domain/structuredFields.js) is NOT dropped by this migration -- it is still
+// what the handheld/scanner surfaces render a unit through, and its absence rule is the one this
+// table now states in its own cells. `availableRowCells` is the table's four-cell composition and
+// applies the identical rule (`locationResolved === false` is an absence, never the raw key), which
+// is why they agree by construction rather than by coincidence.
+import { availableRowCells } from "../../domain/equipmentNorthStar";
 
 const EMPTY_FILTERS = { term: "", category: "", manufacturer: "", model: "", status: "", location: "" };
 
@@ -141,7 +156,8 @@ export default function AvailableEquipment() {
 
   return (
     <div className="fo-panel">
-      <h3>Available Equipment</h3>
+      {/* NO "Available Equipment" HEADING. The selected tab above already says it, and the tabpanel
+          carries `aria-labelledby="eq-tab-available"`, so the accessible name is unchanged. */}
       <p className="fo-muted" id="ae-filter-note">{AVAILABLE_FILTER_NOTE}</p>
 
       <div className="fo-filters" role="group" aria-label="Available Equipment filters" aria-describedby="ae-filter-note">
@@ -198,33 +214,73 @@ export default function AvailableEquipment() {
         // question anyone asks of this list and a flat list of serials does not answer it.
         visibleGroups.map((group) => (
           <section key={group.lineOfBusiness} aria-label={`${group.label} available equipment`}>
-            <h4>{group.label} <span className="fo-muted">({group.rows.length})</span></h4>
-            {/* The label KEEPS the phrase the previous flat list used, prefixed by the line. Existing
-                queries for "available serialized assets" still match, and each group is now named
-                rather than there being one anonymous list. */}
-            <ul className="fo-list" aria-label={`${group.label} available serialized assets`}>
-              {group.rows.map((r) => (
-                <li key={r.serialNo}>
-                  {/* SIX ATTRIBUTES, SIX FIELDS.
-                      This was one line — "Taylor C161 — S/N CW-C161-0001 · AVAILABLE · wh-main
-                      (unresolved id)" — which exposed none of them and put a raw location key in
-                      front of a person twice: once as a place, and once with a parenthetical
-                      admitting it was not one. An id that will not resolve is now an ABSENCE
-                      ("Location unavailable"), because showing the key teaches people to memorise
-                      internal identifiers and gives them nothing they can search by. */}
-                  <StructuredFields
-                    fields={availableUnitFields(r)}
-                    label={`Unit ${r.serialNo}`}
-                    maxPriority={2}
-                  />
-                  {canInstall ? (
-                    <Button variant="secondary" onClick={() => setInstalling(r)} disabled={!r.available}>
-                      Install / Assign to Customer
-                    </Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <h4 className="ns-group__heading">
+              {group.label} <span className="fo-muted">({group.rows.length})</span>
+            </h4>
+            {/* THE LOCKED 1b TABLE — Serial · Model · Condition · Location, four fields and four
+                cells. This was an `<ul>` of stacked field cards, which stated the same facts
+                honestly but could not be scanned down a column: "which of these Taylor units is at
+                Main warehouse" took a read of every card. The row grammar is the shared `ns-table`
+                one every other North Star collection renders, so nothing family-local is invented.
+
+                SIX ATTRIBUTES STAYED SIX FIELDS through both treatments, and that is the property
+                being preserved rather than the markup. The row before either of them was one line —
+                "Taylor C161 — S/N CW-C161-0001 · AVAILABLE · wh-main (unresolved id)" — which
+                exposed none of them and put a raw location key in front of a person twice.
+
+                `ns-table--cards` + `data-label`: at phone widths each row becomes a labelled card
+                rather than something you drag sideways, which is the same answer the metadata grid
+                gives and the reason this table opts in. */}
+            <div className="ns-table-wrap">
+              <table className="ns-table ns-table--cards">
+                <caption className="fo-sr-only">{group.label} available serialized assets</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Unit</th>
+                    <th scope="col">Serial</th>
+                    <th scope="col">Model</th>
+                    <th scope="col">Condition</th>
+                    <th scope="col">Location</th>
+                    {canInstall ? <th scope="col" className="fo-sr-only">Actions</th> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((r) => {
+                    const cells = availableRowCells(r);
+                    return (
+                      <tr key={r.serialNo} data-available-serial={r.serialNo}>
+                        {/* The PRODUCT — what this machine is. Never an id: `title`'s own fallback
+                            chain ends at a visible admission that the Part join failed. */}
+                        <td data-label="Unit">{cells.unit}</td>
+                        <td data-label="Serial">{cells.serial}</td>
+                        {/* The MODEL NUMBER, derived from the canonical equipmentModelId, and only
+                            that. A unit whose whole-unit Part did not join says so rather than
+                            borrowing the product label — see availableRowCells' header. */}
+                        <td data-label="Model">
+                          {cells.model ?? <span className="ns-state--na">Model unavailable</span>}
+                        </td>
+                        <td data-label="Condition">
+                          {cells.condition ?? <span className="ns-state--na">Not recorded</span>}
+                        </td>
+                        {/* AN UNRESOLVED LOCATION IS AN ABSENCE, never the raw key: showing the id
+                            teaches people to memorise internal identifiers and gives them nothing
+                            they can search by (EQ-G2). */}
+                        <td data-label="Location">
+                          {cells.location ?? <span className="ns-state--na">{cells.locationAbsence}</span>}
+                        </td>
+                        {canInstall ? (
+                          <td data-label="Actions">
+                            <Button variant="secondary" onClick={() => setInstalling(r)} disabled={!r.available}>
+                              Install at customer
+                            </Button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
         ))
       )}

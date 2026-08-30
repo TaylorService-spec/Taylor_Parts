@@ -25,9 +25,22 @@
 // chips on this very screen had their counts removed for exactly that reason. A caller that cannot
 // count truthfully passes nothing and the line does not render — the same rule the attention band
 // follows.
+// ════════════════════ `description` IS NOT THE SUMMARY LINE ════════════════════
+//
+// Added for the Equipment North Star (P1v2.1), whose 1a frame puts a sentence under the title
+// saying what the workspace CONTAINS: "Every serialized unit the business owns or services —
+// installed at customers, available in company stock, and the account-scoped register that creates
+// them." That is a standing description of the set, not a reading of its current state, and the two
+// must not share a slot: `summaryItems` says what needs attention TODAY and changes with the data,
+// while this does not change at all.
+//
+// It earns its place on a workspace that hosts several populations under one title, where "which of
+// these am I looking at" is a real question. Optional and rendered only when supplied, so the
+// fifteen collection pages that shipped without one are untouched.
 export default function WorkspaceIdentity({
   crumb,
   title,
+  description = null,
   count = null,
   countLabel = null,
   summaryItems = [],
@@ -55,6 +68,7 @@ export default function WorkspaceIdentity({
               </span>
             ) : null}
           </div>
+          {description ? <p className="ns-workspace__description">{description}</p> : null}
           {shown.length > 0 ? (
             <p className="ns-workspace__summary">
               {shown.map((s, i) => (

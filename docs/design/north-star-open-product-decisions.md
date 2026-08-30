@@ -1106,3 +1106,67 @@ as a presentation change, minus its quantity column.
 
 **Shipped meanwhile:** nothing changed. The ledger's acceptance surfaces are corrected to the record
 family only, so no one is asked to accept `/inventory` against a frame it was never built to.
+---
+
+## Open — raised by the Equipment P1v2.1 composition map (2026-08-30)
+
+Both are cases where **the repository is ahead of the locked artifact on a correctness point**, and
+the execution rule for that case is explicit: preserve the repository truth and explain the
+reconciliation. Neither changes an authority; both are recorded here rather than resolved silently,
+because a reader comparing the shipped page against the artifact will see the difference and is
+entitled to know it was a decision.
+
+### ND-31 — Does an unresolved location on the installed register say one thing or four?
+
+**Raised:** 2026-08-30, by the Equipment North Star P1v2.1 composition map.
+
+The locked 1a frame renders an unresolved location cell as the single string **"Location
+unavailable"**, and the P1v2.1 change log records that copy being standardised family-wide.
+
+The installed register does not resolve references itself: it renders through
+`src/metadata/referenceResolution.js`, which distinguishes **NOT_FOUND** ("No longer exists"),
+**DENIED** ("Not available to your role"), **LOADING** and **ERROR** ("Could not be loaded"). That
+module exists *because* collapsing them was a defect:
+
+> Collapsing DENIED into NOT_FOUND … would tell an operator their data is broken when the truth is
+> that their ROLE is narrow.
+
+**Shipped interpretation:** the invariant the design is protecting — *never a raw id, never a
+guessed name* — is enforced and tested. The **reason** stays specific. The design's own 1d frame
+already draws the ladder (resolved / failed-with-Retry / proven-unset) rather than one flat string,
+so this reads as the illustrative cell being simpler than the frame beside it rather than as a
+ruling. The **record** page (1c) keeps the literal "Location unavailable", because there the failure
+state genuinely is one thing.
+
+**What would change the answer:** an Owner ruling that one string is preferable on a dense
+collection even at the cost of the reason. That is a real trade and it is the Owner's to make.
+
+**Proof:** `test/equipmentNorthStarWorkspace.test.jsx` — the cell states a reference state and the
+raw key never reaches the row. `test/equipmentNorthStarRecord.test.jsx` — the record's failed
+location read renders the failure with Retry, and a *succeeded* read that resolves to nothing still
+says "Unknown location".
+
+### ND-32 — Is the installed row's identity cell a name, or a name plus a summary?
+
+**Raised:** 2026-08-30, by the Equipment North Star P1v2.1 composition map.
+
+The locked 1a frame draws each row's first cell as `Soft Serve Freezer 2 · Taylor C712 · S/N
+K1122873` — a display name followed by a muted disambiguating summary — **while also** drawing
+Manufacturer and Model as their own columns.
+
+The register already gives every one of those attributes its own column, `serialNumber` included,
+and the family's own rules forbid the concatenation: `metadata/definitions/equipment.js` records the
+prose line as the defect it removed ("Five business attributes in one opaque string, exposing none
+of them"), and the design's own 1b note says the same thing in capitals — *SIX ATTRIBUTES, SIX
+FIELDS.*
+
+**Shipped interpretation:** the columns disambiguate. Two rows named "Soft Serve Freezer" are told
+apart by the Manufacturer, Model and Serial columns beside them — which are also sortable and
+scannable down their own edge, neither of which a muted summary would be. No concatenation is
+introduced anywhere on this surface.
+
+**What would change the answer:** an Owner ruling that the identity cell should carry a summary for
+scanning at a glance, accepting the duplication with the columns.
+
+**Proof:** `test/equipmentNorthStarWorkspace.test.jsx` — name, manufacturer, model and serial each
+render as their own cell.

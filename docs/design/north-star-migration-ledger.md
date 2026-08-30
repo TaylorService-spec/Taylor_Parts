@@ -1227,3 +1227,112 @@ the measurement rather than a second investigation.
 | **ND-28-F** | OPEN — when `getPartBalance` is activated, reconcile the Stock forecast against the governed balance (replace / supplement / remain distinct) as an explicit authority change with its own tests. Semantics must not change silently. |
 | **P-G1** | OPEN — every Parts surface reads the whole `parts` collection; a cold record deep-link is slow. Its own performance concern, not absorbed into Parts P1. |
 | **Serialized / lot live exercise** | Not required for P1. Focused Parts family tests remain the proof. |
+
+---
+
+## Family 8 — Equipment
+
+| | |
+|---|---|
+| **Composition** | Record `src/modules/equipment/EquipmentDetail.jsx` over `src/domain/equipmentNorthStar.js`; workspace `src/modules/equipment/EquipmentWorkspace.jsx` (three tabs, unchanged) with `CustomerEquipment.jsx`, `AvailableEquipment.jsx`, `EquipmentTimeline.jsx`, `InstallAtCustomer.jsx` |
+| **Visual authority** | `docs/north-star/equipment/North Star - Equipment P1v2.dc.html` (1a–1e) + `DESIGN-HANDOFF-EQUIPMENT-P1v2.1.md`, received 2026-08-30. Revision label **EQUIPMENT NORTH STAR P1v2.1 — DESIGN LOCKED** |
+| **Reconciliation** | [`equipment-north-star-composition-map.md`](./equipment-north-star-composition-map.md) — 22 drawn elements checked, **16 already built and correct**, 4 needing composition work, **2 not buildable as drawn**; produced before any UI code changed |
+| **Proof** | `test/equipmentNorthStarProjection.test.mjs` (27), `test/equipmentNorthStarRecord.test.jsx` (21), `test/equipmentNorthStarWorkspace.test.jsx` (17) and 3 new assertions in the shared `test/metadataListPresentation.test.mjs`, plus the re-anchored `equipmentTimeline`, `equipmentListMigration`, `availableEquipmentInstall`, `availableEquipmentLocationDisplay`, `listsP2Tranche1`, `rawIdPresentationGuard`, `activeLabelConformance`, `coreRecordPages` and `accountRecordPage` suites |
+| **Named decisions** | **ND-31** (unresolved location: four reasons, not one string) and **ND-32** (identity cell: columns, not a concatenated summary) — both raised and open. Both are cases where the repository is ahead of the artifact |
+| **Gate** | Not yet run. Sandbox refresh and Quick Gate outstanding |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+
+### The family was already most of the way there, and the stale claim was the repository's
+
+Sixteen of the twenty-two drawn elements needed no change at all — the three populations, the
+countless workspace header, the server-side Customer/Status filters over three live composites, the
+five honest Available-Equipment states, the governed line composition, the independent
+Customer/Location failure states with Retry, the honest inventory-control UNKNOWN, and the
+present-but-disabled lifecycle actions. **Warranty Expires was already on the record page**, which
+the design's own EQ-D2 had closed on the same evidence.
+
+What was stale was in the code, not the artifact. `AvailableEquipment.jsx`'s header asserted twice
+that `inventory.serializedAsset.read` and `inventory.location.display.read` were *"granted to no
+Role … fails closed to the DENIED state in every environment."* Both are granted to eight governed
+Roles and both are in the sandbox `capabilityActivationOverrides`. The design corrected exactly this
+in P1v2 (EQ-G1/EQ-G2); the handoff's warning about stale comments landed on the repository. Nothing
+about the read, the gating or the fail-closed default changed — only the sentences describing them.
+
+### Three defects, every one a stored token or a wrong value reaching a reader
+
+1. **The activity timeline printed raw enums.** `e.type` and `e.status` went to the screen unmapped,
+   so a row read `Service · WO-873 · REPAIR · IN_PROGRESS` while every other Work Order surface in
+   EOS already sourced those words from `WORK_ORDER_TYPE_LABEL` / `WORK_ORDER_STATUS_LABEL`. Same
+   shape as Parts defects #4 and #5.
+2. **A calendar date was rendered one day early.** `formatDateOnly("2024-03-14")` returned
+   *"Mar 13, 2024"* for every reader west of Greenwich: a bare `YYYY-MM-DD` parses as UTC midnight,
+   and formatting that instant locally lands on the previous day. Found by this family's own *render
+   the recorded date only* check on **Warranty Expires**, and fixed in the shared formatter for the
+   date-only shape alone — Timestamps, epoch numbers and full ISO strings keep their exact coercion.
+   It reached `equipment.installedDate` and `purchaseOrder.expectedArrivalDate` too.
+
+Also removed: `EquipmentDetail.jsx`'s private `STATUS_LABEL` copy (one of the two
+`domain/equipmentStatus.js` was created to replace, which had survived because nothing forced the
+question), and a dead `Row()` helper with no caller.
+
+### A third defect, found by the Owner on the live sandbox — and it was never Equipment-only
+
+The Owner sent a screenshot of the deployed Equipment record showing, in its Record section:
+
+```
+Created   Timestamp(seconds=1786163702, nanoseconds=367000000)
+Updated   Timestamp(seconds=1786163702, nanoseconds=367000000)
+```
+
+**Why the type declaration was right and the render was still wrong.** `equipment.js` types
+`createdAt`/`updatedAt` as **NUMBER**, with its reasoning recorded in place: `firestore.rules`
+asserts `data.createdAt is number`, so the governed write path stores epoch milliseconds, and
+declaring TIMESTAMP would claim storage semantics the collection does not have. The sandbox document
+holds a Firestore Timestamp anyway — written by a path that did not go through those Rules. No
+branch of `cellValue` claimed the shape, the generic fallback returned it, and `MetadataRecordPage`
+handed it to `String()`.
+
+**The fix is a refusal, not a guess.** Not a re-typed field on the strength of one non-conforming
+document, and not "any object carrying `seconds` is a date". A value whose shape contradicts its
+declared type is **not displayable**, and `ABSENCE.UNREADABLE` — *"Recorded in an unreadable
+format"* — says so. Deliberately **not** an em dash: that would claim there is no value, and the
+whole point is that there is one.
+
+**It is a shared-layer change, and that is the news.** `cellValue` is what every metadata list AND
+every record page reads through, so this reached **six record pages**, not one. `MetadataRecordPage`
+already special-cased ADDRESS for exactly this reason (`String({street: …})` renders
+`[object Object]`) — the defect had been caught for one type and left open as a class.
+
+**Proof:** `test/metadataListPresentation.test.mjs` (3 new) asserts the refusal in the shared layer,
+that it is not a blanket refusal (a conforming number, and **zero**, still render), and that the
+sentence does not carry the shape it refused. `test/equipmentNorthStarRecord.test.jsx` (2 new) fixes
+the record on the **shape the live sandbox actually holds** and asserts the exact string from the
+screenshot never renders. Three mutation proofs: removing the shared guard fails the shared suite;
+removing both guards reproduces `Timestamp(seconds=…)` on the page. Removing the record-page guard
+**alone** is not observable — the shared guard returns first — and that is recorded rather than
+dressed up: it is defence-in-depth on the line that actually performed the stringification.
+
+**The layout half of the same screenshot needed nothing.** The collapsed middle column and the
+five-line wrap of "Ice Machine C713 — Unit 1" are `fo-detail-grid`, the three-panel row this
+migration replaced with `ns-record-body` (main column + rail). That screenshot is `main`, not this
+branch.
+
+
+### Three burn-down lists shrank, and one gate caught the migration
+
+`EquipmentDetail.jsx` moved from `CONFORMANT_WORKSPACES` to `NORTH_STAR_RECORD_PAGES` when it stopped
+hosting the workspace shell — **GATE 2b² caught the omission on the first run**, exactly as it did for
+family 7. Deleting the private status map removed the file from `activeLabelConformance`'s allowlist;
+naming three previously-unrun suites in the new workflow removed them from `ciSuiteCoverage`'s
+`KNOWN_UNNAMED`; and retiring the timeline's `<ol>` removed `fo-tag` and `fo-timeline` from
+`cssClassCoverage`'s unstyled backlog. Every one of those lists may only shrink, and each shrank
+because the gate refused to let it stay stale.
+
+### Authority, unchanged
+
+No Firestore rule, index, Function, callable, capability, activation, role grant, collection, schema,
+backfill or deployment-config change. Every rendered value is an existing read; install still resolves
+through `callInstallSerializedAsset` → `equipment.install`; edit still resolves through
+`updateEquipment`, with its allowlist still **imported** from the write path rather than restated. No
+lifecycle action was enabled, and `EQ-G5` — the installed-unit operating company — is preserved as a
+seam that answers UNKNOWN with the reason, never a value derived from the Customer.

@@ -15,6 +15,7 @@ import {
   TIMELINE_STATE,
   TIMELINE_SOURCE,
 } from "../../domain/equipmentTimelineView";
+import { timelineEventWords } from "../../domain/equipmentNorthStar";
 import {
   inertInventoryHistorySource,
   readInventoryHistorySource,
@@ -85,30 +86,59 @@ export default function EquipmentTimeline({
       )}
 
       {(state === TIMELINE_STATE.READY || state === TIMELINE_STATE.PARTIAL) && (
-        <ol className="fo-timeline" aria-label="Equipment activity timeline">
-          {rows.map((row, i) => {
-            const e = row.ref || {};
-            const isService = row.source === TIMELINE_SOURCE.SERVICE;
-            const sourceLabel = isService ? "Service" : "Inventory";
-            // rows are pre-sanitized to finite `at`; guard defensively anyway so a Date
-            // render can never throw.
-            const iso = Number.isFinite(row.at) ? new Date(row.at).toISOString() : null;
-            const date = iso ? formatDate(row.at) : "";
-            return (
-              <li key={`${row.source}-${e.workOrderId || e.id || i}-${row.at}`} data-timeline-source={row.source}>
-                <span className="fo-tag" aria-label={`${sourceLabel} event`}>{sourceLabel}</span>{" "}
-                {iso ? <time dateTime={iso}>{date}</time> : null}{" "}
-                {isService && e.workOrderId ? (
-                  <Link to={`/service/work-orders/${e.workOrderId}`}>{e.woNumber ?? "Work order"}</Link>
-                ) : (
-                  <span>{row.kind || "Event"}</span>
-                )}
-                {isService && e.type ? <span className="fo-muted"> · {e.type}</span> : null}
-                {isService && e.status ? <span className="fo-muted"> · {e.status}</span> : null}
-              </li>
-            );
-          })}
-        </ol>
+        // THE LOCKED 1c TABLE — Source · Date · Event, newest first and source-tagged. It was an
+        // `<ol>` of run-together spans, which is the right SEMANTICS for a sequence and the wrong
+        // shape for a log somebody scans: the source, the date and the event could not be read down
+        // their own columns.
+        //
+        // AND IT PRINTED RAW ENUMS. `e.type` and `e.status` went to the screen unmapped, so a row
+        // read "Service · WO-873 · REPAIR · IN_PROGRESS" while every other Work Order surface in
+        // EOS already sourced those words from WORK_ORDER_TYPE_LABEL / WORK_ORDER_STATUS_LABEL.
+        // `timelineEventWords` is now the one place those words come from, and an unrecognised
+        // token is DROPPED rather than printed — printing it because it is the only thing we have
+        // is precisely what was wrong.
+        <div className="ns-table-wrap">
+          <table className="ns-table ns-table--cards">
+            <caption className="fo-sr-only">Equipment activity timeline, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col">Source</th>
+                <th scope="col">Date</th>
+                <th scope="col">Event</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => {
+                const e = row.ref || {};
+                const words = timelineEventWords(row);
+                // rows are pre-sanitized to finite `at`; guard defensively anyway so a Date
+                // render can never throw.
+                const iso = Number.isFinite(row.at) ? new Date(row.at).toISOString() : null;
+                const date = iso ? formatDate(row.at) : "";
+                return (
+                  <tr key={`${row.source}-${e.workOrderId || e.id || i}-${row.at}`} data-timeline-source={row.source}>
+                    <td data-label="Source">{words.sourceLabel}</td>
+                    <td data-label="Date">
+                      {iso ? <time dateTime={iso}>{date}</time> : <span className="ns-state--na">Date unavailable</span>}
+                    </td>
+                    <td data-label="Event">
+                      {/* The Work Order's governed reference is the link text. Its document id is
+                          the link TARGET and is never the label. */}
+                      {row.source === TIMELINE_SOURCE.SERVICE && words.workOrderId ? (
+                        <Link to={`/service/work-orders/${words.workOrderId}`}>
+                          {words.reference ?? words.fallbackEvent}
+                        </Link>
+                      ) : (
+                        <span>{words.fallbackEvent}</span>
+                      )}
+                      {words.detail ? <span className="fo-muted"> · {words.detail}</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

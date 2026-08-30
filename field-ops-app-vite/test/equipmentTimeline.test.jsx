@@ -3,6 +3,12 @@
 // honest inventory-not-connected status without fabricating rows, honors loading/
 // unavailable/empty/partial states, renders injected inventory rows when READY, and is
 // accessible. Run via `npm run test:components`.
+//
+// RE-ANCHORED, NOT REWRITTEN (Equipment North Star P1v2.1). Two assertions reached for the timeline
+// by `role="list"` and `li`. The locked 1c frame draws the timeline as a Source · Date · Event
+// TABLE, so those two now reach for `role="table"` and `tbody tr`. Every claim they make — ordering,
+// source tagging, link targets, which row is first — is unchanged; only the element they read it off
+// is. Nothing was deleted: a claim that stopped being provable would be a regression, and none did.
 import { afterEach, describe, it, expect } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -20,7 +26,7 @@ describe("EquipmentTimeline", () => {
     withRouter(<EquipmentTimeline workOrders={WOs} equipmentId="E" />);
     expect(screen.getByRole("heading", { name: /activity timeline/i })).toBeTruthy();
     expect(screen.getByText(/inventory history .* is not yet connected|not yet connected/i)).toBeTruthy();
-    const list = screen.getByRole("list", { name: /equipment activity timeline/i });
+    const list = screen.getByRole("table", { name: /equipment activity timeline/i });
     const links = screen.getAllByRole("link");
     expect(links.map((l) => l.textContent)).toEqual(["WO-2", "WO-1"]); // newest-first
     expect(links[0].getAttribute("href")).toMatch(/work-orders\/w2$/);
@@ -56,8 +62,8 @@ describe("EquipmentTimeline", () => {
     expect(screen.getByText("RECEIVED")).toBeTruthy();
     expect(screen.getByText("Inventory")).toBeTruthy(); // inventory source tag
     // inventory event (999) sorts newest-first, above the service rows
-    const list = screen.getByRole("list", { name: /equipment activity timeline/i });
-    const first = list.querySelector("li");
+    const list = screen.getByRole("table", { name: /equipment activity timeline/i });
+    const first = list.querySelector("tbody tr");
     expect(first.getAttribute("data-timeline-source")).toBe("inventory");
   });
 
