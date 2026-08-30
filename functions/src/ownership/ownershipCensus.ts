@@ -19,6 +19,7 @@ import {
   deriveAccountOwner,
   deriveCompanyOwner,
   deriveEmployeeRefOwner,
+  deriveStoredOwner,
   type OwnerDerivation,
 } from "./typedOwner";
 import { OWNERSHIP_MATRIX, ownableFamilies, type OwnershipFamily } from "./ownershipMatrix";
@@ -121,6 +122,38 @@ export function classifyDocument(family: OwnershipFamily, data: Record<string, u
     // No single `owner` is produced, and that is the point -- the shape IS the pair.
     return { resolution: OWNERSHIP_RESOLUTION.RESOLVED, owner: null, reason: null, code: null };
   }
+  // A COMPANY family may hold a PARTICIPATING PAIR on individual records: an inventory movement
+  // between two companies takes source+destination rather than one owner, exactly as a transfer
+  // does. The family is still single-company in the ordinary case, so the pair is a fallback rather
+  // than the declaration -- and without it the census reports a correctly-recorded cross-company
+  // movement as OWNERLESS, which is the reader being wrong about the data rather than the reverse.
+  if (family.ownerClass === "COMPANY" && (family.participatingFields?.length ?? 0) > 0) {
+    const scalarPresent = family.ownerFields.some((f) => data?.[f] !== undefined);
+    if (!scalarPresent) {
+      const pair = family.participatingFields!;
+      const present = pair.filter((f) => typeof data?.[f] === "string" && (data[f] as string).trim().length > 0);
+      if (present.length === pair.length) {
+        const ungoverned = present.filter((f) => resolveOperatingCompany(data[f]).company === null);
+        if (ungoverned.length > 0) {
+          return {
+            resolution: OWNERSHIP_RESOLUTION.UNRESOLVED,
+            owner: null,
+            reason: `participating company not governed: ${ungoverned.join(", ")}`,
+            code: "UNKNOWN",
+          };
+        }
+        return { resolution: OWNERSHIP_RESOLUTION.RESOLVED, owner: null, reason: null, code: null };
+      }
+      if (present.length > 0) {
+        return {
+          resolution: OWNERSHIP_RESOLUTION.UNRESOLVED,
+          owner: null,
+          reason: `only ${present.length} of ${pair.length} participating companies recorded`,
+          code: "INVALID",
+        };
+      }
+    }
+  }
   if (family.ownerFields.length === 0) {
     return {
       resolution: OWNERSHIP_RESOLUTION.OWNERLESS,
@@ -131,6 +164,9 @@ export function classifyDocument(family: OwnershipFamily, data: Record<string, u
   }
   const derivations = family.ownerFields.map((field) => {
     if (field === "accountOwner") return deriveAccountOwner(data);
+    // The typed owner the backfill writes. Without this the census reports a backfilled record as
+    // OWNERLESS -- a projection that cannot read its own storage describes a backlog that is gone.
+    if (field === "owner") return deriveStoredOwner(data, field);
     if (family.ownerType === "COMPANY") return deriveCompanyOwner(data, field);
     return deriveEmployeeRefOwner(data, field);
   });

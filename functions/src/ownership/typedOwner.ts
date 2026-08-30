@@ -181,3 +181,30 @@ export function combineOwnerDerivations(outcomes: readonly (OwnerDerivation | nu
   const reasons = list.map((o) => o.reason).filter((r): r is string => Boolean(r));
   return outcome(OWNERSHIP_RESOLUTION.OWNERLESS, null, reasons.length > 0 ? reasons.join("; ") : undefined);
 }
+
+/**
+ * A record that stores an already-typed `owner` map -- the shape the backfill writes.
+ *
+ * Added when the sandbox backfill exposed the gap: the applier wrote `owner`, and the census kept
+ * reporting those records OWNERLESS because no derivation could read the field. The matrix declares
+ * where ownership is STORED, and a projection that cannot read its own storage makes the census
+ * describe a backlog that no longer exists.
+ *
+ * A stored owner is held to the SAME shape guard as a constructed one: a malformed map is INVALID,
+ * never quietly accepted because it happens to be persisted.
+ */
+export function deriveStoredOwner(
+  doc: Record<string, unknown> | null | undefined,
+  field = "owner",
+): OwnerDerivation {
+  const value = doc?.[field];
+  if (value === null || value === undefined) return outcome(OWNERSHIP_RESOLUTION.OWNERLESS, null, `no ${field}`);
+  if (!isTypedOwner(value)) {
+    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} is not a typed owner`, "INVALID");
+  }
+  // A COMPANY owner must still name a governed company -- storage does not confer governance.
+  if (value.type === OWNER_TYPES.COMPANY && resolveOperatingCompany(value.id).company === null) {
+    return outcome(OWNERSHIP_RESOLUTION.UNRESOLVED, null, `${field} names no governed company`, "UNKNOWN");
+  }
+  return outcome(OWNERSHIP_RESOLUTION.RESOLVED, value);
+}

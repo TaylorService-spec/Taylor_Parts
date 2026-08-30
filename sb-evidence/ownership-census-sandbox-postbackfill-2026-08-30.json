@@ -1,0 +1,694 @@
+{
+  "projectId": "eos-platform-sandbox",
+  "limit": null,
+  "families": [
+    {
+      "family": "account",
+      "collection": "accounts",
+      "ownerClass": "PERSON",
+      "ownerType": "USER",
+      "scanned": 103,
+      "truncated": false,
+      "counts": {
+        "resolved": 100,
+        "ownerless": 3,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "no accountOwner": 3
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "78FlpQX7iC7jQX528buX",
+          "acct-harbor",
+          "acct-summit"
+        ]
+      }
+    },
+    {
+      "family": "contact",
+      "collection": "contacts",
+      "ownerClass": "PERSON",
+      "ownerType": "USER",
+      "scanned": 339,
+      "truncated": false,
+      "counts": {
+        "resolved": 337,
+        "ownerless": 2,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "no owner": 2
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "con-harbor-gm",
+          "con-summit-ops"
+        ]
+      }
+    },
+    {
+      "family": "location",
+      "collection": "locations",
+      "ownerClass": "PERSON",
+      "ownerType": "USER",
+      "scanned": 183,
+      "truncated": false,
+      "counts": {
+        "resolved": 180,
+        "ownerless": 3,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "no owner": 3
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "loc-harbor-airport",
+          "loc-harbor-downtown",
+          "loc-summit-flag"
+        ]
+      }
+    },
+    {
+      "family": "opportunity",
+      "collection": "opportunities",
+      "ownerClass": "PERSON",
+      "ownerType": "USER",
+      "scanned": 14,
+      "truncated": false,
+      "counts": {
+        "resolved": 14,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "salesAgreement",
+      "collection": "sales_agreements",
+      "ownerClass": "PERSON",
+      "ownerType": "USER",
+      "scanned": 5,
+      "truncated": false,
+      "counts": {
+        "resolved": 5,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "salesOrder",
+      "collection": "sales_orders",
+      "ownerClass": "PERSON",
+      "ownerType": "USER",
+      "scanned": 17,
+      "truncated": false,
+      "counts": {
+        "resolved": 17,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "invoice",
+      "collection": "invoices",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 1,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 1,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 1
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "NKNxcpSIiNjiAOcPOz93"
+        ]
+      }
+    },
+    {
+      "family": "payment",
+      "collection": "payments",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "paymentApplication",
+      "collection": "payment_applications",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "invoiceAdjustment",
+      "collection": "invoice_adjustments",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "refund",
+      "collection": "refunds",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "workOrder",
+      "collection": "fieldops_jobs",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 45,
+      "truncated": false,
+      "counts": {
+        "resolved": 41,
+        "ownerless": 4,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "no operatingCompanyId": 4
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "job-sbx-001",
+          "job-sbx-002",
+          "job-sbx-003",
+          "job-sbx-004"
+        ]
+      }
+    },
+    {
+      "family": "workOrderLegacy",
+      "collection": "fieldops_wos",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 30,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 30,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 30
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "0XgbOsl56EJKBu7QNe8k",
+          "DxeWmMoTAgS7uMbo9l4U",
+          "FkA7SbwObO2tkORMgpCl",
+          "GN2tk1DgoxdOX0jMU7IO",
+          "Hdsqhww2bosPHalW04C1",
+          "NEz9qGYpNLtrbFHfisXE",
+          "ckY5gqO26LdKBMASmo5g",
+          "dDas6xXNgcPi3WYPPCIL",
+          "g0SNuHqL41o0eGEgbXJ5",
+          "p8nHWH7HywDUMiaS21YA"
+        ]
+      }
+    },
+    {
+      "family": "reorderRequest",
+      "collection": "reorder_requests",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 6,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 6,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 6
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "eA7o3t8DyUXmtg8MCKjT",
+          "ro-sbx-001",
+          "ro-sbx-002",
+          "ro-sbx-003",
+          "ro-sbx-004",
+          "ro-sbx-006"
+        ]
+      }
+    },
+    {
+      "family": "warehouse",
+      "collection": "warehouses",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 5,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 5,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 5
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "wh-main",
+          "wh-north",
+          "wh-retired",
+          "wh-sandbox-central",
+          "wh-sandbox-north"
+        ]
+      }
+    },
+    {
+      "family": "mobileLocation",
+      "collection": "mobile_locations",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 7,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 7,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 7
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "cert-trk-01",
+          "cert-trk-02",
+          "cert-trk-03",
+          "cert-trk-04",
+          "cert-trk-05",
+          "mobile-seed1786749487428-101",
+          "mobile-seed1786749487428-102"
+        ]
+      }
+    },
+    {
+      "family": "stockLocation",
+      "collection": "stock_locations",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 5,
+      "truncated": false,
+      "counts": {
+        "resolved": 5,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "truck",
+      "collection": "trucks",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 2,
+      "truncated": false,
+      "counts": {
+        "resolved": 2,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "supplierCompanyTerms",
+      "collection": "supplier_company_terms",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "inventoryTransaction",
+      "collection": "inventory_transactions",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 103,
+      "truncated": false,
+      "counts": {
+        "resolved": 99,
+        "ownerless": 4,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "no operatingCompanyId": 4
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "EEnrxDc6WTtQ1RTAfq1Q",
+          "QprTtfwLYyHUGFsscWDH",
+          "iQ71dELJ9FocecuY4vCM",
+          "ma2o8xw0jPiVueSPlmn3"
+        ]
+      }
+    },
+    {
+      "family": "inventoryAction",
+      "collection": "inventory_actions",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "receivingOrder",
+      "collection": "receiving_orders",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 2,
+      "truncated": false,
+      "counts": {
+        "resolved": 2,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "cycleCount",
+      "collection": "cycle_counts",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 24,
+      "truncated": false,
+      "counts": {
+        "resolved": 24,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "purchaseOrder",
+      "collection": "purchase_orders",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 0,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "reorderPurchaseOrder",
+      "collection": "reorder_purchase_orders",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 3,
+      "truncated": false,
+      "counts": {
+        "resolved": 0,
+        "ownerless": 3,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "family has no ownership storage yet": 3
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "ro-sbx-001",
+          "ro-sbx-005",
+          "ro-sbx-006"
+        ]
+      }
+    },
+    {
+      "family": "transferOrder",
+      "collection": "transfer_orders",
+      "ownerClass": "PARTICIPATING_COMPANIES",
+      "ownerType": "",
+      "scanned": 47,
+      "truncated": false,
+      "counts": {
+        "resolved": 47,
+        "ownerless": 0,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {},
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": []
+      }
+    },
+    {
+      "family": "equipment",
+      "collection": "equipment",
+      "ownerClass": "COMPANY",
+      "ownerType": "COMPANY",
+      "scanned": 288,
+      "truncated": false,
+      "counts": {
+        "resolved": 278,
+        "ownerless": 10,
+        "invalid": 0,
+        "unknown": 0,
+        "ambiguous": 0
+      },
+      "reasons": {
+        "no operatingCompanyId": 10
+      },
+      "samples": {
+        "invalid": [],
+        "unknown": [],
+        "ambiguous": [],
+        "ownerless": [
+          "eq-c713-1",
+          "eq-c713-2",
+          "eq-c713-3",
+          "eq-c713-4",
+          "eq-c713-5",
+          "eq-cool-001",
+          "eq-ice-001",
+          "eq-ice-002",
+          "eq_7adc0f2fc50bb00e3d18fef885d262795271c6e9",
+          "eq_8e7dcb8ffa10b43d439d589a19390f07e25529c2"
+        ]
+      }
+    }
+  ]
+}

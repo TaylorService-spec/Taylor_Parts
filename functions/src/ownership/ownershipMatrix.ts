@@ -125,14 +125,14 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "contact", collection: "contacts", ownerClass: "PERSON", ownerType: usr,
-      ownerFields: [], inheritanceSource: "parent Account owner at creation", transfer: "HANDOFF",
+      ownerFields: ["owner"], inheritanceSource: "parent Account owner at creation", transfer: "HANDOFF",
       companyScope: "COMPANY_NEUTRAL",
       backfillSource: "parent Account owner via accountId -- deterministic, and a real relationship rather than a proxy",
       unresolvedPolicy: OWNERLESS_UNTIL_UPSTREAM,
     },
     {
       family: "location", collection: "locations", ownerClass: "PERSON", ownerType: usr,
-      ownerFields: [], inheritanceSource: "parent Account owner at creation", transfer: "HANDOFF",
+      ownerFields: ["owner"], inheritanceSource: "parent Account owner at creation", transfer: "HANDOFF",
       companyScope: "COMPANY_NEUTRAL",
       backfillSource: "parent Account owner via accountId -- Rules already enforce this parentage",
       unresolvedPolicy: OWNERLESS_UNTIL_UPSTREAM,
@@ -203,7 +203,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
       // dispatcher, createdBy or assignedTo -- those are who DOES the work, which is precisely the
       // distinction this model exists to hold.
       family: "workOrder", collection: "fieldops_jobs", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "explicit at creation, or the governed upstream service/commercial source company",
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "explicit at creation, or the governed upstream service/commercial source company",
       transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
       note: "MEASURED: 41 of 45 sandbox jobs are certification fixtures and can be explicitly authored, as equipment was. The other 4 are not, and stay unresolved. assignedTechId remains ASSIGNMENT.",
@@ -272,7 +272,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     // ═══════════════════════ COMPANY — location-derived (ruling D-10) ═══════════════════════
     {
       family: "stockLocation", collection: "stock_locations", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the warehouse the balance belongs to", transfer: "IMMUTABLE",
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "the warehouse the balance belongs to", transfer: "IMMUTABLE",
       companyScope: "SINGLE_COMPANY",
       backfillSource: "warehouseId -- measured 5/5 DERIVABLE",
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
@@ -280,7 +280,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "truck", collection: "trucks", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the truck's home warehouse", transfer: "HANDOFF",
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "the truck's home warehouse", transfer: "HANDOFF",
       companyScope: "SINGLE_COMPANY",
       backfillSource: "homeWarehouseId -- a real governed reference, measured 2/2 DERIVABLE",
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
@@ -301,7 +301,11 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "inventoryTransaction", collection: "inventory_transactions", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the governed stock location's company", transfer: "IMMUTABLE",
+      ownerFields: ["operatingCompanyId"],
+      // A ledger entry BETWEEN two companies records a pair, like a transfer does. The scalar above
+      // is the ordinary case; this is the shape the cross-company movements actually carry, and
+      // declaring it is what stops the census reporting a correctly-recorded movement as ownerless.
+      participatingFields: ["sourceOperatingCompanyId", "destinationOperatingCompanyId"], inheritanceSource: "the governed stock location's company", transfer: "IMMUTABLE",
       companyScope: "SINGLE_COMPANY",
       backfillSource: "the stock location's operatingCompanyId, once D-9 is populated",
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
@@ -315,7 +319,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "receivingOrder", collection: "receiving_orders", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the receiving location's company", transfer: "IMMUTABLE",
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "the receiving location's company", transfer: "IMMUTABLE",
       companyScope: "SINGLE_COMPANY",
       backfillSource: "the destination location's operatingCompanyId, once D-9 is populated",
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
@@ -323,7 +327,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "cycleCount", collection: "cycle_counts", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the counted location's company", transfer: "IMMUTABLE",
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "the counted location's company", transfer: "IMMUTABLE",
       companyScope: "SINGLE_COMPANY",
       backfillSource: "the counted location's operatingCompanyId, once D-9 is populated",
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
@@ -373,7 +377,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     // ═══════════════════════ COMPANY — equipment (ruling D-12) ═══════════════════════
     {
       family: "equipment", collection: "equipment", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: [], inheritanceSource: "the operating company that carries the record", transfer: "HANDOFF",
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "the operating company that carries the record", transfer: "HANDOFF",
       companyScope: "SINGLE_COMPANY",
       backfillSource: null,
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,

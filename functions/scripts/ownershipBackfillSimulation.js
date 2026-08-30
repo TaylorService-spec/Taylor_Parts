@@ -1,29 +1,25 @@
 /**
- * EOS Ownership Model v1 — READ-ONLY BACKFILL SIMULATION (Owner ruling, next inert pass item 8).
+ * EOS Ownership Model v1 — READ-ONLY BACKFILL SIMULATION.
  *
- * "Re-run READ-ONLY ownership/backfill simulation using the now-authored sandbox facts. Produce
- * exact proposed write counts. DO NOT YET RUN ANY OWNERSHIP BACKFILL."
+ * The backfill with the writes removed. It resolves exactly what the applier resolves, from exactly
+ * the same module, and prints the number instead of committing it.
  *
- * So this is the backfill with the writes removed. It resolves exactly what an applier would
- * resolve, from exactly the sources an applier would use, and then prints the number instead of
- * committing it. There is no --apply flag, and adding one is a separate authorized change.
+ * ============================ ONE RULE SET, NOT TWO ============================
  *
- * STRICTLY READ-ONLY. No batch, no set, no update, no transaction. Verify with:
- *   grep -nE "\.(set|update|delete|add|batch|runTransaction)\(" scripts/ownershipBackfillSimulation.js
+ * Both this tool and scripts/ownershipSandboxBackfill.js evaluate candidates through
+ * lib/ownership/ownershipBackfillRules.js. That is deliberate and it is load-bearing: the Owner
+ * authorized a write count on the strength of this simulation, and if the two computed candidates
+ * from separate copies of the rules they would merely agree today.
  *
- * WHAT IT SIMULATES, and the source each one uses:
+ * This file previously DID carry its own copy, and it drifted within hours -- after the sandbox
+ * backfill it still reported 519 pending writes for records that had already been written, because
+ * its inline contacts/locations rule never learned to check whether `owner` was already set. The
+ * applier was right and the simulation was stale. Rewriting it against the shared module is what
+ * makes "what was approved" and "what gets written" the same computation rather than two that
+ * happen to match.
  *
- *   contacts / locations   -> parent Account's accountOwner.assignedToEmployeeId (PERSON)
- *   stock_locations        -> its warehouse's authored company
- *   trucks                 -> its home warehouse's authored company
- *   cycle_counts           -> the counted location's authored company
- *   receiving_orders       -> the receiving location's authored company
- *   inventory_transactions -> its location's authored company (single) or a participating pair
- *   transfer_orders        -> origin + destination authored companies, as a PARTICIPATING PAIR
- *   equipment              -> the fixture fleet's authored operatingCompanyId (marker-scoped)
- *
- * The physical-root companies come from config/ownership/operating-company-roots.sandbox.json --
- * the Owner's authored assignments, never inferred from a name or an id.
+ * STRICTLY READ-ONLY. No Firestore write, and no --apply mode. Adding one is a separate authorized
+ * change, and functions/test/ownershipProductionGuard.test.mjs asserts it has not happened quietly.
  *
  * Usage:
  *   cd functions
@@ -35,9 +31,25 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { resolveOperatingCompany } = require("../lib/ownership/operatingCompanyAuthority.js");
+const {
+  BACKFILL_RULES,
+  AUTHORIZED_WRITE_CAPS,
+  AUTHORIZED_TOTAL,
+} = require("../lib/ownership/ownershipBackfillRules.js");
 
 const ROOT_CONFIG = path.resolve(__dirname, "../../config/ownership/operating-company-roots.sandbox.json");
-const MARKER_FIELD = "certificationWorld";
+
+// Families the backfill does NOT touch, reported so the full picture is visible rather than only
+// the part that moves. Every one of these is deliberately excluded by a ruling.
+const OUT_OF_SCOPE = [
+  ["fieldops_wos", "no governed Job parent (R-12)"],
+  ["opportunities", "non-fixture commercial, no company provenance (R-14)"],
+  ["sales_agreements", "non-fixture commercial (R-14)"],
+  ["sales_orders", "non-fixture commercial (R-14)"],
+  ["invoices", "non-fixture commercial (R-14)"],
+  ["reorder_requests", "no governed warehouseId (R-13)"],
+  ["reorder_purchase_orders", "blocked upstream by the reorder request (R-13)"],
+];
 
 function parseArgs(argv) {
   const out = {};
@@ -50,32 +62,38 @@ function parseArgs(argv) {
   return out;
 }
 
-/** id -> company, from the AUTHORED config. Every value is validated against the governed authority. */
 function loadRootCompanies() {
   const cfg = JSON.parse(fs.readFileSync(ROOT_CONFIG, "utf8"));
   const map = new Map();
   for (const group of Object.values(cfg.roots)) {
     for (const row of group) {
-      if (row.operatingCompanyId === null || row.operatingCompanyId === undefined) continue;
-      const { state } = resolveOperatingCompany(row.operatingCompanyId);
-      // A config naming an ungoverned company is a config error, not something to work around.
-      if (state !== "RESOLVED") throw new Error(`root ${row.id} names an ungoverned company: ${row.operatingCompanyId}`);
+      if (!row.operatingCompanyId) continue;
+      if (resolveOperatingCompany(row.operatingCompanyId).state !== "RESOLVED") {
+        throw new Error(`root ${row.id} names an ungoverned company: ${row.operatingCompanyId}`);
+      }
       map.set(row.id, row.operatingCompanyId);
     }
   }
   return map;
 }
 
-const at = (doc, p) => p.split(".").reduce((cur, seg) => (cur && typeof cur === "object" ? cur[seg] : undefined), doc);
-const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
-
-/** Tally helper. Every record lands in WOULD_WRITE, ALREADY_SET, or one of the blocked reasons. */
-function newTally(collection, field) {
-  return { collection, field, scanned: 0, wouldWrite: 0, alreadySet: 0, blocked: 0, reasons: {} };
-}
-function block(t, reason) {
-  t.blocked += 1;
-  t.reasons[reason] = (t.reasons[reason] ?? 0) + 1;
+async function buildContext(db) {
+  const accountOwnerByAccountId = new Map();
+  for (const doc of (await db.collection("accounts").get()).docs) {
+    const id = doc.data()?.accountOwner?.assignedToEmployeeId;
+    if (typeof id === "string" && id.trim().length > 0) accountOwnerByAccountId.set(doc.id, id.trim());
+  }
+  const { fleetOperatingCompany } = await import("./certificationWorld/data/equipmentAssets.mjs");
+  const { serviceJobOperatingCompany } = await import("./certificationWorld/data/serviceJobCompany.mjs");
+  return {
+    accountOwnerByAccountId,
+    rootCompanyById: loadRootCompanies(),
+    equipmentFleetCompany: (id) => {
+      const m = /^cw-eq-(\d+)-\d+$/.exec(id);
+      return m ? fleetOperatingCompany(Number.parseInt(m[1], 10)) : null;
+    },
+    serviceJobCompany: (id) => serviceJobOperatingCompany(id),
+  };
 }
 
 async function main() {
@@ -83,225 +101,69 @@ async function main() {
   if (!args.projectId || args.projectId === "true") throw new Error("--projectId is required.");
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const db = getFirestore();
+  const ctx = await buildContext(db);
 
-  const rootCompany = loadRootCompanies();
   console.log(`Backfill SIMULATION — ${args.projectId}   (READ-ONLY, nothing is written)\n`);
-  console.log(`Authored physical roots: ${rootCompany.size}`);
+  console.log(`Authored physical roots: ${ctx.rootCompanyById.size} | accounts with an owner: ${ctx.accountOwnerByAccountId.size}\n`);
 
-  const tallies = [];
-
-  // ---------------------------------------------------------------- PERSON: contacts + locations
-  const accountOwner = new Map();
-  const accounts = await db.collection("accounts").get();
-  for (const doc of accounts.docs) {
-    const id = at(doc.data(), "accountOwner.assignedToEmployeeId");
-    if (nonEmpty(id)) accountOwner.set(doc.id, id);
-  }
-  console.log(`Accounts with a resolvable owner: ${accountOwner.size} of ${accounts.size}\n`);
-
-  for (const collection of ["contacts", "locations"]) {
-    const t = newTally(collection, "owner (USER)");
-    const snap = await db.collection(collection).get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const accountId = doc.data().accountId;
-      if (!nonEmpty(accountId)) { block(t, "no accountId"); continue; }
-      if (!accountOwner.has(accountId)) { block(t, "parent Account has no owner"); continue; }
-      t.wouldWrite += 1;
-    }
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- COMPANY: single-root derivations
-  const singleRoot = [
-    { collection: "stock_locations", paths: ["warehouseId"] },
-    { collection: "trucks", paths: ["homeWarehouseId"] },
-    { collection: "cycle_counts", paths: ["location.locationId"] },
-    { collection: "receiving_orders", paths: ["receivingLocation.locationId"] },
-  ];
-  for (const rule of singleRoot) {
-    const t = newTally(rule.collection, "operatingCompanyId");
+  const rows = [];
+  for (const rule of BACKFILL_RULES) {
     const snap = await db.collection(rule.collection).get();
+    const row = { collection: rule.collection, scanned: snap.size, wouldWrite: 0, alreadySet: 0, protectedBy: {}, notes: {} };
     for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      const ref = rule.paths.map((p) => at(data, p)).find(nonEmpty);
-      if (!ref) { block(t, "no location reference"); continue; }
-      if (!rootCompany.has(ref)) { block(t, `root not authored: ${ref}`); continue; }
-      t.wouldWrite += 1;
+      const outcome = rule.evaluate({ id: doc.id, data: doc.data() }, ctx);
+      if (outcome.kind === "ALREADY_SET") { row.alreadySet += 1; continue; }
+      if (outcome.kind === "PROTECTED") { row.protectedBy[outcome.reason] = (row.protectedBy[outcome.reason] ?? 0) + 1; continue; }
+      row.wouldWrite += 1;
+      if (outcome.note) row.notes[outcome.note] = (row.notes[outcome.note] ?? 0) + 1;
     }
-    tallies.push(t);
+    rows.push(row);
   }
 
-  // ---------------------------------------------------------------- inventory_transactions: split
-  {
-    const t = newTally("inventory_transactions", "operatingCompanyId / participating pair");
-    let pair = 0;
-    const snap = await db.collection("inventory_transactions").get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      const a = at(data, "location.locationId");
-      const b = at(data, "counterpartyLocation.locationId");
-      const refs = [a, b].filter(nonEmpty).filter((r) => rootCompany.has(r));
-      if (refs.length === 0) { block(t, "no resolvable location reference"); continue; }
-      const companies = [...new Set(refs.map((r) => rootCompany.get(r)))];
-      if (companies.length > 1) { pair += 1; t.wouldWrite += 1; continue; }
-      t.wouldWrite += 1;
-    }
-    t.reasons[`(of which ${pair} would carry a CROSS-COMPANY participating pair)`] = pair;
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- transfer_orders: pairs
-  {
-    const t = newTally("transfer_orders", "source+destinationOperatingCompanyId");
-    let cross = 0;
-    let same = 0;
-    const snap = await db.collection("transfer_orders").get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.sourceOperatingCompanyId) && nonEmpty(data.destinationOperatingCompanyId)) {
-        t.alreadySet += 1;
-        continue;
-      }
-      const from = at(data, "origin.locationId") ?? data.fromWarehouseId;
-      const to = at(data, "destination.locationId") ?? data.toWarehouseId;
-      if (!nonEmpty(from) || !nonEmpty(to)) { block(t, "missing origin or destination"); continue; }
-      if (!rootCompany.has(from) || !rootCompany.has(to)) { block(t, "origin or destination root not authored"); continue; }
-      // BOTH participants required (ruling R-10). One of two is not a partial success.
-      if (rootCompany.get(from) === rootCompany.get(to)) same += 1;
-      else cross += 1;
-      t.wouldWrite += 1;
-    }
-    t.reasons[`(same-company: ${same})`] = same;
-    t.reasons[`(CROSS-company: ${cross})`] = cross;
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- equipment: fixture fleets
-  {
-    const { fleetOperatingCompany } = await import("./certificationWorld/data/equipmentAssets.mjs");
-    const t = newTally("equipment", "operatingCompanyId (fixture fleet)");
-    const snap = await db.collection("equipment").get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      // MARKER-SCOPED. A non-fixture record is never touched -- ruling R-2.
-      if (data[MARKER_FIELD] === undefined && data.dataProvenance !== "SYNTHETIC_CERTIFICATION_FACT") {
-        block(t, "non-fixture record -- left untouched by rule");
-        continue;
-      }
-      const m = /^cw-eq-(\d+)-\d+$/.exec(doc.id);
-      if (!m) { block(t, "fixture id does not carry a fleet index"); continue; }
-      const company = fleetOperatingCompany(Number.parseInt(m[1], 10));
-      if (company === null) { block(t, "fleet has no authored company"); continue; }
-      t.wouldWrite += 1;
-    }
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- service jobs (R-11)
-  {
-    const { serviceJobOperatingCompany } = await import("./certificationWorld/data/serviceJobCompany.mjs");
-    const t = newTally("fieldops_jobs", "operatingCompanyId (fixture job)");
-    const snap = await db.collection("fieldops_jobs").get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      const company = serviceJobOperatingCompany(doc.id);
-      if (company === null) { block(t, "not an authored certification Job -- left untouched by rule"); continue; }
-      t.wouldWrite += 1;
-    }
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- work orders (R-12)
-  {
-    // Company inherits from the parent Job. Measured: no Work Order has one, and none can be
-    // invented -- the lineage check found 0 EXACT_PARENT across all 30.
-    const t = newTally("fieldops_wos", "operatingCompanyId (from parent Job)");
-    const jobIds = new Set((await db.collection("fieldops_jobs").get()).docs.map((d) => d.id));
-    const snap = await db.collection("fieldops_wos").get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      if (!nonEmpty(data.jobId) || !jobIds.has(data.jobId)) { block(t, "no parent Job reference -- jobId is never invented"); continue; }
-      t.wouldWrite += 1;
-    }
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- commercial chain (R-14)
-  for (const collection of ["opportunities", "sales_agreements", "sales_orders", "invoices"]) {
-    const t = newTally(collection, "operatingCompanyId (commercial lineage)");
-    const snap = await db.collection(collection).get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      // A non-fixture commercial record with no company provenance stays unresolved (R-14).
-      if (data[MARKER_FIELD] === undefined && data.dataProvenance !== "SYNTHETIC_CERTIFICATION_FACT") {
-        block(t, "non-fixture commercial record -- no legitimate company provenance");
-        continue;
-      }
-      block(t, "fixture commercial record with no authored company scenario");
-    }
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- reorder chain (R-13)
-  for (const collection of ["reorder_requests", "reorder_purchase_orders"]) {
-    const t = newTally(collection, "warehouseId + operatingCompanyId");
-    const snap = await db.collection(collection).get();
-    for (const doc of snap.docs) {
-      t.scanned += 1;
-      const data = doc.data();
-      if (nonEmpty(data.operatingCompanyId)) { t.alreadySet += 1; continue; }
-      if (!nonEmpty(data.warehouseId)) { block(t, "no warehouseId -- schema addition required first"); continue; }
-      if (!rootCompany.has(data.warehouseId)) { block(t, "warehouse not authored"); continue; }
-      t.wouldWrite += 1;
-    }
-    tallies.push(t);
-  }
-
-  // ---------------------------------------------------------------- report
-  const header = "collection".padEnd(26) + "scanned".padStart(9) + "WOULD WRITE".padStart(13) + "already".padStart(9) + "blocked".padStart(9);
+  const header = "collection".padEnd(26) + "scanned".padStart(8) + "WOULD WRITE".padStart(13) + "already".padStart(9) + "protected".padStart(11) + "cap".padStart(6);
   console.log(header);
   console.log("-".repeat(header.length));
-  let totalWrite = 0;
-  let totalBlocked = 0;
-  let totalScanned = 0;
-  for (const t of tallies) {
-    totalWrite += t.wouldWrite;
-    totalBlocked += t.blocked;
-    totalScanned += t.scanned;
+  let write = 0;
+  let already = 0;
+  let prot = 0;
+  let scanned = 0;
+  for (const r of rows) {
+    const p = Object.values(r.protectedBy).reduce((a, b) => a + b, 0);
+    write += r.wouldWrite; already += r.alreadySet; prot += p; scanned += r.scanned;
     console.log(
-      t.collection.padEnd(26) +
-        String(t.scanned).padStart(9) +
-        String(t.wouldWrite).padStart(13) +
-        String(t.alreadySet).padStart(9) +
-        String(t.blocked).padStart(9),
+      r.collection.padEnd(26) + String(r.scanned).padStart(8) + String(r.wouldWrite).padStart(13) +
+      String(r.alreadySet).padStart(9) + String(p).padStart(11) + String(AUTHORIZED_WRITE_CAPS[r.collection] ?? 0).padStart(6),
     );
   }
   console.log("-".repeat(header.length));
-  console.log("TOTAL".padEnd(26) + String(totalScanned).padStart(9) + String(totalWrite).padStart(13) + "".padStart(9) + String(totalBlocked).padStart(9));
+  console.log("IN SCOPE".padEnd(26) + String(scanned).padStart(8) + String(write).padStart(13) + String(already).padStart(9) + String(prot).padStart(11) + String(AUTHORIZED_TOTAL).padStart(6));
 
-  console.log("\nDetail:");
-  for (const t of tallies) {
-    const entries = Object.entries(t.reasons).filter(([, n]) => n > 0);
-    if (entries.length === 0) continue;
-    console.log(`  ${t.collection}`);
-    for (const [reason, n] of entries.sort((a, b) => b[1] - a[1])) console.log(`    ${String(n).padStart(6)}  ${reason}`);
+  let outScanned = 0;
+  console.log("\nOut of scope by ruling (never written):");
+  for (const [collection, why] of OUT_OF_SCOPE) {
+    const n = (await db.collection(collection).get()).size;
+    outScanned += n;
+    console.log(`  ${String(n).padStart(5)}  ${collection.padEnd(26)} ${why}`);
+  }
+  console.log(`  ${String(outScanned).padStart(5)}  total out of scope`);
+
+  console.log("\nProtected within scope, by reason:");
+  let any = false;
+  for (const r of rows) {
+    for (const [reason, n] of Object.entries(r.protectedBy).sort((a, b) => b[1] - a[1])) {
+      any = true;
+      console.log(`  ${String(n).padStart(5)}  ${r.collection}: ${reason}`);
+    }
+  }
+  if (!any) console.log("  (none)");
+
+  const noted = rows.filter((r) => Object.keys(r.notes).length > 0);
+  if (noted.length > 0) {
+    console.log("\nShape detail:");
+    for (const r of noted) for (const [note, n] of Object.entries(r.notes)) console.log(`  ${String(n).padStart(5)}  ${r.collection}: ${note}`);
   }
 
-  console.log(`\nPROPOSED SANDBOX WRITE COUNT: ${totalWrite} document(s). ${totalBlocked} blocked.`);
+  console.log(`\nPROPOSED SANDBOX WRITE COUNT: ${write} document(s). ${already} already set, ${prot + outScanned} protected/out of scope.`);
   console.log("NOTHING WAS WRITTEN. This tool has no apply mode.");
 }
 
