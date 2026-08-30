@@ -174,16 +174,20 @@ export const NAV_DOMAINS = [
       // Platform Task 2 -- "Dispatch" relabeled "Dispatch Queue" (its child slot
       // in the new Dispatch group). Path/legacyKey UNCHANGED, so its URL
       // (/service/dispatch) and role access are identical -- only the label moved.
-      // Retired from the desktop rail with Scheduling and Dispatch Board (Owner, 2026-08-30): its one
-      // governed action, Dispatch, is reachable on the North Star Dispatcher Board through the work
-      // order preview, and its assigned-technician filter is what that board's lanes and technician
-      // selector already are.
+      // KEPT AND RENAMED "Jobs" (Owner, 2026-08-30). It was nearly retired with Scheduling and
+      // Dispatch Board as a third Schedule-only duplicate, and it is not one: `mobilePrimaryNav.js`
+      // already routes the phone's **Jobs** tab at this exact route, so it is a screen someone uses
+      // every day. The old label "Dispatch Queue" is what made it look like a spare dispatcher board.
       //
-      // THE MOBILE "JOBS" TAB STILL POINTS HERE and is deliberately untouched. `mobilePrimaryNav.js`
-      // routes Jobs -> /service/dispatch, and that is a SEPARATE navigation with its own entries;
-      // `navHidden` is read only by the desktop AppRail. A technician's phone is not a dispatcher's
-      // rail, and collapsing the two would have removed a working screen to tidy a different one.
-      { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch", navHidden: true },
+      // ONE SCREEN, ONE NAME. The same destination was called "Jobs" on the phone and "Dispatch
+      // Queue" on the desktop, which is how a live surface gets mistaken for a duplicate — the label
+      // now matches the mobile tab it shares a route with.
+      //
+      // Not to be confused with "Job Assignments" (/service/job-assignments) in Work Management:
+      // that is a READ list over work orders and technicians. This one performs the governed
+      // Dispatch transition and sets assignedTechId. Different jobs, similar words; the distinction
+      // is the write.
+      { key: "dispatch", label: "Jobs", path: "dispatch", legacyKey: "dispatch" },
       // Coordinated Operations — the user-consumable reads of the already-built coordinatedVisit /
       // coordinatedFieldMission projections (functions/src/fulfillment). NO new authority: the Sales Order is
       // the coordination anchor; Work Orders keep individual execution. Both read a SYNTHETIC source through
