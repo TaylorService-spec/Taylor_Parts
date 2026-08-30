@@ -1121,7 +1121,7 @@ that closed the family's last open question and the state of its gate.
 | **ND-28-F** | **OPEN follow-up.** When `getPartBalance` is activated, reconcile the forecast composition against the governed balance — replace, supplement, or remain distinct — as an explicit authority change with its own tests. Semantics must not change silently when the capability flips. |
 | **PartsList scope** | Owner-agreed: the pre-North-Star multi-panel shell stays. Its four-panel role-home composition and governed reorder queues are a Lists P2 / role-workspace recomposition. **Parts P1 does not absorb it.** |
 | **Gate ruling** | **Quick Gate, not Full Regression** — Owner, 2026-08-30. Basis: presentation-layer changes, projection corrections, family-local defect corrections; no callable authority, capability activation, Rules, index, or transactional/state-machine change. |
-| **Gate** | `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs` — 16 checks, written and its release-identity guard proved. **Not yet run against the release.** |
+| **Gate** | `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs`. Superseded by the closeout below: it grew to 20 checks after three gate defects, and PASSED 20/20 against `79df93c1`. |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — unchanged, and blocked on the refresh below. |
 
 ### The refresh this family is waiting on
@@ -1157,3 +1157,45 @@ so redeploying the Functions estate would be authority this release does not nee
 Functions batch exiting non-zero after some functions have already updated is this repository's own
 documented failure mode. Every guard, build verification, artifact stamp and identity gate still runs;
 only the scope changes.
+
+### Family 7 — the Quick Gate passed (2026-08-30)
+
+Appended, not rewritten: the rows above record what was built and what it was waiting on. This
+records the gate actually running, and supersedes the earlier line that said *"Not yet run."*
+
+| | |
+|---|---|
+| **Deployed SHA** | `79df93c1` — sandbox `platform-sandbox`/`sandbox`, buildTime 2026-08-30T12:55:09.833Z |
+| **Gate** | `partsNorthStarQuickGate.mjs --expect 79df93c1` — **20/20 PASS**, desktop 1440 and handheld 375, runtime clean |
+| **Verified independently** | Owner ran it; this build re-ran it and read `/version.json` first-hand rather than recording a result it had not seen |
+| **Rulings** | ND-25, ND-26, ND-27, ND-28, ND-29 — **all CLOSED** |
+| **Gate ruling applied** | Quick Gate, not Full Regression (Owner, 2026-08-30) |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the one authority a build cannot grant itself |
+
+**Acceptance surfaces:** `/inventory` and `/inventory/CW-P-0001`.
+
+### Two results in that run that are weaker than they look, named rather than counted
+
+- **Check 4 and check 7 cannot decide the ND-26 field contract on this data.** The certification
+  fixture makes `partId` and `internalPartNumber` the *same string* (`CW-P-0000`), so "the cell shows
+  the Part Number, not the document id" is unfalsifiable live. The gate says so in its own output.
+  The contract is proved in `partsNorthStarProjection` and `partsNorthStarIdentity`, whose fixtures
+  make the two differ, and both are mutation-proved.
+- **Check 11 saw a `STANDARD` part.** The serialized and lot treatments were not exercised live; they
+  are covered by `partsNorthStarRecord.test.jsx`. Owner ruled this not required for P1 acceptance.
+
+### Checked during closeout, and NOT a defect
+
+The handheld full-page capture shows the fixed `fo-tabbar` sitting mid-content. That is an artefact of
+`fullPage` screenshots with `position: fixed`, not an overlap. Measured at the true page bottom at
+375×812: the last rail section ends at **y=646**, the bar begins at **y=739** — 93px clearance,
+`occluded: false`. Recorded because the screenshot looks like a defect and the next reader deserves
+the measurement rather than a second investigation.
+
+### Follow-ups that survive acceptance
+
+| | |
+|---|---|
+| **ND-28-F** | OPEN — when `getPartBalance` is activated, reconcile the Stock forecast against the governed balance (replace / supplement / remain distinct) as an explicit authority change with its own tests. Semantics must not change silently. |
+| **P-G1** | OPEN — every Parts surface reads the whole `parts` collection; a cold record deep-link is slow. Its own performance concern, not absorbed into Parts P1. |
+| **Serialized / lot live exercise** | Not required for P1. Focused Parts family tests remain the proof. |
