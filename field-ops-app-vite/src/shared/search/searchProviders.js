@@ -105,14 +105,35 @@ export const SEARCH_PROVIDERS = {
       const parts = context?.parts ?? [];
       return parts
         .filter((part) => {
-          const haystack = `${part.sku ?? ""} ${part.name ?? ""} ${part.category ?? ""}`.toLowerCase();
+          // ND-26 (Owner, 2026-08-30) MADE THIS A DEFECT. The haystack was sku + name + category,
+          // where sku IS the document id. Once the workspace started showing internalPartNumber as
+          // the Part Number, a person could read "C712-COMP" off the row in front of them, type it,
+          // and be told there is no such part -- the one search a warehouse actually performs.
+          //
+          // internalPartNumber and description are added because the composed row ALREADY carries
+          // both: this is a wider read of loaded data, not a new query. (The separate
+          // PART_DESCRIPTION_SEARCH_INDEX_GAP is about SERVER-side description search, which this
+          // is not and does not claim to be.)
+          //
+          // sku stays in the haystack deliberately -- somebody holding a document id from a link or
+          // a log should still find the part -- but it is no longer the only identifier that works,
+          // and it is no longer what the result LABELS the part with.
+          //
+          // Barcodes and aliases are NOT here. Resolving those needs the identifier read, which is
+          // registered active:false and granted to nobody, so claiming them would be a promise the
+          // search cannot keep.
+          const haystack = `${part.internalPartNumber ?? ""} ${part.sku ?? ""} ${part.name ?? ""} ${part.description ?? ""} ${part.category ?? ""}`.toLowerCase();
           return haystack.includes(q);
         })
         .map((part) => ({
           id: part.sku,
           entityType: "parts",
           primaryText: part.name,
-          secondaryText: `${part.sku} -- ${part.category}`,
+          // The Part Number, not the document id. A row with no canonical document has no Part
+          // Number and says so rather than falling back to the key.
+          secondaryText: `${part.internalPartNumber ?? "No Part Number"} -- ${part.category}`,
+          // The ROUTE still keys on sku: partId remains the immutable document and routing key
+          // (ND-26). Only what a person READS changed.
           route: `/inventory/${part.sku}`,
         }));
     },

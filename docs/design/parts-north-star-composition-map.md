@@ -278,3 +278,72 @@ after families 1 and 2 shipped into exactly that hole. It worked.
 The **workspace** (`PartsList.jsx`) — its quantity column omitted per ND-25, its Part Number column
 already corrected, and its search placeholder narrowed to what the lookup resolves (P-N9). Then the
 ledger row, sandbox refresh and Quick Gate.
+
+---
+
+# Part III — the workspace (2026-08-30)
+
+## What ND-25 actually removed
+
+The **quantity column is gone** from `/inventory`. Its history is the argument for removing it, and
+each step subsumed the last:
+
+1. The static catalogue quantity, welded to a `(baseline)` caveat in one string — nothing could sort,
+   filter or report on it.
+2. The two split apart. Readable, and it stopped short of the real problem: the **number**.
+3. **Owner ruling 2026-08-24** — the catalogue is not an availability authority. The column answered
+   from the ledger instead, and said *"Not known"* where the ledger had not spoken.
+4. **ND-25, 2026-08-30, Option (b)** — that ledger figure is a client-side derivation and it is
+   *available*-shaped. Quantitative inventory facts are reserved for `getPartBalance`, which is
+   single-part (`PART_LIST_BALANCE_N1_GAP`) and switched off. With no list-scale projection to answer
+   from, the column is **omitted** rather than answered from something else.
+
+`test/inventoryHealthScaleSemantics.test.jsx` records the supersession chain in place rather than
+deleting the assertions it replaces — that file's own convention, and the reason a reader six months
+from now can see why the column left instead of guessing.
+
+**Inventory Health stays.** It is a qualitative signal, not a quantity: it says whether a part needs
+attention, never how many there are, and its three outcomes are three different statements about what
+is *known*. Removing it would take an operational judgment away without a ruling asking for it. That
+is a judgment call, made explicitly and pinned by a test so it can be reversed deliberately.
+
+## A defect ND-26 created, and this pass fixed
+
+Making `internalPartNumber` the displayed Part Number introduced a failure the record could not
+show: **the parts search matched `sku + name + category`, and `sku` is the document id.** A person
+could read `C712-COMP` off the row in front of them, type it, and be told no such part exists — the
+one search a warehouse actually performs.
+
+The provider now matches `internalPartNumber` and `description` as well, both of which the composed
+row already carries: a wider read of loaded data, not a new query. `sku` stays in the haystack
+deliberately — somebody holding a document id from a link or a log should still find the part — but
+it is no longer the only identifier that works, and it is no longer what the result *labels* the part
+with. **Barcodes and aliases are not searched and are not claimed**: resolving those needs the
+identifier read, which is `active: false` and granted to nobody.
+
+The placeholder moved from *"Search parts…"* to **"Search part number, description, or category"**,
+and a test asserts every term it names actually matches while a barcode-shaped value matches nothing
+— which is what makes the omission honest rather than merely cautious. This closes **P-N9** in the
+opposite direction from the design, which claimed barcode and alias search the lookup cannot perform.
+
+## What the workspace deliberately did NOT become
+
+`PartsList.jsx` keeps its pre-North-Star multi-panel shell — Work, Parts and Flow groups holding the
+reorder queues, the health panel, the catalogue table and the history lookup. It is a role home page
+rather than a collection, and migrating it to the Lists P2 collection grammar means recomposing four
+panels and the governed reorder queues inside them.
+
+That is **Lists P2 work, not Parts North Star P1**, and doing it here would broaden the scope past
+what was authorised — *"do not perform a platform rebuild"*. Recorded as the next piece rather than
+half-done.
+
+## Proof
+
+`test/partsNorthStarWorkspace.test.mjs` (10) — the omission asserted four ways (no quantity heading,
+no restored cell, no cell reading `health.stock.availableStock`, and the panel's own sentence no
+longer promising a stock position), Inventory Health's survival pinned so a tidy-up cannot read ND-25
+as removing the pair, and the six searchability rules. **Five mutation proofs, all caught** —
+including restoring the column, reverting the search haystack, falling back to the key in a result
+label, and claiming barcode search in the placeholder.
+
+Local: **260/260 node suites, 2776/2776 vitest tests, `vite build` clean, oxlint clean.**

@@ -169,28 +169,44 @@ test("urgency has ONE label authority, beside its tone map", () => {
 test("the Parts catalogue table recomposes into cards, with every cell labelled", () => {
   const src = read("src/modules/inventory/PartsList.jsx");
   expectMatch(src, /className="fo-table fo-table--stack"/);
-  for (const label of ["Part", "Part Number", "Category", "Warehouse Available", "Inventory Health"]) {
+  // "Warehouse Available" left this list when ND-25 removed the column — see the test below.
+  for (const label of ["Part", "Part Number", "Category", "Inventory Health"]) {
     expectMatch(src, new RegExp(`data-label="${label}"`), `${label} cell must carry its heading`);
   }
 });
 
-test("an UNLEDGERED part has UNKNOWN availability — never a catalogue baseline, never zero", () => {
-  // SUPERSEDES an earlier assertion in this file, deliberately rather than by deletion. That one
-  // required the static catalogue quantity and its "(baseline)" caveat to be two elements rather
-  // than one welded string. That was a real improvement and it stopped short of the actual problem:
-  // the NUMBER. The Owner ruled on 2026-08-24 that the catalogue is not an availability authority,
-  // so the requirement is now strictly stronger and subsumes the one it replaces.
+test("the workspace states NO quantity — the third and strongest form of the same rule", () => {
+  // THIRD SUPERSESSION, and each one subsumed the last rather than replacing it by deletion.
+  //
+  //   1. The catalogue quantity and its "(baseline)" caveat must be two elements, not one welded
+  //      string. A real improvement that stopped short of the actual problem: the NUMBER.
+  //   2. Owner ruling 2026-08-24 — the catalogue is not an availability authority. The column
+  //      answered from the ledger instead, and said "Not known" where the ledger had not spoken.
+  //   3. Owner ruling ND-25, 2026-08-30, Option (b) — TRUTHFUL ABSENCE > FALSE COMFORT. The
+  //      ledger-derived figure is a CLIENT-SIDE derivation and it is available-shaped.
+  //      Quantitative inventory facts are reserved for the governed getPartBalance authority,
+  //      which is single-part (PART_LIST_BALANCE_N1_GAP) and switched off. With no list-scale
+  //      projection to answer from, the column is omitted rather than answered from something
+  //      else.
+  //
+  // Each earlier requirement is still held, because a column that does not exist cannot carry a
+  // welded string, a catalogue quantity, or a zero mistaken for an absence.
   const src = read("src/modules/inventory/PartsList.jsx");
 
-  // The original requirement, still held: no welded string.
+  // 1 and 2, still held — vacuously now, and asserted anyway so a restored column could not
+  // restore the old defects with it.
   expect(/\$\{part\.warehouseQty\} \(baseline\)/.test(src)).toBe(false);
-  // The new one: no catalogue quantity in the availability column at all.
-  expect(/data-label="Warehouse Available"[^>]*part\.warehouseQty/.test(src)).toBe(false);
+  expect(/data-label="Warehouse Available"/.test(src)).toBe(false);
 
-  // UNKNOWN travels as null, never as 0 — a formatter handed a zero would print one, and "nobody
-  // has looked at this shelf" would become "this shelf is empty".
-  expectMatch(src, /data-raw=\{health \? health\.stock\.availableStock : null\}/);
-  expectMatch(src, /Not known/);
+  // 3: no quantity heading, and no cell reading the derived figure.
+  for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
+    expect(src.includes(`<th>${heading}</th>`), `"${heading}" is a quantity column`).toBe(false);
+  }
+  expect(/health\.stock\.availableStock/.test(src)).toBe(false);
+
+  // The derivation itself is untouched — Inventory Health still needs it. What changed is that
+  // the workspace no longer renders it.
+  expectOk(computeAvailableStockByPart, "the derivation stays; only its display is withdrawn");
 });
 
 test("Inventory Health renders WORDS, never the stored urgency token", () => {
