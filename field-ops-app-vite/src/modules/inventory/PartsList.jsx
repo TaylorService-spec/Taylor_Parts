@@ -671,152 +671,41 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
           }}
         />
       )}
-      {/* Wave 6 -- Parts UX redesign (parts-ux-redesign-blueprint.md). Groups the page's
-          existing sections under WORK / PARTS / FLOW headings, per Decision #43's own plan
-          to converge the Parts workspace around what a user needs to DO, look UP, or track
-          through the LIFECYCLE, rather than the order features shipped historically. This is
-          presentation-only: every section below keeps its exact existing heading, data
-          source, hook, and link -- nothing is removed, hidden, or deduplicated in this slice
-          (deduplicating the role-Home surfaces' near-identical queues is a separate,
-          bounded follow-up, not bundled into this reorganization). */}
-      <h2 id="parts-group-work">Work</h2>
-      <p className="fo-muted">What needs action, what's assigned to you, and what your team is handling.</p>
+      {/* ══════════ FRAME 1a LEADS THE PAGE (ND-30, corrected 2026-08-30) ══════════
 
-      <h3>Inventory Operational Queue</h3>
-      <p className="fo-muted">
-        Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
-      </p>
-      {/* CHIPS, NOT VIEWS. This page is a pre-North-Star WorkspaceShell holding several panels, and
-          this row chooses a slice of the Inventory Health PANEL — not a view of a collection. The
-          views grammar states "this is the collection, and these are the ways to read it", which
-          needs a collection identity above it; this page has none. Wearing the chrome without the
-          header is the drift listsP2Compose exists to catch. See the gap named for this page in
-          the rollout note: it needs a collection pass, not a chip swap. */}
-      <FilterBar
-        variant="chips"
-        options={queueFilterOptionsWithCounts}
-        activeKey={queueFilter}
-        onChange={setQueueFilter}
-      />
-      {reorderError && <p className="fo-muted">{reorderError}</p>}
-      <LoadingEmptyState
-        loading={loading}
-        failed={!!healthError}
-        isEmpty={false}
-        loadingText="Loading operational queue..."
-        failedText="Unable to load the operational queue right now. Try again shortly."
-        emptyText=""
-      >
-        <InventoryHealthPanel
-          healthEntries={queueEntries}
-          title="Needs Reorder"
-          resolveName={resolveName}
-          onRequestReorder={handleRequestReorder}
-          requestedPartIds={requestedPartIds}
-          submittingPartId={submittingPartId}
-          emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
-        />
-      </LoadingEmptyState>
+          It did not, and that was this build's call rather than the ruling's. ND-30 said do not
+          RELOCATE the Work and Flow groups; it said nothing about order, and leaving the existing
+          order untouched put the catalogue seventh -- behind six reorder-queue panels, five of
+          them empty. Parts opened on nothing. In the design, the catalogue IS the page.
 
-      {/* Wave 6 -- queue consolidation (Owner directive, Option A). This is now the SAME
-          actionable ManagerQueuePanel PartsManagerHome.jsx uses (shared/reorder/
-          ManagerQueuePanel.jsx) -- an admin/dispatcher can Assign directly from here, not
-          just view. admin/dispatcher already hold `reorder.request.assign` unconditionally
-          (compatibilityRoles.ts SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS), so this widens no
-          capability -- it reuses one already granted. */}
-      <ManagerQueuePanel
-        queue={partsManagerQueue}
-        resolveName={resolveName}
-        loading={partsManagerLoading}
-        error={partsManagerError}
-        title="Parts Manager Queue"
-        description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
-      />
+          So the catalogue leads and its identity is the PAGE's: the shell's title, then the count
+          line, the views, the toolbar, the table. There is no second heading -- Frame 1a has one
+          title, and "Parts Catalog" as a section name was an artefact of composing it as a panel.
 
-      <h3>My Work</h3>
-      <p className="fo-muted">Reorder Requests assigned to you, split by whether you've started purchasing.</p>
-
-      {/* Wave 6 -- queue consolidation. The SAME actionable RequestCards + AssignedRequestDetail
-          PartsAssociateHome.jsx uses (shared/reorder/AssociateRequestPanel.jsx). Safe to reuse
-          here: `partsAssociateWaiting`/`partsAssociateInProgress` are ALREADY scoped to
-          useReorderRequestsAssignedTo(user.uid, ...) above (the signed-in viewer's own uid,
-          unchanged from before this refactor) -- the four write commands the detail panel
-          invokes are independently enforced server-side to require auth.uid ===
-          assignedToUserId, so this never exposes an action a different principal could use. */}
-      <h4>Waiting</h4>
-      <LoadingEmptyState
-        loading={partsAssociateWaitingLoading}
-        failed={!!partsAssociateWaitingError}
-        isEmpty={partsAssociateWaiting.length === 0}
-        loadingText="Loading your assigned requests..."
-        failedText="Unable to load your assigned requests right now. Try again shortly."
-        emptyText="No requests currently waiting on you."
-      >
-        <RequestCards requests={partsAssociateWaiting} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
-      </LoadingEmptyState>
-
-      <h4>In Progress</h4>
-      <LoadingEmptyState
-        loading={partsAssociateInProgressLoading}
-        failed={!!partsAssociateInProgressError}
-        isEmpty={partsAssociateInProgress.length === 0}
-        loadingText="Loading your in-progress purchasing..."
-        failedText="Unable to load your in-progress purchasing right now. Try again shortly."
-        emptyText="No purchasing currently in progress."
-      >
-        <RequestCards requests={partsAssociateInProgress} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
-      </LoadingEmptyState>
-
-      {selectedAssociateRequestId && (
-        <AssignedRequestDetail
-          requestId={selectedAssociateRequestId}
-          resolveName={resolveName}
-          onClose={handleCloseAssociateRequest}
-        />
-      )}
-
-      <h3>Team Work</h3>
-      <p className="fo-muted">Cross-user oversight -- every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to. Your own assignments above are a subset of this list.</p>
-      {/* Wave 6 -- queue consolidation, safe mechanical dedup (Owner directive §12). The SAME
-          shared/reorder/AssignedWorkOversightTable.jsx PartsManagerHome.jsx's "Assigned-Work
-          Oversight" now uses -- ONE implementation, not two independently-maintained copies.
-          Assignee-name resolution stays THIS page's own scope (useEmployeeDirectory(), already
-          visible to admin/dispatcher elsewhere) -- injected, not hardcoded in the shared table,
-          so reuse never widens or narrows either caller's own data visibility. */}
-      <AssignedWorkOversightTable
-        requests={allAssignedWork}
-        resolveName={resolveName}
-        resolveAssigneeDisplay={(userId) => resolveAssigneeDisplay(userId, employeeDirectory, employeeDirectoryLoading, employeeDirectoryError)}
-        loading={allAssignedWorkLoading}
-        error={allAssignedWorkError}
-      />
-
-      <h2 id="parts-group-parts">Parts</h2>
-      <p className="fo-muted">Look up a part — identity, classification, and what needs attention.</p>
-
-      {/* ══════════ FRAME 1a — the Parts collection, composed INSIDE the role home (ND-30) ══════════
-
-          The Owner's ruling is precise about the shape of this: the collection grammar arrives in
-          the PANEL, and the Work group, the Flow group and the governed reorder queues stay exactly
-          where they are. So this is a section identity, not a second page identity -- no
-          WorkspaceIdentity, no second <h1>, no crumb. The page above it is still the role home.
-
-          NO On hand column. ND-25 remains controlling and no quantity may be introduced to
-          reproduce the static design. */}
-      <div className="ns-workspace">
+          Nothing is relocated off /inventory. Work and Flow keep their exact composition, their
+          headings, their hooks and their governed reorder queues -- they follow rather than
+          precede. The route does not become a collection-only page. */}
+      {/* data-parts-catalog IS THE CONTRACT. The live gate used to find this surface by matching an
+          h3 reading "Parts Catalog" -- a heading the design was free to remove, and did. Anchoring
+          a gate on a heading the ruling may rename is how two checks came to measure different
+          tables. An explicit hook says "this is the catalogue" and survives the next rename. */}
+      <div className="ns-workspace" data-parts-catalog>
         <header className="ns-workspace__head">
           <div className="ns-workspace__titleblock">
-            <div className="ns-workspace__titlerow">
-              <h3 className="ns-workspace__title">Parts Catalog</h3>
-              {/* COUNTED FOR WHAT IT IS. This page performs a whole-collection read, so the number
-                  is the catalogue -- and the label says so rather than implying a company-wide
-                  inventory universe nobody measured. */}
-              <span className="ns-workspace__count">
+            {/* NO SECOND TITLE. The shell already renders "Parts" as the page title, and Frame 1a
+                has one. "Parts Catalog" was an artefact of composing this as a panel among panels;
+                now that the catalogue leads the page, repeating the name would state the subject
+                twice and teach the reader to skim both.
+
+                COUNTED FOR WHAT IT IS: this page performs a whole-collection read, so the number is
+                the catalogue -- and the label says so rather than implying a company-wide inventory
+                universe nobody measured. */}
+            <p className="ns-workspace__summary" data-parts-summary>
+              <strong className="ns-workspace__count">
                 {collectionSummary.total}{" "}
                 <span className="ns-workspace__count-label">{collectionSummary.totalLabel}</span>
-              </span>
-            </div>
-            <p className="ns-workspace__summary">
+              </strong>
+              {" · "}
               {collectionSummary.active} active
               {collectionSummary.statusUnknown > 0 ? (
                 <>
@@ -829,7 +718,10 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               {collectionSummary.needsAttention > 0 ? (
                 <>
                   {" · "}
-                  <span className="is-attention">{collectionSummary.needsAttention} {collectionSummary.needsAttention === 1 ? "needs" : "need"} attention</span>
+                  <span className="is-attention">
+                    {collectionSummary.needsAttention}{" "}
+                    {collectionSummary.needsAttention === 1 ? "needs" : "need"} attention
+                  </span>
                 </>
               ) : null}
             </p>
@@ -1041,6 +933,126 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       </>
       )}
       </div>
+
+
+      {/* Wave 6 -- Parts UX redesign (parts-ux-redesign-blueprint.md). Groups the page's existing
+          sections under WORK / PARTS / FLOW. Presentation-only: every section keeps its exact
+          heading, data source, hook and link.
+
+          ORDER CORRECTED 2026-08-30: Parts now leads, because a page called Parts that opens on
+          five empty queues is answering a question nobody asked first. */}
+      <h2 id="parts-group-work">Work</h2>
+      <p className="fo-muted">What needs action, what's assigned to you, and what your team is handling.</p>
+
+      <h3>Inventory Operational Queue</h3>
+      <p className="fo-muted">
+        Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
+      </p>
+      {/* CHIPS, NOT VIEWS. This page is a pre-North-Star WorkspaceShell holding several panels, and
+          this row chooses a slice of the Inventory Health PANEL — not a view of a collection. The
+          views grammar states "this is the collection, and these are the ways to read it", which
+          needs a collection identity above it; this page has none. Wearing the chrome without the
+          header is the drift listsP2Compose exists to catch. See the gap named for this page in
+          the rollout note: it needs a collection pass, not a chip swap. */}
+      <FilterBar
+        variant="chips"
+        options={queueFilterOptionsWithCounts}
+        activeKey={queueFilter}
+        onChange={setQueueFilter}
+      />
+      {reorderError && <p className="fo-muted">{reorderError}</p>}
+      <LoadingEmptyState
+        loading={loading}
+        failed={!!healthError}
+        isEmpty={false}
+        loadingText="Loading operational queue..."
+        failedText="Unable to load the operational queue right now. Try again shortly."
+        emptyText=""
+      >
+        <InventoryHealthPanel
+          healthEntries={queueEntries}
+          title="Needs Reorder"
+          resolveName={resolveName}
+          onRequestReorder={handleRequestReorder}
+          requestedPartIds={requestedPartIds}
+          submittingPartId={submittingPartId}
+          emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
+        />
+      </LoadingEmptyState>
+
+      {/* Wave 6 -- queue consolidation (Owner directive, Option A). This is now the SAME
+          actionable ManagerQueuePanel PartsManagerHome.jsx uses (shared/reorder/
+          ManagerQueuePanel.jsx) -- an admin/dispatcher can Assign directly from here, not
+          just view. admin/dispatcher already hold `reorder.request.assign` unconditionally
+          (compatibilityRoles.ts SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS), so this widens no
+          capability -- it reuses one already granted. */}
+      <ManagerQueuePanel
+        queue={partsManagerQueue}
+        resolveName={resolveName}
+        loading={partsManagerLoading}
+        error={partsManagerError}
+        title="Parts Manager Queue"
+        description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
+      />
+
+      <h3>My Work</h3>
+      <p className="fo-muted">Reorder Requests assigned to you, split by whether you've started purchasing.</p>
+
+      {/* Wave 6 -- queue consolidation. The SAME actionable RequestCards + AssignedRequestDetail
+          PartsAssociateHome.jsx uses (shared/reorder/AssociateRequestPanel.jsx). Safe to reuse
+          here: `partsAssociateWaiting`/`partsAssociateInProgress` are ALREADY scoped to
+          useReorderRequestsAssignedTo(user.uid, ...) above (the signed-in viewer's own uid,
+          unchanged from before this refactor) -- the four write commands the detail panel
+          invokes are independently enforced server-side to require auth.uid ===
+          assignedToUserId, so this never exposes an action a different principal could use. */}
+      <h4>Waiting</h4>
+      <LoadingEmptyState
+        loading={partsAssociateWaitingLoading}
+        failed={!!partsAssociateWaitingError}
+        isEmpty={partsAssociateWaiting.length === 0}
+        loadingText="Loading your assigned requests..."
+        failedText="Unable to load your assigned requests right now. Try again shortly."
+        emptyText="No requests currently waiting on you."
+      >
+        <RequestCards requests={partsAssociateWaiting} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
+      </LoadingEmptyState>
+
+      <h4>In Progress</h4>
+      <LoadingEmptyState
+        loading={partsAssociateInProgressLoading}
+        failed={!!partsAssociateInProgressError}
+        isEmpty={partsAssociateInProgress.length === 0}
+        loadingText="Loading your in-progress purchasing..."
+        failedText="Unable to load your in-progress purchasing right now. Try again shortly."
+        emptyText="No purchasing currently in progress."
+      >
+        <RequestCards requests={partsAssociateInProgress} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
+      </LoadingEmptyState>
+
+      {selectedAssociateRequestId && (
+        <AssignedRequestDetail
+          requestId={selectedAssociateRequestId}
+          resolveName={resolveName}
+          onClose={handleCloseAssociateRequest}
+        />
+      )}
+
+      <h3>Team Work</h3>
+      <p className="fo-muted">Cross-user oversight -- every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to. Your own assignments above are a subset of this list.</p>
+      {/* Wave 6 -- queue consolidation, safe mechanical dedup (Owner directive §12). The SAME
+          shared/reorder/AssignedWorkOversightTable.jsx PartsManagerHome.jsx's "Assigned-Work
+          Oversight" now uses -- ONE implementation, not two independently-maintained copies.
+          Assignee-name resolution stays THIS page's own scope (useEmployeeDirectory(), already
+          visible to admin/dispatcher elsewhere) -- injected, not hardcoded in the shared table,
+          so reuse never widens or narrows either caller's own data visibility. */}
+      <AssignedWorkOversightTable
+        requests={allAssignedWork}
+        resolveName={resolveName}
+        resolveAssigneeDisplay={(userId) => resolveAssigneeDisplay(userId, employeeDirectory, employeeDirectoryLoading, employeeDirectoryError)}
+        loading={allAssignedWorkLoading}
+        error={allAssignedWorkError}
+      />
+
 
       <h2 id="parts-group-flow">Flow</h2>
       <p className="fo-muted">Where reorder requests have already landed in the lifecycle.</p>

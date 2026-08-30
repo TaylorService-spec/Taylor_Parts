@@ -6718,3 +6718,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-rail__entry-ref { display: block; font-weight: 600; font-size: 12px; }
 .ns-rail__entry-ref a { color: var(--color-text-primary); }
 .ns-rail__entry-meta { display: block; font-size: 11px; color: var(--color-text-secondary); }
+
+/* PARTS — FRAME 1a LEADS THE PAGE (ND-30, corrected 2026-08-30).
+   The catalogue is the first thing on /inventory, so its summary line belongs directly under the
+   page title the way the design draws it. The shell's header carries a bottom margin sized for a
+   page whose body starts with a section heading; here the body starts with a count line, and the
+   default gap reads as a missing element. Scoped to this page only — every other workspace keeps
+   the shared spacing. */
+.fo-parts-list .fo-page-header { margin-bottom: var(--space-2); }
+.fo-parts-list [data-parts-catalog] .ns-workspace__head { margin-top: 0; }
+.fo-parts-list [data-parts-catalog] .ns-workspace__summary { margin-top: 0; }
