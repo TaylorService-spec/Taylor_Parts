@@ -121,26 +121,56 @@ export function classifyWorld({ expected, actual, versionsFound, duplicateIds, i
     // CONTENT BEFORE IDENTITY. Relinking principals into a world that is the wrong dataset repairs
     // nothing, so a drifted world must not be reported as a linkage problem.
     if (fingerprint) {
-      const { expected: wantFp, installed: haveFp } = fingerprint;
-      if (wantFp && haveFp && wantFp !== haveFp) {
-        return {
-          state: WORLD_STATE.CONTENT_DRIFT,
-          findings: [
-            `content fingerprint ${haveFp} does not match the expected ${wantFp}`,
+      // THREE INDEPENDENT VALUES, not two. A deployment record is provenance evidence -- what an
+      // installation CLAIMED it wrote -- and agreeing with it proves nothing about what the live
+      // documents contain now. The correction of 2026-08-30: verify compared EXPECTED (repository
+      // builder) against RECORDED (certification_world/current.fingerprint) only, so a world whose
+      // base records were mutated after a faithful install would still read COMPLETE -- the record
+      // said fcc38a5f, the repository said fcc38a5f, and nobody had hashed the 1092 documents.
+      //
+      //   EXPECTED  deterministic fingerprint of the repository builder records
+      //   RECORDED  what the deployment record claims was installed (provenance)
+      //   OBSERVED  the same canonical fingerprint recomputed from the currently installed
+      //             governed BASE documents -- exactly the marker-scoped record set the expected
+      //             fingerprint covers, nothing else
+      //
+      // COMPLETE requires EXPECTED == RECORDED AND EXPECTED == OBSERVED (plus every existing
+      // version/count/invariant/identity requirement). Every mismatch stays CONTENT_DRIFT -- one
+      // state, one seed policy -- but the findings name WHICH authority failed, because the
+      // repairs differ: a stale provenance record and mutated live content send an operator to
+      // entirely different places.
+      const { expected: wantFp, recorded: recordedFp = null, observed: observedFp = null } = fingerprint;
+      if (wantFp) {
+        const driftFindings = [];
+        // Absent evidence is not evidence of agreement. Reporting COMPLETE over a missing value
+        // would claim a check that never ran -- the same lie as reporting it over a mismatch.
+        if (!recordedFp) {
+          driftFindings.push(`the installed world records no content fingerprint to compare against ${wantFp}`);
+        } else if (recordedFp !== wantFp) {
+          driftFindings.push(`deployment-record fingerprint ${recordedFp} does not match the expected ${wantFp}`);
+        }
+        if (!observedFp) {
+          driftFindings.push(`no observed fingerprint was measured from the installed documents to compare against ${wantFp}`);
+        } else if (observedFp !== wantFp) {
+          driftFindings.push(`installed-content fingerprint ${observedFp} does not match the expected ${wantFp}`);
+        }
+        if (driftFindings.length > 0) {
+          // Cross-diagnosis when one authority agrees and the other does not: say which world the
+          // operator is actually standing in.
+          if (recordedFp === wantFp && observedFp && observedFp !== wantFp) {
+            driftFindings.push("the deployment record matches the repository but the live documents do not "
+              + "-- the installed content changed after, or independently of, the recorded installation");
+          }
+          if (observedFp === wantFp && recordedFp && recordedFp !== wantFp) {
+            driftFindings.push("the live documents match the repository but the deployment record does not "
+              + "-- the deployment provenance record is stale or corrupt");
+          }
+          driftFindings.push(
             `version ${expected.version} matches and every per-collection record count matches `
             + "-- the records are the right shape and the wrong content",
-          ],
-          missing, extra,
-        };
-      }
-      // Absent evidence is not evidence of agreement. Reporting COMPLETE here would claim a check
-      // that never ran, which is the same lie as reporting it over a mismatch.
-      if (wantFp && !haveFp) {
-        return {
-          state: WORLD_STATE.CONTENT_DRIFT,
-          findings: [`the installed world records no content fingerprint to compare against ${wantFp}`],
-          missing, extra,
-        };
+          );
+          return { state: WORLD_STATE.CONTENT_DRIFT, findings: driftFindings, missing, extra };
+        }
       }
     }
     if (identityLinkage) {

@@ -234,19 +234,38 @@ async function doVerify(db, quiet) {
 
   // ============================ CONTENT IS PART OF COMPLETENESS TOO ============================
   //
-  // Read BEFORE classification, because classification now depends on it. The installed fingerprint
-  // comes from the deployment record rather than being recomputed from the live documents: that
-  // record is the artifact a later reader trusts, and it is the thing that must agree with the
-  // repository. Recomputing from live data would answer a different question -- "do these documents
-  // hash to X" -- and would quietly pass a world whose own deployment record says something else.
+  // Read BEFORE classification, because classification now depends on it. THREE independent
+  // fingerprints, because they answer three different questions and any two can agree while the
+  // third lies:
+  //
+  //   EXPECTED  what the repository builder deterministically produces
+  //   RECORDED  what the deployment record CLAIMS was installed -- provenance evidence only.
+  //             Comparing expected against this alone would quietly pass a world whose live
+  //             documents were mutated after a faithful install: the record still carries the
+  //             right hash, and nobody ever hashed the documents.
+  //   OBSERVED  the SAME canonical worldFingerprint() recomputed over the documents actually
+  //             fetched above -- `found` is marker-scoped over exactly the base collections the
+  //             builder emits, so this covers precisely the governed base record set the expected
+  //             fingerprint covers: no certification_world/current deployment record, no scenario
+  //             collections or ledgers, no roleAssignments, no users. Volatile fields (server
+  //             stamps, environment UIDs) are stripped by the same stableShape() the builder side
+  //             uses, and the row sort makes the hash order-independent -- identical semantics on
+  //             both sides by construction, because it is literally the same function.
+  //
+  // Verify remains READ-ONLY: OBSERVED measures the fetched snapshots and writes nothing.
   const stateSnap = await db.collection(STATE_COLLECTION).doc(STATE_DOC_ID).get().catch(() => null);
   const deployed = stateSnap && stateSnap.exists ? stateSnap.data() : null;
   const expectedFingerprint = worldFingerprint(records).hash;
+  const observedFingerprint = worldFingerprint(found).hash;
 
   const result = classifyWorld({
     expected: { version: world.version, counts: countByCollection(records) },
     actual, versionsFound: versions, duplicateIds, invariantViolations, identityLinkage,
-    fingerprint: { expected: expectedFingerprint, installed: deployed ? (deployed.fingerprint ?? null) : null },
+    fingerprint: {
+      expected: expectedFingerprint,
+      recorded: deployed ? (deployed.fingerprint ?? null) : null,
+      observed: observedFingerprint,
+    },
   });
 
   if (!quiet) {
@@ -258,10 +277,11 @@ async function doVerify(db, quiet) {
       : "(none)"));
     console.log("  expected records : " + records.length);
     console.log("  installed records: " + found.length);
-    // BOTH fingerprints, always -- not only on mismatch. The figure an operator needs to compare is
-    // the one they should never have to go and compute for themselves.
+    // ALL THREE fingerprints, always -- not only on mismatch. The figures an operator needs to
+    // compare are the ones they should never have to go and compute for themselves.
     console.log("  expected fingerprint : " + expectedFingerprint);
-    console.log("  installed fingerprint: " + (deployed ? (deployed.fingerprint ?? "(none recorded)") : "(no deployment record)"));
+    console.log("  recorded fingerprint : " + (deployed ? (deployed.fingerprint ?? "(none recorded)") : "(no deployment record)"));
+    console.log("  observed fingerprint : " + observedFingerprint);
     if (deployed && deployed.expectedRecords !== records.length) {
       console.log("  ! deployment record claims " + deployed.expectedRecords
         + " expected records; the repository expects " + records.length);
