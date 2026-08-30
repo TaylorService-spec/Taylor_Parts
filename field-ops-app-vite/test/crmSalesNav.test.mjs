@@ -158,8 +158,15 @@ ok("Issue #288: no future domain generates a /sales-crm route; the real CRM/Sale
   assert.equal(NAV_DOMAINS.filter((d) => !d.future).some((d) => d.key === "customers"), true);
 });
 
-ok("Issue #288: ONLY salesCrm was removed -- the `financials` future placeholder is preserved", () => {
-  assert.equal(NAV_DOMAINS.some((d) => d.key === "financials" && d.future === true), true);
+ok("Issue #288 follow-up: the `financials` future placeholder was PROMOTED, not lost", () => {
+  // The original #288 assertion pinned that only salesCrm was removed and the financials future
+  // stub survived. Financials Frame 0 then deliberately retired that stub by promoting it to a
+  // real first-class domain (see test/financialsNavStructure.test.mjs for its full contract).
+  // What this test still owns: the domain EXISTS and is no longer a hidden future stub.
+  const financials = NAV_DOMAINS.find((d) => d.key === "financials");
+  assert.ok(financials, "the financials domain must exist");
+  assert.notEqual(financials.future, true, "no longer a future placeholder");
+  assert.notEqual(financials.navHidden, true, "no longer hidden from normal navigation");
 });
 
 ok("Issue #288: role visibility of the real CRM/Sales domain is unchanged after the removal", () => {

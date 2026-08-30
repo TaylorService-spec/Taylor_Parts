@@ -31,8 +31,17 @@ function destinations() {
 
 const visible = () => destinations().filter((d) => d.navHidden !== true);
 
-check("no destination carrying a placeholderExplanation is visible in normal navigation", () => {
+// FINANCIALS FRAME 0 EXEMPTION (Owner-approved). The Financials domain is the deliberate,
+// governed exception to the visible-placeholder rule: its twenty sections are the APPROVED
+// information architecture, made addressable so FIN-001+ can progressively compose governed
+// authority into them (docs/financials/FINANCIALS_AUTHORITY_AND_REPORTING_BASELINE.md).
+// Each placeholder's copy states plainly that no financial authority exists yet — the
+// honesty this file protects is preserved in the copy rather than by hiding the section
+// (financialsNavStructure.test.mjs asserts that copy never claims authority exists).
+// Every OTHER domain remains bound by the rule.
+check("no destination carrying a placeholderExplanation is visible in normal navigation (Financials Frame 0 excepted)", () => {
   const offenders = visible()
+    .filter((d) => d.domain !== "financials")
     .filter((d) => typeof d.placeholderExplanation === "string" && d.placeholderExplanation.length > 0)
     .map((d) => `${d.domain}/${d.key}`);
   assert.deepEqual(offenders, [], `placeholder destinations still visible: ${offenders.join(", ")}`);
