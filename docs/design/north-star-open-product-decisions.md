@@ -1170,3 +1170,56 @@ scanning at a glance, accepting the duplication with the columns.
 
 **Proof:** `test/equipmentNorthStarWorkspace.test.jsx` — name, manufacturer, model and serial each
 render as their own cell.
+
+---
+
+## Open — raised by the Owner from the deployed Equipment family (2026-08-30)
+
+### ND-33 — Where does non-PO serialized-asset acquisition live? — **CLOSED 2026-08-30: Inventory → Receiving**
+
+**Raised:** 2026-08-30, by the Owner, from the deployed sandbox: *"I don't see where you can add
+equipment to the stock from here, or any of the 3 tabs."*
+
+They were right, and the Equipment workspace is not where it was hiding. The three tabs read as a
+create surface and only one of them creates anything: **Add Equipment** registers an
+**installed** `equipment` record at a customer, account-scoped. Nothing on the family puts a unit
+*into* company stock.
+
+**Owner ruling, same day.** The governed `inventory.serializedAsset.acquire` authority belongs under
+**Inventory → Receiving**, not under Equipment.
+
+> Equipment represents units the business services or has installed at customers. Inventory
+> represents units the business currently holds in company custody.
+
+| Path | Route |
+|---|---|
+| Normal stock entry | Purchase Order → Receiving → Serialized Asset |
+| Exceptional stock entry | Inventory → Receiving → **Acquire Existing Unit** → `inventory.serializedAsset.acquire` |
+
+For opening balances, legacy migration, already-owned units entering managed custody, and other
+approved non-PO acquisitions. It must **not** create an installed `equipment` record, install a unit
+at a customer, bypass the governed capability, infer purchase or receiving provenance that does not
+exist, or reuse the Equipment *Add Equipment* flow.
+
+**THE GAP IS A CLIENT GAP, NOT AN AUTHORITY GAP**, and that is the whole finding — measured, not
+assumed:
+
+| | |
+|---|---|
+| capability `inventory.serializedAsset.acquire` | registered (`permissionCatalog.ts`) |
+| command `acquireSerializedAssetCommand.ts` | built |
+| callable `acquireCallableWiring.ts` | wired |
+| Role | a dedicated station carries it, and confers **no** `equipment.install` |
+| sandbox | present in `capabilityActivationOverrides` — **ACTIVATED** |
+| client surface | `grep` across `field-ops-app-vite/src` → **NONE** |
+
+The entire authority is built, granted and switched on, and nothing in the application calls it.
+
+**Status: APPROVED PRODUCT PLACEMENT — CLIENT COMPOSITION NOT YET BUILT.**
+
+**Why Equipment North Star P1 did not close this, and should not have.** The locked design draws
+three tabs over three populations and no stock-creation surface, and the handoff's hard scope
+boundary forbids new commands, capabilities or UI scope. P1 is correct as delivered. What this build
+owed and did not pay was *naming the gap* in the composition map rather than leaving the Owner to
+find it on the deployed screen — recorded here so it is no longer invisible.
+

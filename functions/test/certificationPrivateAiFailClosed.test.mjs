@@ -45,23 +45,24 @@ const { worldFingerprint } = await import(L("functions/scripts/certificationWorl
 // compares the live eos-platform-certification project against. They are pinned HERE, in a test,
 // so that a change to the world is a conscious act that updates this file in the same PR — never a
 // silent drift that the fail-closed proof keeps endorsing.
+//
+// UPDATED FOR v1.7.0 (2026-08-30). EOS Ownership Model v1 added deterministic ownership content to
+// account and equipment records: no rows created, none deleted, so the count is STILL 1092 and the
+// content is different. This file is what noticed -- it was the only check pinning a fingerprint,
+// and it caught the drift that `verify` was reporting as COMPLETE.
+//
+// The dataset version moved with the content, and the fingerprint moved with the version, because
+// every record carries its marker version and the marker is hashed:
+//
+//   1.6.0 + pre-ownership content   005ebb1b
+//   1.6.0 + ownership content       ed95c91d   <- the drift this file detected
+//   1.7.0 + ownership content       fcc38a5f   <- the governed authority now
+//
+// ed95c91d was never a resting state: it is what the world hashed to for as long as content had
+// changed and the version had not. Recording all three keeps that legible.
 const CERT_PROJECT = "eos-platform-certification";
 const EXPECTED_RECORD_COUNT = 1092;
-// 005ebb1b -> ed95c91d (2026-08-30). EOS Ownership Model v1, Owner ruling R-2: every certification
-// equipment fixture now carries an authored `operatingCompanyId`, copied from its fleet's explicit
-// declaration in data/equipmentAssets.mjs. 278 equipment records gained one field.
-//
-// The COUNT and the EMPLOYEE total are deliberately unchanged, and that is the check that this is
-// what it claims to be: a field was added to existing records, no record was added, removed or
-// re-keyed. Proven by recomputation -- stripping `operatingCompanyId` from those 278 records
-// returns the fingerprint to exactly 005ebb1b, so this delta has one cause and no other drift is
-// hiding inside it.
-//
-// This pin is doing precisely the job its comment above describes. The world changed in PR #1602
-// and this file was NOT updated in that PR, because this workflow is path-filtered and did not run
-// against that head -- so the change reached main unendorsed. Updating it here is the conscious act
-// that was owed then. See DECISIONS #144 on why "PR head green" was insufficient evidence.
-const EXPECTED_FINGERPRINT = "ed95c91d";
+const EXPECTED_FINGERPRINT = "fcc38a5f";
 const EXPECTED_EMPLOYEES = 47;
 
 const world = expectedRecords();

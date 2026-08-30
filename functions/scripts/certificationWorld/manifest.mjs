@@ -93,7 +93,34 @@
 //
 // The live sandbox will report VERSION_MISMATCH against this until it is deliberately installed,
 // which is the intended state -- nothing here has been deployed.
-export const CERTIFICATION_WORLD_VERSION = "1.6.0";
+// ============================ v1.7.0 -- EOS OWNERSHIP MODEL v1 (2026-08-30) ============================
+//
+// WHY THIS BUMPED, AND WHY THE ROW COUNT DID NOT.
+//
+// EOS Ownership Model v1 (#1602) added deterministic ownership content to account and equipment
+// records. It created no records and deleted none, so the world is STILL 1092 rows -- and it is a
+// DIFFERENT DATASET, because what those rows contain changed:
+//
+//   v1.6.0   1092 records   fingerprint 005ebb1b   before the ownership content
+//   (v1.6.0) 1092 records   fingerprint ed95c91d   ownership content, version NOT yet bumped
+//   v1.7.0   1092 records   fingerprint fcc38a5f   the governed authority
+//
+// THE MIDDLE ROW IS WHY THE VERSION HAD TO MOVE, and it is also why the fingerprint moved twice.
+// Every record carries its marker version and the marker is hashed, so bumping the version changes
+// the fingerprint by construction: ed95c91d is what the world hashed to for exactly as long as the
+// content had changed and the version had not. It was never a resting state, and it is recorded
+// here so a reader who saw that value in flight can place it.
+//
+// An unchanged row count is exactly why the version had to move. verify compares version and count;
+// both still matched across the change, so an installed v1.6 world reported COMPLETE against a
+// repository that no longer described it. The only thing that noticed was a test pinning the
+// fingerprint. A dataset version that does not move when content moves is a version that certifies
+// nothing, which is the failure this bump and the verify correction beside it close together.
+//
+// The row count is deliberately NOT padded to make the number look different. The count is a fact
+// about the world, not a signal, and manufacturing a difference in it to signal a difference
+// elsewhere would corrupt the one figure that is supposed to be literal.
+export const CERTIFICATION_WORLD_VERSION = "1.7.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**

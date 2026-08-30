@@ -1364,6 +1364,71 @@ that also matches BEM children; no silent `catch {}`; and a SKIP counted separat
 run of skips cannot read as a green family.
 
 
+### The gate's first live run found four defects, all of them the gate's
+
+Run one against the correctly deployed `2b090a7e` returned **28 PASS / 2 FAIL / 2 SKIP**. The Owner
+ruled both failures Quick-Gate defects and refused to send the Equipment implementation back. That
+ruling was right, and chasing them turned up two more the run had not surfaced:
+
+| # | What the gate reported | What was actually true |
+|---|---|---|
+| 1 | `FAIL 1 … h1s=["Equipment","Equipment","Equipment"]` | `page.locator("h1")` counts every MOUNTED h1. All three tab panels stay mounted so each keeps its state, and `EquipmentRegister` hosts a shell whose title is also "Equipment". "One h1 in the DOM" was never the invariant. |
+| 1b | The first fix, `h1:visible`, still failed | The app shell renders a screen-reader heading with `fo-visually-hidden` — `display: block`, clipped to **1×1** — so Playwright counts it visible. It occupies no page and competes with nothing. Now decided by **measured geometry**, not by class name: `1x1` and `0x0` are not page titles. |
+| 5 | `FAIL 5 … filterFields=["Default order","Name – A to Z","Status – grouped A to Z", …]` | Those are `SortControl`'s options. Finding the "+ Add Filter" *button* established nothing about which `<select>` came first in the panel. |
+| 5b | The first fix, `getByLabel(/^Field$/)`, reported `offered=[]` | The select sits inside an implicit `<label>Field<select>…</select>`, so its accessible name is the label's whole text — `"FieldChoose a field…CustomerStatus"`. Now reached from inside the resolved builder. |
+
+**A race the run did not surface, found because two runs of one bundle disagreed.** `openWorkspace`
+waits for the tab rail, which arrives long before the list. One run measured a 50-row register; the
+next reported `no ns-table … data-list-state=LOADING` on the identical release. The list is now
+settled on its own declared `data-list-state`, and the two batched reference resolvers are settled
+after it — the first green run had measured `firstRow=[…,"Loading…","Loading…",…]` and check 9a
+"passed" on cells still in flight. `"Loading…"` is no longer an acceptable settled answer.
+
+**And a defect in the contract suite itself, which is the one worth remembering.** Its comment
+stripper was `source.replace(/\/\*[\s\S]*?\*\//g, " ")`. The gate contains an XPath —
+`xpath=//*[${EXACT_CLASS("ns-workspace__count")}]` — and `//*` reads as a block-comment opener, so
+the stripper deleted **6314 characters** through to the next `*/`: the Add-filter block, the settle
+waits, and part of the install-confirmation flow. Every `doesNotMatch` over that span passed because
+the span was gone. **Mutation-proved after the fix:** making the gate press *Confirm installation*
+now fails the read-only test; before the fix it did not. That is the silent-vacuous-pass failure
+these tests exist to prevent, occurring inside them.
+
+**Live re-run: 29 passed, 0 failed, 3 skipped, exit 0.** The count moved from 30/0/2 to 29/0/3 and
+that is an improvement: settling the resolvers turned check 9a from a PASS that had measured
+`"Loading…"` into an honest SKIP — on this data every installed Location resolves to a real name,
+so there is nothing unresolved to measure. Three unmeasured checks, all named.
+
+
+### Two findings from the Owner's own eyes on the deployed page (2026-08-30)
+
+Both were on the family, both after the Quick Gate reported 29/0/3, and neither was something the
+gate was looking for. Recorded plainly: a green gate measured what it was told to measure.
+
+**1. The page was composed as a card, not a page — FIXED.** The workspace rendered
+`<div className="fo-panel">` with a self-closing `<WorkspaceIdentity />` and the tab rail and panels
+as its SIBLINGS. `.ns-workspace` is what carries the collection container — `max-width: 1360px;
+margin: 0 auto; padding: 0 32px 80px` — so only the title block was inside it: the title sat inset
+and centred while the rail and every row ran hard against the left edge with no measure. And
+`.fo-panel` is the retired card treatment (elevated surface, radius, drop shadow), which no other
+North Star collection renders inside. `WorkspaceIdentity` takes `children` for exactly this and every
+shipped collection page uses it that way; the two tab bodies dropped their own nested `.fo-panel`
+cards with it. Held by three structural assertions in
+`test/equipmentNorthStarWorkspace.test.jsx` — the rail and all three panels must be DESCENDANTS of
+`.ns-workspace`, no `.fo-panel` may wrap the collection, and there must be exactly one container so
+the inset is not applied twice. Mutation-proved: restoring the card wrapper fails the suite.
+
+**2. Stock cannot be created from anywhere in the application — RECORDED, not built.** See
+**ND-33**. `inventory.serializedAsset.acquire` is registered, built, wired, granted to a dedicated
+Role and sandbox-ACTIVATED, and no client surface calls it. The Owner ruled its placement the same
+day: **Inventory → Receiving**, not Equipment. Approved placement, client composition not yet built.
+
+**What this says about the gate.** It asserted the rulings it was given and passed honestly. It was
+not asked whether the page sits on the site's own grid, and it inspects only the DEFAULT tab's
+headings — so the second `Equipment` title inside the Add Equipment panel (EquipmentRegister hosts
+its own page shell) is still unmeasured, and is the one item from these two screenshots left open.
+A gate proves the claims it encodes; it does not notice a claim nobody made.
+
+
 ### Authority, unchanged
 
 No Firestore rule, index, Function, callable, capability, activation, role grant, collection, schema,
@@ -1372,3 +1437,38 @@ through `callInstallSerializedAsset` → `equipment.install`; edit still resolve
 `updateEquipment`, with its allowlist still **imported** from the write path rather than restated. No
 lifecycle action was enabled, and `EQ-G5` — the installed-unit operating company — is preserved as a
 seam that answers UNKNOWN with the reason, never a value derived from the Customer.
+
+### Family 7 — the Owner's acceptance boundary (2026-08-30)
+
+Appended, not rewritten. This records the **scope and the known states** the Owner fixed before
+looking, so that what was accepted — and what was deliberately not — cannot be re-argued later from
+memory. **It is not an acceptance.** The Owner stated the boundary; the acceptance itself is a
+separate act and this row does not anticipate it.
+
+| | |
+|---|---|
+| **Deployed release** | `2b090a7e` — `platform-sandbox` / `sandbox` |
+| **Quick Gate** | **25/25 PASS** against that live release |
+| **Accepted scope** | Frame 1a at `/inventory`; Frames 1b–1d at `/inventory/CW-P-0001` |
+| **Acceptance** | `AWAITING_COMPLETE_OWNER_VISUAL_ACCEPTANCE` |
+
+### Known truthful fixture states — acknowledged, NOT defects
+
+Pinned because each looks like a finding and is not. A later reader, or a later gate, must not
+"discover" them:
+
+| Observation | Why it is truthful |
+|---|---|
+| Manufacturer reads **"Not recorded"** on every row | The certification fixture writes no `primaryManufacturerId` (`functions/scripts/certificationWorld/build.mjs`). The column is built, resolves the governed id to its name where one exists, and states the absence otherwise. |
+| **62 total · 52 active · 10 status not recorded** | The ten approved `STATIC_ONLY_EXCLUDED` skus have no canonical document and therefore no status. Counted as neither active nor inactive — which is why `active` is deliberately not `total − inactive`. |
+
+### Follow-ups the Owner placed OUTSIDE Parts P1
+
+None of these is a Parts P1 debt, and none blocks acceptance:
+
+| | |
+|---|---|
+| **ND-28-F** | Reconcile the Stock forecast against `getPartBalance` when that capability is activated — replace, supplement, or remain distinct — as an explicit authority change with its own tests. |
+| **P-G1** | Whole-collection read; cold record deep-link. Its own performance concern. |
+| **Serialized / lot live exercise** | Additional live coverage. The treatments are proved in `test/partsNorthStarRecord.test.jsx`. |
+| **Shared workspace document outline** | Two `<h1>`s per page — `AppShell`'s hidden domain landmark plus `PageHeader`'s visible title — across all 14 conformant workspaces. A shared-shell accessibility concern, **not Parts-specific**, and the reason a correct page once looked like a cross-family regression. |

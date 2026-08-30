@@ -292,3 +292,61 @@ describe("the install confirmation", () => {
     }
   });
 });
+
+// ══════════════════════ THE PAGE IS A PAGE, NOT A CARD ══════════════════════
+//
+// Owner, from the deployed sandbox: "the formatting of the page is wrong also. doesn't match the
+// site." It did not, and the cause was structural rather than cosmetic.
+//
+// The workspace composed `<div className="fo-panel">` with a SELF-CLOSING `<WorkspaceIdentity />`,
+// then the tab rail and panels as its SIBLINGS. `.ns-workspace` is what carries the collection
+// container — max-width 1360, centred, 32px side padding — so only the title block was inside it.
+// The title sat inset and centred while the tab rail and every row below ran hard against the left
+// edge with no measure. And `.fo-panel` is the retired CARD treatment (elevated surface, radius,
+// drop shadow), which no other North Star collection page renders inside.
+//
+// `WorkspaceIdentity` takes `children` for exactly this, and every shipped collection page uses it
+// that way. These assertions are structural because the defect was: a screenshot diff would have
+// caught the symptom, and this catches the cause.
+
+describe("the workspace is composed as a page, not a card", () => {
+  it("the tab rail and every panel live INSIDE the ns-workspace container", () => {
+    mockEquipmentList = installedList([INSTALLED_ROW]);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    const workspace = container.querySelector(".ns-workspace");
+    expect(workspace, "the page must compose .ns-workspace").toBeTruthy();
+
+    const rail = container.querySelector(".ns-tabrail");
+    expect(rail, "the tab rail must exist").toBeTruthy();
+    expect(
+      workspace.contains(rail),
+      "the tab rail rendered OUTSIDE .ns-workspace — it gets none of the container's measure or padding",
+    ).toBe(true);
+
+    for (const id of ["customer", "available", "add"]) {
+      const panel = container.querySelector(`#eq-panel-${id}`);
+      expect(panel, `#eq-panel-${id} must exist`).toBeTruthy();
+      expect(workspace.contains(panel), `#eq-panel-${id} rendered outside .ns-workspace`).toBe(true);
+    }
+  });
+
+  it("no retired card treatment wraps the workspace or its tab bodies", () => {
+    mockEquipmentList = installedList([INSTALLED_ROW]);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    // `.fo-panel` is the card this family left behind. The record page's own rail sections still use
+    // it legitimately — this assertion is scoped to the COLLECTION, which must read as a page.
+    const cards = container.querySelectorAll(".fo-panel");
+    expect(
+      [...cards].map((c) => c.className),
+      "a .fo-panel card is wrapping the Equipment collection or one of its tab bodies",
+    ).toEqual([]);
+  });
+
+  it("the header and the rows share one measure — the container is not applied twice", () => {
+    mockEquipmentList = installedList([INSTALLED_ROW]);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    // Exactly ONE .ns-workspace. Two nested containers would double the 32px inset and put the rows
+    // out of line with the title again, which is the symptom this fix removes.
+    expect(container.querySelectorAll(".ns-workspace")).toHaveLength(1);
+  });
+});

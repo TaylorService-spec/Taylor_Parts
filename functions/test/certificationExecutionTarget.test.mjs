@@ -605,6 +605,12 @@ const { authorizeCorrection } =
   await import(L("functions/scripts/certificationWorld/correctLiveWorld.mjs"));
 const { authorizeGrantRun } =
   await import(L("functions/scripts/certificationWorld/applyRoleGrants.mjs"));
+const { authorizeOwnerSeed } =
+  await import(L("functions/scripts/certificationWorld/seedAccountOwners.mjs"));
+const { authorizeVerification } =
+  await import(L("functions/scripts/certificationWorld/verifyPrivateAiFailClosed.mjs"));
+const { authorizeSurfaceCheck } =
+  await import(L("functions/scripts/certificationWorld/verifyLiveSurfaces.mjs"));
 const { assertBothLiveFlags } =
   await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 
@@ -613,6 +619,9 @@ const WRITERS = [
   { name: "applyInventoryPlan", fn: authorizeInventoryApply },
   { name: "correctLiveWorld", fn: authorizeCorrection },
   { name: "applyRoleGrants", fn: authorizeGrantRun },
+  // Added by EOS Ownership Model v1 AFTER the others were governed, with its own role-only guard.
+  // The guard test caught it; this is the matrix that keeps it caught.
+  { name: "seedAccountOwners", fn: authorizeOwnerSeed },
 ];
 
 const run = (fn, args, env = {}) =>
@@ -741,3 +750,44 @@ test("assertBothLiveFlags names the act, so the refusal says what was about to h
   assert.ok(err);
   assert.match(err.message, /Staging inventory movements to eos-platform-certification/);
 });
+
+
+// -- READ-ONLY VERIFIERS ARE UNDER THE SHARED AUTHORITY TOO ------------------------------------
+//
+// Neither writes, so neither needs a live-write flag. Both still needed the shared gate: their own
+// guards could not distinguish the two sandbox-role worlds, and verifyLiveSurfaces did not refuse
+// production AT ALL -- it checked only that the project was registered. A verifier pointed at the
+// wrong world reports a PASS about a project nobody asked about, which is quieter than a misdirected
+// write and no less misleading.
+
+const VERIFIERS = [
+  { name: "verifyPrivateAiFailClosed", fn: authorizeVerification },
+  { name: "verifyLiveSurfaces", fn: authorizeSurfaceCheck },
+];
+
+for (const v of VERIFIERS) {
+  test(`${v.name}: reads certification with NO live flag`, () => {
+    const t = withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined },
+      () => v.fn(["--projectId", CERTIFICATION_PROJECT]));
+    assert.equal(t.projectId, CERTIFICATION_PROJECT);
+    assert.equal(t.apply, false, "a verifier must never resolve as a write");
+  });
+
+  test(`${v.name}: PRODUCTION is refused`, () => {
+    const err = (() => { try {
+      withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined },
+        () => v.fn(["--projectId", PRODUCTION_PROJECT]));
+      return null; } catch (e) { return e; } })();
+    assert.ok(err, "production must be refused even for a read");
+    assert.match(err.message, /production/i);
+  });
+
+  test(`${v.name}: unknown project and missing --projectId are refused`, () => {
+    const refuse = (args) => { try {
+      withEnv({ FIRESTORE_EMULATOR_HOST: undefined, GOOGLE_CLOUD_PROJECT: undefined, GCLOUD_PROJECT: undefined },
+        () => v.fn(args));
+      return null; } catch (e) { return e.message; } };
+    assert.match(refuse(["--projectId", "eos-platform-certifcation"]) ?? "", /Unknown project/);
+    assert.match(refuse([]) ?? "", /--projectId is required/);
+  });
+}

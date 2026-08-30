@@ -42,19 +42,8 @@
 // ============================ SAFETY ============================
 //
 //   * DRY RUN BY DEFAULT. Writes only with --apply.
-//   * THE SHARED TARGET AUTHORITY decides what is writable — executionTarget.mjs, the one place a
-//     project becomes writable for every certification tool.
-//
-//     This script originally carried its OWN `assertSandboxTarget`, and that was a real defect, not
-//     a style violation: a local guard asks "is the role sandbox?", and that question cannot tell
-//     `eos-platform-sandbox` from `eos-platform-certification` — BOTH are role sandbox. A single
-//     mistyped project would have seeded account owners into the certification world. The shared
-//     authority names each live target and gives each its own flag, so a live write needs BOTH
-//     `--apply` AND the target's named flag (`--apply-live-sandbox`). Production is refused twice
-//     over, by name and by role.
-//
-//     `functions/test/certificationExecutionTarget.test.mjs` asserts no tool in this directory
-//     re-declares a local guard. It caught this one.
+//   * TARGET NAMED BY FLAG. A live run needs BOTH --apply and the target's own --apply-live-*.
+//     Production is refused unconditionally, by name and by role; there is no override flag.
 //   * MARKER-SCOPED. Only Certification World accounts are touched.
 //   * NEVER OVERWRITES. An account that already has a complete accountOwner is left exactly as it
 //     is — this fills silence, it does not reassign ownership. Reassignment is a HANDOFF, which is
@@ -65,10 +54,20 @@
 //
 // Usage:
 //   node scripts/certificationWorld/seedAccountOwners.mjs --projectId eos-platform-sandbox
-//   node scripts/certificationWorld/seedAccountOwners.mjs --projectId eos-platform-sandbox --apply --apply-live-sandbox
+//   node scripts/certificationWorld/seedAccountOwners.mjs --projectId eos-platform-sandbox --apply
 import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { resolveExecutionTarget, assertBothLiveFlags, describeTarget } from "./executionTarget.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(__dirname, "../../..");
+
+const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
+const { resolveExecutionTarget, assertBothLiveFlags, describeTarget } =
+  await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
+
 const MARKER_FIELD = "certificationWorld";
 const SALES_ROLE = "salesperson";
 const MANAGER_ROLE = "salesManager";
@@ -77,15 +76,32 @@ const MANAGER_ROLE = "salesManager";
 // the fixture non-deterministic and every diff noisy. 2026-08-30T00:00:00Z, the ruling's date.
 const ASSIGNED_AT = Date.UTC(2026, 7, 30, 0, 0, 0);
 
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i].startsWith("--")) {
-      const k = argv[i].slice(2);
-      out[k] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
-    }
-  }
-  return out;
+
+// ============================ TARGET AUTHORITY ============================
+//
+// This file arrived with its own role-only guard: production refused by name, unknown projects
+// refused, registry role must be exactly "sandbox". That was the established pattern when it was
+// written, and it is the pattern that stopped working the moment a SECOND sandbox-role environment
+// existed.
+//
+// eos-platform-certification is also role "sandbox". A role check cannot tell the two worlds apart,
+// so the command that seeds account owners in one becomes the command that seeds them in the other
+// by editing a single word -- with nothing on the line naming which world is about to be written.
+//
+// Every other Certification World writer was brought under executionTarget.mjs already. This one
+// landed afterwards and reintroduced the gap, which is exactly why the guard that catches it is a
+// test rather than a convention.
+//
+// The local guard is REMOVED, not kept beside the shared one: a parallel path that can authorize a
+// write independently is precisely what routing through a shared authority has to exclude.
+export function authorizeOwnerSeed(argv) {
+  const apply = argv.includes("--apply");
+  // Production by name AND by role, unknown projects, missing --projectId, and ambient credentials
+  // that disagree with the stated target are all refused in here, once.
+  const target = resolveExecutionTarget({ argv: ["node", "seedAccountOwners.mjs", ...argv], writes: apply });
+  // A live run demands BOTH words; a dry run demands neither and writes nothing.
+  if (apply) assertBothLiveFlags({ target, argv, act: "Seeding account owners in" });
+  return { target, apply };
 }
 
 /** The seven fields, all present or the record is not written. Mirrors isCompleteAccountOwner(). */
@@ -131,14 +147,10 @@ function fixtureIndex(accountId) {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const args = parseArgs(argv);
-  const apply = args.apply === "true";
-  // THE SHARED TARGET AUTHORITY, not a local one. A local "is the role sandbox?" check cannot tell
-  // eos-platform-sandbox from eos-platform-certification -- both are role sandbox -- so a local
-  // guard would let this seed write account owners into the certification world by typo. One place
-  // decides what is writable, and each live target carries its own named flag.
-  const target = resolveExecutionTarget({ argv: ["node", "seedAccountOwners.mjs", ...argv], writes: apply });
-  if (apply) assertBothLiveFlags({ target, argv, act: "Seeding account owners into" });
+  // AUTHORIZE BEFORE ANYTHING CONNECTS -- ahead of initializeApp, so a refused invocation never
+  // opens a client against the project it was refused for.
+  const { target, apply } = authorizeOwnerSeed(argv);
+  console.log(describeTarget(target));
 
   if (getApps().length === 0) initializeApp({ credential: applicationDefault(), projectId: target.projectId });
   const db = getFirestore();
@@ -156,7 +168,6 @@ async function main() {
   }
   const assignor = managers[0];
 
-  console.log(describeTarget(target));
   console.log(`Owner cohort (${SALES_ROLE}, active, user-linked): ${owners.map((o) => o.employeeId).join(", ")}`);
   console.log(`Assignor (${MANAGER_ROLE}): ${assignor.employeeId} (${assignor.displayName})\n`);
 
@@ -217,7 +228,14 @@ async function main() {
   console.log(`\nAssigned ${written} account owner(s). Re-run without --apply to confirm 0 remain.`);
 }
 
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});
+// RUN ONLY WHEN INVOKED DIRECTLY, so the authorization decision can be imported by its test
+// without the tool executing on import -- an unguarded main() demands --projectId, refuses, and
+// kills the test process. A decision that cannot be imported without running the script is a
+// decision that does not get tested.
+const invokedDirectly = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(err.message);
+    process.exit(1);
+  });
+}

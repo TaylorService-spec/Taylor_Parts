@@ -28,36 +28,29 @@ const READ_ONLY_SCRIPTS = [
   "ownershipCensusDryRun.js",
   "ownershipDerivationCheck.js",
   "ownershipBackfillSimulation.js",
-  // workOrderJobLineageCheck.js was DELETED (DECISIONS #143): it measured "does this Work Order
-  // have a parent Job", a question the withdrawn R-12 model made meaningful and the corrected model
-  // does not. Its result is preserved in DECISIONS #143 and in sb-evidence. A tool that answers a
-  // question the domain no longer asks is a trap, not an asset.
+  // workOrderJobLineageCheck.js was DELETED (DECISIONS #143): it measured "does this Work Order have
+  // a parent Job", a question the withdrawn R-12 model made meaningful and the corrected model does
+  // not. Its result is preserved in DECISIONS #143 and in sb-evidence. A tool that answers a question
+  // the domain no longer asks is a trap, not an asset.
 ];
 
-test("every ownership-writing script refuses production, by name AND by registry role", () => {
-  // Asserts the GUARANTEE, not one mechanism for it. A script may satisfy this two ways:
-  //
-  //   DELEGATED  — it uses certificationWorld/executionTarget.mjs, the shared authority. This is
-  //                the STRONGER form and is preferred: the shared authority also distinguishes
-  //                eos-platform-sandbox from eos-platform-certification, which a local role check
-  //                cannot, and it requires a per-target named live flag.
-  //   LOCAL      — it performs the checks itself.
-  //
-  // The earlier version of this test demanded the LOCAL form of every script, and that was a defect
-  // in the test: when seedAccountOwners.mjs moved to the shared authority -- a strict improvement,
-  // required by certificationExecutionTarget.mjs -- this test failed the better implementation.
-  // A test that pins a mechanism blocks the mechanism from improving.
-  for (const rel of WRITING_SCRIPTS) {
+/**
+ * Scripts whose target policy is their OWN, asserted by reading their source.
+ *
+ * seedAccountOwners.mjs used to be here. Its refusals now live in the shared
+ * certificationWorld/executionTarget.mjs authority, so the literal strings this scanned for are
+ * legitimately gone while every refusal they stood for is strictly stronger -- production by name
+ * AND by role, unknown projects, no default target, plus ambient-credential agreement and a
+ * per-environment live flag, none of which a source scan was checking.
+ *
+ * Source text cannot tell a deleted guard from a superseded one: both look like an absent string.
+ * So the shared-authority script is exercised below instead of read.
+ */
+const SELF_GUARDED_WRITING_SCRIPTS = ["seedOperatingCompanies.js"];
+
+test("every self-guarded ownership-writing script refuses production, by name AND by registry role", () => {
+  for (const rel of SELF_GUARDED_WRITING_SCRIPTS) {
     const src = script(rel);
-    const delegated = /from "\.\/executionTarget\.mjs"|from "\.\.\/certificationWorld\/executionTarget\.mjs"/.test(src)
-      && /resolveExecutionTarget\s*\(/.test(src);
-
-    if (delegated) {
-      // A delegating script must actually GATE on the result, not merely import it.
-      assert.match(src, /assertBothLiveFlags\s*\(/, `${rel} delegates but never demands the live flags`);
-      continue;
-    }
-
     // Belt: the customer production project is named and refused explicitly.
     assert.match(src, /taylor-parts/, `${rel} must name the production project to refuse it`);
     assert.match(src, /REFUSING: taylor-parts is the customer production project/, `${rel} must refuse taylor-parts by name`);
@@ -72,18 +65,37 @@ test("every ownership-writing script refuses production, by name AND by registry
   }
 });
 
-test("the shared execution-target authority is what the delegating scripts rely on", () => {
-  // If a script delegates, the thing it delegates TO must still carry the guarantees. Otherwise
-  // "delegated" above would be a way to opt out of the check rather than a stronger way to pass it.
-  const shared = readFileSync(join(here, "..", "scripts", "certificationWorld", "executionTarget.mjs"), "utf8");
-  assert.match(shared, /PRODUCTION_PROJECT = "taylor-parts"/, "the shared authority must name production");
-  assert.match(shared, /Refused by name/, "the shared authority must refuse production by name");
-  assert.match(shared, /role === "production"/, "the shared authority must refuse production by registry role");
-  assert.match(shared, /--projectId is required/, "the shared authority must require an explicit target");
-  assert.match(shared, /Unknown project/, "the shared authority must fail closed on an unknown project");
-  // The distinction a local guard cannot make: two different sandbox-role projects, two flags.
-  assert.match(shared, /LIVE_SANDBOX_PROJECT = "eos-platform-sandbox"/);
-  assert.match(shared, /CERTIFICATION_PROJECT = "eos-platform-certification"/);
+test("seedAccountOwners refuses production through the shared execution authority", async () => {
+  // EXERCISED, NOT READ. This is the same claim the source scan above makes for its own scripts,
+  // asked of the decision rather than of the file -- which is the only way to ask it once the
+  // decision has moved somewhere shared.
+  const { pathToFileURL } = await import("node:url");
+  const { resolve } = await import("node:path");
+  const { authorizeOwnerSeed } = await import(
+    pathToFileURL(resolve(here, "..", "scripts/certificationWorld/seedAccountOwners.mjs")).href);
+
+  const saved = { ...process.env };
+  for (const k of ["FIRESTORE_EMULATOR_HOST", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT"]) delete process.env[k];
+  const refusal = (argv) => {
+    try { authorizeOwnerSeed(argv); return null; } catch (err) { return err.message; }
+  };
+  try {
+    assert.match(refusal(["--projectId", "taylor-parts", "--apply", "--apply-live-certification"]) ?? "",
+      /production/i, "production must be refused whatever flags accompany it");
+    assert.match(refusal(["--projectId", "taylor-parts"]) ?? "",
+      /production/i, "production must be refused even for a read-only dry run");
+    assert.match(refusal(["--projectId", "not-a-registered-project"]) ?? "",
+      /Unknown project/, "an unknown project must fail closed");
+    assert.match(refusal(["--apply"]) ?? "",
+      /--projectId is required/, "there must be no default target");
+    // Stronger than the source scan ever checked: a live write must NAME its environment, so the
+    // two sandbox-role worlds cannot be confused for one another.
+    assert.match(refusal(["--projectId", "eos-platform-certification", "--apply"]) ?? "",
+      /--apply-live-certification/, "a live write must name the environment it writes to");
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    for (const [k, v] of Object.entries(saved)) process.env[k] = v;
+  }
 });
 
 test("the read-only tools contain no Firestore write call at all", () => {
