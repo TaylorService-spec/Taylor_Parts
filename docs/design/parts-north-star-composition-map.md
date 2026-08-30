@@ -408,3 +408,69 @@ exit 2**.
 
 The operator command is in the ledger. The moment it lands, the gate answers all six of the Owner's
 post-deployment steps in one run and prints the two URLs for visual acceptance.
+
+---
+
+# Part V — the Quick Gate ran, and what it took to make it honest (2026-08-30)
+
+**Result: 20/20 against `ea0645f8` on `platform-sandbox`.** The application was correct on the first
+attempt. Every failure in this section was the gate's.
+
+## Failure 1 — the gate measured the wrong table
+
+The first run hung for five minutes on `[data-label="Part Number"]` and reported a precondition
+error. The page was healthy throughout: **62 parts in catalogue, 25 rows rendered, every one carrying
+`data-label="Part Number"`**.
+
+The workspace has **three** `table.fo-table` elements and the catalogue is not the first. The Work
+group's *All Assigned Work* reorder queue renders above it, the Flow group's *History* table below.
+The gate selected `table.fo-table` globally, landed on the queue — whose cells carry no `data-label`
+at all — and waited for a cell that was never going to appear on that table.
+
+Every catalogue assertion is now anchored on the *Parts Catalog* heading with an explicit timeout,
+and when the precondition is absent the gate reports **which tables it did find**, and whether a
+blocked-read message is on the page — because *"no Part Number cell"*, *"the catalogue is blocked"*
+and *"there are no parts"* are three different findings and only one is a product defect.
+
+## Failure 2 — the gate would have invented a defect
+
+Check 4 asserted `shownNumber !== routeId` to prove the Part Number column is not the document id.
+**In this fixture `partId` and `internalPartNumber` are the same string** (`CW-P-0000`). Both
+readings produce identical text, so the assertion would have **failed a correct page**.
+
+A gate inventing a defect is worse than a gate missing one. The field contract is proved where it
+*can* be falsified — `test/partsNorthStarProjection` and `test/partsNorthStarIdentity` build fixtures
+where the two strings deliberately differ, and both are mutation-proved. The live gate now asserts
+what is observable here (the cell exists, every row populates it, and typing what it shows finds the
+part) and **states the coincidence** rather than claiming a proof it cannot make.
+
+## Failure 3 — a 19/19 green run that proved less than it looked
+
+The first passing run navigated to the catalogue's first row, which happens to have no ledger
+activity. So Activity had **zero rows** — and "no raw enum" passed with nothing to inspect — while the
+reorder check passed through its *no-ledger* branch **without ever seeing the control**. Two vacuous
+passes inside a green result, one of them the half of ND-28 that matters.
+
+The record under test is now **chosen, not taken**: the first row whose Inventory Health is something
+other than *No ledger activity*. Check 12 fails on zero rows instead of passing, check 13 requires the
+control to actually be present, and a new check **6a** reports which row was chosen and says so
+explicitly when no better one exists.
+
+After that: `12 — rows=1 words=["Adjusted"]` and `13 — reorderReachable=true`. Both now mean something.
+
+## Coverage this run did not have
+
+- **No serialized or lot part was exercised.** Check 11 saw a `STANDARD` part and correctly asserted
+  that neither unit section renders. The serial and lot branches are covered by
+  `test/partsNorthStarRecord.test.jsx`, not by this run.
+- **A cold deep-link to a record is slow.** Direct navigation to `/inventory/:id` exceeded a 30s wait
+  once before rendering on retry. Consistent with `PART_CATALOGUE_WHOLE_COLLECTION_READ` (P-G1) —
+  every Parts surface reads the whole collection. Pre-existing, recorded, not introduced here.
+
+## One observation for the Owner, not a change
+
+The Stock forecast renders **`Reorder point 0`** beside **`Avg daily usage — Insufficient usage
+history`**. A reorder point derived from no usage history is a weak number sitting in a column people
+scan, which is the same family of problem ND-25 was about — but it is pre-existing behaviour
+(`Math.ceil(health.recommendation.reorderPoint)`), it is not a stock quantity, and no ruling covers
+it. Raised rather than silently changed.
