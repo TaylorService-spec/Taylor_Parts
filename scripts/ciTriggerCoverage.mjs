@@ -41,6 +41,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  bucketChecks,
+  globMatches,
+  jobNames as jobNamesOf,
+  runsOnPullRequest,
+  workflowPaths,
+} from "./ciTriggerCoverage.lib.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW_DIR = path.join(REPO, ".github", "workflows");
@@ -52,57 +59,8 @@ function arg(name, fallback = null) {
 
 const sh = (cmd, args) => execFileSync(cmd, args, { cwd: REPO, encoding: "utf8" }).trim();
 
-/** The `paths:` globs a workflow watches, or null when it watches everything. */
-function workflowPaths(source) {
-  const lines = source.split(/\r?\n/);
-  const globs = [];
-  let inPaths = false;
-  let hasTriggerBlock = false;
-  for (const line of lines) {
-    if (/^\s*(paths|paths-ignore):\s*$/.test(line)) {
-      inPaths = /paths:/.test(line);
-      hasTriggerBlock = true;
-      continue;
-    }
-    if (inPaths) {
-      const m = /^\s*-\s*"?([^"#]+?)"?\s*$/.exec(line);
-      if (m) { globs.push(m[1]); continue; }
-      if (line.trim() !== "") inPaths = false;
-    }
-  }
-  return hasTriggerBlock ? globs : null;
-}
-
-/**
- * Glob -> RegExp, translated properly rather than approximated.
- *
- * The first version special-cased a few shapes and fell back to "prefix of the first star", which
- * over-matched badly: `functions/test/**Rules*.test.js` then matched EVERY file under
- * `functions/test`, so the tool reported the Rules-regression lane as NOT TRIGGERED on a PR that
- * never touched Rules. A checker that cries wolf teaches people to ignore it, which is worse than
- * not having one at all.
- *
- *   **  crosses directory separators
- *   *   does not
- */
-function globToRegExp(glob) {
-  let rx = "";
-  for (let i = 0; i < glob.length; i += 1) {
-    const c = glob[i];
-    if (c === "*") {
-      if (glob[i + 1] === "*") { rx += ".*"; i += 1; } else rx += "[^/]*";
-    } else if (c === "?") {
-      rx += "[^/]";
-    } else {
-      rx += /[.+^${}()|[\]\\]/.test(c) ? `\\${c}` : c;
-    }
-  }
-  return new RegExp(`^${rx}$`);
-}
-
-function globMatches(glob, file) {
-  return glob === file || globToRegExp(glob).test(file);
-}
+// THE PURE LOGIC LIVES IN ONE PLACE, AND IT IS THE TESTED ONE. This file keeps only I/O.
+// functions/test/ciTriggerCoverage.test.mjs pins every defect this tool shipped.
 
 const prNumber = arg("pr");
 if (!prNumber) throw new Error("--pr is required.");
@@ -124,13 +82,7 @@ const rollup = JSON.parse(sh("gh", ["pr", "view", prNumber, "--json", "statusChe
 const head = rollup.headRefOid;
 const checks = rollup.statusCheckRollup ?? [];
 const ranJobNames = new Set(checks.map((c) => c.name));
-const byState = { PASS: [], FAIL: [], PENDING: [] };
-for (const c of checks) {
-  const state = c.conclusion ?? c.status;
-  if (state === "SUCCESS" || state === "NEUTRAL" || state === "SKIPPED") byState.PASS.push(c.name);
-  else if (state === "FAILURE" || state === "CANCELLED" || state === "TIMED_OUT") byState.FAIL.push(c.name);
-  else byState.PENDING.push(c.name);
-}
+const byState = bucketChecks(checks);
 
 // A workflow's job names are what appear in the rollup, so map workflow file -> its job `name:`s.
 const expected = [];
@@ -138,10 +90,7 @@ for (const file of readdirSync(WORKFLOW_DIR).filter((f) => f.endsWith(".yml"))) 
   const src = readFileSync(path.join(WORKFLOW_DIR, file), "utf8");
 
   // Only workflows that actually trigger on `pull_request` can appear in a PR's check rollup.
-  // Issue-driven and dispatch-only workflows (intake, patch integration, the GPT review) never do,
-  // and the first version reported all three as NOT TRIGGERED -- three false alarms in a tool whose
-  // entire value is that its alarms mean something.
-  if (!/^\s*pull_request(_target)?:/m.test(src)) continue;
+  if (!runsOnPullRequest(src)) continue;
 
   const globs = workflowPaths(src);
   const watchesEverything = globs === null;
@@ -149,17 +98,7 @@ for (const file of readdirSync(WORKFLOW_DIR).filter((f) => f.endsWith(".yml"))) 
   if (matched.length === 0) continue;
 
   const workflowName = /^name:\s*(.+)$/m.exec(src)?.[1]?.trim() ?? file;
-  // A job appears in the rollup under its `name:` when it has one, and under its KEY otherwise.
-  // The first version read only `name:` and so missed `gitleaks:` and `build:` entirely, reporting
-  // two lanes that plainly ran as NOT TRIGGERED.
-  const jobsAt = src.indexOf("\njobs:");
-  const jobsBlock = jobsAt >= 0 ? src.slice(jobsAt) : "";
-  const jobKeys = [...jobsBlock.matchAll(/^\s{2}([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
-  const jobDisplayNames = [...jobsBlock.matchAll(/^\s{4}name:\s*(.+)$/gm)].map((m) =>
-    m[1].trim().replace(/^["']|["']$/g, ""),
-  );
-  const jobNames = [...jobKeys, ...jobDisplayNames];
-  const present = jobNames.some((n) => ranJobNames.has(n)) || ranJobNames.has(workflowName);
+  const present = jobNamesOf(src).some((n) => ranJobNames.has(n)) || ranJobNames.has(workflowName);
   expected.push({ file, workflowName, matched: matched.slice(0, 3), present });
 }
 
@@ -174,9 +113,16 @@ console.log(`checks in rollup: ${checks.length}  (PASS ${byState.PASS.length} ·
 // cry-wolf failure this tool exists to avoid. It did precisely that on its own first use.
 //
 // So there are three answers, not two, and "not yet" is one of them.
-if (checks.length === 0) {
+if (checks.length === 0 && expected.length === 0) {
+  // A legitimate empty rollup: nothing in this PR's diff is watched by any pull_request workflow.
+  // Distinct from "not started" -- here the checks are never coming, and saying NOT SETTLED would
+  // wait forever for an event that cannot happen.
+  console.log("NO MATCHING LANE — nothing in this diff is watched by a pull_request workflow.");
+  console.log("An empty rollup is correct here. Verification, if any is owed, lives at an earlier head.");
+  process.exitCode = 3;
+} else if (checks.length === 0) {
   console.log("NOT SETTLED — no checks have appeared for this head yet. CI has not started.");
-  console.log("Trigger coverage cannot be assessed until the run settles. This is not a pass and not a failure.");
+  console.log(`${expected.length} lane(s) are expected to run. Re-run once they appear.`);
   process.exitCode = 2;
 } else if (byState.PENDING.length > 0) {
   console.log(`NOT SETTLED — ${byState.PENDING.length} check(s) still running.`);
