@@ -3181,3 +3181,83 @@ callers.
 live `status` and that no shift model existed; it did not rule on whether that status gates future
 scheduling. This closes that gap. The status vocabulary itself remains
 `GOVERNED_TECHNICIAN_STATUSES` in `functions/src/scheduling/schedulingRepository.ts`.
+
+---
+
+## #137 — OWNER RULING: a record page reports the record; it does not explain the system
+
+**Date:** 2026-08-27 · **Scope:** presentation only (Opportunity record, Sales Agreement record)
+**Authority:** Owner (acceptance) · **Related:** #122, #135, #136
+
+**How it surfaced.** Reviewing the deployed Opportunity record, the Owner pointed at the section
+titled *"When this closes"* and said: *"i just dont know why i would want this or even use it."*
+Then, of the Customer card's contact note: *"really dont think those lines are useful."* Then, of
+the Agreement page: *"same story as the section on opportunity."*
+
+**Decision.** Five blocks of explanatory copy are removed or trimmed across two record pages:
+
+| Surface | Block | Was | Now |
+| --- | --- | --- | --- |
+| Opportunity | "When this closes" | 5 lines on the two governed conversion paths | removed |
+| Opportunity | Solution note | 4 lines, incl. EOS having no quote object | 1 line |
+| Opportunity | Customer card | 3 lines on where contact facts come from | removed |
+| Opportunity | Qualification | 3 lines on no schema being ratified | "Not configured" |
+| Sales Agreement | "What this agreement became" | the conversion mechanism again | removed |
+
+**Why the ruling is right, in the grammar's own terms.** Every one of these was TRUE, and every one
+rendered identically on every record — so a reader learns it once and re-reads it forever. Two of
+the headings asked a question about *this* record (*"When this closes"*, *"What this agreement
+became"*) and answered with a lecture on the mechanism. A record page's job is to report the record;
+the model belongs in documentation, where it can be read once.
+
+**Two of the five were not overrides at all.** P1v2 specifies *"the **one-line** disclosure"* for
+Solution, and the exact words *"Not configured"* for the Qualification seam. Both had grown in
+implementation. Trimming them **restores** the brief rather than departing from it — worth recording,
+because it means only three of the five are genuine Design-vs-Acceptance conflicts under #122.
+
+### The part that mattered more than the deletion
+
+Two of the removed sections each carried exactly one real fact — a link — and in both cases it was
+the **only** place that relationship appeared anywhere on its page:
+
+- the Opportunity's **own** Sales Order back-link, written by the atomic Mark Won close.
+  `OpportunityAgreementCard` links the AGREEMENT's order, which is a different relationship.
+- the Agreement's **downstream** Sales Order. The rail carries the upstream lineage
+  ("Why this agreement exists"); nothing else carried the downstream.
+
+Deleting either section without moving its link would have removed a governed relationship from the
+product — **SA-G7 exactly**, one family later. Both links moved into their page's header fact row
+*before* the sections came out, under the same rules as the agreement fact already beside them:
+rendered only when the record exists (never "Order: —"), the governed number as the label, the
+document id as the route key and never shown (#106).
+
+### An overlap fixed on the same screen
+
+`.ns-solution-note` carried `margin-top: -18px` and the note landed **on top of** the last Solution
+line. Measured on the deployed record rather than reasoned about: the section's box ended at 612px,
+the note began at 594px. The pull-up was calibrated against `.ns-section`'s 30px bottom margin, but
+Solution renders through the legacy `.fo-sales-detail__block`, whose bottom margin is **zero** — so
+the compensation had nothing to compensate for and became a collision. This is the failure mode of
+any negative margin tuned against a sibling it does not actually have. Positive spacing owns its own
+gap and cannot overlap.
+
+### Method note — the tests were the weak part, twice
+
+Nine assertions across four suites pinned the removed copy. They are rewritten to measure the
+**relationship** rather than the sentence describing it: a test pinned to prose fails on a reword
+and passes while the link underneath it breaks.
+
+Two of those rewrites were themselves too weak, and mutation testing caught both **after** they were
+written and passing:
+
+- one matched a link's accessible name (`/^Order\b/`) where the visible word "Order" sits *outside*
+  the link, so it passed against a header that was in fact claiming the wrong order;
+- one counted only links to a specific id, missing a mutant that adopted the agreement's order and
+  rendered a **broken** href from a null id — the count stayed correct while the page was wrong.
+
+Both now count hrefs. Seven mutations run in total, all caught.
+
+**Still open, deliberately: O4.** The Customer card is now honest but thin — a name and nothing else.
+What fills it is the Account's primary contact with `tel:`/`mailto:`, which P1v2 specified and
+flagged "confirm" because it adds a read to the surface. `useContactsForAccount` already exists, so
+it is presentation over an existing governed read. Not taken here; named so the gap stays visible.
