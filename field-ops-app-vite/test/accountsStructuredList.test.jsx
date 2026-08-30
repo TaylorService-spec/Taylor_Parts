@@ -457,7 +457,16 @@ describe("Lists P2 — Customers on the shared collection grammar", () => {
     // Unchanged, and re-asserted because a shared header is exactly when somebody normalises a
     // dash into a 0 "for consistency". "0 Active" is a claim about the business; "—" is a claim
     // about the read.
-    expect(SCREEN).toMatch(/count === null \? "—" : count/);
+    //
+    // THE RENDERING MOVED; THE INVARIANT DID NOT. The portfolio counts are chips on the shared
+    // FilterBar now, so the dash is produced there. That splits the guarantee across two files,
+    // and asserting only one half would leave the other free to break: this page could start
+    // reporting 0 for an unread summary, or the primitive could start printing that 0. Both
+    // halves are named. The behavioural proof is the DENIED render test above — this pair is
+    // here so the failure says WHICH half moved.
+    expect(SCREEN).toMatch(/if \(summaryState !== "READY" \|\| !summary\) return null;/);
+    const primitive = readFileSync(path.resolve(process.cwd(), "src/shared/ui/FilterBar.jsx"), "utf8");
+    expect(primitive).toMatch(/count === null \? "—" : /);
   });
 
   it("the row destination comes from the definition", () => {

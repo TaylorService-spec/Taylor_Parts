@@ -312,7 +312,8 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
             to view its read-only activity log.
           </p>
 
-          <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
+          {/* A role Home filters a PANEL; it is not a collection stating its views. */}
+          <FilterBar variant="chips" options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
           <LoadingEmptyState
             loading={catalog.loading}

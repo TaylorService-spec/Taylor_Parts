@@ -1042,8 +1042,18 @@ button {
   cursor: pointer;
 }
 
+/* THE HOVER SET A BACKGROUND AND NOT A FOREGROUND, WHICH IS HOW IT BECAME UNREADABLE.
+   It set `background: var(--color-brand-secondary)` and nothing else. For a genuine filled button
+   that was a no-op -- the bare `button` rule above already sets the same fill AND `color: white`.
+   For every button styled by a CLASS it was destructive: `button:hover` has specificity 0-1-1 and
+   outranks any single-class rule (`.fo-chip`, a view tab, a count chip) at 0-1-0, so those controls
+   gained a dark evergreen fill while keeping their own dark text. Dark on dark.
+   Fixed by inverting the whole pair rather than dropping the hover: solid green WITH white text, so
+   the fill and the label always travel together. A background rule that can win without carrying
+   its foreground is a contrast bug waiting for the next class that sets dark text. */
 button:hover {
   background: var(--color-brand-secondary);
+  color: #FFFFFF;
 }
 
 .wo-status {
@@ -4031,51 +4041,12 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-forecast-labels {
   margin: 0 0 4px;
 }
-.fo-portfolio-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 8px 0 12px;
-}
-/* PORTFOLIO STATUS CARDS.
-   These render as bare <button>, so the global `button` rule already paints them
-   --color-brand-secondary (#1C4638) with white text. The two child spans then overrode that
-   colour with #23383D and #667 -- values written for a light card that was never built. The
-   result was dark-on-dark: the count measured 1.16:1 and the label 1.88:1 against the green,
-   where AA wants 4.5:1. The numbers were effectively invisible.
-   The card is DELIBERATELY dark green. What was wrong was the text, so the text is fixed. */
-.fo-portfolio-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  padding: 10px 16px;
-  /* A filter control is a tap target before it is a statistic. */
-  min-height: 44px;
-  min-width: 88px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--color-brand-secondary);
-  text-align: left;
-}
-.fo-portfolio-card-count { font-size: 20px; font-weight: 600; color: #FFFFFF; }        /* 10.59:1 */
-/* Secondary, not dull: light enough to stay AA (8.85:1) while still reading as the caption
-   rather than competing with the number it labels. */
-.fo-portfolio-card-label { font-size: 13px; color: #E3EDE8; }
-
-/* THE SELECTED STATE HAD NO STYLE AT ALL. `fo-portfolio-card-active` was applied by the
-   component and matched nothing in this stylesheet, so clicking a status filter changed the
-   result set with no visible confirmation of which filter was on -- and aria-pressed was the
-   only signal a sighted user never receives. */
-.fo-portfolio-card-active {
-  background: var(--color-brand-primary);
-  border-color: #E3EDE8;
-}
-.fo-portfolio-card:hover { border-color: #E3EDE8; }
-.fo-portfolio-card:focus-visible {
-  outline: 2px solid var(--color-brand-secondary);
-  outline-offset: 2px;
-}
+/* THE PORTFOLIO STATUS CARDS ARE GONE. Five dark filled tiles stated the customer portfolio in a
+   visual language no other list used; the collection-grammar pass replaced them with the same view
+   chips every other list states its views with (.ns-collection__views / .ns-view). Their rules are
+   deleted rather than left dormant, because a dark-tile ruleset sitting in the stylesheet is an
+   invitation to rebuild the control that was replaced. The counts were never the problem and did
+   not change: they are chip counts now, and an unavailable one is still an em dash. */
 /* RELATIONSHIP / FACET CHIPS.
    Same defect as the portfolio cards and worth stating separately: `.fo-filter-chip` and
    `.fo-filter-chip-active` matched NOTHING in this stylesheet, so every chip rendered as the
@@ -6130,7 +6101,19 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-view { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px;
   border: 0; border-bottom: 2px solid transparent; background: none; cursor: pointer;
   font: inherit; font-size: 13px; color: var(--color-text-secondary); margin-bottom: -1px; }
-.ns-view:hover { color: var(--color-text-primary); }
+/* HOVER IS SOLID GREEN WITH WHITE TEXT, INCLUDING THE COUNT.
+   This chip previously set only a COLOUR on hover -- `color: var(--color-text-primary)`, which is
+   near-black. It never asked for a background, but the global `button:hover` supplied one anyway:
+   at 0-1-1 that rule outranks `.ns-view` at 0-1-0, so the chip gained a dark evergreen fill, while
+   `.ns-view:hover` at 0-2-0 won the colour back to near-black. Dark text on a dark fill, unreadable,
+   and neither rule was wrong on its own -- the pair was.
+   Stating both halves here settles it at the level that owns the control, and the count is inverted
+   with the label so a number never stays dark on the green. */
+.ns-view:hover { background: var(--color-brand-secondary); color: #FFFFFF; }
+.ns-view:hover .ns-view__count { color: #FFFFFF; }
+/* The bronze attention count keeps its meaning on the green: bronze on evergreen is unreadable, so
+   it inverts to white and stays BOLD -- the weight is what carried "attention", not the hue alone. */
+.ns-view:hover .ns-view__count.is-attention { color: #FFFFFF; }
 /* THE ACTIVE VIEW IS MARKED BY WEIGHT AND A RULE, NOT BY COLOUR ALONE (WCAG 1.4.1): colour is not
    the only channel, so it survives greyscale and colour-blind viewing. */
 .ns-view.is-active { color: var(--color-text-primary); font-weight: 600;
