@@ -309,6 +309,21 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "equipment.install",
       ]),
     }),
+    // DEPLOYABLE SYNTHETIC CERTIFICATION RUNTIME. Provisioned 2026-08-30.
+    //
+    // A real Firebase project, unlike demo-certworld -- which is why it is declared in
+    // config/environments.json too, and why the drift guard compares it position for position.
+    //
+    // It activates NO capabilities. The sandbox's list exists so the commercial spine is testable
+    // there; nothing is deployed here yet, so an override set would be a list of permissions for
+    // code that does not exist. It also holds NO private-AI classification: the flag turns true only
+    // once the certification dataset is actually installed and proven synthetic, and an empty
+    // project is not synthetic data, it is no data.
+    Object.freeze({
+      role: "sandbox",
+      firebase: Object.freeze({ projectId: "eos-platform-certification" }),
+      privateAiSyntheticOperationalInterpretation: false,
+    }),
     // CERTIFICATION WORLD EMULATOR. Owner-approved 2026-08-22.
     //
     // demo-certworld is not a Firebase project and cannot become one: the demo- prefix is reserved

@@ -19,10 +19,16 @@
 //                             refused: the caller's intent and the runtime's identity must agree
 //   live without saying so    --apply alone can never reach live Firestore
 //
-// ============================ THE FLAG IS DELIBERATELY UGLY ============================
+// ============================ THE FLAGS ARE DELIBERATELY UGLY ============================
 //
-// `--apply-live-sandbox` is long and specific because a person typing it has decided something. A
-// short flag is one a tired operator adds to make an error message go away.
+// `--apply-live-sandbox` and `--apply-live-certification` are long and specific because a person
+// typing one has decided something. A short flag is one a tired operator adds to make an error
+// message go away.
+//
+// They are also SEPARATE, and there is no generic `--apply-live`. Each live target is bound to its
+// own flag, so the command an operator types names the environment it writes to; a single flag
+// covering both would mean the same line hits a different project depending on an argument
+// elsewhere on it.
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
@@ -32,12 +38,35 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { ENVIRONMENT_ACTIVATION_REGISTRY, resolveCapabilityOverrides } =
   await import(L("functions/lib/access/environmentCapabilityOverrides.js"));
 
-/** The ONLY live project any certification tool may write to. */
+/** The live sandbox. */
 export const LIVE_SANDBOX_PROJECT = "eos-platform-sandbox";
+/** The deployable synthetic certification runtime, provisioned 2026-08-30. */
+export const CERTIFICATION_PROJECT = "eos-platform-certification";
 /** Refused by name as well as by role. */
 export const PRODUCTION_PROJECT = "taylor-parts";
-/** The flag that must be typed for a live write. Long on purpose. */
+/** The flag that must be typed for a live sandbox write. Long on purpose. */
 export const LIVE_FLAG = "--apply-live-sandbox";
+/** Certification's own flag. Deliberately NOT a second spelling of the sandbox one. */
+export const CERTIFICATION_LIVE_FLAG = "--apply-live-certification";
+
+/**
+ * Every live-writable project, each bound to the ONE flag that unlocks it.
+ *
+ * A MAP RATHER THAN A SET, AND THAT IS THE WHOLE POINT. A set of permitted projects plus a single
+ * "--apply-live" flag would mean the sentence an operator types no longer names where the write
+ * lands: the same command would hit the sandbox or the certification runtime depending on a
+ * --projectId argument somewhere else on the line. Binding each target to its own flag keeps the
+ * two facts adjacent, so a command written for one environment cannot be re-pointed at the other
+ * by editing one word.
+ *
+ * Adding an entry here is a deliberate act. It is the only place a project becomes live-writable,
+ * and everything else about the gate -- production by name, production by role, unknown projects,
+ * ambient-credential agreement -- applies to it unchanged.
+ */
+const LIVE_TARGET_FLAGS = new Map([
+  [LIVE_SANDBOX_PROJECT, LIVE_FLAG],
+  [CERTIFICATION_PROJECT, CERTIFICATION_LIVE_FLAG],
+]);
 
 export class ExecutionTargetRefused extends Error {
   constructor(message) { super(message); this.name = "ExecutionTargetRefused"; }
@@ -81,10 +110,12 @@ export function resolveExecutionTarget({ argv = process.argv, writes = true } = 
     refuse(`Unknown project "${projectId}" and no emulator host. A typo must not resolve to something.`);
   }
 
-  // ── Live is one project, named ───────────────────────────────────────────────────────────────
+  // ── Live targets are named, and each has its own flag ────────────────────────────────────────
   const isLive = !isEmulator;
-  if (isLive && projectId !== LIVE_SANDBOX_PROJECT) {
-    refuse(`Live execution is limited to ${LIVE_SANDBOX_PROJECT}. Refusing "${projectId}".`);
+  const liveFlag = LIVE_TARGET_FLAGS.get(projectId) ?? null;
+  if (isLive && !liveFlag) {
+    refuse(`Live execution is limited to ${[...LIVE_TARGET_FLAGS.keys()].join(", ")}. `
+      + `Refusing "${projectId}".`);
   }
 
   // ── Ambient credentials must agree with stated intent ────────────────────────────────────────
@@ -98,10 +129,14 @@ export function resolveExecutionTarget({ argv = process.argv, writes = true } = 
     }
   }
 
-  // ── Explicit live intent ─────────────────────────────────────────────────────────────────────
-  const apply = has("--apply") || has(LIVE_FLAG);
-  if (isLive && writes && apply && !has(LIVE_FLAG)) {
-    refuse(`Writing to ${projectId} requires ${LIVE_FLAG} as well as --apply. `
+  // ── Explicit live intent, for THIS target ────────────────────────────────────────────────────
+  //
+  // The flag checked is the one bound to the resolved project, so the sandbox flag cannot unlock
+  // certification and certification's cannot unlock the sandbox. A command carrying the wrong
+  // environment's flag is refused rather than quietly accepted as "some live intent was expressed".
+  const apply = has("--apply") || (liveFlag !== null && has(liveFlag));
+  if (isLive && writes && apply && !has(liveFlag)) {
+    refuse(`Writing to ${projectId} requires ${liveFlag} as well as --apply. `
       + "--apply alone never reaches live Firestore.");
   }
 

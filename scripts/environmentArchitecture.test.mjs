@@ -256,7 +256,14 @@ test('INVARIANT: the known-project allow-list is exactly the provisioned project
   // is exactly what the previous single-project assertion existed to force. The
   // allow-list must never grow silently; each addition is a real project that
   // was really created.
-  assert.deepEqual(knownProjectIds(registry).sort(), ['eos-platform-sandbox', 'taylor-parts']);
+  //
+  // Updated again 2026-08-30 for eos-platform-certification, the deployable synthetic
+  // certification runtime. Same rule, and it held: the entry was written only after the Owner
+  // provisioned the project and registered its Web app. A registry entry for a project that does
+  // not exist would make this invariant assert something false, which is the failure it exists
+  // to catch.
+  assert.deepEqual(knownProjectIds(registry).sort(),
+    ['eos-platform-certification', 'eos-platform-sandbox', 'taylor-parts']);
 });
 
 // ------------------------------ per-environment capability activation (spec 2026-08-14)
