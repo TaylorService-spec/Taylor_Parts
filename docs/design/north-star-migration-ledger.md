@@ -1407,3 +1407,38 @@ through `callInstallSerializedAsset` → `equipment.install`; edit still resolve
 `updateEquipment`, with its allowlist still **imported** from the write path rather than restated. No
 lifecycle action was enabled, and `EQ-G5` — the installed-unit operating company — is preserved as a
 seam that answers UNKNOWN with the reason, never a value derived from the Customer.
+
+### Family 7 — the Owner's acceptance boundary (2026-08-30)
+
+Appended, not rewritten. This records the **scope and the known states** the Owner fixed before
+looking, so that what was accepted — and what was deliberately not — cannot be re-argued later from
+memory. **It is not an acceptance.** The Owner stated the boundary; the acceptance itself is a
+separate act and this row does not anticipate it.
+
+| | |
+|---|---|
+| **Deployed release** | `2b090a7e` — `platform-sandbox` / `sandbox` |
+| **Quick Gate** | **25/25 PASS** against that live release |
+| **Accepted scope** | Frame 1a at `/inventory`; Frames 1b–1d at `/inventory/CW-P-0001` |
+| **Acceptance** | `AWAITING_COMPLETE_OWNER_VISUAL_ACCEPTANCE` |
+
+### Known truthful fixture states — acknowledged, NOT defects
+
+Pinned because each looks like a finding and is not. A later reader, or a later gate, must not
+"discover" them:
+
+| Observation | Why it is truthful |
+|---|---|
+| Manufacturer reads **"Not recorded"** on every row | The certification fixture writes no `primaryManufacturerId` (`functions/scripts/certificationWorld/build.mjs`). The column is built, resolves the governed id to its name where one exists, and states the absence otherwise. |
+| **62 total · 52 active · 10 status not recorded** | The ten approved `STATIC_ONLY_EXCLUDED` skus have no canonical document and therefore no status. Counted as neither active nor inactive — which is why `active` is deliberately not `total − inactive`. |
+
+### Follow-ups the Owner placed OUTSIDE Parts P1
+
+None of these is a Parts P1 debt, and none blocks acceptance:
+
+| | |
+|---|---|
+| **ND-28-F** | Reconcile the Stock forecast against `getPartBalance` when that capability is activated — replace, supplement, or remain distinct — as an explicit authority change with its own tests. |
+| **P-G1** | Whole-collection read; cold record deep-link. Its own performance concern. |
+| **Serialized / lot live exercise** | Additional live coverage. The treatments are proved in `test/partsNorthStarRecord.test.jsx`. |
+| **Shared workspace document outline** | Two `<h1>`s per page — `AppShell`'s hidden domain landmark plus `PageHeader`'s visible title — across all 14 conformant workspaces. A shared-shell accessibility concern, **not Parts-specific**, and the reason a correct page once looked like a cross-family regression. |
