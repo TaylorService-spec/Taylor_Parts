@@ -576,3 +576,54 @@ once* instruction was written to prevent, arriving through a subtler door.
 
 **Gate-only change — not bundle input, so no Hosting refresh.** The deployed SHA remains truthfully
 `52ed729d`, and the complete 24-check gate was run against it.
+
+---
+
+# Part IX — Frame 1a leads the page (2026-08-30)
+
+The Owner opened `/inventory` beside frame 1a and said it looks nothing like the design. It didn't,
+and the reason was mine.
+
+**Frame 1a was built as a section; the design is a page.** ND-30 said do not *relocate* the Work and
+Flow groups. It said nothing about **order** — and leaving the existing order untouched put the
+catalogue **seventh**, below six reorder-queue panels, five of them empty. Parts opened on nothing.
+
+## What changed
+
+The catalogue now **leads**, and its identity is the page's: the shell title *Parts*, then the count
+line, the views, the toolbar, the table. Work and Flow follow, in their exact composition, with their
+headings, hooks and governed queues untouched. Nothing is relocated off `/inventory`; the route does
+not become a collection-only page; ND-30's boundaries all hold.
+
+The section heading **"Parts Catalog" is gone**. It existed only because the catalogue was one panel
+among many — Frame 1a has one title, and repeating the subject taught the reader to skim both.
+
+## `data-parts-catalog` — a contract instead of a heading
+
+The gate found this surface by matching an `h3` reading *"Parts Catalog"*. Removing that heading broke
+every anchor at once — the second time in two days a gate keyed on text the design is free to change.
+The catalogue now carries an explicit hook, and the gate uses it. **A gate should be anchored on a
+contract, not on a caption.**
+
+## New check: 3d, the catalogue leads
+
+Asserted as position, not prose — the catalogue's top must sit above the Work group's heading. Ordering
+was the whole defect and nothing measured it, which is how it survived a 24/24 pass.
+
+## What still differs from 1a, and why
+
+| 1a | Here | Reason |
+|---|---|---|
+| `INVENTORY → PARTS` breadcrumb + rule pair | absent | `WorkspaceShell` renders its header first and exposes no slot above it. Adding one touches 14 conformant workspaces — out of scope for a Parts pass. |
+| Underlined tabs | pill chips | The Lists P2 COMPOSE contract reserves the collection views markup for declared collection pages, which ND-30 forbids this route from becoming. |
+| **Scan** in the toolbar | absent | Capability-gated; `useAuth` exposes no capability context here, and the admin persona does not see Scan in the Service nav at all. |
+| **On hand** column | absent | **Correct.** ND-25. |
+
+The first three are named rather than approximated. A breadcrumb faked outside the shell, or tabs
+that impersonate a collection page, would each buy a resemblance by breaking something real.
+
+## A backlog that shrank
+
+`fo-parts-list` had been in `cssClassCoverage`'s `KNOWN_UNSTYLED` list — a class in the markup with no
+rule behind it. Scoping the header spacing to this page gave it one, and the guard demanded it leave
+the orphan list. The backlog may only shrink, and it did.
