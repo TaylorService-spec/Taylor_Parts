@@ -311,8 +311,8 @@ the record of having stopped.
 | **Proof** | `test/opportunityNorthStar.test.mjs` (23), `test/opportunityNorthStarPage.test.jsx` (39 — Opportunity · Agreement · Sales Order · responsive · authority), plus the reconciled `test/opportunityLifecycleControl.test.jsx` (16), `test/salesWorkspace.test.jsx` (25) and `test/compositionConformance.test.jsx` (7) |
 | **Visual validation** | Real browser, real stylesheet, fixture data, three widths — 1440 / 768 / 375. Zero horizontal overflow at every width; body resolves 964px + 340px at 1440 (the artifact's 1fr/340); chevrons at ≥760px container, the same position in words below it; all 10 controls ≥44px at 375. |
 | **Named decisions** | ND-12 **withdrawn** (see below), ND-13 (the Opportunity has two compositions — now narrowed by P1v2), plus the design's own O1–O6 carried forward |
-| **Gate** | **NONE YET.** Not deployed, not swept. See below. |
-| **Acceptance** | `AWAITING_SANDBOX_REFRESH_THEN_OWNER_VISUAL_ACCEPTANCE` |
+| **Gate** | **Sandbox Quick Gate PASSED** against deployed `8d239210`, 2026-08-27. See the reconciliation below. |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
 
 ### Built blind first, then rebuilt against the real design
 
@@ -790,6 +790,49 @@ is true; *"you have no opportunities"* is a confident false claim about somebody
 renders **no count** rather than a `0`, which would say the same wrong thing more quietly. An empty
 collection still outranks it — telling a brand-new tenant their sign-in is unlinked describes the
 wrong problem.
+
+---
+
+## Current-state reconciliation — the Opportunity family no longer awaits a refresh (2026-08-27)
+
+**Appended, not rewritten.** Family 4’s two cells above moved; everything either row ever said
+about its reasoning stands. This section records what changed and on what evidence.
+
+**The prerequisite in the old acceptance value is discharged.** Family 4 read
+`AWAITING_SANDBOX_REFRESH_THEN_OWNER_VISUAL_ACCEPTANCE` because nothing carrying it had been
+deployed, and its Gate cell said *“NONE YET. Not deployed, not swept.”* Both are now false:
+
+| | |
+|---|---|
+| **Sandbox release** | `8d239210` — deployed and identity-confirmed |
+| **Opportunity P1v4 Quick Gate** | **PASS** |
+| **List → Detail** | **PASS** |
+| **Agreement-card live state** | The claim withdrawn earlier is now **PROVEN against real sandbox data** |
+
+So the value becomes `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the register’s existing token, the one
+families 2 and 3 already carry. No new status was invented, and **nothing here is an acceptance**:
+only the Owner moves that column, and both Opportunity surfaces are still waiting on it.
+
+**Both surfaces, one family.** P1v2 remains the individual-record authority at
+`/customers/opportunities/:opportunityId`; **P1v4** (family 4b) is the collection authority at
+`/customers/opportunities`. The navigation is Sales → Opportunities → P1v4 list and state views →
+select → P1v2 detail. Family 4b awaits Owner visual acceptance on the same release.
+
+**Three statuses this does not change**, stated because a reconciliation is where they get changed
+by accident:
+
+- **Workspace P1v3 stays SUPERSEDED.** It was never built and never merged, and the discharge
+  section above already records why the answer changed rather than the schedule. It is **not**
+  unblocked for future implementation.
+- **ND-17 stays OPEN.** The unrouted `SalesWorkspace` module is legacy cleanup, and it is **not**
+  a P1v4 acceptance blocker. It must not be deleted until its uniquely useful coverage is rehomed
+  and mutation-proved — the order the ND itself specifies.
+- **ND-16 stays OPEN and untouched.** The Opportunity artifact’s dimensional discrepancy is not
+  corrected here.
+
+**ND-13 is CLOSED** (register: *RESOLVED 2026-08-27: the pane is retired*), and pane-only Sales
+Agreement capabilities are **zero** — both already recorded above, and re-verified here rather than
+restated on the strength of the earlier sentence.
 
 ---
 
