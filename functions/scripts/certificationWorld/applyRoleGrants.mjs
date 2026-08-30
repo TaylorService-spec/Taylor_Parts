@@ -1,16 +1,27 @@
 #!/usr/bin/env node
-// CERTIFICATION ROLE GRANTS. Applied through the DEPLOYED governed command, never by direct write.
+// CERTIFICATION ROLE GRANTS. Applied through the governed command, never by direct write.
 //
-// ============================ WHY THIS CALLS A CALLABLE ============================
+// ============================ WHY THIS NEVER WRITES THE DOCUMENT ============================
 //
-// `roleAssignments/{uid}` is owned by trustedWriterCommands.grantRole, exposed as a deployed
-// callable. That command is where two-person control on privileged Roles lives, where the
-// accessVersion bump and claims sync happen, and where the audit event is written.
+// `roleAssignments/{uid}` is owned by trustedWriterCommands.grantRole. That command is where
+// two-person control on privileged Roles lives, where the accessVersion bump and claims sync
+// happen, and where the audit event is written.
 //
 // Writing the document directly from a script would produce the same-looking data with none of it:
 // no audit trail, no version bump, stale claims, and no self-escalation check. The record would be
-// indistinguishable from a governed grant and would be nothing like one. So this script authenticates
-// as a real principal and asks the platform, exactly as an administrator's browser would.
+// indistinguishable from a governed grant and would be nothing like one.
+//
+// ============================ TWO ENVIRONMENTS, TWO ROUTES, ONE AUTHORITY ============================
+//
+// grantRole is a trusted SERVER-SIDE function that is ALSO exposed as a callable. Every control
+// lives in the service; the callable only supplies actorUid from request.auth.uid. So there are two
+// honest routes to it, and see resolveGrantExecutor below for why each environment gets the one it
+// gets:
+//
+//   SANDBOX         persona sign-in + deployed callable. Unchanged, because exercising the real
+//                   HTTP surface, Auth and claims is part of what the sandbox is for.
+//   CERTIFICATION   the service directly, with ADC. Its principals are deliberately passwordless
+//                   and grantRole is deliberately not deployed there. Same service, same checks.
 //
 // ============================ THE PRIVILEGED GRANT IS HELD BACK ============================
 //
@@ -35,7 +46,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { GOVERNED_BUSINESS_ROLES: GB } = await import(L("functions/lib/access/governedBusinessRoles.js"));
-const { resolveExecutionTarget, assertBothLiveFlags, describeTarget } =
+const { resolveExecutionTarget, assertBothLiveFlags, describeTarget, CERTIFICATION_PROJECT } =
   await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 const { loadSandboxPersona } = await import(L("scripts/sandboxCredentials.mjs"));
 
@@ -90,6 +101,71 @@ async function callGrantRole(projectId, idToken, payload) {
   });
   const body = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, body };
+}
+
+// =====================================================================
+// TWO PATHS TO THE SAME AUTHORITY
+// =====================================================================
+//
+// grantRole is a TRUSTED SERVER-SIDE FUNCTION that happens to also be exposed as a callable. The
+// callable is a thin façade: it derives actorUid from request.auth.uid and calls the service. Every
+// control -- eligibility via verifyActorPermission, the governed ASSIGNABLE_ROLES catalog, the
+// privileged two-person rule, the audit event, the accessVersion bump, the idempotency fingerprint
+// -- lives in the SERVICE, not in the façade.
+//
+// That means there are two honest ways to reach it, and which one is right depends on what the
+// environment is FOR.
+//
+//   SANDBOX keeps signing in as a persona and calling the deployed callable. That path exercises
+//   the real HTTP surface, real Auth, real claims and the real façade, which is a large part of
+//   what the sandbox exists to certify. Replacing it to make certification easier would trade away
+//   fidelity the sandbox is supposed to provide, so it is left exactly as it was.
+//
+//   CERTIFICATION calls the service directly with ADC. Its principals are deliberately passwordless
+//   -- so there is no session to obtain -- and grantRole is not deployed there, because the project
+//   intentionally carries only the private-AI callable. Neither absence is an accident to work
+//   around, and neither weakens the grant: the identical service runs, with the identical checks.
+//
+// The ACTOR is not invented in either case. Certification acts as the genesis authority holder --
+// the principal that bootstrapCertificationAuthority established -- read back from roleAssignments
+// rather than assumed, so this refuses cleanly on a world where genesis has not run.
+async function resolveGrantExecutor(target, apiKey, db) {
+  if (target.projectId !== CERTIFICATION_PROJECT) {
+    const actor = loadSandboxPersona(ACTOR_PERSONA);
+    const session = await signIn(apiKey, actor.email, actor.password);
+    return {
+      label: `${actor.email} (uid ${session.uid.slice(0, 8)}…)`,
+      path: "deployed grantRole callable, persona session (sandbox fidelity path)",
+      call: (payload) => callGrantRole(target.projectId, session.idToken, payload),
+    };
+  }
+
+  // The genesis holder, READ from the world rather than named here.
+  const active = await db.collection("roleAssignments")
+    .where("status", "==", "active").where("roleId", "==", "owner").limit(2).get();
+  if (active.empty) {
+    throw new Error(
+      "no active owner assignment in this project. Certification role grants require the genesis "
+      + "authority first: run bootstrapCertificationAuthority.mjs.");
+  }
+  if (active.size > 1) {
+    throw new Error("more than one active owner assignment. Refusing to choose an actor.");
+  }
+  const actorUid = active.docs[0].data().principalUid;
+  const { grantRole } = await import(L("functions/lib/access/trustedWriterCommands.js"));
+  return {
+    label: `genesis authority holder ${actorUid} (passwordless, ADC)`,
+    path: "trusted grantRole() service directly -- no password, no deployed callable",
+    call: async (payload) => {
+      try {
+        const outcome = await grantRole({ actorUid, ...payload });
+        return { ok: true, status: 200, body: { result: outcome } };
+      } catch (err) {
+        // Shaped like the callable's error envelope so the caller's handling is identical.
+        return { ok: false, status: 400, body: { error: { message: err?.message || String(err) } } };
+      }
+    },
+  };
 }
 
 async function main() {
@@ -158,10 +234,10 @@ async function main() {
     return;
   }
 
-  // ── Authenticate as the administrator.
-  const actor = loadSandboxPersona(ACTOR_PERSONA);
-  const session = await signIn(apiKey, actor.email, actor.password);
-  console.log(`acting as     : ${actor.email} (uid ${session.uid.slice(0, 8)}…)`);
+  // ── Resolve HOW this environment grants. Two paths, same authority underneath.
+  const grant = await resolveGrantExecutor(target, apiKey, db);
+  console.log(`acting as     : ${grant.label}`);
+  console.log(`grant path    : ${grant.path}`);
 
   let applied = 0, already = 0, failed = 0, blockedNotDeployed = 0;
   for (const g of grantable) {
@@ -208,7 +284,7 @@ async function main() {
       already += 1;
       continue;
     }
-    const result = await callGrantRole(target.projectId, session.idToken, {
+    const result = await grant.call({
       principalUid: g.uid,
       roleId: g.roleId,
       scope: { type: "global" },
@@ -225,7 +301,7 @@ async function main() {
       let confirmed = false;
       for (let attempt = 0; attempt < 4 && !confirmed; attempt += 1) {
         await new Promise((r) => setTimeout(r, 1500));
-        const retry = await callGrantRole(target.projectId, session.idToken, {
+        const retry = await grant.call({
           principalUid: g.uid, roleId: g.roleId, scope: { type: "global" }, idempotencyKey,
         });
         if (retry.ok) confirmed = true;
