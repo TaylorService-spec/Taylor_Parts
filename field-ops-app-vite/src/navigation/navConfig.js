@@ -174,7 +174,16 @@ export const NAV_DOMAINS = [
       // Platform Task 2 -- "Dispatch" relabeled "Dispatch Queue" (its child slot
       // in the new Dispatch group). Path/legacyKey UNCHANGED, so its URL
       // (/service/dispatch) and role access are identical -- only the label moved.
-      { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch" },
+      // Retired from the desktop rail with Scheduling and Dispatch Board (Owner, 2026-08-30): its one
+      // governed action, Dispatch, is reachable on the North Star Dispatcher Board through the work
+      // order preview, and its assigned-technician filter is what that board's lanes and technician
+      // selector already are.
+      //
+      // THE MOBILE "JOBS" TAB STILL POINTS HERE and is deliberately untouched. `mobilePrimaryNav.js`
+      // routes Jobs -> /service/dispatch, and that is a SEPARATE navigation with its own entries;
+      // `navHidden` is read only by the desktop AppRail. A technician's phone is not a dispatcher's
+      // rail, and collapsing the two would have removed a working screen to tidy a different one.
+      { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch", navHidden: true },
       // Coordinated Operations — the user-consumable reads of the already-built coordinatedVisit /
       // coordinatedFieldMission projections (functions/src/fulfillment). NO new authority: the Sales Order is
       // the coordination anchor; Work Orders keep individual execution. Both read a SYNTHETIC source through
@@ -210,13 +219,30 @@ export const NAV_DOMAINS = [
       // retired /service/control-tower URL redirects to /service-operations
       // (App.jsx).
       { key: "dispatcherBoard", label: "Dispatcher Board", path: "dispatcher-board", legacyKey: "dispatcherBoard" },
-      { key: "scheduling", label: "Scheduling", path: "scheduling" },
-      // Wave 7 completion, PART 1 -- the combined Dispatch/Scheduling operating workspace (technician
-      // rows x horizontal time axis + a single below-the-board Ready-for-Work queue). ADDITIVE: it does
-      // NOT replace Dispatcher Board or Scheduling above (both keep their existing URLs/behavior); this
-      // is a new, third view over the SAME governed reads/writes those two already use. No legacyKey ->
-      // admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES (matches every other item in this group).
-      { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling" },
+
+      // ════════ THREE DISPATCH ENTRIES RETIRED FROM THE RAIL (Owner, 2026-08-30) ════════
+      //
+      // The Dispatch group showed FIVE entries and a dispatcher needs one. Each was individually
+      // justified when it was added and the justifications were true; what nobody did was ask
+      // whether they still held once the next one shipped.
+      //
+      // `Scheduling` was built to expose "the SCHEDULED gate that had no UI". `Dispatch Board`
+      // (dispatchScheduling) was Wave 7 PART 1, whose own comment said ADDITIVE, does NOT replace
+      // Dispatcher Board or Scheduling -- correct on the day, and written BEFORE the North Star
+      // board existed. The North Star Dispatcher Board (P1v1, Owner-accepted 2026-08-29) now reaches
+      // Schedule, Reschedule, Reassign, Unschedule AND Dispatch. Measured, not assumed:
+      //
+      //     Dispatcher Board   Schedule · Reschedule · Reassign · Unschedule · Dispatch
+      //     Scheduling         Schedule                                          <- subset
+      //     Dispatch Board     Schedule                                          <- subset
+      //     Dispatch Queue     Dispatch                                          <- subset
+      //
+      // NAVIGATION HONESTY, NOT CAPABILITY REMOVAL. `navHidden` is read by AppRail only; App.jsx's
+      // route generator does not check it, so every URL still resolves and every component still
+      // mounts. Nothing is deleted, no route redirects, no authority changes. Deleting the
+      // components is a separate decision that needs its own evidence.
+      { key: "scheduling", label: "Scheduling", path: "scheduling", navHidden: true },
+      { key: "dispatchScheduling", label: "Dispatch Board", path: "dispatch-scheduling", navHidden: true },
       { key: "warranty", label: "Warranty", path: "warranty", navHidden: true },
     ],
   },
