@@ -832,3 +832,74 @@ blocking. The full regression gate is what would give the per-route breakdown.
 **This is not acceptance.** The Quick Gate deliberately skips the repo suites, three of five widths,
 crash stress, persona reachability and the 40/40 scanner scenarios, and says so in its own exit
 banner. Both families remain `AWAITING_OWNER_VISUAL_ACCEPTANCE`.
+
+---
+
+## Dispatch & Scheduling — P1v1 · **ACCEPTED** (Owner, 2026-08-29)
+
+**Accepted deployed commit:** `36280c306188b725ac549a4e31ef321b20abb0ac`
+**Accepted against:** `eos-platform-sandbox`, Hosting only — no Functions, Rules or index deploy.
+**State:** `OWNER_VISUAL_ACCEPTANCE: CLOSED / ACCEPTED`. This is the first family in this ledger to
+leave `AWAITING_OWNER_VISUAL_ACCEPTANCE` by an Owner pass over live interactions rather than over a
+rendered page alone.
+
+### The evidence, and what each piece does NOT prove
+
+Recorded this way deliberately. Three green numbers were produced during this acceptance and they
+prove three different things; collapsing them into "the gate passed" is exactly the error that made
+the second half of this work necessary.
+
+| evidence | result | what it proves | what it does NOT |
+| --- | --- | --- | --- |
+| Dispatch Quick Gate (`dispatchNorthStarQuickGate.mjs`) | **27/27** | composition and honesty: the North Star renders, availability arrives through the trusted callable, no lane fabricates a percentage | **nothing about VC-1..VC-4.** Audited during this acceptance: it contains no assertion mentioning a window-less record, weekend, outside-band, reason, resize, keyboard or past time. It predates the corrections. |
+| Corrections probe (`dispatchCorrectionsProbe.mjs`) | **14/14** | what the DEPLOYED board draws: R23 fallback visible and named, past region present with real width and `pointer-events: none`, no dead region on a future day, resize grips and `aria-keyshortcuts` on live chips, distinct geometry offsets, band widening to 13 columns for the 18:30 placement | any interaction. It is read-only by construction. |
+| Interaction pass (`dispatchInteractionPass.mjs`) | **26/26** | VC-1..VC-4 as governed WRITES against live sandbox, each confirmed by reading Firestore back | anything about production, which it refuses by name |
+
+### The accepted behaviours
+
+- **Initial schedule drag** — queue → lane IS the Schedule action. No modal. Persisted `SCHEDULED`
+  on the lane dropped on.
+- **Reason-only reschedule** — one human reason; technician, start, end, duration and date are not
+  re-asked. Persisted through `rescheduleWorkOrderCallable`, status unchanged, duration preserved.
+- **Resize** — start held, end moved, persisted on the 15-minute grain. No separate duration
+  authority: `setWorkOrderEstimatedDuration` is a PLANNING estimate and was not used.
+- **Keyboard** — the same governed commands at the same 15-minute grain as the pointer.
+- **Past slots** — visibly unavailable, unselectable, and **never silently moved forward**.
+  `START_IN_PAST` was not reached in any accepted interaction: it stayed the server fallback.
+- **R23** — a SCHEDULED windowless record (`wo-sbx-011`) stays visible under the lossless fallback.
+- **Availability honesty** — known availability may truthfully show `0% booked`; unknown says
+  "Shift not recorded" and withholds the percentage.
+
+### Corrections to the record, preserved because they were wrong in flight
+
+- The 27/27 Quick Gate is **composition/honesty evidence, not VC-1..VC-4 interaction evidence.**
+- **Known availability with no booked work may correctly show 0%.** This was nearly reported as a
+  defect during review; `tech-sbx-01` genuinely has a recorded 07:00–16:00 shift and nothing booked.
+  The rule is about UNKNOWN, and only unknown.
+- An earlier observation that the sandbox held **zero** availability records was **stale and
+  incorrect** — read through an expired token that returned empty rather than erroring. Two records
+  existed; one pre-dated this work.
+
+### The friction that was accepted rather than removed
+
+`rescheduleWorkOrder` and `reassignScheduledWorkOrder` require a caller-supplied reason
+**server-side**. Two ways to make the gesture frictionless were considered and both were rejected by
+the Owner: auto-generating the text (which would restate what the audit event already carries and
+make every reason identical) and making the argument optional (which would change certified
+semantics). The prompt therefore stays, and asks only WHY.
+
+Accepted for P1v1. **If dispatch volume later shows reason collection is too expensive, that is a
+governed policy decision about reschedule audit semantics — not a UX change.** Reasons must not be
+auto-generated or removed in UX code.
+
+Resize discoverability — an 8px hover-revealed grip — is accepted for P1v1 and should be watched in
+real use.
+
+### Still open, and not part of this acceptance
+
+**DB-G1** — the artifact draws a queue "past due" note EOS cannot render, because there is no
+due-date model for UNSCHEDULED work. Named gap, unchanged by this acceptance.
+
+The acceptance fixture estate is deliberately **left as the interaction pass left it**, drift
+included: `wo-sbx-008` at 495m is visually unusual and is the evidence that repeated governed
+resizes persisted. Restoring canonical fixtures is separate sandbox maintenance.
