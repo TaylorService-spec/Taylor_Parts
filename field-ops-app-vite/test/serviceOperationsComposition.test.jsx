@@ -254,3 +254,33 @@ describe("invariant — the composition root owns the reads and the derivations"
     expect(root).not.toContain("no panel may accept or require any other prop shape");
   });
 });
+
+// ── The scroller must contain what it scrolls ────────────────────────────────────────────────────
+//
+// Found by the live corrective gate at 375, not by any unit test, and invisible to a body-based
+// overflow check: `.ns-visually-hidden` is `position: absolute` with no offsets, so inside a table
+// wide enough to scroll it sits hundreds of pixels right of the viewport. With no positioned
+// ancestor its containing block was the INITIAL containing block, so it escaped `.ns-table-wrap`'s
+// overflow and extended documentElement.scrollWidth -- the page scrolled sideways on a phone to
+// reveal a 1px clipped label, while body.scrollWidth stayed exactly correct.
+//
+// Layout cannot be asserted in jsdom, so this pins the DECLARATION and the live gate proves the
+// behaviour. Both tables on this page put a visually-hidden label in their last header cell.
+describe("ns-table-wrap contains absolutely-positioned descendants", () => {
+  const css = fs.readFileSync(path.resolve("src/index.css"), "utf8");
+
+  it("declares position: relative alongside overflow-x: auto", () => {
+    const rule = css.split("\n").find((l) => l.trim().startsWith(".ns-table-wrap {"));
+    expect(rule, ".ns-table-wrap rule not found").toBeTruthy();
+    expect(rule).toMatch(/overflow-x:\s*auto/);
+    expect(rule).toMatch(/position:\s*relative/);
+  });
+
+  it("both tables on this page rely on it — a visually-hidden label in the last header cell", () => {
+    for (const file of ["AtRiskPanel.jsx", "TechnicianLoadPanel.jsx"]) {
+      const source = read(path.join("panels", file));
+      expect(source, `${file} has no visually-hidden header label`).toContain("ns-visually-hidden");
+      expect(source, `${file} is not inside a table wrapper`).toContain("ns-table-wrap");
+    }
+  });
+});
