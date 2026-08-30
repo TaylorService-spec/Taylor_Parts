@@ -358,6 +358,25 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
               : `Incomplete — ${ladder.unpricedCount} line${ladder.unpricedCount === 1 ? "" : "s"} with no price`,
             title: ladder.complete ? undefined : `No total is claimed while a line is unpriced. Missing: ${ladder.unpricedRefs.join(", ")}`,
           },
+          {
+            key: "salesOrder",
+            label: null,
+            // MOVED HERE from the "What this agreement became" section, which was removed as
+            // explanatory prose (Owner ruling, DECISIONS #137) — the same call made on the
+            // Opportunity's "When this closes".
+            //
+            // The section's one real fact was this link. Removing it without moving the link would
+            // have deleted the agreement -> order relationship from the product, which is the SA-G7
+            // mistake; the rail's "Why this agreement exists" carries the UPSTREAM lineage
+            // (opportunity), and this is its downstream counterpart.
+            //
+            // Rendered only when an order exists. Absence is silence here, not "Order: —" — the
+            // same rule the committed-value fact above follows. The number is the label; the
+            // document id is the route key and is never shown (DECISIONS #106).
+            value: downstream.hasOrder && downstream.salesOrderId
+              ? <>Order <strong><Link to={`/customers/opportunities/sales-order/${encodeURIComponent(downstream.salesOrderId)}`}>{downstream.salesOrderNumber ?? "Sales Order"}</Link></strong></>
+              : null,
+          },
           { key: "po", label: "Customer PO", value: header.customerPO },
           { key: "owner", label: "Owner", value: owner.name },
         ]}
@@ -564,20 +583,6 @@ export default function SalesAgreementDetail({ hasCapability = () => false, onEd
             ))}
           </RuledSection>
 
-          <RuledSection title="What this agreement became">
-            {downstream.hasOrder ? (
-              <p>
-                <Link to={`/customers/opportunities/sales-order/${downstream.salesOrderId}`}>
-                  {downstream.salesOrderNumber ?? "Sales Order"}
-                </Link>{" "}
-                — created from these committed lines and prices.
-              </p>
-            ) : (
-              // Neutral, not a failure — and no invented Create button. The order is produced by the
-              // Opportunity's governed close-as-won, which can still refuse (SA-D10).
-              <p className="ns-state--na">{downstream.noOrderSentence}</p>
-            )}
-          </RuledSection>
         </div>
 
         <aside className="ns-rail">

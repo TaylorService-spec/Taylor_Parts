@@ -183,20 +183,32 @@ describe("Sales Agreement → upstream and downstream", () => {
     expect(links()).toContain(`/customers/opportunities/sales-order/${ORDER_DOC_ID}`);
   });
 
-  it("keeps the accepted/no-order state honest", () => {
+  // REWRITTEN 2026-08-27 (Owner ruling, DECISIONS #137). These asserted the PROSE of a section
+  // titled "What this agreement became", which answered its own question with the conversion
+  // mechanism rather than with this agreement's state. Removed for the same reason the
+  // Opportunity's "When this closes" was.
+  //
+  // The invariants they protected are real and still asserted — what changed is that they now
+  // measure the RELATIONSHIP rather than the sentence describing it. A test pinned to copy fails on
+  // a reword and passes while the link underneath it breaks.
+  it("an accepted agreement with no order LINKS TO NO ORDER, and claims none", () => {
     mountAgreement({ state: "ACCEPTED", acceptedAtMillis: 1_755_542_460_000, acceptedByUid: "uid_a", salesOrderId: null });
-    expect(document.body.textContent).toContain("No Sales Order.");
+    // Absence is silence: no order fact, no link, and nothing that reads as one.
     expect(links().some((h) => h?.includes("sales-order"))).toBe(false);
+    expect(document.body.textContent).not.toMatch(/Order:\s*—/);
   });
 
-  it("never describes acceptance as directly creating the Sales Order", () => {
+  it("never implies acceptance itself creates the Sales Order", () => {
     mountAgreement({ state: "ACCEPTED", acceptedAtMillis: 1_755_542_460_000, acceptedByUid: "uid_a", salesOrderId: null });
     const body = document.body.textContent;
-    // The governed sequence: accepted -> the Opportunity's close-as-won -> validation -> order.
-    expect(body).toContain("closed as won");
-    expect(body).toContain("requires this agreement to be accepted first");
+    // The governed sequence is accepted -> the Opportunity's close-as-won -> validation -> order.
+    // Previously proved by requiring a sentence that SPELLED THAT OUT; now proved by requiring the
+    // page not to claim the shortcut. The negative is the actual invariant — the positive sentence
+    // was one way of satisfying it, and the Owner removed that way.
     expect(body).not.toMatch(/accept(ing|ance)? (will|automatically) creates?/i);
     expect(body).not.toMatch(/creates the sales order/i);
+    // And no invented Create control anywhere: this page does not produce orders.
+    expect(screen.queryByRole("button", { name: /create.*(order|sales order)/i })).toBeNull();
   });
 });
 
