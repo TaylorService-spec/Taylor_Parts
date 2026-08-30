@@ -167,6 +167,30 @@ console.log(`CI trigger coverage — PR #${prNumber}, head ${head.slice(0, 8)}\n
 console.log(`changed files vs ${base}: ${changed.length}`);
 console.log(`checks in rollup: ${checks.length}  (PASS ${byState.PASS.length} · FAIL ${byState.FAIL.length} · PENDING ${byState.PENDING.length})\n`);
 
+// ============================ SETTLED, OR THE ANSWER IS NOT YET ============================
+//
+// NOT TRIGGERED is only meaningful once the run has SETTLED. On a freshly pushed head the rollup is
+// empty because CI has not started -- and reading that as "these lanes will never run" is the exact
+// cry-wolf failure this tool exists to avoid. It did precisely that on its own first use.
+//
+// So there are three answers, not two, and "not yet" is one of them.
+if (checks.length === 0) {
+  console.log("NOT SETTLED — no checks have appeared for this head yet. CI has not started.");
+  console.log("Trigger coverage cannot be assessed until the run settles. This is not a pass and not a failure.");
+  process.exitCode = 2;
+} else if (byState.PENDING.length > 0) {
+  console.log(`NOT SETTLED — ${byState.PENDING.length} check(s) still running.`);
+  console.log("A lane absent now may simply not have started. Re-run once 0 are pending.");
+  if (byState.FAIL.length > 0) {
+    console.log("\nAlready FAILING (settled regardless of the rest):");
+    for (const n of byState.FAIL) console.log(`  ${n}`);
+  }
+  process.exitCode = 2;
+} else {
+  reportSettled();
+}
+
+function reportSettled() {
 const notTriggered = expected.filter((e) => !e.present);
 console.log(`workflows whose path filter matches a changed file: ${expected.length}`);
 console.log(`  of those, present in the rollup: ${expected.length - notTriggered.length}`);
@@ -186,6 +210,7 @@ if (notTriggered.length > 0) {
   console.log("\nA lane that did not run is an UNKNOWN, not a pass (DECISIONS #144).");
 }
 
-const clean = byState.FAIL.length === 0 && byState.PENDING.length === 0 && notTriggered.length === 0;
+const clean = byState.FAIL.length === 0 && notTriggered.length === 0;
 console.log(`\n${clean ? "CLEAN: every matching lane ran, and none failed." : "NOT CLEAN — see above."}`);
 process.exitCode = clean ? 0 : 1;
+}
