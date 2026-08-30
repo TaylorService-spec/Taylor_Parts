@@ -148,7 +148,7 @@
       "purpose": "Deployable synthetic certification runtime. It exists so the private-AI operational interpretation path can be exercised end to end against data that is genuinely synthetic, which platform-sandbox's production-derived fixtures are not. Its dataset is seeded only from the certification-world fixture authority; no production or production-derived record may be copied here.",
       "privateAiSyntheticOperationalInterpretation": false,
       "firebase": {
-        "apiKey": "AIzaSyBaBtNX3NBbedtjCz2K-ik7D5isuwar83Y",
+        "apiKey": "AIzaSyBaBtNX3NBBedtjCz2K-ik7D5isuwar83Y",
         "authDomain": "eos-platform-certification.firebaseapp.com",
         "projectId": "eos-platform-certification",
         "storageBucket": "eos-platform-certification.firebasestorage.app",
