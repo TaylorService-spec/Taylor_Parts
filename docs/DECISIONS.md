@@ -3257,7 +3257,16 @@ written and passing:
 
 Both now count hrefs. Seven mutations run in total, all caught.
 
-**Still open, deliberately: O4.** The Customer card is now honest but thin — a name and nothing else.
-What fills it is the Account's primary contact with `tel:`/`mailto:`, which P1v2 specified and
-flagged "confirm" because it adds a read to the surface. `useContactsForAccount` already exists, so
-it is presentation over an existing governed read. Not taken here; named so the gap stays visible.
+**O4 — RAISED, RECOMMENDED, AND DECLINED (Owner, 2026-08-27).** With the explanation removed, the
+Customer card is a name and nothing else, so the obvious follow-up was O4: compose the Account's
+primary contact with `tel:`/`mailto:`. `useContactsForAccount` already exists, making it presentation
+over an existing governed read — the only real cost is one extra subscription per record page, which
+is why P1v2 flagged it "confirm" rather than building it.
+
+Put to the Owner with that recommendation. The ruling was **“leave the customer card as is”**.
+
+Recorded as DECLINED rather than left open, because a thin card with a live recommendation beside it
+invites the next session to re-raise it as though nobody had looked. It was looked at. The card
+carries the customer and stops, and that is the accepted state — not a gap awaiting closure. A fresh
+Owner ask is what reopens it. See the O-decision table in
+`docs/design/north-star-open-product-decisions.md`.
