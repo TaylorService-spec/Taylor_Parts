@@ -33,6 +33,7 @@ on:
       - "field-ops-app-vite/src/domain/partsCatalogView.js"
       - "field-ops-app-vite/src/domain/partsCompatibilityAdapter.js"
       - "field-ops-app-vite/src/domain/partsNorthStar.js"
+      - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
       - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
       - "field-ops-app-vite/src/shared/search/searchProviders.js"
@@ -40,6 +41,7 @@ on:
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
+      - "field-ops-app-vite/test/partsReorderPointSemantics.test.jsx"
       - ".github/workflows/parts-north-star-tests.yml"
   push:
     branches: [main]
@@ -50,6 +52,7 @@ on:
       - "field-ops-app-vite/src/domain/partsCatalogView.js"
       - "field-ops-app-vite/src/domain/partsCompatibilityAdapter.js"
       - "field-ops-app-vite/src/domain/partsNorthStar.js"
+      - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
       - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
       - "field-ops-app-vite/src/shared/search/searchProviders.js"
@@ -57,6 +60,7 @@ on:
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
+      - "field-ops-app-vite/test/partsReorderPointSemantics.test.jsx"
       - ".github/workflows/parts-north-star-tests.yml"
   workflow_dispatch:
 
@@ -95,6 +99,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: The record composition — ND-25/26/27 at the render (vitest + jsdom)
         run: npx vitest run test/partsNorthStarRecord.test.jsx
+        working-directory: field-ops-app-vite
+      - name: The reorder point — a calculated zero is not a governed zero (vitest)
+        run: npx vitest run test/partsReorderPointSemantics.test.jsx
         working-directory: field-ops-app-vite
       - name: The existing Parts render gates still hold (vitest + jsdom)
         run: npx vitest run test/partsListInvalid.test.jsx test/partDetailInvalid.test.jsx test/partsListHealthPanelNames.test.jsx

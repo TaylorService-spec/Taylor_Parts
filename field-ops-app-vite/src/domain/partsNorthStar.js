@@ -238,6 +238,54 @@ export function partPurchasingSection() {
   };
 }
 
+// ============================ THE REORDER POINT ============================
+//
+// Owner ruling, 2026-08-30: a reorder point must not be presented as an operationally meaningful
+// number when the same card says "Insufficient usage history". A CALCULATED zero and a governed
+// reorder point that genuinely IS zero are not the same business fact, and only one of them is a
+// reason to do nothing.
+//
+// The ruling permits a zero where EOS can establish that zero is the actual governed value. It
+// cannot, and the arithmetic is what proves it:
+//
+//   calculateReorderPoint(usage, leadTimeDays, safetyFactor)
+//     = avgDailyUsage * leadTimeDays + avgDailyUsage * safetyFactor
+//     = avgDailyUsage * (leadTimeDays + safetyFactor)
+//
+//   avgDailyUsage          = totalConsumed / windowDays
+//   hasUsageHistory(usage) = totalConsumed > 0
+//
+// So reorderPoint === 0  <=>  avgDailyUsage === 0  <=>  totalConsumed === 0  <=>  no usage
+// history. The conditions are IDENTICAL, not merely correlated. A zero here is always the
+// consequence of an absent input and never a decision anybody made.
+//
+// The metadata register says the same thing from the other direction --
+// PART_REORDER_POINT_IS_DERIVED: "calculated from usage, NOT stored on the Part". There is no
+// stored reorder point anywhere for a governed zero to come FROM.
+//
+// NO CALCULATION IS INVENTED HERE. This chooses a SENTENCE or the existing derived number. It
+// does not compute a reorder point, adjust one, or supply a default.
+
+/**
+ * How the Stock forecast should present the reorder point.
+ *
+ * @returns {{ established: boolean, value: number|null, absence: string|null }}
+ *   established:true  -> render `value` (the existing derivation, unchanged)
+ *   established:false -> render `absence`, never a number
+ */
+export function partReorderPointDisplay(health) {
+  const usage = health && health.usage;
+  const raw = health && health.recommendation ? health.recommendation.reorderPoint : undefined;
+  const totalConsumed = usage && typeof usage.totalConsumed === "number" ? usage.totalConsumed : 0;
+
+  // The same predicate the sibling rows already use, and -- per the proof above -- exactly the
+  // condition under which the number would be zero-by-absence.
+  if (totalConsumed <= 0 || typeof raw !== "number" || !Number.isFinite(raw)) {
+    return { established: false, value: null, absence: "Not established" };
+  }
+  return { established: true, value: Math.ceil(raw), absence: null };
+}
+
 // ============================ ACTIVITY ============================
 //
 // The ledger that EXISTS is inventory_transactions — the Work-Order reservation vocabulary plus the

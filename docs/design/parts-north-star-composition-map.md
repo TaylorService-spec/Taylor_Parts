@@ -474,3 +474,33 @@ history`**. A reorder point derived from no usage history is a weak number sitti
 scan, which is the same family of problem ND-25 was about — but it is pre-existing behaviour
 (`Math.ceil(health.recommendation.reorderPoint)`), it is not a stock quantity, and no ruling covers
 it. Raised rather than silently changed.
+
+---
+
+# Part VI — the reorder point (ND-29, 2026-08-30)
+
+The Quick Gate's live render surfaced **`Reorder point 0`** sitting beside **`Avg daily usage —
+Insufficient usage history`** on the same card. Raised as an observation; the Owner ruled the same
+day, and the ruling left one door open: show a zero only if EOS can establish that zero is the actual
+governed value.
+
+**It cannot, and the arithmetic closes the door.** The reorder point is `avgDailyUsage` multiplied by
+a positive constant, and `avgDailyUsage` is `totalConsumed / windowDays`. So a zero reorder point and
+an absent usage history are the **same condition**, not two that happen to coincide — and
+`PART_REORDER_POINT_IS_DERIVED` confirms there is nothing stored for a governed zero to come from.
+
+The record now shows **`Not established`**. `partReorderPointDisplay` chooses between the existing
+derived number and that sentence; it computes nothing and defaults nothing, per the ruling's
+*"do not invent a reorder calculation"*. It keys on **the input being absent** rather than on the
+output being zero, so it survives a future derivation that grows a floor.
+
+## A vacuous assertion, caught by the repository rather than by me
+
+The first version of the render test asserted `not.toMatch(/\b0\b/)` — and the `\b` was written as a
+**literal 0x08 backspace byte**, which makes the pattern unmatchable and the negated assertion
+incapable of ever failing. `test/noLiteralControlBytes.test.mjs` exists for exactly that, and caught
+it on the full run. The assertion is now an exact comparison on the value cell, which cannot fail
+that way at all.
+
+That guard's own header calls this *"a regex that can never match, and therefore a `not.toMatch` that
+can never fail"*. It described this defect before it happened.
