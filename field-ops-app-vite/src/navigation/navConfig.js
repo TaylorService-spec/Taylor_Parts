@@ -428,6 +428,188 @@ export const NAV_DOMAINS = [
       { key: "demandPlanning", label: "Demand Planning", path: "demand-planning", navHidden: true },
     ],
   },
+  // ════════ FINANCIALS — FIRST-CLASS EOS DOMAIN (Frame 0, Owner-approved) ════════
+  //
+  // NAVIGATION / PRESENTATION STRUCTURE ONLY. This domain replaces the former
+  // `future: true, navHidden: true` Financials stub with the approved information
+  // architecture so FIN-001+ (docs/financials/FINANCIALS_AUTHORITY_AND_REPORTING_BASELINE.md)
+  // can progressively compose governed authority into addressable sections. Nothing behind
+  // any of these destinations exists yet: no financial collections, Functions, Rules,
+  // calculations, or data were created with this structure, and every item renders the
+  // honest PlaceholderPage via App.jsx's normal renderSubnavItem fall-through.
+  //
+  // ACCESS POSTURE. No item declares capabilityAccess — deliberately. The future Financial
+  // Visibility capability model (financial.reporting.*, financial.revenue.read, ...) is a
+  // FIN-001/FIN-004 design input, and inventing identifiers here would make navigation LOOK
+  // governed without any authority behind it. Every item therefore takes the repository's
+  // existing conservative no-legacyKey default (PLACEHOLDER_DEFAULT_ROLES: admin/dispatcher;
+  // technicians excluded). NAVIGATION VISIBILITY IS NOT FINANCIAL DATA AUTHORITY: every
+  // eventual Financials read/write must independently enforce governed financial visibility
+  // and scope server-side, exactly as Report Builder does today.
+  //
+  // GOVERNING FINANCIAL INVARIANTS (recorded here so no surface built into this structure
+  // can claim ignorance; full statement in the baseline doc above):
+  //   A. ACTUAL != FORECAST != BUDGET != GOAL != RECONCILED ACCOUNTING FACT — comparable,
+  //      never silently blended.
+  //   B. HISTORICAL STAYS HISTORICAL — changing customer owner, employee assignment,
+  //      business-unit/company ownership, sales credit, goals or budgets must not silently
+  //      rewrite historical financial attribution.
+  //   C. ISSUED FINANCIAL EVENTS ARE HISTORY — corrections are governed adjustment events,
+  //      never in-place edits of the original event.
+  //   D. REPORTING ATTRIBUTION MUST BE EXPLICIT — never infer Taylor/Ventana from
+  //      warehouse/location names, salesperson from current Customer.owner, business unit
+  //      from a route name, period from UI state, cost from retail price, or margin from
+  //      incomplete cost sources.
+  //   E. VISIBILITY FOLLOWS THE NUMBER EVERYWHERE — a principal denied a fact here must not
+  //      receive it via Sales Order, Agreement, Customer, Work Order, dashboards, reports,
+  //      exports, APIs, search, or notifications.
+  {
+    key: "financials",
+    label: "Financials",
+    path: "financials",
+    subnav: [
+      {
+        key: "overview",
+        label: "Overview",
+        path: "",
+        placeholderExplanation:
+          "Financial performance overview will compose governed financial facts, reporting attribution, goals, budgets, forecasts, and reconciliation status. No financial authority is created by this surface.",
+      },
+      {
+        key: "billingQueue",
+        label: "Billing Queue",
+        path: "billing-queue",
+        placeholderExplanation:
+          "Billing Queue will identify operational records that are eligible, blocked, or awaiting action before invoicing. Billing authority is not implemented by this placeholder.",
+      },
+      {
+        key: "invoices",
+        label: "Invoices",
+        path: "invoices",
+        placeholderExplanation:
+          "Invoices will surface governed invoice records and their source lineage when invoice authority is established.",
+      },
+      {
+        key: "accountsReceivable",
+        label: "Accounts Receivable",
+        path: "accounts-receivable",
+        placeholderExplanation:
+          "Accounts Receivable will surface issued but unpaid financial obligations from governed or reconciled accounting facts.",
+      },
+      {
+        key: "payments",
+        label: "Payments",
+        path: "payments",
+        placeholderExplanation:
+          "Payments will surface governed or reconciled payment activity. This placeholder does not create payment authority.",
+      },
+      {
+        key: "creditsAdjustments",
+        label: "Credits & Adjustments",
+        path: "credits-adjustments",
+        placeholderExplanation:
+          "Credits and Adjustments will record governed corrections without rewriting historical issued financial events.",
+      },
+      {
+        key: "customerFinancials",
+        label: "Customer Financials",
+        path: "customer-financials",
+        placeholderExplanation:
+          "Customer Financials will provide cross-record financial visibility while preserving the authority of originating Sales, Service, invoice, payment, and accounting records.",
+      },
+      {
+        key: "salesToGoal",
+        label: "Sales to Goal",
+        path: "sales-to-goal",
+        placeholderExplanation:
+          "Sales to Goal will compare governed actual performance with versioned goals by company, business unit, team, salesperson, and period.",
+      },
+      {
+        key: "costToBudget",
+        label: "Cost to Budget",
+        path: "cost-to-budget",
+        placeholderExplanation:
+          "Cost to Budget will compare governed actual costs with approved, versioned budgets by company, business unit, team, employee, category, and period.",
+      },
+      {
+        key: "forecasting",
+        label: "Forecasting",
+        path: "forecasting",
+        placeholderExplanation:
+          "Forecasting will keep projected financial outcomes explicitly separate from actual, budget, goal, and reconciled accounting facts.",
+      },
+      {
+        key: "profitability",
+        label: "Gross Margin & Profitability",
+        path: "profitability",
+        placeholderExplanation:
+          "Profitability will compose governed revenue and cost authority. Margin must not be calculated until authoritative cost sources are established.",
+      },
+      {
+        key: "budgets",
+        label: "Budget Management",
+        path: "budgets",
+        placeholderExplanation:
+          "Budget Management will maintain approved and versioned financial plans without rewriting prior-period budgets.",
+      },
+      {
+        key: "goals",
+        label: "Goal Management",
+        path: "goals",
+        placeholderExplanation:
+          "Goal Management will maintain versioned performance targets and their explicit measurement basis, such as booked, billed, collected, revenue, cost, or margin.",
+      },
+      {
+        key: "companyPerformance",
+        label: "Company & Business Unit Performance",
+        path: "company-performance",
+        placeholderExplanation:
+          "Company and Business Unit Performance will support Consolidated, Taylor, Ventana, Sales, Service, Parts, Installation, and future governed reporting dimensions.",
+      },
+      {
+        key: "employeePerformance",
+        label: "Salesperson & Employee Performance",
+        path: "employee-performance",
+        placeholderExplanation:
+          "Employee Performance will use explicit historical reporting attribution rather than current customer ownership or mutable employee relationships.",
+      },
+      {
+        key: "reconciliation",
+        label: "Reconciliation & Exceptions",
+        path: "reconciliation",
+        placeholderExplanation:
+          "Reconciliation and Exceptions will identify differences between EOS operational financial facts and authoritative external accounting facts.",
+      },
+      {
+        key: "intercompany",
+        label: "Intercompany",
+        path: "intercompany",
+        placeholderExplanation:
+          "Intercompany will govern Taylor-to-Ventana and Ventana-to-Taylor financial activity while preventing incorrect consolidated double counting.",
+      },
+      {
+        key: "audit",
+        label: "Financial Audit & History",
+        path: "audit",
+        placeholderExplanation:
+          "Financial Audit and History will provide immutable lineage for financial events, approvals, attribution changes, budgets, goals, allocations, and reconciliation activity.",
+      },
+      {
+        key: "reports",
+        label: "Reporting & Exports",
+        path: "reports",
+        placeholderExplanation:
+          "Financial Reporting will support governed multidimensional reporting and exports. Export access must obey the same financial visibility policy as EOS screens.",
+      },
+      {
+        key: "governance",
+        label: "Financial Settings & Governance",
+        path: "governance",
+        placeholderExplanation:
+          "Financial Settings and Governance will expose authorized configuration for visibility, periods, attribution, goals, budgets, approvals, and reporting policy when those authorities are implemented.",
+      },
+    ],
+  },
   {
     key: "reporting",
     label: "Reporting",
@@ -497,19 +679,11 @@ export const NAV_DOMAINS = [
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],
   },
-  // Future placeholder top-level areas (requirement: "Future placeholder
-  // top-level areas"). No sub-nav yet -- a single stub page each.
-  //
-  // Issue #288 -- the "Sales / CRM" (salesCrm, /sales-crm) future placeholder was removed: the real
-  // CRM/Sales platform area already exists as the `customers` domain above (label "CRM/Sales",
-  // /customers), so this stub was obsolete and redundant. Its route was generated only from this
-  // future list, so removing the entry removes the /sales-crm route (App.jsx unchanged); a hit on
-  // the retired /sales-crm URL falls through to the top-level catch-all (Navigate to /dashboard).
-  // Hidden from normal navigation (sandbox production-fidelity): this is a FUTURE top-level
-  // placeholder with no landing of its own. Real finance/AR capability is NOT hidden by this --
-  // it remains reachable inside Account and Sales flows (AccountFinancialsSection, the governed
-  // listAccountInvoiceAr read). Only the empty top-level destination is hidden.
-  { key: "financials", label: "Financials", path: "financials", future: true, navHidden: true },
+  // Future placeholder top-level areas: NONE remain. Issue #288 removed the salesCrm stub;
+  // Financials Frame 0 retired the last one (`future: true, navHidden: true` Financials) by
+  // promoting it to the real first-class domain above. App.jsx's future-domain route loop
+  // (NAV_DOMAINS.filter(d => d.future)) now emits nothing, which is correct — leave the
+  // mechanism in place for any future top-level placeholder.
 ];
 
 // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,

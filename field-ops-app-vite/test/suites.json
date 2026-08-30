@@ -266,6 +266,10 @@
       "runner": "node"
     },
     {
+      "file": "test/financialsNavStructure.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/financialSummaryView.test.mjs",
       "runner": "node"
     },
