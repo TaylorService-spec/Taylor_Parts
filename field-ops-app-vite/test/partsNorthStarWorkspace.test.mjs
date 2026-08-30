@@ -104,16 +104,21 @@ test("no cell reads a stock figure out of the health projection", () => {
   );
 });
 
-test("Inventory Health survives — a qualitative signal is not a quantity", () => {
-  // Deliberately asserted, so a future tidy-up cannot read ND-25 as removing the whole column pair.
-  // Health says whether a part needs attention, never how many there are.
-  assert.ok(LIST_SRC.includes("<th>Inventory Health</th>"));
-});
-
-test("the panel's own sentence no longer promises a stock position it does not show", () => {
-  assert.ok(/No stock quantity is shown here/.test(LIST_SRC));
-  assert.ok(
-    !/Stock position and reorder status are derived/.test(LIST_SRC),
-    "the old standfirst described a column that no longer exists"
-  );
+test("the catalogue table states Frame 1a's grammar — SUPERSEDES the Inventory Health pin", () => {
+  // WHAT THIS REPLACES, and why it is not a weakening.
+  //
+  // The earlier form of this test pinned an Inventory Health column, on the reasoning that ND-25
+  // removed a QUANTITY and that a qualitative signal should not be swept away with it. That was
+  // right at the time. ND-30 then named the table's grammar explicitly -- Part, Manufacturer,
+  // Category, Control, Status, Attention -- and Inventory Health is not in it.
+  //
+  // The signal is NOT lost from the page: the Work group's Inventory Operational Queue ranks parts
+  // by exactly that urgency, from the same analytics. It left this TABLE, not this workspace.
+  for (const heading of ["Part", "Manufacturer", "Category", "Control", "Status", "Attention"]) {
+    assert.ok(LIST_SRC.includes(`<th>${heading}</th>`), `Frame 1a column missing: ${heading}`);
+  }
+  // And the quantity ruling still holds over the new grammar.
+  for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
+    assert.ok(!LIST_SRC.includes(`<th>${heading}</th>`), `${heading} is a quantity column`);
+  }
 });

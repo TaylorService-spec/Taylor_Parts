@@ -204,10 +204,36 @@ async function main() {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openWorkspace(page);
 
-  // ── 3: ND-25 — no quantity column. Read the HEADINGS the deployed bundle renders, not the source.
+  // ── 3: FRAME 1a's grammar, and ND-25's absence, read from the DEPLOYED headings.
   const headings = (await catalogTable(page).locator("thead th").allInnerTexts()).map((t) => t.trim());
   const quantityHeadings = headings.filter((h) => /^(warehouse available|on hand|available)$/i.test(h));
   record("3  ND-25 workspace declares no quantity column", quantityHeadings.length === 0, `headings=[${headings.join(", ")}]`);
+
+  const FRAME_1A_COLUMNS = ["Part", "Manufacturer", "Category", "Control", "Status", "Attention"];
+  const lowered = headings.map((h) => h.toLowerCase());
+  record(
+    "3a ND-30 the catalogue states Frame 1a's column grammar",
+    FRAME_1A_COLUMNS.every((c) => lowered.includes(c.toLowerCase())),
+    `expected=[${FRAME_1A_COLUMNS.join(", ")}] got=[${headings.join(", ")}]`,
+  );
+
+  // ── 3b: the title block. Frame 1a's counts must be present AND labelled -- a bare number over a
+  //       list is the ambiguity ND-30 asked to be avoided ("label the count according to what it
+  //       truly represents").
+  const panel = page.locator('xpath=//h3[normalize-space()="Parts Catalog"]/ancestor::*[contains(@class,"ns-workspace")][1]');
+  const panelText = (await panel.count()) > 0 ? await panel.innerText() : "";
+  record(
+    "3b ND-30 the catalogue carries a titled, labelled count",
+    /parts? in the catalogue/i.test(panelText),
+    panelText.split("\n").slice(0, 3).join(" | ") || "(no ns-workspace panel found)",
+  );
+
+  // ── 3c: the view chips, and every count agreeing with its own filter. A chip whose number
+  //       disagrees with what it selects is how a list lies about how much work there is.
+  const chips = await panel.locator(".fo-filterbar button, .fo-chip, [role=\"group\"] button").allInnerTexts().catch(() => []);
+  const chipText = chips.map((c) => c.replace(/\s+/g, " ").trim());
+  const hasViews = chipText.some((c) => /^all\b/i.test(c)) && chipText.some((c) => /needs attention/i.test(c));
+  record("3c ND-30 the catalogue offers view chips with counts", hasViews, `chips=${JSON.stringify(chipText.slice(0, 6))}`);
 
   // ── 4: the Part Number column is present and POPULATED on every row. See the header: whether the
   //      cell reads internalPartNumber or partId is not decidable here when the fixture makes them
@@ -230,6 +256,24 @@ async function main() {
         ? "  [NOTE: this fixture's partId and internalPartNumber are identical, so the FIELD contract is not decidable here -- it is proved in test/partsNorthStarProjection and test/partsNorthStarIdentity]"
         : `  [routeId="${routeId}" differs, so the cell demonstrably reads the Part Number]`),
   );
+
+  // ── 4b: the Attention column speaks the projection's words, or says nothing at all. A stored
+  //        reorder-request status reaching the reader would be the enum leak this family keeps
+  //        finding; an empty cell would be a claim that nothing was checked.
+  const attentionIdx = lowered.indexOf("attention");
+  let attentionOk = true;
+  let attentionDetail = "(no Attention column)";
+  if (attentionIdx >= 0) {
+    const cells = await catalogTable(page)
+      .locator(`tbody tr td:nth-child(${attentionIdx + 1})`)
+      .allInnerTexts();
+    const trimmed = cells.map((c) => c.trim());
+    const leaked = trimmed.filter((c) => /^[A-Z][A-Z_]{3,}$/.test(c));
+    const blank = trimmed.filter((c) => c.length === 0);
+    attentionOk = trimmed.length > 0 && leaked.length === 0 && blank.length === 0;
+    attentionDetail = `rows=${trimmed.length} leaked=${JSON.stringify(leaked.slice(0, 2))} blank=${blank.length} sample=${JSON.stringify(trimmed.slice(0, 3))}`;
+  }
+  record("4b ND-30 Attention renders governed words or an explicit dash", attentionOk, attentionDetail);
 
   // ── 5: the typed search finds what the row displays. See the header: this is the defect ND-26
   //      created, and only a live typed search proves the deployed bundle carries the fix.
