@@ -347,3 +347,64 @@ including restoring the column, reverting the search haystack, falling back to t
 label, and claiming barcode search in the placeholder.
 
 Local: **260/260 node suites, 2776/2776 vitest tests, `vite build` clean, oxlint clean.**
+
+---
+
+# Part IV — ND-28 closed, and the gate (2026-08-30)
+
+**ND-28 is CLOSED: keep the Stock forecast card and `RequestReorderControl`.** The shipped
+interpretation was correct.
+
+The Owner's reasoning is worth carrying here rather than only in the decisions register, because it
+is the rule that decides every future version of this question:
+
+> INFORMATION: Stock forecast may compose clearly identified derived information.
+> COMMAND: `RequestReorderControl` remains governed by its existing EOS command authority.
+> **The informational number does not become the authority for the command merely because they share
+> a card.**
+
+So ND-25 is a prohibition on *disguise*, not on derived facts existing. A number may be shown when its
+derivation is explicit and it does not imply stronger authority than it has; it may not be called On
+hand, called Available where that implies `getPartBalance` authority, promoted into the record header
+or the workspace's principal quantity column, or allowed to look like the thing that authorizes the
+reorder.
+
+**ND-28-F, open.** When `getPartBalance` is activated, the forecast composition must be reconciled
+against the governed balance — replace, supplement, or remain distinct — as an explicit authority
+change with its own tests. Semantics must not change silently when the capability flips.
+
+## The gate
+
+`field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs`, 16 checks,
+one gate per accepted family (the `dispatchNorthStarQuickGate` / `serviceOperationsNorthStarGate`
+pattern).
+
+| Checks | What they hold the deployed bundle to |
+|---|---|
+| 0 | **Release identity** — a precondition, not a check. If the origin is not serving the named SHA the gate refuses with exit 2 rather than measuring the wrong bundle. |
+| 1–5 | Frame 1a: loads at 1440 and 375, no document-level horizontal overflow, **no quantity column** (read from the deployed headings), the Part Number column is not the route id, and **the typed search finds the number the row displays**. |
+| 6–14 | Frames 1b/1c: the record's title is the Part Number, the header states no quantity, no cost or price anywhere, *Where it is* states why it is empty and draws **no table**, the unit section matches the part's own control word, Activity renders words rather than tokens, and the record survives 375. |
+| 13 | ND-28: the forecast names its derivation and the reorder control stays **reachable** — asserted by presence, never by pressing it. A gate that raised a real reorder request would be a gate that mutates. |
+| 15–16 | Not-found is its own sentence, distinct from any blocked read; and nothing threw. |
+
+Two decisions inside it are worth naming. **Check 5 types** the number it just read off the page
+rather than asserting the provider's source, because the ND-26 search defect was invisible to every
+static read and only a live typed search proves the deployed bundle carries the fix. **Check 2/14
+measure `documentElement.scrollWidth`, not `body`** — #1594's overflow escape left `body` correct while
+the document scrolled 122px sideways, so a body-only assertion reports a clean page and means nothing.
+
+## Status: the gate has not run, and why
+
+The Owner authorized the refresh against `main @ 67da42a9`. **This build could not perform it** —
+`firebase deploy` and the `sandbox-refresh.ps1` launcher are both blocked by the session permission
+layer, which an Owner authorization does not lift. That is a pre-existing property of the session,
+measured 2026-08-27, not of the authorization.
+
+Verified read-only instead: the live sandbox serves **`0a5aeca3`** (the family-6 release), so Parts P1
+is confirmed *not* live from `/version.json` rather than assumed from a merge; the release
+preconditions hold (clean tree, `HEAD == origin/main == 67da42a9`); and the gate's identity guard was
+proved by running it against the live origin with `--expect 67da42a9`, where it correctly **refused,
+exit 2**.
+
+The operator command is in the ledger. The moment it lands, the gate answers all six of the Owner's
+post-deployment steps in one run and prints the two URLs for visual acceptance.

@@ -1108,3 +1108,52 @@ No new Firestore read, Function, index, Rules change, capability grant or activa
 constant, state-machine change or write path. The projection widening happens **inside the read the
 page already performs**. `partLookup.js`'s *lookup never moves inventory* invariant and every scanner
 invariant travel through untouched.
+
+### Family 7 — ND-28 closed, and the gate waiting on a deploy (2026-08-30)
+
+Appended, not rewritten: the row above records what was shipped and proved; this records the ruling
+that closed the family's last open question and the state of its gate.
+
+| | |
+|---|---|
+| **ND-28** | **CLOSED 2026-08-30 — keep the Stock forecast card and `RequestReorderControl`.** The shipped interpretation was correct. |
+| **The separation** | *Information* may compose clearly identified derived facts; *command* remains governed by its existing EOS authority. **The informational number does not become the authority for the command merely because they share a card.** |
+| **ND-28-F** | **OPEN follow-up.** When `getPartBalance` is activated, reconcile the forecast composition against the governed balance — replace, supplement, or remain distinct — as an explicit authority change with its own tests. Semantics must not change silently when the capability flips. |
+| **PartsList scope** | Owner-agreed: the pre-North-Star multi-panel shell stays. Its four-panel role-home composition and governed reorder queues are a Lists P2 / role-workspace recomposition. **Parts P1 does not absorb it.** |
+| **Gate ruling** | **Quick Gate, not Full Regression** — Owner, 2026-08-30. Basis: presentation-layer changes, projection corrections, family-local defect corrections; no callable authority, capability activation, Rules, index, or transactional/state-machine change. |
+| **Gate** | `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs` — 16 checks, written and its release-identity guard proved. **Not yet run against the release.** |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — unchanged, and blocked on the refresh below. |
+
+### The refresh this family is waiting on
+
+The Owner authorized the sandbox refresh against `main @ 67da42a9` on 2026-08-30. **It has not been
+performed, and this build could not perform it:** `firebase deploy` and the `sandbox-refresh.ps1`
+launcher are both blocked by the session permission layer, which an Owner authorization does not
+lift. That constraint is pre-existing and was measured on 2026-08-27; it is a property of the
+session, not of the authorization.
+
+What was verified read-only instead, which is the honest half of the work:
+
+| | |
+|---|---|
+| **Live sandbox now** | `0a5aeca3`, buildTime 2026-08-30T11:23:24.012Z, `platform-sandbox`/`sandbox` — the family-6 accepted release |
+| **Parts P1 is therefore NOT live** | Confirmed from `/version.json`, not inferred from a merge |
+| **Release preconditions** | Working tree clean; `HEAD == origin/main == 67da42a9`, so `_releaseProvenanceGuard.mjs` would pass |
+| **Gate identity guard** | Run against the live origin with `--expect 67da42a9`: correctly **REFUSED**, exit 2, `deployed=0a5aeca3 expected=67da42a9` |
+
+That last line is the point of the guard. Every other check in the gate would otherwise have measured
+the wrong bundle and reported a green family, which is the failure mode
+the standing rule exists to prevent: **the
+environment is the authority on what is deployed, never an exit code from a deploy command.**
+
+The operator command, to be run from the repository root:
+
+```
+powershell -ExecutionPolicy Bypass -File .\sandbox-refresh.ps1 -HostingOnly
+```
+
+`-HostingOnly` is correct here and is not a shortcut: the Parts P1 diff touches no `functions/` file,
+so redeploying the Functions estate would be authority this release does not need — and a large
+Functions batch exiting non-zero after some functions have already updated is this repository's own
+documented failure mode. Every guard, build verification, artifact stamp and identity gate still runs;
+only the scope changes.

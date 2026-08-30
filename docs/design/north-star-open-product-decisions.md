@@ -984,7 +984,7 @@ as ND-25's.
 does the Owner rule that a legibly-marked legacy value is acceptable on this one surface, which
 re-opens a refusal that was made deliberately and made total?
 
-### ND-28 — Does ND-25 remove the ledger-derived stock forecast, and the reorder request with it?
+### ND-28 — Does ND-25 remove the ledger-derived stock forecast, and the reorder request with it? — **CLOSED 2026-08-30: keep both**
 
 **Raised:** 2026-08-30, composing the Parts North Star record under ND-25.
 **The ruling says:** quantitative inventory facts may appear only through the governed
@@ -1007,3 +1007,33 @@ made, explicitly *"not a statement about how many exist"*.
 the reorder request's entry point with it until `getPartBalance` is activated and can gate it
 instead? A build may not remove a working governed workflow on its own reading of a ruling aimed at a
 different surface.
+
+**Owner ruling, 2026-08-30 — the shipped interpretation is correct. KEEP the Stock forecast card and
+KEEP `RequestReorderControl`.**
+
+ND-25 prohibits `warehouseQty` as authoritative on-hand, a client-derived quantity *disguised* as
+governed stock truth, quantitative inventory in the record header without the governed balance
+authority, and a workspace quantity column unsupported by list-scale authority. It does **not**
+prohibit clearly identified derived informational facts, an existing governed command surface, or the
+live reorder-request workflow.
+
+**The separation that makes this coherent, in the Owner's words:**
+
+> INFORMATION: Stock forecast may compose clearly identified derived information.
+> COMMAND: `RequestReorderControl` remains governed by its existing EOS command authority.
+> The informational number does not become the authority for the command merely because they share a
+> card.
+
+Kept: the Stock forecast card, `RequestReorderControl`, the governed reorder-request workflow, the
+"Ledger-derived stock" terminology, and explicit derivation context on every displayed forecast value.
+Refused: calling the value On hand; calling it Available where that implies `getPartBalance`
+authority; promoting it into the record header or the workspace principal quantity column; making the
+reorder command depend on a newly invented stock authority; implying the forecast value authorizes or
+validates the reorder.
+
+**ND-28-F — the follow-up this closure creates, and does not discharge.** When `getPartBalance` is
+intentionally activated, the Stock forecast composition must be **reconciled against that governed
+balance source** as an explicit authority/composition change with its own tests: whether the governed
+balance should *replace*, *supplement*, or *remain distinct from* the ledger-derived forecast is an
+open question, and semantics must not change silently when the capability flips. Recorded here rather
+than left to be rediscovered by whoever performs the activation.
