@@ -1364,6 +1364,41 @@ that also matches BEM children; no silent `catch {}`; and a SKIP counted separat
 run of skips cannot read as a green family.
 
 
+### The gate's first live run found four defects, all of them the gate's
+
+Run one against the correctly deployed `2b090a7e` returned **28 PASS / 2 FAIL / 2 SKIP**. The Owner
+ruled both failures Quick-Gate defects and refused to send the Equipment implementation back. That
+ruling was right, and chasing them turned up two more the run had not surfaced:
+
+| # | What the gate reported | What was actually true |
+|---|---|---|
+| 1 | `FAIL 1 … h1s=["Equipment","Equipment","Equipment"]` | `page.locator("h1")` counts every MOUNTED h1. All three tab panels stay mounted so each keeps its state, and `EquipmentRegister` hosts a shell whose title is also "Equipment". "One h1 in the DOM" was never the invariant. |
+| 1b | The first fix, `h1:visible`, still failed | The app shell renders a screen-reader heading with `fo-visually-hidden` — `display: block`, clipped to **1×1** — so Playwright counts it visible. It occupies no page and competes with nothing. Now decided by **measured geometry**, not by class name: `1x1` and `0x0` are not page titles. |
+| 5 | `FAIL 5 … filterFields=["Default order","Name – A to Z","Status – grouped A to Z", …]` | Those are `SortControl`'s options. Finding the "+ Add Filter" *button* established nothing about which `<select>` came first in the panel. |
+| 5b | The first fix, `getByLabel(/^Field$/)`, reported `offered=[]` | The select sits inside an implicit `<label>Field<select>…</select>`, so its accessible name is the label's whole text — `"FieldChoose a field…CustomerStatus"`. Now reached from inside the resolved builder. |
+
+**A race the run did not surface, found because two runs of one bundle disagreed.** `openWorkspace`
+waits for the tab rail, which arrives long before the list. One run measured a 50-row register; the
+next reported `no ns-table … data-list-state=LOADING` on the identical release. The list is now
+settled on its own declared `data-list-state`, and the two batched reference resolvers are settled
+after it — the first green run had measured `firstRow=[…,"Loading…","Loading…",…]` and check 9a
+"passed" on cells still in flight. `"Loading…"` is no longer an acceptable settled answer.
+
+**And a defect in the contract suite itself, which is the one worth remembering.** Its comment
+stripper was `source.replace(/\/\*[\s\S]*?\*\//g, " ")`. The gate contains an XPath —
+`xpath=//*[${EXACT_CLASS("ns-workspace__count")}]` — and `//*` reads as a block-comment opener, so
+the stripper deleted **6314 characters** through to the next `*/`: the Add-filter block, the settle
+waits, and part of the install-confirmation flow. Every `doesNotMatch` over that span passed because
+the span was gone. **Mutation-proved after the fix:** making the gate press *Confirm installation*
+now fails the read-only test; before the fix it did not. That is the silent-vacuous-pass failure
+these tests exist to prevent, occurring inside them.
+
+**Live re-run: 29 passed, 0 failed, 3 skipped, exit 0.** The count moved from 30/0/2 to 29/0/3 and
+that is an improvement: settling the resolvers turned check 9a from a PASS that had measured
+`"Loading…"` into an honest SKIP — on this data every installed Location resolves to a real name,
+so there is nothing unresolved to measure. Three unmeasured checks, all named.
+
+
 ### Authority, unchanged
 
 No Firestore rule, index, Function, callable, capability, activation, role grant, collection, schema,

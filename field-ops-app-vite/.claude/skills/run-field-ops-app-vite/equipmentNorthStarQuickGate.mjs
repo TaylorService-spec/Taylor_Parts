@@ -59,9 +59,13 @@
 //
 // Exit codes: 0 = every required check passed. 1 = at least one failed. 2 = precondition error
 // (including a release-identity refusal, which is the gate working, not the family failing).
+import { pathToFileURL } from "node:url";
+
 import { chromium } from "@playwright/test";
 
-import { seedAuthenticatedSession, signInPersona, sandboxFirebaseConfig } from "./deployedSession.mjs";
+import {
+  seedAuthenticatedSession, signInPersona, sandboxFirebaseConfig, assertSignedIn,
+} from "./deployedSession.mjs";
 
 const args = process.argv.slice(2);
 const expectIdx = args.indexOf("--expect");
@@ -107,8 +111,12 @@ function rawEnumLeaks(text) {
 
 // The governed reference-state sentences (metadata/referenceResolution.js) plus the record page's
 // own two. ND-31: ANY of these is a truthful answer; a raw id is not, and neither is a blank.
+// "Loading…" IS a governed reference state and is deliberately NOT here. The gate waits for the
+// resolvers to settle before it measures, so a cell still saying "Loading…" afterwards is a finding,
+// not an acceptable answer — accepting it is how check 9a came to "pass" on a page whose Customer
+// and Location cells were both still in flight.
 const TRUTHFUL_REFERENCE_ABSENCES = [
-  "No longer exists", "Not available to your role", "Loading…", "Could not be loaded",
+  "No longer exists", "Not available to your role", "Could not be loaded",
   "Unrecognized reference", "Unresolved reference", "Location unavailable", "Unknown location",
   "Recorded in an unreadable format",
 ];
@@ -123,6 +131,95 @@ const TRUTHFUL_REFERENCE_ABSENCES = [
 const docIdRe = () => /\b(?:[A-Za-z0-9]{20}|(?:eq|acct|loc|wo)_[A-Za-z0-9]{6,})\b/g;
 const hasDocId = (text) => docIdRe().test(String(text ?? ""));
 const findDocIds = (text) => String(text ?? "").match(docIdRe()) ?? [];
+
+// ══════════════════════════ the two verdicts, extracted so they can be TESTED ══════════════════
+//
+// Both of these were live FALSE POSITIVES on the first correctly-deployed run, and both were the
+// gate's fault, not the application's. They are pulled out of the browser flow into pure functions
+// so `test/equipmentNorthStarQuickGateContract.test.mjs` can exercise them against the exact DOM
+// shapes that fooled them — a gate defect that can only be found by deploying is a gate defect that
+// will happen again.
+
+/**
+ * FALSE POSITIVE 1 — "one Equipment title" counted hidden tab content.
+ *
+ *   FAIL 1 workspace route loads with one Equipment title
+ *   h1s=["Equipment","Equipment","Equipment"]
+ *
+ * The gate read `page.locator("h1")`, which is every MOUNTED h1. EquipmentWorkspace deliberately
+ * keeps all three tab panels mounted (inactive ones `hidden`) so a tab keeps its state across a
+ * switch, and `EquipmentRegister` hosts a `WorkspaceShell` whose title is also "Equipment". So three
+ * h1s exist in the DOM by design and only one of them is on screen.
+ *
+ * "One h1 in the mounted DOM" was never the governed invariant. The invariant is ONE VISIBLE
+ * WORKSPACE PAGE IDENTITY: the reader must not be looking at two competing page titles. That is what
+ * this decides, and it decides it from what is VISIBLE.
+ */
+/**
+ * Is this heading COMPETING for the reader's eye, or is it an accessibility affordance?
+ *
+ * The live DOM carries three h1s that all say "Equipment", and only one of them is a page title a
+ * sighted reader can see:
+ *
+ *   fo-visually-hidden      the app shell's screen-reader heading. `display: block`, clipped to a
+ *                           1px box — so it is NOT `display:none` and Playwright's `:visible`
+ *                           counts it. It occupies no page, competes with nothing, and removing it
+ *                           would take a landmark away from anyone navigating by heading.
+ *   ns-workspace__title     the workspace identity. The one on screen.
+ *   fo-page-header__title   EquipmentRegister's, inside the `hidden` Add Equipment panel
+ *                           (computed `display: none`). Mounted so the tab keeps its state.
+ *
+ * Decided by MEASURED GEOMETRY, not by class name: a heading that renders into a box smaller than a
+ * few pixels is not a page title, whatever it is called. Pinning `fo-visually-hidden` would be the
+ * same mistake as pinning a column label — the rule is about what the reader sees.
+ */
+export const MIN_VISIBLE_HEADING_PX = 4;
+
+export function isCompetingHeading({ width = 0, height = 0 } = {}) {
+  return width >= MIN_VISIBLE_HEADING_PX && height >= MIN_VISIBLE_HEADING_PX;
+}
+
+export function workspaceIdentityVerdict({ visibleWorkspaceTitles = [], otherVisibleH1s = [] } = {}) {
+  const titles = visibleWorkspaceTitles.map((t) => String(t).trim()).filter(Boolean);
+  const others = otherVisibleH1s.map((t) => String(t).trim()).filter(Boolean);
+  return {
+    ok: titles.length === 1 && /^Equipment$/i.test(titles[0]) && others.length === 0,
+    detail: `visibleWorkspaceTitles=${JSON.stringify(titles)} otherVisibleH1s=${JSON.stringify(others)}`,
+  };
+}
+
+/**
+ * FALSE POSITIVE 2 — the filter assertion read the SORT control.
+ *
+ *   FAIL 5 Customer and Status filters are offered
+ *   filterFields=["Default order","Name – A to Z","Status – grouped A to Z", …]
+ *
+ * Those are `SortControl`'s options. The gate had found the "+ Add Filter" BUTTON and then reached
+ * for `panel.locator("select").first()` — which establishes nothing about which control that select
+ * belongs to, and in this panel it is the sort. Incidental DOM ordering is not a contract.
+ *
+ * The values are also why a substring test cannot be trusted here: "Status – grouped A to Z"
+ * CONTAINS "Status", so `/status/i` was satisfied by the wrong control and only the absence of a
+ * "customer" sort option made the check fail at all. Had the sort offered one, this would have
+ * passed while measuring nothing.
+ *
+ * So the field labels are matched EXACTLY. `AddFilter` renders one `<option>` per offered filter
+ * carrying that field's own `label` — "Customer", "Status" — and nothing else in this panel produces
+ * those strings on their own.
+ */
+export const REQUIRED_FILTER_FIELDS = Object.freeze(["Customer", "Status"]);
+
+export function filterFieldsVerdict(offeredLabels = []) {
+  const labels = offeredLabels.map((l) => String(l).trim()).filter(Boolean);
+  const missing = REQUIRED_FILTER_FIELDS.filter(
+    (want) => !labels.some((l) => l.toLowerCase() === want.toLowerCase()),
+  );
+  return {
+    ok: missing.length === 0,
+    missing,
+    detail: `offered=${JSON.stringify(labels)}${missing.length ? ` missing=${JSON.stringify(missing)}` : ""}`,
+  };
+}
 
 // ══════════════════════════ surface resolution — each one found ONCE ══════════════════════════
 
@@ -261,6 +358,16 @@ async function main() {
 
   await seedAuthenticatedSession(page, ORIGIN, session);
 
+  // A SIGNED-OUT RUN IS THE WORST RESULT A GATE CAN PRODUCE, and session establishment against the
+  // deployed origin fails intermittently — it did on one run of this very gate. Every `goto` then
+  // lands on the sign-in screen, which has no tables, no raw ids and no enum leaks, so a sweep
+  // reports clean while measuring a different application. `assertSignedIn` throws loudly instead;
+  // it exists in deployedSession.mjs for exactly this and this gate was not calling it.
+  await page.goto(`${ORIGIN}/`, { waitUntil: "domcontentloaded" });
+  await page.locator(".fo-appheader, .fo-workspace, .fo-rail").first().waitFor({ timeout: 25000 })
+    .catch(() => {});
+  await assertSignedIn(page, "admin");
+
   let recordUrl = "(not reached)";
   let availableTerminalState = "(not reached)";
   let installResult = "(not reached)";
@@ -270,9 +377,29 @@ async function main() {
   await openWorkspace(page);
 
   // ── 1: the route loads, and the workspace states its identity ONCE.
-  const h1s = await page.locator("h1").allInnerTexts();
-  record("1  workspace route loads with one Equipment title", h1s.length === 1 && /^Equipment$/i.test(h1s[0].trim()),
-    `h1s=${JSON.stringify(h1s)}`);
+  // VISIBLE, not mounted. `h1:visible` respects the `hidden` attribute the inactive tab panels
+  // carry, so the two h1s those panels legitimately hold are not counted — see
+  // workspaceIdentityVerdict for the false positive this replaces. The panels are NOT changed to
+  // satisfy the gate: keeping them mounted is what preserves each tab's state across a switch.
+  const headings = await page.locator("h1").evaluateAll((els) => els.map((el) => {
+    const box = el.getBoundingClientRect();
+    return {
+      text: el.textContent.trim(),
+      isWorkspaceTitle: el.classList.contains("ns-workspace__title"),
+      // `display:none` anywhere up the tree — the hidden tab panels — yields a zero box too, so one
+      // measurement covers both the panels and the screen-reader heading.
+      width: box.width, height: box.height,
+    };
+  }));
+  const onScreen = headings.filter(isCompetingHeading);
+  const identityVerdict = workspaceIdentityVerdict({
+    visibleWorkspaceTitles: onScreen.filter((h) => h.isWorkspaceTitle).map((h) => h.text),
+    otherVisibleH1s: onScreen.filter((h) => !h.isWorkspaceTitle).map((h) => h.text),
+  });
+  record("1  workspace route loads with one VISIBLE Equipment identity",
+    identityVerdict.ok,
+    `${identityVerdict.detail} mountedH1s=${headings.length} `
+      + `notOnScreen=${JSON.stringify(headings.filter((h) => !isCompetingHeading(h)).map((h) => `${h.text}(${Math.round(h.width)}x${Math.round(h.height)})`))}`);
 
   // ── 2: no count on this header. Three tabs answer three questions; one number beside one title
   //      would have to mean one of them and a reader cannot tell which.
@@ -301,38 +428,117 @@ async function main() {
   // ── 5/6: the two governed server-side filters are OFFERED, and Customer is a picker of names.
   //        Reading the picker's option text is what distinguishes "a picker of names" from "a box
   //        that wants a document id" — the whole point of the ruling.
-  const addFilter = customerPanel.getByRole("button", { name: /add filter/i });
-  let filterDetail = "(no Add filter control)";
+  // THE ADD-FILTER CONTROL IS OPENED AND SCOPED TO, never inferred from DOM order. `AddFilter`
+  // renders a collapsed "+ Add Filter" button and, once open, a `role="group"` labelled "Add a
+  // filter" containing the Field select. Reading `panel.locator("select").first()` instead landed
+  // on SortControl and read "Name – A to Z" as a filter field — a false FAIL against a correct page.
+  //
+  // Opening it is not a mutation: it is local component state, and the flow leaves by Cancel, which
+  // is `AddFilter`'s own `reset()`. Nothing is applied and no criterion is added.
+  const addFilter = customerPanel.getByRole("button", { name: /^\+?\s*Add Filter$/i });
+  let filterDetail = '(no "+ Add Filter" control in the Customer Equipment panel)';
   let filterOk = false;
-  let customerNamesOk = false;
+  let filterFieldLabels = [];
   if (await addFilter.count()) {
-    const fieldSelect = customerPanel.locator("select").first();
-    const fieldOptions = (await fieldSelect.locator("option").allInnerTexts().catch(() => [])).map((t) => t.trim());
-    filterOk = fieldOptions.some((o) => /customer/i.test(o)) && fieldOptions.some((o) => /status/i.test(o));
-    filterDetail = `filterFields=${JSON.stringify(fieldOptions)}`;
-  } else {
-    // The controls may render inline rather than behind a button; report what was found either way.
-    const selects = await customerPanel.locator("select").count();
-    filterDetail = `no "Add filter"; ${selects} select(s) in the panel`;
+    await addFilter.first().click();
+    const builder = customerPanel.getByRole("group", { name: /add a filter/i });
+    try {
+      await builder.waitFor({ state: "visible", timeout: 10000 });
+      // Scoped to the BUILDER's own Field step. `getByLabel(/^Field$/)` does NOT work here and the
+      // reason is worth keeping: the select sits inside an implicit `<label>Field<select>…</select>`,
+      // so its accessible name is the label's whole text — "FieldChoose a field…CustomerStatus" —
+      // and an anchored match found nothing, which is how this check reported `offered=[]` against a
+      // control that was rendering "Customer" and "Status" correctly.
+      //
+      // The label is matched on the text it STARTS with, and the select is taken from inside it.
+      // Scoped to the resolved builder, so this is the control that owns the select — not whichever
+      // select happens to come first in the panel.
+      const fieldSelect = builder.locator("label").filter({ hasText: /^Field/ }).locator("select");
+      filterFieldLabels = (await fieldSelect.locator("option").allInnerTexts())
+        .map((t) => t.trim())
+        .filter((t) => t && !/^choose a field/i.test(t));
+      const verdict = filterFieldsVerdict(filterFieldLabels);
+      filterOk = verdict.ok;
+      filterDetail = verdict.detail;
+    } catch (err) {
+      const groups = await customerPanel.locator('[role="group"]').evaluateAll((els) =>
+        els.map((e) => e.getAttribute("aria-label")));
+      filterDetail = `the Add-filter builder never appeared. Groups in the panel: ${JSON.stringify(groups)}. `
+        + `Underlying error: ${err?.message ?? err}`;
+    }
+    // ALWAYS leave by Cancel, never Apply. Apply would add a criterion and change what every check
+    // below measures.
+    await customerPanel.getByRole("button", { name: /^Cancel$/i }).first().click().catch(() => {});
   }
   record("5  Customer and Status filters are offered", filterOk, filterDetail);
 
-  // ── 6: Customer values are NAMES. Asserted against the account picker's own options.
-  const customerOptions = await customerPanel.locator("select option").allInnerTexts().catch(() => []);
-  const looksLikeIds = customerOptions.filter((o) => hasDocId(o.trim()));
-  customerNamesOk = looksLikeIds.length === 0;
-  record("6  no filter offers a document id as a choice", customerNamesOk,
-    looksLikeIds.length ? `idish=${JSON.stringify(looksLikeIds.slice(0, 3))}` : `${customerOptions.length} option(s), none id-shaped`);
+  // ── 6: no filter offers a document id as a CHOICE. Scoped to the two controls that actually offer
+  //      choices — the filter builder's field list (read above, while it was open) and the sort
+  //      control — rather than to every select on the panel.
+  const sortOptions = (await customerPanel.locator("select option").allInnerTexts().catch(() => []))
+    .map((t) => t.trim());
+  const offeredChoices = [...filterFieldLabels, ...sortOptions];
+  const looksLikeIds = offeredChoices.filter(hasDocId);
+  record("6  no control offers a document id as a choice", looksLikeIds.length === 0,
+    looksLikeIds.length
+      ? `idish=${JSON.stringify(looksLikeIds.slice(0, 3))}`
+      : `${offeredChoices.length} choice(s) across the filter builder and sort, none id-shaped`);
 
   // ── 7/8/9: the rows. Headings are read from the DEPLOYED table and cells addressed by INDEX, so a
   //          future ruling that renames a column cannot make this gate fail a correct page.
+  // ═══ SETTLE THE LIST BEFORE MEASURING IT, IN TWO STAGES ═══
+  //
+  // `openWorkspace` waits for the TAB RAIL, which arrives long before the list does. Check 7 read
+  // the table straight after and was racy the whole time: one run measured a fully rendered
+  // register, the next reported "no ns-table … data-list-state=LOADING" on the identical release.
+  // A gate that reports a different answer on two runs of one bundle is measuring itself.
+  //
+  // Stage 1 — the list leaves LOADING. `data-list-state` is the runtime's own declared state, so
+  // this is an observable condition rather than a sleep, and EMPTY/DENIED/UNAVAILABLE settle it too:
+  // those are answers, not failures to wait for.
+  let listState = "UNKNOWN";
+  try {
+    await page.waitForFunction(
+      (sel) => {
+        const el = document.querySelector(sel);
+        return el && el.getAttribute("data-list-state") && el.getAttribute("data-list-state") !== "LOADING";
+      },
+      "#eq-panel-customer [data-list-state]",
+      { timeout: 30000 },
+    );
+  } catch { /* reported below from whatever state it is actually in */ }
+  listState = await customerPanel.locator("[data-list-state]").first()
+    .getAttribute("data-list-state").catch(() => "UNKNOWN");
+
+  // Stage 2 — the two batched reference resolvers land AFTER the rows, so a row's Customer and
+  // Location cells show the LOADING reference sentence first. The first green run measured exactly
+  // that (`firstRow=[…,"Loading…","Loading…",…]`) and check 9a "passed" having inspected a cell
+  // still in flight — the vacuous pass the Parts gate's lesson 3 exists to prevent.
+  let referencesSettled = true;
+  if (listState === "READY") {
+    try {
+      await page.waitForFunction(
+        (sel) => {
+          const t = document.querySelector(sel);
+          return t && !/Loading…/.test(t.innerText);
+        },
+        "#eq-panel-customer table.ns-table",
+        { timeout: 20000 },
+      );
+    } catch {
+      referencesSettled = false;
+    }
+  }
+
   const table = installedTable(customerPanel);
   const hasTable = (await table.count()) > 0;
   let rowCount = 0;
   if (!hasTable) {
-    const state = await customerPanel.locator("[data-list-state]").getAttribute("data-list-state").catch(() => null);
+    // EMPTY / DENIED / UNAVAILABLE are answers, not failures to wait longer, and each is a different
+    // fact. The SETTLED state is reported so a reader can tell "the register is empty" from "this
+    // role may not read it" from "the gate gave up while it was still loading".
     record("7  installed register renders rows", false,
-      `no ns-table in the Customer Equipment panel; data-list-state=${state ?? "(none)"}`);
+      `no ns-table in the Customer Equipment panel; settled data-list-state=${listState}`);
   } else {
     const headings = (await table.locator("thead th").allInnerTexts()).map((t) => t.trim());
     rowCount = await table.locator("tbody tr").count();
@@ -369,7 +575,11 @@ async function main() {
       const locCells = (await table.locator(`tbody tr td:nth-child(${iLoc + 1})`).allInnerTexts()).map((t) => t.trim());
       const unresolved = locCells.filter((c) => TRUTHFUL_REFERENCE_ABSENCES.includes(c));
       const idish = locCells.filter(hasDocId);
-      if (unresolved.length === 0 && idish.length === 0) {
+      if (!referencesSettled) {
+        // Measuring a cell still in flight proves nothing about how an unresolved one renders.
+        skip("9a ND-31 unresolved Location states a truthful reason",
+          `the reference resolvers had not settled after 20s — sample=${JSON.stringify(locCells.slice(0, 3))}`);
+      } else if (unresolved.length === 0 && idish.length === 0) {
         skip("9a ND-31 unresolved Location states a truthful reason",
           `every Location resolved to a name on this data — nothing unresolved to measure (sample=${JSON.stringify(locCells.slice(0, 3))})`);
       } else {
@@ -688,7 +898,15 @@ async function main() {
   process.exit(failed.length ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error(`PRECONDITION ERROR: ${err?.message ?? err}`);
-  process.exit(2);
-});
+// RUN ONLY WHEN INVOKED AS THE ENTRYPOINT. The two verdict functions above are exported so the
+// contract suite can exercise them against the exact DOM shapes that produced live false positives;
+// without this guard, importing the module would launch a browser and drive the sandbox.
+const invokedDirectly = process.argv[1]
+  && pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`PRECONDITION ERROR: ${err?.message ?? err}`);
+    process.exit(2);
+  });
+}
