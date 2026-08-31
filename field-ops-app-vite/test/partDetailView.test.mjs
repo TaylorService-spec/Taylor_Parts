@@ -305,7 +305,12 @@ check("wiring: the raw-param ledger filter is gone (re-pointed to resolved ident
 });
 check("wiring: write surface preserved (reorder/PO/receive/cancel/void/actions intact)", () => {
   for (const sym of [
-    "requestReorderForRecommendation", "recordInventoryAction", "recordPurchaseOrder",
+    // recordInventoryAction REMOVED from this list, Owner ruling 2026-08-30. The write it named
+    // is retired -- and by the time it was, this assertion was passing on COMMENT TEXT alone,
+    // because the symbol survived in three stale comments describing a form that no longer
+    // existed. A pin that a comment can satisfy is not a pin. The surviving entries are all
+    // still live call sites, which is what this check is for.
+    "requestReorderForRecommendation", "recordPurchaseOrder",
     "voidPurchaseOrder", "InventoryActionsPanel", "RequestReorderControl",
   ]) {
     assert.ok(DETAIL_SRC.includes(sym), `${sym} must remain on the page`);

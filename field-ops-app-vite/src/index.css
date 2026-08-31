@@ -5322,6 +5322,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    measure and the side padding, and the retired `.fo-panel` treatment nested inside it drew a
    shadowed box around the register and pushed its rows out of line with the title above them. */
 .fo-equipment-tabbody { min-width: 0; }
+/* The Add Equipment tab's own stack. It replaces the vertical rhythm `.fo-workspace` used to give
+   this content when it still rendered a page shell of its own — a flex column with a 16px gap
+   between the control row and the body. Removing the shell removed a page identity, not the layout
+   it happened to carry. */
+.fo-equipment-register { display: flex; flex-direction: column; gap: 16px; }
 
 .ns-tabrail { display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch;
   border-bottom: 1px solid var(--color-border); margin: 0 0 20px; }

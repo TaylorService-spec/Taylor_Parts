@@ -28,7 +28,6 @@ import {
   cancelReorderRequest,
   getDisplayQty,
 } from "../../domain/inventoryReorderRequests";
-import { recordInventoryAction } from "../../domain/inventoryActions";
 import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurchaseOrders";
 import { useSuppliers } from "../../hooks/useSuppliers";
 import SupplierPicker from "../../shared/supplier/SupplierPicker";
@@ -135,15 +134,17 @@ import {
 // Sprint 2.1.9 -- Inventory Actions Foundation. Adds an "Inventory
 // Action Log" card (InventoryActionsPanel, below) -- entirely separate
 // from the Reorder Request cards above and unrelated to their status
-// branch. Lets an admin/dispatcher log a Receive Stock/Adjust
-// Stock/Correct Mistake note against this Part directly (no approval
-// workflow, no status machine -- a single-step create, same posture as
-// a ledger entry). Writes go exclusively through
-// domain/inventoryActions.js's recordInventoryAction(), into a NEW
-// collection (inventory_actions) deliberately separate from
-// inventory_transactions (Epic 2D/3, the Work Order-driven ledger,
-// untouched by this sprint). Shows recent actions for this Part,
-// realtime, via hooks/useInventoryActions.js.
+// branch. It USED to let an admin/dispatcher log a Receive Stock /
+// Adjust Stock / Correct Mistake note against this Part.
+//
+// THAT WRITE IS RETIRED (Owner ruling, 2026-08-30). inventory_actions is
+// not stock authority and was never reconciled with the governed ledger,
+// so each note was a parallel assertion that stock had moved with no way
+// to converge -- and Receiving, Transfers and the Cycle Count / governed
+// adjustment paths own those movements now.
+//
+// The READ is untouched: existing history stays visible and attributable
+// via hooks/useInventoryActions.js. Nothing was deleted or migrated.
 //
 // **Logged-only, not applied to stock**: per ChatGPT's PR #76 review,
 // this card and its UI copy are deliberately explicit that these are
@@ -850,11 +851,12 @@ function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
 // same assignee-only restriction as every write on this object since
 // Sprint 2.1.7 (firestore.rules enforces request.auth.uid ==
 // assignedToUserId). This is a status-closeout note only -- it does
-// NOT change any real stock count (does not call
-// recordInventoryAction() or touch inventory_transactions), same
-// posture Sprint 2.1.9's Inventory Action Log card states explicitly
-// below. Reconciling this against real stock is a separate,
-// Blaze-blocked backlog item, not this sprint's concern.
+// NOT change any real stock count, and does not touch
+// inventory_transactions. The Inventory Action Log it used to point at
+// for company no longer accepts writes at all (Owner ruling,
+// 2026-08-30) -- so this note is now the only thing of its kind on the
+// page, and it is still not a stock movement. Reconciling it against
+// real stock remains a separate backlog item.
 function ReorderRequestMarkReceived({ request, onReceived }) {
   const { user } = useAuth();
   const isAssignee = user?.uid === request.assignedToUserId;
@@ -1119,14 +1121,15 @@ function ReorderRequestDecision({ request, employeeDirectory }) {
   );
 }
 
-// Sprint 2.1.9 -- Inventory Actions Foundation. Lets an admin/dispatcher
-// log a Receive Stock/Adjust Stock/Correct Mistake note against this
-// Part -- a single-step create, no approval workflow, entirely
-// separate from the Reorder Request cards above. Writes go exclusively
-// through domain/inventoryActions.js's recordInventoryAction(), which
-// enforces (server-side validation, not just this form): Receive Stock
-// requires a positive quantity, Adjust Stock allows positive or
-// negative, Correct Mistake requires both a reason and notes.
+// Sprint 2.1.9 -- Inventory Actions Foundation, RETIRED 2026-08-30.
+//
+// It let an admin/dispatcher log a Receive Stock / Adjust Stock / Correct
+// Mistake note in a single step. The Owner retired new writes: the
+// collection is not stock authority, was never reconciled with the
+// governed ledger, and its vocabulary had been overtaken by Receiving,
+// Transfers and the governed adjustment paths.
+//
+// What remains below is the HISTORY, read-only.
 //
 // ChatGPT review (PR #76, REQUEST CHANGES) caught a real gap: the
 // first version of this card implied these actions change stock --
@@ -1148,13 +1151,28 @@ const INVENTORY_ACTION_LABEL = {
   [INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]: "Correction Note (log only)",
 };
 
+// INVENTORY ACTION HISTORY — read-only. Owner ruling, 2026-08-30: RETIRE NEW WRITES, KEEP
+// EXISTING HISTORY READABLE.
+//
+// WHY THE FORM WENT. `inventory_actions` is not stock authority and is never reconciled with the
+// governed ledger -- the entity register states it outright: "the two collections are never joined
+// or reconciled by any code in this repository". Every new entry was therefore a second, parallel
+// assertion that stock had moved, with no mechanism that could ever make the two agree.
+//
+// Its vocabulary had also been overtaken. "Receive Stock" and "Adjust Stock" now name governed
+// things that live elsewhere: Receiving owns receiving, Transfers own transfers, and the Cycle
+// Count / governed adjustment paths own their movement. A note here could only ever shadow them.
+//
+// WHAT IS PRESERVED, deliberately and completely: every existing document, its append-only
+// visibility, its actor and its timestamp. Nothing is deleted, nothing is migrated into the
+// ledger, and nothing here reinterprets a note as authoritative movement.
+//
+// NOT FIXED HERE, and worth naming rather than leaving to be rediscovered: firestore.rules still
+// carries `allow create: if isAdminOrDispatcher()` on this collection, with no field validation
+// and a client-supplied `createdBy` that Rules never bind to request.auth.uid. Removing the form
+// closes the only path the product offered; closing the RULE is a Tier-2 change this presentation
+// ruling does not authorize.
 function InventoryActionsPanel({ partId }) {
-  const [actionType, setActionType] = useState(INVENTORY_ACTION_TYPE.RECEIVE_STOCK);
-  const [quantityDelta, setQuantityDelta] = useState("");
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
   // W2 (hooks/useInventoryActions.js): the read preserves a failed read
   // (permission-denied/unavailable/etc.) distinctly from a genuinely-empty log --
   // `actionsError` is threaded to LoadingEmptyState below so a read failure no
@@ -1162,96 +1180,30 @@ function InventoryActionsPanel({ partId }) {
   const { data: recentActions, loading, error: actionsError } = useInventoryActionsForPart(partId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
-  const isCorrectMistake = actionType === INVENTORY_ACTION_TYPE.CORRECT_MISTAKE;
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await recordInventoryAction({ partId, transactionType: actionType, quantityDelta, reason, notes });
-      setQuantityDelta("");
-      setReason("");
-      setNotes("");
-    } catch (err) {
-      // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
-      setError(workflowActionErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <div className="fo-card">
-      <h3>Inventory Action Log</h3>
-      <p className="fo-muted">
-        This records an audit note only. It does not update stock yet.
+    <RuledSection
+      title="Inventory action history"
+      meta="Historical notes only — never applied to stock, and no longer added to."
+    >
+      <p className="ns-gap-note">
+        These are legacy audit notes from before Receiving, Transfers and Cycle Counts owned their
+        movements. They were never reconciled with the inventory ledger and are kept as evidence of
+        what was recorded, not as a record of what moved. New notes are no longer accepted here.
       </p>
-
-      <form className="fo-form" onSubmit={handleSubmit}>
-        <label htmlFor="inventory-action-type">Action type</label>
-        <select id="inventory-action-type" value={actionType} onChange={(e) => setActionType(e.target.value)}>
-          <option value={INVENTORY_ACTION_TYPE.RECEIVE_STOCK}>
-            {INVENTORY_ACTION_LABEL[INVENTORY_ACTION_TYPE.RECEIVE_STOCK]}
-          </option>
-          <option value={INVENTORY_ACTION_TYPE.ADJUST_STOCK}>
-            {INVENTORY_ACTION_LABEL[INVENTORY_ACTION_TYPE.ADJUST_STOCK]}
-          </option>
-          <option value={INVENTORY_ACTION_TYPE.CORRECT_MISTAKE}>
-            {INVENTORY_ACTION_LABEL[INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]}
-          </option>
-        </select>
-
-        <label htmlFor="inventory-action-qty">Quantity for this note (not applied to stock)</label>
-        <input
-          id="inventory-action-qty"
-          type="number"
-          value={quantityDelta}
-          onChange={(e) => setQuantityDelta(e.target.value)}
-          required
-        />
-
-        <label htmlFor="inventory-action-reason">Reason{isCorrectMistake ? " (required)" : " (optional)"}</label>
-        <input
-          id="inventory-action-reason"
-          type="text"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          required={isCorrectMistake}
-        />
-
-        <label htmlFor="inventory-action-notes">Notes{isCorrectMistake ? " (required)" : " (optional)"}</label>
-        <textarea
-          id="inventory-action-notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          required={isCorrectMistake}
-        />
-
-        {error && <p className="fo-muted">{error}</p>}
-
-        <div className="disp-board-toolbar">
-          <Button type="submit" variant="primary" disabled={submitting}>
-            Log Action
-          </Button>
-        </div>
-      </form>
-
-      <h4>Recent Logged Actions</h4>
-      <p className="fo-muted">Audit notes only -- none of these have been applied to stock.</p>
+        {/* A GENUINELY EMPTY HISTORY IS NOT A FAILURE, and says so in its own sentence. */}
       <LoadingEmptyState
         loading={loading}
         failed={!!actionsError}
         isEmpty={recentActions.length === 0}
-        loadingText="Loading inventory action log..."
-        failedText="Unable to load the inventory action log right now. Try again shortly."
-        emptyText="No inventory actions logged yet."
+        loadingText="Loading inventory action history..."
+        failedText="Unable to load the inventory action history right now. Try again shortly."
+        emptyText="No inventory notes were ever recorded for this part."
       >
         <table className="fo-table">
           <thead>
             <tr>
               <th>Type</th>
-              <th>Qty (logged, not applied)</th>
+              <th>Qty (logged, never applied)</th>
               <th>Reason</th>
               <th>By</th>
               <th>When</th>
@@ -1270,7 +1222,7 @@ function InventoryActionsPanel({ partId }) {
           </tbody>
         </table>
       </LoadingEmptyState>
-    </div>
+    </RuledSection>
   );
 }
 

@@ -672,3 +672,71 @@ landmark exists — *"the rail rewrite dropped it, leaving every page with NO [h
 has always rendered the visible one. Both were added for good reasons and nobody reconciled them. It
 is a document-outline problem across the shell, pre-existing, outside Parts P1, and it is what made
 this failure look like a cross-family regression. It deserves a decision of its own.
+
+---
+
+# Part XI — `inventory_actions`: writes retired, history kept (2026-08-30)
+
+The Owner asked what the Inventory Action Log still does and whether it is worth keeping. It wrote an
+append-only note — Receive Stock / Adjust Stock / Correct Mistake — that **never touched stock**.
+
+## Why it went
+
+Four findings, in the order that matters:
+
+1. **It was never reconciled with anything.** The entity register states it outright: *"the two
+   collections are never joined or reconciled by any code in this repository."* Each note was a
+   second assertion that stock had moved, beside a ledger that said otherwise, with no mechanism that
+   could ever make them agree.
+2. **The people who do the work could not use it.** `allow create: if isAdminOrDispatcher()`. A Parts
+   Manager or Warehouse Manager could read it but not write one — while the form rendered for them
+   ungated, ready to deny on submit.
+3. **Its audit value was weakest where audit matters.** `allow create` carries **no field validation
+   at all**, and `createdBy` is a client-supplied claim Rules never bind to `request.auth.uid`.
+4. **Its vocabulary had been overtaken.** Receiving owns receiving, Transfers own transfers, the Cycle
+   Count and governed adjustment paths own their movement. The panel's own copy still said *"does not
+   update stock **yet**"* — a "yet" outstanding since Sprint 2.1.9 while the real paths were built
+   around it.
+
+**Owner ruling:** retire new writes, keep existing history readable.
+
+## What shipped
+
+The form is gone. The section is **Inventory action history** — read-only, with its nature on its
+face: *"Historical notes only — never applied to stock, and no longer added to."* Every existing
+document, its actor and its timestamp remain visible and catalogued for reporting. Nothing was
+deleted, nothing migrated into the ledger, and no reconciliation logic was invented.
+
+**The store handle went too.** `inventoryActionsStore` was exported beside the writer — a live,
+`.add()`-capable handle on the collection, used by nothing once the form was removed. Retiring the
+function while leaving that export standing would have shut the front door and left the side one
+open: a second write path, quieter than the first. An unused writable handle is an invitation, so it
+was removed rather than commented. `test/collectionStoreTimestampContract.test.mjs` guards the store
+count with a floor, and the floor moved 6 → 5 with its reason attached rather than being quietly
+adjusted.
+
+`recordInventoryAction()` is **kept and now throws**, rather than deleted — because deleting it would
+take the reason with it, and the next person wanting an inventory note on the Part record would
+simply write another one. It refuses, and says why.
+
+## The pin that a comment could satisfy
+
+`partDetailView.test.mjs` asserted the write surface was preserved by checking
+`DETAIL_SRC.includes("recordInventoryAction")`. After the form was removed **that assertion still
+passed** — on three stale comments describing a form that no longer existed.
+
+**A pin a comment can satisfy is not a pin.** The entry is removed with its reason, and the three
+comments now describe what the page actually does.
+
+## Not fixed, and named
+
+`firestore.rules` still carries `allow create: if isAdminOrDispatcher()` on this collection, with no
+field validation and an unbound `createdBy`. Removing the form closes the only path the *product*
+offered; closing the **rule** is Tier-2 and this presentation ruling did not authorize it. **It is now
+the only remaining way to create a new document.**
+
+## Follow-up the Owner reserved
+
+Before any deprecation of the collection itself: determine whether production holds
+`inventory_actions` records and whether reporting or compliance consumers depend on them. **That
+requires a production read and is not authorized here.**

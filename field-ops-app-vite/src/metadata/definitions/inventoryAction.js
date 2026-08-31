@@ -6,8 +6,17 @@ import { INVENTORY_ACTIONS_COLLECTION, INVENTORY_ACTION_TYPE } from "../../domai
 // entity-coverage-reconciliation.md §1.11). Describes the LIVE `inventory_actions` collection:
 // a separate, append-only audit trail for HUMAN-INITIATED inventory adjustments (Receive Stock /
 // Adjust Stock / Correct Mistake), Sprint 2.1.9. domain/inventoryActions.js's own header states
-// it is "the ONLY writer of inventory_actions — no component calls addDoc/setDoc directly", wired
-// LIVE into modules/inventory/PartDetail.jsx (lines 127, 1104).
+// it is "the ONLY writer of inventory_actions — no component calls addDoc/setDoc directly".
+//
+// THAT WRITER IS RETIRED (Owner ruling, 2026-08-30). recordInventoryAction() now throws, and the
+// Part record's form is gone: the collection is not stock authority and was never reconciled with
+// the governed ledger, so every new entry was a parallel assertion that stock had moved with no
+// mechanism to converge. READS ARE UNCHANGED and deliberately so -- the history stays visible,
+// stays attributable, and stays catalogued for reporting. Nothing was deleted or migrated.
+//
+// The Rules gap below is therefore now the ONLY remaining path to a new document, and it is
+// unchanged: `allow create: if isAdminOrDispatcher()` with no field validation. Closing it is a
+// Tier-2 change the presentation ruling did not authorize.
 //
 // NEVER THE SAME LEDGER AS inventory_transactions (ADR-003, inventoryTransaction.js). That
 // collection is the Work-Order-driven, Admin-SDK-only stock-movement source of truth; this one is

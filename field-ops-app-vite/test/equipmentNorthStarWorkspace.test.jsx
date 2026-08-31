@@ -350,3 +350,75 @@ describe("the workspace is composed as a page, not a card", () => {
     expect(container.querySelectorAll(".ns-workspace")).toHaveLength(1);
   });
 });
+
+// ══════════════════════ ONE PAGE IDENTITY PER PAGE, ON EVERY TAB ══════════════════════
+//
+// Owner, from the deployed sandbox: selecting Add Equipment produced a SECOND visible "Equipment"
+// title inside an Equipment page that already had one. `EquipmentRegister` was a standalone route
+// when Wave 3 wrote it, and site-work #10 mounted it as a tab without removing its
+// `WorkspaceShell title="Equipment"`.
+//
+// The shell is removed, not hidden: a CSS-hidden h1 would satisfy a gate while leaving the
+// architecture lying about who owns the page. These assertions are about OWNERSHIP and VISIBILITY,
+// never about a total h1 count across the mounted DOM — all three panels stay mounted so each keeps
+// its state, and a heading inside a hidden one is not on screen.
+
+describe("one visible page identity, whichever tab is selected", () => {
+  // jsdom computes no layout, so `hidden` is the observable a test can use — it is exactly what the
+  // inactive panels carry, and what the live gate confirms geometrically.
+  const visibleH1s = (container) =>
+    [...container.querySelectorAll("h1")]
+      .filter((h) => !h.closest("[hidden]"))
+      .map((h) => h.textContent.trim());
+
+  for (const [tabName, panelId] of [
+    ["Customer Equipment", "customer"],
+    ["Available Equipment", "available"],
+    ["Add Equipment", "add"],
+  ]) {
+    it(`${tabName} selected — exactly one visible Equipment identity`, () => {
+      mockEquipmentList = installedList([INSTALLED_ROW]);
+      const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+      fireEvent.click(screen.getByRole("tab", { name: tabName, exact: true }));
+      expect(container.querySelector(`#eq-panel-${panelId}`).hasAttribute("hidden")).toBe(false);
+
+      const shown = visibleH1s(container);
+      expect(shown, `visible h1s with ${tabName} selected`).toEqual(["Equipment"]);
+      // And the one that is visible is the WORKSPACE's, not a panel's.
+      const workspaceTitle = container.querySelector("h1.ns-workspace__title");
+      expect(workspaceTitle.closest("[hidden]")).toBeNull();
+      expect(container.querySelector(`#eq-panel-${panelId}`).contains(workspaceTitle)).toBe(false);
+    });
+  }
+
+  it("the Add Equipment panel hosts no page shell of its own", () => {
+    mockEquipmentList = installedList([INSTALLED_ROW]);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Add Equipment", exact: true }));
+    const panel = container.querySelector("#eq-panel-add");
+    // `.fo-workspace` is WorkspaceShell's root. Its presence inside a tab is the defect itself.
+    expect(panel.querySelectorAll(".fo-workspace")).toHaveLength(0);
+    expect(panel.querySelectorAll("h1")).toHaveLength(0);
+  });
+
+  it("the tab still works — its controls and account-scoped prompt survive the shell removal", () => {
+    mockEquipmentList = installedList([INSTALLED_ROW]);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Add Equipment", exact: true }));
+    const panel = container.querySelector("#eq-panel-add");
+    // The customer picker was the shell's `actions` region and is now the tab's control row.
+    expect(panel.querySelector("#equipment-account")).toBeTruthy();
+    // And the account-scoped empty state — nothing read until a customer is chosen.
+    expect(panel.textContent).toMatch(/Choose a customer/i);
+  });
+
+  it("a heading inside a HIDDEN panel is not a second identity", () => {
+    mockEquipmentList = installedList([INSTALLED_ROW]);
+    const { container } = withRouter(<EquipmentWorkspace accessVersion={1} />);
+    // Default tab: the other two panels are mounted and hidden. Whatever they contain, the page
+    // still states its identity exactly once.
+    expect(container.querySelector("#eq-panel-available").hasAttribute("hidden")).toBe(true);
+    expect(container.querySelector("#eq-panel-add").hasAttribute("hidden")).toBe(true);
+    expect(visibleH1s(container)).toEqual(["Equipment"]);
+  });
+});

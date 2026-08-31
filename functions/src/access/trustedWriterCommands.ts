@@ -45,6 +45,7 @@ import type {
 import { getAuth } from "firebase-admin/auth";
 import { getApp } from "firebase-admin/app";
 import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
+import { ENVIRONMENT_ACTIVATION_REGISTRY, type ActivationRegistryEnv } from "./environmentCapabilityOverrides";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import {
   INVENTORY_CREATE_EXECUTOR_ROLE,
@@ -785,6 +786,243 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
 }
 
 // =====================================================================
+// CERTIFICATION AUTHORITY GENESIS -- the first role assignment in an empty
+// non-production world, and nothing else, ever.
+// =====================================================================
+//
+// ============================ THE PROBLEM THIS SOLVES, EXACTLY ============================
+//
+// `admin.roleAssignment.write` is carried by exactly ONE Role: `owner`, which is privileged.
+// Granting a privileged Role requires a second, distinct approver who ALSO holds
+// `admin.roleAssignment.write` through a privileged Role (verifyApproverIsPrivileged above), or --
+// in the newer flow below -- an AUTHENTICATED approver whose identity comes from their own session.
+//
+// In a freshly installed Certification World, `roleAssignments` is empty. There is no actor, no
+// approver, and no one who can authenticate. So the first grant is not merely inconvenient to
+// perform through the normal path: it is IMPOSSIBLE through it, by design, and correctly so. Every
+// subsequent grant is then trivially possible, because the fixture's other 86 grants are all
+// NON-privileged and need only a single authorized actor with no approver at all.
+//
+// That asymmetry is the whole design. This function performs exactly one grant -- the one the
+// governed path cannot reach in an empty world -- and hands every other grant back to grantRole().
+//
+// ============================ WHY THIS IS NOT A BACK DOOR ============================
+//
+//   ONE ROLE, NOT A PARAMETER. `roleId` is not an input. It is fixed to the single privileged Role
+//   that carries admin.roleAssignment.write, so this cannot be repurposed to grant anything else.
+//
+//   ONLY INTO A VACUUM. It refuses if ANY active role assignment already exists in the project.
+//   Not "if this principal already has one" -- ANY. A world with authority in it is a world whose
+//   authority came from somewhere, and genesis is not entitled to add a second source.
+//
+//   NON-PRODUCTION BY ROLE, RESOLVED SERVER-SIDE. The runtime's own project identity decides, from
+//   the environment registry -- never a caller-supplied argument. Production yields EMPTY overrides
+//   and is refused here outright, the same way the private-AI classification is refused.
+//
+//   IT TELLS THE TRUTH ABOUT ITSELF. The audit action is `bootstrapCertificationAuthority`, not
+//   `grantRole`, and the actor is a system genesis identity rather than a fabricated human. An
+//   audit trail that recorded this as an ordinary grant by a person who did not exist yet would be
+//   a lie in the one record whose entire purpose is to be trustworthy.
+//
+// After genesis, this function refuses forever and normal grantRole() carries every other grant
+// with its ordinary eligibility, audit and idempotency intact.
+
+// =====================================================================
+// RUNTIME PROJECT IDENTITY -- one resolver, because two were already one too many
+// =====================================================================
+//
+// ============================ THE DEFECT THIS FIXES ============================
+//
+// The genesis guard resolved runtime identity from GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT alone.
+// That is the CLOUD FUNCTIONS convention: the platform populates those variables, no caller can
+// influence them, and for a deployed function it is exactly right.
+//
+// It is not right for a governed ADMIN SCRIPT. Nothing populates those variables locally, so a
+// live genesis run -- against a correctly resolved, correctly initialized certification app that
+// had already read the governed world -- resolved its own project as `none` and refused:
+//
+//     REFUSED: genesis refuses an unregistered runtime project (none)
+//
+// The guard behaved correctly. It failed CLOSED, wrote nothing, and a following dry run still
+// reported WOULD_BOOTSTRAP. The identity SOURCE was wrong, not the refusal.
+//
+// ============================ WHY A SHARED RESOLVER ============================
+//
+// This exact question was already answered correctly elsewhere in this file: the bootstrap-admin
+// cross-project guard reads `getApp().options.projectId` first and falls back to the environment.
+// Genesis introduced a second, weaker rule beside it instead of reusing that one -- which is the
+// failure mode this module's own comments warn about everywhere else. So there is now ONE resolver
+// and both callers use it.
+//
+// ============================ WHAT IT ASKS, AND WHY THAT ORDER ============================
+//
+// The initialized Admin app is asked FIRST because it is the identity that actually matters: it is
+// the project this SDK will write to. An environment variable describes where the process believes
+// it is running; the app describes where the write lands. When they disagree, the write wins the
+// question of what is true and neither wins the question of what was intended -- so it REFUSES
+// rather than picking, exactly as executionTarget refuses ambient credentials that disagree with
+// --projectId.
+//
+// Deployed Cloud Functions behaviour is preserved: initializeApp() there resolves its projectId
+// from the platform, and where it does not, the environment fallback answers as it always did.
+
+/** Raised when the runtime cannot prove which project it is about to write to. */
+export class RuntimeProjectIdentityError extends Error {
+  constructor(message: string) { super(message); this.name = "RuntimeProjectIdentityError"; }
+}
+
+/**
+ * PURE decision core: given what the initialized app says and what the environment says, which
+ * project is this runtime writing to?
+ *
+ * Separated from the I/O so the rule can be tested without initializing a Firebase app or touching
+ * Firestore -- the same reason resolveCapabilityOverrides is pure.
+ */
+export function resolveRuntimeProjectIdentity(
+  appProjectId: string | null | undefined,
+  envProjectId: string | null | undefined,
+): string {
+  const app = typeof appProjectId === "string" && appProjectId.length > 0 ? appProjectId : null;
+  const env = typeof envProjectId === "string" && envProjectId.length > 0 ? envProjectId : null;
+
+  // Disagreement is not a tie to break. One of the two is describing a different world, and there
+  // is no safe way to choose which -- so neither is used.
+  if (app && env && app !== env) {
+    throw new RuntimeProjectIdentityError(
+      `runtime project identity is ambiguous: the initialized Admin app is bound to "${app}" but `
+      + `the environment names "${env}". Refusing rather than choosing.`);
+  }
+  const resolved = app ?? env;
+  if (!resolved) {
+    throw new RuntimeProjectIdentityError(
+      "cannot resolve the runtime project identity from the initialized Admin app or the "
+      + "environment. Refusing: a trusted write must know which project it is writing to.");
+  }
+  return resolved;
+}
+
+/** The project THIS runtime writes to. Reads the initialized app, then the platform environment. */
+export function trustedRuntimeProjectId(): string {
+  let appProjectId: string | null = null;
+  try {
+    appProjectId = getApp().options.projectId ?? null;
+  } catch {
+    // No app initialized yet. Not fatal on its own -- the environment may still answer, and the
+    // resolver refuses if neither does.
+    appProjectId = null;
+  }
+  return resolveRuntimeProjectIdentity(
+    appProjectId,
+    process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? null,
+  );
+}
+
+/** The system identity recorded as actor for a genesis write. Deliberately not a UID shape. */
+export const CERTIFICATION_GENESIS_ACTOR = "system:certification-authority-genesis";
+
+/** The one Role genesis may establish: the only Role carrying admin.roleAssignment.write. */
+export const CERTIFICATION_GENESIS_ROLE_ID = "owner";
+
+export class GenesisNotPermittedError extends Error {
+  constructor(message: string) { super(message); this.name = "GenesisNotPermittedError"; }
+}
+
+export interface BootstrapCertificationAuthorityInput {
+  /** The principal receiving the genesis authority. Derived by the caller from the fixture. */
+  principalUid: string;
+  /** The employee id that principal is linked to, recorded in the audit summary for traceability. */
+  employeeId: string;
+  idempotencyKey: string;
+}
+
+/**
+ * Establish the FIRST role assignment in an otherwise-empty non-production world.
+ *
+ * Reuses runAccessMutationCommand, so genesis gets the same atomic guarantees as every other
+ * access mutation: the assignment, the accessVersion increment and exactly one Audit Event commit
+ * together or not at all, and claims synchronise afterwards. Writing the document from a script
+ * would have skipped all of it and produced a record indistinguishable from a governed grant while
+ * being nothing like one.
+ */
+export async function bootstrapCertificationAuthority(
+  input: BootstrapCertificationAuthorityInput,
+): Promise<CommandOutcome> {
+  assertValidIdempotencyKey(input.idempotencyKey);
+  assertNonEmptyString(input.principalUid, "principalUid");
+  assertNonEmptyString(input.employeeId, "employeeId");
+
+  // ── NON-PRODUCTION, decided from the runtime's own identity ──────────────────────────────────
+  //
+  // THE PROJECT THIS SDK ACTUALLY WRITES TO, from the initialized Admin app -- not from an
+  // environment variable that nothing populates outside a deployed function. The caller's
+  // executionTarget ceremony chose a target; this independently verifies the SDK is bound to that
+  // same project, so a caller-supplied --projectId can never be sufficient on its own.
+  const projectId = trustedRuntimeProjectId();
+  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments ?? [])
+    .find((e: ActivationRegistryEnv) => typeof e?.firebase?.projectId === "string" && e.firebase.projectId === projectId);
+  if (!env) {
+    throw new GenesisNotPermittedError(
+      `genesis refuses an unregistered runtime project (${projectId})`);
+  }
+  if (env.role === "production") {
+    throw new GenesisNotPermittedError("genesis is never permitted in a production environment");
+  }
+
+  const db = getFirestore();
+
+  // ── ONLY INTO A VACUUM ───────────────────────────────────────────────────────────────────────
+  //
+  // ANY active assignment, not just one for this principal. Authority that already exists came
+  // from somewhere, and a second independent source of it is the thing this must never become.
+  const existing = await db.collection(ROLE_ASSIGNMENTS_COLLECTION)
+    .where("status", "==", "active").limit(1).get();
+  if (!existing.empty) {
+    const doc = existing.docs[0].data() as Record<string, unknown>;
+    throw new GenesisNotPermittedError(
+      `role authority is already initialized (active assignment "${doc.roleId}" for `
+      + `${doc.principalUid}). Genesis applies only to an empty world. Use grantRole.`);
+  }
+
+  const role = ASSIGNABLE_ROLES[CERTIFICATION_GENESIS_ROLE_ID];
+  if (!role?.privileged) {
+    // Defensive: if the catalog ever stopped marking this Role privileged, the asymmetry this
+    // function exists to resolve would no longer hold and genesis would be unnecessary.
+    throw new GenesisNotPermittedError(
+      `"${CERTIFICATION_GENESIS_ROLE_ID}" is not a privileged Role in this catalog`);
+  }
+
+  const assignmentRef = db.collection(ROLE_ASSIGNMENTS_COLLECTION).doc(input.idempotencyKey);
+  return runAccessMutationCommand(input.idempotencyKey, {
+    principalUid: input.principalUid,
+    auditInput: {
+      actorUid: CERTIFICATION_GENESIS_ACTOR,
+      action: "bootstrapCertificationAuthority",
+      targetType: "roleAssignment",
+      targetId: input.principalUid,
+      outcome: "applied",
+      summary: `GENESIS: established "${CERTIFICATION_GENESIS_ROLE_ID}" for ${input.employeeId} `
+        + `(${input.principalUid}) in an empty non-production world. No prior authority existed, `
+        + "so no actor or approver could be authenticated. Subsequent grants use grantRole.",
+      scope: { type: "global" },
+    },
+    apply: (txn, ctx) => {
+      txn.create(assignmentRef, {
+        principalUid: input.principalUid,
+        roleId: CERTIFICATION_GENESIS_ROLE_ID,
+        scope: { type: "global" },
+        // NOT `grantedBy: <some uid>`. No principal granted this, and saying one did would be the
+        // single most misleading field in the access model.
+        grantedBy: CERTIFICATION_GENESIS_ACTOR,
+        grantedAt: FieldValue.serverTimestamp(),
+        genesis: true,
+        status: "active",
+        accessVersionAtGrant: ctx.newAccessVersion,
+      });
+    },
+  });
+}
+
+// =====================================================================
 // PRIVILEGED ROLE APPROVAL -- propose, then approve as an authenticated Admin
 // =====================================================================
 //
@@ -1410,14 +1648,18 @@ export async function bootstrapCompatibilityAdmin(
   // project different from where the roleAssignment lands -- e.g. recording
   // "eos-platform-sandbox" while writing to "taylor-parts", or vice versa. We
   // refuse BEFORE any write (no audit against the mismatched project).
-  const runtimeProject =
-    getApp().options.projectId ??
-    process.env.GCLOUD_PROJECT ??
-    process.env.GOOGLE_CLOUD_PROJECT ??
-    null;
-  if (!runtimeProject) {
+  // ONE RESOLVER, shared with the genesis guard. This block was the CORRECT implementation and
+  // genesis wrote a second, weaker one beside it -- which is how a live genesis run resolved its
+  // own project as `none` against a correctly initialized app. The rule now lives in one place and
+  // both callers ask it, so they cannot diverge again. It additionally refuses an app/environment
+  // DISAGREEMENT, which this version silently resolved in the app's favour.
+  let runtimeProject: string;
+  try {
+    runtimeProject = trustedRuntimeProjectId();
+  } catch (err) {
     throw new InvalidStateError(
-      "cannot resolve the runtime project identity; refusing to record bootstrap provenance (fail closed)",
+      "cannot resolve the runtime project identity; refusing to record bootstrap provenance "
+      + `(fail closed): ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   if (runtimeProject !== input.projectId) {
