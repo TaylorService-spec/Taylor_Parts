@@ -192,13 +192,13 @@ retiring the direct path without the callables deployed would break reorder crea
 
 ## 13 — Cutover and rollback
 
-Owner ruling: four conditions must all hold before the trusted reorder authority is live, and the
+Owner ruling: the conditions below must all hold before the trusted reorder authority is live, and the
 order is not to be improvised at release time. This is that order, with what breaks if it is not
 followed, and how each step is undone.
 
 **None of this is authorized to run.** It is the runbook the authorization would govern.
 
-### The four conditions
+### The activation conditions
 
 | # | Condition | Why it is a condition |
 |---|---|---|
@@ -206,6 +206,43 @@ followed, and how each step is undone.
 | 2 | `createReorderRequest` + `recordReorderPurchaseOrder` deployed | Nothing can create a request once Rules retire the direct path. |
 | 3 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
 | 4 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
+| 5 | Every persona who may raise a reorder can obtain the warehouse pick-list | Added after measurement -- two of them currently cannot. See the blocking gap below. |
+
+### BLOCKING GAP — two personas cannot see the warehouse list they are now required to name
+
+**Measured against the emulator on this branch, 2026-08-31.** `firestore.rules` grants
+`warehouses` read as `isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId)`. The second half
+is a per-document test, and the pick-list is a collection LIST, which no per-document condition can
+satisfy:
+
+| Persona | LIST `warehouses` | GET `warehouses/wh-main` | Can raise a reorder? |
+|---|---|---|---|
+| admin | 200 | 200 | yes |
+| dispatcher | 200 | 200 | yes |
+| technician, ACTIVE `PARTS_MANAGER` | **403** | 403 | **no** |
+| technician, ACTIVE `WAREHOUSE_MANAGER` assigned to `wh-main` | **403** | 200 | **no** |
+
+The last two are not incidental users: the NEEDS_PLANNING manual-entry path exists *for* them, and
+`WarehouseManagerHome` exists *for* the fourth row. They fail honestly — the selector renders "Unable
+to load warehouses right now, so a reorder cannot be requested" and the button stays off — but they
+fail, and before this workstream they could raise a reorder without naming a warehouse at all.
+
+**This is a regression created by requiring the warehouse, and it must be closed before activation.**
+It is a change to a read authority, so it is the Owner's to decide, not this workstream's.
+
+**Recommended: a trusted read companion, not a Rules widening.** `listReceivingLocationOptions`
+(`functions/src/warehouseGovernance/receivingLocationOptionsService.ts`) already solves exactly this
+shape for Receiving: the eligible-location list is served by a capability-gated callable, and
+`warehouses` stays closed to client LIST. A `listReorderWarehouseOptions` companion gated on the
+reorder-create capability would follow that precedent, keep the pick-list and the command gated on
+the same authority, and add no client read surface.
+
+**The alternative — widening `warehouses` read to those operational roles — is not recommended.**
+It grants a standing collection LIST to obtain a pick-list, which is a broader disclosure than the
+task needs and is the kind of grant that is easy to make and hard to take back.
+
+**Not recommended at all:** restricting the reorder surfaces to admin/dispatcher. That closes a
+capability those roles hold today in order to avoid deciding this.
 
 ### Order
 
