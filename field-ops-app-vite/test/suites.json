@@ -338,6 +338,10 @@
       "runner": "node"
     },
     {
+      "file": "test/metadataNumberingAuthority.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/metadataAccountDefinition.test.mjs",
       "runner": "node --test"
     },
