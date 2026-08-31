@@ -827,6 +827,96 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
 // After genesis, this function refuses forever and normal grantRole() carries every other grant
 // with its ordinary eligibility, audit and idempotency intact.
 
+// =====================================================================
+// RUNTIME PROJECT IDENTITY -- one resolver, because two were already one too many
+// =====================================================================
+//
+// ============================ THE DEFECT THIS FIXES ============================
+//
+// The genesis guard resolved runtime identity from GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT alone.
+// That is the CLOUD FUNCTIONS convention: the platform populates those variables, no caller can
+// influence them, and for a deployed function it is exactly right.
+//
+// It is not right for a governed ADMIN SCRIPT. Nothing populates those variables locally, so a
+// live genesis run -- against a correctly resolved, correctly initialized certification app that
+// had already read the governed world -- resolved its own project as `none` and refused:
+//
+//     REFUSED: genesis refuses an unregistered runtime project (none)
+//
+// The guard behaved correctly. It failed CLOSED, wrote nothing, and a following dry run still
+// reported WOULD_BOOTSTRAP. The identity SOURCE was wrong, not the refusal.
+//
+// ============================ WHY A SHARED RESOLVER ============================
+//
+// This exact question was already answered correctly elsewhere in this file: the bootstrap-admin
+// cross-project guard reads `getApp().options.projectId` first and falls back to the environment.
+// Genesis introduced a second, weaker rule beside it instead of reusing that one -- which is the
+// failure mode this module's own comments warn about everywhere else. So there is now ONE resolver
+// and both callers use it.
+//
+// ============================ WHAT IT ASKS, AND WHY THAT ORDER ============================
+//
+// The initialized Admin app is asked FIRST because it is the identity that actually matters: it is
+// the project this SDK will write to. An environment variable describes where the process believes
+// it is running; the app describes where the write lands. When they disagree, the write wins the
+// question of what is true and neither wins the question of what was intended -- so it REFUSES
+// rather than picking, exactly as executionTarget refuses ambient credentials that disagree with
+// --projectId.
+//
+// Deployed Cloud Functions behaviour is preserved: initializeApp() there resolves its projectId
+// from the platform, and where it does not, the environment fallback answers as it always did.
+
+/** Raised when the runtime cannot prove which project it is about to write to. */
+export class RuntimeProjectIdentityError extends Error {
+  constructor(message: string) { super(message); this.name = "RuntimeProjectIdentityError"; }
+}
+
+/**
+ * PURE decision core: given what the initialized app says and what the environment says, which
+ * project is this runtime writing to?
+ *
+ * Separated from the I/O so the rule can be tested without initializing a Firebase app or touching
+ * Firestore -- the same reason resolveCapabilityOverrides is pure.
+ */
+export function resolveRuntimeProjectIdentity(
+  appProjectId: string | null | undefined,
+  envProjectId: string | null | undefined,
+): string {
+  const app = typeof appProjectId === "string" && appProjectId.length > 0 ? appProjectId : null;
+  const env = typeof envProjectId === "string" && envProjectId.length > 0 ? envProjectId : null;
+
+  // Disagreement is not a tie to break. One of the two is describing a different world, and there
+  // is no safe way to choose which -- so neither is used.
+  if (app && env && app !== env) {
+    throw new RuntimeProjectIdentityError(
+      `runtime project identity is ambiguous: the initialized Admin app is bound to "${app}" but `
+      + `the environment names "${env}". Refusing rather than choosing.`);
+  }
+  const resolved = app ?? env;
+  if (!resolved) {
+    throw new RuntimeProjectIdentityError(
+      "cannot resolve the runtime project identity from the initialized Admin app or the "
+      + "environment. Refusing: a trusted write must know which project it is writing to.");
+  }
+  return resolved;
+}
+
+/** The project THIS runtime writes to. Reads the initialized app, then the platform environment. */
+export function trustedRuntimeProjectId(): string {
+  let appProjectId: string | null = null;
+  try {
+    appProjectId = getApp().options.projectId ?? null;
+  } catch {
+    // No app initialized yet. Not fatal on its own -- the environment may still answer, and the
+    // resolver refuses if neither does.
+    appProjectId = null;
+  }
+  return resolveRuntimeProjectIdentity(
+    appProjectId,
+    process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? null,
+  );
+}
+
 /** The system identity recorded as actor for a genesis write. Deliberately not a UID shape. */
 export const CERTIFICATION_GENESIS_ACTOR = "system:certification-authority-genesis";
 
@@ -863,14 +953,16 @@ export async function bootstrapCertificationAuthority(
 
   // ── NON-PRODUCTION, decided from the runtime's own identity ──────────────────────────────────
   //
-  // Keyed on the deployed project, which the platform sets and no caller can influence -- the same
-  // mechanism, and the same reasoning, as the private-AI classification gate.
-  const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? null;
+  // THE PROJECT THIS SDK ACTUALLY WRITES TO, from the initialized Admin app -- not from an
+  // environment variable that nothing populates outside a deployed function. The caller's
+  // executionTarget ceremony chose a target; this independently verifies the SDK is bound to that
+  // same project, so a caller-supplied --projectId can never be sufficient on its own.
+  const projectId = trustedRuntimeProjectId();
   const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments ?? [])
     .find((e: ActivationRegistryEnv) => typeof e?.firebase?.projectId === "string" && e.firebase.projectId === projectId);
   if (!env) {
     throw new GenesisNotPermittedError(
-      `genesis refuses an unregistered runtime project (${projectId ?? "none"})`);
+      `genesis refuses an unregistered runtime project (${projectId})`);
   }
   if (env.role === "production") {
     throw new GenesisNotPermittedError("genesis is never permitted in a production environment");
@@ -1556,14 +1648,18 @@ export async function bootstrapCompatibilityAdmin(
   // project different from where the roleAssignment lands -- e.g. recording
   // "eos-platform-sandbox" while writing to "taylor-parts", or vice versa. We
   // refuse BEFORE any write (no audit against the mismatched project).
-  const runtimeProject =
-    getApp().options.projectId ??
-    process.env.GCLOUD_PROJECT ??
-    process.env.GOOGLE_CLOUD_PROJECT ??
-    null;
-  if (!runtimeProject) {
+  // ONE RESOLVER, shared with the genesis guard. This block was the CORRECT implementation and
+  // genesis wrote a second, weaker one beside it -- which is how a live genesis run resolved its
+  // own project as `none` against a correctly initialized app. The rule now lives in one place and
+  // both callers ask it, so they cannot diverge again. It additionally refuses an app/environment
+  // DISAGREEMENT, which this version silently resolved in the app's favour.
+  let runtimeProject: string;
+  try {
+    runtimeProject = trustedRuntimeProjectId();
+  } catch (err) {
     throw new InvalidStateError(
-      "cannot resolve the runtime project identity; refusing to record bootstrap provenance (fail closed)",
+      "cannot resolve the runtime project identity; refusing to record bootstrap provenance "
+      + `(fail closed): ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   if (runtimeProject !== input.projectId) {

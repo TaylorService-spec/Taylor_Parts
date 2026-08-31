@@ -349,3 +349,143 @@ test("ROLE GRANTS: the privileged grant is still held back on both paths", () =>
   assert.match(src, /HELD_PRIVILEGED/, "the privileged grant must remain excluded from the batch");
   assert.match(src, /manifest\.filter\(\(m\) => m\.privileged\)/, "privileged grants are separated, not granted");
 });
+
+// =================================================================================================
+// RUNTIME PROJECT IDENTITY -- what the SDK is bound to, not what the process believes.
+//
+// ============================ THE LIVE FAILURE THIS ENCODES ============================
+//
+// The genesis guard resolved its runtime project from GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT alone.
+// That is the Cloud Functions convention: the platform populates those, no caller can influence
+// them, and for a DEPLOYED function it is exactly right.
+//
+// It is wrong for a governed admin script. Nothing populates them locally, so an authorized live
+// genesis run -- correct target, correctly initialized certification app, governed world already
+// read successfully -- resolved its own project as `none` and refused:
+//
+//     REFUSED: genesis refuses an unregistered runtime project (none)
+//
+// The guard was right to refuse and wrote nothing. The identity SOURCE was wrong.
+//
+// The correct implementation already existed twenty lines away, in the bootstrap-admin
+// cross-project guard, which reads the initialized app first. Genesis wrote a second, weaker rule
+// beside it instead of reusing it. These cases pin the shared resolver both now use.
+// =================================================================================================
+const { resolveRuntimeProjectIdentity, RuntimeProjectIdentityError, bootstrapCertificationAuthority } =
+  await import(L("functions/lib/access/trustedWriterCommands.js"));
+
+const CERT = "eos-platform-certification";
+const SANDBOX = "eos-platform-sandbox";
+const PROD = "taylor-parts";
+
+const resolves = (app, env) => resolveRuntimeProjectIdentity(app, env);
+const refuses = (app, env) => {
+  try { resolveRuntimeProjectIdentity(app, env); return null; } catch (e) { return e; }
+};
+
+// ── THE APP IS THE AUTHORITY ──────────────────────────────────────────────────────────────────
+
+test("IDENTITY: the initialized Admin app answers, even when the environment is silent", () => {
+  // THE EXACT LIVE FAILURE. This is the case that refused: a correctly initialized certification
+  // app, and no environment variables at all because nothing sets them outside a deployed function.
+  assert.equal(resolves(CERT, null), CERT);
+  assert.equal(resolves(CERT, undefined), CERT);
+  assert.equal(resolves(CERT, ""), CERT);
+});
+
+test("IDENTITY: the environment still answers for a deployed function, where the app may not", () => {
+  // Deployed Cloud Functions behaviour is preserved rather than replaced -- the platform populates
+  // GCLOUD_PROJECT, and where initializeApp() does not carry a projectId the environment does.
+  assert.equal(resolves(null, CERT), CERT);
+});
+
+test("IDENTITY: neither source answering is a REFUSAL, never a default", () => {
+  for (const [app, env] of [[null, null], [undefined, undefined], ["", ""], [null, ""]]) {
+    const err = refuses(app, env);
+    assert.ok(err instanceof RuntimeProjectIdentityError, `must refuse for (${app}, ${env})`);
+    assert.match(err.message, /cannot resolve the runtime project identity/);
+  }
+});
+
+test("IDENTITY: a DISAGREEMENT refuses rather than picking a winner", () => {
+  // One of the two is describing a different world and there is no safe way to choose. Same
+  // reasoning as executionTarget refusing ambient credentials that disagree with --projectId.
+  const err = refuses(CERT, SANDBOX);
+  assert.ok(err instanceof RuntimeProjectIdentityError);
+  assert.match(err.message, /ambiguous/);
+  assert.match(err.message, new RegExp(CERT));
+  assert.match(err.message, new RegExp(SANDBOX));
+  // And in the direction that matters most.
+  assert.ok(refuses(SANDBOX, PROD) instanceof RuntimeProjectIdentityError);
+  assert.ok(refuses(PROD, CERT) instanceof RuntimeProjectIdentityError);
+});
+
+test("IDENTITY: agreement between app and environment is accepted", () => {
+  assert.equal(resolves(CERT, CERT), CERT);
+});
+
+// ── WHAT GENESIS DOES WITH IT ─────────────────────────────────────────────────────────────────
+
+test("GENESIS: reads runtime identity from the shared resolver, never from a caller argument", () => {
+  // The caller's executionTarget ceremony CHOOSES a target. The trusted writer independently
+  // verifies the SDK is bound to it. A caller-supplied projectId must never be sufficient, so the
+  // genesis input shape carries no project at all -- structurally, not by validation.
+  const body = functionBody("functions/src/access/trustedWriterCommands.ts",
+    "export async function bootstrapCertificationAuthority");
+  assert.match(body, /trustedRuntimeProjectId\(\)/, "genesis must use the shared resolver");
+  assert.equal(/process\.env\.GCLOUD_PROJECT|process\.env\.GOOGLE_CLOUD_PROJECT/.test(body), false,
+    "genesis must not read the environment directly -- that is what failed on the live run");
+  assert.equal(/input\.projectId/.test(body), false,
+    "genesis must not accept a caller-supplied project id");
+});
+
+test("GENESIS: the input contract has no project field for a caller to supply", () => {
+  const src = codeOf("functions/src/access/trustedWriterCommands.ts");
+  const iface = src.slice(src.indexOf("export interface BootstrapCertificationAuthorityInput"));
+  const decl = iface.slice(0, iface.indexOf("}"));
+  assert.equal(/projectId/.test(decl), false,
+    "a project field would make caller assertion sufficient, which is the whole thing being prevented");
+});
+
+test("GENESIS: production and sandbox runtimes are refused by the registry lookup that follows", () => {
+  // The resolver answers WHICH project; the registry decides whether that project may be
+  // bootstrapped. Both halves are asserted: the resolver returns the name, and genesis refuses
+  // production by role and refuses any project the registry does not carry.
+  assert.equal(resolves(PROD, null), PROD, "the resolver reports production honestly");
+  assert.equal(resolves(SANDBOX, null), SANDBOX);
+  const body = functionBody("functions/src/access/trustedWriterCommands.ts",
+    "export async function bootstrapCertificationAuthority");
+  assert.match(body, /role === "production"/, "a production runtime must be refused");
+  assert.match(body, /genesis refuses an unregistered runtime project/, "an unknown runtime must be refused");
+});
+
+// ── ONE RESOLVER, NOT TWO ─────────────────────────────────────────────────────────────────────
+
+test("IDENTITY: there is exactly ONE place runtime project identity is read", () => {
+  // The defect was a SECOND identity rule written beside a correct one. A third would be the same
+  // defect again, so the count is asserted rather than trusted to review.
+  const src = codeOf("functions/src/access/trustedWriterCommands.ts");
+  const appReads = (src.match(/getApp\(\)\.options\.projectId/g) ?? []).length;
+  const envReads = (src.match(/process\.env\.GCLOUD_PROJECT/g) ?? []).length;
+  assert.equal(appReads, 1, "the initialized app must be read in exactly one place");
+  assert.equal(envReads, 1, "the environment must be read in exactly one place");
+});
+
+test("IDENTITY: the bootstrap-admin cross-project guard uses the same resolver", () => {
+  // It was the correct implementation. It now shares the rule rather than carrying a copy, so the
+  // two cannot drift apart again -- and it inherits the disagreement refusal it did not have.
+  const body = functionBody("functions/src/access/trustedWriterCommands.ts",
+    "export async function bootstrapCompatibilityAdmin(");
+  assert.match(body, /trustedRuntimeProjectId\(\)/);
+});
+
+// ── NOTHING HERE TOUCHES FIRESTORE ────────────────────────────────────────────────────────────
+
+test("IDENTITY: the resolver is pure -- no app, no Firestore, no live write", () => {
+  // Every case above ran without initializing a Firebase app. If the resolver ever needed one, the
+  // rule could not be tested without the very infrastructure it exists to check.
+  assert.equal(typeof resolveRuntimeProjectIdentity, "function");
+  assert.equal(resolveRuntimeProjectIdentity(CERT, null), CERT);
+  assert.equal(typeof bootstrapCertificationAuthority, "function",
+    "genesis is importable without executing anything");
+});
