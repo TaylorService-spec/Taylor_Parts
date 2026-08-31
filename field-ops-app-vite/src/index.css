@@ -6923,11 +6923,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-parts-rail .fo-inline-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ns-parts-rail .fo-inline-form input { min-width: 0; flex: 1 1 120px; }
 
-/* The catalogue's own footnote. It states WHY there is no quantity column -- an
-   absence this family refuses to leave unexplained -- and it reads as a note to
-   the table rather than as the page's opening statement, which is where it was. */
-.ns-parts-catalogue__note { font-size: 12px; line-height: 1.55; max-width: 78ch;
-  margin: 14px 0 0; }
+/* The catalogue's footnote rule is GONE with the paragraph it styled (Owner
+   ruling B §4): the ND-25 explanation lives behind the (i) beside the count and
+   nowhere else. Removed rather than left standing, because a rule with no
+   element is the dead CSS the coverage guard exists to stop accumulating. */
 
 /* ── FRAME 1a-MOBILE: a two-line row, not a six-row labelled card.
    The audit's most serious finding was 9,277px at 375 -- 11.4 screens, 2.7x the

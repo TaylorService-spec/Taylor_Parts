@@ -203,7 +203,15 @@ async function overflow(page, label, width) {
 const HEIGHT_BUDGET = {
   "workspace 1440": { max: 1700, was: 3406 },
   "workspace 375": { max: 2400, was: 9277 },
-  "record 1440": { max: 1050, was: 1508 },
+  // REVISED BY THE OWNER, 2026-08-31, from Design's 1,050 to 1,200 — the one ceiling deliberately
+  // moved, and the reasoning is recorded because a budget that changes without one is not a budget.
+  // The deployed settled record measured 1,197px, and 131px of that is content the Owner chose to
+  // KEEP rather than Parts-local waste: the shared North Star record padding (80px, a family-wide
+  // decision held out of this pass) and the Inventory action history (51px, retained). 1,197 − 131
+  // = 1,066, which puts the Parts composition itself within a whisker of Design's original figure.
+  // The ceiling moved to match a truthful composition; the composition was not squeezed to match a
+  // ceiling.
+  "record 1440": { max: 1200, was: 1508 },
   "record 375": { max: 1500, was: 2615 },
 };
 
@@ -330,21 +338,55 @@ async function main() {
   const hasViews = chipText.some((c) => /^all\b/i.test(c)) && chipText.some((c) => /needs attention/i.test(c));
   record("3c ND-30 the catalogue offers view chips with counts", hasViews, `chips=${JSON.stringify(chipText.slice(0, 6))}`);
 
-  // ── 3d: THE CATALOGUE LEADS. A page called Parts that opens on five empty reorder queues is
-  //       answering a question nobody asked first. Measured as position, not as prose: the
-  //       catalogue's top must sit above the Work group's heading.
-  const order = await page.evaluate(() => {
+  // ── 3d: THE CATALOGUE DOMINATES, AND WORK IS SUBORDINATE TO IT.
+  //
+  // WHAT THIS REPLACES, and why the old form had to go. It asserted that the catalogue's top sits
+  // ABOVE the Work group's — right when the two were stacked, and meaningless once P1v2 put them
+  // side by side. On the deployed page both tops are 257: the check was reading a vertical order
+  // that the approved composition no longer has, and failing a page that is correct.
+  //
+  // THE CONTRACT ITSELF IS UNCHANGED and is what ND-30 and its amendment actually protect: Parts is
+  // the dominant purpose of this workspace, Work and Flow are present on the same route and
+  // visually subordinate. Side by side, that is a statement about WIDTH and CONTAINMENT rather than
+  // about vertical order -- so it is asserted as one, and it would still fail if the rail grew to
+  // dominate the page or if either group left the route.
+  const layout = await page.evaluate(() => {
     const cat = document.querySelector("[data-parts-catalog]");
     const work = document.getElementById("parts-group-work");
-    if (!cat || !work) return null;
-    return { catalogueTop: Math.round(cat.getBoundingClientRect().top + window.scrollY),
-             workTop: Math.round(work.getBoundingClientRect().top + window.scrollY) };
+    const flow = document.getElementById("parts-group-flow");
+    const rail = document.querySelector(".ns-parts-rail");
+    if (!cat || !work || !flow) return null;
+    const box = (el) => {
+      const b = el.getBoundingClientRect();
+      return { top: Math.round(b.top + window.scrollY), left: Math.round(b.left), width: Math.round(b.width) };
+    };
+    return {
+      cat: box(cat),
+      work: box(work),
+      // Both groups must still be INSIDE the rail — that is the "not relocated off /inventory" half.
+      workInRail: !!rail && rail.contains(work),
+      flowInRail: !!rail && rail.contains(flow),
+      rail: rail ? box(rail) : null,
+      stacked: window.matchMedia("(max-width: 900px)").matches,
+    };
   });
-  record(
-    "3d ND-30 the catalogue leads the page, above the Work group",
-    !!order && order.catalogueTop < order.workTop,
-    order ? `catalogueTop=${order.catalogueTop} workTop=${order.workTop}` : "(one of the two surfaces is missing)",
-  );
+  let orderOk = false;
+  let orderDetail = "(one of the two surfaces is missing)";
+  if (layout) {
+    // Stacked (handheld) keeps the old contract: the catalogue comes first.
+    // Side by side: the catalogue is the wider column and the rail is narrower than it.
+    orderOk = layout.stacked
+      ? layout.cat.top < layout.work.top && layout.workInRail && layout.flowInRail
+      : layout.cat.left < layout.work.left &&
+        !!layout.rail &&
+        layout.rail.width < layout.cat.width &&
+        layout.workInRail &&
+        layout.flowInRail;
+    orderDetail =
+      `stacked=${layout.stacked} catalogue(left=${layout.cat.left} w=${layout.cat.width}) ` +
+      `rail(left=${layout.rail?.left} w=${layout.rail?.width}) workInRail=${layout.workInRail} flowInRail=${layout.flowInRail}`;
+  }
+  record("3d ND-30 the catalogue dominates; Work and Flow are subordinate and still on this route", orderOk, orderDetail);
 
   // ── 4: THE VALUE CONTRACT, separate from the grammar contract check 3a owns.
   //
@@ -469,9 +511,13 @@ async function main() {
     await page.goto(`${ORIGIN}${candidate.href}`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".ns-identity__title", { timeout: 30000 });
     await page.waitForTimeout(1500);
+    // #part-availability, NOT an h2 reading "Stock forecast". P1v2 renamed that band to
+    // "Availability / Inventory" and this selector was supposed to change with it in #1642 -- the
+    // edit silently no-opped, so the probe found nothing on every candidate, fell back to a part
+    // with no ledger activity, and took checks 12 and 13 down with it. The id is the stable
+    // contract: the same lesson `data-parts-catalog` taught on the workspace.
     const forecastText = await page
-      .locator("section")
-      .filter({ has: page.locator("h2", { hasText: "Stock forecast" }) })
+      .locator("#part-availability")
       .first()
       .innerText()
       .catch(() => "");
@@ -522,11 +568,17 @@ async function main() {
   record("9  ND-27 no cost or price on the record", moneyHits.length === 0 && !costLabel, `money=${JSON.stringify(moneyHits.slice(0, 3))} label=${costLabel}`);
 
   // ── 10: the inactive-capability sections are TRUTHFUL — heading present, no table, a reason given.
-  const whereHeading = page.locator("h2", { hasText: "Where it is" }).first();
-  const hasWhere = (await whereHeading.count()) > 0;
-  let whereOk = false, whereDetail = "(section missing)";
+  // [data-where-it-is], NOT an h2. P1v2 folds this into the right column of the Availability /
+  // Inventory band, where its heading is an h3 and the BAND legitimately contains a table (the four
+  // stock-position rows). Scoping to the block keeps "draws no table" meaning what it always meant
+  // -- no per-location table -- rather than accidentally asserting it about the band.
+  //
+  // THE ASSERTION IS UNCHANGED IN STRENGTH: a reason is stated, custody is stated, no table.
+  const whereBlock = page.locator("[data-where-it-is]").first();
+  const hasWhere = (await whereBlock.count()) > 0;
+  let whereOk = false, whereDetail = "(block missing)";
   if (hasWhere) {
-    const section = page.locator("section").filter({ has: page.locator("h2", { hasText: "Where it is" }) }).first();
+    const section = whereBlock;
     const text = await section.innerText();
     const tables = await section.locator("table").count();
     whereOk = tables === 0 && /switched on|not switched on|cannot be listed/i.test(text) && /custody/i.test(text);
@@ -562,9 +614,9 @@ async function main() {
 
   // ── 13: ND-28 — the governed reorder command surface survives. REACHABILITY only: this gate does
   //       not press it, because a gate that raises a real reorder request is a gate that mutates.
-  const forecast = page.locator("section").filter({ has: page.locator("h2", { hasText: "Stock forecast" }) }).first();
+  const forecast = page.locator("#part-availability").first();
   const hasForecast = (await forecast.count()) > 0;
-  let reorderDetail = "(no Stock forecast section)";
+  let reorderDetail = "(no Availability / Inventory band)";
   let reorderOk = false;
   if (hasForecast) {
     const text = await forecast.innerText();

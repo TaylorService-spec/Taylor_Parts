@@ -117,6 +117,46 @@ export function partRecordFacts(part, manufacturerName = null) {
  * and taught the reader to skim both. The subset is computed, not hand-maintained, so a fact added
  * to the header cannot reappear below it.
  */
+/**
+ * THE PART INFORMATION BAND — the structured master-data summary, Frame 1b's own five rows.
+ *
+ * WHY THIS EXISTS BESIDE partRecordRailSubset(), which deliberately does the opposite.
+ *
+ * The rail subset withholds every fact the header already states, on the rule that a record should
+ * not say the same thing twice. That rule was right for a RAIL — a narrow column of leftovers beside
+ * the main content. It is wrong for this band, and the deployed page proved it: with the header
+ * stating status, category, unit and OEM, the subset returned nothing at all and "Part information"
+ * rendered as a two-column band with an empty left half.
+ *
+ * The Owner ruled the repetition intentional (2026-08-31): "identity gives fast recognition; Part
+ * Information gives the structured master-data summary". They are two different readings of the same
+ * part, and the frame draws both.
+ *
+ * FIVE ROWS, EXACTLY AS DESIGN ASSIGNS THEM — Status, Control, Stocking, Unit, Manufacturer. Not
+ * Category and not OEM: those stay in the identity line, where the frame puts them and nowhere else.
+ *
+ * ABSENCE IS STATED, NEVER SKIPPED. A row whose value is missing keeps its label and says so, because
+ * a master-data summary that silently omits a field tells the reader the field does not exist rather
+ * than that it is unrecorded. That is the same distinction this family draws everywhere else.
+ *
+ * @param {object} part canonical part view
+ * @param {string|null} manufacturerName resolved NAME, never an id — a raw id is not a fact a reader
+ *   can use, and substituting one is the failure ND-26 named on the workspace.
+ */
+export function partInformationRows(part, manufacturerName = null) {
+  const absent = "Not recorded";
+  const manufacturer = part?.manufacturerId ? manufacturerName : null;
+  return [
+    { key: "status", label: "Status", value: word(PART_STATUS_LABEL, part?.status), absence: absent },
+    { key: "control", label: "Control", value: word(CONTROL_TYPE_LABEL, part?.controlType), absence: absent },
+    { key: "stocking", label: "Stocking", value: word(STOCKING_CLASS_LABEL, part?.stockingClass), absence: absent },
+    { key: "unit", label: "Unit", value: word(UNIT_CODE_LABEL, part?.unit), absence: absent },
+    // An UNRESOLVED manufacturer id is an absence here, not a value. Rendering the id would put a
+    // key in front of a reader in the one band whose job is to be readable.
+    { key: "manufacturer", label: "Manufacturer", value: manufacturer, absence: absent },
+  ];
+}
+
 export function partRecordRailSubset(part) {
   const rows = [
     { key: "status", label: "Status", value: word(PART_STATUS_LABEL, part?.status) },

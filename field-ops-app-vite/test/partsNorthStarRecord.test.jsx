@@ -243,26 +243,37 @@ describe("tracking mode decides the unit section — one treatment per Part", ()
 });
 
 describe("the composition rules", () => {
-  it("the rail does not repeat a fact the header already stated", async () => {
+  it("the identity states the recognition facts, and Part information gives the master-data summary", async () => {
     await renderRecord();
     const information = document.getElementById("part-information");
     const identity = document.querySelector(".ns-identity");
-    // Stated once, in the header.
+    // Stated in the header, for recognition.
     expect(identity.textContent).toContain("Active");
     expect(identity.textContent).toContain("Taylor Company");
     expect(identity.textContent).toContain("Refrigeration");
     expect(identity.textContent).toContain("Each");
     expect(identity.textContent).toContain("OEM (Genuine)");
-    // ...and not again in the Part information band, which is where the classification facts moved
-    // when P1v2 replaced the rail with five bands. The RULE is unchanged and so is its strength:
-    // a fact the header states is not restated below it. Only the container it is read from moved,
-    // and it is now read from a stable id rather than a heading the composition may rename again.
+
+    // WHAT THIS TEST USED TO SAY, AND WHY THE OWNER OVERRODE IT.
+    //
+    // It asserted that NO fact the header states may appear again below it. That rule was written
+    // for a RAIL — a narrow column of leftovers — and it produced a real defect once the rail became
+    // a band: on 096d320b, with the header stating every one of these, the projection returned
+    // nothing and "Part information" shipped as a two-column band with an empty left half.
+    //
+    // Owner ruling, 2026-08-31: the repetition is part of the approved grammar. "Identity gives fast
+    // recognition; Part Information gives the structured master-data summary." Two readings of the
+    // same part, and Frame 1b draws both.
+    //
+    // SO THE RULE NARROWED RATHER THAN DISAPPEARED. Design assigns exactly five rows to this band —
+    // Status, Control, Stocking, Unit, Manufacturer. Category and OEM are NOT among them and still
+    // belong to the identity line alone, which is what the two assertions below now protect.
     const dl = information.querySelector(".ns-rail__dl");
-    if (dl) {
-      expect(dl.textContent).not.toContain("Active");
-      expect(dl.textContent).not.toContain("Refrigeration");
-      expect(dl.textContent).not.toContain("OEM (Genuine)");
-    }
+    expect(dl, "the band must render its rows, not an empty column").not.toBeNull();
+    expect(dl.textContent).toContain("Active");
+    expect(dl.textContent).toContain("Taylor Company");
+    expect(dl.textContent).not.toContain("Refrigeration");
+    expect(dl.textContent).not.toContain("OEM (Genuine)");
   });
 
   it("the manufacturer renders as its governed NAME, never as the raw id", async () => {

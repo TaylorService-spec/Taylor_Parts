@@ -56,7 +56,7 @@ import {
   partRecordIdentity,
   partRecordKicker,
   partRecordFacts,
-  partRecordRailSubset,
+  partInformationRows,
   partLocationSection,
   partUnitSection,
   partPurchasingSection,
@@ -1423,7 +1423,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const identity = partRecordIdentity(part);
   const kicker = partRecordKicker(part);
   const facts = partRecordFacts(part, manufacturerName);
-  const railRows = partRecordRailSubset(part);
+  const informationRows = partInformationRows(part, manufacturerName);
   const locationSection = partLocationSection();
   const unitSection = partUnitSection(part);
   const purchasing = partPurchasingSection();
@@ -1782,18 +1782,28 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         <RuledSection id="part-information" title="Part information">
           <div className="ns-band__cols">
             <div className="ns-band__col">
-              {/* And only what the header has not already said. The subset is computed from the
-                  header's own fact keys, so a fact added above cannot reappear here. */}
-              {railRows.length > 0 ? (
-                <dl className="ns-rail__dl">
-                  {railRows.map((row) => (
-                    <div key={row.key}>
-                      <dt>{row.label}</dt>
-                      <dd>{row.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
+              {/* THE STRUCTURED MASTER-DATA SUMMARY — Frame 1b's five rows (Owner ruling, 2026-08-31).
+                  This rendered `partRecordRailSubset`, which withholds every fact the header already
+                  states. On the deployed page the header stated all of them, so the subset returned
+                  nothing and this band shipped as a two-column layout with an EMPTY left half.
+
+                  The repetition is deliberate and is part of the approved grammar: the identity line
+                  gives fast recognition, this band gives the structured summary. Two readings of the
+                  same part, and the frame draws both.
+
+                  Every row keeps its label even when the value is missing — a master-data summary
+                  that silently drops a field tells the reader the field does not exist, rather than
+                  that it is unrecorded. */}
+              <dl className="ns-rail__dl">
+                {informationRows.map((row) => (
+                  <div key={row.key}>
+                    <dt>{row.label}</dt>
+                    <dd>
+                      {row.value ?? <span className="ns-state--na">{row.absence}</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </div>
 
             {/* USED ON — Owner ruling 3, 2026-08-31: TRUTHFUL ABSENCE.
