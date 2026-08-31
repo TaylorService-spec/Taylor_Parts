@@ -1,7 +1,24 @@
 # FIN-001 — Financial Authority & State Model Audit
 
-**Status:** AUDIT COMPLETE — documentation only. No product source, Rules, Functions, schema,
-capability, or deployment changes were made by this workstream.
+**Status:** COMPLETE — audit finished AND the authority-mode decision is ratified (below).
+The audit itself made no product source, Rules, Functions, schema, capability, or deployment
+changes.
+
+## RATIFIED AUTHORITY MODE (Owner, 2026-08-30 — resolves FIN-GAP-001; DECISIONS #145)
+
+- **EOS = GOVERNED OPERATIONAL FINANCIAL SUBLEDGER.** The dormant
+  `functions/src/finance/*` command layer is the designated operational subledger foundation,
+  to be activated progressively under the Financials program (visibility first).
+- **External accounting system = FUTURE AUTHORITY OF RECORD FOR ACCOUNTING.** Provider
+  **NOT YET SELECTED** — do not assume QuickBooks, Sage, NetSuite, Dynamics, or any other.
+  FIN-010 builds the provider-neutral reconciliation contract.
+- **General Ledger in EOS = OUT OF CURRENT SCOPE.** EOS shall NOT become a general ledger,
+  chart-of-accounts authority, statutory accounting system, or final accounting-close
+  authority until a separate explicit Owner decision changes that boundary.
+- The five fact classes stay separate and never silently blend:
+  OPERATIONAL_ACTUAL ≠ ACCOUNTING_RECONCILED_ACTUAL ≠ FORECAST ≠ BUDGET ≠ GOAL; and the
+  lifecycle meanings BOOKED / BILLABLE / BILLED / COLLECTED / A-R / UNBILLED are never
+  synonyms for one another.
 **Baseline audited:** `main` @ `e007837711299a40d59dac03510a68497fdc8cb6` (2026-08-30)
 **Parent register:** [FINANCIALS_AUTHORITY_AND_REPORTING_BASELINE.md](./FINANCIALS_AUTHORITY_AND_REPORTING_BASELINE.md)
 (FIN-001..FIN-010 — this document is FIN-001's evidence base; FIN-001 remains OPEN until its
@@ -403,7 +420,11 @@ FIN-GAP-018.)
 Each gap: TITLE / CURRENT STATE / WHY IT MATTERS / SOURCE EVIDENCE / RISK IF GUESSED /
 REQUIRED DECISION / LIKELY FOLLOW-ON.
 
-### FIN-GAP-001 — Financial authority-of-record is undecided (governed local ledger vs external accounting)
+### FIN-GAP-001 — RESOLVED (Owner, 2026-08-30) — Financial authority-of-record decided
+**RESOLUTION:** EOS is the governed operational financial subledger; the external accounting
+system (not yet selected) is the future authority of record for accounting; GL in EOS is out of
+scope. See "RATIFIED AUTHORITY MODE" at the top of this document. Original gap record preserved
+below as the decision's evidence base.
 **CURRENT STATE:** A complete, well-guarded invoice/payment/adjustment/refund command layer
 exists and is fully dormant (`active:false` capabilities, deny-all collections, no UI, no
 deploys, zero data); no external accounting system is named or connected.
@@ -579,7 +600,13 @@ as a distinct basis; trust in every EOS-displayed figure.
 exception workflow.
 **FOLLOW-ON:** FIN-010.
 
-### FIN-GAP-013 — Sales Order has no usable timestamp (named defect) and the chain lacks a booking-date concept
+### FIN-GAP-013 — PARTIALLY CLOSED (2026-08-30) — projection defect fixed; booking-date basis still open
+**CLOSURE:** the projection/write mismatch is FIXED on main — `salesOrderReadService.ts` now
+derives `createdAtMillis`/`updatedAtMillis` via `toMillis(data.createdAt/updatedAt)` (the fields
+the write path actually stores), pinned by `functions/test/salesOrderTimestampProjection.test.mjs`;
+storage unchanged; the stale client metadata gap record was updated with FIN-001's closeout.
+STILL OPEN: no `bookedAt` policy, no revenue-recognition policy, no accounting-period inference
+was introduced — those remain FIN-002/FIN-008 decisions. Original record preserved below.
 **CURRENT STATE:** `SALES_ORDER_HAS_NO_USABLE_TIMESTAMP` — write path stores Timestamps, read
 projection reads `*Millis` names nothing writes; both null on every row; `salesOrderNumber` is
 the de facto ordering surrogate. No `bookedAt` concept exists anywhere on the chain
@@ -648,7 +675,12 @@ conflated; the metrics framework bans "recognized revenue" without implemented p
 recognition concept enters EOS at all or stays with the external authority.
 **FOLLOW-ON:** FIN-001; FIN-008.
 
-### FIN-GAP-018 — Documentation drift on financial current-state claims
+### FIN-GAP-018 — CLOSED (2026-08-30, with FIN-001's closeout) — doc drift corrected
+**CLOSURE:** the metrics framework's §20 snapshot now carries a dated superseded-note pointing
+at SYSTEM_AUTHORITIES + this map for current-state claims; the stale `constants/collections.ts`
+`sales_agreements` comment now describes the explicit deny-all Rules block that exists. The
+`isNationalAccount`-vs-`salesChannel` naming question remains open for FIN-002. Original record
+preserved below.
 **CURRENT STATE:** Metrics framework §20's verified-current-state snapshot predates the Sales/
 Finance spine (entity-existence claims now stale); `constants/collections.ts:46-51` comment
 contradicts the now-present explicit deny-all Rules block for `sales_agreements`; `salesChannel`

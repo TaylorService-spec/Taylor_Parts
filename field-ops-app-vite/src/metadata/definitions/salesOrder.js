@@ -260,23 +260,28 @@ export const salesOrderEntity = makeEntityDefinition({
     }),
     makeGap({
       id: "SALES_ORDER_HAS_NO_USABLE_TIMESTAMP",
-      title: "No reliably-populated timestamp exists to order or filter by",
+      title: "CLOSED (server-side) — the projection now reads what the write path stores",
       entityId: "salesOrder",
       severity: GAP_SEVERITY.DEFECT,
       reason: WHY.NOT_PROJECTED,
       finding:
-        "The write path stores createdAt/updatedAt as Firestore Timestamps; the read projection reads " +
-        "createdAtMillis/updatedAtMillis — field names nothing writes. Both project as null on every " +
-        "row today.",
+        "HISTORICAL: the write path stores createdAt/updatedAt as Firestore Timestamps and the read " +
+        "projection read createdAtMillis/updatedAtMillis — field names nothing writes — so both " +
+        "projected null on every row. FIXED server-side (FIN-GAP-013 remnant closed with FIN-001): " +
+        "salesOrderReadService.ts now derives createdAtMillis/updatedAtMillis via toMillis(data.createdAt/" +
+        "updatedAt), pinned by functions/test/salesOrderTimestampProjection.test.mjs. Storage unchanged.",
       consequence:
-        "No Created or Updated column, no date filter, no date sort. salesOrderNumber is monotonic " +
-        "within a year, so it is the honest best-available order and is the declared default.",
+        "The projection carries real millis now, but this list still declares no Created/Updated " +
+        "column or date sort — adding one is a PRODUCT decision (which surfaces, which default order), " +
+        "not part of the read-path repair. salesOrderNumber (monotonic within a year) remains the " +
+        "declared default order until that decision is made.",
       refused:
-        "Declaring a Created Date column that renders an absence on every row, which would read as " +
-        "missing data rather than as a projection defect.",
+        "Quietly flipping the default sort or adding date columns in the same change that fixed the " +
+        "projection — a correctness repair must not smuggle in a presentation decision.",
       resolution:
-        "Align the projection field names with what the write path stores. A read-path fix, not a " +
-        "domain decision — and the cheapest of these three to close.",
+        "Server read-path alignment: DONE. Remaining (optional, separate): declare Created/Updated " +
+        "columns and date filters on the Sales Order lists now that the data is real. No bookedAt, " +
+        "revenue-recognition, or accounting-period semantics were introduced (those are FIN-002/FIN-008).",
     }),
   ],
 });
@@ -300,10 +305,12 @@ export const salesOrderRelatedList = makeListViewDefinition({
     makeColumn({ fieldId: "sourceOpportunityNumber" }),
   ],
   filters: [],
-  // No reliably-populated timestamp exists to sort by: the write path stores createdAt/updatedAt
-  // as Firestore Timestamps, but the read projection reads createdAtMillis/updatedAtMillis —
-  // field names nothing writes — so those two always project as null today. salesOrderNumber is
-  // monotonic within a year (allocateSalesOrderNumber), so it is the honest best-available order.
+  // salesOrderNumber (monotonic within a year, allocateSalesOrderNumber) is the declared default
+  // order. The projection's createdAtMillis/updatedAtMillis are now genuinely populated
+  // (salesOrderReadService.ts reads the stored createdAt/updatedAt Timestamps — see
+  // SALES_ORDER_HAS_NO_USABLE_TIMESTAMP, closed server-side), but switching this list to a date
+  // sort or adding date columns is a separate product decision, deliberately not bundled with the
+  // projection repair.
   defaultSort: [makeSort({ fieldId: "salesOrderNumber", direction: "DESC" })],
   pageSize: 25,
   capabilityRequirement: "salesOrder.read",
