@@ -3463,3 +3463,80 @@ is selected, and operational billing needs precede the integration); promoting E
 (rejected — statutory accounting is not EOS's product, and the IntegrationArchitecture boundary
 explicitly disclaims becoming "the accounting ledger of record"); leaving the mode undecided while
 building surfaces (rejected — that is how an authority decision gets made by accident).
+
+## #146 — OWNER RULING: the Reorder trusted command authority (R-13, R-15, R-16, and the activation dependency)
+
+**Date:** 2026-08-31
+**Status:** Ruled and implemented in the repository. **NOT ACTIVE** — no deploy, no warehouse data write.
+
+**The problem.** A Reorder Request is raised for a warehouse, and under EOS Ownership Model v1
+(#142) a warehouse belongs to an operating company. So creating a request, and recording the
+Purchase Order that follows it, author a governed ownership fact: `warehouseId`, and the
+`operatingCompanyId` **derived** from it. Both writes were client-direct under `firestore.rules`. A
+browser cannot be the authority for a derived company — it can only assert one.
+
+### Ruling
+
+1. **R-13 — the Warehouse is the governed authority for a reorder's company.** The caller states a
+   governed `warehouseId`; the command derives `operatingCompanyId` from it. There is no other
+   source, and specifically no inference from the part, the requesting user, the truck, the page,
+   or the sandbox root configuration at runtime.
+
+2. **R-15 — ONE COMMAND → ONE GOVERNED WRITE AUTHORITY.** The two writes move to trusted callables
+   (`createReorderRequest`, `recordReorderPurchaseOrder`) and the three client-direct paths are
+   retired in Rules in the same change: `reorder_requests` create, `reorder_purchase_orders`
+   create, and the Record-PO update branch. **No fallback.** A client that fails the callable does
+   not retry into the old path — that would be two write authorities for one command, which is the
+   thing the retirement exists to prevent.
+
+3. **A client-supplied `operatingCompanyId` is REFUSED, not ignored.** Ignoring it would let a
+   caller believe it was accepted. The command rejects the call outright, before anything else.
+
+4. **R-16 — the atomicity invariant MOVES, it does not go away.** Rules cross-pinned the PO create
+   and the ORDERED transition with `existsAfter`/`getAfter`. `recordReorderPurchaseOrder` now
+   performs both inside one Admin-SDK transaction, and its pure builder returns both halves from a
+   single call so neither can be produced without the other. Equal strength, different enforcement
+   point. Identity and cardinality are unchanged: the Purchase Order document id **is** the request
+   id, strictly 1:1.
+
+5. **No new capability.** The callables reuse existing active capabilities and keep **no**
+   operational-role fallback.
+
+6. **Two record generations coexist, and neither is migrated.** Rows that predate the command have
+   no warehouse or company key. Both generations keep every retained transition, and neither can
+   gain or change `warehouseId`/`operatingCompanyId` through a client update.
+
+7. **The immutability guard stays missing-safe.** It comes from the pre-existing
+   `diff(resource.data).affectedKeys().hasOnly([...])` on every retained update branch, none of
+   which names either key. **No equality pin may be added** — an equality check would have to
+   dereference a key legacy rows do not have, whereas `diff()` compares the maps and never reports
+   a key absent from both. A future maintainer must not "strengthen" this into field dereferences.
+
+8. **Activation has four conditions and one order:** warehouse company facts → Functions → Hosting
+   → Rules. Rules-before-Functions is the destructive ordering — reorder creation stops working
+   with nothing to replace it. The runbook, including rollback and what rollback cannot undo, is
+   `docs/specifications/reorder-trusted-command-authority.md` §13.
+
+### Consequences worth recording
+
+- **`hasCanonicalReorderRequestKeys()` and its creation baseline are now DORMANT.** The create rule
+  that invoked them is `if false`, so they are evaluated by nothing. The approved
+  `warehouseId`/`operatingCompanyId` addition to that key set therefore permits nothing today. They
+  are kept because they are the file's most precise statement of what a Reorder Request is, and
+  they go live again the moment anyone restores a client create.
+- **Every remaining `403` create assertion in the Rules suites now passes for a different reason
+  than its name gives.** `allow create: if false` refuses everyone, so those assertions are no
+  longer evidence about payload or authority validation. They are kept as proof the door is shut,
+  and labelled so nobody reads them as coverage of something else. Fourteen sibling assertions that
+  expected a create or the atomic Record-PO commit to **succeed** were found failing on the branch
+  and retargeted — a direct instance of the #144 lesson, caught by running the lane rather than
+  reading the PR.
+
+### Rejected
+
+Silently ignoring a client-supplied company (rejected — a caller must learn its assertion was not
+accepted); keeping a client-direct fallback for resilience (rejected — R-15); moving all eight
+reorder transitions rather than the two that author a company fact (rejected — that is rebuilding a
+working state machine, not migrating an authority); backfilling the legacy rows to make one
+generation (rejected — no governed source exists for their warehouse, and inventing one is the
+inference this ruling forbids).
