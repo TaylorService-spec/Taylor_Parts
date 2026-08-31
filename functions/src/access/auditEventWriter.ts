@@ -81,6 +81,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "decidePrivilegedRoleRequest",
   // Certification authority genesis -- see the matching entry on the AuditAction union.
   "bootstrapCertificationAuthority",
+  // Genesis completion -- see the matching entry on the AuditAction union.
+  "completeCertificationAuthorityGenesis",
   "breakGlassRestore",
   "createReportDefinition",
   "renameReportDefinition",

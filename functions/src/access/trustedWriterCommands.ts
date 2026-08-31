@@ -1023,6 +1023,162 @@ export async function bootstrapCertificationAuthority(
 }
 
 // =====================================================================
+// GENESIS COMPLETION -- the runtime administration half
+// =====================================================================
+//
+// ============================ WHY GENESIS HAS TWO HALVES ============================
+//
+// Certification genesis has to establish TWO different authority facts, and the first
+// implementation established only one:
+//
+//   BUSINESS AUTHORITY        roleId "owner", from GOVERNED_BUSINESS_ROLES. What the fixture
+//                             declares cw-emp-000 to be. Established by
+//                             bootstrapCertificationAuthority above.
+//   ADMINISTRATION AUTHORITY  roleId "admin", from COMPATIBILITY_ROLES. What actually qualifies
+//                             admin.roleAssignment.write when grantRole asks. Established here.
+//
+// They are different because resolvePrincipalPermission -- the path every trusted-writer command
+// authorizes through -- resolves against COMPATIBILITY_ROLES and ONLY those. `owner` is not in that
+// catalog, so holding it is a business fact that authorizes nothing in the trusted writer. A live
+// genesis owner attempting the first non-privileged grant was refused `noQualifyingGrant`, which
+// was correct: the assignment was well-formed, active, in-version and globally scoped, and the
+// catalog simply does not contain its roleId.
+//
+// THE TWO CATALOGS ARE NOT WIDENED TO FIX THIS, deliberately. Making the trusted writer resolve
+// against ASSIGNABLE_ROLES would make business `owner` sufficient to administer roles in EVERY
+// environment including production -- a material security widening to solve a certification
+// bootstrap. The missing authority is granted explicitly instead.
+//
+// ============================ WHY THIS IS SEPARATE, AND NOT A REWRITE ============================
+//
+// The live certification project already carries a truthful genesis event: the owner assignment and
+// its bootstrapCertificationAuthority audit record. That history is immutable and correct as far as
+// it goes. Pretending it also recorded the admin assignment would be a lie in the audit trail, and
+// re-running the original command cannot help -- it refuses over any existing assignment, by design.
+//
+// So this is a COMPLETION with its own action and its own record, stating plainly what it does.
+// It is NOT bootstrapCompatibilityAdmin: that tool represents a legacy-admin migration, demands an
+// expectedEmail and stamps `bootstrap:legacy-admin-migration` provenance. No migration occurred
+// here, and recording one would be the same species of untruth.
+
+/** The compatibility Role that actually qualifies admin.roleAssignment.write for grantRole. */
+export const CERTIFICATION_GENESIS_ADMIN_ROLE_ID = "admin";
+
+export interface CompleteCertificationAuthorityGenesisInput {
+  /** The principal that already holds the owner genesis assignment. */
+  principalUid: string;
+  /** The employee id it is linked to, for the audit summary. */
+  employeeId: string;
+  idempotencyKey: string;
+}
+
+/**
+ * Establish the compatibility administration half of certification genesis.
+ *
+ * ONLY over the exact known partial-genesis state: precisely one active assignment, and it is the
+ * owner genesis assignment for this principal. Anything else refuses -- including an `admin`
+ * assignment that arrived from somewhere other than genesis, which is blessed by nobody.
+ */
+export async function completeCertificationAuthorityGenesis(
+  input: CompleteCertificationAuthorityGenesisInput,
+): Promise<CommandOutcome> {
+  assertValidIdempotencyKey(input.idempotencyKey);
+  assertNonEmptyString(input.principalUid, "principalUid");
+  assertNonEmptyString(input.employeeId, "employeeId");
+
+  // Same runtime identity rule as genesis: the project this SDK writes to, never a caller argument.
+  const projectId = trustedRuntimeProjectId();
+  const env = (ENVIRONMENT_ACTIVATION_REGISTRY.environments ?? [])
+    .find((e: ActivationRegistryEnv) => typeof e?.firebase?.projectId === "string" && e.firebase.projectId === projectId);
+  if (!env) {
+    throw new GenesisNotPermittedError(
+      `genesis completion refuses an unregistered runtime project (${projectId})`);
+  }
+  if (env.role === "production") {
+    throw new GenesisNotPermittedError(
+      "genesis completion is never permitted in a production environment");
+  }
+
+  const db = getFirestore();
+  const active = await db.collection(ROLE_ASSIGNMENTS_COLLECTION)
+    .where("status", "==", "active").get();
+
+  // ── ALREADY COMPLETE? Read the world, not a memo about it.
+  const adminRow = active.docs
+    .map((d) => d.data() as Record<string, unknown>)
+    .find((r) => r.principalUid === input.principalUid && r.roleId === CERTIFICATION_GENESIS_ADMIN_ROLE_ID);
+  if (adminRow) {
+    // An admin assignment from ANY other source is not genesis and must not be relabelled as one.
+    if (adminRow.genesis !== true || adminRow.grantedBy !== CERTIFICATION_GENESIS_ACTOR) {
+      throw new GenesisNotPermittedError(
+        `an "${CERTIFICATION_GENESIS_ADMIN_ROLE_ID}" assignment for ${input.principalUid} already `
+        + `exists but did not come from genesis (grantedBy "${String(adminRow.grantedBy)}"). `
+        + "Refusing to bless it as genesis.");
+    }
+    // Genesis-derived and already present: the caller's idempotency check should have caught this,
+    // and runAccessMutationCommand would replay anyway. Refusing is clearer than a silent no-op.
+    throw new GenesisNotPermittedError(
+      "certification authority genesis is already complete; nothing to do");
+  }
+
+  // ── THE EXACT PARTIAL STATE, and nothing else.
+  if (active.size !== 1) {
+    throw new GenesisNotPermittedError(
+      `genesis completion applies only to the exact partial state: exactly one active assignment. `
+      + `Found ${active.size}. Refusing.`);
+  }
+  const owner = active.docs[0].data() as Record<string, unknown>;
+  if (owner.principalUid !== input.principalUid
+    || owner.roleId !== CERTIFICATION_GENESIS_ROLE_ID
+    || owner.genesis !== true) {
+    throw new GenesisNotPermittedError(
+      `the single active assignment is not this principal's owner genesis assignment `
+      + `(principal "${String(owner.principalUid)}", role "${String(owner.roleId)}", `
+      + `genesis ${String(owner.genesis)}). Refusing.`);
+  }
+
+  const role = ASSIGNABLE_ROLES[CERTIFICATION_GENESIS_ADMIN_ROLE_ID];
+  if (!role || !Array.isArray(role.permissions) || !role.permissions.includes("admin.roleAssignment.write")) {
+    // Defensive: if the compatibility catalog stopped carrying role administration, completing
+    // genesis this way would establish an authority that authorizes nothing.
+    throw new GenesisNotPermittedError(
+      `"${CERTIFICATION_GENESIS_ADMIN_ROLE_ID}" does not carry admin.roleAssignment.write in this catalog`);
+  }
+
+  const assignmentRef = db.collection(ROLE_ASSIGNMENTS_COLLECTION).doc(input.idempotencyKey);
+  return runAccessMutationCommand(input.idempotencyKey, {
+    principalUid: input.principalUid,
+    auditInput: {
+      actorUid: CERTIFICATION_GENESIS_ACTOR,
+      action: "completeCertificationAuthorityGenesis",
+      targetType: "roleAssignment",
+      targetId: input.principalUid,
+      outcome: "applied",
+      summary: `GENESIS COMPLETION: established the runtime administration half -- `
+        + `"${CERTIFICATION_GENESIS_ADMIN_ROLE_ID}" for ${input.employeeId} (${input.principalUid}). `
+        + `The business half ("${CERTIFICATION_GENESIS_ROLE_ID}") was established by a prior `
+        + "bootstrapCertificationAuthority event, which this does not modify. Holding the business "
+        + "Role authorizes nothing in the trusted writer, which resolves against the compatibility "
+        + "catalog; this is the assignment grantRole actually qualifies against.",
+      scope: { type: "global" },
+    },
+    apply: (txn, ctx) => {
+      txn.create(assignmentRef, {
+        principalUid: input.principalUid,
+        roleId: CERTIFICATION_GENESIS_ADMIN_ROLE_ID,
+        scope: { type: "global" },
+        // Truthful provenance. NOT bootstrap:legacy-admin-migration -- no migration occurred.
+        grantedBy: CERTIFICATION_GENESIS_ACTOR,
+        grantedAt: FieldValue.serverTimestamp(),
+        genesis: true,
+        status: "active",
+        accessVersionAtGrant: ctx.newAccessVersion,
+      });
+    },
+  });
+}
+
+// =====================================================================
 // PRIVILEGED ROLE APPROVAL -- propose, then approve as an authenticated Admin
 // =====================================================================
 //

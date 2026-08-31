@@ -72,10 +72,22 @@ export const EXPECTED_FINGERPRINT = "fcc38a5f";
 export const EXPECTED_RECORDS = 1092;
 export const EXPECTED_PRINCIPALS = 47;
 
+/**
+ * The compatibility Role that actually qualifies admin.roleAssignment.write, and the genesis
+ * actor, mirrored from the trusted writer so this script states the same facts it will write.
+ */
+export const ADMIN_ROLE_ID = "admin";
+export const GENESIS_ACTOR = "system:certification-authority-genesis";
+
+/**
+ * COMPLETE requires BOTH halves. The vocabulary says so, because the previous vocabulary could not:
+ * it had one word for "done", and a world with the business half only satisfied it.
+ */
 export const OUTCOME = Object.freeze({
-  WOULD_BOOTSTRAP: "WOULD_BOOTSTRAP",
-  BOOTSTRAPPED: "BOOTSTRAPPED",
-  ALREADY_BOOTSTRAPPED: "ALREADY_BOOTSTRAPPED",
+  WOULD_BOOTSTRAP: "WOULD_BOOTSTRAP",       // neither half present
+  WOULD_COMPLETE: "WOULD_COMPLETE",         // business half present, administration half missing
+  COMPLETE: "COMPLETE",                     // both established by this run
+  ALREADY_COMPLETE: "ALREADY_COMPLETE",     // both already present, nothing written
 });
 
 /**
@@ -194,45 +206,81 @@ async function main() {
     return;
   }
 
-  // ── ALREADY DONE? Read the world, not a memo about it.
-  const active = await db.collection("roleAssignments").where("status", "==", "active").limit(5).get();
-  if (!active.empty) {
-    const rows = active.docs.map((d) => d.data());
-    const genesisRow = rows.find((r) => r.principalUid === genesisUid && r.roleId === genesis.roleId);
-    if (genesisRow && rows.length === 1) {
-      console.log(`\n${OUTCOME.ALREADY_BOOTSTRAPPED}: ${genesis.employeeId} already holds `
-        + `"${genesis.roleId}"${genesisRow.genesis ? " (genesis)" : ""}. Nothing written.`);
-      return;
-    }
-    console.error(`\nREFUSED -- ${OUTCOME.ALREADY_BOOTSTRAPPED} is not the state here. `
-      + `${active.size} active assignment(s) exist and they are not the expected genesis state:`);
-    for (const r of rows) console.error(`  ! ${r.roleId} -> ${r.principalUid}`);
-    console.error("  Authority that already exists came from somewhere. Use grantRole.");
+  // ============================ GENESIS HAS TWO HALVES ============================
+  //
+  // COMPLETE means BOTH exist, and this tool cannot report it until they do:
+  //
+  //   BUSINESS        the fixture's privileged Role ("owner"). What cw-emp-000 IS.
+  //   ADMINISTRATION  the COMPATIBILITY Role ("admin"). What actually qualifies
+  //                   admin.roleAssignment.write when grantRole asks.
+  //
+  // The first implementation established only the business half, and the live genesis holder was
+  // then refused `noQualifyingGrant` on its own first grant -- correctly, because
+  // resolvePrincipalPermission resolves against COMPATIBILITY_ROLES and "owner" is not in that
+  // catalog. Reporting COMPLETE with one half done is precisely the silence that produced that.
+  const active = await db.collection("roleAssignments").where("status", "==", "active").get();
+  const rows = active.docs.map((d) => d.data());
+  const ownerRow = rows.find((r) => r.principalUid === genesisUid && r.roleId === genesis.roleId);
+  const adminRow = rows.find((r) => r.principalUid === genesisUid && r.roleId === ADMIN_ROLE_ID);
+  const unexpected = rows.filter((r) => r !== ownerRow && r !== adminRow);
+
+  if (unexpected.length) {
+    console.error(`\nREFUSED -- ${unexpected.length} active assignment(s) exist that genesis did not `
+      + "establish. Authority that already exists came from somewhere, and genesis is not entitled "
+      + "to add a second source. Use grantRole.");
+    for (const r of unexpected) console.error(`  ! ${r.roleId} -> ${r.principalUid}`);
+    process.exitCode = 1;
+    return;
+  }
+  // An admin assignment from any other source is not genesis and must never be relabelled as one.
+  if (adminRow && (adminRow.genesis !== true || adminRow.grantedBy !== GENESIS_ACTOR)) {
+    console.error(`\nREFUSED -- an "${ADMIN_ROLE_ID}" assignment exists but did not come from `
+      + `genesis (grantedBy "${adminRow.grantedBy}"). Refusing to bless it as genesis.`);
     process.exitCode = 1;
     return;
   }
 
+  if (ownerRow && adminRow) {
+    console.log(`\n${OUTCOME.ALREADY_COMPLETE}: ${genesis.employeeId} holds both `
+      + `"${genesis.roleId}" (business) and "${ADMIN_ROLE_ID}" (administration), both genesis. `
+      + "Nothing written.");
+    return;
+  }
+
+  // ── WHAT IS MISSING, AND WHAT THIS RUN WOULD DO
+  const steps = [];
+  if (!ownerRow) steps.push({ half: "business", roleId: genesis.roleId, fn: "bootstrapCertificationAuthority" });
+  if (!adminRow) steps.push({ half: "administration", roleId: ADMIN_ROLE_ID, fn: "completeCertificationAuthorityGenesis" });
+
   if (!apply) {
-    console.log(`\n${OUTCOME.WOULD_BOOTSTRAP}: would establish "${genesis.roleId}" for `
-      + `${genesis.employeeId} (${genesisUid}).`);
+    const label = ownerRow ? OUTCOME.WOULD_COMPLETE : OUTCOME.WOULD_BOOTSTRAP;
+    console.log(`\n${label}: ${genesis.employeeId} (${genesisUid})`);
+    for (const s of steps) console.log(`  would establish "${s.roleId}" -- the ${s.half} half`);
+    if (ownerRow) {
+      console.log(`  already holds "${genesis.roleId}" (genesis) -- that event is not modified`);
+    }
     console.log("DRY RUN -- nothing written.");
     return;
   }
 
-  // The write itself belongs to the trusted authority module, never to this script.
-  const { bootstrapCertificationAuthority } =
-    await import(L("functions/lib/access/trustedWriterCommands.js"));
-  const outcome = await bootstrapCertificationAuthority({
-    principalUid: genesisUid,
-    employeeId: genesis.employeeId,
-    // Deterministic, so a re-run is a replay rather than a second genesis.
-    idempotencyKey: `cw-genesis-${genesis.employeeId}-${genesis.roleId}`,
-  });
-  console.log(`\n${outcome.status === "applied" ? OUTCOME.BOOTSTRAPPED : OUTCOME.ALREADY_BOOTSTRAPPED}: `
-    + `"${genesis.roleId}" for ${genesis.employeeId} (${genesisUid})`);
-  console.log(`audit event   : ${outcome.auditEventId}`);
-  console.log(`accessVersion : ${outcome.accessVersionAfter}`);
-  console.log("\nGenesis is complete and will refuse from here. Every further grant uses grantRole.");
+  // The writes belong to the trusted authority module, never to this script. Two deterministic,
+  // idempotent sub-steps rather than one: the live world already carries a truthful owner genesis
+  // event, and re-running its command over an existing assignment refuses by design. Each step
+  // records its own action, so neither pretends to have done the other's work.
+  const commands = await import(L("functions/lib/access/trustedWriterCommands.js"));
+  for (const s of steps) {
+    const outcome = await commands[s.fn]({
+      principalUid: genesisUid,
+      employeeId: genesis.employeeId,
+      // Deterministic per half, so a re-run is a replay rather than a second grant.
+      idempotencyKey: `cw-genesis-${genesis.employeeId}-${s.roleId}`,
+    });
+    console.log(`\n${outcome.status === "applied" ? "ESTABLISHED" : "ALREADY PRESENT"}: `
+      + `"${s.roleId}" -- the ${s.half} half`);
+    console.log(`  audit event   : ${outcome.auditEventId}`);
+    console.log(`  accessVersion : ${outcome.accessVersionAfter}`);
+  }
+  console.log(`\n${OUTCOME.COMPLETE}: both halves established. Every further grant uses grantRole.`);
 }
 
 // RUN ONLY WHEN INVOKED DIRECTLY, so the authorization and derivation can be tested without the
