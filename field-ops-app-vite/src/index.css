@@ -6211,6 +6211,23 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    the only channel, so it survives greyscale and colour-blind viewing. */
 .ns-view.is-active { color: var(--color-text-primary); font-weight: 600;
   border-bottom-color: var(--color-text-primary); }
+/* THE SAME TRAP, ONE STATE OVER — and the comment above did not prevent it.
+   ════════════════════════════════════════════════════════════════════════════════════════════
+   `.ns-view:hover` and `.ns-view.is-active` have IDENTICAL specificity (0-2-0), and `.is-active` is
+   declared later, so it wins. Hovering the SELECTED view therefore took the green background from
+   `:hover` and the near-black `color: var(--color-text-primary)` from `.is-active`. Dark text on a
+   dark fill — exactly what the block above was written to end, reproduced in the one state it did
+   not name. The Owner saw it on Customer Equipment's "Active" chip.
+
+   Stated explicitly at 0-3-0 so neither ordering nor a future rule can decide it by accident, and
+   the count is inverted with the label so a number never stays dark on the green. This mirrors
+   `.ns-tabrail__tab--on:hover`, which is the same control one level up; the two rails now run the
+   same four states.
+
+   A SELECTED CONTROL STILL RESPONDS. One that stops reacting to the pointer once chosen reads as
+   disabled, and the bottom rule keeps saying which one is current underneath the hover. */
+.ns-view.is-active:hover { background: var(--color-brand-secondary); color: #FFFFFF; }
+.ns-view.is-active:hover .ns-view__count { color: #FFFFFF; }
 .ns-view:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: -2px; }
 .ns-view__count { font-size: 11.5px; font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary); }
