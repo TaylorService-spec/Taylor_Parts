@@ -850,6 +850,10 @@
       "runner": "node"
     },
     {
+      "file": "test/serializedAssetAcquire.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/serializedAssetIdentity.test.mjs",
       "runner": "node"
     },

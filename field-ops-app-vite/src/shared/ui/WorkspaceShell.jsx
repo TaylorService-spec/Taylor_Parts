@@ -9,6 +9,7 @@ import WorkspaceHeader from "./WorkspaceHeader.jsx";
 // `.fo-workspace` class (which was used in 5 files with no CSS).
 //
 // Regions (all optional except the work area):
+//   crumb             -> WHERE THIS SITS (a breadcrumb + rule pair, ABOVE the identity)
 //   title + actions   -> WORKSPACE IDENTITY + PRIMARY ACTION (what operation am I performing / what next)
 //   context           -> CONTEXT (a ContextBand: what business situation)
 //   attention         -> ATTENTION (what needs intervention — kept ABOVE the work area, never buried)
@@ -18,7 +19,13 @@ import WorkspaceHeader from "./WorkspaceHeader.jsx";
 // density: "comfortable" | "compact" | "field" — a job-fit density the shell exposes via a data-attribute
 // for its descendants (field = large targets/low load; compact/comfortable = desktop operational density).
 // The shell owns the responsive recomposition of its regions so pages don't each reinvent breakpoints.
+// CRUMB IS OPT-IN, and deliberately so. The North Star record pages already open with a breadcrumb
+// and a rule pair (`.ns-page__crumb` + `.ns-rulepair`), and Parts P1v2 asks the workspace to open the
+// same way so that entering a collection and opening a record do not feel like two products. Fourteen
+// other workspaces conform to the current shell and are NOT part of that migration, so this renders
+// nothing at all unless a page passes it -- the slot exists, the obligation does not.
 export default function WorkspaceShell({
+  crumb = null,
   title,
   actions = null,
   context = null,
@@ -30,6 +37,7 @@ export default function WorkspaceShell({
 }) {
   return (
     <section className={`fo-workspace ${className}`.trim()} data-density={density}>
+      {crumb}
       {(title != null || actions != null) && (
         <WorkspaceHeader title={title}>{actions}</WorkspaceHeader>
       )}

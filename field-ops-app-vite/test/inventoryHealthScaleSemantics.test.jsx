@@ -173,7 +173,11 @@ test("the Parts catalogue table recomposes into cards, with every cell labelled"
   // "Inventory Health" left it when ND-30 replaced the table with Frame 1a’s grammar: the part
   // number is now the primary line of the Part cell, and health moved off this table to the Work
   // group’s Inventory Operational Queue, which ranks by the same urgency.
-  for (const label of ["Part", "Manufacturer", "Category", "Control", "Status", "Attention"]) {
+  // MANUFACTURER left this list too, in P1v2 (Owner ruling 6/W7, 2026-08-31): as its own column it
+  // read "Not recorded" on 25 of 25 rows and spent 194px doing it, so it folded into the Part
+  // cell's second line, where it costs nothing when absent. The FACT is still asserted -- see
+  // test/partsNorthStarWorkspace.test.mjs, which requires it to render there.
+  for (const label of ["Part", "Category", "Control", "Status", "Attention"]) {
     expectMatch(src, new RegExp(`data-label="${label}"`), `${label} cell must carry its heading`);
   }
 });

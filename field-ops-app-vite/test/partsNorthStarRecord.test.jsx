@@ -147,7 +147,7 @@ describe("ND-25 — the record states no quantity it does not have", () => {
     await renderRecord();
     // The record still renders whole — a part with no movements is a valid part, not a missing one.
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(PART_NUMBER);
-    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const forecast = document.getElementById("part-availability");
     expect(forecast.textContent).toContain("no stock forecast can be made");
     expect(forecast.textContent).toContain("not a statement about how many exist");
   });
@@ -165,7 +165,7 @@ describe("the reorder point states what it does not know", () => {
       recommendation: { urgency: null, reorderPoint: 0, recommendedOrderQty: 0, daysRemaining: Infinity },
     }];
     await renderRecord();
-    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const forecast = document.getElementById("part-availability");
     const row = within(forecast).getByText("Reorder point").closest("tr");
     // THE VALUE CELL, asserted exactly. The defect this replaces was a bare 0 sitting beside the
     // sentence explaining why it is zero, so "contains the words" is not enough -- the cell must
@@ -187,7 +187,7 @@ describe("the reorder point states what it does not know", () => {
       recommendation: { urgency: "MEDIUM", reorderPoint: 3.4, recommendedOrderQty: 6, daysRemaining: 15 },
     }];
     await renderRecord();
-    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const forecast = document.getElementById("part-availability");
     const row = within(forecast).getByText("Reorder point").closest("tr");
     expect(row.textContent).toContain("4");
     expect(row.textContent).not.toContain("Not established");
@@ -243,24 +243,37 @@ describe("tracking mode decides the unit section — one treatment per Part", ()
 });
 
 describe("the composition rules", () => {
-  it("the rail does not repeat a fact the header already stated", async () => {
+  it("the identity states the recognition facts, and Part information gives the master-data summary", async () => {
     await renderRecord();
-    const rail = document.querySelector(".ns-rail");
+    const information = document.getElementById("part-information");
     const identity = document.querySelector(".ns-identity");
-    // Stated once, in the header.
+    // Stated in the header, for recognition.
     expect(identity.textContent).toContain("Active");
     expect(identity.textContent).toContain("Taylor Company");
     expect(identity.textContent).toContain("Refrigeration");
     expect(identity.textContent).toContain("Each");
     expect(identity.textContent).toContain("OEM (Genuine)");
-    // ...and not again in the rail's classification block.
-    const classification = within(rail).queryByRole("heading", { name: "Classification" });
-    if (classification) {
-      const dl = classification.closest("section").querySelector(".ns-rail__dl");
-      expect(dl.textContent).not.toContain("Active");
-      expect(dl.textContent).not.toContain("Refrigeration");
-      expect(dl.textContent).not.toContain("OEM (Genuine)");
-    }
+
+    // WHAT THIS TEST USED TO SAY, AND WHY THE OWNER OVERRODE IT.
+    //
+    // It asserted that NO fact the header states may appear again below it. That rule was written
+    // for a RAIL — a narrow column of leftovers — and it produced a real defect once the rail became
+    // a band: on 096d320b, with the header stating every one of these, the projection returned
+    // nothing and "Part information" shipped as a two-column band with an empty left half.
+    //
+    // Owner ruling, 2026-08-31: the repetition is part of the approved grammar. "Identity gives fast
+    // recognition; Part Information gives the structured master-data summary." Two readings of the
+    // same part, and Frame 1b draws both.
+    //
+    // SO THE RULE NARROWED RATHER THAN DISAPPEARED. Design assigns exactly five rows to this band —
+    // Status, Control, Stocking, Unit, Manufacturer. Category and OEM are NOT among them and still
+    // belong to the identity line alone, which is what the two assertions below now protect.
+    const dl = information.querySelector(".ns-rail__dl");
+    expect(dl, "the band must render its rows, not an empty column").not.toBeNull();
+    expect(dl.textContent).toContain("Active");
+    expect(dl.textContent).toContain("Taylor Company");
+    expect(dl.textContent).not.toContain("Refrigeration");
+    expect(dl.textContent).not.toContain("OEM (Genuine)");
   });
 
   it("the manufacturer renders as its governed NAME, never as the raw id", async () => {

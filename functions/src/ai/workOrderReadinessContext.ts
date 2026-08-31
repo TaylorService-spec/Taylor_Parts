@@ -1,6 +1,5 @@
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
 import { getCallerContext } from "../callerContext";
 import {
   ENVIRONMENT_ACTIVATION_REGISTRY,
@@ -333,13 +332,34 @@ export const getWorkOrderReadinessContext = onCall({ region: "us-central1" }, as
  * All five are bound the same way on purpose. The URL and tenant id are not credentials, but a
  * split mechanism -- some values here, some somewhere else -- is the arrangement where one half
  * quietly stops being server-only and nobody notices.
+ *
+ * WHY THESE ARE NAMES AND NOT `defineSecret(...)` PARAMS.
+ *
+ * `defineSecret` does two separate things, and this function only ever wanted one of them. It binds
+ * the secret to whatever function lists it -- which is what we want -- and it also registers a
+ * PARAMETER on the whole Functions codebase, which is not. The parameter is the wider claim: the
+ * CLI resolves every declared param for the entire codebase during `functions:prepare`, BEFORE it
+ * filters endpoints by `--only`, and prompts to create any secret that does not yet exist in Secret
+ * Manager. That is how deploying an unrelated single function -- `acquireSerializedAsset`, which
+ * has no Keystone dependency of any kind -- came to demand a KEYSTONE_GATEWAY_URL value (ND-33).
+ *
+ * Naming the secrets as strings keeps the binding and drops the codebase-wide claim. The endpoint
+ * the SDK emits is byte-identical either way (`optionsToEndpoint` reads `secret.name` for a
+ * SecretParam and the string itself otherwise), so this function still declares exactly the same
+ * five secret environment variables and still cannot run without them. What changes is only WHEN
+ * the CLI cares: secret existence and access are validated against the FILTERED backend, so these
+ * five are still checked whenever this function is actually being deployed, and are correctly
+ * irrelevant when it is not.
+ *
+ * This is a narrowing, not a relaxation. Nothing here is weaker: no plaintext fallback, no default,
+ * no shared binding. A deploy of THIS function with a missing secret still fails.
  */
 const KEYSTONE_INTERPRETATION_SECRETS = [
-  defineSecret("KEYSTONE_GATEWAY_URL"),
-  defineSecret("KEYSTONE_GATEWAY_API_KEY"),
-  defineSecret("KEYSTONE_GATEWAY_TENANT_ID"),
-  defineSecret("KEYSTONE_ACCESS_CLIENT_ID"),
-  defineSecret("KEYSTONE_ACCESS_CLIENT_SECRET"),
+  "KEYSTONE_GATEWAY_URL",
+  "KEYSTONE_GATEWAY_API_KEY",
+  "KEYSTONE_GATEWAY_TENANT_ID",
+  "KEYSTONE_ACCESS_CLIENT_ID",
+  "KEYSTONE_ACCESS_CLIENT_SECRET",
 ];
 
 /** A model call is an interactive latency budget, not a batch job. */
