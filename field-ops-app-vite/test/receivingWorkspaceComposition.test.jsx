@@ -194,12 +194,16 @@ describe("row navigation", () => {
     expect(journeyProps.reorder.at(-1).initialReorderRequestId).toBe("reorder-doc-1");
   });
 
-  it("the scan line opens the multi-scan journey with the typed/scanned order", async () => {
-    await renderReady([]);
-    fireEvent.change(screen.getByLabelText("Purchase order"), { target: { value: "  scanned-po-7 " } });
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    expect(await screen.findByTestId("multi-scan-journey")).toBeTruthy();
-    expect(journeyProps.supplier.at(-1).initialPurchaseOrderId).toBe("scanned-po-7");
+  it("REGRESSION (RCV-G5/RCV-G7): the surface never claims canonical supplier POs have a typable order number", async () => {
+    // Canonical purchase_orders have no governed business number and no governed scan-identifier
+    // contract. A scan/type-an-order-number entry field would assert an identifier authority that
+    // does not exist — queue rows are the entry path. This pins its absence.
+    reorderCandidateReady();
+    await renderReady([{ purchaseOrderId: "po-x", supplierId: "sup-1", storedStatus: "SENT", lineCount: 2 }]);
+    await screen.findByRole("table", { name: /orders awaiting receipt/i });
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/type its number/i);
+    expect(document.body.textContent).not.toMatch(/scan a purchase order/i);
   });
 });
 

@@ -88,8 +88,15 @@ export default function Receiving({ deps }) {
   // ── workspace state: which governed workflow is open, if any ─────────────────────────
   // `open` carries the row's opaque navigation argument into the EXISTING journey component.
   // Nothing else about either journey changed; closing returns to the queue and re-reads it.
+  //
+  // AUTHORITY GAP — DO NOT INVENT (RCV-G7): the design's scan-first order entry is deliberately
+  // ABSENT. Canonical supplier purchase_orders have no governed business order number (RCV-G5) and
+  // no governed scan-identifier/barcode contract exists for them anywhere in the repository — the
+  // progress read resolves a raw document id, and nothing prints, encodes, or resolves a scannable
+  // order label. A field captioned "scan a purchase order" would therefore be claiming an
+  // identifier authority that does not exist. Queue-row navigation is the supported entry path
+  // until a scan-identifier contract is ruled and built.
   const [open, setOpen] = useState(null);
-  const [scanTyped, setScanTyped] = useState("");
   const closeJourney = () => { setOpen(null); setReadAttempt((n) => n + 1); };
 
   // ── ND-33 acquire path (unchanged behaviour, relocated composition) ──────────────────
@@ -140,32 +147,6 @@ export default function Receiving({ deps }) {
     >
       {open === null ? (
         <>
-          {/* Scan-first order entry. A hardware scanner types here like a keyboard — the fastest
-              path from a box on the dock to its order. Opens the SAME supplier multi-scan session
-              a queue row does; the id is an argument, never a label. */}
-          <form
-            className="fo-receiving-scanline"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const id = scanTyped.trim();
-              if (!id) return;
-              setScanTyped("");
-              setOpen({ journey: RECEIVING_JOURNEY.SUPPLIER, purchaseOrderId: id });
-            }}
-          >
-            <label htmlFor="receiving-scan">Purchase order</label>
-            <input
-              id="receiving-scan"
-              className="fo-input"
-              type="text"
-              autoComplete="off"
-              value={scanTyped}
-              placeholder="Scan a purchase order, or type its number"
-              onChange={(e) => setScanTyped(e.target.value)}
-            />
-            <Button type="submit" variant="primary" disabled={!scanTyped.trim()}>Open</Button>
-          </form>
-
           <AwaitingReceiptQueue queue={queue} onOpen={setOpen} />
 
           <div className="fo-receiving-bottom">

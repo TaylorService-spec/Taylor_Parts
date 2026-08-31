@@ -232,6 +232,16 @@ test("MUTATION PROOF: the Receiving workspace introduces no receipt mutation", (
   assert.doesNotMatch(src, /submitReceiveInventoryStock|submitCanonicalReceive|submitReceive|acquireSerializedAsset/);
 });
 
+test("MUTATION PROOF: no scan/type-an-order-number entry returns without a governed identifier contract (RCV-G7)", () => {
+  // No governed scan-identifier or business-number authority exists for canonical purchase orders
+  // (RCV-G5). The workspace records the gap and offers no field claiming otherwise; reinstating one
+  // without first removing the recorded gap fails here.
+  const src = read("src/modules/inventory/Receiving.jsx");
+  assert.match(src, /AUTHORITY GAP — DO NOT INVENT \(RCV-G7\)/);
+  assert.doesNotMatch(src, /type its number/i);
+  assert.doesNotMatch(src, /placeholder="Scan/i);
+});
+
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {
   const src = read("src/modules/inventory/Receiving.jsx");
   assert.match(src, /Not connected yet/);
