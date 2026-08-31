@@ -40,6 +40,8 @@ import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
+import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
+import { useWarehouseOptions } from "../../hooks/useWarehouseOptions";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
@@ -1322,6 +1324,11 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // create -- reorderRequest updates on its own.
   const [reorderSubmitting, setReorderSubmitting] = useState(false);
   const [reorderError, setReorderError] = useState(null);
+  // WORKSTREAM 2B -- the governed Warehouse this request is FOR. A part is not a place: this
+  // page knows which part is short, and nothing on it knows where. So it is asked, and it
+  // starts empty; the control below stays disabled until it is answered.
+  const [reorderWarehouseId, setReorderWarehouseId] = useState("");
+  const reorderWarehouses = useWarehouseOptions(true);
 
   // Wave 6 -- master-data-in-Parts. null | "edit" | "status" -- which governed
   // Part Master action panel (if any) is open. Uses the SAME PartWriteModal +
@@ -1329,13 +1336,21 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // screen uses -- no second write path.
   const [masterDataPanel, setMasterDataPanel] = useState(null);
 
-  async function handleRequestReorder(manualQty) {
+  // WORKSTREAM 2B: `warehouseId` is handed back by the control that was gated on it, so the
+  // warehouse that enabled the button is the one written. The trusted command re-reads it and
+  // derives the operating company; nothing here interprets or defaults it.
+  async function handleRequestReorder(manualQty, warehouseId) {
     setReorderSubmitting(true);
     setReorderError(null);
     try {
       // C2: write keyed on the resolved governed identity (only reachable when
       // READY, where resolvedPartId === the route partId). Workflow unchanged.
-      await requestReorderForRecommendation({ partId: resolvedPartId, recommendation: health.recommendation, manualQty });
+      await requestReorderForRecommendation({
+        partId: resolvedPartId,
+        warehouseId,
+        recommendation: health.recommendation,
+        manualQty,
+      });
     } catch (err) {
       // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
       setReorderError(workflowActionErrorMessage(err));
@@ -1652,11 +1667,20 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                 (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) && (
                   <>
                     {reorderError && <p className="ns-state--na">{reorderError}</p>}
+                    <ReorderWarehouseSelect
+                      id="part-detail-reorder-warehouse"
+                      options={reorderWarehouses.options}
+                      loading={reorderWarehouses.loading}
+                      error={reorderWarehouses.error}
+                      value={reorderWarehouseId}
+                      onChange={setReorderWarehouseId}
+                    />
                     <RequestReorderControl
                       recommendation={health.recommendation}
                       onSubmit={handleRequestReorder}
                       submitting={reorderSubmitting}
                       alreadyRequested={false}
+                      warehouseId={reorderWarehouseId}
                     />
                   </>
                 )}

@@ -97,4 +97,46 @@ test("warehouseId is a required input the client must pass through, not invent",
   assert.match(src, /export function requestReorderForRecommendation\(\{[^}]*warehouseId/);
   // And never defaulted. A default would be exactly the "infer the warehouse" the ruling forbids.
   assert.doesNotMatch(src, /warehouseId\s*=\s*["']/, "warehouseId must never carry a default value");
+  // The other two shapes the same mistake takes. The literal is the worst of them: a hard-coded
+  // id would make every unanswered request quietly one company's.
+  assert.doesNotMatch(src, /warehouseId\s*(\|\||\?\?)/, "warehouseId must never have a fallback expression");
+  assert.doesNotMatch(src, /["'`]wh-/, "no warehouse id may be written into the reorder domain module");
+});
+
+test("no reorder surface invents a warehouse for the user", () => {
+  // The selector and everything that mounts it. Owner ruling: no default-to-Taylor, no inference
+  // from the part, the signed-in user, the truck or the page, and no reading a company out of the
+  // sandbox root config at runtime. Each of those is a value that would have to APPEAR in this
+  // code for it to happen, so absence is the assertion that holds.
+  const SURFACES = [
+    "shared/inventory/ReorderWarehouseSelect.jsx",
+    "shared/inventory/RequestReorderControl.jsx",
+    "modules/inventory/PartsList.jsx",
+    "modules/inventory/PartDetail.jsx",
+    "modules/inventoryRole/WarehouseManagerHome.jsx",
+  ];
+  for (const path of SURFACES) {
+    const f = FILES.find((x) => x.path === path);
+    assert.ok(f, `${path} must exist`);
+    const src = code(f.text);
+    assert.doesNotMatch(src, /["'`]wh-/, `${path} must not name a warehouse`);
+    assert.doesNotMatch(src, /operatingCompanyId/, `${path} must not mention an operating company`);
+    assert.doesNotMatch(src, /["'](taylor|ventana)["']/i, `${path} must not name an operating company`);
+    assert.doesNotMatch(src, /operating-company-roots/, `${path} must not read the root config at runtime`);
+  }
+});
+
+test("the warehouse a request is written for is the one that unlocked the button", () => {
+  // RequestReorderControl is the single gate, and it hands its OWN warehouseId back on submit
+  // rather than letting each caller re-read page state -- so the gating value and the written
+  // value cannot diverge. Both submit paths carry it: READY one-click, and NEEDS_PLANNING manual.
+  const control = FILES.find((f) => f.path === "shared/inventory/RequestReorderControl.jsx");
+  assert.ok(control, "the shared reorder control must exist");
+  const src = code(control.text);
+  assert.match(src, /onSubmit\(undefined,\s*warehouseId\)/, "the READY path must return the gating warehouse");
+  assert.match(src, /onSubmit\(parsedQty,\s*warehouseId\)/, "the NEEDS_PLANNING path must return the gating warehouse");
+  // And neither SUBMIT button may be enabled without one. Two buttons, two gates -- the manual
+  // quantity input keeps its own unchanged disabled={submitting}, which is why this counts the
+  // gate itself rather than counting every disabled prop in the file.
+  assert.equal((src.match(/!hasWarehouse/g) ?? []).length, 2, "both submit buttons must be gated on a warehouse");
 });

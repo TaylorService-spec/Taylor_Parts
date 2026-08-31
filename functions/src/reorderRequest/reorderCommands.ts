@@ -314,5 +314,5 @@ export function buildRecordReorderPurchaseOrder(
  * boundary. `null` is marked with U+0000 rather than "": an absent field is not an empty one.
  */
 export function commandFingerprint(parts: readonly (string | number | null)[]): string {
-  return parts.map((p) => (p === null ? " " : String(p))).join("");
+  return parts.map((p) => (p === null ? "\u0000" : String(p))).join("\u001F");
 }

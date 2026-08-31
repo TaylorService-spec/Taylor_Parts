@@ -76,6 +76,19 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
   if (workOrderId != null && (typeof workOrderId !== "string" || workOrderId.length === 0)) {
     throw new Error("workOrderId, when provided, must be a non-empty Work Order id.");
   }
+  // WORKSTREAM 2B -- the governed Warehouse is REQUIRED, and is never invented here.
+  //
+  // The trusted command is the authority: it re-reads the warehouse inside its transaction,
+  // refuses an unknown or inactive one, and derives the operating company from it. This check
+  // adds nothing to that. What it does is turn an unanswered selector into a sentence a person
+  // can act on, instead of a round trip that comes back WAREHOUSE_REQUIRED -- the same
+  // "validated here as well, since this is the sole write path" discipline as every field above.
+  //
+  // There is deliberately no default and no fallback: not the first warehouse, not the only
+  // warehouse, not one derived from the part, the user or the page.
+  if (typeof warehouseId !== "string" || warehouseId.trim().length === 0) {
+    throw new Error("A warehouse is required to request a reorder.");
+  }
   if (!Number.isInteger(requestedQty)) {
     throw new Error("requestedQty must be a whole number.");
   }
