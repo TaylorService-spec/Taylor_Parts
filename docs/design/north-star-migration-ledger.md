@@ -1239,7 +1239,7 @@ the measurement rather than a second investigation.
 | **Reconciliation** | [`equipment-north-star-composition-map.md`](./equipment-north-star-composition-map.md) — 22 drawn elements checked, **16 already built and correct**, 4 needing composition work, **2 not buildable as drawn**; produced before any UI code changed |
 | **Proof** | `test/equipmentNorthStarProjection.test.mjs` (27), `test/equipmentNorthStarRecord.test.jsx` (21), `test/equipmentNorthStarWorkspace.test.jsx` (17) and 3 new assertions in the shared `test/metadataListPresentation.test.mjs`, plus the re-anchored `equipmentTimeline`, `equipmentListMigration`, `availableEquipmentInstall`, `availableEquipmentLocationDisplay`, `listsP2Tranche1`, `rawIdPresentationGuard`, `activeLabelConformance`, `coreRecordPages` and `accountRecordPage` suites |
 | **Named decisions** | **ND-31** (unresolved location: four reasons, not one string) and **ND-32** (identity cell: columns, not a concatenated summary) — both raised and open. Both are cases where the repository is ahead of the artifact |
-| **Gate** | Not yet run. Sandbox refresh and Quick Gate outstanding |
+| **Gate** | `equipmentNorthStarQuickGate.mjs` — **RAN 2026-08-31 against the deployed `9848ec9d`: 35 passed, 0 failed, 3 skipped, exit 0.** See the gate-result section below |
 | **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
 
 ### The family was already most of the way there, and the stale claim was the repository's
@@ -1479,6 +1479,56 @@ deployed page with a green 29/0/3 behind it.
 
 `fo-equipment-register` also left `cssClassCoverage`'s unstyled backlog: it had no rule because
 `.fo-workspace` was doing its layout, and it has one now. Another list that may only shrink, shrinking.
+
+
+### Family 8 — the Quick Gate ran against the deployed release (2026-08-31)
+
+| | |
+|---|---|
+| **Deployed** | `9848ec9d`, buildTime 2026-08-31T00:27:12.821Z, `platform-sandbox`/`sandbox` |
+| **Expected** | `9848ec9d` — and it is `origin/main`'s tip, so the release is the whole family, not a slice of it |
+| **Identity** | PASS, check zero. Read from `/version.json`, never inferred from a deploy command's exit code |
+| **Result** | **35 passed · 0 failed · 3 skipped** (of 38), exit 0 |
+| **Command** | `node equipmentNorthStarQuickGate.mjs --expect 9848ec9d` |
+
+**The Add-tab fix is visible in the measurement, not just in the diff.** `mountedH1s=2`, where every
+earlier run reported `3`. The nested `WorkspaceShell`'s heading is gone from the DOM rather than
+hidden from view — which is what "removed structurally" has to mean, and what a CSS-hidden `h1`
+would have faked. All three tabs report `nestedWorkspaceShells=0 panelH1s=[]`.
+
+**What the live run positively proved, beyond the rulings:**
+
+- **H3 on genuinely malformed data.** The record's document really does store `createdAt`/`updatedAt`
+  as `timestampValue` where the field declares NUMBER, and the renderer refuses honestly. The fix is
+  proved against the actual defect, not a fixture.
+- **The install confirmation** read back `Taylor C161 · CW-C161-0001 · Ahwatukee Creamery ·
+  Ahwatukee Creamery - Gilbert #1`, with Confirm and Cancel both present. **Confirm was never
+  pressed and no sandbox data was mutated.**
+- **Available Equipment** reached READY: 30 of 30, Taylor 17 · Ventana/Icetro 13, and an unresolvable
+  location renders `Location unavailable` with no key anywhere in the rows.
+
+**Three skips, all honest, none forced green:**
+
+| Check | Why unmeasured |
+|---|---|
+| 9a ND-31 unresolved Location | every installed Location on this data resolves to a real name — there is nothing unresolved to measure |
+| 24 Activity human labels | the selected record has no activity rows to inspect |
+| 25 H2 date-only shift | the selected record stores no `YYYY-MM-DD` to compare, and inventing one would be fabricated evidence |
+
+The first is the one worth remembering: it was a PASS until the resolver settle-wait landed, at which
+point it turned out to have been measuring `"Loading…"`. A skip that says so is worth more than a
+pass that does not.
+
+**Acceptance surfaces for the Owner:**
+
+- workspace — <https://eos-platform-sandbox.web.app/equipment>
+- record — <https://eos-platform-sandbox.web.app/equipment/eq-c713-1> ("Ice Machine C713 — Unit 1",
+  reached by clicking a real row, not by constructing a URL)
+- Available Equipment and the install confirmation are tab state, not routes: `/equipment` →
+  **Available Equipment** → **Install at customer** on any row.
+
+**Acceptance remains `AWAITING_OWNER_VISUAL_ACCEPTANCE`.** A green gate is the behavioral half; the
+third authority has not spoken.
 
 
 ### Authority, unchanged
