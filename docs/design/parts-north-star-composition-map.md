@@ -707,6 +707,14 @@ face: *"Historical notes only — never applied to stock, and no longer added to
 document, its actor and its timestamp remain visible and catalogued for reporting. Nothing was
 deleted, nothing migrated into the ledger, and no reconciliation logic was invented.
 
+**The store handle went too.** `inventoryActionsStore` was exported beside the writer — a live,
+`.add()`-capable handle on the collection, used by nothing once the form was removed. Retiring the
+function while leaving that export standing would have shut the front door and left the side one
+open: a second write path, quieter than the first. An unused writable handle is an invitation, so it
+was removed rather than commented. `test/collectionStoreTimestampContract.test.mjs` guards the store
+count with a floor, and the floor moved 6 → 5 with its reason attached rather than being quietly
+adjusted.
+
 `recordInventoryAction()` is **kept and now throws**, rather than deleted — because deleting it would
 take the reason with it, and the next person wanting an inventory note on the Part record would
 simply write another one. It refuses, and says why.
