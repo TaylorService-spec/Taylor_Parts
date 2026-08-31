@@ -860,6 +860,15 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 /* The read-back before a write that cannot be undone. Set apart from the form above it by a rule
    and a shift in ground, so the four labelled rows read as "this is what you are about to do"
    rather than as four more fields to fill in. */
+/* ND-33 — the EXCEPTIONAL stock-entry path, set apart from the two purchase-order journeys above it.
+   A rule and generous space, not a card: it is a different KIND of act rather than a third variant
+   of the same one, and a third chip in that row would have read as a third way to receive. Quiet by
+   default — nobody arrives at Receiving intending to use it. */
+.fo-receiving-exception { margin: 32px 0 0; padding: 20px 0 0;
+  border-top: 1px solid var(--color-border); }
+.fo-receiving-exception h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.fo-receiving-exception p { max-width: 68ch; }
+
 .fo-confirm-readback { margin: 18px 0 4px; padding: 14px 16px;
   border-top: 2px solid var(--color-text-primary); background: var(--color-surface-sunken); }
 .fo-confirm-readback h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
