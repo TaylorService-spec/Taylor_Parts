@@ -164,6 +164,20 @@ service cloud.firestore {
             || isActiveOperationalRole("WAREHOUSE_MANAGER"));
     }
 
+    // ============ DORMANT SINCE WORKSTREAM 2B -- NOTHING CALLS THIS, OR THE BASELINE BELOW ============
+    //
+    // reorder_requests is `allow create: if false` (see the create rule further down). These two
+    // functions are the creation contract, and the creation rule that invoked them is gone, so
+    // NEITHER IS EVALUATED BY ANY RULE TODAY. Adding a key here permits nothing; removing one
+    // forbids nothing.
+    //
+    // They are kept rather than deleted because they are the most precise statement in this file of
+    // what a Reorder Request IS, they are what the trusted createReorderRequest command was written
+    // against, and they become live again the moment anyone restores a client create -- which is
+    // exactly when a stale contract would do the most damage.
+    //
+    // Read every claim below as describing the SHAPE, not an enforcement. The enforcement of that
+    // shape now lives in functions/src/reorderRequest/reorderCommands.ts and its tests.
     // Codex REQUEST CHANGES on PR #91 -- the new-shape create rule
     // originally validated only the recommendation fields
     // (recommendationStatus/urgency/quantitySource/recommendedQty/
@@ -224,18 +238,19 @@ service cloud.firestore {
         "workOrderId",
         // Workstream 2B (Owner rulings R-13/R-15) -- the two governed ownership facts the trusted
         // createReorderRequest command authors: which warehouse needs replenishment, and the
-        // operating company derived from it. PERMITTED here but deliberately ABSENT from hasAll
-        // below, so the six existing legacy rows that predate the command remain valid and keep
-        // every otherwise-legitimate transition. New records created by the command carry both.
+        // operating company derived from it. Listed in hasOnly and deliberately NOT in hasAll, so a
+        // legacy row's shape stays valid. Dormant today, per the banner above this function: the
+        // create rule that consulted it is retired, so this listing describes the record rather than
+        // permitting anything.
         //
-        // THEY ARE ALREADY IMMUTABLE, and by the machinery that was here first: every one of the
-        // retained update branches ends with diff(resource.data).affectedKeys().hasOnly([...]), and
-        // not one of those lists names warehouseId or operatingCompanyId. An update that touched
-        // either would put it in affectedKeys() and fail the branch. No per-branch equality pin is
-        // added, and deliberately so -- an equality check would have to dereference a key that
-        // legacy rows do not have, whereas diff() compares the maps and simply never reports a key
-        // absent from both. A retained client update therefore cannot become a company-transfer
-        // mechanism, for either record generation.
+        // THE IMMUTABILITY IS REAL, AND IT IS NOT HERE. It comes from machinery that was in this
+        // file first: every retained update branch ends with diff(resource.data).affectedKeys()
+        // .hasOnly([...]), and not one of those lists names warehouseId or operatingCompanyId. An
+        // update touching either puts it in affectedKeys() and fails the branch. That is live, it is
+        // what the emulator suite proves on both record generations, and it is why no per-branch
+        // equality pin is added: an equality check would have to dereference a key legacy rows do
+        // not have, whereas diff() compares the maps and never reports a key absent from both. A
+        // retained client update therefore cannot become a company transfer, on either generation.
         "warehouseId", "operatingCompanyId"
       ]) && data.keys().hasAll([
         "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",

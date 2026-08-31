@@ -190,6 +190,89 @@ This is the first part of Workstream 2 that is **not** inert:
 **All three deploys are outside anything authorized so far**, and they must land together: Rules
 retiring the direct path without the callables deployed would break reorder creation outright.
 
+## 13 — Cutover and rollback
+
+Owner ruling: four conditions must all hold before the trusted reorder authority is live, and the
+order is not to be improvised at release time. This is that order, with what breaks if it is not
+followed, and how each step is undone.
+
+**None of this is authorized to run.** It is the runbook the authorization would govern.
+
+### The four conditions
+
+| # | Condition | Why it is a condition |
+|---|---|---|
+| 1 | Every governed Warehouse a reorder can be raised against holds an `operatingCompanyId` | The callable DERIVES the request's company from the warehouse. A warehouse without one makes the command refuse — correctly, and unhelpfully. |
+| 2 | `createReorderRequest` + `recordReorderPurchaseOrder` deployed | Nothing can create a request once Rules retire the direct path. |
+| 3 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
+| 4 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
+
+### Order
+
+**1 → 2 → 3 → 4.** Each step is safe to sit in indefinitely; none of the intermediate states is a
+broken system, and that is the property the ordering is chosen for.
+
+1. **Warehouse company facts.** A data write against the five sandbox warehouses named in the
+   activation prerequisite. Separately authorized, and the only step that is not a deploy.
+   *State after:* nothing behaves differently. The facts are simply present.
+   *Rollback:* removing them would strand any request already created against them, so the rollback
+   is forward — correct a wrong company by an explicit governed change, never by deletion.
+
+2. **Functions.** Additive: two new callables, nothing calls them yet.
+   *State after:* the callables exist and are unreachable from the shipped UI.
+   *Rollback:* redeploy the previous Functions revision. No data written by anything.
+
+3. **Hosting.** The client starts calling the callables. Rules still permit the direct path, so
+   BOTH are legal here — but only the callables are used, because the client has no code left that
+   writes directly (proved by `reorderTrustedWritePathContract.test.mjs`).
+   *State after:* new requests carry `warehouseId` and `operatingCompanyId`. This is the first step
+   that changes data.
+   *Rollback:* redeploy the previous bundle. It writes directly again, which Rules still allow.
+   Requests already created keep their warehouse and company — see *What rollback cannot undo*.
+
+4. **Rules (Tier 2, human operator).** The three retirements land.
+   *State after:* one write authority per command. The verifier's `GOVERNED_RULES_SHA256` stops
+   reporting `LIVE != GOVERNED` — that mismatch is the signal to deploy, and must never be resolved
+   by moving the pin back.
+   *Rollback:* deploy the previous ruleset. The direct paths reopen.
+
+### What goes wrong in the wrong order
+
+- **4 before 2** — reorder creation is broken outright: the direct path is denied and no callable
+  exists to replace it. This is the one genuinely destructive ordering.
+- **4 before 3** — the deployed client still writes directly, and every Request Reorder fails with
+  permission-denied. Not data loss, but a visibly broken feature for every user until Hosting lands.
+- **3 before 1** — the client asks for a warehouse, the user picks one, and the callable refuses
+  because that warehouse has no company. Fail-closed and honest, but it is a broken feature too.
+- **2 before 1** — harmless. Nothing calls the callables yet.
+
+### Rolling Rules back is safe for BOTH record generations
+
+Worth stating because it is the non-obvious half. The previous ruleset's canonical key set does not
+include `warehouseId` or `operatingCompanyId` — but that key set is only ever consulted on CREATE,
+and every retained UPDATE branch is gated on `diff(resource.data).affectedKeys().hasOnly([...])`,
+which looks at what changed rather than what the document contains. A new-generation record therefore
+keeps every transition under the old Rules, exactly as a legacy record keeps every transition under
+the new ones. The emulator suite proves the second direction; the first is the same mechanism read
+backwards.
+
+### What rollback cannot undo
+
+Requests created while step 3 was live carry a `warehouseId` and an `operatingCompanyId`, and those
+fields are immutable under every ruleset. A rollback does not remove them and must not try to: they
+are true statements about records that really were raised for a real warehouse. The result of a
+rollback is a collection holding both generations — which is the state the compatibility work already
+covers, arrived at from the other direction.
+
+### Verification at each step
+
+| Step | What proves it |
+|---|---|
+| 1 | Read back the five warehouses; every one resolves through `resolveOperatingCompany` to `RESOLVED`. |
+| 2 | The callables appear in the deployed Functions list. No behavioural check — nothing calls them. |
+| 3 | `/version.json` reports the expected commit (never an exit code — see the deploy-verification convention), then one real Request Reorder end to end. |
+| 4 | `verifyTruckRegistryDeployment` stops reporting `LIVE != GOVERNED`, and the live ruleset hashes to the governed pin. |
+
 ## Open question for the Owner
 
 The 1:1 identity means `reorder_purchase_orders` documents are **named after their request**. If the
@@ -197,4 +280,7 @@ request's creation moves behind a callable that mints the id, that id is still t
 Nothing changes — but it is worth stating, because the identity is load-bearing and it is now created
 by a different actor.
 
-**Nothing here is implemented. Stopping for the authority decision.**
+**Implemented as of Workstream 2B.** Sections 1-11 were the reconciliation and the design; the code,
+the Rules retirement and the tests are in the repository, and section 13 is the runbook for making
+them live. Nothing in section 13 has been run, and no deployment or warehouse data write is
+authorized.

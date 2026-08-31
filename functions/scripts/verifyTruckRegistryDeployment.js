@@ -63,9 +63,14 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 // deploy must not run before the callables exist -- retiring these creates without them would break
 // reorder creation outright.
 //
-// Previous pin: b94e287a918acb12b000bf717a8cce5c8678b6afd02184eacaa21624bae969d4 (the ruleset with
-// the client-direct reorder authoring paths still open).
-const GOVERNED_RULES_SHA256 = "3464bda22a0a50eed81c1eee60daddbd1003332f61966cd545a6c49ae531f44a";
+// Previous pins:
+//   b94e287a918acb12b000bf717a8cce5c8678b6afd02184eacaa21624bae969d4 -- the ruleset with the
+//     client-direct reorder authoring paths still open.
+//   3464bda22a0a50eed81c1eee60daddbd1003332f61966cd545a6c49ae531f44a -- the same retirement, before
+//     its comments were corrected. The canonical-key-set functions turned out to be UNREACHABLE once
+//     the create rule became , and the comment there still read as though listing a key
+//     permitted something. A comment-only change, but it moves the hash, so the pin moves with it.
+const GOVERNED_RULES_SHA256 = "0ad3ab1d00252692db0e490cc7be25fb78c46baed491a8f0b573814c2a57f70b";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------
