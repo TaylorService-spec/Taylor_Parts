@@ -238,6 +238,34 @@ async function seedReorderPurchaseOrder(docId, { reorderRequestId, partId, statu
   });
 }
 
+// WORKSTREAM 2B -- a CREATE attempt against reorder_purchase_orders, in the exact shape
+// recordPurchaseOrder() used to send from the browser. That path is now `allow create: if false`,
+// so this exists only to prove the door is shut: a valid, well-formed, correctly-authorized
+// payload must still be refused.
+async function createReorderPurchaseOrderDirect(docId, idToken) {
+  const headers = { "Content-Type": "application/json" };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+  const res = await fetch(`${DOC_BASE}/reorder_purchase_orders/${docId}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      fields: {
+        reorderRequestId: str(docId),
+        partId: str("PART-2B"),
+        supplierName: str("Acme Parts Co."),
+        externalPoNumber: str("PO-2B"),
+        orderedQuantity: int(5),
+        orderedDate: str("2026-08-31"),
+        expectedArrivalDate: nul(),
+        status: str("ORDERED"),
+        createdBy: str("user-admin-rr"),
+        createdAt: int(Date.now()),
+      },
+    }),
+  });
+  return res.status;
+}
+
 // Seeds a full canonical Reorder Request document directly via the
 // Admin SDK (bypasses Rules entirely, same as seed() below) so update-
 // rule tests can start from an arbitrary, valid lifecycle state
@@ -474,15 +502,35 @@ async function main() {
     (await createReorderRequest("rr-legacy-technician", technicianPlainToken, legacyShapeFields("PART-LEGACY-3"))) === 403
   );
 
+  // ============ WORKSTREAM 2B: READ THIS BEFORE TRUSTING ANY CREATE ASSERTION BELOW ============
+  //
+  // reorder_requests is now `allow create: if false`. The create rule no longer validates a payload
+  // or an authority -- it refuses everyone, unconditionally, and the contract it used to enforce is
+  // enforced by the trusted createReorderRequest command instead (functions/test/
+  // reorderTrustedCommands.test.mjs, and the four representative refusals in the 2B section at the
+  // end of this file).
+  //
+  // WHAT THAT DOES TO THE ASSERTIONS BELOW. Every `=== 403` in this section still passes, and every
+  // one of them now passes for a DIFFERENT REASON than the one its name gives. "READY rejected for
+  // technician (isAdminOrDispatcher() required)" no longer demonstrates anything about
+  // isAdminOrDispatcher(); it demonstrates that the door is shut. They are kept, not deleted,
+  // because they are the record of a contract that really existed and because a shut door is worth
+  // asserting -- but they are NOT evidence about payload or authority validation any more, and
+  // reading them as though they were is the mistake this note exists to prevent.
+  //
+  // The former `=== 200` cases could not be kept honestly: an assertion that a retired path ACCEPTS
+  // a write is simply false. Each is retargeted to 403 and renamed, rather than deleted, so the
+  // shape it used to accept stays visible to anyone reconstructing what changed and when.
+
   // --- New shape: READY path ---
 
   report(
-    "READY with requestedQty: 0 accepted (0 is a legitimate computed value)",
-    (await createReorderRequest("rr-ready-zero-qty", adminToken, readyFields({ partId: "PART-R1", requestedByUid: "user-admin-rr", requestedQty: 0, recommendedQty: 0 }))) === 200
+    "RETIRED (2B): READY with requestedQty 0 -- a shape the create rule used to accept, now refused like every other",
+    (await createReorderRequest("rr-ready-zero-qty", adminToken, readyFields({ partId: "PART-R1", requestedByUid: "user-admin-rr", requestedQty: 0, recommendedQty: 0 }))) === 403
   );
   report(
-    "READY with a normal positive requestedQty accepted",
-    (await createReorderRequest("rr-ready-normal", dispatcherToken, readyFields({ partId: "PART-R2", requestedByUid: "user-dispatcher-rr" }))) === 200
+    "RETIRED (2B): READY with a normal positive requestedQty -- accepted before the create moved to the trusted command, refused now",
+    (await createReorderRequest("rr-ready-normal", dispatcherToken, readyFields({ partId: "PART-R2", requestedByUid: "user-dispatcher-rr" }))) === 403
   );
   report(
     "READY rejected for technician (isAdminOrDispatcher() required, unchanged from pre-PR-2)",
@@ -544,16 +592,16 @@ async function main() {
     (await createReorderRequest("rr-planning-dispatcher-plain", dispatcherToken, planningFields({ partId: "PART-P8", requestedByUid: "user-dispatcher-rr" }))) === 403
   );
   report(
-    "NEEDS_PLANNING accepted for technician whose linked Employee has operationalRoles: [PARTS_MANAGER] (Defect 2 regression case)",
-    (await createReorderRequest("rr-planning-technician-partsmanager", technicianPartsManagerToken, planningFields({ partId: "PART-P9", requestedByUid: "user-technician-partsmanager-rr" }))) === 200
+    "RETIRED (2B): NEEDS_PLANNING by a PARTS_MANAGER technician -- the eligibility this used to prove is now the callable’s to enforce",
+    (await createReorderRequest("rr-planning-technician-partsmanager", technicianPartsManagerToken, planningFields({ partId: "PART-P9", requestedByUid: "user-technician-partsmanager-rr" }))) === 403
   );
   report(
-    "NEEDS_PLANNING accepted for dispatcher whose linked Employee has operationalRoles: [WAREHOUSE_MANAGER]",
-    (await createReorderRequest("rr-planning-dispatcher-warehousemanager", dispatcherWarehouseManagerToken, planningFields({ partId: "PART-P10", requestedByUid: "user-dispatcher-warehousemanager-rr" }))) === 200
+    "RETIRED (2B): NEEDS_PLANNING by a WAREHOUSE_MANAGER dispatcher -- same, refused at the Rules layer now",
+    (await createReorderRequest("rr-planning-dispatcher-warehousemanager", dispatcherWarehouseManagerToken, planningFields({ partId: "PART-P10", requestedByUid: "user-dispatcher-warehousemanager-rr" }))) === 403
   );
   report(
-    "NEEDS_PLANNING accepted for admin (override)",
-    (await createReorderRequest("rr-planning-admin", adminToken, planningFields({ partId: "PART-P11", requestedByUid: "user-admin-rr" }))) === 200
+    "RETIRED (2B): NEEDS_PLANNING by admin -- the admin override does not survive an unconditional deny, and must not",
+    (await createReorderRequest("rr-planning-admin", adminToken, planningFields({ partId: "PART-P11", requestedByUid: "user-admin-rr" }))) === 403
   );
 
   // --- Codex REQUEST CHANGES on PR #91: complete-schema enforcement ---
@@ -588,16 +636,16 @@ async function main() {
   // so no update can add/change/remove it -- the full existing update suite below remains green, proving
   // update behavior is unchanged.
   report(
-    "workOrderId ABSENT: existing canonical create still accepted (back-compat, no migration)",
-    (await createReorderRequest("rr-wo-absent", adminToken, readyFields({ partId: "PART-WO1", requestedByUid: "user-admin-rr" }))) === 200
+    "RETIRED (2B): workOrderId absent -- the back-compat shape is refused with every other create",
+    (await createReorderRequest("rr-wo-absent", adminToken, readyFields({ partId: "PART-WO1", requestedByUid: "user-admin-rr" }))) === 403
   );
   report(
-    "workOrderId = valid non-empty string (governed WO id) accepted",
-    (await createReorderRequest("rr-wo-valid", adminToken, readyFields({ partId: "PART-WO2", requestedByUid: "user-admin-rr", overrides: { workOrderId: str("WO-2026-000042") } }))) === 200
+    "RETIRED (2B): workOrderId as a governed WO id -- still permitted by the key set, no longer creatable from a client",
+    (await createReorderRequest("rr-wo-valid", adminToken, readyFields({ partId: "PART-WO2", requestedByUid: "user-admin-rr", overrides: { workOrderId: str("WO-2026-000042") } }))) === 403
   );
   report(
-    "workOrderId = explicit null accepted (domain's unused-field convention)",
-    (await createReorderRequest("rr-wo-null", adminToken, readyFields({ partId: "PART-WO3", requestedByUid: "user-admin-rr", overrides: { workOrderId: nul() } }))) === 200
+    "RETIRED (2B): workOrderId explicit null -- refused with every other create",
+    (await createReorderRequest("rr-wo-null", adminToken, readyFields({ partId: "PART-WO3", requestedByUid: "user-admin-rr", overrides: { workOrderId: nul() } }))) === 403
   );
   report(
     "workOrderId = empty string rejected (must be non-empty)",
@@ -674,20 +722,20 @@ async function main() {
   const ALL_SIX_CANCEL_VOID_KEYS = ["cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason"];
 
   report(
-    "READY with all six Cancel/Void fields present and null accepted (tightened shape)",
+    "RETIRED (2B): READY in the full 35-key shape -- refused; the shape contract now lives in the trusted command",
     (await createReorderRequest(
       "rr-ready-cancelvoid-shape",
       adminToken,
       readyFields({ partId: "PART-CV1", requestedByUid: "user-admin-rr" })
-    )) === 200
+    )) === 403
   );
   report(
-    "NEEDS_PLANNING with all six Cancel/Void fields present and null accepted (tightened shape)",
+    "RETIRED (2B): NEEDS_PLANNING in the full 35-key shape -- refused; same reason",
     (await createReorderRequest(
       "rr-planning-cancelvoid-shape",
       technicianPartsManagerToken,
       planningFields({ partId: "PART-CV2", requestedByUid: "user-technician-partsmanager-rr" })
-    )) === 200
+    )) === 403
   );
   report(
     "READY in the OLD 29-key shape (all six Cancel/Void fields entirely absent) now rejected (PR 3 removed the transitional branch)",
@@ -1460,6 +1508,200 @@ async function main() {
     );
   }
 
+
+  // ==================== WORKSTREAM 2B -- THE RETIRED WRITES, AND BOTH GENERATIONS ====================
+  //
+  // Owner rulings R-13/R-15/R-16. Creating a Reorder Request and recording its Purchase Order now
+  // author a governed ownership fact -- the warehouse being replenished, and the operatingCompanyId
+  // DERIVED from it -- so both moved to trusted callables and three client-direct paths were retired
+  // here: the request create, the PO create, and the Record-PO transition to ORDERED.
+  //
+  // The static contract test in field-ops-app-vite proves the application no longer ASKS for these
+  // writes. This proves the database no longer ALLOWS them, which is the half that still holds when
+  // someone forgets.
+  {
+    // Seeds a request at an arbitrary lifecycle state, in either generation. `warehouse` null seeds a
+    // LEGACY row -- one written before the command existed, with no warehouseId or operatingCompanyId
+    // key at all. Six such rows exist in sandbox and they are not going to be migrated, so every
+    // retained transition has to keep working on them.
+    async function seedGeneration(docId, { status, assignedToUserId, warehouse }) {
+      await seedReorderRequest(docId, { partId: "PART-2B", status, assignedToUserId, purchaseOrderId: null });
+      if (warehouse !== null) {
+        await db.doc(`reorder_requests/${docId}`).update({
+          warehouseId: warehouse.warehouseId,
+          operatingCompanyId: warehouse.operatingCompanyId,
+        });
+      }
+    }
+    const NEW_GENERATION = { warehouseId: "wh-main", operatingCompanyId: "taylor" };
+
+    // ---- 1. THE REQUEST CREATE IS GONE, for every caller who used to hold it ----
+    const validCreate = (partId) =>
+      canonicalFields({
+        partId,
+        recommendationStatus: "READY",
+        urgency: str("HIGH"),
+        quantitySource: "ANALYTICS",
+        recommendedQty: int(5),
+        requestedQty: int(5),
+        requestedByUid: "user-admin-rr",
+      });
+    report(
+      "2B: reorder_requests create rejected for admin even with a perfectly canonical payload (allow create: if false)",
+      (await createReorderRequest("rr-2b-create-admin", adminToken, validCreate("PART-2B-1"))) === 403
+    );
+    report(
+      "2B: reorder_requests create rejected for dispatcher",
+      (await createReorderRequest("rr-2b-create-dispatcher", dispatcherToken, {
+        ...validCreate("PART-2B-2"),
+        requestedBy: str("user-dispatcher-rr"),
+      })) === 403
+    );
+    report(
+      "2B: reorder_requests create rejected for an eligible PARTS_MANAGER (the NEEDS_PLANNING path is retired too)",
+      (await createReorderRequest("rr-2b-create-pm", technicianPartsManagerToken, canonicalFields({
+        partId: "PART-2B-3",
+        recommendationStatus: "NEEDS_PLANNING",
+        urgency: nul(),
+        quantitySource: "MANUAL_ZERO_HISTORY",
+        recommendedQty: nul(),
+        requestedQty: int(4),
+        requestedByUid: "user-technician-partsmanager-rr",
+      }))) === 403
+    );
+    report(
+      "2B: supplying the governed warehouse and company yourself does not buy the create back",
+      (await createReorderRequest("rr-2b-create-forged", adminToken, {
+        ...validCreate("PART-2B-4"),
+        warehouseId: str("wh-main"),
+        operatingCompanyId: str("taylor"),
+      })) === 403
+    );
+
+    // ---- 2. THE RECORD-PO HALVES ARE BOTH GONE ----
+    //
+    // These two used to cross-pin each other with existsAfter()/getAfter(). Retiring only one would
+    // have left the other performable alone, which is why both are asserted rather than assumed.
+    await seedGeneration("rr-2b-record-po", {
+      status: "PURCHASING_IN_PROGRESS",
+      assignedToUserId: "user-admin-rr",
+      warehouse: NEW_GENERATION,
+    });
+    report(
+      "2B: the ORDERED transition is rejected on its own (the Record-PO update branch is retired)",
+      (await updateReorderRequest("rr-2b-record-po", adminToken, {
+        status: str("ORDERED"),
+        purchaseOrderId: str("rr-2b-record-po"),
+        orderedBy: str("user-admin-rr"),
+        orderedAt: int(Date.now()),
+      })) === 403
+    );
+    report(
+      "2B: reorder_purchase_orders create rejected (allow create: if false)",
+      (await createReorderPurchaseOrderDirect("rr-2b-record-po", adminToken)) === 403
+    );
+
+    // ---- 3. BOTH GENERATIONS STILL TRANSITION ----
+    //
+    // The retirement was surgical. A legacy row with no warehouse keys and a new row with both must
+    // behave identically on every branch that was NOT retired -- otherwise the migration would have
+    // silently frozen six real records.
+    for (const [label, warehouse] of [
+      ["legacy (no warehouse keys)", null],
+      ["new generation (warehouse + company)", NEW_GENERATION],
+    ]) {
+      const id = warehouse === null ? "rr-2b-legacy" : "rr-2b-new";
+      await seedGeneration(id, { status: "READY_FOR_PARTS_MANAGER", assignedToUserId: null, warehouse });
+      report(
+        `2B: Assign still accepted on a ${label} record`,
+        (await updateReorderRequest(id, adminToken, {
+          status: str("ASSIGNED_TO_PARTS_ASSOCIATE"),
+          currentOwner: str("PARTS_ASSOCIATE"),
+          assignedToUserId: str("user-admin-rr"),
+          assignedBy: str("user-admin-rr"),
+          assignedAt: int(Date.now()),
+        })) === 200
+      );
+      report(
+        `2B: Start Purchasing still accepted on a ${label} record`,
+        (await updateReorderRequest(id, adminToken, {
+          status: str("PURCHASING_IN_PROGRESS"),
+          purchasingStartedAt: int(Date.now()),
+          purchasingStartedBy: str("user-admin-rr"),
+        })) === 200
+      );
+      report(
+        `2B: a Purchasing Update still accepted on a ${label} record`,
+        (await updateReorderRequest(id, adminToken, {
+          purchasingNotes: str("Vendor contacted."),
+          vendorContacted: { booleanValue: true },
+          expectedAvailabilityDate: nul(),
+          lastPurchasingUpdateAt: int(Date.now()),
+          lastPurchasingUpdateBy: str("user-admin-rr"),
+        })) === 200
+      );
+    }
+
+    // ---- 4. THE OWNERSHIP FACTS ARE IMMUTABLE, ON BOTH GENERATIONS ----
+    //
+    // No equality guard was added for this, deliberately: every retained branch already ends in
+    // diff(resource.data).affectedKeys().hasOnly([...]) and no list names either key, so touching one
+    // puts it in the diff and fails the branch. That reasoning is only worth what it can be shown to
+    // do, which is what these cases are.
+    //
+    // The legacy cases matter most. An equality pin would have had to dereference a key those rows do
+    // not have; diff() compares the maps and never reports a key absent from both, which is why the
+    // missing-safe guard is the correct one and must not be "strengthened" later.
+    await seedGeneration("rr-2b-immutable-new", {
+      status: "READY_FOR_PARTS_MANAGER",
+      assignedToUserId: null,
+      warehouse: NEW_GENERATION,
+    });
+    await seedGeneration("rr-2b-immutable-legacy", {
+      status: "READY_FOR_PARTS_MANAGER",
+      assignedToUserId: null,
+      warehouse: null,
+    });
+    const assignPlus = (extra) => ({
+      status: str("ASSIGNED_TO_PARTS_ASSOCIATE"),
+      currentOwner: str("PARTS_ASSOCIATE"),
+      assignedToUserId: str("user-admin-rr"),
+      assignedBy: str("user-admin-rr"),
+      assignedAt: int(Date.now()),
+      ...extra,
+    });
+    report(
+      "2B: an otherwise-valid Assign that ALSO moves warehouseId is rejected (new generation)",
+      (await updateReorderRequest("rr-2b-immutable-new", adminToken, assignPlus({ warehouseId: str("wh-north") }))) === 403
+    );
+    report(
+      "2B: an otherwise-valid Assign that ALSO moves operatingCompanyId is rejected -- no transition is a company transfer",
+      (await updateReorderRequest("rr-2b-immutable-new", adminToken, assignPlus({ operatingCompanyId: str("ventana") }))) === 403
+    );
+    report(
+      "2B: a legacy record cannot be BACKFILLED through a client transition (adding warehouseId)",
+      (await updateReorderRequest("rr-2b-immutable-legacy", adminToken, assignPlus({ warehouseId: str("wh-main") }))) === 403
+    );
+    report(
+      "2B: a legacy record cannot be given a company through a client transition either",
+      (await updateReorderRequest("rr-2b-immutable-legacy", adminToken, assignPlus({ operatingCompanyId: str("taylor") }))) === 403
+    );
+    {
+      // And the refusals left nothing behind: a rejected write is not a partial write.
+      const legacyAfter = (await db.doc("reorder_requests/rr-2b-immutable-legacy").get()).data();
+      const newAfter = (await db.doc("reorder_requests/rr-2b-immutable-new").get()).data();
+      report(
+        "2B: the legacy record still has NO warehouse or company key after both rejected attempts",
+        !("warehouseId" in legacyAfter)
+          && !("operatingCompanyId" in legacyAfter)
+          && legacyAfter.status === "READY_FOR_PARTS_MANAGER"
+      );
+      report(
+        "2B: the new-generation record still holds its original warehouse and company",
+        newAfter.warehouseId === "wh-main" && newAfter.operatingCompanyId === "taylor"
+      );
+    }
+  }
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

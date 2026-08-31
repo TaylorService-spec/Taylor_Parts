@@ -488,30 +488,37 @@ async function main() {
     (await getDocAt("reorder_requests", "req-ready-1", tokens["user-ineligible-1"])) === 403);
 
   // === Manual-entry regression (canSubmitManualZeroHistoryQuantity retrofit) ===
-  // An already-ACTIVE, reciprocally-linked PARTS_MANAGER/WAREHOUSE_MANAGER
-  // Employee's existing manual-entry capability must be unaffected by the
-  // retrofit from hasOperationalRole() to isActiveOperationalRole().
-
-  report("Already-valid PARTS_MANAGER's manual NEEDS_PLANNING entry still succeeds (regression)",
+  //
+  // WORKSTREAM 2B RETARGET. These three asserted that an eligible PARTS_MANAGER / WAREHOUSE_MANAGER /
+  // admin could still CREATE a NEEDS_PLANNING Reorder Request directly. They cannot, and nobody can:
+  // reorder_requests is now `allow create: if false`, because creating a request authors a governed
+  // ownership fact (the warehouse, and the operating company derived from it) that a client is not
+  // the authority for. Manual-entry eligibility did not go away -- it moved to the trusted
+  // createReorderRequest command, which re-checks it there.
+  //
+  // Retargeted to 403 and renamed rather than deleted, so the capability they used to prove stays
+  // visible. The fourth case below (broken linkage) was already 403 and is unchanged in expectation,
+  // but note it now passes for a weaker reason: the door is shut for everyone, not just for them.
+  report("RETIRED (2B): an eligible PARTS_MANAGER can no longer create a NEEDS_PLANNING request directly -- eligibility moved to the trusted command",
     (await createReorderRequest(
       "req-manual-pm-regression",
       tokens["user-pm-1"],
       toFirestoreFields(canonicalManualEntryFields("user-pm-1"))
-    )) === 200);
+    )) === 403);
 
-  report("Already-valid WAREHOUSE_MANAGER's manual NEEDS_PLANNING entry still succeeds (regression)",
+  report("RETIRED (2B): an eligible WAREHOUSE_MANAGER can no longer create one directly either",
     (await createReorderRequest(
       "req-manual-wm-regression",
       tokens["user-wm-1"],
       toFirestoreFields(canonicalManualEntryFields("user-wm-1"))
-    )) === 200);
+    )) === 403);
 
-  report("admin's manual NEEDS_PLANNING entry still succeeds (regression, unaffected by retrofit)",
+  report("RETIRED (2B): admin's override does not survive an unconditional deny, and must not",
     (await createReorderRequest(
       "req-manual-admin-regression",
       tokens["user-admin-1"],
       toFirestoreFields(canonicalManualEntryFields("user-admin-1"))
-    )) === 200);
+    )) === 403);
 
   report("Broken-linkage technician's manual NEEDS_PLANNING entry denied (retrofit tightening -- was already effectively unreachable, now provably closed)",
     (await createReorderRequest(
