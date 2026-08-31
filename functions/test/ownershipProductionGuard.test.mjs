@@ -54,6 +54,8 @@ const SELF_GUARDED_WRITING_SCRIPTS = [
   // Two independent gates; this suite pins the second, which is the convention every other
   // ownership-writing script here already carries.
   "assignWarehouseRootCompany.js",
+  // R-27. Same operator family, same two gates: project-id proof plus the registry check.
+  "repairSandboxWarehouseCanonicalIds.js",
 ];
 
 test("every self-guarded ownership-writing script refuses production, by name AND by registry role", () => {

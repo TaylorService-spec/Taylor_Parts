@@ -30,6 +30,8 @@ on:
       - "functions/src/salesOrder/salesOrderCommands.ts"
       - "functions/scripts/seedOperatingCompanies.js"
       - "functions/scripts/assignWarehouseRootCompany.js"
+      - "functions/scripts/repairSandboxWarehouseCanonicalIds.js"
+      - "functions/test/warehouseCanonicalIdRepair.test.mjs"
       - "functions/test/warehouseRootCompanyAssignment.test.mjs"
       - "functions/src/warehouseGovernance/governedWarehouseValidation.ts"
       - "config/ownership/operating-company-roots.sandbox.json"
