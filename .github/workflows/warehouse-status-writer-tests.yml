@@ -13,6 +13,8 @@ on:
       - "functions/src/types/warehouse.ts"
       - "functions/test/warehouseStatusWriter.test.mjs"
       - "functions/test/warehousePhysicalRootCompany.test.mjs"
+      - "functions/scripts/seedTruckFleetFixtures.mjs"
+      - "functions/test/seedWarehouseCanonicalId.test.mjs"
       - "functions/src/ownership/operatingCompanyAuthority.ts"
       - "functions/src/inventoryReceiving/receivingLocationResolver.ts"
       - "functions/src/inventoryTransfer/transferLocationResolver.ts"
@@ -27,6 +29,8 @@ on:
       - "functions/src/types/warehouse.ts"
       - "functions/test/warehouseStatusWriter.test.mjs"
       - "functions/test/warehousePhysicalRootCompany.test.mjs"
+      - "functions/scripts/seedTruckFleetFixtures.mjs"
+      - "functions/test/seedWarehouseCanonicalId.test.mjs"
       - "functions/src/ownership/operatingCompanyAuthority.ts"
       - "functions/src/inventoryReceiving/receivingLocationResolver.ts"
       - "functions/src/inventoryTransfer/transferLocationResolver.ts"
@@ -77,6 +81,12 @@ jobs:
       # ruling forbids. Offline: pure functions plus a Firestore double, no emulator needed.
       - name: Warehouse physical-root company compatibility (offline, all six consumers)
         run: npm run test:warehouseRootCompany
+        working-directory: functions
+
+      # The seeder writes the governed shape, so it is held to it. Two sandbox warehouses were
+      # created without the stored id and were not governed warehouses at all until it was noticed.
+      - name: Seeded warehouse carries its canonical id (offline)
+        run: npm run test:seedWarehouseShape
         working-directory: functions
 
       - name: Start Firestore emulator (background)
