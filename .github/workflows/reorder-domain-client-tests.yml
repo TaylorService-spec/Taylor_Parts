@@ -6,8 +6,28 @@ name: Reorder Domain Client Tests
 # reorderPurchaseOrders.js import firebase/firebase.js (build-time-injected config) and cannot run
 # under this project's plain `node test/*.test.mjs` runner, so their pure decision logic is factored
 # out into reorderRequestCancelGuard.js and reorderRequestPayload.js -- this workflow covers exactly
-# that logic, offline. The writer functions themselves (the Firestore transaction bodies in
-# inventoryReorderRequests.js / reorderPurchaseOrders.js) remain untested; see PR description.
+# that logic, offline.
+#
+# ===================== WORKSTREAM 2B -- WHAT THIS LANE NOW ALSO OWNS =====================
+#
+# The reorder create and Record-PO writes moved to trusted callables, and firestore.rules retired
+# the direct client writes. Three properties are now worth more than the transaction bodies this
+# lane used to apologise for not covering, and all three are asserted here:
+#
+#   1. NO SECOND WRITE AUTHORITY. reorderTrustedWritePathContract.test.mjs is a static contract:
+#      no application code creates a reorder_requests or reorder_purchase_orders document directly,
+#      no code performs the Record-PO transition client-side, and no catch-path falls back into the
+#      retired writes. It runs under node:test and needs no browser.
+#   2. THE GOVERNED WAREHOUSE IS STATED, NEVER INVENTED. The request now carries a warehouseId from
+#      which the SERVER derives the operating company, so a client-side default would author an
+#      ownership fact nobody chose. The two vitest suites pin the selector's honest empty state,
+#      the submit gate, and the absence of any fallback.
+#   3. THE GATING WAREHOUSE IS THE WRITTEN WAREHOUSE. RequestReorderControl hands its own
+#      warehouseId back on submit rather than each caller re-reading page state.
+#
+# The vitest suites are named here because this repository has no glob lane for `.test.jsx` -- an
+# unnamed suite never runs in CI (field-ops-app-vite/test/ciSuiteCoverage.test.mjs is the guard that
+# makes forgetting that a test failure rather than a silent gap).
 
 on:
   pull_request:
@@ -16,8 +36,21 @@ on:
       - "field-ops-app-vite/src/domain/reorderPurchaseOrders.js"
       - "field-ops-app-vite/src/domain/reorderRequestCancelGuard.js"
       - "field-ops-app-vite/src/domain/reorderRequestPayload.js"
+      - "field-ops-app-vite/src/services/reorderCallableClient.js"
+      - "field-ops-app-vite/src/shared/inventory/**"
+      - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/modules/inventoryRole/WarehouseManagerHome.jsx"
+      - "field-ops-app-vite/src/modules/operations/panels/InventoryHealthPanel.jsx"
+      - "field-ops-app-vite/src/hooks/useWarehouseOptions.js"
       - "field-ops-app-vite/test/inventoryReorderRequestsCancelGuard.test.mjs"
       - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
+      - "field-ops-app-vite/test/reorderTrustedWritePathContract.test.mjs"
+      - "field-ops-app-vite/test/reorderWarehouseSelector.test.jsx"
+      - "field-ops-app-vite/test/reorderWarehouseOptionsSource.test.jsx"
+      - "field-ops-app-vite/src/hooks/useReorderWarehouseOptions.js"
+      - "field-ops-app-vite/test/reorderCreateWarehouseRequired.test.jsx"
+      - "field-ops-app-vite/test/inventoryHealthPanelNames.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/reorder-domain-client-tests.yml"
@@ -28,8 +61,21 @@ on:
       - "field-ops-app-vite/src/domain/reorderPurchaseOrders.js"
       - "field-ops-app-vite/src/domain/reorderRequestCancelGuard.js"
       - "field-ops-app-vite/src/domain/reorderRequestPayload.js"
+      - "field-ops-app-vite/src/services/reorderCallableClient.js"
+      - "field-ops-app-vite/src/shared/inventory/**"
+      - "field-ops-app-vite/src/modules/inventory/PartsList.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/modules/inventoryRole/WarehouseManagerHome.jsx"
+      - "field-ops-app-vite/src/modules/operations/panels/InventoryHealthPanel.jsx"
+      - "field-ops-app-vite/src/hooks/useWarehouseOptions.js"
       - "field-ops-app-vite/test/inventoryReorderRequestsCancelGuard.test.mjs"
       - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
+      - "field-ops-app-vite/test/reorderTrustedWritePathContract.test.mjs"
+      - "field-ops-app-vite/test/reorderWarehouseSelector.test.jsx"
+      - "field-ops-app-vite/test/reorderWarehouseOptionsSource.test.jsx"
+      - "field-ops-app-vite/src/hooks/useReorderWarehouseOptions.js"
+      - "field-ops-app-vite/test/reorderCreateWarehouseRequired.test.jsx"
+      - "field-ops-app-vite/test/inventoryHealthPanelNames.test.jsx"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/reorder-domain-client-tests.yml"
@@ -50,7 +96,7 @@ permissions:
 
 jobs:
   reorder-domain-client-tests:
-    name: Reorder domain client -- pure decision-logic tests (offline)
+    name: Reorder domain client -- pure decision logic + trusted write-path contract
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -71,4 +117,14 @@ jobs:
         run: |
           node test/inventoryReorderRequestsCancelGuard.test.mjs
           node test/reorderRequestPayload.test.mjs
+        working-directory: field-ops-app-vite
+
+      # The static contract. If this fails, a second write authority has reappeared -- which the
+      # Rules retirement would then reject at runtime, in a user's face, rather than at review.
+      - name: Trusted reorder write-path contract (static)
+        run: node --test test/reorderTrustedWritePathContract.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Reorder warehouse selector + required-warehouse gate (jsdom)
+        run: npx vitest run test/reorderWarehouseSelector.test.jsx test/reorderWarehouseOptionsSource.test.jsx test/reorderCreateWarehouseRequired.test.jsx test/inventoryHealthPanelNames.test.jsx
         working-directory: field-ops-app-vite

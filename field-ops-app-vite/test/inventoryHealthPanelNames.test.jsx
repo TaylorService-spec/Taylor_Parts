@@ -5,6 +5,11 @@
 // and the ACTION variant's reorder wiring is unchanged (RequestReorderControl still receives
 // recommendation/submitting/alreadyRequested and its submit still calls onRequestReorder with
 // (partId, recommendation, manualQty)).
+//
+// WORKSTREAM 2B adds a fourth argument: the governed warehouseId. The panel forwards its own
+// reorderWarehouseId prop DOWN to each row's control and the control hands it back UP on submit,
+// so the value that gated the button is the value that reaches the writer. The last case below
+// pins both directions, including the honest default -- absent means absent, never a stand-in.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
@@ -18,7 +23,7 @@ const reorderProps = [];
 vi.mock("../src/shared/inventory/RequestReorderControl", () => ({
   default: (props) => {
     reorderProps.push(props);
-    return <button onClick={() => props.onSubmit(7)}>reorder:{props.recommendation.urgency}:{props.submitting ? "busy" : "idle"}:{props.alreadyRequested ? "req" : "new"}</button>;
+    return <button onClick={() => props.onSubmit(7, props.warehouseId)}>reorder:{props.recommendation.urgency}:{props.submitting ? "busy" : "idle"}:{props.alreadyRequested ? "req" : "new"}</button>;
   },
 }));
 
@@ -60,6 +65,7 @@ describe("InventoryHealthPanel (OD-3) -- resolveName name resolution", () => {
         onRequestReorder={onRequestReorder}
         requestedPartIds={new Set(["TST-9001"])}
         submittingPartId="TST-9001"
+        reorderWarehouseId="wh-main"
       />
     );
     expect(screen.getByText("CANONICAL-NAME-A")).toBeTruthy();
@@ -69,8 +75,25 @@ describe("InventoryHealthPanel (OD-3) -- resolveName name resolution", () => {
     expect(reorderProps[0].recommendation.urgency).toBe("HIGH");
     expect(reorderProps[0].submitting).toBe(true);
     expect(reorderProps[0].alreadyRequested).toBe(true);
-    // submit still calls onRequestReorder(partId, recommendation, manualQty) -- unchanged behavior
+    // WORKSTREAM 2B: the governed warehouse reached the row's control...
+    expect(reorderProps[0].warehouseId).toBe("wh-main");
+    // ...and comes back as the fourth submit argument, so the warehouse that enabled the button
+    // is literally the warehouse handed to the writer -- not this page's state read a second time.
     fireEvent.click(screen.getByText(/^reorder:/));
-    expect(onRequestReorder).toHaveBeenCalledWith("TST-9001", reorderProps[0].recommendation, 7);
+    expect(onRequestReorder).toHaveBeenCalledWith("TST-9001", reorderProps[0].recommendation, 7, "wh-main");
+  });
+
+  it("with no warehouse chosen the panel forwards null, and invents nothing", () => {
+    // The panel has a partId, a recommendation and a queue. It does NOT have a place, and it must
+    // not manufacture one -- not the first warehouse, not "the usual" one. Null travels down as
+    // null, and RequestReorderControl is what refuses to submit on it.
+    render(
+      <InventoryHealthPanel
+        healthEntries={[entry("TST-9001")]}
+        resolveName={canonical}
+        onRequestReorder={vi.fn()}
+      />
+    );
+    expect(reorderProps[0].warehouseId).toBe(null);
   });
 });

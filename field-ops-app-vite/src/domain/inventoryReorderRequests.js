@@ -1,9 +1,14 @@
 import { doc, runTransaction } from "firebase/firestore";
+import { submitCreateReorderRequest } from "../services/reorderCallableClient.js";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth, db } from "../firebase/firebase";
 import { isWriteBlocked } from "../config/env";
-import { buildReorderRequestFields } from "./reorderRequestPayload";
+// buildReorderRequestFields is no longer imported here: the canonical 35-field payload is now built
+// server-side by the trusted createReorderRequest command, which is the only writer. The pure
+// builder and its tests remain in domain/reorderRequestPayload.js -- retiring them is a separate
+// cleanup, and deleting a tested module as a side effect of an authority migration would be scope
+// this change has no business taking.
 import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
@@ -14,9 +19,17 @@ import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
 // makeCollectionStore (firebase/collectionStore.js) rather than a
 // hand-rolled Firestore call, so writes go through lib/firebaseSafe.js's
 // demo/panic-mode write-blocking the same way every other client-
-// direct-write collection already does. No Cloud Function -- not
-// required for this sprint's scope (a single, unconditional create,
-// no cross-document invariant to protect).
+// direct-write collection already does.
+//
+// WORKSTREAM 2B CORRECTION (2026-08-30). This header used to end "No Cloud Function -- not required
+// for this sprint's scope (a single, unconditional create, no cross-document invariant to protect)."
+// That stopped being true: creation now authors a governed ownership fact (warehouseId, and the
+// operatingCompanyId derived from it), which a client cannot be the authority for.
+//
+// So createReorderRequest() below is a TRUSTED CALLABLE adapter, and firestore.rules retires the
+// direct create. The other seven transitions in this file are unchanged and remain client-direct
+// under unchanged Rules -- they author no company fact, and moving them would be rebuilding a
+// working state machine rather than migrating the authority the new facts require.
 //
 // A Reorder Request is: { id, partId, recommendationStatus, urgency,
 // quantitySource, recommendedQty, requestedQty, status, currentOwner,
@@ -53,7 +66,7 @@ export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECT
 // server-side enforcement (PR 2) -- fails fast client-side, exactly
 // the same "validated here, not just in the UI, since this is the
 // sole write path" posture reviewReorderRequest() already uses below.
-export function createReorderRequest({ partId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource, workOrderId = null }) {
+export function createReorderRequest({ partId, warehouseId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource, workOrderId = null }) {
   if (recommendationStatus !== "READY" && recommendationStatus !== "NEEDS_PLANNING") {
     throw new Error(`Invalid recommendationStatus: ${recommendationStatus}`);
   }
@@ -62,6 +75,19 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
   // only: it confers no Work Order lifecycle authority here and no procurement authority on the Work Order.
   if (workOrderId != null && (typeof workOrderId !== "string" || workOrderId.length === 0)) {
     throw new Error("workOrderId, when provided, must be a non-empty Work Order id.");
+  }
+  // WORKSTREAM 2B -- the governed Warehouse is REQUIRED, and is never invented here.
+  //
+  // The trusted command is the authority: it re-reads the warehouse inside its transaction,
+  // refuses an unknown or inactive one, and derives the operating company from it. This check
+  // adds nothing to that. What it does is turn an unanswered selector into a sentence a person
+  // can act on, instead of a round trip that comes back WAREHOUSE_REQUIRED -- the same
+  // "validated here as well, since this is the sole write path" discipline as every field above.
+  //
+  // There is deliberately no default and no fallback: not the first warehouse, not the only
+  // warehouse, not one derived from the part, the user or the page.
+  if (typeof warehouseId !== "string" || warehouseId.trim().length === 0) {
+    throw new Error("A warehouse is required to request a reorder.");
   }
   if (!Number.isInteger(requestedQty)) {
     throw new Error("requestedQty must be a whole number.");
@@ -73,21 +99,29 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
     throw new Error("requestedQty must not be negative.");
   }
 
-  // The exact canonical payload is built by the PURE buildReorderRequestFields() (unit-tested), which also
-  // includes the optional Phase-3 workOrderId provenance back-link ONLY when supplied. The collection store
-  // injects createdAt. Cancel/Void fields remain present-and-null per the cancellation schema sequence.
-  return reorderRequestsStore.add(
-    buildReorderRequestFields({
-      partId,
-      recommendationStatus,
-      urgency,
-      quantitySource,
-      recommendedQty,
-      requestedQty,
-      requestedByUid: auth.currentUser?.uid ?? null,
-      workOrderId,
-    })
-  );
+  // WORKSTREAM 2B -- THIS NOW GOES THROUGH THE TRUSTED COMMAND, not Firestore.
+  //
+  // Creating a reorder request authors a governed ownership fact: the warehouse being replenished,
+  // and the operatingCompanyId DERIVED from it. A client cannot be the authority for a derived
+  // company, so firestore.rules retires the direct create in the same change that adds this call.
+  //
+  // NO FALLBACK. If the callable fails, the failure surfaces. Retrying into the old
+  // reorderRequestsStore.add() would recreate two write authorities for one command, which is
+  // exactly what the Rules retirement exists to prevent.
+  //
+  // requestedBy is the AUTHENTICATED actor, taken server-side from the callable context, and is
+  // deliberately not sent -- a client-asserted actor is not an actor. operatingCompanyId is never
+  // sent either: the server derives it and REFUSES a caller that supplies one.
+  return submitCreateReorderRequest({
+    partId,
+    warehouseId,
+    recommendationStatus,
+    urgency,
+    quantitySource,
+    recommendedQty,
+    requestedQty,
+    workOrderId,
+  });
 }
 
 // Shared "Request Reorder" orchestrator -- builds the correct
@@ -102,11 +136,12 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
 // a reorder for a shortage), exactly like today's manual reorder creation; there is no automatic
 // shortage-to-request behavior (which would require a deduplication key the repository does not yet own), so
 // readiness recompute / rerender / retry can never mint duplicate requests.
-export function requestReorderForRecommendation({ partId, recommendation, manualQty, workOrderId = null }) {
+export function requestReorderForRecommendation({ partId, warehouseId, recommendation, manualQty, workOrderId = null }) {
   if (recommendation.recommendationStatus === "READY") {
     const qty = Math.ceil(recommendation.recommendedOrderQty);
     return createReorderRequest({
       partId,
+      warehouseId,
       recommendationStatus: "READY",
       urgency: recommendation.urgency,
       quantitySource: QUANTITY_SOURCE.ANALYTICS,
@@ -118,6 +153,7 @@ export function requestReorderForRecommendation({ partId, recommendation, manual
 
   return createReorderRequest({
     partId,
+    warehouseId,
     recommendationStatus: "NEEDS_PLANNING",
     urgency: null,
     quantitySource: QUANTITY_SOURCE.MANUAL_ZERO_HISTORY,

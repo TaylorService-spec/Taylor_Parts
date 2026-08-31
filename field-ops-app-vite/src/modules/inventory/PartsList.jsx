@@ -21,6 +21,8 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
+import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
@@ -551,6 +553,13 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
   const [submittingPartId, setSubmittingPartId] = useState(null);
   const [reorderError, setReorderError] = useState(null);
+  // WORKSTREAM 2B -- the governed Warehouse this queue is requesting FOR. One choice for the
+  // whole panel, because the queue is a list of parts and not a list of warehouses. Starts
+  // empty and is never defaulted: an unstated warehouse leaves every Request Reorder button
+  // off, which is honest, where a silent default would author a company fact nobody chose.
+  const [reorderWarehouseId, setReorderWarehouseId] = useState("");
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
 
   const needsPlanningEntries = useMemo(
     () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),
@@ -581,11 +590,15 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     return set;
   }, [pendingRequests, justRequestedPartIds]);
 
-  async function handleRequestReorder(partId, recommendation, manualQty) {
+  // `warehouseId` arrives from the control that was gated on it, not from this page's state
+  // read a second time -- so the value that enabled the button is the value that is written.
+  // It is passed straight through to the trusted command, which re-reads the warehouse and
+  // derives the operating company itself. Nothing here interprets it.
+  async function handleRequestReorder(partId, recommendation, manualQty, warehouseId) {
     setSubmittingPartId(partId);
     setReorderError(null);
     try {
-      await requestReorderForRecommendation({ partId, recommendation, manualQty });
+      await requestReorderForRecommendation({ partId, warehouseId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
       const partName = resolveName(partId);
@@ -697,6 +710,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             activeKey={queueFilter}
             onChange={setQueueFilter}
           />
+          <ReorderWarehouseSelect
+            id="parts-queue-reorder-warehouse"
+            options={reorderWarehouses.options}
+            loading={reorderWarehouses.loading}
+            error={reorderWarehouses.error}
+            value={reorderWarehouseId}
+            onChange={setReorderWarehouseId}
+          />
           {reorderError && <p className="fo-muted">{reorderError}</p>}
           <LoadingEmptyState
             loading={loading}
@@ -713,6 +734,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               onRequestReorder={handleRequestReorder}
               requestedPartIds={requestedPartIds}
               submittingPartId={submittingPartId}
+              reorderWarehouseId={reorderWarehouseId}
               emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
             />
           </LoadingEmptyState>

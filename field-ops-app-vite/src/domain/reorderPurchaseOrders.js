@@ -1,4 +1,5 @@
 import { doc, runTransaction } from "firebase/firestore";
+import { submitRecordReorderPurchaseOrder } from "../services/reorderCallableClient.js";
 import { db, auth } from "../firebase/firebase";
 import { isWriteBlocked } from "../config/env";
 import {
@@ -38,7 +39,11 @@ import {
 // this app.
 export function recordPurchaseOrder(
   reorderRequestId,
-  { partId, supplierName, externalPoNumber, orderedQuantity, orderedDate, expectedArrivalDate }
+  // `partId` is still ACCEPTED so existing call sites keep working unchanged, and deliberately not
+  // used: the server reads the part from the reorder request inside its transaction, so a PO can
+  // never be recorded against a part the request never named. A client-supplied part would be a
+  // second, forgeable answer to a question the request already answers.
+  { partId: _partId, supplierName, externalPoNumber, orderedQuantity, orderedDate, expectedArrivalDate }
 ) {
   if (isWriteBlocked()) {
     console.warn("WRITE BLOCKED (recordPurchaseOrder)", reorderRequestId);
@@ -62,53 +67,30 @@ export function recordPurchaseOrder(
     throw new Error("Ordered date is required.");
   }
 
-  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, reorderRequestId);
-  const purchaseOrderRef = doc(db, PURCHASE_ORDERS_COLLECTION, reorderRequestId);
-
-  return runTransaction(db, async (transaction) => {
-    // Firestore transactions require all reads before any writes.
-    const [reorderRequestSnap, purchaseOrderSnap] = await Promise.all([
-      transaction.get(reorderRequestRef),
-      transaction.get(purchaseOrderRef),
-    ]);
-
-    if (!reorderRequestSnap.exists()) {
-      throw new Error("Reorder Request not found.");
-    }
-    if (purchaseOrderSnap.exists()) {
-      throw new Error("A Purchase Order is already recorded for this Reorder Request.");
-    }
-
-    const reorderRequest = reorderRequestSnap.data();
-    if (reorderRequest.status !== REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS) {
-      throw new Error("This Reorder Request is not currently in progress.");
-    }
-    if (reorderRequest.assignedToUserId !== (auth.currentUser?.uid ?? null)) {
-      throw new Error("Only the assigned Parts Associate can record a Purchase Order for this request.");
-    }
-
-    const now = Date.now();
-    const createdBy = auth.currentUser?.uid ?? null;
-
-    transaction.set(purchaseOrderRef, {
-      reorderRequestId,
-      partId,
-      supplierName: trimmedSupplier,
-      externalPoNumber: trimmedPoNumber,
-      orderedQuantity: numericQty,
-      orderedDate,
-      expectedArrivalDate: expectedArrivalDate || null,
-      status: PURCHASE_ORDER_STATUS.ORDERED,
-      createdBy,
-      createdAt: now,
-    });
-
-    transaction.update(reorderRequestRef, {
-      status: REORDER_REQUEST_STATUS.ORDERED,
-      purchaseOrderId: reorderRequestId,
-      orderedBy: createdBy,
-      orderedAt: now,
-    });
+  // WORKSTREAM 2B -- THIS NOW GOES THROUGH THE TRUSTED COMMAND, not a client transaction.
+  //
+  // Recording a purchase order writes a governed ownership fact: the PO inherits its
+  // operatingCompanyId from the reorder request. A client cannot be the authority for that, and it
+  // must not be able to supply or override it -- so firestore.rules retires both the PO create and
+  // the request's Record-PO transition in the same change that adds this call.
+  //
+  // THE ATOMICITY DID NOT MOVE TO THE CLIENT, IT MOVED TO THE SERVER. Rules used to cross-pin the
+  // two writes with existsAfter/getAfter; recordReorderPurchaseOrder now performs both inside one
+  // Admin-SDK transaction. Equal strength, different enforcement point -- and no longer something
+  // a browser transaction is trusted to get right.
+  //
+  // NO FALLBACK to the old runTransaction path on failure: that would recreate two write
+  // authorities for one command.
+  //
+  // partId is deliberately NOT sent. The server reads it from the request inside the transaction,
+  // so the PO cannot be recorded against a part the request never named.
+  return submitRecordReorderPurchaseOrder({
+    reorderRequestId,
+    supplierName: trimmedSupplier,
+    externalPoNumber: trimmedPoNumber,
+    orderedQuantity: numericQty,
+    orderedDate,
+    expectedArrivalDate: expectedArrivalDate ?? null,
   });
 }
 
@@ -116,9 +98,17 @@ export function recordPurchaseOrder(
 // reorder-request-cancellation.md). The ONLY writer of a
 // reorder_purchase_order_voids record. Atomically creates the void
 // record AND transitions the linked Reorder Request to VOIDED, in a
-// single Firestore transaction -- same atomicity pattern
-// recordPurchaseOrder() above already established for the ORDERED
-// transition. The original reorder_purchase_orders document is read
+// single Firestore transaction.
+//
+// This USED to say "same atomicity pattern recordPurchaseOrder() above
+// already established". It no longer is: Workstream 2B moved that one
+// to a trusted callable, because recording a PO authors a governed
+// company fact. Void authors none -- it writes a void record and closes
+// a request -- so it stays client-direct under unchanged Rules, and its
+// atomicity is still this client transaction plus the Rules'
+// cross-document invariant.
+//
+// The original reorder_purchase_orders document is read
 // (to confirm it exists, confirm its status is ORDERED, and copy
 // partId) but NEVER written -- Void never modifies or deletes it.
 // Stamps Date.now() into a local `now` variable exactly once and
