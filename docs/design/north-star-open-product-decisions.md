@@ -1369,18 +1369,23 @@ nothing — is shut end to end: capability, command, seams, callable, `index.ts`
 Function, client surface, and a live acquisition that a person performed and a governed read then
 showed. Not one of those was inferred from an exit code.
 
-**The UX follow-up was CLOSED, NOT MERGED.** [PR #1639](https://github.com/TaylorService-spec/Taylor_Parts/pull/1639)
-composed the Add existing unit dialog to North Star quality and is not part of ND-33's closure. Its
-work is not lost — it stands on `claude/receiving-acquire-ux` — and **the next pass belongs to the
-Receiving page stream**, where the whole workspace is composed at once rather than one dialog inside
-it. ND-33 asked whether the company can record a unit it already owns. It can. How that screen reads
-is a different question with a different owner.
+**The UX follow-up landed separately.** [PR #1639](https://github.com/TaylorService-spec/Taylor_Parts/pull/1639)
+composed the Add existing unit dialog to North Star quality and merged as `7d221497`, squashed at the
+exact guarded head. It is not part of ND-33's authority and reopened none of it: no Functions, Rules,
+capability, Role, schema or command-payload change, and the request the callable receives is
+byte-identical. **The next UX pass belongs to the Receiving page stream**, where the whole workspace
+is composed at once rather than one dialog inside it. ND-33 asked whether the company can record a
+unit it already owns. It can. How that screen reads is a different question with a different owner.
 
-**One defect rides along to that stream, and it is a behavioural one rather than a matter of taste.**
-The dialog compares the governed location read against `"READY"` while the transport returns
-`RECEIVING_OUTCOME.READY`, which is the lowercase `"ready"`. The comparison can never succeed, so a
-*successful* read prints "the company locations could not be read" beside the options it has just
-loaded. It is live in sandbox now and does not block acquisition — the picker still works and the
-command still validates the chosen location — but it tells an operator the opposite of what is true
-at the moment they are choosing where a machine lives. The fix and its regression tests are on that
-branch already; whoever picks up Receiving inherits them.
+**One behavioural defect was corrected on the way through — fixed in the repository, not yet on the
+screen.** The dialog compared the governed location read against `"READY"` while the transport
+returns `RECEIVING_OUTCOME.READY`, which is the lowercase `"ready"`. The comparison could never
+succeed, so a *successful* read printed "the company locations could not be read" beside the options
+it had just loaded. It never blocked acquisition — the picker worked and the command still validated
+the chosen location — but it told an operator the opposite of what was true at the moment they were
+choosing where a machine lives.
+
+The correction derives one state from the transport's own enum and empties the options in every
+non-READY state, so a chosen location beside a failure message is unrepresentable rather than merely
+avoided. **Merged is not live.** This reaches an operator at the next Hosting refresh and not before;
+until that runs, the sandbox still shows the contradiction.
