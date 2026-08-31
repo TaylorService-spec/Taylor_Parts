@@ -7,18 +7,53 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 // receiveInventoryStockCommand.ts INSIDE a Firestore transaction via `txn.create()`, never `.update()` or
 // `.set()`).
 //
-// readVia IS UNKNOWN, NOT CALLABLE, EVEN THOUGH THIS COLLECTION IS DENY-ALL. firestore.rules'
-// `match /receiving_orders/{receivingId} { allow read, create, update, delete: if false; }` is real and
-// unconditional (docs comment: "FULLY BACKEND-PRIVATE ... Deny ALL client reads AND writes for every
-// principal, admin included"). Per entityDefinition.js's own contract, deny-all normally means
-// `readVia: "CALLABLE"` with the real `readCallable` named — but no such callable exists. Grepping
-// functions/src/inventoryReceiving/receivingCallables.ts finds exactly two exported callables:
-// `receiveInventoryStockCallable` (a WRITE — it CREATES a receiving order, matching
-// `inventory.stock.receive`) and `listReceivingLocationOptionsCallable` (reads eligible WAREHOUSE
-// options for the receiving-location picker, never a receiving_orders document). No function anywhere
-// in this repository reads back a receiving_orders document by id, by query, or in bulk. There is
-// therefore no honest `readCallable` to name — `readVia` is `UNKNOWN` and `readCallable` stays `null`,
-// per the identity/readVia contract's own instruction for exactly this case, rather than inventing one.
+// ════════════════ WHO READS THIS COLLECTION — CORRECTED 2026-08-31 (RCV-G3) ════════════════
+//
+// WHAT THIS BLOCK USED TO SAY, AND WHY IT MATTERED. It stated: "No function anywhere in this
+// repository reads back a receiving_orders document by id, by query, or in bulk." That is FALSE, and
+// it was the stated justification for `readVia: UNKNOWN`. The conclusion was right; the reason was
+// not, and the reason is what a future reader relies on. Someone who believes this collection is
+// unread is free to change its stored shape — which would silently break part balances and
+// purchase-order progress, because three server-side readers depend on specific fields. Found while
+// reconciling the Receiving North Star design against repository authority.
+//
+// Recorded as what was MEASURED, not as a replacement absolute.
+//
+// STORED AUTHORITY. `receiving_orders` exists, is written Admin-SDK-only by
+// receiveInventoryStockCommand.ts inside a Firestore transaction, and IS read server-side.
+//
+// SERVER CONSUMERS — measured 2026-08-31, four of them:
+//   functions/src/inventoryReceiving/purchaseOrderProgressRead.ts:95   by query, per purchase order
+//     — and this one IS CLIENT-REACHABLE, through readPurchaseOrderProgress in receivingCallables.ts
+//   functions/src/inventory/partBalanceReadService.ts:308              by query, per purchase order
+//   functions/src/inventory/partBalanceBatchReadService.ts:137         by query, in bulk
+//   functions/src/inventoryReceiving/receivingRepository.ts:318        collection handle (the writer)
+//
+// LOAD-BEARING FIELDS — changing the stored shape of any of these breaks a governed derivation:
+//   source.purchaseOrderId        every consumer above filters on it
+//   lines[].lineId                joins a receipt line back to its ordered line
+//   lines[].receivedQuantity      aggregated into per-line received/remaining quantities
+//
+// CLIENT ENTITY READ: NONE. `readVia` is `UNKNOWN` and `readCallable` stays `null`. firestore.rules'
+// `match /receiving_orders/{receivingId} { allow read, create, update, delete: if false; }` is real
+// and unconditional ("FULLY BACKEND-PRIVATE ... Deny ALL client reads AND writes for every principal,
+// admin included"). entityDefinition.js's contract says deny-all normally means `readVia: "CALLABLE"`
+// with the real `readCallable` named — receivingCallables.ts exports `receiveInventoryStockCallable`
+// (a WRITE — it CREATES a receiving order) and `listReceivingLocationOptionsCallable` (eligible
+// WAREHOUSE options, never a receiving order). Neither returns this entity, so there is no honest
+// `readCallable` to name.
+//
+// CLIENT-DERIVED READS. An existing service MAY return the derived EFFECTS of these documents:
+// readPurchaseOrderProgress maps each receipt to `{receivingId, lines[]}`, aggregates it into per-line
+// received/remaining quantities, and DISCARDS `receivingId` before responding. The client learns how
+// much of a purchase order has been received; it never learns that a particular receiving order
+// exists. That distinction is the whole reason `readVia` can honestly stay UNKNOWN while four
+// functions read the collection.
+//
+// THE GAP THIS LEAVES IS REAL AND UNCHANGED (RCV-G1): no governed read returns `receiving_orders`
+// RECORDS to a client, so no receipt-history surface can be built without a separately reviewed read
+// grant. A history list must not be assembled by leaking receipt identity through an aggregate
+// service that deliberately discards it.
 //
 // inventory.stock.receive IS REAL AND GRANTED, BUT IT GATES THE WRITE PATH, NOT ANY READ.
 // functions/src/access/permissionCatalog.ts registers `inventory.stock.receive`
@@ -148,11 +183,22 @@ export const receivingOrderEntity = makeEntityDefinition({
       label: "Receiving Order",
       type: "STRING",
       sortable: true,
+      // CORRECTED 2026-08-31 (RCV-G3, second finding in this file). This said the numbering lane
+      // "does not yet exist — no allocateReceivingOrderNumber (or equivalent) is implemented anywhere
+      // in this repository", naming the exact function that does exist. Measured: it is exported at
+      // functions/src/inventoryReceiving/receivingOrderNumbering.ts:79, imported by
+      // receiveInventoryStockCommand.ts:31 and invoked at :298 inside the create transaction, merged
+      // 2026-08-18 in #1259. The same stale sentence reached the Receiving design handoff, where it
+      // was corrected for Design and never corrected here.
       description:
         "RO-YYYY-######, the identity.referenceField per the Owner's identity-modes ruling (A-IDENTITY-MODES, " +
-        "X-PROCUREMENT-ENTITIES-NO-IDENTITY). Server-allocated at creation by a numbering lane that does not " +
-        "yet exist — no allocateReceivingOrderNumber (or equivalent) is implemented anywhere in this " +
-        "repository. ABSENT ON EVERY EXISTING (LEGACY) receiving_orders document. A renderer must not fall " +
+        "X-PROCUREMENT-ENTITIES-NO-IDENTITY). SERVER-ALLOCATED AT CREATION, transaction-safely, by " +
+        "functions/src/inventoryReceiving/receivingOrderNumbering.ts's allocateReceivingOrderNumber() — " +
+        "invoked from receiveInventoryStockCommand.ts inside the same transaction that creates the " +
+        "document (#1259, 2026-08-18). ABSENT on documents created BEFORE that lane shipped, and absent " +
+        "wherever the deployed Functions release predates it; present on documents created after. " +
+        "NO GOVERNED READ EXPOSES IT TO A CLIENT (RCV-G1): the collection returns no records to any " +
+        "client, so this value is not currently reachable from a UI at all. A renderer must not fall " +
         "back to the Firestore document id (receivingId) when this field is missing; an honest " +
         "empty/placeholder state is required instead, per the Owner's ruling that documentId must never be " +
         "exposed while legacy references are absent.",

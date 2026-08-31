@@ -61,17 +61,43 @@ test("neither entity nominates a category/status field as the reference -- the r
 });
 
 test("both reference fields are declared STRING, sortable, and documented as absent on legacy records with no id fallback", () => {
+  // THE SEMANTIC, NOT THE SENTENCE — corrected 2026-08-31 (RCV-G3).
+  //
+  // This pinned the literal phrase "ABSENT ON EVERY EXISTING". That phrase belonged to a claim that
+  // is FALSE: both descriptions said the numbering lane "does not yet exist — no
+  // allocateReceivingOrderNumber / allocateReorderRequestNumber (or equivalent) is implemented
+  // anywhere in this repository", naming the exact functions that DO exist
+  // (receivingOrderNumbering.ts:79, reorderRequestNumbering.ts:75, both shipped in #1259 on
+  // 2026-08-18). The numbers are absent on documents created BEFORE those lanes, not on every
+  // existing document.
+  //
+  // Pinning the phrase meant CI was actively enforcing a falsehood. What this test is FOR — and what
+  // its own name says — is that legacy absence is documented and that a renderer may never fall back
+  // to the document id. Both of those are asserted directly below, and neither weakens: the
+  // no-id-fallback rule is the one that protects a reader from seeing a Firestore key.
+  const legacyAbsence = /absent[^.]*legacy|legacy[^.]*absent|ABSENT on documents created BEFORE/i;
+
   const reorderRequestNumber = findField(reorderRequestEntity, "reorderRequestNumber");
   assert.equal(reorderRequestNumber.type, "STRING");
   assert.equal(reorderRequestNumber.sortable, true);
-  assert.match(reorderRequestNumber.description, /ABSENT ON EVERY EXISTING/);
+  assert.match(reorderRequestNumber.description, legacyAbsence);
   assert.match(reorderRequestNumber.description, /must not fall.*back to the Firestore document id/s);
 
   const receivingOrderNumber = findField(receivingOrderEntity, "receivingOrderNumber");
   assert.equal(receivingOrderNumber.type, "STRING");
   assert.equal(receivingOrderNumber.sortable, true);
-  assert.match(receivingOrderNumber.description, /ABSENT ON EVERY EXISTING/);
+  assert.match(receivingOrderNumber.description, legacyAbsence);
   assert.match(receivingOrderNumber.description, /must not fall.*back to the Firestore document id/s);
+});
+
+test("the receiving order register names its real numbering lane, not a missing one (RCV-G3)", () => {
+  // The correction, made falsifiable. A future edit that reinstates "does not yet exist" fails here.
+  const receivingOrderNumber = findField(receivingOrderEntity, "receivingOrderNumber");
+  assert.match(receivingOrderNumber.description, /allocateReceivingOrderNumber\(\)/);
+  assert.doesNotMatch(receivingOrderNumber.description, /does not\s+yet exist/);
+  // ...and it states that no client can reach the value, which is the RCV-G1 consequence that keeps
+  // a renderer from being written against a number it cannot obtain.
+  assert.match(receivingOrderNumber.description, /NO GOVERNED READ EXPOSES IT TO A CLIENT/);
 });
 
 // ---------------------------------------------------------------------------------------------
