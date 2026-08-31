@@ -7084,3 +7084,52 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-record-bands > .ns-section { margin-bottom: 18px; }
 .ns-record-bands > .ns-section > .ns-section__head { padding: 9px 0 10px; }
 .ns-record-bands > .ns-band--reference { margin-bottom: 10px; }
+
+/* ══════ A1 — THE LIGHTWEIGHT ABSENCE GRAMMAR (Owner ruling, 2026-08-31) ══════
+   Frame 1b prices an unavailable capability at ONE ITALIC LINE. The shipped
+   treatment was a bordered, padded status block at 14.5px -- 84px for a
+   two-line sentence, twice on this record (Where it is, Used on), 168px of
+   packaging around ~40px of words.
+
+   THE SEMANTICS ARE UNTOUCHED AND THAT IS THE POINT. HonestState still decides
+   WHICH state this is and still writes the sentence; NOT_ENABLED still reads as
+   "built, governed, switched off" and is still distinct from EMPTY and from
+   DENIED. Only the packaging changes, and only here.
+
+   SCOPED TO THE PARTS RECORD'S BANDS, deliberately. `.ns-state--not-enabled` is
+   worn by accepted North Star families whose composition was signed off with
+   the bordered block; a global restyle would silently re-open those. The
+   selector reaches inside `.ns-record-bands` and nowhere else, so this is a
+   Parts-local composition decision rather than a design-system change. */
+.ns-record-bands .ns-band__col .ns-state,
+.ns-record-bands .ns-band--reference .ns-state {
+  padding: 0; margin: 2px 0 0; font-size: 13px; line-height: 1.5; font-style: italic;
+  max-width: 62ch;
+}
+.ns-record-bands .ns-band__col .ns-state--denied,
+.ns-record-bands .ns-band__col .ns-state--not-enabled,
+.ns-record-bands .ns-band--reference .ns-state--denied,
+.ns-record-bands .ns-band--reference .ns-state--not-enabled {
+  border-left: 0; padding-left: 0;
+}
+/* DENIED KEEPS A MARK, because "you may not see this" and "nobody can see this
+   yet" must not become the same sentence typographically. It is the one state
+   where losing the border would cost a distinction rather than only padding. */
+.ns-record-bands .ns-band__col .ns-state--denied,
+.ns-record-bands .ns-band--reference .ns-state--denied {
+  font-style: normal; color: var(--color-text-primary);
+}
+
+/* ══════ A2 — BAND HEADING FURNITURE ══════
+   47px of head for a 22px serif title, six times over. The rule the band sits
+   on and the type scale both stay -- they are what separate one operational
+   group from the next -- and the padding that was tuned for a flat run of seven
+   full-width sections comes down. */
+.ns-record-bands > .ns-section > .ns-section__head { padding: 5px 0 6px; }
+.ns-record-bands > .ns-section { margin-bottom: 14px; }
+.ns-record-bands > .ns-band--reference { margin-bottom: 8px; }
+.ns-record-bands .ns-band__cols { gap: 14px 48px; }
+.ns-band__block { margin-top: 14px; }
+/* The identifier band's two lines. */
+.ns-ident__line { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.ns-ident__note { font-size: 12px; line-height: 1.5; margin: 12px 0 0; max-width: 68ch; }
