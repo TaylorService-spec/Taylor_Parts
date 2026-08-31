@@ -514,3 +514,107 @@ describe("the tab rail matches the ratified collection view chips", () => {
     expect(rail).toMatch(/padding:\s*0 14px/);
   });
 });
+
+// ══════════════════════ THE TWO RAILS RUN THE SAME FOUR STATES ══════════════════════
+//
+// Customer Equipment carries TWO rails: the primary Equipment tabs (.ns-tabrail__tab) and the saved
+// -view row beneath them, All Equipment / Active (.ns-view). The Owner reported they did not share
+// the same shading and interaction grammar, and they did not — in one state.
+//
+// `.ns-view:hover` and `.ns-view.is-active` have IDENTICAL specificity (0-2-0) and `.is-active` is
+// declared later, so it won: hovering the SELECTED chip took the green background from `:hover` and
+// the near-black colour from `.is-active`. Dark text on a dark fill — the same trap the stylesheet
+// already documents for the UN-selected state, reproduced in the one state that comment did not
+// name, and the same trap the primary rail hit before `.ns-tabrail__tab--on:hover` was written.
+//
+// Asserted against the STYLESHEET, because jsdom computes no cascade and the defect lives in the
+// rule ordering rather than in any rendered element.
+
+describe("the saved-view rail runs the same four states as the Equipment tab rail", () => {
+  const css = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.css"),
+    "utf8",
+  );
+  // One rule body, by exact selector — never a slice of the file, so a rule moving cannot silently
+  // empty the haystack and pass everything.
+  // A plain string scan rather than a built regex: CSS selectors are full of regex metacharacters
+  // and escaping them correctly is a second thing to get wrong. This finds the selector where it
+  // begins a declaration — preceded by a newline and followed by " {" — so `.ns-view` cannot match
+  // inside `.ns-view.is-active`, which is the confusion that would make every assertion below read
+  // the wrong rule body.
+  const rule = (selector) => {
+    const needle = `\n${selector} {`;
+    const at = css.indexOf(needle);
+    if (at < 0) return null;
+    const open = at + needle.length;
+    const close = css.indexOf("}", open);
+    return close < 0 ? null : css.slice(open, close);
+  };
+
+  it("1. RESTING — both rails sit on no background and the same secondary text token", () => {
+    for (const sel of [".ns-tabrail__tab", ".ns-view"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist`).toBeTruthy();
+      expect(body, `${sel} resting background`).toMatch(/background:\s*none/);
+      expect(body, `${sel} resting colour`).toMatch(/color:\s*var\(--color-text-secondary\)/);
+    }
+  });
+
+  it("2. HOVER — both state BOTH halves, background and text, at the level that owns the control", () => {
+    for (const sel of [".ns-tabrail__tab:hover", ".ns-view:hover"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist`).toBeTruthy();
+      expect(body, `${sel} needs an explicit fill`).toMatch(/background:\s*var\(--color-brand-secondary\)/);
+      expect(body, `${sel} needs explicit white text`).toMatch(/color:\s*#FFFFFF/);
+    }
+  });
+
+  it("3. SELECTED — both mark it the same way, and not by colour alone", () => {
+    for (const sel of [".ns-tabrail__tab--on", ".ns-view.is-active"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist`).toBeTruthy();
+      expect(body, `${sel} selected colour`).toMatch(/color:\s*var\(--color-text-primary\)/);
+      expect(body, `${sel} selected weight`).toMatch(/font-weight:\s*600/);
+      // WCAG 1.4.1 — the rule underneath is the non-colour channel, so the state survives greyscale.
+      expect(body, `${sel} selected rule`).toMatch(/border-bottom-color:\s*var\(--color-text-primary\)/);
+    }
+  });
+
+  it("4. SELECTED + HOVER — both invert explicitly, so neither is decided by rule order", () => {
+    // THE DEFECT. Without this rule `.ns-view.is-active` (0-2-0, declared later) beats
+    // `.ns-view:hover` (0-2-0) and puts near-black text on the green fill.
+    for (const sel of [".ns-tabrail__tab--on:hover", ".ns-view.is-active:hover"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist — otherwise rule order decides the contrast`).toBeTruthy();
+      expect(body, `${sel} fill`).toMatch(/background:\s*var\(--color-brand-secondary\)/);
+      expect(body, `${sel} text`).toMatch(/color:\s*#FFFFFF/);
+    }
+    // And the count travels with the label, or a number stays dark on the green.
+    expect(rule(".ns-view.is-active:hover .ns-view__count")).toMatch(/color:\s*#FFFFFF/);
+  });
+
+  it("5. no hardcoded off-palette colour is introduced by either rail", () => {
+    for (const sel of [
+      ".ns-tabrail__tab", ".ns-tabrail__tab:hover", ".ns-tabrail__tab--on", ".ns-tabrail__tab--on:hover",
+      ".ns-view", ".ns-view:hover", ".ns-view.is-active", ".ns-view.is-active:hover",
+    ]) {
+      const body = rule(sel) ?? "";
+      // #FFFFFF is the one literal both rails use deliberately: inverted text on the brand fill,
+      // which is not a palette choice but the readable pair for it. Anything else must be a token.
+      const literals = (body.match(/#[0-9A-Fa-f]{3,8}/g) ?? []).filter((h) => h.toUpperCase() !== "#FFFFFF");
+      expect(literals, `${sel} introduced an off-palette literal`).toEqual([]);
+    }
+  });
+
+  it("6. a colour-only hover cannot come back on EITHER rail", () => {
+    // The regression itself, on both families: a `:hover` that sets colour and no background hands
+    // the fill to the global `button:hover` and re-opens the specificity trap.
+    const hovers = [...css.matchAll(/(\.ns-tabrail__tab[^{,]*|\.ns-view[^{,]*):hover\s*\{([^}]*)\}/g)]
+      .filter(([, sel]) => !sel.includes("__count"));
+    expect(hovers.length).toBeGreaterThanOrEqual(4);
+    for (const [, sel, body] of hovers) {
+      if (!/color:/.test(body)) continue;   // a rule that sets no colour cannot create the mismatch
+      expect(body, `${sel}:hover sets colour without a background`).toMatch(/background:/);
+    }
+  });
+});
