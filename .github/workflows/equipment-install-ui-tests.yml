@@ -31,7 +31,10 @@ on:
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
       - "field-ops-app-vite/src/domain/serializedAssetAcquireForm.js"
       - "field-ops-app-vite/src/modules/receiving/AcquireExistingUnit.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Receiving.jsx"
+      - "field-ops-app-vite/src/domain/acquireLocationState.js"
       - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
+      - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -100,7 +103,10 @@ on:
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
       - "field-ops-app-vite/src/domain/serializedAssetAcquireForm.js"
       - "field-ops-app-vite/src/modules/receiving/AcquireExistingUnit.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Receiving.jsx"
+      - "field-ops-app-vite/src/domain/acquireLocationState.js"
       - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
+      - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -205,6 +211,15 @@ jobs:
 
       - name: Rendered surfaces — manager list, technician closeout, handheld shell
         run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx
+        working-directory: field-ops-app-vite
+
+      # ND-33 acquisition, at the render. The pure suite above proves what the request may
+      # contain; only a render catches what this surface was actually reported for -- three
+      # fields compressed onto one line, and a chosen company location sitting beside "locations
+      # could not be read". That second one was a case mismatch against the transport enum, which
+      # no pure test could see.
+      - name: Acquire composition — the column, the location states, the two stages
+        run: npx vitest run test/acquireExistingUnitComposition.test.jsx
         working-directory: field-ops-app-vite
 
       # A queued note that renders as "saved" is the one failure this whole runtime exists to prevent,

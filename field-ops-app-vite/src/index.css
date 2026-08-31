@@ -872,6 +872,43 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-confirm-readback { margin: 18px 0 4px; padding: 14px 16px;
   border-top: 2px solid var(--color-text-primary); background: var(--color-surface-sunken); }
 .fo-confirm-readback h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+
+/* ND-33 — Add existing unit. A governed transaction, composed as one column: label above control,
+   every control the same width, one message per field. Its previous shape put Part, Serial and
+   Company location on one line because they were bare inline <label> elements inside a panel with
+   no form grammar at all -- the browser's default flow, not a layout decision. */
+.fo-acquire__lede { max-width: 62ch; margin: 0 0 var(--space-3); }
+.fo-acquire__form { display: flex; flex-direction: column; gap: var(--space-3); max-width: 34rem; }
+.fo-acquire .fo-form-actions { margin-top: var(--space-4); }
+.fo-acquire__result { margin: var(--space-3) 0 0; font-weight: 600; color: var(--color-text-primary); }
+/* A recovery control sits beside its message, not stretched across the column like a primary
+   action -- the field is a column, so it has to be told not to fill it. */
+.fo-acquire .fo-form-field > button { align-self: flex-start; }
+
+/* Three reasons a person has to read and tell apart, so each is a stacked choice with its meaning
+   on its own line -- not a run-on row where three labels and three hints read as one sentence. */
+.fo-acquire__reasons { border: 0; margin: 0; padding: 0; gap: var(--space-2); }
+.fo-acquire__reasons legend { padding: 0; margin-bottom: var(--space-1); }
+.fo-acquire__reason {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--color-surface-elevated); cursor: pointer;
+}
+.fo-acquire__reason:hover { border-color: var(--color-brand-secondary); }
+.fo-acquire__reason:has(input:checked) { border-color: var(--color-brand-secondary); background: var(--color-surface-sunken); }
+.fo-acquire__reason:has(input:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.fo-acquire__reason:has(input:disabled) { cursor: not-allowed; opacity: 0.6; }
+.fo-acquire__reason input { margin-top: 2px; flex: none; }
+.fo-acquire__reason-body { display: flex; flex-direction: column; gap: 2px; }
+.fo-acquire__reason-label { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.fo-acquire__reason-hint { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+
+/* Handheld: the column is already single, so only the width cap has to relax. */
+@media (max-width: 640px) {
+  .fo-acquire__form { max-width: none; }
+  .fo-acquire .fo-form-actions { flex-wrap: wrap; }
+}
+
 .fo-confirm-readback .fo-detail-list { margin: 12px 0 0; }
 
 .fo-form-field { display: flex; flex-direction: column; gap: var(--space-1); }
