@@ -46,7 +46,15 @@ const READ_ONLY_SCRIPTS = [
  * Source text cannot tell a deleted guard from a superseded one: both look like an absent string.
  * So the shared-authority script is exercised below instead of read.
  */
-const SELF_GUARDED_WRITING_SCRIPTS = ["seedOperatingCompanies.js"];
+const SELF_GUARDED_WRITING_SCRIPTS = [
+  "seedOperatingCompanies.js",
+  // Workstream 2A.1B. It proves its target by PROJECT ID (a registry role cannot tell
+  // eos-platform-sandbox from eos-platform-certification), and it ALSO consults the registry --
+  // which is what catches a new production project added there later that no name list knows about.
+  // Two independent gates; this suite pins the second, which is the convention every other
+  // ownership-writing script here already carries.
+  "assignWarehouseRootCompany.js",
+];
 
 test("every self-guarded ownership-writing script refuses production, by name AND by registry role", () => {
   for (const rel of SELF_GUARDED_WRITING_SCRIPTS) {
