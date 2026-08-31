@@ -1302,19 +1302,11 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             </button>
           </div>
 
-          {/* THE SAME SENTENCE, MOVED RATHER THAN DROPPED. It stood above the table, where three
-              lines of governance prose were the first thing a reader met on a page whose subject is
-              parts -- the brief's own finding that explanation was outranking fact. Frame 1a draws
-              no such paragraph and puts an information affordance beside the count instead.
-
-              It is not deleted, because what it says is still true and still load-bearing: ND-25's
-              reason for having no quantity column is exactly the kind of absence this family
-              refuses to leave unexplained. It reads as a footnote to the table it is about. */}
-          <p className="fo-muted ns-parts-catalogue__note">
-            Attention comes from the governed reorder-request projection. No stock quantity is shown
-            here: the governed balance read is single-part, so there is no list-scale quantity to
-            answer from, and the static catalogue is a baseline rather than a count.
-          </p>
+          {/* AND NO PARAGRAPH HERE. It lives behind the (i) beside the count, and only there.
+              Owner ruling B §4: "Do NOT render that explanation permanently underneath the
+              collection." It was rendered in BOTH places on 096d320b -- the disclosure was added and
+              the paragraph was not removed, so the same ND-25 text stood twice on one page. That is
+              the defect this removes; nothing is lost, because the (i) carries a superset of it. */}
         </>
       </LoadingEmptyState>
       </>

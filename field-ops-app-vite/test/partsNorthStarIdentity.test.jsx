@@ -152,8 +152,14 @@ describe("the two values that never arrived", () => {
     // the projection did not carry, whose stored name is primaryManufacturerId anyway.
     fetchPartMasterList.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
     render(<PartDetail />);
-    await screen.findByText("Manufacturer");
-    expect(screen.getByText("Taylor Company")).toBeTruthy();
+    // findAllByText: P1v2 states the manufacturer in BOTH the identity line and the Part information
+    // band, which the Owner ruled intentional on 2026-08-31 — recognition and master-data summary
+    // are two readings of the same part. The claim under test is unaffected: the label renders at
+    // all (it could not before — the row was gated on a key the projection never carried), the NAME
+    // resolves, and the raw id reaches the reader nowhere on the page.
+    const labels = await screen.findAllByText("Manufacturer");
+    expect(labels.length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Taylor Company").length).toBeGreaterThan(0);
     // The raw id is not the reader's business once a name resolves.
     expect(document.body.textContent).not.toContain("MFR-TAYLOR");
   });

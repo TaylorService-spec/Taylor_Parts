@@ -26,6 +26,48 @@ import path from "node:path";
 
 const RECORD_SRC = fs.readFileSync(path.resolve("src/modules/inventory/PartDetail.jsx"), "utf8");
 const LIST_SRC = fs.readFileSync(path.resolve("src/modules/inventory/PartsList.jsx"), "utf8");
+const GATE_SRC = fs.readFileSync(
+  path.resolve(".claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs"),
+  "utf8"
+);
+
+// ── THE GATE MEASURES THE STRUCTURE THAT EXISTS ────────────────────────────────────────────────
+//
+// WHY THIS SUITE NOW POLICES THE GATE. The P1v2 re-anchoring — moving three record checks off
+// headings the approved composition renamed and onto stable ids — was written, committed and
+// shipped in #1642 WITHOUT LANDING. It was applied by a script whose guard checked only that
+// SOMETHING in the file had changed; a single-line label rename matched, three multi-line selector
+// replacements silently no-opped on CRLF, and the guard passed on the label alone.
+//
+// The cost was a full deployed gate run reporting four failures against a correct page: the probe
+// found no part with a forecast, fell back to one with no ledger activity, and took two more checks
+// vacuous with it.
+//
+// A gate that measures the wrong structure reports the wrong thing CONFIDENTLY, which is worse than
+// not running it. So the anchors are asserted here, in CI, where a silent no-op cannot hide.
+describe("the Quick Gate is anchored on structure, not on renamed headings", () => {
+  it("uses the stable ids the record actually renders", () => {
+    expect(GATE_SRC).toContain("#part-availability");
+    expect(GATE_SRC).toContain("[data-where-it-is]");
+    // ...and the product must still emit them, or the anchors point at nothing.
+    expect(RECORD_SRC).toContain('id="part-availability"');
+    expect(RECORD_SRC).toContain("data-where-it-is");
+  });
+
+  it("no longer selects the headings P1v2 renamed", () => {
+    // "Stock forecast" became "Availability / Inventory"; "Where it is" became an h3 inside a band
+    // that legitimately contains a table. Selecting either by text is how the gate came to measure
+    // a page that no longer exists.
+    expect(GATE_SRC).not.toContain('hasText: "Stock forecast"');
+    expect(GATE_SRC).not.toContain('hasText: "Where it is"');
+  });
+
+  it("asserts the rail contract rather than a vertical order the composition no longer has", () => {
+    // Side by side, "the catalogue leads" is a claim about width and containment, not about tops.
+    expect(GATE_SRC).toContain("workInRail");
+    expect(GATE_SRC).toContain("flowInRail");
+  });
+});
 
 // ── Ruling 2: the Activity band carries no actor and no description ─────────────────────────────
 //
@@ -140,6 +182,63 @@ describe("ruling 4 — Recommended reorder qty and Risk left the RECORD, not the
     expect(recommendation).toHaveProperty("urgency");
     // And the control is still handed the recommendation object itself, not a narrowed copy.
     expect(RECORD_SRC).toContain("recommendation={health.recommendation}");
+  });
+});
+
+// ── The Part information band is populated, and absence is stated rather than skipped ───────────
+//
+// It shipped on 096d320b as a two-column band with an EMPTY left half: it rendered
+// partRecordRailSubset, which withholds every fact the header already states, and on a real part the
+// header stated all of them. The Owner ruled the repetition intentional -- the identity line is for
+// recognition, this band is the structured master-data summary -- so the band gets its own
+// projection rather than the rail's leftovers.
+describe("Part information carries Design's five rows", () => {
+  it("always returns Status, Control, Stocking, Unit and Manufacturer, in that order", async () => {
+    const { partInformationRows } = await import("../src/domain/partsNorthStar.js");
+    const rows = partInformationRows(
+      { status: "ACTIVE", controlType: "STANDARD", stockingClass: "STOCKED", unit: "EACH", manufacturerId: "MFR-TAYLOR" },
+      "Taylor Company"
+    );
+    expect(rows.map((r) => r.key)).toEqual(["status", "control", "stocking", "unit", "manufacturer"]);
+    expect(rows.map((r) => r.value)).toEqual(["Active", "Standard", "Stocked", "Each", "Taylor Company"]);
+  });
+
+  it("keeps every label when the facts are absent, and never renders an empty band", () => {
+    // The defect this replaces was a band with nothing in its left column. A master-data summary
+    // that silently drops a field tells the reader the field does not exist.
+    return import("../src/domain/partsNorthStar.js").then(({ partInformationRows }) => {
+      const rows = partInformationRows({}, null);
+      expect(rows).toHaveLength(5);
+      for (const row of rows) {
+        expect(row.value).toBeNull();
+        expect(row.absence).toBe("Not recorded");
+      }
+    });
+  });
+
+  it("an UNRESOLVED manufacturer id is an absence, never the id itself", async () => {
+    const { partInformationRows } = await import("../src/domain/partsNorthStar.js");
+    const [, , , , manufacturer] = partInformationRows({ manufacturerId: "MFR-TAYLOR" }, null);
+    expect(manufacturer.value).toBeNull();
+    // ND-26's rule, one band over: a key is not a fact a reader can use.
+    expect(JSON.stringify(manufacturer)).not.toContain("MFR-TAYLOR");
+  });
+
+  it("the record renders the band from that projection, with the absence treatment", () => {
+    expect(RECORD_SRC).toContain("partInformationRows(part, manufacturerName)");
+    expect(RECORD_SRC).toContain("{row.value ?? <span className=\"ns-state--na\">{row.absence}</span>}");
+  });
+});
+
+// ── Ruling B §4: the catalogue explanation lives behind the (i), and ONLY there ──────────────────
+describe("the workspace states the ND-25 explanation once", () => {
+  it("no permanent paragraph under the collection", () => {
+    // It shipped in BOTH places on 096d320b -- the disclosure was added and the paragraph was not
+    // removed -- so one page carried the same governed text twice.
+    expect(LIST_SRC).not.toContain("ns-parts-catalogue__note");
+    // ...and the (i) still carries it, so nothing was lost by removing the paragraph.
+    expect(LIST_SRC).toContain("No stock quantity is shown");
+    expect(LIST_SRC).toContain("The catalogue — what this list counts");
   });
 });
 
