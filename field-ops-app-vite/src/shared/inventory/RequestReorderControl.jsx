@@ -18,10 +18,26 @@ import { Button } from "../ui/primitives/index.js";
 // is what actually rejects an ineligible submission regardless of
 // what this control renders.
 //
-// `onSubmit(manualQty)` is called with no argument on the READY path
-// (the caller already has the analytics-computed quantity) and with
-// the entered positive whole number on the NEEDS_PLANNING path.
-export default function RequestReorderControl({ recommendation, onSubmit, submitting, alreadyRequested }) {
+// `onSubmit(manualQty, warehouseId)` is called with no quantity on the
+// READY path (the caller already has the analytics-computed quantity)
+// and with the entered positive whole number on the NEEDS_PLANNING path.
+//
+// WORKSTREAM 2B -- `warehouseId`. A Reorder Request now names a governed
+// Warehouse, and the trusted command derives the record's operating
+// company from it. This control therefore will not submit until one has
+// been chosen (shared/inventory/ReorderWarehouseSelect.jsx is where the
+// choosing happens), and it hands the very value that unlocked the
+// button back to `onSubmit` -- so the warehouse that gated the action
+// and the warehouse that gets written cannot be two different answers.
+//
+// It never supplies a warehouse of its own. No default, no "the only
+// one", no inference from the part or the signed-in user. Missing means
+// missing, and missing means the button is off.
+//
+// Still a UX gate, not the enforcement boundary: the trusted
+// createReorderRequest command refuses a request with no governed
+// warehouse regardless of what this renders.
+export default function RequestReorderControl({ recommendation, onSubmit, submitting, alreadyRequested, warehouseId }) {
   const { role, operationalRoles } = useAuth();
   const [manualQty, setManualQty] = useState("");
 
@@ -29,9 +45,18 @@ export default function RequestReorderControl({ recommendation, onSubmit, submit
     return <span className="fo-muted">Requested</span>;
   }
 
+  const hasWarehouse = typeof warehouseId === "string" && warehouseId !== "";
+
   if (recommendation.recommendationStatus === "READY") {
     return (
-      <Button type="button" variant="primary" onClick={() => onSubmit()} disabled={submitting} loading={submitting}>
+      <Button
+        type="button"
+        variant="primary"
+        onClick={() => onSubmit(undefined, warehouseId)}
+        disabled={submitting || !hasWarehouse}
+        loading={submitting}
+        title={hasWarehouse ? undefined : "Choose a warehouse first."}
+      >
         Request Reorder
       </Button>
     );
@@ -62,7 +87,14 @@ export default function RequestReorderControl({ recommendation, onSubmit, submit
         disabled={submitting}
         aria-label="Manual reorder quantity"
       />
-      <Button type="button" variant="primary" onClick={() => onSubmit(parsedQty)} disabled={submitting || !isValidQty} loading={submitting}>
+      <Button
+        type="button"
+        variant="primary"
+        onClick={() => onSubmit(parsedQty, warehouseId)}
+        disabled={submitting || !isValidQty || !hasWarehouse}
+        loading={submitting}
+        title={hasWarehouse ? undefined : "Choose a warehouse first."}
+      >
         Request Reorder
       </Button>
     </div>

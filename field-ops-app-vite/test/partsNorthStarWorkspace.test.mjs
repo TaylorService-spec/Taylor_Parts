@@ -68,7 +68,16 @@ test("the placeholder claims only what the provider actually matches", () => {
   // A placeholder is a claim about what typing will do. Barcodes and aliases need the identifier
   // read, which is registered active:false and granted to nobody, so naming them would be a promise
   // the search cannot keep.
-  const placeholder = LIST_SRC.match(/placeholder="([^"]+)"/)?.[1] ?? "";
+  // THE CATALOGUE SEARCH'S placeholder, not whichever placeholder appears first in the file.
+  //
+  // This read `/placeholder="([^"]+)"/` -- the first one anywhere in the source -- and passed only
+  // because the catalogue search happened to be the first input declared. P1v2 moved the Work and
+  // Flow groups into a rail whose JSX is now built ABOVE the return, so the first placeholder in
+  // the file became the reorder-history lookup's "Reorder Request document ID", and this test
+  // started asserting a claim about the wrong control. Anchored on the search input itself, which
+  // is what the assertion was always about.
+  const placeholder = LIST_SRC.match(/type="search"[\s\S]{0,600}?placeholder="([^"]+)"/)?.[1] ?? "";
+  assert.ok(placeholder.length > 0, "the catalogue search input's placeholder was not found");
   assert.ok(/part number/i.test(placeholder));
   assert.ok(!/barcode/i.test(placeholder), "barcode search is not available and must not be claimed");
   assert.ok(!/alias/i.test(placeholder), "alias search is not available and must not be claimed");
@@ -104,19 +113,34 @@ test("no cell reads a stock figure out of the health projection", () => {
   );
 });
 
-test("the catalogue table states Frame 1a's grammar — SUPERSEDES the Inventory Health pin", () => {
-  // WHAT THIS REPLACES, and why it is not a weakening.
+test("the catalogue table states Frame 1a's grammar — P1v2 SUPERSEDES ND-30's column list", () => {
+  // WHAT THIS REPLACES, TWICE OVER, and why neither step is a weakening.
   //
-  // The earlier form of this test pinned an Inventory Health column, on the reasoning that ND-25
-  // removed a QUANTITY and that a qualitative signal should not be swept away with it. That was
-  // right at the time. ND-30 then named the table's grammar explicitly -- Part, Manufacturer,
-  // Category, Control, Status, Attention -- and Inventory Health is not in it.
+  // (1) The earliest form pinned an Inventory Health column, on the reasoning that ND-25 removed a
+  //     QUANTITY and that a qualitative signal should not be swept away with it. ND-30 then named
+  //     the table's grammar explicitly and Inventory Health was not in it. The signal was not lost
+  //     from the page -- the Inventory Operational Queue ranks parts by exactly that urgency, from
+  //     the same analytics. It left this TABLE, not this workspace.
   //
-  // The signal is NOT lost from the page: the Work group's Inventory Operational Queue ranks parts
-  // by exactly that urgency, from the same analytics. It left this TABLE, not this workspace.
-  for (const heading of ["Part", "Manufacturer", "Category", "Control", "Status", "Attention"]) {
+  // (2) ND-30's list included MANUFACTURER. The Parts P1v2 composition, approved by the Owner on
+  //     2026-08-31 with seven authority corrections, drops that column and folds the manufacturer
+  //     into the Part cell -- ruling 6/W7. As its own column it read "Not recorded" on 25 of 25
+  //     rows and spent 194px doing it: governed, real, and not earning its width today.
+  //
+  //     THE FACT IS STILL ASSERTED, one line down, in the cell it moved to. A test that stopped
+  //     asserting something without saying why is how a ruling gets lost, so this says why and then
+  //     keeps asserting it.
+  for (const heading of ["Part", "Category", "Control", "Status", "Attention"]) {
     assert.ok(LIST_SRC.includes(`<th>${heading}</th>`), `Frame 1a column missing: ${heading}`);
   }
+  assert.ok(
+    !LIST_SRC.includes("<th>Manufacturer</th>"),
+    "P1v2 folds the manufacturer into the Part cell; it must not have its own column again"
+  );
+  assert.ok(
+    /row\.manufacturer \? ` · \$\{row\.manufacturer\}` : null/.test(LIST_SRC),
+    "the manufacturer must still render in the Part cell -- dropping the column may not drop the fact"
+  );
   // And the quantity ruling still holds over the new grammar.
   for (const heading of ["Warehouse Available", "On Hand", "On hand", "Available"]) {
     assert.ok(!LIST_SRC.includes(`<th>${heading}</th>`), `${heading} is a quantity column`);

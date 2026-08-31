@@ -445,9 +445,20 @@ async function main() {
       lastPurchasingUpdateBy: str("user-pa-1"),
     })) === 200);
 
-  // === Record PO -- assignee-restricted, gains the new OR; atomic 2-doc commit ===
-
-  report("PARTS_ASSOCIATE assignee: Record PO succeeds (atomic reorder_requests + reorder_purchase_orders commit)",
+  // === Record PO -- RETIRED in Workstream 2B ===
+  //
+  // This asserted the atomic two-document commit: the ORDERED transition and the
+  // reorder_purchase_orders create landing together, cross-pinned by existsAfter()/getAfter().
+  //
+  // THE INVARIANT DID NOT GO AWAY, IT MOVED. recordReorderPurchaseOrder performs both writes inside
+  // one Admin-SDK transaction, and its pure builder returns both halves from a single call so
+  // neither can be produced without the other (functions/test/reorderTrustedCommands.test.mjs).
+  // What changed is the enforcement point: a purchase order inherits its operating company from the
+  // request, and a browser is not the authority for that, so both client-direct halves were retired.
+  //
+  // Retargeted to 403 rather than deleted -- the payload below is exactly what a valid Record PO
+  // used to look like, and it is worth keeping visible that this precise commit is now refused.
+  report("RETIRED (2B): the assignee's atomic Record PO commit is refused -- both halves moved to the trusted command",
     (await recordPoCommit("rr-record-po", tokens["user-pa-1"], {
       requestFields: {
         status: str("ORDERED"),
@@ -467,7 +478,7 @@ async function main() {
         createdBy: str("user-pa-1"),
         createdAt: int(now),
       },
-    })) === 200);
+    })) === 403);
 
   // === Mark Received -- assignee-restricted, gains the new OR ===
 

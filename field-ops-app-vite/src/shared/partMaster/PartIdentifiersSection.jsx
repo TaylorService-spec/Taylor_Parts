@@ -1,5 +1,6 @@
 import { useState } from "react";
 import RuledSection from "../ui/RuledSection.jsx";
+import PartsInfoDisclosure from "../../modules/inventory/PartsInfoDisclosure.jsx";
 import { Button } from "../ui/primitives/index.js";
 import { usePartIdentifiers } from "../../hooks/usePartIdentifiers.js";
 import { PART_IDENTIFIER_UNAVAILABLE_REASON } from "../../config/partIdentifierReadiness.js";
@@ -232,20 +233,52 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
     // member of the set look like half the subject.
     <RuledSection title="Identifiers">
 
-      <p className="fo-muted">
-        Alternate identifiers this part is also known by — UPC/EAN/GTIN barcodes, a manufacturer part
-        number, a supplier SKU, a legacy internal number. Each resolves to exactly one canonical
-        Part, so a scan can never be ambiguous about what it found.
+      {/* ══════ A3 — THE P1v2 IDENTIFIER GRAMMAR (Owner ruling, 2026-08-31) ══════
+          Frame 1b draws this as two lines: the identity a scan resolves, then one sentence about
+          what is not readable. It was three explanatory paragraphs wrapped around the facts --
+          191px on a 1,050px record, and the "explanation outranks fact" finding of the audit
+          reproduced one tier down.
+
+          WHAT WAS NOT ALLOWED TO CHANGE, and did not: the identifier facts actually available, the
+          UNAVAILABLE / DENIED / EMPTY distinction, the "unread, not empty" semantics, the capability
+          gating, and the manage authority when it is genuinely granted. Only the prose that stood
+          on every record regardless of state has moved to where it is earned.
+
+          THE PART NUMBER LEADS, because it is the one identifier this page can always state and the
+          one a scan actually resolves today. ND-26: it is `internalPartNumber`, never the document
+          key -- `label` falls back to partId only when there is no Part Number at all, and that
+          fallback is the caller's existing contract, not a substitution made here. */}
+      <p className="ns-ident__line">
+        <strong>{label}</strong>
+        <span className="fo-muted"> · part number — the identity a scan resolves</span>
       </p>
 
       {status === "loading" && <p className="fo-muted">Loading identifiers…</p>}
 
       {/* UNAVAILABLE, not EMPTY. An empty list would assert this Part has no identifiers, which is a
-          claim about data this screen has not read. */}
+          claim about data this screen has not read. The sentence is unchanged in substance and now
+          costs a line rather than a block. */}
+      {/* CONCISE VISIBLE SENTENCE + THE GOVERNED CONSTANT BEHIND A DISCLOSURE — Owner ruling B §5.
+          PART_IDENTIFIER_UNAVAILABLE_REASON stays exactly as it is and remains authoritative; the
+          domain constant is NOT mutated to save pixels. What changed is that the record no longer
+          prints all 148 characters of it as permanent page copy.
+
+          THE VISIBLE LINE CARRIES THREE THINGS, all required: alternate identifiers are UNREAD, NOT
+          EMPTY; the capability is GOVERNED; and it is UNAVAILABLE IN THIS ENVIRONMENT.
+
+          WHAT THE DISCLOSURE CARRIES, and why it exists at all: the constant's second sentence draws
+          a distinction the short line cannot hold without becoming the paragraph it replaced —
+          commands that EXIST AND ARE GOVERNED but have been NEITHER DEPLOYED NOR GRANTED. Those are
+          two different reasons a capability is off and they resolve differently. Dropping that
+          silently was the one thing the ruling forbade, so it is one tap away instead. The mockup
+          draws no icon here; the Owner authorised this one as an authority-preserving adaptation. */}
       {status === "unavailable" && (
-        <p className="fo-warning" role="status">
-          Identifiers cannot be shown for <strong>{label}</strong>. {PART_IDENTIFIER_UNAVAILABLE_REASON}{" "}
-          This is not an empty list — it is an unread one.
+        <p className="ns-state ns-state--not-enabled" role="status">
+          Alternate identifiers are unread, not empty — identifier administration is built and
+          governed, and is not available in this environment.
+          <PartsInfoDisclosure label="Identifiers — why identifier administration is unavailable">
+            {PART_IDENTIFIER_UNAVAILABLE_REASON}
+          </PartsInfoDisclosure>
         </p>
       )}
 
@@ -319,14 +352,20 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
             partId={partId}
             busy={!!pending.create}
           />
+
+          {/* THE STANDING STATEMENT, NOW WHERE IT IS EARNED. It explains a rule of the MANAGE
+              surface -- why there is no Edit button -- and it stood on every Part record whether or
+              not that surface was present, including the environments where identifier
+              administration is switched off entirely. A reader who cannot add or deactivate an
+              identifier does not need to be told why there is no Edit. It is unchanged, and it is
+              now rendered beside the controls it describes. */}
+          <p className="fo-muted ns-ident__note">
+            There is no edit. An identifier’s identity <em>is</em> its type and value, so changing
+            the value makes it a different identifier — deactivate the old one and add the new.
+            Nothing is deleted; deactivation preserves the history.
+          </p>
         </>
       )}
-
-      <p className="fo-muted">
-        There is no edit. An identifier’s identity <em>is</em> its type and value, so changing the
-        value makes it a different identifier — deactivate the old one and add the new. Nothing is
-        deleted; deactivation preserves the history.
-      </p>
     </RuledSection>
   );
 }

@@ -338,6 +338,10 @@
       "runner": "node"
     },
     {
+      "file": "test/metadataNumberingAuthority.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/metadataAccountDefinition.test.mjs",
       "runner": "node --test"
     },
@@ -712,6 +716,10 @@
     {
       "file": "test/reorderRequestPayload.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/reorderTrustedWritePathContract.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/reportAccess.test.mjs",

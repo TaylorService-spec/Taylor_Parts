@@ -3,6 +3,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
+import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
+import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
 import PartIdentifiersSection from "../../shared/partMaster/PartIdentifiersSection.jsx";
 import PartWorkOrderDemandSection from "./PartWorkOrderDemandSection";
 import {
@@ -40,6 +42,8 @@ import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
+import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
@@ -54,7 +58,7 @@ import {
   partRecordIdentity,
   partRecordKicker,
   partRecordFacts,
-  partRecordRailSubset,
+  partInformationRows,
   partLocationSection,
   partUnitSection,
   partPurchasingSection,
@@ -325,7 +329,7 @@ function ReorderRequestReview({ request, onReviewed }) {
             <td>Risk at request time</td>
             <td>
               {request.urgency ? (
-                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
+                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={inventoryUrgencyLabel(request.urgency)} />
               ) : (
                 <StatusPill tone="unknown" label="Needs planning" />
               )}
@@ -431,7 +435,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
             <td>Urgency</td>
             <td>
               {request.urgency ? (
-                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
+                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={inventoryUrgencyLabel(request.urgency)} />
               ) : (
                 <StatusPill tone="unknown" label="Needs planning" />
               )}
@@ -510,7 +514,7 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
             <td>Urgency</td>
             <td>
               {request.urgency ? (
-                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={request.urgency} />
+                <StatusPill tone={inventoryUrgencyTone(request.urgency)} label={inventoryUrgencyLabel(request.urgency)} />
               ) : (
                 <StatusPill tone="unknown" label="Needs planning" />
               )}
@@ -1322,6 +1326,12 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // create -- reorderRequest updates on its own.
   const [reorderSubmitting, setReorderSubmitting] = useState(false);
   const [reorderError, setReorderError] = useState(null);
+  // WORKSTREAM 2B -- the governed Warehouse this request is FOR. A part is not a place: this
+  // page knows which part is short, and nothing on it knows where. So it is asked, and it
+  // starts empty; the control below stays disabled until it is answered.
+  const [reorderWarehouseId, setReorderWarehouseId] = useState("");
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
 
   // Wave 6 -- master-data-in-Parts. null | "edit" | "status" -- which governed
   // Part Master action panel (if any) is open. Uses the SAME PartWriteModal +
@@ -1329,13 +1339,21 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // screen uses -- no second write path.
   const [masterDataPanel, setMasterDataPanel] = useState(null);
 
-  async function handleRequestReorder(manualQty) {
+  // WORKSTREAM 2B: `warehouseId` is handed back by the control that was gated on it, so the
+  // warehouse that enabled the button is the one written. The trusted command re-reads it and
+  // derives the operating company; nothing here interprets or defaults it.
+  async function handleRequestReorder(manualQty, warehouseId) {
     setReorderSubmitting(true);
     setReorderError(null);
     try {
       // C2: write keyed on the resolved governed identity (only reachable when
       // READY, where resolvedPartId === the route partId). Workflow unchanged.
-      await requestReorderForRecommendation({ partId: resolvedPartId, recommendation: health.recommendation, manualQty });
+      await requestReorderForRecommendation({
+        partId: resolvedPartId,
+        warehouseId,
+        recommendation: health.recommendation,
+        manualQty,
+      });
     } catch (err) {
       // Site-work r4 C, Fix 3: safe categorized copy, never a raw error string.
       setReorderError(workflowActionErrorMessage(err));
@@ -1421,7 +1439,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const identity = partRecordIdentity(part);
   const kicker = partRecordKicker(part);
   const facts = partRecordFacts(part, manufacturerName);
-  const railRows = partRecordRailSubset(part);
+  const informationRows = partInformationRows(part, manufacturerName);
   const locationSection = partLocationSection();
   const unitSection = partUnitSection(part);
   const purchasing = partPurchasingSection();
@@ -1497,7 +1515,12 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         actions={
           canonicalPart && (
             <>
-              <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("edit")}>
+              {/* PRIMARY FIRST, AT BOTH WIDTHS (Owner ruling 7). The two P1v2 frames disagreed with
+                  each other -- 1b draws "Change status" then "Edit part", 1b-mobile draws "Edit
+                  part" then "Change status" -- and the Owner settled it on the mobile order. Both
+                  frames agree that Edit part is the filled one, so it takes the primary variant it
+                  never had; responsive layout may restack these, it may not reverse them. */}
+              <Button type="button" variant="primary" onClick={() => setMasterDataPanel("edit")}>
                 Edit part
               </Button>{" "}
               <Button type="button" variant="secondary" onClick={() => setMasterDataPanel("status")}>
@@ -1527,234 +1550,415 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
         />
       )}
 
-      <div className="ns-record-body">
-        <div>
-          {/* WHERE IT IS — the section that must not draw an empty table.
-              ND-25: per-location quantities reach this page only through the governed balance and
-              location reads, both of which are built and switched off. An empty table would imply
-              rows are coming; a missing section would read as "this part is nowhere". */}
-          <RuledSection title={locationSection.heading} meta={locationSection.note}>
-            <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Location detail" detail={locationSection.detail} />
-          </RuledSection>
+      {/* ══════════════ FRAME 1b: FIVE BANDS, NOT SEVEN SECTIONS AND A RAIL ══════════════
+          Owner-approved composition, 2026-08-31 (Parts P1v2, with the seven authority rulings).
 
-          {/* SERIALIZED / LOT UNITS — gated on the Part's own tracking mode through the governed
-              boundary translator, so SERIALIZED_LOT fails closed rather than being collapsed into
-              SERIAL. An untracked part gets no section at all: it has no unit identity, and an
-              empty "Serialized units" heading is a question a bulk part cannot be asked. */}
-          {unitSection.state === PART_SECTION_STATE.NOT_APPLICABLE ? null : (
-            <RuledSection title={unitSection.heading} meta={unitSection.note ?? null}>
-              <HonestState
-                state={
-                  unitSection.state === PART_SECTION_STATE.BLOCKED_UNSUPPORTED
-                    ? HONEST_STATE.UNAVAILABLE
-                    : HONEST_STATE.NOT_ENABLED
-                }
-                subject="Unit detail"
-                detail={unitSection.detail}
-              />
-            </RuledSection>
-          )}
+          The audit's finding was not that this record said the wrong things -- it was that absence
+          occupied more of the page than fact: three of seven sections each spent a heading, a meta
+          line and an explanatory paragraph saying there was nothing, roughly 700px for three
+          absences, while what the page actually KNOWS fits in four lines.
 
-          {/* PLANNED DEMAND, NEVER A RESERVATION -- the section's own header says so. Existing
-              governed read over fieldops_wos; unchanged. */}
-          <PartWorkOrderDemandSection partId={resolvedPartId} />
+          So the sections are re-paired rather than rewritten. Each band asks one question and
+          answers it in two columns -- what we know on the left, what we cannot yet know on the
+          right -- which prices an absence at a line beside a fact instead of a section beneath it.
 
-          {/* THE REORDER WORKFLOW. Governed, live, and deliberately left whole: it is a working
-              command surface, not a mockup element, and a presentation migration does not delete
-              one. It keeps its own cards. */}
-          {reorderWorkflowCard}
+          THE SENTENCES SURVIVE. ND-25's "location describes where units sit -- it never implies
+          custody or availability" and the identifier "unread, not empty" are the POINT of this
+          page, and they are still here, in full. What changed is what they cost. */}
+      <div className="ns-record-bands">
+        {/* ── BAND 1 · AVAILABILITY / INVENTORY ─────────────────────────────────────────────
+            Named "Stock forecast" until P1v2. The band header carries the derivation sentence on
+            its right, which is where Frame 1b puts it and where it belongs: it qualifies every
+            figure below it rather than one of them. */}
+        <RuledSection
+          id="part-availability"
+          title="Availability / Inventory"
+          meta={
+            health && !loading
+              ? "Derived from this part’s movements in the work-order and receiving ledger — not a governed stock position."
+              : null
+          }
+        >
+          <div className="ns-band__cols">
+            <div className="ns-band__col">
+              {/* THESE FIGURES ARE DERIVED CLIENT-SIDE from inventory_transactions by
+                  inventoryAnalyticsEngine. ND-25 forbids presenting such a figure as On hand or
+                  Available and forbids substituting it into the record's identity layer -- so it is
+                  absent from the header and named by its derivation above, here, where the reorder
+                  request it gates can still be raised. */}
+              {loading ? (
+                <HonestState state={HONEST_STATE.LOADING} subject="the stock forecast" />
+              ) : health ? (
+                <>
+                  <table className="fo-table ns-band__facts">
+                    <tbody>
+                      <tr>
+                        <td>Ledger-derived stock</td>
+                        <td>{health.stock.availableStock}</td>
+                      </tr>
+                      <tr>
+                        <td>Avg daily usage</td>
+                        <td>
+                          {hasUsageHistory(health.usage) ? (
+                            health.usage.avgDailyUsage.toFixed(2)
+                          ) : (
+                            <span className="ns-state--na">Insufficient usage history</span>
+                          )}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Days remaining</td>
+                        <td>
+                          {hasUsageHistory(health.usage) && Number.isFinite(health.recommendation.daysRemaining)
+                            ? health.recommendation.daysRemaining.toFixed(1)
+                            : "—"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Reorder point</td>
+                        {/* Owner ruling 2026-08-30. This cell rendered a bare 0 beside
+                            "Insufficient usage history" on the same card. The reorder point is
+                            avgDailyUsage times a constant, so a zero is ALWAYS the consequence of no
+                            usage and never a governed value -- partReorderPointDisplay carries the
+                            proof. Truthful absence over a numerically precise false comfort. */}
+                        <td>
+                          {reorderPointDisplay.established ? (
+                            reorderPointDisplay.value
+                          ) : (
+                            <span className="ns-state--na">{reorderPointDisplay.absence}</span>
+                          )}
+                        </td>
+                      </tr>
+                      {/* RECOMMENDED REORDER QTY AND RISK ARE GONE -- Owner ruling 4, 2026-08-31, an
+                          INTENTIONAL presentation removal and not accidental loss.
 
-          {/* STOCK FORECAST -- see the ND-28 note in docs/design/parts-north-star-composition-map.md.
-              These figures are DERIVED CLIENT-SIDE from inventory_transactions by
-              inventoryAnalyticsEngine. ND-25 forbids presenting such a figure as On hand or
-              Available, and forbids substituting it into the record's identity layer -- so it is
-              absent from the header and named by its derivation here, where the reorder request it
-              gates can still be raised. */}
-          {loading ? (
-            <RuledSection title="Stock forecast">
-              <HonestState state={HONEST_STATE.LOADING} subject="the stock forecast" />
-            </RuledSection>
-          ) : health ? (
-            <RuledSection
-              title="Stock forecast"
-              meta="Derived from this part’s movements in the work-order and receiving ledger — not a governed stock position."
-            >
-              <table className="fo-table">
-                <tbody>
-                  <tr>
-                    <td>Ledger-derived stock</td>
-                    <td>{health.stock.availableStock}</td>
-                  </tr>
-                  <tr>
-                    <td>Avg daily usage</td>
-                    <td>
-                      {hasUsageHistory(health.usage) ? (
-                        health.usage.avgDailyUsage.toFixed(2)
-                      ) : (
-                        <span className="ns-state--na">Insufficient usage history</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Days remaining</td>
-                    <td>
-                      {hasUsageHistory(health.usage) && Number.isFinite(health.recommendation.daysRemaining)
-                        ? health.recommendation.daysRemaining.toFixed(1)
-                        : "—"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Reorder point</td>
-                    {/* Owner ruling 2026-08-30. This cell rendered a bare 0 beside
-                        "Insufficient usage history" on the same card. The reorder point is
-                        avgDailyUsage times a constant, so a zero is ALWAYS the consequence of
-                        no usage and never a governed value -- partReorderPointDisplay carries
-                        the proof. Truthful absence over a numerically precise false comfort. */}
-                    <td>
-                      {reorderPointDisplay.established ? (
-                        reorderPointDisplay.value
-                      ) : (
-                        <span className="ns-state--na">{reorderPointDisplay.absence}</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Recommended reorder qty</td>
-                    <td>
-                      {hasUsageHistory(health.usage) ? (
-                        Math.ceil(health.recommendation.recommendedOrderQty)
-                      ) : (
-                        <span className="ns-state--na">Insufficient usage history</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Risk</td>
-                    <td>
-                      {/* THE ENUM LEAKED HERE. This cell rendered `health.recommendation.urgency`
-                          raw -- "CRITICAL" at the reader -- while PartsList showed the word for the
-                          same value one page away. One vocabulary, both surfaces. */}
-                      {hasUsageHistory(health.usage) ? (
-                        <StatusPill tone={inventoryUrgencyTone(health.recommendation.urgency)} label={inventoryUrgencyLabel(health.recommendation.urgency)} />
-                      ) : (
-                        <StatusPill tone="unknown" label="Needs planning" />
-                      )}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                          The Owner's reason: the record should present the governed and derived
+                          facts needed to understand the part and to initiate the governed reorder
+                          workflow, and should not grow back into the forecasting dashboard it had
+                          become. These four rows answer "what is the stock position"; the two
+                          removed answered "what should we do about it", which is the command's job
+                          -- and the command is immediately below them.
 
-              {/* Site-work r4 C, Fix 1: requestable when there is no request at all, OR the
-                  most-recent one has reached a terminal status. Withheld (fail-closed) while the
-                  read is loading or has failed, same as every other gate on this page. */}
-              {!reorderRequestLoading &&
-                !reorderRequestError &&
-                (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) && (
-                  <>
-                    {reorderError && <p className="ns-state--na">{reorderError}</p>}
-                    <RequestReorderControl
-                      recommendation={health.recommendation}
-                      onSubmit={handleRequestReorder}
-                      submitting={reorderSubmitting}
-                      alreadyRequested={false}
-                    />
-                  </>
-                )}
-            </RuledSection>
-          ) : (
-            <RuledSection title="Stock forecast">
-              {/* A part with no ledger activity is a VALID part. Saying "no forecast" is a
-                  different statement from saying "no stock", and only the first is known. */}
-              <HonestState
-                state={HONEST_STATE.EMPTY}
-                subject="this part"
-                detail="No ledger movements have been recorded for this part, so no stock forecast can be made. That is not a statement about how many exist."
-              />
-            </RuledSection>
-          )}
+                          NOTHING UNDERNEATH CHANGED. `health.recommendation` still carries both
+                          figures, generateReplenishmentRecommendation still derives them, and
+                          RequestReorderControl below still reads the recommendation it always did,
+                          recommendedOrderQty included -- which is why removing the row does not
+                          remove the quantity from the request. The Inventory Operational Queue on
+                          /inventory still ranks by the same urgency. Presentation only; the domain
+                          behaviour and the authority are untouched. */}
+                    </tbody>
+                  </table>
 
-          {/* ACTIVITY -- the ledger that EXISTS. The seven-type operational movement contract in
-              domain/inventoryLedgerEvent.js is a pure shape contract with no persistence, so it is
-              not named here as though it could be read. */}
-          <RuledSection title="Activity" meta={PART_ACTIVITY_SCOPE_NOTE}>
-            {activityRows.length === 0 ? (
-              <HonestState state={HONEST_STATE.EMPTY} subject="this part" detail="No movements have been recorded against this part." />
-            ) : (
-              <table className="fo-table">
-                <thead>
-                  <tr>
-                    <th>Movement</th>
-                    <th>Quantity</th>
-                    <th>Work Order</th>
-                    <th>When</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activityRows.map((row) => (
-                    <tr key={row.id}>
-                      {/* A WORD, not the stored token. This cell rendered the raw enum. */}
-                      <td>{row.type}</td>
-                      <td>{row.quantity ?? <span className="ns-state--na">—</span>}</td>
-                      <td className="fo-muted">{row.workOrderId ?? <span className="ns-state--na">—</span>}</td>
-                      <td className="fo-muted">{formatTimestamp(row.timestamp)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </RuledSection>
+                  {/* Site-work r4 C, Fix 1: requestable when there is no request at all, OR the
+                      most-recent one has reached a terminal status. Withheld (fail-closed) while the
+                      read is loading or has failed, same as every other gate on this page.
 
-          {/* C2: keyed on the resolved governed identity. Write surface itself unchanged. */}
-          <InventoryActionsPanel partId={resolvedPartId} />
-        </div>
+                      THE GATE IS UNCHANGED BY THE MOVE INTO A BAND. Frame 1b draws this control
+                      unconditionally enabled; a frame cannot loosen a gate, and ND-28 is explicit
+                      that sharing a card does not make the informational number above it the
+                      authority for the command. */}
+                  {!reorderRequestLoading &&
+                    !reorderRequestError &&
+                    (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) && (
+                      <>
+                        {reorderError && <p className="ns-state--na">{reorderError}</p>}
+                        {/* WORKSTREAM 2B. The request names a governed Warehouse, and the trusted
+                            command derives its operating company from that. A part is not a place:
+                            nothing on this page knows where the shortage is, so it is asked, and it
+                            is asked ABOVE the button rather than beside it -- the band's row is the
+                            command and its disclosure, and a governed input is neither. Empty until
+                            answered, which leaves the button off. */}
+                        <ReorderWarehouseSelect
+                          id="part-detail-reorder-warehouse"
+                          options={reorderWarehouses.options}
+                          loading={reorderWarehouses.loading}
+                          error={reorderWarehouses.error}
+                          value={reorderWarehouseId}
+                          onChange={setReorderWarehouseId}
+                        />
+                        <span className="ns-reorder-row">
+                          <RequestReorderControl
+                            recommendation={health.recommendation}
+                            onSubmit={handleRequestReorder}
+                            submitting={reorderSubmitting}
+                            alreadyRequested={false}
+                            warehouseId={reorderWarehouseId}
+                          />
+                          {/* ND-28, WHERE THE FRAME PUTS IT. The figures above are derived from this
+                              part's own ledger movements; the reorder request is a governed command.
+                              The Owner's ruling is that the informational number does not become the
+                              authority for the command merely because they share a card -- and the
+                              one place a reader is most likely to assume otherwise is the moment
+                              they reach for the button directly beneath the numbers. */}
+                          <PartsInfoDisclosure label="Request reorder — what these figures do and do not decide">
+                            The figures above are derived from this part&rsquo;s movements in the
+                            work-order and receiving ledger. They are informational: they do not
+                            authorise the reorder, and they do not set its quantity. Raising a
+                            request starts the governed reorder workflow, which is reviewed and
+                            assigned by the people who hold that authority.
+                          </PartsInfoDisclosure>
+                        </span>
+                      </>
+                    )}
+                </>
+              ) : (
+                /* A part with no ledger activity is a VALID part. Saying "no forecast" is a
+                   different statement from saying "no stock", and only the first is known. */
+                <HonestState
+                  state={HONEST_STATE.EMPTY}
+                  subject="this part"
+                  detail="No ledger movements have been recorded for this part, so no stock forecast can be made. That is not a statement about how many exist."
+                />
+              )}
 
-        <aside className="ns-rail">
-          {/* CLASSIFICATION — and only what the header has not already said. The subset is computed
-              from the header's own fact keys, so a fact added above cannot reappear here. */}
-          {railRows.length > 0 ? (
-            <RuledSection title="Classification">
+              {/* SERIALIZED / LOT UNITS — gated on the Part's own tracking mode through the governed
+                  boundary translator, so SERIALIZED_LOT fails closed rather than being collapsed
+                  into SERIAL. An untracked part gets no block at all: it has no unit identity, and
+                  an empty "Serialized units" heading is a question a bulk part cannot be asked. */}
+              {unitSection.state === PART_SECTION_STATE.NOT_APPLICABLE ? null : (
+                <div className="ns-band__block">
+                  <h3 className="ns-band__sub">{unitSection.heading}</h3>
+                  {/* THE NOTE IS NOT DECORATION. It carries "serialized units are assets, never
+                      loose quantity" -- the sentence that keeps a serialized part from being read
+                      as a countable pile, which is the whole reason this section is gated on the
+                      Part's tracking mode. It rode in RuledSection's `meta` slot before the band
+                      restructure and was briefly lost with it. */}
+                  {unitSection.note ? <p className="ns-band__note">{unitSection.note}</p> : null}
+                  <HonestState
+                    state={
+                      unitSection.state === PART_SECTION_STATE.BLOCKED_UNSUPPORTED
+                        ? HONEST_STATE.UNAVAILABLE
+                        : HONEST_STATE.NOT_ENABLED
+                    }
+                    subject="Unit detail"
+                    detail={unitSection.detail}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* WHERE IT IS — the block that must not draw an empty table.
+                ND-25: per-location quantities reach this page only through the governed balance and
+                location reads, both of which are built and switched off. An empty table would imply
+                rows are coming; a missing block would read as "this part is nowhere".
+
+                data-where-it-is IS A CONTRACT, not decoration. The live gate used to find this by
+                matching an h2 reading "Where it is" -- a heading the design was free to change, and
+                did, when the block became a column inside a band. Anchoring a gate on a heading the
+                composition may rename is exactly what `data-parts-catalog` was introduced to stop
+                on the workspace. */}
+            <div className="ns-band__col" data-where-it-is>
+              <h3 className="ns-band__sub">{locationSection.heading}</h3>
+              {/* THE CUSTODY SENTENCE IS NOT ABBREVIATED AND NOT MOVED. ND-25 is the reason this
+                  block exists: location describes where units sit, and it never implies custody or
+                  availability. Both confusions are cheap to make and expensive to act on, so it
+                  stays on the page at full length. */}
+              <p className="ns-band__note">{locationSection.note}</p>
+              <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Location detail" detail={locationSection.detail} />
+              <PartsInfoDisclosure label="Where it is — why locations cannot be listed">
+                {locationSection.detailLong}
+              </PartsInfoDisclosure>
+            </div>
+          </div>
+        </RuledSection>
+
+        {/* ── BAND 2 · DEMAND & PURCHASING ──────────────────────────────────────────────────
+            What is asking for this part, and what is being done about getting it. */}
+        <RuledSection id="part-demand-purchasing" title="Demand &amp; purchasing">
+          <div className="ns-band__cols">
+            <div className="ns-band__col">
+              {/* PLANNED DEMAND, NEVER A RESERVATION -- the section's own header says so. Existing
+                  governed read over fieldops_wos; unchanged. */}
+              <PartWorkOrderDemandSection partId={resolvedPartId} />
+            </div>
+            {/* PURCHASING CONTEXT.
+                ND-27 (Owner, 2026-08-30): no cost row. The metadata register blocks unitCost from
+                display, report AND export together -- deliberately, so the field cannot reach the
+                same person by a longer route -- and sellPrice is blocked by the same clause. Neither
+                is rendered, and the static catalogue's baseline figures are not substituted for
+                them. On order is a governed fact behind an inactive capability, which is a different
+                sentence from a missing one. */}
+            {/* THE CONCISE SENTENCE STAYS; THE LONG ONE MOVES BEHIND THE (i).
+                Owner ruling B §3. `purchasing.detail` is 259 characters of governed explanation --
+                the balance-read authority and the cost/price refusal -- and it was rendering as
+                three permanent lines under a one-line fact. Not a word of it is deleted: it is the
+                disclosure's entire content, verbatim from the same domain function. */}
+            <div className="ns-band__col">
+              <h3 className="ns-band__sub">{purchasing.heading}</h3>
               <dl className="ns-rail__dl">
-                {railRows.map((row) => (
+                {purchasing.rows.map((row) => (
                   <div key={row.key}>
                     <dt>{row.label}</dt>
-                    <dd>{row.value}</dd>
+                    <dd className="ns-state--na">
+                      {row.absence}
+                      <PartsInfoDisclosure label={`${row.label} — why this is not available`} align="end">
+                        {purchasing.detail}
+                      </PartsInfoDisclosure>
+                    </dd>
                   </div>
                 ))}
               </dl>
-            </RuledSection>
-          ) : null}
+            </div>
+          </div>
 
-          {/* IDENTIFIERS -- the governed alias surface. Every control names the exact missing
-              deployment, because the commands exist while no endpoint reaches them. */}
-          {/* ND-26: labelled with the Part Number. The prop was `canonicalPart?.partNumber` -- a key
-              the projection has never carried under that name -- so it was always undefined and the
-              section silently labelled itself with the document id. */}
+          {/* THE REORDER WORKFLOW. Governed, live, and deliberately left whole: it is a working
+              command surface, not a mockup element, and a presentation migration does not delete
+              one. It keeps its own cards, and it sits full-width beneath the two columns because it
+              is the band's ACTION rather than one of its two readings. */}
+          {reorderWorkflowCard}
+        </RuledSection>
+
+        {/* ── BAND 3 · PART INFORMATION ─────────────────────────────────────────────────────
+            What this part IS, as distinct from what is happening to it. */}
+        <RuledSection id="part-information" title="Part information">
+          <div className="ns-band__cols">
+            <div className="ns-band__col">
+              {/* THE STRUCTURED MASTER-DATA SUMMARY — Frame 1b's five rows (Owner ruling, 2026-08-31).
+                  This rendered `partRecordRailSubset`, which withholds every fact the header already
+                  states. On the deployed page the header stated all of them, so the subset returned
+                  nothing and this band shipped as a two-column layout with an EMPTY left half.
+
+                  The repetition is deliberate and is part of the approved grammar: the identity line
+                  gives fast recognition, this band gives the structured summary. Two readings of the
+                  same part, and the frame draws both.
+
+                  Every row keeps its label even when the value is missing — a master-data summary
+                  that silently drops a field tells the reader the field does not exist, rather than
+                  that it is unrecorded. */}
+              <dl className="ns-rail__dl">
+                {informationRows.map((row) => (
+                  <div key={row.key}>
+                    <dt>{row.label}</dt>
+                    <dd>
+                      {row.value ?? <span className="ns-state--na">{row.absence}</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            {/* USED ON — Owner ruling 3, 2026-08-31: TRUTHFUL ABSENCE.
+                Frame 1b draws this column POPULATED ("Taylor C712 · Soft Serve Freezer", with the
+                reassurance line naming the compatibility catalogue as its source). It cannot be: the read is
+                gated on `equipment.compatibility.view`, which is registered active:false and granted
+                to nobody, so the section renders nothing at all today. The reassurance line is true
+                of the CATALOGUE and false of the READ, which is precisely the distinction ND-27 drew
+                for locations.
+
+                So it says what it is -- built, governed, switched off -- in one line, on the same
+                footing as the other three switched-off reads on this page. Activation is a separate
+                governed decision and is not something a presentation migration may carry.
+
+                UsedInEquipmentSection itself is unchanged and still capability-gated + inert; this
+                only supplies the sentence for the case where it hides itself. */}
+            <div className="ns-band__col">
+              <h3 className="ns-band__sub">Used on</h3>
+              {canViewCompatibility(hasCapability) ? (
+                <UsedInEquipmentSection
+                  hasCapability={hasCapability}
+                  accessVersion={accessVersion}
+                  partId={resolvedPartId}
+                />
+              ) : (
+                <>
+                  {/* CONCISE VISIBLE, LONG FORM BEHIND THE (i) — ruling B §6. The visible line keeps
+                      both contracts: the read is BUILT AND GOVERNED and SWITCHED OFF, and this is an
+                      UNREAD list rather than an empty one. No compatibility fact is fabricated
+                      either way; the catalogue's existence is not a claim about what is in it. */}
+                  <HonestState
+                    state={HONEST_STATE.NOT_ENABLED}
+                    subject="Equipment compatibility"
+                    detail="Not an empty list — an unread one: the compatibility read is built and governed, switched off in this environment."
+                  />
+                  <PartsInfoDisclosure label="Used on — why compatibility cannot be shown">
+                    The equipment this part is used on is recorded in the compatibility catalog.
+                    Reading it here needs the equipment compatibility capability, which is registered
+                    and governed and is not active in this environment. That the catalog exists is
+                    not a claim about what it holds for this part — nothing has been read.
+                  </PartsInfoDisclosure>
+                </>
+              )}
+            </div>
+          </div>
+        </RuledSection>
+
+        {/* ── IDENTIFIERS · reference tier ──────────────────────────────────────────────────
+            Demoted from a full section to a reference band. It was three explanatory paragraphs and
+            an unavailable notice in a column that wanted scannable facts; what it has to say is
+            important and short. The "unread, not empty" sentence is the point of it and survives
+            inside the component.
+
+            ND-26: labelled with the Part Number. The prop was `canonicalPart?.partNumber` -- a key
+            the projection has never carried under that name -- so it was always undefined and the
+            section silently labelled itself with the document id. */}
+        <section className="ns-band ns-band--reference">
           <PartIdentifiersSection partId={resolvedPartId} partNumber={part.internalPartNumber} />
+        </section>
 
-          {/* PURCHASING CONTEXT.
-              ND-27 (Owner, 2026-08-30): no cost row. The metadata register blocks unitCost from
-              display, report AND export together -- deliberately, so the field cannot reach the
-              same person by a longer route -- and sellPrice is blocked by the same clause. Neither
-              is rendered, and the static catalogue's baseline figures are not substituted for them.
-              On order is a governed fact behind an inactive capability, which is a different
-              sentence from a missing one. */}
-          <RuledSection title={purchasing.heading}>
-            <dl className="ns-rail__dl">
-              {purchasing.rows.map((row) => (
-                <div key={row.key}>
-                  <dt>{row.label}</dt>
-                  <dd className="ns-state--na">{row.absence}</dd>
-                </div>
+        {/* ── ACTIVITY ──────────────────────────────────────────────────────────────────────
+            The ledger that EXISTS. The seven-type operational movement contract in
+            domain/inventoryLedgerEvent.js is a pure shape contract with no persistence, so it is not
+            named here as though it could be read.
+
+            ONE LINE PER MOVEMENT, NOT A FOUR-COLUMN TABLE -- and NO ACTOR AND NO DESCRIPTION.
+            Owner ruling 2, 2026-08-31. Frame 1b draws each movement as
+            "Adjusted · Opening adjustment · D. Reyes · +6". The ledger carries neither of the middle
+            two facts: LedgerTransaction is id, workOrderId, partId, type, quantity, timestamp, and
+            that is all partActivityRows can carry. An actor and a note DO exist -- on
+            `inventory_actions`, a collection the entity register says is "never joined or reconciled
+            by any code in this repository", and whose write side was retired on 2026-08-30 precisely
+            because it was a second, parallel assertion about stock. Sourcing this band's actor from
+            there would rebuild the join that retirement removed, and would attribute a governed
+            ledger movement to a person who was recording something else.
+
+            Design had already drawn the buildable version: frame 1b-MOBILE renders the same movement
+            with no actor and no description. That grammar is now used at BOTH widths, which is the
+            ruling. The composition survives; the unsupported facts do not. */}
+        <RuledSection id="part-activity" title="Activity" meta={PART_ACTIVITY_SCOPE_NOTE}>
+          {activityRows.length === 0 ? (
+            <HonestState
+              state={HONEST_STATE.EMPTY}
+              subject="this part"
+              detail="No movements have been recorded against this part."
+            />
+          ) : (
+            <ul className="ns-activity">
+              {activityRows.map((row) => (
+                <li key={row.id} className="ns-activity__row">
+                  <span className="ns-activity__what">
+                    {/* A WORD, not the stored token. This cell rendered the raw enum. */}
+                    <strong>{row.type}</strong>
+                    {row.workOrderId ? <span className="fo-muted"> · {row.workOrderId}</span> : null}
+                  </span>
+                  <span className="ns-activity__when fo-muted">{formatTimestamp(row.timestamp)}</span>
+                  <span className="ns-activity__qty">
+                    {row.quantity ?? <span className="ns-state--na">—</span>}
+                  </span>
+                </li>
               ))}
-            </dl>
-            <p className="ns-gap-note">{purchasing.detail}</p>
-          </RuledSection>
+            </ul>
+          )}
+        </RuledSection>
 
-          {/* D6 -- "Used In Equipment" compatibility. Capability-gated + INERT: it hides itself and
-              reads nothing unless equipment.compatibility.view is exactly granted (active:false
-              today, so hidden for everyone). A compatibility failure is scoped to this card. */}
-          <UsedInEquipmentSection hasCapability={hasCapability} accessVersion={accessVersion} partId={resolvedPartId} />
-        </aside>
+        {/* INVENTORY ACTION HISTORY stays on the RECORD, and the reason is a fact about scope rather
+            than a preference. Frame 1a moves "Inventory action history" into the workspace's Flow
+            rail; this panel is PART-SCOPED (keyed on this part's id), and a rail link is naturally
+            the global history. Moving a part-scoped panel to a global slot would relabel what it
+            opens. The workspace's Flow rail carries the global history; this stays here.
+
+            C2: keyed on the resolved governed identity. The write surface is retired (#1625); the
+            read is untouched and every existing document keeps its actor and its timestamp. */}
+        {/* AT REST IT IS ONE LINE, and that is already more than Frame 1b asks for -- the frame
+            removes this block from the record altogether. A disclosure keeps the history reachable
+            where it is scoped, without spending 260px of a 1,050px budget on a panel that is
+            consulted rather than scanned. Same treatment, same reasoning, as the workspace rail's
+            queues. */}
+        <section className="ns-band ns-band--reference">
+          <details className="ns-parts-rail__item">
+            <summary>Inventory action history</summary>
+            <InventoryActionsPanel partId={resolvedPartId} />
+          </details>
+        </section>
       </div>
     </div>
   );

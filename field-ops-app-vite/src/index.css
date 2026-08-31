@@ -6864,3 +6864,337 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-parts-list .fo-page-header { margin-bottom: var(--space-2); }
 .fo-parts-list [data-parts-catalog] .ns-workspace__head { margin-top: 0; }
 .fo-parts-list [data-parts-catalog] .ns-workspace__summary { margin-top: 0; }
+
+/* ============================================================================
+   PARTS NORTH STAR P1v2 -- the catalogue leads, Work and Flow ride a rail
+   ============================================================================
+   Owner rulings, 2026-08-31. ND-30 was amended to its narrow reading: its scope
+   boundary protects ROUTE OWNERSHIP and FUNCTIONAL PRESENCE, not visual
+   placement within /inventory. Work and Flow therefore keep every hook, panel,
+   queue and command they had, on this same route, and become subordinate to the
+   catalogue -- which is what Frame 1a draws.
+
+   NO NEW LAYOUT PRIMITIVE. WorkspaceShell already exposes a `supporting` aside
+   and a split body; the handoff named a missing rail slot as a seam, and there
+   was none. This only narrows the shell's minmax(260px, 340px) to the 320px the
+   frame specifies, for this page. */
+@media (min-width: 1100px) {
+  .fo-parts-list .fo-workspace__body--split { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+
+/* THE RAIL IS QUIET BY CONSTRUCTION. Its headings are the workspace's smallest
+   type, not the h2 scale they carry in the document -- the brief's finding was
+   that a section holding one row outranked the two holding the work. */
+.ns-parts-rail { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.ns-parts-rail__group { min-width: 0; }
+.ns-parts-rail__heading { font: 600 10.5px var(--font-interface); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--color-text-secondary); margin: 0 0 4px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--color-text-primary); }
+
+/* A DISCLOSURE, WHICH IS THE FRAME'S RESTING STATE AND THE AMENDMENT'S OBLIGATION
+   AT THE SAME TIME. Frame 1a draws each queue as one line ("Waiting -- none"),
+   because its fixture has them empty. That is the right resting state and the
+   wrong permanent one: these panels carry governed commands -- Assign, the
+   associate request detail, Request Reorder -- and the amendment forbids removing
+   their functions from this workspace. <details> is one line when there is
+   nothing and the real panel when there is, open by default exactly when it
+   holds work. */
+.ns-parts-rail__item { border-bottom: 1px solid var(--color-border); }
+.ns-parts-rail__item > summary { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-height: 44px; cursor: pointer; list-style: none;
+  font: 500 13px var(--font-interface); color: var(--color-text-primary); }
+.ns-parts-rail__item > summary::-webkit-details-marker { display: none; }
+.ns-parts-rail__item > summary::after { content: "+"; color: var(--color-text-secondary);
+  font-size: 14px; line-height: 1; flex: none; }
+.ns-parts-rail__item[open] > summary::after { content: "–"; }
+.ns-parts-rail__item > summary:hover { color: var(--color-brand-secondary); }
+.ns-parts-rail__item > summary:focus-visible { outline: 2px solid var(--color-text-primary);
+  outline-offset: -2px; }
+/* THE COUNT IS THE POINT OF A CLOSED ROW. "none" reads as a fact; a 0 reads as a
+   number someone forgot to fill in. */
+.ns-parts-rail__count { color: var(--color-text-secondary); font-variant-numeric: tabular-nums;
+  font-size: 12px; margin-left: auto; margin-right: 4px; }
+.ns-parts-rail__note { font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
+.ns-parts-rail__item[open] { padding-bottom: 14px; }
+/* Density inside the rail: the shared panels were composed for a full column. */
+.ns-parts-rail .fo-panel, .ns-parts-rail .fo-card { border: 0; background: none; box-shadow: none;
+  padding: 0; border-radius: 0; }
+.ns-parts-rail table { font-size: 12px; }
+.ns-parts-rail .fo-inline-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ns-parts-rail .fo-inline-form input { min-width: 0; flex: 1 1 120px; }
+
+/* The catalogue's footnote rule is GONE with the paragraph it styled (Owner
+   ruling B §4): the ND-25 explanation lives behind the (i) beside the count and
+   nowhere else. Removed rather than left standing, because a rule with no
+   element is the dead CSS the coverage guard exists to stop accumulating. */
+
+/* ── FRAME 1a-MOBILE: a two-line row, not a six-row labelled card.
+   The audit's most serious finding was 9,277px at 375 -- 11.4 screens, 2.7x the
+   desktop page -- because each part became a stacked card of six label/value
+   rows, two of which read "Not recorded" and "—" on nearly every card. The
+   stacking rule is right for a table of numbers and heavy for a table of
+   identity and words. This overrides it FOR THIS TABLE ONLY; every other
+   .fo-table--stack keeps the shared treatment. */
+@media (max-width: 640px) {
+  .fo-parts-list [data-parts-catalog] .fo-table--stack tr { display: grid;
+    grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; align-items: baseline;
+    border: 0; border-bottom: 1px solid var(--color-border); border-radius: 0;
+    padding: 12px 0; margin: 0; }
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td { display: block; padding: 0; }
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td::before { content: none; }
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td[data-label="Part"] { grid-column: 1;
+    grid-row: 1; font-weight: 600; }
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td[data-label="Status"] { grid-column: 2;
+    grid-row: 1; text-align: right; font-size: 12.5px; }
+  /* Attention takes the full width beneath, and only when it has something to
+     say -- an empty cell occupies no row. */
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td[data-label="Attention"] { grid-column: 1 / -1;
+    font-size: 12.5px; }
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td:empty { display: none; }
+  /* Category and Control fold into the identity line's phone-only tail, so they
+     are stated once rather than as two more labelled rows. */
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td[data-label="Category"],
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td[data-label="Control"] { display: none; }
+  .fo-parts-list [data-parts-catalog] .fo-table--stack td a { min-height: 0; }
+  /* The row is the tap target now, so the link no longer has to carry 44px of
+     its own -- but the ROW must, and it does: 12px + 12px around two ~19px
+     lines clears the floor. */
+  .fo-parts-list [data-parts-catalog] .fo-table--stack tr { min-height: 64px; }
+}
+/* Shown only where the Category/Control columns are hidden. */
+.ns-row__phone { display: none; }
+@media (max-width: 640px) { .fo-parts-list .ns-row__phone { display: inline; } }
+
+/* ============================================================================
+   PARTS NORTH STAR P1v2 -- the record's five bands
+   ============================================================================
+   Frame 1b replaces seven sections and a rail with five full-width bands, each
+   holding two sub-columns. The audit's finding was that absence occupied more of
+   the page than fact -- three of seven sections spending a heading, a meta line
+   and an explanatory paragraph each to say there was nothing, roughly 700px for
+   three absences, while what the page KNOWS fits in four lines.
+
+   The band prices an absence at a line BESIDE a fact instead of a section
+   BENEATH one. The sentences themselves are unchanged; what changed is their
+   cost. */
+.ns-record-bands { display: flex; flex-direction: column; }
+.ns-band__cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 48px; }
+@container ns-record (min-width: 760px) {
+  .ns-band__cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@supports not (container-type: inline-size) {
+  @media (min-width: 1000px) { .ns-band__cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+}
+.ns-band__col { min-width: 0; }
+.ns-band__block { margin-top: 18px; }
+/* The sub-heading INSIDE a band. Small caps, one step below the band's own serif
+   title -- so a reader can tell at a glance which is the question and which is
+   the half-answer, which the old flat run of seven h2s could not. */
+.ns-band__sub { font: 600 10.5px var(--font-interface); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--color-text-secondary); margin: 0 0 8px; }
+.ns-band__note { font-size: 13px; line-height: 1.55; margin: 0 0 6px;
+  color: var(--color-text-secondary); }
+/* The fact table inside a band is a list of pairs, not a data grid: no header
+   row, no rules between rows, and the value right where the eye lands. */
+.ns-band__facts td { border: 0; padding: 3px 0; }
+.ns-band__facts td:first-child { color: var(--color-text-secondary); width: 55%; }
+.ns-band__facts td:last-child { font-variant-numeric: tabular-nums; }
+/* THE REFERENCE TIER. Identifiers and the inventory action history are things a
+   reader consults, not things they scan -- so they sit quieter than the bands
+   above them rather than competing with them for the same weight. */
+.ns-band--reference { padding-top: 6px; }
+.ns-band--reference .ns-section__title { font-family: var(--font-interface); font-size: 10.5px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-secondary);
+  font-weight: 600; }
+
+/* ── ACTIVITY: one line per movement.
+   It was a four-column table rendering one row with two "—" cells. Frame 1b
+   draws a line. Note what is NOT here: an actor and a description. Frame 1b
+   desktop draws both; the ledger carries neither, and Design's own MOBILE frame
+   draws the line without them -- which is the grammar the Owner ruled for both
+   widths. */
+.ns-activity { list-style: none; margin: 0; padding: 0; }
+.ns-activity__row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px 16px; align-items: baseline; padding: 7px 0;
+  border-bottom: 1px solid var(--color-border); }
+.ns-activity__what { min-width: 0; }
+.ns-activity__when { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ns-activity__qty { font-variant-numeric: tabular-nums; text-align: right; min-width: 3ch; }
+@media (max-width: 520px) {
+  .ns-activity__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .ns-activity__when { grid-column: 1; grid-row: 2; }
+  .ns-activity__qty { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+}
+/* The band itself. `.ns-band--reference` and the `__` children carried all the
+   rules while the base class carried none -- a class a component names is an
+   assertion that a rule exists, and cssClassCoverage exists to catch exactly
+   that. Bands are separated by their own rhythm rather than by rules, because
+   RuledSection already draws the rule for the four that have one. */
+.ns-band { min-width: 0; }
+
+/* ── Two corrections found by rendering the composition rather than reasoning
+   about it (VISUAL=1 test/__visual__/renderPartsWorkspace.test.jsx).
+
+   1. THE COUNT WAS TOUCHING ITS LABEL -- "Needs attention1". The markup has a
+      real space between them, but `.ns-tabrail__tab` is an inline-flex box and
+      flex layout drops whitespace-only text between items. A space that is part
+      of the design has to be a margin, not a character. */
+.ns-tabrail__tab .fo-muted, .ns-tabrail__tab .is-attention { margin-left: 6px;
+  font-variant-numeric: tabular-nums; }
+
+/* 2. THE RAIL RAN TO THE VIEWPORT EDGE while the catalogue beside it was inset
+      32px. `.ns-workspace` carries this page's measure and side padding, and it
+      wraps only the CATALOGUE -- so once Work and Flow moved into the shell's
+      supporting column, the rail was outside the box that provides the inset.
+      ONE MEASURE FOR THE WHOLE PAGE, and it took two attempts to put it in the
+      right place. On the split body alone it left the crumb and the "Parts"
+      title full-bleed above an inset table -- a page with two different left
+      edges. It belongs on the page section, the only element that contains the
+      crumb, the header AND both columns. The catalogue then stops declaring a
+      measure of its own, or it would inset itself twice. */
+.fo-parts-list { max-width: 1360px; margin: 0 auto; padding: 0 32px 80px; }
+.fo-parts-list .fo-workspace__body--split [data-parts-catalog].ns-workspace {
+  max-width: none; margin: 0; padding: 0; }
+@media (max-width: 700px) {
+  .fo-parts-list { padding: 0 16px 64px; }
+}
+
+/* NESTED SECTIONS ARE DEMOTED, NOT LEFT TO COMPETE.
+   Several of the blocks a band now holds -- Open demand, Purchasing context,
+   Identifiers -- are existing RuledSections that render their own serif h2.
+   Inside a band that h2 sits beside the band's OWN title at nearly the same
+   weight, which is the muddled hierarchy the brief found in the flat run of
+   seven sections and would have reproduced one level down. Scoped to
+   `.ns-band__cols` so the same component keeps its full treatment anywhere
+   else it is used. */
+.ns-band__cols .ns-section { margin: 0; }
+.ns-band__cols .ns-section__head { display: block; margin-bottom: 8px; }
+.ns-band__cols .ns-section__title { font: 600 10.5px var(--font-interface);
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-secondary);
+  margin: 0; }
+.ns-band__cols .ns-section__meta { display: block; font-size: 12px; line-height: 1.5;
+  margin-top: 4px; }
+
+/* BAND RHYTHM. `.ns-section` spaces SECTIONS -- 30px below each, plus 22px of
+   head padding -- which was tuned when the record was a flat run of seven of
+   them. Five bands carrying two columns each need less air between them and
+   more within them, or the page spends its budget on gaps: the composition's
+   whole purpose is that what the record knows arrives in one screen. */
+.ns-record-bands > .ns-section { margin-bottom: 18px; }
+.ns-record-bands > .ns-section > .ns-section__head { padding: 9px 0 10px; }
+.ns-record-bands > .ns-band--reference { margin-bottom: 10px; }
+
+/* ══════ A1 — THE LIGHTWEIGHT ABSENCE GRAMMAR (Owner ruling, 2026-08-31) ══════
+   Frame 1b prices an unavailable capability at ONE ITALIC LINE. The shipped
+   treatment was a bordered, padded status block at 14.5px -- 84px for a
+   two-line sentence, twice on this record (Where it is, Used on), 168px of
+   packaging around ~40px of words.
+
+   THE SEMANTICS ARE UNTOUCHED AND THAT IS THE POINT. HonestState still decides
+   WHICH state this is and still writes the sentence; NOT_ENABLED still reads as
+   "built, governed, switched off" and is still distinct from EMPTY and from
+   DENIED. Only the packaging changes, and only here.
+
+   SCOPED TO THE PARTS RECORD'S BANDS, deliberately. `.ns-state--not-enabled` is
+   worn by accepted North Star families whose composition was signed off with
+   the bordered block; a global restyle would silently re-open those. The
+   selector reaches inside `.ns-record-bands` and nowhere else, so this is a
+   Parts-local composition decision rather than a design-system change. */
+.ns-record-bands .ns-band__col .ns-state,
+.ns-record-bands .ns-band--reference .ns-state {
+  padding: 0; margin: 2px 0 0; font-size: 13px; line-height: 1.5; font-style: italic;
+  max-width: 62ch;
+}
+.ns-record-bands .ns-band__col .ns-state--denied,
+.ns-record-bands .ns-band__col .ns-state--not-enabled,
+.ns-record-bands .ns-band--reference .ns-state--denied,
+.ns-record-bands .ns-band--reference .ns-state--not-enabled {
+  border-left: 0; padding-left: 0;
+}
+/* DENIED KEEPS A MARK, because "you may not see this" and "nobody can see this
+   yet" must not become the same sentence typographically. It is the one state
+   where losing the border would cost a distinction rather than only padding. */
+.ns-record-bands .ns-band__col .ns-state--denied,
+.ns-record-bands .ns-band--reference .ns-state--denied {
+  font-style: normal; color: var(--color-text-primary);
+}
+
+/* ══════ A2 — BAND HEADING FURNITURE ══════
+   47px of head for a 22px serif title, six times over. The rule the band sits
+   on and the type scale both stay -- they are what separate one operational
+   group from the next -- and the padding that was tuned for a flat run of seven
+   full-width sections comes down. */
+.ns-record-bands > .ns-section > .ns-section__head { padding: 5px 0 6px; }
+.ns-record-bands > .ns-section { margin-bottom: 14px; }
+.ns-record-bands > .ns-band--reference { margin-bottom: 8px; }
+.ns-record-bands .ns-band__cols { gap: 14px 48px; }
+.ns-band__block { margin-top: 14px; }
+/* The identifier band's two lines. */
+.ns-ident__line { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.ns-ident__note { font-size: 12px; line-height: 1.5; margin: 12px 0 0; max-width: 68ch; }
+
+/* ══════ THE (i) DISCLOSURE (Owner ruling B, 2026-08-31) ══════
+   Anchored, so opening it never reflows the record beneath it, and absolutely
+   positioned, so a CLOSED one costs the page nothing -- which is the point.
+   The alternative, a <details> that pushes everything down, would have traded
+   permanent height for a jump. */
+.ns-info { position: relative; display: inline-block; vertical-align: middle; }
+/* A REAL TARGET. 44px is this codebase's handheld floor and it does not exempt
+   controls for being small or typographically quiet -- the same rule, and the
+   same wide-pointer relaxation, that `.ns-page__crumb a` already carries. The
+   ring stays 18px; the TARGET around it is what grows. */
+.ns-info__trigger { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 44px; padding: 0; margin: 0 0 0 2px;
+  background: none; border: 0; cursor: pointer; color: var(--color-text-secondary); }
+.ns-info__trigger > span { display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border: 1px solid currentColor; border-radius: 50%;
+  font: 600 11px var(--font-record-title), Georgia, serif; font-style: italic; line-height: 1; }
+.ns-info__trigger:hover > span, .ns-info__trigger[aria-expanded="true"] > span {
+  color: #FFFFFF; background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+.ns-info__trigger:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: -8px; }
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .ns-info__trigger { min-width: 22px; min-height: 22px; }
+  .ns-info__trigger:focus-visible { outline-offset: 1px; }
+}
+/* The panel. Inline elements only -- two of the three call sites are inside a
+   <p>, where a <div> is invalid -- so the block behaviour is supplied here. */
+.ns-info__panel { position: absolute; z-index: 40; top: calc(100% - 6px); display: block;
+  width: max(260px, 30ch); max-width: min(420px, 80vw);
+  background: var(--color-surface, #FFFFFF); border: 1px solid var(--color-text-primary);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.13); padding: 12px 14px 10px;
+  font: 400 12.5px/1.55 var(--font-interface); color: var(--color-text-primary);
+  font-style: normal; text-transform: none; letter-spacing: normal; }
+.ns-info__panel[hidden] { display: none; }
+.ns-info__panel--start { left: 0; }
+.ns-info__panel--end { right: 0; }
+.ns-info__body { display: block; }
+.ns-info__close { display: block; margin-top: 8px; padding: 0; background: none; border: 0;
+  font: 600 11.5px var(--font-interface); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-text-secondary); cursor: pointer; min-height: 44px; }
+.ns-info__close:hover { color: var(--color-text-primary); }
+.ns-info__close:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: 2px; }
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .ns-info__close { min-height: 0; }
+}
+/* Phones: the anchor is near the right edge as often as not, so the panel
+   stops being anchored and becomes full-width beneath its line. */
+@media (max-width: 520px) {
+  .ns-info__panel { position: absolute; left: auto; right: 0; width: min(300px, 86vw); }
+}
+
+/* THE (i) BELONGS AT THE END OF ITS SENTENCE, NOT BENEATH IT.
+   HonestState renders a <p>, so a disclosure placed after it became its own
+   25px line box -- twice on this record, 50px spent on putting two icons on
+   lines of their own. Measured, not assumed: the trigger sat 40px below the
+   sentence it explains, which also reads as a floating icon rather than as an
+   affordance ON that sentence.
+
+   The absence line goes inline inside a band column so the trigger flows after
+   its last word, where Frame 1b draws it. Scoped to the band columns: every
+   `.ns-state` in one is a short absence sentence paired with its own control,
+   which is the only place this is the right behaviour. */
+.ns-record-bands .ns-band__col > .ns-state { display: inline; }
+.ns-record-bands .ns-band__col > .ns-state + .ns-info { margin-left: 1px; }
+/* The reorder command and its (i) on one line, baseline-aligned — the frame
+   draws the icon beside the button, not under it. */
+.ns-reorder-row { display: inline-flex; align-items: center; gap: 2px; }
