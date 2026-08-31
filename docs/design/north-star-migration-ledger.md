@@ -1240,7 +1240,7 @@ the measurement rather than a second investigation.
 | **Proof** | `test/equipmentNorthStarProjection.test.mjs` (27), `test/equipmentNorthStarRecord.test.jsx` (21), `test/equipmentNorthStarWorkspace.test.jsx` (17) and 3 new assertions in the shared `test/metadataListPresentation.test.mjs`, plus the re-anchored `equipmentTimeline`, `equipmentListMigration`, `availableEquipmentInstall`, `availableEquipmentLocationDisplay`, `listsP2Tranche1`, `rawIdPresentationGuard`, `activeLabelConformance`, `coreRecordPages` and `accountRecordPage` suites |
 | **Named decisions** | **ND-31** (unresolved location: four reasons, not one string) and **ND-32** (identity cell: columns, not a concatenated summary) — both raised and open. Both are cases where the repository is ahead of the artifact |
 | **Gate** | `equipmentNorthStarQuickGate.mjs` — **RAN 2026-08-31 against the deployed `9848ec9d`: 35 passed, 0 failed, 3 skipped, exit 0.** See the gate-result section below |
-| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+| **Acceptance** | **CLOSED 2026-08-31 — Owner visual acceptance given on the deployed `f33dd113`** (see the closing section below) |
 
 ### The family was already most of the way there, and the stale claim was the repository's
 
@@ -1530,6 +1530,40 @@ pass that does not.
 **Acceptance remains `AWAITING_OWNER_VISUAL_ACCEPTANCE`.** A green gate is the behavioral half; the
 third authority has not spoken.
 
+
+
+### Family 8 — CLOSED, Owner accepted 2026-08-31
+
+| | |
+|---|---|
+| **Accepted release** | `f33dd113` — `origin/main`'s tip and the deployed sandbox build, verified from `/version.json` rather than inferred |
+| **Surfaces accepted** | Workspace · Customer Equipment · Available Equipment · Add Equipment · Equipment record · Install confirmation · Secondary filter rail — all PASS |
+| **Closing gate** | `equipmentNorthStarQuickGate.mjs --expect f33dd113` → **35 passed, 0 failed, 3 skipped** (38 checks), exit 0 |
+| **Acceptance** | **CLOSED / OWNER ACCEPTED** |
+
+The third authority has spoken. Behavioral completeness and a green gate were never the same claim
+as acceptance, and this row is where the difference stopped mattering for this family.
+
+**The three skips are unmeasured, not green, and they stay that way.** No unresolved Location exists
+on this data; the record the gate reaches has no activity rows; and it stores no `YYYY-MM-DD` to
+compare. Each is a precondition the sandbox does not currently offer, and forcing any of them green —
+or seeding data to eliminate them — would have been fabricated evidence.
+
+**What the family shipped, beyond the composition.** Three reader defects were corrected on the way
+through, every one a stored token or a wrong value reaching a person: the activity timeline printing
+raw Work Order enums; `formatDateOnly` shifting a calendar date one day west of Greenwich; and a
+stored object stringified as `Timestamp(seconds=…)` on six record pages. The last is still visible in
+the gate's own evidence — check 26 confirms the sandbox document really does store
+`createdAt`/`updatedAt` as `timestampValue` where the field declares NUMBER, and the renderer refuses
+it honestly. The fix is proved against the actual defect, not a fixture.
+
+**Two named decisions remain open and are not blockers**: **ND-31** (an unresolved location states
+which of four reasons, not one string) and **ND-32** (the identity cell is columns, not a
+concatenated summary). Both are cases where the repository is ahead of the locked artifact, and both
+are recorded rather than silently resolved.
+
+**ND-33 is a separate stream** and does not gate this family: non-PO serialized-asset acquisition
+lives under Inventory → Receiving, is merged, and awaits its own Functions deploy.
 
 ### Authority, unchanged
 
