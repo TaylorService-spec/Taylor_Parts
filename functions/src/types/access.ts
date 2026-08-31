@@ -432,7 +432,14 @@ export type AuditAction =
   // MUST stay symmetrical -- the type is erased at build time, so a value arriving from a callable
   // is checked against the runtime array or nowhere. Comment intentionally free of the
   // statement-terminator character (adminCredentialEligibility slices this union at the first one)
-  | "OWNERSHIP_HANDOFF";
+  | "OWNERSHIP_HANDOFF"
+  // Workstream 2B -- the two reorder writes that moved behind trusted authority because they author
+  // a governed company fact. Same verb+Noun convention, extending this SAME immutable Audit Event
+  // path -- no parallel enum. Their deterministic Audit Event id is also the idempotency substrate,
+  // so a retried call replays instead of creating a second request or a duplicate purchase order.
+  // Runtime mirror in access/auditEventWriter.ts, and the two MUST stay symmetrical
+  | "createReorderRequest"
+  | "recordReorderPurchaseOrder";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

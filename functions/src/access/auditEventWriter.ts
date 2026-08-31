@@ -230,6 +230,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // whole point: the union is erased at build time, so adding to only one compiles cleanly and
   // fails at runtime. Asserted by test/ownershipHandoffAudit.test.mjs.
   "OWNERSHIP_HANDOFF",
+  // Workstream 2B -- runtime mirror of the two reorder AuditAction union members (types/access.ts).
+  // Symmetry is the point: the union is erased at build time, so adding to only one compiles cleanly
+  // and fails at runtime. Asserted by test/ownershipHandoffAudit.test.mjs's union/array diff.
+  "createReorderRequest",
+  "recordReorderPurchaseOrder",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
