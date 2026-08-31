@@ -97,7 +97,15 @@ for (const file of files) {
 }
 
 test("every shared-writer store was found", () => {
-  assert.ok(stores.length >= 6, `expected the known stores, found ${stores.length}`);
+  // FLOOR LOWERED 6 -> 5, deliberately (Owner ruling, 2026-08-30). domain/inventoryActions.js
+  // exported a sixth store, inventoryActionsStore, until inventory_actions stopped accepting new
+  // writes: the collection is not stock authority and was never reconciled with the governed
+  // ledger. Retiring recordInventoryAction() while leaving a live .add()-capable handle beside it
+  // would have shut the front door and left the side one open, so the handle went too.
+  //
+  // The floor exists so a store cannot vanish unnoticed. It moves only with a reason, and only
+  // down by the number actually removed -- never re-raised to paper over a later disappearance.
+  assert.ok(stores.length >= 5, `expected the known stores, found ${stores.length}`);
   assert.ok(stores.every((s) => s.collection), `a store's collection could not be resolved: ${JSON.stringify(stores.filter((s) => !s.collection))}`);
 });
 
