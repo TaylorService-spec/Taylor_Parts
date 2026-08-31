@@ -9,7 +9,6 @@ import { createEquipment } from "../../domain/equipmentRepository";
 import { STATUS_FILTERS, statusFilterValue } from "./equipmentStatusFilters";
 import EquipmentCreateModal from "./EquipmentCreateModal";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
-import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -167,7 +166,29 @@ export default function EquipmentRegister() {
   );
 
   return (
-    <WorkspaceShell title="Equipment" actions={actions} className="fo-equipment-register">
+    // ══════════════ THIS IS TAB CONTENT. IT DOES NOT OWN A PAGE IDENTITY. ══════════════
+    //
+    // It used to render `<WorkspaceShell title="Equipment" …>`, which was correct when this file was
+    // a standalone route and wrong from the moment site-work #10 mounted it as the Add Equipment tab
+    // of `EquipmentWorkspace`. Selecting that tab put a SECOND visible "Equipment" page title inside
+    // an Equipment page that already had one — the Owner saw it on the deployed sandbox — against
+    // the North Star's ONE PAGE IDENTITY PER PAGE rule.
+    //
+    // The shell is REMOVED, not hidden. A CSS-hidden h1 would satisfy a gate and leave the
+    // architecture lying about who owns the page: `EquipmentWorkspace` owns identity, this is its
+    // nested content. The file moves out of CONFORMANT_WORKSPACES in the same commit, because it is
+    // no longer a shell host and claiming otherwise would be the same untruth from the other side.
+    //
+    // NOTHING ELSE CHANGES. The ActionRail that carried the customer picker and "+ New Equipment"
+    // was the shell's `actions` region and is now the tab's own control row, rendered first. The
+    // account-scoped query boundary, location scoping, filters, count, create modal, write path,
+    // focus handoff, live announcements and every state branch below are untouched.
+    //
+    // `.fo-equipment-register` replaces the vertical rhythm `.fo-workspace` was providing (a flex
+    // column with a 16px gap) so the control row and the body keep the spacing they had.
+    <div className="fo-equipment-tabbody fo-equipment-register">
+      {actions}
+
       {/* Success announcement -- polite live region for assistive tech. */}
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
@@ -346,7 +367,7 @@ export default function EquipmentRegister() {
           )}
         </>
       )}
-    </WorkspaceShell>
+    </div>
   );
 }
 

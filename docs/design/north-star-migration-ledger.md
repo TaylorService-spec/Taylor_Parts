@@ -1423,10 +1423,58 @@ Role and sandbox-ACTIVATED, and no client surface calls it. The Owner ruled its 
 day: **Inventory → Receiving**, not Equipment. Approved placement, client composition not yet built.
 
 **What this says about the gate.** It asserted the rulings it was given and passed honestly. It was
-not asked whether the page sits on the site's own grid, and it inspects only the DEFAULT tab's
-headings — so the second `Equipment` title inside the Add Equipment panel (EquipmentRegister hosts
-its own page shell) is still unmeasured, and is the one item from these two screenshots left open.
-A gate proves the claims it encodes; it does not notice a claim nobody made.
+not asked whether the page sits on the site's own grid, and it inspected only the DEFAULT tab —
+so the second `Equipment` title that appeared when Add Equipment was selected was invisible to it.
+A gate proves the claims it encodes; it does not notice a claim nobody made. **Both are now
+encoded** — see the closeout below.
+
+
+### Add Equipment closeout — the tab stopped claiming to be a page (2026-08-30)
+
+The last composition defect on the family, and the honest description of it is an ARCHITECTURAL one
+rather than a visual one: two files both believed they owned the Equipment page.
+
+`EquipmentRegister` was a standalone route when Wave 3 declared it in `CONFORMANT_WORKSPACES`, and
+site-work #10 mounted it as the Add Equipment tab of `EquipmentWorkspace` without removing its
+`WorkspaceShell title="Equipment"`. Selecting the tab therefore put a second visible **Equipment**
+page title inside an Equipment page that already had one — the Owner saw it on the deployed sandbox.
+
+**Removed, not hidden.** A CSS-hidden `h1` would have satisfied any gate and left the architecture
+lying about ownership. The shell is gone; the `ActionRail` that carried the customer picker and
+`+ New Equipment` was its `actions` region and is now the tab's own control row. `.fo-equipment-register`
+takes over the flex column and 16px gap `.fo-workspace` had been supplying — removing a page identity
+is not a reason to lose the spacing it happened to carry.
+
+**The classification was reconciled rather than excepted.** The file moved out of
+`CONFORMANT_WORKSPACES` (which demands `WorkspaceShell`) into `CONFORMANT_SURFACES`, alongside
+`InventoryControlSection` and the other non-shell-hosting conformant surfaces. It keeps the
+`fo-badge` rule and drops the obligation it can no longer honestly meet. **No exception was added
+and GATE 2 was not weakened** — the list membership now states something true.
+
+| | |
+|---|---|
+| `EquipmentWorkspace` | owns the page identity |
+| `EquipmentRegister` | nested tab content |
+
+**Nothing about what Add Equipment does changed.** Account picker, account-scoped query boundary,
+location scoping, search, Location and Status filters, result count, `+ New Equipment`,
+`EquipmentCreateModal`, the `createEquipment` write path, post-create focus handoff, the polite live
+region, and every loading/empty/error branch are untouched. ND-33 was not implemented here and Add
+Equipment was not reused for acquisition.
+
+**Proof.** Six new assertions in `test/equipmentNorthStarWorkspace.test.jsx`: each of the three tabs
+selected in turn must show exactly one visible Equipment identity and that one must be the
+workspace's, not a panel's; the Add panel must host no `.fo-workspace` and no `h1`; its controls and
+account-scoped prompt must survive; and a heading inside a hidden panel must not count.
+**Mutation-proved** — restoring the nested shell fails two of them.
+
+**The gate was widened to match.** Identity is now measured after selecting ALL THREE tabs (3a/3b/3c)
+from one shared `measureIdentity` helper, and every panel is checked for a nested page shell rather
+than only the one that had it. The default-tab-only version is exactly why this defect reached a
+deployed page with a green 29/0/3 behind it.
+
+`fo-equipment-register` also left `cssClassCoverage`'s unstyled backlog: it had no rule because
+`.fo-workspace` was doing its layout, and it has one now. Another list that may only shrink, shrinking.
 
 
 ### Authority, unchanged
