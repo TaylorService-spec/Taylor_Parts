@@ -24,10 +24,14 @@ on:
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
+      - "functions/test/acquireCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
       - "functions/test/workOrderLabor.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/serializedAssetAcquireForm.js"
+      - "field-ops-app-vite/src/modules/receiving/AcquireExistingUnit.jsx"
+      - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -89,10 +93,14 @@ on:
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
+      - "functions/test/acquireCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
       - "functions/test/workOrderLabor.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/serializedAssetAcquireForm.js"
+      - "field-ops-app-vite/src/modules/receiving/AcquireExistingUnit.jsx"
+      - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -265,6 +273,15 @@ jobs:
       # resolves them. A stubbed authorizer would prove nothing about the separation this depends on.
       - name: Callable boundary — auth, actor identity, and every refusal code
         run: node test/installCallable.test.mjs
+        working-directory: functions
+
+      # ND-33. The other end of the same story, on the same emulator and against the same real
+      # roleAssignments: acquiring creates company-owned inventory with NO procurement record, and
+      # the two stations are deliberately different Roles. Each suite asserts the separation from
+      # its own side — installCallable proves the acquirer cannot install, and this proves the
+      # installer cannot acquire. Either alone would leave half the control unmeasured.
+      - name: Acquire callable boundary — auth, capability separation, idempotency, provenance
+        run: node test/acquireCallable.test.mjs
         working-directory: functions
 
       # The technician path against real work orders and real roleAssignments: own-WO scoping, the

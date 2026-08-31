@@ -1208,7 +1208,7 @@ assumed:
 |---|---|
 | capability `inventory.serializedAsset.acquire` | registered (`permissionCatalog.ts`) |
 | command `acquireSerializedAssetCommand.ts` | built |
-| callable `acquireCallableWiring.ts` | wired |
+| callable endpoint | **NONE — see the correction below** |
 | Role | a dedicated station carries it, and confers **no** `equipment.install` |
 | sandbox | present in `capabilityActivationOverrides` — **ACTIVATED** |
 | client surface | `grep` across `field-ops-app-vite/src` → **NONE** |
@@ -1216,6 +1216,100 @@ assumed:
 The entire authority is built, granted and switched on, and nothing in the application calls it.
 
 **Status: APPROVED PRODUCT PLACEMENT — CLIENT COMPOSITION NOT YET BUILT.**
+**CORRECTION, 2026-08-31 — the gap is one step further back than this entry first said.**
+
+The row above originally read *"callable `acquireCallableWiring.ts` — wired"*. **That was wrong, and
+it was my error.** The filename says `CallableWiring`; the file contains no callable. Its four
+exports are `makeResolveAcquirePermissionThroughTxn`, `resolveAcquirePartThroughTxn`,
+`makeResolveAcquireLocationActive` and `stageAcquireAuditEvent` — the production **seams** the
+command takes as dependencies. There is:
+
+- no `onCall` handler anywhere for `acquireSerializedAsset`
+- no export from `functions/src/index.ts` (the word "acquire" appears there once, in a comment)
+- therefore nothing deployed, and no client service either
+
+Contrast the install path, which is complete: `installCallables.ts` declares
+`export const installSerializedAssetCallable = onCall(REGION, …)` and `index.ts` re-exports it as
+`installSerializedAssetCallable as installSerializedAsset`. Acquire has the equivalent of the
+command and its wiring, and stops before the endpoint.
+
+**What this changes.** "Build the client surface" was never a presentation task. Registering and
+deploying a HIGH-TRUST callable that creates owned inventory with no procurement record is a
+**Functions change plus a production-path deploy** — an authority decision, and outside every scope
+boundary this programme has set. A button built now would call an endpoint that does not exist and
+fail closed at the network, which is a worse answer than the honest absence that is there today.
+
+**The corrected state of the gap:**
+
+| | |
+|---|---|
+| capability `inventory.serializedAsset.acquire` | registered, granted to a dedicated Role, sandbox-ACTIVATED |
+| pure command `acquireSerializedAssetCommand.ts` | built — validation, closed reason set, idempotency, `AVAILABLE` initial state, `NON_PO_ACQUISITION` provenance |
+| production seams `acquireCallableWiring.ts` | built — permission, Part, warehouse-location and audit resolvers, reusing Receiving's own location authority |
+| **callable endpoint** | **MISSING** |
+| **`index.ts` export** | **MISSING** |
+| **deployed** | **NO** |
+| client surface | NONE |
+
+The request shape the endpoint would take is already fixed by the command:
+`partId`, `serialNo`, `locationId`, `reason` ∈ {`OPENING_BALANCE`, `LEGACY_MIGRATION`,
+`EXISTING_COMPANY_ASSET`}, `idempotencyKey`, and an optional `provenanceNote`. An unrecognised reason
+is refused, never coerced.
+
+**Status unchanged and now accurate: APPROVED PRODUCT PLACEMENT — NOT BUILT, AND THE FIRST MISSING
+PIECE IS SERVER-SIDE, NOT CLIENT-SIDE.**
+**IMPLEMENTED 2026-08-31 — the endpoint exists and the client composes it.**
+
+| | before | after |
+|---|---|---|
+| capability | registered, granted, sandbox-activated | unchanged — **no new capability** |
+| pure command | built | unchanged — **no semantics changed** |
+| production seams | built | unchanged — reused verbatim |
+| **callable endpoint** | **MISSING** | `functions/src/serializedAsset/acquireCallables.ts` |
+| **`index.ts` export** | **MISSING** | `acquireSerializedAssetCallable as acquireSerializedAsset` |
+| **client composition** | **MISSING** | Inventory → Receiving → **Add existing unit** |
+| **sandbox deployment** | not possible | **AWAITING OWNER DEPLOY** |
+
+**The callable adds no authority and validates nothing.** It authenticates a caller, derives the
+actor from the trusted auth context, constructs the existing dependencies from the four existing
+seams, calls the existing command, and maps its seven failure codes to HTTPS statuses. An unmapped
+code fails closed rather than reaching `mapped.status` as undefined — a TypeError inside the catch
+would have surfaced as an unhandled internal error with no message anyone could act on.
+
+**The client sends only the command's own keys.** `partId`, `serialNo`, `locationId`, `reason`,
+`idempotencyKey` and an optional `provenanceNote` — nothing else, because the command's allow-list
+refuses an unknown field outright and would fail the whole request rather than ignore it. There is
+deliberately no field for a supplier, a PO, a receipt, a customer, an owner or a provenance type.
+
+**Placement follows the ruling exactly.** It sits under Inventory → Receiving, set apart by a rule
+AFTER both purchase-order journeys rather than as a third chip among them — a third chip would read
+as a third way to receive, and receiving is precisely what it is not. It is not called "Receive
+without PO" or "Manual receive"; both blur two authorities.
+
+**The location list is Receiving's own.** `fetchReceivingLocationOptions()`, the same governed
+warehouse read both existing journeys use. An acquisition that accepted a location receiving would
+reject would be a second, weaker answer to a question one authority already owns — and a customer's
+location can never appear in it.
+
+**The part list is the set the command accepts**, and only that: `controlType == "SERIALIZED"`.
+Deliberately not `useWholeUnitParts`, which reads `wholeUnit == true` — a narrower, different
+question that would have made a serial-tracked component silently unacquirable through the UI while
+the command accepted it happily.
+
+**Proof.** `functions/test/acquireCallable.test.mjs` (20, Firestore emulator, real
+`roleAssignments`) — auth, actor identity, the installer denied, every input and Part and location
+refusal, replay, conflict, **a received unit never rewritten as acquired**, the audit event, and a
+mapping assertion that reads the failure union off the command so a new code without a mapping fails
+the test. `field-ops-app-vite/test/serializedAssetAcquire.test.mjs` (27) — the closed reason set,
+the request's exact keys, idempotency, replay-as-success, conflict-as-its-own-state, and a part
+option never labelled with its document key.
+
+**Live gate:** `acquireSerializedAssetLiveGate.mjs`, which acquires ONE reserved fixture
+(`GATE-ND33-DO-NOT-DELETE`) with a stable idempotency key, so the first run acquires and every run
+after replays. A gate that minted a new serial per run would leave the sandbox holding a hundred
+machines nobody owns.
+
+
 
 **Why Equipment North Star P1 did not close this, and should not have.** The locked design draws
 three tabs over three populations and no stock-creation surface, and the handoff's hard scope
