@@ -110,7 +110,11 @@ describe("ND-26 — the Parts workspace stops printing the document id under 'Pa
   it("the Part Number cell holds internalPartNumber, not the document key", async () => {
     fetchPartMasterList.mockResolvedValue({ ok: true, parts: [CANONICAL], invalid: [] });
     render(<PartsList />);
-    await screen.findByText("Scraper Blade Kit");
+    // A SUBSTRING MATCHER, because P1v2 folded the manufacturer into this line (Owner ruling 6/W7:
+    // the Manufacturer column read "Not recorded" on 25 of 25 rows and spent 194px doing it). The
+    // description is no longer the whole of its element's text, so an exact match would now be
+    // asserting the composition rather than the identity this test is about.
+    await screen.findByText(/Scraper Blade Kit/);
 
     const cell = partCell();
     expect(cell).not.toBeNull();

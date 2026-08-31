@@ -4,7 +4,9 @@
 against the NEW design artifact, not merely fix H1 in isolation. Produce an implementation delta
 before changing code."***
 
-No code has been written against this composition.
+**Status: the Owner ruled on all seven items on 2026-08-31 — design direction APPROVED with authority
+corrections. §6 is now the implementation contract.** The delta below is preserved as written, so the
+rulings can be read against the evidence that produced them.
 
 ---
 
@@ -253,20 +255,66 @@ than trust them.
 
 ---
 
-## 6. What needs an Owner decision before code
+## 6. Owner rulings — **CLOSED 2026-08-31**
 
-| | Item | Recommendation |
+**Design direction APPROVED with authority corrections.** All seven were ruled, and all seven landed
+on the recommendation. This section is now the implementation contract; the recommendations above are
+history.
+
+| | Item | **Ruling** |
 |---|---|---|
-| **1** | **C1** — ND-30 forbids relocating Work/Flow; the design relocates both into a rail | amend ND-30, or confirm the narrower reading |
-| **2** | **A1** — Activity actor and description do not exist on the ledger | adopt Design's own mobile grammar at both widths |
-| **3** | **A2** — *Used on* is `active:false` | render truthful absence; activation is a separate governed decision |
-| **4** | **R2** — *Recommended reorder qty* and *Risk* dropped | keep, or record the removal deliberately |
-| **5** | **W10** — no pager at ~1,400 parts | keep pagination, show the true total |
-| **6** | **W5** — `Active` vs `Active parts` | keep `Active parts` (ADR-012 §2.2a) |
-| **7** | **R11** — the two frames disagree on button order | primary first, both widths |
+| **1** | **C1** — ND-30 vs the Work/Flow rail | **AMEND ND-30 — NARROW READING.** The boundary protects route ownership and functional presence, not visual placement within `/inventory`. The 320px secondary rail is approved. Recorded as the ND-30 amendment. |
+| **2** | **A1** — Activity actor and description | **ADOPT DESIGN'S MOBILE GRAMMAR AT BOTH WIDTHS.** Do not synthesize the actor. Do not join `inventory_actions` to the governed ledger. Render only what the ledger projection carries. |
+| **3** | **A2** — *Used on* | **TRUTHFUL ABSENCE.** `equipment.compatibility.view` stays inactive; no alternate source. Design's section grammar survives with the concise capability-inactive treatment. |
+| **4** | **R2** — *Recommended reorder qty* and *Risk* | **REMOVE FROM THE RECORD** — follow Design. An intentional presentation removal, not accidental loss. Underlying domain behaviour and authority are untouched. |
+| **5** | **W10** — pagination | **KEEP PAGINATION, SHOW THE TRUE TOTAL.** Design controls visual grammar, not permission to remove operational collection scaling. Never imply the rendered page is the whole catalogue. |
+| **6** | **W5** — `Active` vs `Active parts` | **KEEP `Active parts`.** ADR-012 §2.2a remains controlling. Views: `All` · `Active parts` · `Needs attention` · `Serialized`. |
+| **7** | **R11** — button order | **PRIMARY FIRST AT BOTH WIDTHS** — `Edit part`, then `Change status`. Responsive layout may restack; it may not reverse the hierarchy. |
 
-Three implementation seams Design already named — underlined tabs vs the Lists P2 COMPOSE contract,
-the absent rail slot on `WorkspaceShell`, and a breadcrumb that touches 14 conformant workspaces —
-are engineering questions, not Owner decisions, and are not listed above.
+### 6.1 Band 1, as ruled
 
-**No code until the Owner rules on the seven items.**
+**KEEP:** Ledger-derived stock · Avg daily usage · Days remaining *where truthfully derivable* ·
+Reorder point / `Not established` · `Request reorder`.
+
+**REMOVE from this composition:** Recommended reorder qty · Risk.
+
+### 6.2 Design conflict precedence
+
+Implementation authority for this pass, highest first:
+
+1. Existing governed EOS business/domain authority
+2. ND-25 through ND-30, **including the ND-30 amendment**
+3. These seven Owner/Product rulings
+4. The Parts P1v2 / P1v3 visual composition
+5. Existing implementation where Design is silent
+
+> **A Design mockup never creates a fact, capability, mutation, permission, derivation, or data
+> relationship.**
+
+### 6.3 Implementation boundary
+
+**Approved:** presentation composition · responsive composition · workspace rail placement · concise
+truthful-absence grammar · existing facts, actions and navigation composed into Design · pagination
+preservation · existing capability gating.
+
+**Not approved:** Functions changes · Rules changes · capability activation · permission changes ·
+inventory authority changes · new joins · `inventory_actions` resurrection · new reorder calculations
+· `warehouseQty` as stock authority · scanner semantic changes · compatibility capability activation
+· backend or data-model changes.
+
+If implementation finds another Design element requiring one of those: **stop that element, report
+the conflict, do not approximate it.**
+
+### 6.4 H1
+
+Owner agrees with the handling: **no isolated speculative patch.** Diagnosis of the live runtime
+discrepancy is implementation step 1; the correction then lands as part of the approved workspace
+migration. Acceptance remains **visible workspace H1 = `Parts`**, and the Quick Gate assertion stands.
+
+### 6.5 Seams
+
+The three seams Design named — underlined tabs vs the Lists P2 COMPOSE contract, the absent rail slot
+on `WorkspaceShell`, and a breadcrumb touching 14 conformant workspaces — are engineering questions,
+not Owner decisions, and were not put to the Owner.
+
+**Owner visual acceptance remains OPEN.**

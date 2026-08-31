@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
@@ -397,12 +397,22 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   // SAME canonical read this page already performs re-fetches -- no second read
   // surface, no cache bypass, just the existing effect re-running.
   const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
+  // WHEN THIS PAGE LAST READ THE CATALOGUE -- not when the catalogue last changed.
+  //
+  // Frame 1a puts "Read-checked 9:41 AM" beside Refresh. The distinction matters enough to state:
+  // this is stamped when THIS CLIENT'S read resolves, so it answers "how old is what I am looking
+  // at" and nothing else. It is not a freshness guarantee, not a server timestamp, and not a claim
+  // that the underlying records were unchanged since -- none of which any read on this page
+  // establishes. Null until the first read lands, so it never shows a time for data not yet held.
+  const [readCheckedAt, setReadCheckedAt] = useState(null);
+  const handleCatalogRefresh = useCallback(() => setCatalogRefreshToken((t) => t + 1), []);
   useEffect(() => {
     const token = ++tokenRef.current;
     let cancelled = false;
     setStored({ key: currentKey, read: null });
     fetchPartMasterList().then((result) => {
       if (cancelled || token !== tokenRef.current) return;
+      setReadCheckedAt(new Date());
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
       const read = result.ok
@@ -645,9 +655,305 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
   }));
 
+  // ══════════ WORK AND FLOW, IN THE SECONDARY RAIL (Parts P1v2, Frame 1a) ══════════
+  //
+  // ND-30's scope boundary said "do not relocate the Work group / the Flow group". The Owner
+  // AMENDED it on 2026-08-31 to the narrow reading: the boundary protects ROUTE OWNERSHIP and
+  // FUNCTIONAL PRESENCE, not visual placement within /inventory. So both groups stay on this route,
+  // keep every hook, panel, queue and command they had, and become visually subordinate to the
+  // catalogue -- which is what Frame 1a draws and what the Owner approved.
+  //
+  // WHY DISCLOSURES RATHER THAN THE SUMMARY LINES THE FRAME DRAWS. Frame 1a shows each queue as a
+  // single line ("Waiting -- none", "Team work -- none") because the frame's fixture has them all
+  // empty but one. A one-line summary is the correct RESTING state; it is not a correct state for a
+  // queue that HAS work, because these panels carry governed commands -- Assign from the Parts
+  // Manager queue, the associate request detail, Request Reorder -- and the amendment forbids
+  // removing their functions from this workspace. A <details> is both at once: one line when there
+  // is nothing, the real panel when there is, opened by default exactly when it holds work. Native
+  // element, no new state, and nothing is behind a link to a route that does not exist.
+  const railCount = (n) => (n > 0 ? String(n) : "none");
+  const partsRail = (
+    <div className="ns-parts-rail">
+      <section className="ns-parts-rail__group" aria-labelledby="parts-group-work">
+        <h2 id="parts-group-work" className="ns-parts-rail__heading">
+          My work
+        </h2>
+
+        <details className="ns-parts-rail__item" open={queueEntries.length > 0}>
+          <summary>
+            Needs reorder <span className="ns-parts-rail__count">{railCount(queueEntries.length)}</span>
+          </summary>
+          <p className="fo-muted ns-parts-rail__note">
+            Parts ranked by urgency, from the same analytics used by the Operations dashboard&rsquo;s
+            Inventory Health panel.
+          </p>
+          {/* CHIPS, NOT VIEWS -- unchanged from the pre-P1v2 composition and for the unchanged
+              reason: this row chooses a slice of the Inventory Health PANEL, not a view of a
+              collection, so it must not wear the collection views markup. */}
+          <FilterBar
+            variant="chips"
+            options={queueFilterOptionsWithCounts}
+            activeKey={queueFilter}
+            onChange={setQueueFilter}
+          />
+          {reorderError && <p className="fo-muted">{reorderError}</p>}
+          <LoadingEmptyState
+            loading={loading}
+            failed={!!healthError}
+            isEmpty={false}
+            loadingText="Loading operational queue..."
+            failedText="Unable to load the operational queue right now. Try again shortly."
+            emptyText=""
+          >
+            <InventoryHealthPanel
+              healthEntries={queueEntries}
+              title="Needs Reorder"
+              resolveName={resolveName}
+              onRequestReorder={handleRequestReorder}
+              requestedPartIds={requestedPartIds}
+              submittingPartId={submittingPartId}
+              emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
+            />
+          </LoadingEmptyState>
+        </details>
+
+        {/* The SAME actionable ManagerQueuePanel PartsManagerHome.jsx uses -- an admin/dispatcher can
+            Assign directly from here. Unchanged by the move into the rail: same component, same
+            props, same server-enforced authority. */}
+        <details className="ns-parts-rail__item" open={partsManagerQueue.length > 0}>
+          <summary>
+            Parts Manager queue{" "}
+            <span className="ns-parts-rail__count">{railCount(partsManagerQueue.length)}</span>
+          </summary>
+          <ManagerQueuePanel
+            queue={partsManagerQueue}
+            resolveName={resolveName}
+            loading={partsManagerLoading}
+            error={partsManagerError}
+            title="Parts Manager Queue"
+            description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
+          />
+        </details>
+
+        <details className="ns-parts-rail__item" open={partsAssociateWaiting.length > 0}>
+          <summary>
+            Waiting <span className="ns-parts-rail__count">{railCount(partsAssociateWaiting.length)}</span>
+          </summary>
+          <LoadingEmptyState
+            loading={partsAssociateWaitingLoading}
+            failed={!!partsAssociateWaitingError}
+            isEmpty={partsAssociateWaiting.length === 0}
+            loadingText="Loading your assigned requests..."
+            failedText="Unable to load your assigned requests right now. Try again shortly."
+            emptyText="No requests currently waiting on you."
+          >
+            <RequestCards
+              requests={partsAssociateWaiting}
+              resolveName={resolveName}
+              onSelect={handleSelectAssociateRequest}
+            />
+          </LoadingEmptyState>
+        </details>
+
+        <details className="ns-parts-rail__item" open={partsAssociateInProgress.length > 0}>
+          <summary>
+            In progress{" "}
+            <span className="ns-parts-rail__count">{railCount(partsAssociateInProgress.length)}</span>
+          </summary>
+          <LoadingEmptyState
+            loading={partsAssociateInProgressLoading}
+            failed={!!partsAssociateInProgressError}
+            isEmpty={partsAssociateInProgress.length === 0}
+            loadingText="Loading your in-progress purchasing..."
+            failedText="Unable to load your in-progress purchasing right now. Try again shortly."
+            emptyText="No purchasing currently in progress."
+          >
+            <RequestCards
+              requests={partsAssociateInProgress}
+              resolveName={resolveName}
+              onSelect={handleSelectAssociateRequest}
+            />
+          </LoadingEmptyState>
+        </details>
+
+        {/* Cross-user oversight. Stays CLOSED by default even when populated: every row in it is
+            already represented by the two disclosures above for the viewer's own work, and the panel
+            says so itself ("Your own assignments above are a subset of this list"). */}
+        <details className="ns-parts-rail__item">
+          <summary>
+            Team work <span className="ns-parts-rail__count">{railCount(allAssignedWork.length)}</span>
+          </summary>
+          <p className="fo-muted ns-parts-rail__note">
+            Every Reorder Request currently assigned to a Parts Associate, regardless of who it is
+            assigned to. Your own assignments above are a subset of this list.
+          </p>
+          <AssignedWorkOversightTable
+            requests={allAssignedWork}
+            resolveName={resolveName}
+            resolveAssigneeDisplay={(userId) =>
+              resolveAssigneeDisplay(userId, employeeDirectory, employeeDirectoryLoading, employeeDirectoryError)
+            }
+            loading={allAssignedWorkLoading}
+            error={allAssignedWorkError}
+          />
+        </details>
+
+        {/* The associate request detail is a DIALOG, not a rail row -- it stays outside the
+            disclosures so opening a request from either queue composes the same way it did before. */}
+        {selectedAssociateRequestId && (
+          <AssignedRequestDetail
+            requestId={selectedAssociateRequestId}
+            resolveName={resolveName}
+            onClose={handleCloseAssociateRequest}
+          />
+        )}
+      </section>
+
+      <section className="ns-parts-rail__group" aria-labelledby="parts-group-flow">
+        <h2 id="parts-group-flow" className="ns-parts-rail__heading">
+          Flow
+        </h2>
+        <details className="ns-parts-rail__item">
+          <summary>
+            History <span className="ns-parts-rail__count">{railCount(historyData.length)}</span>
+          </summary>
+          <p className="fo-muted ns-parts-rail__note">
+            Cancelled, Voided, Received and Rejected Reorder Requests, newest first.
+          </p>
+
+          <form className="fo-inline-form" onSubmit={handleHistoryLookupSubmit}>
+            <label htmlFor="history-lookup-input">Find by exact request ID</label>
+            <input
+              id="history-lookup-input"
+              type="text"
+              value={historyLookupInput}
+              onChange={(e) => setHistoryLookupInput(e.target.value)}
+              placeholder="Reorder Request document ID"
+            />
+            <button type="submit" disabled={!historyLookupInput.trim()}>
+              Find
+            </button>
+            {historyLookupId && (
+              <button type="button" onClick={handleHistoryLookupClear}>
+                Clear
+              </button>
+            )}
+          </form>
+          {historyLookupId && (
+            <p role="status" className="fo-muted">
+              {historyLookupLoading
+                ? "Looking up request..."
+                : historyLookupError === "not_found"
+                  ? `No Reorder Request found with ID "${historyLookupId}".`
+                  : historyLookupError
+                    ? `Unable to look up request (${historyLookupError}).`
+                    : historyLookupResult && (
+                        <>
+                          Found:{" "}
+                          <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
+                            {resolveName(historyLookupResult.partId)}
+                          </Link>{" "}
+                          -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
+                        </>
+                      )}
+            </p>
+          )}
+
+          <p role="status" className="fo-sr-only">
+            {historyStatusMessage}
+          </p>
+          {historyInitialLoadFailed ? (
+            <p className="fo-muted">Unable to load History ({historyError}).</p>
+          ) : (
+            <LoadingEmptyState
+              loading={historyLoading && historyData.length === 0}
+              isEmpty={historyData.length === 0}
+              loadingText="Loading History..."
+              emptyText="No terminal Reorder Requests yet."
+            >
+              <div className="fo-table-scroll">
+                <table className="fo-table">
+                  <thead>
+                    <tr>
+                      <th>Part</th>
+                      <th>Qty</th>
+                      <th>Status</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.map((request) => (
+                      <tr key={request.id}>
+                        <td>
+                          <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
+                            {resolveName(request.partId)}
+                          </Link>
+                        </td>
+                        <td>{getDisplayQty(request)}</td>
+                        <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
+                        <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="disp-board-toolbar fo-parts__toolbar--center">
+                {historyError ? (
+                  <p className="fo-muted">
+                    Unable to load more History ({historyError}).{" "}
+                    <button type="button" onClick={historyLoadMore}>
+                      Retry
+                    </button>
+                  </p>
+                ) : historyIsEndOfHistory ? (
+                  <span className="fo-muted">End of history.</span>
+                ) : (
+                  <button type="button" onClick={historyLoadMore} disabled={historyLoading}>
+                    {historyLoading ? "Loading..." : "Load More"}
+                  </button>
+                )}
+              </div>
+            </LoadingEmptyState>
+          )}
+        </details>
+      </section>
+    </div>
+  );
+
+  // WHERE THIS SITS, in the record family's own grammar. Frame 1a opens the workspace with the same
+  // breadcrumb and rule pair the Part record already opens with, so that entering the collection and
+  // opening one of its records do not read as two different products.
+  //
+  // THE RIGHT SIDE STATES WHEN THIS WAS READ, and only that. It is the client's own read time --
+  // never a claim about how current the underlying records are, which is a fact no read on this page
+  // establishes -- sitting beside the refresh this page already had.
   return (
     <WorkspaceShell
+      crumb={
+        <>
+          {/* THE RECORD'S OWN MARKUP, not a second dialect of it. PartDetail already opens with
+              `.ns-page__utility` + `.ns-page__context` + `.ns-rulepair`; the workspace reuses those
+              exact classes so the two surfaces share one implementation as well as one look. */}
+          <div className="ns-page__utility">
+            <span className="ns-page__context">
+              Inventory <span aria-hidden="true">→</span> Parts
+            </span>
+            <span>
+              {readCheckedAt
+                ? `Read-checked ${readCheckedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                : "Reading the catalogue…"}
+              {" · "}
+              <button type="button" className="fo-link-btn" onClick={handleCatalogRefresh}>
+                Refresh
+              </button>
+            </span>
+          </div>
+          <div className="ns-rulepair" />
+        </>
+      }
       title="Parts"
+      supporting={partsRail}
       actions={
         <ActionRail
           start={<GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search part number, description, or category" />}
@@ -667,7 +973,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
           onClose={() => setNewPartOpen(false)}
           onSaved={() => {
             setNewPartOpen(false);
-            setCatalogRefreshToken((t) => t + 1);
+            handleCatalogRefresh();
           }}
         />
       )}
@@ -707,14 +1013,16 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               </strong>
               {" · "}
               {collectionSummary.active} active
-              {collectionSummary.statusUnknown > 0 ? (
-                <>
-                  {" · "}
-                  {/* NEITHER ACTIVE NOR INACTIVE. A row with no canonical document carries no status,
-                      and counting it as either would be the invention this family keeps refusing. */}
-                  {collectionSummary.statusUnknown} status not recorded
-                </>
-              ) : null}
+              {/* NO "N STATUS NOT RECORDED" SEGMENT. Frame 1a draws three segments -- total, active,
+                  needs attention -- and its own fixture contains a part whose status is unrecorded,
+                  so the omission is the design's decision rather than an artefact of its data.
+                  Recorded as an INTENTIONAL presentation removal, on the same footing as Recommended
+                  reorder qty and Risk leaving the record (Owner ruling 4).
+
+                  The fact is not lost and was not the summary's to carry alone: every such row still
+                  says "Not recorded" in its own Status cell, `partsCollectionSummary` still computes
+                  `statusUnknown`, and the projection test still pins it. What left is one segment of
+                  a header line, not a governed count. */}
               {collectionSummary.needsAttention > 0 ? (
                 <>
                   {" · "}
@@ -744,15 +1052,32 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
 
             variant="chips" is also the caller obligation listsP2Compose enforces -- a
             non-collection surface must declare itself rather than inherit the views default. */}
-        <FilterBar
-          variant="chips"
-          options={collectionViews.map((v) => ({ key: v.key, label: v.label, count: v.count }))}
-          activeKey={view}
-          onChange={(value) => {
-            setView(value);
-            setPage(0);
-          }}
-        />
+        {/* THE TAB RAIL, WHICH ALREADY EXISTED. Frame 1a draws the views as underlined tabs rather
+            than pills, and the handoff named that as an implementation seam against the Lists P2
+            COMPOSE contract. There was no seam: `.ns-tabrail` is the shared workspace tab control
+            (Equipment uses it), it is NOT the collection-views markup, and so wearing it does not make
+            /inventory declare itself a collection page -- which is the thing ND-30 withholds.
+
+            It also carries the hover both halves of, which the chips did not: `.fo-filter-btn:hover`
+            set a colour and let the global `button:hover` supply a dark fill underneath it. */}
+        <div className="ns-tabrail" role="tablist" aria-label="Parts views">
+          {collectionViews.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              role="tab"
+              aria-selected={view === v.key}
+              className={`ns-tabrail__tab${view === v.key ? " ns-tabrail__tab--on" : ""}`}
+              onClick={() => {
+                setView(v.key);
+                setPage(0);
+              }}
+            >
+              {v.label}{" "}
+              <span className={v.isAttention && v.count > 0 ? "is-attention" : "fo-muted"}>{v.count}</span>
+            </button>
+          ))}
+        </div>
 
         <div className="ns-toolbar">
           <label className="ns-toolbar__search">
@@ -820,11 +1145,6 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
         <p className="fo-muted">{catalogBlockedMessage(catalog.status)}</p>
       ) : (
       <>
-      <p className="fo-muted">
-        Attention comes from the governed reorder-request projection. No stock quantity is shown here: the
-        governed balance read is single-part, so there is no list-scale quantity to answer from, and the
-        static catalogue is a baseline rather than a count.
-      </p>
 
 
       <LoadingEmptyState
@@ -845,11 +1165,16 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               at a desk, which is why the scroll container above it is unchanged. */}
           <table className="fo-table fo-table--stack">
             <thead>
-              {/* FRAME 1a's grammar (ND-30): Part · Manufacturer · Category · Control · Status ·
-                  Attention. On hand is absent and stays absent -- ND-25. */}
+              {/* FRAME 1a's grammar, P1v2: Part · Category · Control · Status · Attention.
+                  On hand is absent and stays absent -- ND-25.
+
+                  MANUFACTURER IS NOT GONE; IT MOVED INTO THE PART CELL. As its own column it read
+                  "Not recorded" on 25 of 25 rows and spent 194px doing it -- a column that is
+                  governed, will populate one day, and does not earn its width today. Folded in
+                  beside the description it costs nothing when absent and reads naturally when
+                  present, which is what P1v2 draws. */}
               <tr>
                 <th>Part</th>
-                <th>Manufacturer</th>
                 <th>Category</th>
                 <th>Control</th>
                 <th>Status</th>
@@ -877,16 +1202,35 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                       <Link to={partCatalogRoute(part)}>
                         {row.partNumber ?? row.name ?? "Unnamed part"}
                       </Link>
+                      {/* DESCRIPTION, THEN MANUFACTURER, THEN THE CONTROL MARKER -- Frame 1a's second
+                          line. Each part of it renders ONLY when the fact is recorded: an absent
+                          manufacturer contributes nothing rather than a "Not recorded" that used to
+                          be repeated down a whole column. A NAME, never the manufacturer id, and
+                          never another field borrowed to make the line look populated. */}
                       <div className="fo-muted" data-part-number={row.partNumber ?? ""}>
                         {row.partNumber
                           ? row.name
                           : <span className="ns-state--na">Part Number not recorded</span>}
+                        {row.manufacturer ? ` · ${row.manufacturer}` : null}
+                        {/* PHONE ONLY, where Category and Control have no columns to live in.
+                            Frame 1a-mobile folds the category onto this second line; Control rides
+                            with it rather than being dropped, because a serialized part must not
+                            look like every other part on the handheld that is used in the aisle --
+                            that is the one device where the distinction has operational
+                            consequence. Hidden at desk widths, where both have their own columns
+                            and repeating them would be the ND-32 duplication again. */}
+                        <span className="ns-row__phone">
+                          {row.category ? ` · ${row.category}` : null}
+                          {row.control ? ` · ${row.control}` : null}
+                        </span>
+                        {/* AND NO INLINE "· serialized" MARKER, though Frame 1a draws one. Control
+                            is still its own column on this table and already says "Serialized" for
+                            exactly these rows, so the marker would state one fact twice in one row.
+                            That is the concatenation ND-32 refused on the Equipment register, for
+                            the same reason and in the same words: an attribute that has a column
+                            does not also ride in the identity cell. Manufacturer folds in precisely
+                            BECAUSE its column is gone (ruling 6/W7); Control's is not. */}
                       </div>
-                    </td>
-                    {/* A NAME, or an honest absence. Never the manufacturer id, and never another
-                        field borrowed to make the cell look populated. */}
-                    <td data-label="Manufacturer" className="fo-muted">
-                      {row.manufacturer ?? <span className="ns-state--na">Not recorded</span>}
                     </td>
                     <td data-label="Category" className="fo-muted">
                       {row.category ?? <span className="ns-state--na">Not recorded</span>}
@@ -908,7 +1252,13 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                           {row.attention.label}
                         </span>
                       ) : (
-                        <span className="ns-state--na">—</span>
+                        // NOTHING, not a dash. Frame 1a leaves the cell empty when the projection
+                        // has nothing to say, and a column of 23 dashes is noise in the one column a
+                        // parts manager scans for work. The dash was defended as "a statement that
+                        // the projection was consulted" -- but that statement is made once, in the
+                        // header's own "N need attention", and does not need repeating on every row
+                        // that is fine. `data-label` still carries the heading into the phone card.
+                        null
                       )}
                     </td>
                   </tr>
@@ -921,13 +1271,36 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
               Previous
             </button>
+            {/* WHAT IS ON SCREEN, AND WHAT THERE IS -- both, because Frame 1a's footer reads "62
+                parts" over an unpaged list and this list IS paged.
+                Owner ruling 5 (W10): Design controls the visual grammar, not permission to remove
+                operational collection scaling. The frame was drawn against a 62-row fixture; the
+                production catalogue is ~1,400 parts. So pagination stays, and the count states the
+                range as well as the total -- because "62 parts" alone, over 25 rows, would tell the
+                reader the page IS the catalogue. */}
             <span className="fo-muted">
-              Page {currentPage + 1} of {pageCount}
+              Showing {filteredParts.length === 0 ? 0 : currentPage * PAGE_SIZE + 1}–
+              {Math.min((currentPage + 1) * PAGE_SIZE, filteredParts.length)} of {filteredParts.length}{" "}
+              {filteredParts.length === 1 ? "part" : "parts"}
             </span>
             <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
               Next
             </button>
           </div>
+
+          {/* THE SAME SENTENCE, MOVED RATHER THAN DROPPED. It stood above the table, where three
+              lines of governance prose were the first thing a reader met on a page whose subject is
+              parts -- the brief's own finding that explanation was outranking fact. Frame 1a draws
+              no such paragraph and puts an information affordance beside the count instead.
+
+              It is not deleted, because what it says is still true and still load-bearing: ND-25's
+              reason for having no quantity column is exactly the kind of absence this family
+              refuses to leave unexplained. It reads as a footnote to the table it is about. */}
+          <p className="fo-muted ns-parts-catalogue__note">
+            Attention comes from the governed reorder-request projection. No stock quantity is shown
+            here: the governed balance read is single-part, so there is no list-scale quantity to
+            answer from, and the static catalogue is a baseline rather than a count.
+          </p>
         </>
       </LoadingEmptyState>
       </>
@@ -935,226 +1308,6 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
       </div>
 
 
-      {/* Wave 6 -- Parts UX redesign (parts-ux-redesign-blueprint.md). Groups the page's existing
-          sections under WORK / PARTS / FLOW. Presentation-only: every section keeps its exact
-          heading, data source, hook and link.
-
-          ORDER CORRECTED 2026-08-30: Parts now leads, because a page called Parts that opens on
-          five empty queues is answering a question nobody asked first. */}
-      <h2 id="parts-group-work">Work</h2>
-      <p className="fo-muted">What needs action, what's assigned to you, and what your team is handling.</p>
-
-      <h3>Inventory Operational Queue</h3>
-      <p className="fo-muted">
-        Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
-      </p>
-      {/* CHIPS, NOT VIEWS. This page is a pre-North-Star WorkspaceShell holding several panels, and
-          this row chooses a slice of the Inventory Health PANEL — not a view of a collection. The
-          views grammar states "this is the collection, and these are the ways to read it", which
-          needs a collection identity above it; this page has none. Wearing the chrome without the
-          header is the drift listsP2Compose exists to catch. See the gap named for this page in
-          the rollout note: it needs a collection pass, not a chip swap. */}
-      <FilterBar
-        variant="chips"
-        options={queueFilterOptionsWithCounts}
-        activeKey={queueFilter}
-        onChange={setQueueFilter}
-      />
-      {reorderError && <p className="fo-muted">{reorderError}</p>}
-      <LoadingEmptyState
-        loading={loading}
-        failed={!!healthError}
-        isEmpty={false}
-        loadingText="Loading operational queue..."
-        failedText="Unable to load the operational queue right now. Try again shortly."
-        emptyText=""
-      >
-        <InventoryHealthPanel
-          healthEntries={queueEntries}
-          title="Needs Reorder"
-          resolveName={resolveName}
-          onRequestReorder={handleRequestReorder}
-          requestedPartIds={requestedPartIds}
-          submittingPartId={submittingPartId}
-          emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
-        />
-      </LoadingEmptyState>
-
-      {/* Wave 6 -- queue consolidation (Owner directive, Option A). This is now the SAME
-          actionable ManagerQueuePanel PartsManagerHome.jsx uses (shared/reorder/
-          ManagerQueuePanel.jsx) -- an admin/dispatcher can Assign directly from here, not
-          just view. admin/dispatcher already hold `reorder.request.assign` unconditionally
-          (compatibilityRoles.ts SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS), so this widens no
-          capability -- it reuses one already granted. */}
-      <ManagerQueuePanel
-        queue={partsManagerQueue}
-        resolveName={resolveName}
-        loading={partsManagerLoading}
-        error={partsManagerError}
-        title="Parts Manager Queue"
-        description="Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment."
-      />
-
-      <h3>My Work</h3>
-      <p className="fo-muted">Reorder Requests assigned to you, split by whether you've started purchasing.</p>
-
-      {/* Wave 6 -- queue consolidation. The SAME actionable RequestCards + AssignedRequestDetail
-          PartsAssociateHome.jsx uses (shared/reorder/AssociateRequestPanel.jsx). Safe to reuse
-          here: `partsAssociateWaiting`/`partsAssociateInProgress` are ALREADY scoped to
-          useReorderRequestsAssignedTo(user.uid, ...) above (the signed-in viewer's own uid,
-          unchanged from before this refactor) -- the four write commands the detail panel
-          invokes are independently enforced server-side to require auth.uid ===
-          assignedToUserId, so this never exposes an action a different principal could use. */}
-      <h4>Waiting</h4>
-      <LoadingEmptyState
-        loading={partsAssociateWaitingLoading}
-        failed={!!partsAssociateWaitingError}
-        isEmpty={partsAssociateWaiting.length === 0}
-        loadingText="Loading your assigned requests..."
-        failedText="Unable to load your assigned requests right now. Try again shortly."
-        emptyText="No requests currently waiting on you."
-      >
-        <RequestCards requests={partsAssociateWaiting} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
-      </LoadingEmptyState>
-
-      <h4>In Progress</h4>
-      <LoadingEmptyState
-        loading={partsAssociateInProgressLoading}
-        failed={!!partsAssociateInProgressError}
-        isEmpty={partsAssociateInProgress.length === 0}
-        loadingText="Loading your in-progress purchasing..."
-        failedText="Unable to load your in-progress purchasing right now. Try again shortly."
-        emptyText="No purchasing currently in progress."
-      >
-        <RequestCards requests={partsAssociateInProgress} resolveName={resolveName} onSelect={handleSelectAssociateRequest} />
-      </LoadingEmptyState>
-
-      {selectedAssociateRequestId && (
-        <AssignedRequestDetail
-          requestId={selectedAssociateRequestId}
-          resolveName={resolveName}
-          onClose={handleCloseAssociateRequest}
-        />
-      )}
-
-      <h3>Team Work</h3>
-      <p className="fo-muted">Cross-user oversight -- every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to. Your own assignments above are a subset of this list.</p>
-      {/* Wave 6 -- queue consolidation, safe mechanical dedup (Owner directive §12). The SAME
-          shared/reorder/AssignedWorkOversightTable.jsx PartsManagerHome.jsx's "Assigned-Work
-          Oversight" now uses -- ONE implementation, not two independently-maintained copies.
-          Assignee-name resolution stays THIS page's own scope (useEmployeeDirectory(), already
-          visible to admin/dispatcher elsewhere) -- injected, not hardcoded in the shared table,
-          so reuse never widens or narrows either caller's own data visibility. */}
-      <AssignedWorkOversightTable
-        requests={allAssignedWork}
-        resolveName={resolveName}
-        resolveAssigneeDisplay={(userId) => resolveAssigneeDisplay(userId, employeeDirectory, employeeDirectoryLoading, employeeDirectoryError)}
-        loading={allAssignedWorkLoading}
-        error={allAssignedWorkError}
-      />
-
-
-      <h2 id="parts-group-flow">Flow</h2>
-      <p className="fo-muted">Where reorder requests have already landed in the lifecycle.</p>
-
-      <h3>History ({historyData.length})</h3>
-      <p className="fo-muted">Cancelled, Voided, Received, and Rejected Reorder Requests, newest first.</p>
-
-      <form className="fo-inline-form" onSubmit={handleHistoryLookupSubmit}>
-        <label htmlFor="history-lookup-input">Find by exact request ID</label>
-        <input
-          id="history-lookup-input"
-          type="text"
-          value={historyLookupInput}
-          onChange={(e) => setHistoryLookupInput(e.target.value)}
-          placeholder="Reorder Request document ID"
-        />
-        <button type="submit" disabled={!historyLookupInput.trim()}>
-          Find
-        </button>
-        {historyLookupId && (
-          <button type="button" onClick={handleHistoryLookupClear}>
-            Clear
-          </button>
-        )}
-      </form>
-      {historyLookupId && (
-        <p role="status" className="fo-muted">
-          {historyLookupLoading
-            ? "Looking up request..."
-            : historyLookupError === "not_found"
-              ? `No Reorder Request found with ID "${historyLookupId}".`
-              : historyLookupError
-                ? `Unable to look up request (${historyLookupError}).`
-                : historyLookupResult && (
-                    <>
-                      Found:{" "}
-                      <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
-                        {resolveName(historyLookupResult.partId)}
-                      </Link>{" "}
-                      -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
-                    </>
-                  )}
-        </p>
-      )}
-
-      <p role="status" className="fo-sr-only">
-        {historyStatusMessage}
-      </p>
-      {historyInitialLoadFailed ? (
-        <p className="fo-muted">Unable to load History ({historyError}).</p>
-      ) : (
-        <LoadingEmptyState
-          loading={historyLoading && historyData.length === 0}
-          isEmpty={historyData.length === 0}
-          loadingText="Loading History..."
-          emptyText="No terminal Reorder Requests yet."
-        >
-          <div className="fo-table-scroll">
-            <table className="fo-table">
-              <thead>
-                <tr>
-                  <th>Part</th>
-                  <th>Qty</th>
-                  <th>Status</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyData.map((request) => (
-                  <tr key={request.id}>
-                    <td>
-                      <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                        {resolveName(request.partId)}
-                      </Link>
-                    </td>
-                    <td>{getDisplayQty(request)}</td>
-                    <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
-                    <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="disp-board-toolbar fo-parts__toolbar--center">
-            {historyError ? (
-              <p className="fo-muted">
-                Unable to load more History ({historyError}).{" "}
-                <button type="button" onClick={historyLoadMore}>
-                  Retry
-                </button>
-              </p>
-            ) : historyIsEndOfHistory ? (
-              <span className="fo-muted">End of history.</span>
-            ) : (
-              <button type="button" onClick={historyLoadMore} disabled={historyLoading}>
-                {historyLoading ? "Loading..." : "Load More"}
-              </button>
-            )}
-          </div>
-        </LoadingEmptyState>
-      )}
     </WorkspaceShell>
   );
 }
