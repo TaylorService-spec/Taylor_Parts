@@ -89,11 +89,18 @@ describe("ruling 3 — Used on is a truthful absence, not a populated column", (
   });
 
   it("the record renders the absence sentence, and never the frame's reassurance line", () => {
-    // Frame 1b draws "From the existing compatibility catalog." beneath a populated Used on. That
-    // sentence is true of the CATALOGUE and false of the READ — exactly the distinction ND-27 drew
-    // for locations — so it must not appear while the capability is off.
-    expect(RECORD_SRC).toContain("not an empty list, it is an unread one");
+    // Frame 1b draws a line beneath a populated Used on naming the compatibility catalogue as its
+    // source. That sentence is true of the CATALOGUE and false of the READ — exactly the distinction
+    // ND-27 drew for locations — so it must not appear while the capability is off.
+    //
+    // THE SEMANTIC, NOT THE OLD SENTENCE. Ruling B §6 shortened the visible copy to Design's
+    // grammar; both halves of the contract are still asserted, and the long form moved behind the
+    // disclosure rather than being deleted.
+    expect(RECORD_SRC).toContain("Not an empty list — an unread one");
+    expect(RECORD_SRC).toMatch(/built and governed, switched off in this environment/);
     expect(RECORD_SRC).not.toContain("From the existing compatibility catalog");
+    // ...and the long explanation is reachable rather than gone.
+    expect(RECORD_SRC).toContain("Used on — why compatibility cannot be shown");
   });
 });
 

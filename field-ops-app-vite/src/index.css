@@ -7084,3 +7084,118 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-record-bands > .ns-section { margin-bottom: 18px; }
 .ns-record-bands > .ns-section > .ns-section__head { padding: 9px 0 10px; }
 .ns-record-bands > .ns-band--reference { margin-bottom: 10px; }
+
+/* ══════ A1 — THE LIGHTWEIGHT ABSENCE GRAMMAR (Owner ruling, 2026-08-31) ══════
+   Frame 1b prices an unavailable capability at ONE ITALIC LINE. The shipped
+   treatment was a bordered, padded status block at 14.5px -- 84px for a
+   two-line sentence, twice on this record (Where it is, Used on), 168px of
+   packaging around ~40px of words.
+
+   THE SEMANTICS ARE UNTOUCHED AND THAT IS THE POINT. HonestState still decides
+   WHICH state this is and still writes the sentence; NOT_ENABLED still reads as
+   "built, governed, switched off" and is still distinct from EMPTY and from
+   DENIED. Only the packaging changes, and only here.
+
+   SCOPED TO THE PARTS RECORD'S BANDS, deliberately. `.ns-state--not-enabled` is
+   worn by accepted North Star families whose composition was signed off with
+   the bordered block; a global restyle would silently re-open those. The
+   selector reaches inside `.ns-record-bands` and nowhere else, so this is a
+   Parts-local composition decision rather than a design-system change. */
+.ns-record-bands .ns-band__col .ns-state,
+.ns-record-bands .ns-band--reference .ns-state {
+  padding: 0; margin: 2px 0 0; font-size: 13px; line-height: 1.5; font-style: italic;
+  max-width: 62ch;
+}
+.ns-record-bands .ns-band__col .ns-state--denied,
+.ns-record-bands .ns-band__col .ns-state--not-enabled,
+.ns-record-bands .ns-band--reference .ns-state--denied,
+.ns-record-bands .ns-band--reference .ns-state--not-enabled {
+  border-left: 0; padding-left: 0;
+}
+/* DENIED KEEPS A MARK, because "you may not see this" and "nobody can see this
+   yet" must not become the same sentence typographically. It is the one state
+   where losing the border would cost a distinction rather than only padding. */
+.ns-record-bands .ns-band__col .ns-state--denied,
+.ns-record-bands .ns-band--reference .ns-state--denied {
+  font-style: normal; color: var(--color-text-primary);
+}
+
+/* ══════ A2 — BAND HEADING FURNITURE ══════
+   47px of head for a 22px serif title, six times over. The rule the band sits
+   on and the type scale both stay -- they are what separate one operational
+   group from the next -- and the padding that was tuned for a flat run of seven
+   full-width sections comes down. */
+.ns-record-bands > .ns-section > .ns-section__head { padding: 5px 0 6px; }
+.ns-record-bands > .ns-section { margin-bottom: 14px; }
+.ns-record-bands > .ns-band--reference { margin-bottom: 8px; }
+.ns-record-bands .ns-band__cols { gap: 14px 48px; }
+.ns-band__block { margin-top: 14px; }
+/* The identifier band's two lines. */
+.ns-ident__line { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.ns-ident__note { font-size: 12px; line-height: 1.5; margin: 12px 0 0; max-width: 68ch; }
+
+/* ══════ THE (i) DISCLOSURE (Owner ruling B, 2026-08-31) ══════
+   Anchored, so opening it never reflows the record beneath it, and absolutely
+   positioned, so a CLOSED one costs the page nothing -- which is the point.
+   The alternative, a <details> that pushes everything down, would have traded
+   permanent height for a jump. */
+.ns-info { position: relative; display: inline-block; vertical-align: middle; }
+/* A REAL TARGET. 44px is this codebase's handheld floor and it does not exempt
+   controls for being small or typographically quiet -- the same rule, and the
+   same wide-pointer relaxation, that `.ns-page__crumb a` already carries. The
+   ring stays 18px; the TARGET around it is what grows. */
+.ns-info__trigger { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 44px; padding: 0; margin: 0 0 0 2px;
+  background: none; border: 0; cursor: pointer; color: var(--color-text-secondary); }
+.ns-info__trigger > span { display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border: 1px solid currentColor; border-radius: 50%;
+  font: 600 11px var(--font-record-title), Georgia, serif; font-style: italic; line-height: 1; }
+.ns-info__trigger:hover > span, .ns-info__trigger[aria-expanded="true"] > span {
+  color: #FFFFFF; background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+.ns-info__trigger:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: -8px; }
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .ns-info__trigger { min-width: 22px; min-height: 22px; }
+  .ns-info__trigger:focus-visible { outline-offset: 1px; }
+}
+/* The panel. Inline elements only -- two of the three call sites are inside a
+   <p>, where a <div> is invalid -- so the block behaviour is supplied here. */
+.ns-info__panel { position: absolute; z-index: 40; top: calc(100% - 6px); display: block;
+  width: max(260px, 30ch); max-width: min(420px, 80vw);
+  background: var(--color-surface, #FFFFFF); border: 1px solid var(--color-text-primary);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.13); padding: 12px 14px 10px;
+  font: 400 12.5px/1.55 var(--font-interface); color: var(--color-text-primary);
+  font-style: normal; text-transform: none; letter-spacing: normal; }
+.ns-info__panel[hidden] { display: none; }
+.ns-info__panel--start { left: 0; }
+.ns-info__panel--end { right: 0; }
+.ns-info__body { display: block; }
+.ns-info__close { display: block; margin-top: 8px; padding: 0; background: none; border: 0;
+  font: 600 11.5px var(--font-interface); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-text-secondary); cursor: pointer; min-height: 44px; }
+.ns-info__close:hover { color: var(--color-text-primary); }
+.ns-info__close:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: 2px; }
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .ns-info__close { min-height: 0; }
+}
+/* Phones: the anchor is near the right edge as often as not, so the panel
+   stops being anchored and becomes full-width beneath its line. */
+@media (max-width: 520px) {
+  .ns-info__panel { position: absolute; left: auto; right: 0; width: min(300px, 86vw); }
+}
+
+/* THE (i) BELONGS AT THE END OF ITS SENTENCE, NOT BENEATH IT.
+   HonestState renders a <p>, so a disclosure placed after it became its own
+   25px line box -- twice on this record, 50px spent on putting two icons on
+   lines of their own. Measured, not assumed: the trigger sat 40px below the
+   sentence it explains, which also reads as a floating icon rather than as an
+   affordance ON that sentence.
+
+   The absence line goes inline inside a band column so the trigger flows after
+   its last word, where Frame 1b draws it. Scoped to the band columns: every
+   `.ns-state` in one is a short absence sentence paired with its own control,
+   which is the only place this is the right behaviour. */
+.ns-record-bands .ns-band__col > .ns-state { display: inline; }
+.ns-record-bands .ns-band__col > .ns-state + .ns-info { margin-left: 1px; }
+/* The reorder command and its (i) on one line, baseline-aligned — the frame
+   draws the icon beside the button, not under it. */
+.ns-reorder-row { display: inline-flex; align-items: center; gap: 2px; }

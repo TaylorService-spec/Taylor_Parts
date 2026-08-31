@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
+import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
 import PartIdentifiersSection from "../../shared/partMaster/PartIdentifiersSection.jsx";
 import PartWorkOrderDemandSection from "./PartWorkOrderDemandSection";
@@ -1645,12 +1646,27 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                     (!reorderRequest || TERMINAL_REORDER_REQUEST_STATUSES.has(reorderRequest.status)) && (
                       <>
                         {reorderError && <p className="ns-state--na">{reorderError}</p>}
-                        <RequestReorderControl
-                          recommendation={health.recommendation}
-                          onSubmit={handleRequestReorder}
-                          submitting={reorderSubmitting}
-                          alreadyRequested={false}
-                        />
+                        <span className="ns-reorder-row">
+                          <RequestReorderControl
+                            recommendation={health.recommendation}
+                            onSubmit={handleRequestReorder}
+                            submitting={reorderSubmitting}
+                            alreadyRequested={false}
+                          />
+                          {/* ND-28, WHERE THE FRAME PUTS IT. The figures above are derived from this
+                              part's own ledger movements; the reorder request is a governed command.
+                              The Owner's ruling is that the informational number does not become the
+                              authority for the command merely because they share a card -- and the
+                              one place a reader is most likely to assume otherwise is the moment
+                              they reach for the button directly beneath the numbers. */}
+                          <PartsInfoDisclosure label="Request reorder — what these figures do and do not decide">
+                            The figures above are derived from this part&rsquo;s movements in the
+                            work-order and receiving ledger. They are informational: they do not
+                            authorise the reorder, and they do not set its quantity. Raising a
+                            request starts the governed reorder workflow, which is reviewed and
+                            assigned by the people who hold that authority.
+                          </PartsInfoDisclosure>
+                        </span>
                       </>
                     )}
                 </>
@@ -1702,8 +1718,15 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                 on the workspace. */}
             <div className="ns-band__col" data-where-it-is>
               <h3 className="ns-band__sub">{locationSection.heading}</h3>
+              {/* THE CUSTODY SENTENCE IS NOT ABBREVIATED AND NOT MOVED. ND-25 is the reason this
+                  block exists: location describes where units sit, and it never implies custody or
+                  availability. Both confusions are cheap to make and expensive to act on, so it
+                  stays on the page at full length. */}
               <p className="ns-band__note">{locationSection.note}</p>
               <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Location detail" detail={locationSection.detail} />
+              <PartsInfoDisclosure label="Where it is — why locations cannot be listed">
+                {locationSection.detailLong}
+              </PartsInfoDisclosure>
             </div>
           </div>
         </RuledSection>
@@ -1724,17 +1747,26 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                 is rendered, and the static catalogue's baseline figures are not substituted for
                 them. On order is a governed fact behind an inactive capability, which is a different
                 sentence from a missing one. */}
+            {/* THE CONCISE SENTENCE STAYS; THE LONG ONE MOVES BEHIND THE (i).
+                Owner ruling B §3. `purchasing.detail` is 259 characters of governed explanation --
+                the balance-read authority and the cost/price refusal -- and it was rendering as
+                three permanent lines under a one-line fact. Not a word of it is deleted: it is the
+                disclosure's entire content, verbatim from the same domain function. */}
             <div className="ns-band__col">
               <h3 className="ns-band__sub">{purchasing.heading}</h3>
               <dl className="ns-rail__dl">
                 {purchasing.rows.map((row) => (
                   <div key={row.key}>
                     <dt>{row.label}</dt>
-                    <dd className="ns-state--na">{row.absence}</dd>
+                    <dd className="ns-state--na">
+                      {row.absence}
+                      <PartsInfoDisclosure label={`${row.label} — why this is not available`} align="end">
+                        {purchasing.detail}
+                      </PartsInfoDisclosure>
+                    </dd>
                   </div>
                 ))}
               </dl>
-              <p className="ns-gap-note">{purchasing.detail}</p>
             </div>
           </div>
 
@@ -1787,11 +1819,23 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
                   partId={resolvedPartId}
                 />
               ) : (
-                <HonestState
-                  state={HONEST_STATE.NOT_ENABLED}
-                  subject="Equipment compatibility"
-                  detail="The equipment this part is used on is recorded in the compatibility catalog. Reading it here is built and governed, and switched off in this environment — so this is not an empty list, it is an unread one."
-                />
+                <>
+                  {/* CONCISE VISIBLE, LONG FORM BEHIND THE (i) — ruling B §6. The visible line keeps
+                      both contracts: the read is BUILT AND GOVERNED and SWITCHED OFF, and this is an
+                      UNREAD list rather than an empty one. No compatibility fact is fabricated
+                      either way; the catalogue's existence is not a claim about what is in it. */}
+                  <HonestState
+                    state={HONEST_STATE.NOT_ENABLED}
+                    subject="Equipment compatibility"
+                    detail="Not an empty list — an unread one: the compatibility read is built and governed, switched off in this environment."
+                  />
+                  <PartsInfoDisclosure label="Used on — why compatibility cannot be shown">
+                    The equipment this part is used on is recorded in the compatibility catalog.
+                    Reading it here needs the equipment compatibility capability, which is registered
+                    and governed and is not active in this environment. That the catalog exists is
+                    not a claim about what it holds for this part — nothing has been read.
+                  </PartsInfoDisclosure>
+                </>
               )}
             </div>
           </div>
