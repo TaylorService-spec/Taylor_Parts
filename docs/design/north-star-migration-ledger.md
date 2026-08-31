@@ -1418,8 +1418,12 @@ cards with it. Held by three structural assertions in
 the inset is not applied twice. Mutation-proved: restoring the card wrapper fails the suite.
 
 **2. Stock cannot be created from anywhere in the application — RECORDED, not built.** See
-**ND-33**. `inventory.serializedAsset.acquire` is registered, built, wired, granted to a dedicated
-Role and sandbox-ACTIVATED, and no client surface calls it. The Owner ruled its placement the same
+**ND-33**, including its **2026-08-31 correction**: the first missing piece is SERVER-side, not
+client-side. `inventory.serializedAsset.acquire` is registered, granted and sandbox-ACTIVATED, and
+the pure command and its production seams are built — but there is **no `onCall` endpoint and no
+`index.ts` export**, so nothing is deployed for a client to call. This build first reported the
+callable as "wired"; the file is named `acquireCallableWiring.ts` and contains resolvers, not a
+callable. The correction is recorded rather than quietly fixed. The Owner ruled its placement the same
 day: **Inventory → Receiving**, not Equipment. Approved placement, client composition not yet built.
 
 **What this says about the gate.** It asserted the rulings it was given and passed honestly. It was

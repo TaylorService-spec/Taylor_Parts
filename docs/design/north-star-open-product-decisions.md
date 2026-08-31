@@ -1208,7 +1208,7 @@ assumed:
 |---|---|
 | capability `inventory.serializedAsset.acquire` | registered (`permissionCatalog.ts`) |
 | command `acquireSerializedAssetCommand.ts` | built |
-| callable `acquireCallableWiring.ts` | wired |
+| callable endpoint | **NONE — see the correction below** |
 | Role | a dedicated station carries it, and confers **no** `equipment.install` |
 | sandbox | present in `capabilityActivationOverrides` — **ACTIVATED** |
 | client surface | `grep` across `field-ops-app-vite/src` → **NONE** |
@@ -1216,6 +1216,49 @@ assumed:
 The entire authority is built, granted and switched on, and nothing in the application calls it.
 
 **Status: APPROVED PRODUCT PLACEMENT — CLIENT COMPOSITION NOT YET BUILT.**
+**CORRECTION, 2026-08-31 — the gap is one step further back than this entry first said.**
+
+The row above originally read *"callable `acquireCallableWiring.ts` — wired"*. **That was wrong, and
+it was my error.** The filename says `CallableWiring`; the file contains no callable. Its four
+exports are `makeResolveAcquirePermissionThroughTxn`, `resolveAcquirePartThroughTxn`,
+`makeResolveAcquireLocationActive` and `stageAcquireAuditEvent` — the production **seams** the
+command takes as dependencies. There is:
+
+- no `onCall` handler anywhere for `acquireSerializedAsset`
+- no export from `functions/src/index.ts` (the word "acquire" appears there once, in a comment)
+- therefore nothing deployed, and no client service either
+
+Contrast the install path, which is complete: `installCallables.ts` declares
+`export const installSerializedAssetCallable = onCall(REGION, …)` and `index.ts` re-exports it as
+`installSerializedAssetCallable as installSerializedAsset`. Acquire has the equivalent of the
+command and its wiring, and stops before the endpoint.
+
+**What this changes.** "Build the client surface" was never a presentation task. Registering and
+deploying a HIGH-TRUST callable that creates owned inventory with no procurement record is a
+**Functions change plus a production-path deploy** — an authority decision, and outside every scope
+boundary this programme has set. A button built now would call an endpoint that does not exist and
+fail closed at the network, which is a worse answer than the honest absence that is there today.
+
+**The corrected state of the gap:**
+
+| | |
+|---|---|
+| capability `inventory.serializedAsset.acquire` | registered, granted to a dedicated Role, sandbox-ACTIVATED |
+| pure command `acquireSerializedAssetCommand.ts` | built — validation, closed reason set, idempotency, `AVAILABLE` initial state, `NON_PO_ACQUISITION` provenance |
+| production seams `acquireCallableWiring.ts` | built — permission, Part, warehouse-location and audit resolvers, reusing Receiving's own location authority |
+| **callable endpoint** | **MISSING** |
+| **`index.ts` export** | **MISSING** |
+| **deployed** | **NO** |
+| client surface | NONE |
+
+The request shape the endpoint would take is already fixed by the command:
+`partId`, `serialNo`, `locationId`, `reason` ∈ {`OPENING_BALANCE`, `LEGACY_MIGRATION`,
+`EXISTING_COMPANY_ASSET`}, `idempotencyKey`, and an optional `provenanceNote`. An unrecognised reason
+is refused, never coerced.
+
+**Status unchanged and now accurate: APPROVED PRODUCT PLACEMENT — NOT BUILT, AND THE FIRST MISSING
+PIECE IS SERVER-SIDE, NOT CLIENT-SIDE.**
+
 
 **Why Equipment North Star P1 did not close this, and should not have.** The locked design draws
 three tabs over three populations and no stock-creation surface, and the handoff's hard scope
