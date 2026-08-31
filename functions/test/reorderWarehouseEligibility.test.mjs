@@ -299,30 +299,19 @@ test("a client-supplied company is still refused before anything else, scope inc
   assert.equal(err.code, "COMPANY_NOT_CLIENT_SUPPLIABLE");
 });
 
-// =========================== THE BLOCKER ===========================
+// =========================== THE FORMER BLOCKER, NOW REAL COVERAGE ===========================
 
-test("BLOCKER: a warehouse cannot simultaneously be §3A-governed and carry operatingCompanyId", () => {
-  // NOT A DESIGN CHOICE. TWO EXISTING AUTHORITIES CONTRADICT, AND ACTIVATION NEEDS BOTH.
+test("a company-bearing warehouse is offered by the REAL validator, not just the injected one", () => {
+  // WHAT THIS REPLACED. Until Workstream 2A.1A this test asserted a CONTRADICTION: the §3A governed
+  // shape carried a closed twelve-key allow-list that did not include `operatingCompanyId`, while
+  // createReorderRequest required exactly that field on the same document. The command refused in
+  // both directions -- WAREHOUSE_NO_COMPANY without it, WAREHOUSE_NOT_GOVERNED with it -- so the
+  // reorder path was unreachable in every state, and the test was written to FAIL the moment a
+  // ruling resolved it. R-18 resolved it, this failed, and it is now what it was always meant to
+  // become: proof that the picker works against the real authority rather than a stub.
   //
-  //   • createReorderRequest resolves the warehouse through the receiving-location authority, which
-  //     validates the WHOLE document against the §3A governed shape -- a STRICT key allow-list of
-  //     twelve fields (governedWarehouseValidation.ts).
-  //   • The same command then requires warehouses/{id}.operatingCompanyId, because the request's
-  //     operating company is DERIVED from the warehouse (R-13).
-  //   • operatingCompanyId is not in the allow-list, so writing it makes the document fail §3A as
-  //     UNKNOWN_FIELD.
-  //
-  // The command therefore refuses in BOTH directions: without the company it refuses
-  // WAREHOUSE_NO_COMPANY, and with it, it refuses WAREHOUSE_NOT_GOVERNED. Activation condition 1
-  // (persist the warehouse company facts) breaks activation condition 2 (the command works) by
-  // construction.
-  //
-  // Resolving it is an Owner decision -- widening the §3A allow-list touches the Receiving
-  // authority's shape contract, and giving the reorder its own warehouse-validity opinion is exactly
-  // the second opinion the 2B design refused to invent. Recorded here, in the one place a future
-  // reader will be standing when it matters, rather than only in a document.
-  //
-  // WHEN THE RULING LANDS, THIS TEST SHOULD FAIL and be replaced by real coverage.
+  // Every other projection case in this file injects a validator to isolate the projection's own
+  // logic. This one deliberately does not.
   const complete = {
     id: "wh-main",
     name: "Main Distribution Center",
@@ -335,17 +324,19 @@ test("BLOCKER: a warehouse cannot simultaneously be §3A-governed and carry oper
     governanceInitializedAt: Timestamp.fromMillis(1_756_000_000_000),
     governanceInitializedBy: "seed",
   };
-  assert.equal(validateGovernedWarehouse(complete, "wh-main").valid, true, "the fixture is genuinely §3A-valid");
-
   const withCompany = { ...complete, operatingCompanyId: "taylor" };
-  const verdict = validateGovernedWarehouse(withCompany, "wh-main");
-  assert.equal(verdict.valid, false, "adding the company must currently break §3A -- if it does not, the blocker is resolved");
-  assert.equal(verdict.reason, "unknown_field");
 
-  // And so the picker offers nothing, for anyone, with the REAL validator. That is at least
-  // COHERENT -- the invariant holds, because both sides refuse -- but it means the whole reorder
-  // path is unreachable until the contradiction is ruled on.
+  assert.equal(validateGovernedWarehouse(withCompany, "wh-main").valid, true, "a company-bearing warehouse is governed");
+  assert.equal(validateGovernedWarehouse(complete, "wh-main").valid, true, "and a legacy one still is too");
+
   const scope = resolveReorderWarehouseScope(ADMIN);
-  assert.deepEqual(projectWithDeps(scope, [{ id: "wh-main", data: withCompany }]), []);
-  assert.deepEqual(projectWithDeps(scope, [{ id: "wh-main", data: complete }]), [], "and without a company it is excluded too");
+  assert.deepEqual(
+    projectWithDeps(scope, [{ id: "wh-main", data: withCompany }]).map((o) => o.warehouseId),
+    ["wh-main"],
+  );
+  // A warehouse with no company stays excluded HERE and only here: the reorder request derives its
+  // company from the warehouse, so a root without one cannot answer the question the command asks.
+  // It remains a perfectly valid warehouse for Receiving and Transfers -- which is the difference
+  // between a command's requirement and a second opinion about the shape.
+  assert.deepEqual(projectWithDeps(scope, [{ id: "wh-main", data: complete }]), []);
 });

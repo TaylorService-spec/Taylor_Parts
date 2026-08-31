@@ -3709,3 +3709,94 @@ conditional on main's normal build/test contract not assuming the new path is im
 
 Warehouse `operatingCompanyId` writes; §3A shape modification (yet); inventing Parts Manager scope;
 deploy; sandbox mutation; production mutation.
+
+## #149 — OWNER RULING R-18: the Warehouse company fact is CANONICAL (Workstream 2A.1A, implemented)
+
+**Date:** 2026-08-31
+**Classification:** SHARED PHYSICAL-ROOT AUTHORITY COMPATIBILITY — **not** a Reorder fix, a Receiving
+fix, or a migration workaround. The canonical Warehouse authority was too narrow for Ownership v1.
+**Status:** IMPLEMENTED. No `firestore.rules` change, no governed-hash change, no data written.
+
+### Ruling
+
+**`operatingCompanyId` is an ALLOWED field on the canonical governed Warehouse shape** — and
+deliberately **not required**, for this compatibility change. Warehouses legitimately predate
+Ownership v1, no governed root-authority writer exists, and no migration is authorized; requiring it
+now would strand every historical record.
+
+- warehouse **with** a valid governed company → VALID GOVERNED WAREHOUSE
+- warehouse **without** one → VALID **LEGACY** GOVERNED WAREHOUSE
+- warehouse with an ungoverned company value → fails closed, `operating_company_invalid`
+- warehouse with any other unknown key → still fails closed, `unknown_field`
+
+Whether the field becomes required for **newly created** physical roots is the ownership-enforcement
+phase's decision, not this amendment's.
+
+### One canonical opinion
+
+Receiving, Transfers, the Receiving location picker, the status writer, the governance verifier and
+Reorder eligibility all read the **same** validator. None gained a private interpretation. Before the
+amendment, every one of them rejected a company-bearing warehouse — which is why the blocker was
+never Reorder's, and why the regression is a single suite covering all six rather than six suites.
+
+### The erase path, closed at both ends
+
+The measurement found that a company-bearing warehouse failed the validator, so `classifyWarehouse`
+fell through to the legacy branch and returned **DERIVE**; `executeMigration` would then have replaced
+the document with `buildMigratedRecord`'s fixed field list — **silently erasing the company** — while
+`STALE_PRESTATE` raised no objection, because the erasure was the planned action rather than drift.
+
+Both ends are now closed: classification returns GOVERNED (a byte-stable no-op that is never
+restaged), and the builder preserves an existing company for the case where migration legitimately
+processes a record. The migration may normalize what it owns; it may never drop a governed ownership
+fact because an older fixed-field builder predates it.
+
+### Storage validity is NOT write authority
+
+The measurement's safety clearance held in its strongest form: `firestore.rules` denies **every**
+client write to `warehouses` (`allow create, update, delete: if false`), so widening a stored shape
+could not grant a client writer anything. That is now a permanent test, not a one-time finding.
+
+No writer was added. Both trusted writers reject unknown request keys against exact allow-lists that
+exclude the field, and `setWarehouseStatus` updates four named fields, so a stored company travels
+through a status transition untouched — asserted, so it stays deliberate rather than accidental if
+that update ever widens.
+
+### Delivered
+
+`types/warehouse.ts` (optional field) · `governedWarehouseValidation.ts` (allow-list + value
+validation through the governed company authority + carried into the sanitized reconstruction) ·
+`warehouseGovernanceMigration.ts` (preservation) · `functions/test/warehousePhysicalRootCompany.test.mjs`
+(17 cases across all six consumers, offline) · registered in `warehouse-status-writer-tests.yml`.
+
+The Workstream 2B BLOCKER test did what it was written to do — it **failed** when the contradiction
+was resolved — and has been replaced with real coverage proving the reorder picker works against the
+real validator.
+
+### What this does NOT solve
+
+A Warehouse can now **hold** `operatingCompanyId`. **Nothing may put it there.**
+
+**→ WORKSTREAM 2A.1B — physical-root company write authority.** To be measured against existing
+administration/migration authority before implementation: creation-time only versus controlled
+assignment to legacy roots; which capability; immutability after assignment; the required audit event;
+idempotent assignment; mismatch refusal; sandbox operator path versus a permanent application command;
+production protections; and whether warehouse and mobile-location roots should eventually share one
+physical-root company assignment authority. Expected direction — unset → valid company is a controlled
+one-time assignment, same company is idempotent, a different company is REFUSED, and ordinary
+Warehouse writers can never change it — but measure before building.
+
+### Absolute ordering rule
+
+**Never write a warehouse `operatingCompanyId` before 2A.1A is deployed** wherever a migration,
+status, receiving or transfer consumer could touch it. This is a data-safety rule, not a rollout
+preference: the erase path above was real.
+
+Sequence: **2A.1A → 2A.1B → authorized sandbox assignment of the five Warehouse roots → 2B sandbox
+activation → 2C** (Parts Manager scope, if full intended persona coverage is required).
+
+### Recorded asymmetry
+
+`mobile_locations`, the other ownership physical root, never had this problem: its reader checks
+required fields rather than enforcing a closed allow-list, so an added company passes untouched. Only
+`warehouses` needed the amendment, and a future reader should not assume both roots were blocked.
