@@ -1044,8 +1044,8 @@ now measures `documentElement.scrollWidth` and follows its links, and says in it
 | **Mutation proofs** | **28 run, 27 caught**, source restored byte-identical after each. The one missed is recorded in [#1593](https://github.com/TaylorService-spec/Taylor_Parts/pull/1593)'s body rather than dropped: reverting the Manufacturer row's JSX alone is no longer observable, because the projection now supplies the same key to both objects. The two mutations that remove it *at the projection* are both caught. |
 | **Named decisions** | ND-25, ND-26, ND-27 raised and **CLOSED by the Owner the same day**; ND-28 raised and open |
 | **Implementation** | Four PRs: [#1590](https://github.com/TaylorService-spec/Taylor_Parts/pull/1590) reconciliation · [#1593](https://github.com/TaylorService-spec/Taylor_Parts/pull/1593) projection + defects · [#1596](https://github.com/TaylorService-spec/Taylor_Parts/pull/1596) record · this PR, workspace + closeout |
-| **Gate** | Not yet run. Sandbox refresh and Quick Gate outstanding. |
-| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` |
+| **Gate** | **29/29 PASS** against the deployed `0f1ac714` (P1v2 closing run). The P1 run's 25/25 is superseded — the composition it gated was rejected on sight. |
+| **Acceptance** | **CLOSED 2026-08-31 — Owner visual acceptance given on the deployed `0f1ac714`**, after the P1v2 recomposition (see the closing section at the end of this ledger) |
 
 ### The design's central number did not exist
 
@@ -1636,3 +1636,90 @@ would), documents created before #1259 carry no number, and the deployed Functio
 predate the allocator. Renderers show an honest placeholder wherever the number is absent — never
 the document id. The committed `DESIGN-HANDOFF-RECEIVING-P1.md` records the corrected form; the
 zip's README keeps the stale sentence and is superseded.
+
+---
+
+### Family 7 — P1v2 CLOSED, Owner accepted 2026-08-31
+
+| | |
+|---|---|
+| **Accepted release** | `0f1ac714` — verified from `/version.json` and proved to contain itself and to be an ancestor of `origin/main` with `git merge-base --is-ancestor`, never inferred from a matching string |
+| **Surfaces accepted** | `/inventory` and `/inventory/CW-P-0001`, at 1440 and 375 |
+| **Closing gate** | `partsNorthStarQuickGate.mjs --expect 0f1ac714` → **29/29 PASS**, exit 0 |
+| **Acceptance** | **CLOSED / OWNER ACCEPTED** |
+
+Family 7's first P1 pass was gated 25/25 and *rejected on sight* — the information was right and the
+composition was not. P1v2 is what came of separating those two claims, and this row is where the
+third authority finally spoke for Parts.
+
+**The design handoff claimed no drawn element needed new business authority. Two did.** Frame 1b drew
+`Adjusted · Opening adjustment · D. Reyes · +6` under a band headed *the work-order and receiving
+ledger*; `LedgerTransaction` carries `id · workOrderId · partId · type · quantity · timestamp` and
+nothing else. The actor and the note exist on `inventory_actions` — the collection the entity register
+says is "never joined or reconciled by any code in this repository", whose write side was retired in
+#1625 for being a parallel assertion about stock. Sourcing them there would have rebuilt the join that
+retirement removed. Design had already drawn the buildable row in its own MOBILE frame, so that
+grammar is used at both widths. **Used on** was drawn populated over `equipment.compatibility.view`,
+registered `active:false` and granted to nobody; it states that it is built, governed and switched
+off. Both were caught by reconciling the artifact against the repository *before* any code — the
+practice that found nine of fifteen unbuildable elements in P1.
+
+**ND-30 was amended rather than overridden.** Its boundary — "do not relocate the Work group / the
+Flow group" — read literally forbade the 320px rail the composition asks for. Raised as a conflict
+instead of resolved by preference; the Owner amended it to the narrow reading: the boundary protects
+**route ownership and functional presence**, not visual placement within `/inventory`. Both groups
+keep every hook, panel, queue and command, on the same route, and the gate now asserts that as
+containment and width rather than as a vertical order the composition no longer has.
+
+**Two of the three implementation seams the handoff named did not exist.** `WorkspaceShell` already
+exposed a `supporting` aside and a split body; `.ns-tabrail` was already the shared underlined tab
+control, and is *not* the collection-views markup, so wearing it does not give this route the
+collection identity ND-30 withholds. Only the breadcrumb needed a new slot, and it is opt-in, so the
+fourteen conformant workspaces render exactly as before.
+
+**The height budgets are reconciled, not waived.** Design's figures were targets drawn against a
+mockup; the accepted ceilings are set from the deployed composition, and both are reported on every
+run so the distance stays visible. The variance was accounted for before any ceiling moved: the
+workspace is dominated by the truthful 25-row collection (1,538px of table beside a 340px rail), and
+the record's is the Part information band the Owner ordered populated plus the shared 80px North Star
+record padding held out of this family's scope. The real result is the reduction against the
+pre-P1v2 page — **−44%, −62%, −18%, −25%**.
+
+| Surface | Before | Deployed | Accepted | Design target |
+|---|---|---|---|---|
+| workspace 1440 | 3,406px | **1,901px** | ≤ 1,950 | 1,700 |
+| workspace 375 | 9,277px | **3,543px** | ≤ 3,600 | 2,400 |
+| record 1440 | 1,508px | **1,242px** | ≤ 1,250 | 1,050 |
+| record 375 | 2,615px | **1,957px** | ≤ 2,000 | 1,500 |
+
+**Four reader defects were corrected on the way through**, each one a stored token or a wrong value
+reaching a person: three reorder cards rendering `request.urgency` raw while the helper that words it
+was already imported two lines up; the Manufacturer column reading `Not recorded` on 25 of 25 rows;
+the ND-25 catalogue explanation rendered permanently *and* behind its own disclosure, the same
+governed text twice on one page; and **Part information shipping with an empty left column** — it
+read `partRecordRailSubset`, which withholds every fact the header already states, and on a real part
+the header stated all of them. The Owner ruled that repetition intentional: identity is for
+recognition, the band is the structured master-data summary.
+
+**The gate itself carried the worst defect of the family, and it was mine.** Three record checks were
+re-anchored off renamed headings onto stable ids in #1642 — and never landed. They were applied by a
+script whose guard checked only that *something* in the file had changed; a single-line label rename
+matched while three multi-line replacements silently no-opped on CRLF, and the guard passed on the
+label alone. A full deployed run then reported four failures against a correct page: the probe found
+no forecast on any candidate, fell back to a part with no ledger activity, and took two more checks
+vacuous with it, so the record heights it printed were for the wrong part. **A gate that measures the
+wrong structure reports the wrong thing confidently, which is worse than not running it.** The anchors
+are now asserted in CI, where a silent no-op cannot hide, and every gate edit since has been verified
+present — and every stale form verified absent — before commit.
+
+### Authority, unchanged
+
+No Firestore rule, index, Function, callable, capability, activation, role grant, collection, schema,
+backfill or deployment-config change. `PART_IDENTIFIER_UNAVAILABLE_REASON` was not mutated to save
+pixels — the record simply stopped printing all of it as permanent copy, and its deployed-versus-
+granted distinction is one tap away. `inventory_actions` stays read-only and unjoined. Quantitative
+inventory facts still reach a surface only through `getPartBalance`, which remains inactive.
+
+**Open and not blockers:** ND-28-F; P-G1; the `firestore.rules` orphaned `allow create` on
+`inventory_actions` (Tier-2, tracked separately); the shared 80px North Star record padding, which
+belongs to a family-wide decision rather than to Parts.
