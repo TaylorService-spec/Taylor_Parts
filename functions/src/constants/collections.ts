@@ -44,11 +44,11 @@ export const OPPORTUNITIES_COLLECTION = "opportunities";
 export const SALES_ORDERS_COLLECTION = "sales_orders";
 
 // Commercial commitment -- the accepted terms and committed line prices a Sales Order is created
-// FROM. Admin-SDK-only: there is no firestore.rules block for it, and Firestore denies an
-// undeclared collection to every client by default, so the only write path is the trusted
-// salesAgreement commands. An explicit deny-all block matching the sales_territories / refunds
-// convention is a Rules change and is deliberately left for a separate authorized step -- it would
-// document the existing behaviour rather than change it.
+// FROM. Admin-SDK-only: both firestore.rules mirrors now carry an explicit deny-all match block
+// for it (`allow read, write: if false`), so the only write path is the trusted salesAgreement
+// commands. (An earlier revision of this comment predated that block and described the
+// undeclared-collection default instead -- corrected with FIN-001's FIN-GAP-018 doc-drift sweep;
+// the effective posture never changed, only which mechanism enforced it.)
 export const SALES_AGREEMENTS_COLLECTION = "sales_agreements";
 // Finance — governed invoices (Admin-SDK-only; deny-all client Rules). Sensitive/audited.
 export const INVOICES_COLLECTION = "invoices";

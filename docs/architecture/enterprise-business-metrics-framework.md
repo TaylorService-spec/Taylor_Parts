@@ -519,7 +519,18 @@ None of these are decided by this document — it only requires that they be dec
 
 **This document defines architecture and semantics — it is not an instruction to immediately create every domain described above.**
 
-Grounded in the actual current Taylor Parts implementation, verified while writing this document (not assumed):
+> **DATED SNAPSHOT — superseded on the entity-existence claims (FIN-001, 2026-08-30).** The
+> bullets below were verified when this document was written and are preserved as the historical
+> record of that state. Since then the repository has grown a governed-inert Sales/Finance spine:
+> `opportunities`, `sales_agreements`, `sales_orders`, `invoices`, `payments`,
+> `payment_applications`, `invoice_adjustments`, and `refunds` all exist as collections with
+> trusted commands (deny-all Rules, `active:false` capabilities, undeployed). The CURRENT
+> authority map is `docs/architecture/SYSTEM_AUTHORITIES.md` (finance rows) and
+> `docs/financials/FIN-001_FINANCIAL_AUTHORITY_MAP.md` — cite those, not this snapshot, for
+> present-state claims. The Work Order zero-monetary-fields claim remains true. This document's
+> **semantic rules (Sections 1–19) are unaffected and remain the accepted architecture.**
+
+Grounded in the Taylor Parts implementation as verified while writing this document (a snapshot — see the note above):
 - **No Invoice, Opportunity/Quote, or Sales Order entity exists today.** `docs/BusinessEntityModel.md` Section 2 lists all three as **Future** entities — no collection, no schema, no code.
 - **Work Order (`fieldops_wos`, the only entity currently linked to an Account via `customerId`) has zero monetary fields** — confirmed by reading `field-ops-app-vite/src/types/workOrder.ts` in full. No `price`/`cost`/`amount`/`total`/`revenue` field exists on it. Its `WorkOrderStatus` values (`CREATED`/`READY_TO_DISPATCH`/`SCHEDULED`/`DISPATCHED`/`ACCEPTED`/`EN_ROUTE`/`ARRIVED`/`WORK_IN_PROGRESS`/`COMPLETED`/`CLOSED`/`CANCELLED`) are the basis for `Completed Work Orders` (`COMPLETED`/`CLOSED`) and `Open Work Orders` (every non-terminal, non-cancelled value) per Section 3 — today, this is the *only* form either metric can take, since no price source exists to compute Fulfilled Service Value, and no Sales Order/Quote entity exists to own one anyway.
 - **Every real monetary total in the current codebase is procurement spend, not sales revenue** (`purchase_orders.totalCost`, `procurementBridge.ts`'s cost estimation) — neither is linked to an Account.

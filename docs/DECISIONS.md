@@ -3425,3 +3425,41 @@ this change's call, and it would not fix the reporting error, only mask it by br
 
 **Also recorded:** the individual `seedAccountOwners.mjs` defect is a separate finding from this
 reporting lesson, and is documented at its fix site rather than only here.
+
+## #145 — OWNER RULING: EOS financial authority mode — governed operational financial subledger
+
+**Decision (Owner, 2026-08-30, ratified via the Financials master execution contract; closes
+FIN-GAP-001 and completes FIN-001):**
+
+1. **EOS SHALL BE a GOVERNED OPERATIONAL FINANCIAL SUBLEDGER.** The existing governed-inert
+   `functions/src/finance/*` command layer (invoice / payment / adjustment / refund, minor-units
+   money model, append-only corrections, deny-all collections, `active:false` capabilities) is the
+   designated foundation, activated progressively under the Financials program — visibility
+   (FIN-004) before broad grants.
+2. **EOS SHALL NOT BECOME** a general ledger, chart-of-accounts authority, statutory accounting
+   system, or final accounting-close authority, **until a separate explicit Owner decision changes
+   that boundary.**
+3. **The external accounting system is the FUTURE authority of record for accounting and is NOT
+   YET SELECTED.** No vendor (QuickBooks, Sage, NetSuite, Dynamics, …) may be assumed anywhere in
+   code, schema, or docs. FIN-010 builds the provider-neutral reconciliation contract against this
+   boundary.
+4. **Fact classes stay separate, never silently blended:** OPERATIONAL_ACTUAL ≠
+   ACCOUNTING_RECONCILED_ACTUAL ≠ FORECAST ≠ BUDGET ≠ GOAL. Lifecycle meanings BOOKED / BILLABLE /
+   BILLED / COLLECTED / A-R / UNBILLED are distinct and never used as synonyms.
+5. **Historical stays historical:** issued financial facts and attribution snapshots are immutable
+   events; every correction is a governed event, never an in-place rewrite.
+
+**Reason:** FIN-001 (docs/financials/FIN-001_FINANCIAL_AUTHORITY_MAP.md) surfaced this as the
+keystone gap: a complete, well-guarded finance command layer exists fully dormant, no external
+accounting system is named anywhere, and every downstream FIN item (attribution, visibility,
+cost/margin, plan-vs-actual, periods, intercompany, reconciliation) shapes differently depending on
+which side is authoritative. Building any Financials surface before deciding would have baked in
+the answer silently. ADR-BMF-012 already established that a governed local ledger MAY be
+authoritative when explicitly configured — this ruling makes that configuration explicit for the
+operational domain while reserving accounting authority for the future external system.
+
+**Alternatives rejected:** connecting an external accounting provider first (rejected — no provider
+is selected, and operational billing needs precede the integration); promoting EOS to full GL
+(rejected — statutory accounting is not EOS's product, and the IntegrationArchitecture boundary
+explicitly disclaims becoming "the accounting ledger of record"); leaving the mode undecided while
+building surfaces (rejected — that is how an authority decision gets made by accident).
