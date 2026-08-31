@@ -208,7 +208,7 @@ followed, and how each step is undone.
 | 4 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
 | 5 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
 | 6 | Every persona who may raise a reorder can obtain the warehouse pick-list | RESOLVED by R-17 for admin / dispatcher / WAREHOUSE_MANAGER. STILL OPEN for PARTS_MANAGER -- WORKSTREAM 2C (DECISIONS #148). |
-| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | It cannot today. WORKSTREAM 2A.1, and it must land BEFORE 2B activation (DECISIONS #148). |
+| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | **RESOLVED by R-18 / Workstream 2A.1A** (DECISIONS #149). The canonical shape now permits it; a legacy warehouse without it stays valid. Still no authority may WRITE it -- that is 2A.1B. |
 
 ### Condition 6 — RESOLVED by R-17: `listReorderWarehouseOptions`
 
@@ -258,31 +258,52 @@ cannot be closed by accident. **A Parts Manager therefore still cannot raise a r
 to change that without a ruling would both be inventions: granting them every warehouse, or reading
 `assignedWarehouseIds` for a role no authority says it scopes.
 
-### BLOCKING DEFECT — a warehouse cannot be both §3A-governed and company-bearing (WORKSTREAM 2A.1)
+### RESOLVED — a warehouse may now be both §3A-governed and company-bearing (WORKSTREAM 2A.1A)
 
-Found while building the projection, and it blocks activation independently of everything above.
+**Owner ruling R-18, DECISIONS #149.** Classified as a SHARED PHYSICAL-ROOT AUTHORITY COMPATIBILITY
+problem, not a Reorder fix, a Receiving fix, or a migration workaround: the canonical Warehouse
+authority was simply too narrow for Ownership v1.
 
-- `createReorderRequest` resolves the warehouse through the receiving-location authority, which
-  validates the **whole document** against the §3A governed shape — a strict allow-list of twelve
-  keys (`governedWarehouseValidation.ts`).
-- The same command then requires `warehouses/{id}.operatingCompanyId`, because the request's
-  operating company is derived from the warehouse (R-13).
-- `operatingCompanyId` is **not** in that allow-list, so writing it makes the document fail §3A as
-  `unknown_field`.
+`operatingCompanyId` is now an **allowed** field on the canonical governed Warehouse shape, and
+deliberately **not required** — warehouses legitimately predate Ownership v1, no governed
+root-authority writer exists, and no migration is authorized, so requiring it would strand every
+historical record.
 
-So the command refuses in both directions: without the company, `WAREHOUSE_NO_COMPANY`; with it,
-`WAREHOUSE_NOT_GOVERNED`. **Activation condition 1 breaks activation condition 2 by construction**,
-and no reorder can be created in any state.
+| Record | Verdict |
+|---|---|
+| warehouse with a valid governed `operatingCompanyId` | VALID GOVERNED WAREHOUSE |
+| warehouse with no `operatingCompanyId` | VALID **LEGACY** GOVERNED WAREHOUSE |
+| warehouse with a company that is not governed | fails closed, `operating_company_invalid` |
+| warehouse with any other unknown key | still fails closed, `unknown_field` |
 
-The behaviour is at least coherent — the picker offers nothing and the create accepts nothing, so the
-R-17 invariant holds — but the whole path is unreachable. `functions/test/reorderWarehouseEligibility.test.mjs`
-pins the contradiction in a test named BLOCKER, which will fail when it is resolved.
+**One canonical opinion.** Receiving, Transfers, the Receiving location picker, the status writer, the
+governance verifier and Reorder eligibility all read the same validator, and none gained a private
+view of whether the field is permitted. Before the amendment every one of them rejected a
+company-bearing warehouse — which is why this was never Reorder's blocker.
 
-**Not fixed here, because both repairs cross an authority boundary.** Widening the §3A allow-list
-changes the Receiving authority's shape contract (Decision-tracked, I-LA C2). Giving the reorder its
-own warehouse-validity opinion is precisely the second opinion the 2B design refused to invent. A
-third option — storing the company somewhere other than the warehouse document — would change the
-ownership model's physical-root shape. All three are Owner decisions.
+**The erase path is closed at both ends.** `classifyWarehouse` now returns GOVERNED for a
+company-bearing record instead of DERIVE, so it is a byte-stable no-op that migration never restages;
+and `buildMigratedRecord` preserves an existing company for the case where migration legitimately
+processes a record. The migration may normalize what it owns; it may not drop a governed ownership
+fact because an older fixed-field builder predates it.
+
+**Storage validity is not write authority.** Nothing in this repository can author the field. Both
+trusted writers reject unknown request keys against exact allow-lists that do not include it, and a
+status transition updates four named fields, so the company travels through a transition untouched.
+`firestore.rules` is unchanged and still denies every client write to `warehouses`, which is the
+permanent form of the safety clearance that justified widening the shape at all.
+
+**→ WORKSTREAM 2A.1B — physical-root company write authority.** A warehouse can now HOLD the fact;
+nothing may PUT IT THERE. That authority (creation-time versus assignment to legacy roots, capability,
+immutability after assignment, audit, idempotency, mismatch refusal, operator path versus application
+command, and whether warehouse and mobile-location roots eventually share one assignment authority) is
+the next boundary, and must be measured against existing administration/migration authority before it
+is built.
+
+**Absolute ordering rule, and it is data safety rather than rollout preference:** never write a
+warehouse `operatingCompanyId` before 2A.1A is deployed wherever a migration, status, receiving or
+transfer consumer could touch it. Before the amendment, a migration run over a company-bearing
+warehouse would have erased the fact without any drift check objecting.
 
 ### Order
 

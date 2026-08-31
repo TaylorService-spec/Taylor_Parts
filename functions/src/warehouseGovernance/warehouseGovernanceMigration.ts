@@ -175,6 +175,17 @@ export function buildMigratedRecord(warehouseId: string, data: unknown, status: 
     record.createdAt = data.createdAt;
     record.createdBy = data.createdBy;
   }
+  // R-18 -- PRESERVE THE OWNERSHIP FACT. This builder replaces the whole document, so any governed
+  // field it does not know about is DELETED. Before the company was part of the canonical shape
+  // that was invisible; a company-bearing warehouse failed the validator, classified as DERIVE,
+  // and a migration run would have erased the company while its STALE_PRESTATE fingerprint check
+  // raised no objection -- because the erasure was the planned action, not drift.
+  //
+  // The migration may normalize the fields it OWNS. It may never drop a governed ownership fact
+  // because an older fixed-field builder predates it.
+  if (isPlainObject(data) && isNonBlank(data.operatingCompanyId)) {
+    record.operatingCompanyId = data.operatingCompanyId;
+  }
   return record;
 }
 
