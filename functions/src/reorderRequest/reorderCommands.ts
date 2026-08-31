@@ -32,6 +32,7 @@ export type ReorderCommandCode =
   | "INVALID"
   | "PART_REQUIRED"
   | "WAREHOUSE_REQUIRED"
+  | "WAREHOUSE_NOT_IN_SCOPE"
   | "WAREHOUSE_NOT_GOVERNED"
   | "WAREHOUSE_NO_COMPANY"
   | "COMPANY_NOT_CLIENT_SUPPLIABLE"
@@ -105,7 +106,16 @@ export interface BuiltReorderRequest {
  */
 export function buildCreateReorderRequest(
   input: CreateReorderRequestInput,
-  ctx: { actorUid: string; nowMillis: number; warehouseGoverned: boolean; warehouseCompanyId: unknown },
+  ctx: {
+    actorUid: string;
+    nowMillis: number;
+    warehouseGoverned: boolean;
+    warehouseCompanyId: unknown;
+    /** R-17. Did the SHARED eligibility resolver (reorderWarehouseEligibility.ts) admit this
+     *  warehouse for this principal? REQUIRED, and deliberately not optional-defaulting-true: a
+     *  caller that forgets it fails to compile rather than silently skipping the scope check. */
+    warehouseInScope: boolean;
+  },
 ): BuiltReorderRequest {
   if (!input || typeof input !== "object") throw new ReorderCommandError("INVALID", "Missing input");
 
@@ -133,6 +143,22 @@ export function buildCreateReorderRequest(
   if (!nonEmpty(input.quantitySource)) throw new ReorderCommandError("INVALID", "quantitySource is required");
   if (input.workOrderId != null && !nonEmpty(input.workOrderId)) {
     throw new ReorderCommandError("WORK_ORDER_REF_INVALID", "workOrderId, when provided, must be a non-empty Work Order id");
+  }
+
+  // R-17 -- THE SELECTOR IS UX, THIS IS ENFORCEMENT.
+  //
+  // Checked BEFORE the governed/company facts, so a caller who posts a warehouse outside their scope
+  // learns that and nothing else. Telling them instead that the warehouse is ungoverned, or has no
+  // company, would answer a question about a warehouse they are not entitled to ask about.
+  //
+  // The scope comes from the same resolver listReorderWarehouseOptions filters by, which is what
+  // makes the ruling's invariant hold in both directions: everything offered is accepted, and
+  // nothing unoffered is accepted just because it was typed instead of clicked.
+  if (!ctx.warehouseInScope) {
+    throw new ReorderCommandError(
+      "WAREHOUSE_NOT_IN_SCOPE",
+      `You are not authorized to raise a reorder for warehouse "${input.warehouseId}"`,
+    );
   }
 
   // The warehouse must be a governed, ACTIVE warehouse -- resolved by the caller through the

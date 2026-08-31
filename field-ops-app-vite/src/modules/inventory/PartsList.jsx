@@ -22,7 +22,7 @@ import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
-import { useWarehouseOptions } from "../../hooks/useWarehouseOptions";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
@@ -558,7 +558,8 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   // empty and is never defaulted: an unstated warehouse leaves every Request Reorder button
   // off, which is honest, where a silent default would author a company fact nobody chose.
   const [reorderWarehouseId, setReorderWarehouseId] = useState("");
-  const reorderWarehouses = useWarehouseOptions(true);
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
 
   const needsPlanningEntries = useMemo(
     () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),

@@ -16,6 +16,8 @@ on:
       - "functions/src/reorderRequest/**"
       - "functions/src/index.ts"
       - "functions/test/reorderRequestNumbering.test.mjs"
+      - "functions/test/reorderTrustedCommands.test.mjs"
+      - "functions/test/reorderWarehouseEligibility.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/reorder-request-tests.yml"
@@ -25,6 +27,8 @@ on:
       - "functions/src/reorderRequest/**"
       - "functions/src/index.ts"
       - "functions/test/reorderRequestNumbering.test.mjs"
+      - "functions/test/reorderTrustedCommands.test.mjs"
+      - "functions/test/reorderWarehouseEligibility.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/reorder-request-tests.yml"
@@ -64,4 +68,10 @@ jobs:
 
       - name: Reorder Request numbering allocator tests (build + run)
         run: npm run test:reorderRequestNumbering
+
+      # Workstream 2B. These had NO workflow naming them: the lane existed, path-filtered on
+      # functions/src/reorderRequest/**, and ran only the numbering allocator -- so the trusted
+      # command core and the R-17 eligibility resolver were CI-uncovered while looking covered.
+      - name: Trusted reorder commands + warehouse eligibility (build + run)
+        run: npm run test:reorderTrustedCommands
         working-directory: functions

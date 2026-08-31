@@ -26,6 +26,9 @@
 export const REORDER_CALLABLES = Object.freeze({
   createReorderRequest: "createReorderRequest",
   recordReorderPurchaseOrder: "recordReorderPurchaseOrder",
+  // R-17. The warehouse pick-list. A trusted projection, NOT a `warehouses` collection read: the
+  // browser has no LIST authority on that collection and is not gaining one.
+  listReorderWarehouseOptions: "listReorderWarehouseOptions",
 });
 
 async function defaultInvoke(name, payload) {
@@ -64,6 +67,11 @@ export function reorderCallableMessage(err) {
       return "Choose the warehouse this reorder is for.";
     case "WAREHOUSE_NOT_GOVERNED":
       return "That warehouse is not an active, governed warehouse.";
+    case "WAREHOUSE_NOT_IN_SCOPE":
+      // R-17. Distinct from "not governed": the warehouse is real and fine, and this person is not
+      // the one who may reorder for it. Saying so plainly beats a generic denial that reads like a
+      // bug in the picker.
+      return "You are not authorized to raise a reorder for that warehouse.";
     case "WAREHOUSE_NO_COMPANY":
       return "That warehouse has no operating company recorded, so a reorder against it has no owner.";
     case "REQUEST_NO_COMPANY":
@@ -118,4 +126,31 @@ export async function submitRecordReorderPurchaseOrder(input, invoke = defaultIn
     idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
   };
   return invoke(REORDER_CALLABLES.recordReorderPurchaseOrder, payload);
+}
+
+/**
+ * The warehouses this signed-in principal may raise a reorder for (Owner ruling R-17).
+ *
+ * REPLACES a `warehouses` collection LIST, it does not supplement one. `firestore.rules` grants the
+ * browser no LIST on that collection and this change does not ask it to: the server reads the
+ * warehouses, applies the same eligibility the create enforces, and returns a two-field projection.
+ *
+ * There is deliberately NO fallback to a direct Firestore read if this fails. A fallback would leave
+ * the selector with two read-authority models and would quietly show a user warehouses the create
+ * would then refuse -- the exact divergence the shared server-side resolver exists to prevent.
+ *
+ * Returns `{ options: [{ warehouseId, label }], reason }`. An empty list with a `reason` is a real
+ * answer, not an error: a principal may legitimately be governed to no warehouse at all.
+ */
+export async function fetchReorderWarehouseOptions(invoke = defaultInvoke) {
+  const data = await invoke(REORDER_CALLABLES.listReorderWarehouseOptions, {});
+  const options = Array.isArray(data?.options) ? data.options : [];
+  return {
+    // Mapped to the selector's { value, label } shape here rather than in the component, so the
+    // component stays presentational and the wire shape stays the server's business.
+    options: options
+      .filter((o) => typeof o?.warehouseId === "string" && o.warehouseId !== "")
+      .map((o) => ({ value: o.warehouseId, label: typeof o.label === "string" && o.label !== "" ? o.label : o.warehouseId })),
+    reason: typeof data?.reason === "string" ? data.reason : null,
+  };
 }

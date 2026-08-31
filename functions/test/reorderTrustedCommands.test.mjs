@@ -17,7 +17,11 @@ import {
 } from "../lib/reorderRequest/reorderCommands.js";
 
 const CTX = { actorUid: "uid-associate", nowMillis: 1_756_000_000_000 };
-const governed = (companyId) => ({ ...CTX, warehouseGoverned: true, warehouseCompanyId: companyId });
+// R-17 added `warehouseInScope`, and made it required rather than defaulting -- a caller that
+// forgets it fails to compile. These cases are about the OTHER refusals, so the warehouse is in
+// scope here; the scope predicate itself, and the invariant binding it to the picker, are
+// reorderWarehouseEligibility.test.mjs's subject.
+const governed = (companyId) => ({ ...CTX, warehouseGoverned: true, warehouseCompanyId: companyId, warehouseInScope: true });
 
 const VALID = {
   partId: "PRT-1001",
@@ -45,7 +49,7 @@ test("a governed warehouse gives the request its company", () => {
 test("warehouse missing / not governed / no company are three DISTINCT refusals", () => {
   assert.equal(caught(() => buildCreateReorderRequest({ ...VALID, warehouseId: "" }, governed("taylor"))).code, "WAREHOUSE_REQUIRED");
   assert.equal(
-    caught(() => buildCreateReorderRequest(VALID, { ...CTX, warehouseGoverned: false, warehouseCompanyId: "taylor" })).code,
+    caught(() => buildCreateReorderRequest(VALID, { ...CTX, warehouseGoverned: false, warehouseCompanyId: "taylor", warehouseInScope: true })).code,
     "WAREHOUSE_NOT_GOVERNED",
   );
   // A governed warehouse with no company still refuses -- it does not fall back to anything.

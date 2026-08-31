@@ -30,6 +30,15 @@ import { createHash } from "node:crypto";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { auditEventDocRef, stageAuditEventWithId } from "../access/auditEventWriter";
 import { makeResolveWarehouseLocationActive } from "../inventoryReceiving/receivingLocationResolver";
+import { validateGovernedWarehouse } from "../warehouseGovernance/governedWarehouseValidation";
+import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority";
+import {
+  isWarehouseInReorderScope,
+  reorderWarehouseOptionLabel,
+  resolveReorderWarehouseScope,
+  type ReorderWarehouseOption,
+  type ReorderWarehouseScope,
+} from "./reorderWarehouseEligibility";
 import {
   buildCreateReorderRequest,
   buildRecordReorderPurchaseOrder,
@@ -68,6 +77,11 @@ async function requireCapability(uid: string, capabilityId: string): Promise<voi
 function mapCommandError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
   if (err instanceof ReorderCommandError) {
+    // R-17: an out-of-scope warehouse is an AUTHORIZATION answer, not a malformed payload, and must
+    // reach the caller as one -- otherwise a UI would invite them to "fix" the field and try again.
+    if (err.code === "WAREHOUSE_NOT_IN_SCOPE") {
+      return new HttpsError("permission-denied", err.message, { code: err.code });
+    }
     // The domain code travels in `details` so a caller can branch on the reason rather than parse
     // prose. State/precondition failures are failed-precondition; bad payloads are invalid-argument.
     const precondition =
@@ -108,6 +122,10 @@ export async function persistCreatedReorderRequest(
   input: CreateReorderRequestInput & { idempotencyKey: string },
   actorUid: string,
   nowMillis: number,
+  // R-17. The principal's resolved warehouse scope, from the SAME resolver the picker filters by.
+  // A required parameter rather than an optional one: forgetting it is a compile error, not a
+  // silently unscoped create.
+  scope: ReorderWarehouseScope,
 ): Promise<{ success: true; replayed: boolean; reorderRequestId: string; operatingCompanyId: string }> {
   const aid = mkAuditId("createReorderRequest", actorUid, input.idempotencyKey);
   const auditRef = auditEventDocRef(aid);
@@ -144,6 +162,9 @@ export async function persistCreatedReorderRequest(
     nowMillis,
     warehouseGoverned,
     warehouseCompanyId: warehouseSnap.exists ? warehouseSnap.data()?.operatingCompanyId : undefined,
+    // Enforcement, not decoration: a warehouseId typed straight into the payload is tested against
+    // the same scope that decided what the picker was allowed to show.
+    warehouseInScope: isWarehouseInReorderScope(scope, input.warehouseId),
   });
 
   // WRITE PHASE.
@@ -199,9 +220,12 @@ export const createReorderRequest = onCall({ region: "us-central1" }, async (req
   const db = getFirestore();
   const actorUid = request.auth.uid;
   const nowMillis = Date.now();
+  // Resolved once, before the transaction, and passed in -- so a retry of the transaction cannot
+  // re-resolve into a different answer part-way through a single command.
+  const scope = await resolveActorWarehouseScope(db, actorUid);
   try {
     return await db.runTransaction((tx) =>
-      persistCreatedReorderRequest(db, tx, { ...data, idempotencyKey: data.idempotencyKey! }, actorUid, nowMillis),
+      persistCreatedReorderRequest(db, tx, { ...data, idempotencyKey: data.idempotencyKey! }, actorUid, nowMillis, scope),
     );
   } catch (err) {
     throw mapCommandError(err);
@@ -292,4 +316,129 @@ export const recordReorderPurchaseOrder = onCall({ region: "us-central1" }, asyn
   } catch (err) {
     throw mapCommandError(err);
   }
+});
+
+// ============================ R-17: THE SHARED WAREHOUSE ELIGIBILITY ============================
+
+/**
+ * Read the principal's governed facts and resolve their reorder warehouse scope.
+ *
+ * FAILS CLOSED. A read error is a denial, never an allow -- the same posture requireCapability()
+ * above takes, and for the same reason: an authorization question that cannot be answered has been
+ * answered.
+ *
+ * Two reads: `users/{uid}` (security role + employee link) and, when linked, `employees/{id}`.
+ * Deliberately OUTSIDE any transaction. Warehouse status is read transactionally by the create
+ * because a concurrent deactivation must conflict the commit; a principal's own role assignment
+ * changing mid-command is not that kind of hazard, and paying for it in every transaction would be
+ * cost without a failure mode to prevent.
+ */
+async function resolveActorWarehouseScope(db: Firestore, uid: string): Promise<ReorderWarehouseScope> {
+  try {
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown> | undefined) : undefined;
+    const userEmployeeId = userData?.employeeId;
+    const employeeId = typeof userEmployeeId === "string" && userEmployeeId.length > 0 ? userEmployeeId : null;
+    const employeeSnap = employeeId === null ? null : await db.collection("employees").doc(employeeId).get();
+    const employeeData = employeeSnap?.exists ? (employeeSnap.data() as Record<string, unknown> | undefined) : undefined;
+    return resolveReorderWarehouseScope({
+      uid,
+      userSecurityRole: userData?.role,
+      userEmployeeId,
+      employeeExists: employeeSnap?.exists === true,
+      employeeUserId: employeeData?.userId,
+      employeeEmploymentStatus: employeeData?.employmentStatus,
+      employeeOperationalRoles: employeeData?.operationalRoles,
+      employeeAssignedWarehouseIds: employeeData?.assignedWarehouseIds,
+    });
+  } catch (err) {
+    console.error("[reorder] warehouse scope resolution failed", err);
+    return { kind: "NONE", reason: "NO_GOVERNED_WAREHOUSE_AUTHORITY", warehouseIds: null };
+  }
+}
+
+/**
+ * The candidate warehouse documents for a scope, read with the Admin SDK.
+ *
+ * ALL_GOVERNED reads the collection; ASSIGNED reads exactly the named ids, so a broad collection
+ * read is never performed on behalf of a scoped principal. NONE reads nothing at all -- there is no
+ * query to run for a principal entitled to no warehouse.
+ */
+async function readScopedWarehouseDocs(
+  db: Firestore,
+  scope: ReorderWarehouseScope,
+): Promise<readonly { id: string; data: Record<string, unknown> }[]> {
+  if (scope.kind === "NONE") return [];
+  if (scope.kind === "ASSIGNED") {
+    const ids = scope.warehouseIds ?? [];
+    if (ids.length === 0) return [];
+    const snaps = await Promise.all(ids.map((id) => db.collection(WAREHOUSES).doc(id).get()));
+    return snaps
+      .filter((s) => s.exists)
+      .map((s) => ({ id: s.id, data: (s.data() ?? {}) as Record<string, unknown> }));
+  }
+  const snap = await db.collection(WAREHOUSES).get();
+  return snap.docs.map((d) => ({ id: d.id, data: (d.data() ?? {}) as Record<string, unknown> }));
+}
+
+/**
+ * PURE. Turn candidate documents into the picker's projection, applying EXACTLY the acceptance test
+ * `createReorderRequest` applies -- in scope, a governed ACTIVE warehouse, and carrying a governed
+ * operating company.
+ *
+ * THAT LAST CLAUSE IS THE RULING'S INVARIANT, and it is easy to get wrong by omission. A warehouse
+ * with no `operatingCompanyId` is refused by the create (WAREHOUSE_NO_COMPANY, and rightly -- the
+ * company is derived from it, so a missing one cannot be invented). Offering it anyway would hand a
+ * user a choice that fails the moment they make it, which is exactly the "picker offers more than
+ * the command accepts" divergence this shared code exists to prevent.
+ *
+ * Sorted by label so the list is stable between calls; the sort is presentation, not authority.
+ *
+ * `deps.validateGoverned` defaults to the real shared §3A validator and exists so tests can
+ * exercise the scope/company/sort logic on its own. Production never passes it -- the default IS the
+ * authority, and injecting a different one in real code would be inventing a second opinion about
+ * what a governed warehouse is.
+ */
+export function projectReorderWarehouseOptions(
+  scope: ReorderWarehouseScope,
+  candidates: readonly { id: string; data: Record<string, unknown> }[],
+  deps: { validateGoverned?: typeof validateGovernedWarehouse } = {},
+): readonly ReorderWarehouseOption[] {
+  const validateGoverned = deps.validateGoverned ?? validateGovernedWarehouse;
+  const options: ReorderWarehouseOption[] = [];
+  for (const candidate of candidates) {
+    if (!isWarehouseInReorderScope(scope, candidate.id)) continue;
+    const governed = validateGoverned(candidate.data, candidate.id);
+    if (!governed.valid || governed.value.status !== "ACTIVE") continue;
+    const company = candidate.data.operatingCompanyId;
+    if (typeof company !== "string" || resolveOperatingCompany(company).company === null) continue;
+    options.push({ warehouseId: candidate.id, label: reorderWarehouseOptionLabel(candidate.data.name, candidate.id) });
+  }
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
+ * listReorderWarehouseOptions -- the trusted projection that replaces a `warehouses` collection LIST
+ * (Owner ruling R-17).
+ *
+ * This is NOT warehouse browsing, administration, or inventory access, and it introduces no
+ * `warehouse.list` capability. It answers one question for one purpose: which warehouses may this
+ * principal raise a reorder for. It is therefore authorized by the SAME capability as the create it
+ * serves -- if you may not raise a reorder, there is no reorder warehouse list for you to see.
+ *
+ * No operational-role fallback, exactly as R-15 requires of its sibling.
+ *
+ * A capable principal with an empty scope gets an empty list and a `reason`, not an error. That
+ * distinction matters to the caller: "you may not do this" and "you may, but no warehouse is
+ * governed to you" are different sentences, and today one of them names an open Owner question
+ * (PARTS_MANAGER_SCOPE_UNDEFINED).
+ */
+export const listReorderWarehouseOptions = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+  await requireCapability(request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY);
+
+  const db = getFirestore();
+  const scope = await resolveActorWarehouseScope(db, request.auth.uid);
+  const candidates = await readScopedWarehouseDocs(db, scope);
+  return { options: projectReorderWarehouseOptions(scope, candidates), reason: scope.reason };
 });

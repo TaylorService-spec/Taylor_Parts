@@ -140,3 +140,23 @@ test("the warehouse a request is written for is the one that unlocked the button
   // gate itself rather than counting every disabled prop in the file.
   assert.equal((src.match(/!hasWarehouse/g) ?? []).length, 2, "both submit buttons must be gated on a warehouse");
 });
+
+test("R-17: the warehouse pick-list bought NO new Rules read authority", () => {
+  // The whole point of listReorderWarehouseOptions is that `warehouses` stays exactly as closed as
+  // it was. The tempting shortcut -- widening the collection read so a getDocs works -- would grant
+  // a standing LIST to obtain a pick-list, and this asserts it did not happen.
+  //
+  // The mirror in this tree is byte-identical to the root ruleset (the Rules regression runner
+  // checks that), so reading it here is reading the shipped rules.
+  const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
+  const block = /match \/warehouses\/\{warehouseId\} \{([\s\S]*?)\n    \}/.exec(rules);
+  assert.ok(block, "the warehouses match block must exist");
+  const body = block[1].replace(/\/\/[^\n]*/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
+  assert.deepEqual(body, [
+    "allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);",
+    "allow create, update, delete: if false;",
+  ], "warehouses rules must be unchanged -- no LIST widening for the reorder picker");
+
+  // And no capability was invented for it either: the callable reuses the reorder-create capability.
+  assert.doesNotMatch(rules, /warehouse\.list/, "no warehouse.list capability may appear in Rules");
+});

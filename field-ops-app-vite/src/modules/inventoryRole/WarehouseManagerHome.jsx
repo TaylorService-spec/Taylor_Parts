@@ -10,7 +10,7 @@ import { requestReorderForRecommendation } from "../../domain/inventoryReorderRe
 import { INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
-import { useWarehouseOptions } from "../../hooks/useWarehouseOptions";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
@@ -201,7 +201,8 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
   // any "their warehouse" would be a guess dressed as a fact, and the request would carry an
   // operating company nobody chose. Empty until stated.
   const [reorderWarehouseId, setReorderWarehouseId] = useState("");
-  const reorderWarehouses = useWarehouseOptions(true);
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
   // Focus restoration: the triggering "View Activity" button that opened
   // the inline Part Activity panel, so closing it (button or keyboard)
   // returns focus there instead of dropping it to <body> -- same

@@ -47,6 +47,8 @@ on:
       - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
       - "field-ops-app-vite/test/reorderTrustedWritePathContract.test.mjs"
       - "field-ops-app-vite/test/reorderWarehouseSelector.test.jsx"
+      - "field-ops-app-vite/test/reorderWarehouseOptionsSource.test.jsx"
+      - "field-ops-app-vite/src/hooks/useReorderWarehouseOptions.js"
       - "field-ops-app-vite/test/reorderCreateWarehouseRequired.test.jsx"
       - "field-ops-app-vite/test/inventoryHealthPanelNames.test.jsx"
       - "field-ops-app-vite/package.json"
@@ -70,6 +72,8 @@ on:
       - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
       - "field-ops-app-vite/test/reorderTrustedWritePathContract.test.mjs"
       - "field-ops-app-vite/test/reorderWarehouseSelector.test.jsx"
+      - "field-ops-app-vite/test/reorderWarehouseOptionsSource.test.jsx"
+      - "field-ops-app-vite/src/hooks/useReorderWarehouseOptions.js"
       - "field-ops-app-vite/test/reorderCreateWarehouseRequired.test.jsx"
       - "field-ops-app-vite/test/inventoryHealthPanelNames.test.jsx"
       - "field-ops-app-vite/package.json"
@@ -122,5 +126,5 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Reorder warehouse selector + required-warehouse gate (jsdom)
-        run: npx vitest run test/reorderWarehouseSelector.test.jsx test/reorderCreateWarehouseRequired.test.jsx test/inventoryHealthPanelNames.test.jsx
+        run: npx vitest run test/reorderWarehouseSelector.test.jsx test/reorderWarehouseOptionsSource.test.jsx test/reorderCreateWarehouseRequired.test.jsx test/inventoryHealthPanelNames.test.jsx
         working-directory: field-ops-app-vite

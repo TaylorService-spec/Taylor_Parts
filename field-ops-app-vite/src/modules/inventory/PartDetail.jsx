@@ -43,7 +43,7 @@ import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
 import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
-import { useWarehouseOptions } from "../../hooks/useWarehouseOptions";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
@@ -1330,7 +1330,8 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   // page knows which part is short, and nothing on it knows where. So it is asked, and it
   // starts empty; the control below stays disabled until it is answered.
   const [reorderWarehouseId, setReorderWarehouseId] = useState("");
-  const reorderWarehouses = useWarehouseOptions(true);
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
 
   // Wave 6 -- master-data-in-Parts. null | "edit" | "status" -- which governed
   // Part Master action panel (if any) is open. Uses the SAME PartWriteModal +

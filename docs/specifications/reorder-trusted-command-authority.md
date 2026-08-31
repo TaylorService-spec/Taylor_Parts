@@ -204,49 +204,89 @@ followed, and how each step is undone.
 |---|---|---|
 | 1 | Every governed Warehouse a reorder can be raised against holds an `operatingCompanyId` | The callable DERIVES the request's company from the warehouse. A warehouse without one makes the command refuse — correctly, and unhelpfully. |
 | 2 | `createReorderRequest` + `recordReorderPurchaseOrder` deployed | Nothing can create a request once Rules retire the direct path. |
-| 3 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
-| 4 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
-| 5 | Every persona who may raise a reorder can obtain the warehouse pick-list | Added after measurement -- two of them currently cannot. See the blocking gap below. |
+| 3 | `listReorderWarehouseOptions` deployed alongside them (R-17) | The selector has no other read authority. Without it the picker is empty and no reorder can be raised at all. |
+| 4 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
+| 5 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
+| 6 | Every persona who may raise a reorder can obtain the warehouse pick-list | RESOLVED by R-17 for admin / dispatcher / WAREHOUSE_MANAGER. STILL OPEN for PARTS_MANAGER -- see below. |
+| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | It cannot today. The two authorities contradict; see the BLOCKING DEFECT below. |
 
-### BLOCKING GAP — two personas cannot see the warehouse list they are now required to name
+### Condition 6 — RESOLVED by R-17: `listReorderWarehouseOptions`
 
-**Measured against the emulator on this branch, 2026-08-31.** `firestore.rules` grants
-`warehouses` read as `isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId)`. The second half
-is a per-document test, and the pick-list is a collection LIST, which no per-document condition can
-satisfy:
+`firestore.rules` grants `warehouses` read as `isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId)`.
+The second half is a per-document test, and a pick-list is a collection LIST, which no per-document
+condition can satisfy — so the two personas the manual-entry path exists for could not obtain the
+warehouse identity the create now requires. Measured, before the fix:
 
-| Persona | LIST `warehouses` | GET `warehouses/wh-main` | Can raise a reorder? |
-|---|---|---|---|
-| admin | 200 | 200 | yes |
-| dispatcher | 200 | 200 | yes |
-| technician, ACTIVE `PARTS_MANAGER` | **403** | 403 | **no** |
-| technician, ACTIVE `WAREHOUSE_MANAGER` assigned to `wh-main` | **403** | 200 | **no** |
+| Persona | LIST `warehouses` | GET `warehouses/wh-main` |
+|---|---|---|
+| admin | 200 | 200 |
+| dispatcher | 200 | 200 |
+| technician, ACTIVE `PARTS_MANAGER` | **403** | 403 |
+| technician, ACTIVE `WAREHOUSE_MANAGER` assigned to `wh-main` | **403** | 200 |
 
-The last two are not incidental users: the NEEDS_PLANNING manual-entry path exists *for* them, and
-`WarehouseManagerHome` exists *for* the fourth row. They fail honestly — the selector renders "Unable
-to load warehouses right now, so a reorder cannot be requested" and the button stays off — but they
-fail, and before this workstream they could raise a reorder without naming a warehouse at all.
+**Owner ruling R-17: a trusted projection, not a Rules widening.** `warehouses` is unchanged, and a
+static contract test asserts it stays that way. `listReorderWarehouseOptions` returns exactly
+`{ warehouseId, label }` — never `operatingCompanyId` (the client must not hold the company as an
+authority), never inventory, staffing, status or provenance. It is authorized by the SAME capability
+as the create it serves (`reorder.request.create.manual`), with no operational-role fallback and no
+new `warehouse.list` capability.
 
-**This is a regression created by requiring the warehouse, and it must be closed before activation.**
-It is a change to a read authority, so it is the Owner's to decide, not this workstream's.
+**One eligibility, two consumers.** `reorderWarehouseEligibility.ts` answers *can this principal
+raise a reorder for THIS warehouse?* once. `listReorderWarehouseOptions` filters by it and
+`createReorderRequest` enforces it, so everything offered is accepted and a `warehouseId` posted by
+hand is refused (`WAREHOUSE_NOT_IN_SCOPE`, mapped to `permission-denied`) exactly when it was not
+offered. The invariant is tested as a property over a matrix of principals and warehouses, not as
+examples.
 
-**Recommended: a trusted read companion, not a Rules widening.** `listReceivingLocationOptions`
-(`functions/src/warehouseGovernance/receivingLocationOptionsService.ts`) already solves exactly this
-shape for Receiving: the eligible-location list is served by a capability-gated callable, and
-`warehouses` stays closed to client LIST. A `listReorderWarehouseOptions` companion gated on the
-reorder-create capability would follow that precedent, keep the pick-list and the command gated on
-the same authority, and add no client read surface.
+**Scope comes from existing authority, and nothing was invented.** It mirrors the warehouse-read
+authority already stated in Rules: admin/dispatcher are unscoped; a WAREHOUSE_MANAGER holds exactly
+their linked Employee's `assignedWarehouseIds` (Issue #226), under the same fail-closed contract —
+absent, empty or malformed assignment denies every warehouse, never "all".
 
-**The alternative — widening `warehouses` read to those operational roles — is not recommended.**
-It grants a standing collection LIST to obtain a pick-list, which is a broader disclosure than the
-task needs and is the kind of grant that is easy to make and hard to take back.
+### STILL OPEN — the PARTS_MANAGER warehouse scope
 
-**Not recommended at all:** restricting the reorder surfaces to admin/dispatcher. That closes a
-capability those roles hold today in order to avoid deciding this.
+`reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
+WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PARTS_MANAGER has none.**
+`assignedWarehouseIds` is consulted by exactly one authority in this repository, and that authority
+requires WAREHOUSE_MANAGER membership; no capability, Rule, ADR or fixture says which warehouses a
+Parts Manager may reorder for.
+
+Per the ruling ("If current authority does not actually define Parts Manager warehouse scope, STOP on
+that specific scope question rather than inventing one"), the resolver returns `NONE` with the reason
+`PARTS_MANAGER_SCOPE_UNDEFINED` — a named state, not a silent zero — and a test pins it so the gap
+cannot be closed by accident. **A Parts Manager therefore still cannot raise a reorder.** The two ways
+to change that without a ruling would both be inventions: granting them every warehouse, or reading
+`assignedWarehouseIds` for a role no authority says it scopes.
+
+### BLOCKING DEFECT — a warehouse cannot be both §3A-governed and company-bearing
+
+Found while building the projection, and it blocks activation independently of everything above.
+
+- `createReorderRequest` resolves the warehouse through the receiving-location authority, which
+  validates the **whole document** against the §3A governed shape — a strict allow-list of twelve
+  keys (`governedWarehouseValidation.ts`).
+- The same command then requires `warehouses/{id}.operatingCompanyId`, because the request's
+  operating company is derived from the warehouse (R-13).
+- `operatingCompanyId` is **not** in that allow-list, so writing it makes the document fail §3A as
+  `unknown_field`.
+
+So the command refuses in both directions: without the company, `WAREHOUSE_NO_COMPANY`; with it,
+`WAREHOUSE_NOT_GOVERNED`. **Activation condition 1 breaks activation condition 2 by construction**,
+and no reorder can be created in any state.
+
+The behaviour is at least coherent — the picker offers nothing and the create accepts nothing, so the
+R-17 invariant holds — but the whole path is unreachable. `functions/test/reorderWarehouseEligibility.test.mjs`
+pins the contradiction in a test named BLOCKER, which will fail when it is resolved.
+
+**Not fixed here, because both repairs cross an authority boundary.** Widening the §3A allow-list
+changes the Receiving authority's shape contract (Decision-tracked, I-LA C2). Giving the reorder its
+own warehouse-validity opinion is precisely the second opinion the 2B design refused to invent. A
+third option — storing the company somewhere other than the warehouse document — would change the
+ownership model's physical-root shape. All three are Owner decisions.
 
 ### Order
 
-**1 → 2 → 3 → 4.** Each step is safe to sit in indefinitely; none of the intermediate states is a
+**1 → 2 → 3 → 4 → 5.** (Functions covers both callables, so conditions 2 and 3 land in one deploy.) Each step is safe to sit in indefinitely; none of the intermediate states is a
 broken system, and that is the property the ordering is chosen for.
 
 1. **Warehouse company facts.** A data write against the five sandbox warehouses named in the
@@ -255,11 +295,13 @@ broken system, and that is the property the ordering is chosen for.
    *Rollback:* removing them would strand any request already created against them, so the rollback
    is forward — correct a wrong company by an explicit governed change, never by deletion.
 
-2. **Functions.** Additive: two new callables, nothing calls them yet.
+2. **Functions.** Additive: three new callables (two writes + the pick-list read), nothing calls them yet.
    *State after:* the callables exist and are unreachable from the shipped UI.
    *Rollback:* redeploy the previous Functions revision. No data written by anything.
 
-3. **Hosting.** The client starts calling the callables. Rules still permit the direct path, so
+3. **The pick-list callable -- same deploy, not a separate step.** `listReorderWarehouseOptions` ships in the same Functions deploy as the two write callables, so there is no separate step for it. It is called out as its own CONDITION because forgetting it produces an empty picker rather than an error, which is the quietest way this can fail.
+
+4. **Hosting.** The client starts calling the callables. Rules still permit the direct path, so
    BOTH are legal here — but only the callables are used, because the client has no code left that
    writes directly (proved by `reorderTrustedWritePathContract.test.mjs`).
    *State after:* new requests carry `warehouseId` and `operatingCompanyId`. This is the first step
@@ -267,7 +309,7 @@ broken system, and that is the property the ordering is chosen for.
    *Rollback:* redeploy the previous bundle. It writes directly again, which Rules still allow.
    Requests already created keep their warehouse and company — see *What rollback cannot undo*.
 
-4. **Rules (Tier 2, human operator).** The three retirements land.
+5. **Rules (Tier 2, human operator).** The three retirements land.
    *State after:* one write authority per command. The verifier's `GOVERNED_RULES_SHA256` stops
    reporting `LIVE != GOVERNED` — that mismatch is the signal to deploy, and must never be resolved
    by moving the pin back.
@@ -275,11 +317,11 @@ broken system, and that is the property the ordering is chosen for.
 
 ### What goes wrong in the wrong order
 
-- **4 before 2** — reorder creation is broken outright: the direct path is denied and no callable
+- **5 before 2** — reorder creation is broken outright: the direct path is denied and no callable
   exists to replace it. This is the one genuinely destructive ordering.
-- **4 before 3** — the deployed client still writes directly, and every Request Reorder fails with
+- **5 before 4** — the deployed client still writes directly, and every Request Reorder fails with
   permission-denied. Not data loss, but a visibly broken feature for every user until Hosting lands.
-- **3 before 1** — the client asks for a warehouse, the user picks one, and the callable refuses
+- **4 before 1** — the client asks for a warehouse, the user picks one, and the callable refuses
   because that warehouse has no company. Fail-closed and honest, but it is a broken feature too.
 - **2 before 1** — harmless. Nothing calls the callables yet.
 

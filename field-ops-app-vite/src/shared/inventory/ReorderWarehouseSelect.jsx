@@ -4,10 +4,16 @@
 // command derives the record's operatingCompanyId FROM that warehouse. So the warehouse is a
 // governed identity the user states, never something this app works out.
 //
-// WHAT THIS IS: a pick-list over the governed `warehouses` collection, presentational only.
-// WHAT THIS IS NOT: authority. Owner ruling -- "Client filtering is convenience. Server
-// validation is authority." The trusted service re-reads the warehouse and re-derives the
-// company inside its own transaction; it does not trust anything chosen here.
+// WHAT THIS IS: presentational only -- it renders whatever options it is handed.
+// WHAT THIS IS NOT: authority, and not a reader either. Owner rulings -- "Client filtering is
+// convenience. Server validation is authority."
+//
+// R-17: the options come from the trusted `listReorderWarehouseOptions` projection
+// (hooks/useReorderWarehouseOptions.js), NOT from a `warehouses` collection read. The browser holds
+// no LIST authority there and is not gaining one. The server returns only the warehouses this
+// principal may actually raise a reorder for, and `createReorderRequest` enforces the SAME
+// eligibility -- so every option here is accepted by the command, and a warehouseId that was never
+// offered is refused even if it is posted by hand.
 //
 // THREE THINGS IT DELIBERATELY DOES NOT DO, each one forbidden by ruling rather than merely
 // unimplemented:

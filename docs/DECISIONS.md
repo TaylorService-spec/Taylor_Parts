@@ -3540,3 +3540,94 @@ reorder transitions rather than the two that author a company fact (rejected —
 working state machine, not migrating an authority); backfilling the legacy rows to make one
 generation (rejected — no governed source exists for their warehouse, and inventing one is the
 inference this ruling forbids).
+
+## #147 — OWNER RULING R-17: the Reorder warehouse-option authority (and the Parts Manager scope question it leaves open)
+
+**Date:** 2026-08-31
+**Status:** Ruled and implemented in the repository. **NOT ACTIVE** — no deploy, no warehouse data write.
+
+**The problem, measured.** Workstream 2B (#146) made `warehouseId` a mandatory governed creation
+fact. `firestore.rules` grants `warehouses` read as `isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId)`;
+the second half is a per-document test, and a pick-list is a collection LIST, which no per-document
+condition can satisfy. Measured on the emulator: admin and dispatcher LIST 200; an ACTIVE
+PARTS_MANAGER technician 403; an ACTIVE WAREHOUSE_MANAGER technician 403 even for the warehouse it
+can GET individually. The two roles the manual-entry path exists for could not supply the identity
+the new authority required — a regression created by the requirement itself.
+
+### Ruling
+
+1. **APPROVED: a trusted projection. REJECTED: widening `warehouses` LIST.** Granting a standing
+   collection LIST to populate a picker is a broader disclosure than the task needs, and easy to
+   make but hard to take back. `listReorderWarehouseOptions` follows the precedent
+   `listReceivingLocationOptions` already set for exactly this shape.
+
+2. **Minimal projection.** `{ warehouseId, label }`. Not `operatingCompanyId` — the client must never
+   hold the company as an authority, and shipping it would invite a caller to send it back, which
+   the create refuses outright. Not inventory, staffing, status, provenance or any other operational
+   or company-private fact. The client still sends only `warehouseId`; the company stays
+   server-derived.
+
+3. **No new capability vocabulary.** The read exists solely to serve the governed reorder create, so
+   it is authorized by that create's own capability (`reorder.request.create.manual`). No
+   `warehouse.list` capability was introduced. No operational-role fallback inside the callable.
+
+4. **ONE eligibility, TWO consumers.** `reorderWarehouseEligibility.ts` answers *can this principal
+   raise a reorder for THIS warehouse?* once. The list filters by it; the create enforces it.
+   Required invariant, and it holds in both directions: everything the picker offers is accepted, and
+   a `warehouseId` posted by hand is refused (`WAREHOUSE_NOT_IN_SCOPE`) exactly when it was not
+   offered. **The selector is UX. The create callable is enforcement.**
+
+5. **Scope from existing authority only.** It mirrors the warehouse-read authority already in Rules:
+   admin/dispatcher unscoped; a WAREHOUSE_MANAGER holds exactly their linked Employee's
+   `assignedWarehouseIds` (Issue #226) under the same fail-closed contract — absent, empty or
+   malformed assignment denies every warehouse, never "all". Holding both manager roles resolves to
+   the governed scope, not the undefined one.
+
+6. **No Rules change.** `warehouses` read/write authority is untouched, and a static contract test
+   asserts the match block is unchanged and that no `warehouse.list` appears anywhere in Rules.
+
+7. **This is INSIDE Workstream 2B, not a separate stream.** 2B made `warehouseId` mandatory;
+   supplying a legitimate warehouse identity to already-authorized reorder creators is part of
+   completing that authority migration, not an adjacent concern.
+
+### STILL OPEN — the PARTS_MANAGER warehouse scope
+
+`reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
+WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PARTS_MANAGER has none:**
+`assignedWarehouseIds` is consulted by exactly one authority in this repository and that authority
+requires WAREHOUSE_MANAGER membership, and no capability, Rule, ADR or fixture defines a Parts
+Manager's warehouse scope.
+
+Per the ruling's own instruction, this STOPS here rather than being invented. The resolver returns
+`NONE` with the reason `PARTS_MANAGER_SCOPE_UNDEFINED` — a named state, not a silent zero — and a
+test pins it so the gap cannot be closed by accident. **A Parts Manager therefore still cannot raise a
+reorder**, and Workstream 2B is not complete until this is ruled on.
+
+### BLOCKING DEFECT found while implementing — the warehouse cannot hold its own company
+
+`createReorderRequest` validates the warehouse through the receiving-location authority, which
+checks the **whole document** against the §3A governed shape — a strict allow-list of twelve keys.
+The same command then requires `warehouses/{id}.operatingCompanyId`, because the company is derived
+from the warehouse (R-13). That field is not in the allow-list, so writing it makes the document fail
+§3A as `unknown_field`.
+
+The command therefore refuses in both directions — `WAREHOUSE_NO_COMPANY` without it,
+`WAREHOUSE_NOT_GOVERNED` with it. **Activation condition 1 breaks the command by construction**, and
+no reorder can be created in any state. The behaviour is coherent (picker and create both refuse, so
+the R-17 invariant holds) but the path is unreachable.
+
+Not repaired here: widening the §3A allow-list changes the Receiving authority's shape contract
+(Decision-tracked, I-LA C2); giving the reorder its own warehouse-validity opinion is the second
+opinion the 2B design refused to invent; and storing the company off the warehouse document would
+change the ownership model's physical-root shape. All three are Owner decisions.
+`functions/test/reorderWarehouseEligibility.test.mjs` pins the contradiction in a test named BLOCKER,
+which fails when it is resolved.
+
+### Rejected
+
+Widening `warehouses` collection LIST for the picker (rejected by ruling); a generic `warehouse.list`
+capability (rejected — the read serves one command and is authorized as that command); a
+browser-side fallback to the collection read when the callable fails (rejected — two read-authority
+models for one selector, and the one that works for an admin would hide the one that fails for
+everyone else); restricting the reorder surfaces to admin/dispatcher (rejected — closes a capability
+those roles hold today to avoid deciding the scope question).
