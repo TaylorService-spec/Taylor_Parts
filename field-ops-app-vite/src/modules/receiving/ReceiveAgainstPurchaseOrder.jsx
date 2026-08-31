@@ -41,7 +41,12 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // added -- and a failed/denied read blocks the receipt honestly rather than assuming NONE.
 const ORDERED_ONLY = [REORDER_REQUEST_STATUS.ORDERED];
 
-export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDone }) {
+// `initialReorderRequestId` — Receiving North Star frame 1a entry seam. The workspace's
+// Awaiting-receipt queue already identified the candidate, so when the matching row is present in
+// the governed read it is chosen automatically through the SAME chooseCandidate path a tap uses. If
+// it is no longer a candidate (received or voided meanwhile), the normal candidate list renders —
+// the read's truth, not the queue's memory. Presentation-only; steps and submit path untouched.
+export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, initialReorderRequestId = null, onDone }) {
   const requestsRead = useReorderRequestsByStatuses(ORDERED_ONLY);
   const ids = useMemo(() => requestsRead.data.map((r) => r.id), [requestsRead.data]);
   const purchaseOrdersRead = usePurchaseOrdersByIds(ids);
@@ -69,6 +74,19 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, onDo
   const locationRequestGenerationRef = useRef(0);
   const serialInputRefs = useRef([]);
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  // Auto-select the queue's candidate ONCE, and only while the picker step is still showing —
+  // a restart() deliberately returns to the full candidate list rather than re-looping here.
+  const autoChosenRef = useRef(false);
+  const initialCandidate =
+    initialReorderRequestId && step === RECEIVE_STEP.SELECT_CANDIDATE && !autoChosenRef.current
+      ? candidates.find((c) => c.reorderRequestId === initialReorderRequestId) ?? null
+      : null;
+  useEffect(() => {
+    if (!initialCandidate) return;
+    autoChosenRef.current = true;
+    chooseCandidate(initialCandidate);
+  }, [initialCandidate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function chooseCandidate(c) {
     const generation = ++locationRequestGenerationRef.current;

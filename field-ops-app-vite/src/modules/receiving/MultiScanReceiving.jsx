@@ -514,19 +514,26 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   );
 }
 
-export default function MultiScanReceiving({ deps }) {
-  const [purchaseOrderId, setPurchaseOrderId] = useState(null);
+// `initialPurchaseOrderId` / `onExit` — Receiving North Star frame 1a entry seam. When the
+// workspace's Awaiting-receipt queue (or its scan line) opens this journey, it already knows the
+// order, so the session starts there and "choose a different order" returns to the QUEUE (onExit)
+// instead of the internal picker — the queue IS the picker in that composition. Standalone use is
+// byte-identical: no initial id, internal OrderPicker, unchanged behaviour. Presentation-only;
+// the session, its reads and its submit path are untouched.
+export default function MultiScanReceiving({ deps, initialPurchaseOrderId = null, onExit = null }) {
+  const [purchaseOrderId, setPurchaseOrderId] = useState(initialPurchaseOrderId);
+  const leave = onExit ?? (() => setPurchaseOrderId(null));
   if (purchaseOrderId === null) return <OrderPicker deps={deps} onPick={setPurchaseOrderId} />;
   return (
     <>
-      <button type="button" className="fo-link-btn" onClick={() => setPurchaseOrderId(null)}>
+      <button type="button" className="fo-link-btn" onClick={leave}>
         ← Choose a different purchase order
       </button>
       <ScanSession
         key={purchaseOrderId}
         purchaseOrderId={purchaseOrderId}
         deps={deps}
-        onDone={() => setPurchaseOrderId(null)}
+        onDone={leave}
       />
     </>
   );

@@ -7198,3 +7198,45 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* The reorder command and its (i) on one line, baseline-aligned — the frame
    draws the icon beside the button, not under it. */
 .ns-reorder-row { display: inline-flex; align-items: center; gap: 2px; }
+
+/* ═══════════════ Receiving North Star P1 — frame 1a (workspace shell + Awaiting-receipt queue) ═══════════════
+   docs/north-star/receiving/DESIGN-HANDOFF-RECEIVING-P1.md. One queue, two governed journeys (RCV-D1);
+   tokens only, no one-off palette. The table reuses .fo-table + .fo-table-scroll and recomposes to the
+   established labelled-cell stacked block at phone widths (same pattern as .fo-sales-pipeline). */
+.fo-receiving-purpose { margin: 0; font-size: 13.5px; color: var(--color-text-secondary, var(--color-text-primary)); }
+.fo-receiving-purpose__gov { color: var(--color-text-muted); }
+
+/* No scan-first entry field: RCV-G7 — no governed scan-identifier contract exists for purchase
+   orders (see modules/inventory/Receiving.jsx). Queue rows are the entry path. */
+.fo-receiving-queue td { vertical-align: top; }
+.fo-receiving-queue__part { display: block; font-size: 12.5px; color: var(--color-text-muted); }
+.fo-receiving-queue__num { font-variant-numeric: tabular-nums; }
+.fo-receiving-queue__action-col { text-align: right; }
+.fo-receiving-queue__note { font-size: 12px; max-width: 90ch; }
+
+.fo-receiving-journey { display: grid; gap: 12px; justify-items: start; }
+
+.fo-receiving-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+.fo-receiving-bottom .fo-receiving-exception { margin: 32px 0 0; }
+.fo-receiving-bottom section[aria-labelledby="recent-receipts-heading"] { margin-top: 32px; }
+.fo-receiving-bottom section[aria-labelledby="recent-receipts-heading"] h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+/* The RCV-G1 held slot: visibly a reserved place, not a failed load and not an empty success. */
+.fo-receiving-slot { border: 1px dashed var(--color-border); border-radius: var(--radius-sm, 4px);
+  padding: 14px 16px; font-size: 13px; color: var(--color-text-secondary, var(--color-text-primary)); }
+
+@media (max-width: 900px) {
+  .fo-receiving-bottom { grid-template-columns: 1fr; gap: 0; }
+}
+
+/* Phone: labelled-cell stacked blocks; the table never pans the page. */
+@media (max-width: 640px) {
+  .fo-receiving-queue thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .fo-receiving-queue, .fo-receiving-queue tbody, .fo-receiving-queue tr, .fo-receiving-queue td { display: block; }
+  .fo-receiving-queue tr { border: 1px solid var(--color-border); border-radius: 10px; padding: 8px 11px; margin-bottom: 8px; }
+  .fo-receiving-queue td { border: 0; padding: 3px 0; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .fo-receiving-queue td::before { content: attr(data-label); color: var(--color-text-muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .03em; flex: none; }
+  .fo-receiving-queue__action-col { justify-content: flex-end; }
+  .fo-receiving-queue__action-col::before { content: none; }
+}
