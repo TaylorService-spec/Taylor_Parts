@@ -1,5 +1,6 @@
 import { useState } from "react";
 import RuledSection from "../ui/RuledSection.jsx";
+import PartsInfoDisclosure from "../../modules/inventory/PartsInfoDisclosure.jsx";
 import { Button } from "../ui/primitives/index.js";
 import { usePartIdentifiers } from "../../hooks/usePartIdentifiers.js";
 import { PART_IDENTIFIER_UNAVAILABLE_REASON } from "../../config/partIdentifierReadiness.js";
@@ -257,9 +258,27 @@ export default function PartIdentifiersSection({ partId, partNumber, deps }) {
       {/* UNAVAILABLE, not EMPTY. An empty list would assert this Part has no identifiers, which is a
           claim about data this screen has not read. The sentence is unchanged in substance and now
           costs a line rather than a block. */}
+      {/* CONCISE VISIBLE SENTENCE + THE GOVERNED CONSTANT BEHIND A DISCLOSURE — Owner ruling B §5.
+          PART_IDENTIFIER_UNAVAILABLE_REASON stays exactly as it is and remains authoritative; the
+          domain constant is NOT mutated to save pixels. What changed is that the record no longer
+          prints all 148 characters of it as permanent page copy.
+
+          THE VISIBLE LINE CARRIES THREE THINGS, all required: alternate identifiers are UNREAD, NOT
+          EMPTY; the capability is GOVERNED; and it is UNAVAILABLE IN THIS ENVIRONMENT.
+
+          WHAT THE DISCLOSURE CARRIES, and why it exists at all: the constant's second sentence draws
+          a distinction the short line cannot hold without becoming the paragraph it replaced —
+          commands that EXIST AND ARE GOVERNED but have been NEITHER DEPLOYED NOR GRANTED. Those are
+          two different reasons a capability is off and they resolve differently. Dropping that
+          silently was the one thing the ruling forbade, so it is one tap away instead. The mockup
+          draws no icon here; the Owner authorised this one as an authority-preserving adaptation. */}
       {status === "unavailable" && (
         <p className="ns-state ns-state--not-enabled" role="status">
-          Alternate identifiers are unread, not empty — {PART_IDENTIFIER_UNAVAILABLE_REASON}
+          Alternate identifiers are unread, not empty — identifier administration is built and
+          governed, and is not available in this environment.
+          <PartsInfoDisclosure label="Identifiers — why identifier administration is unavailable">
+            {PART_IDENTIFIER_UNAVAILABLE_REASON}
+          </PartsInfoDisclosure>
         </p>
       )}
 

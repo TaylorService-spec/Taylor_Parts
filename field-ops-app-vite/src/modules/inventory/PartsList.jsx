@@ -23,6 +23,7 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { partsAttentionItems } from "../../domain/partsAttentionProjection.js";
@@ -1278,10 +1279,23 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                 production catalogue is ~1,400 parts. So pagination stays, and the count states the
                 range as well as the total -- because "62 parts" alone, over 25 rows, would tell the
                 reader the page IS the catalogue. */}
+            {/* THE COUNT IS VISIBLE; THE EXPLANATION IS BEHIND THE (i) — Frame 1a's own footer, and
+                Owner ruling B §4. The ND-25 material about why there is no quantity column was
+                rendering as three permanent lines under the collection; it is not deleted, it is
+                one tap away, exactly where the frame draws the control. */}
             <span className="fo-muted">
               Showing {filteredParts.length === 0 ? 0 : currentPage * PAGE_SIZE + 1}–
               {Math.min((currentPage + 1) * PAGE_SIZE, filteredParts.length)} of {filteredParts.length}{" "}
               {filteredParts.length === 1 ? "part" : "parts"}
+              <PartsInfoDisclosure label="The catalogue — what this list counts, and what it does not show" align="end">
+                This count is the whole catalogue, not a company-wide inventory universe: the page
+                performs a whole-collection read and pages through it. No stock quantity is shown
+                here — the governed balance read is single-part, so there is no list-scale quantity
+                to answer from, and the static catalogue is a baseline rather than a count. Attention
+                comes from the governed reorder-request projection and nothing else. Search matches
+                the part number, description and category carried on each row; barcodes and aliases
+                need the identifier read, which is not active in this environment.
+              </PartsInfoDisclosure>
             </span>
             <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
               Next

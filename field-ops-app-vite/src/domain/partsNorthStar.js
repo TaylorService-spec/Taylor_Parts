@@ -162,7 +162,17 @@ export function partLocationSection() {
     // confusions are cheap to make and expensive to act on.
     note: "Location describes where units sit — it never implies custody or availability.",
     reason: INVENTORY_BALANCE_UNAVAILABLE_REASON,
+    // THE VISIBLE SENTENCE, at Frame 1b's length (Owner ruling B §6). It carries the whole contract:
+    // locations CANNOT BE LISTED — which is a different statement from "there are none" — the read
+    // is BUILT AND GOVERNED, and it is SWITCHED OFF IN THIS ENVIRONMENT. None of that is softened.
+    // What left the visible line is the restatement of WHICH two reads are involved, which is
+    // implementation detail rather than contract, and which a reader can now ask for.
     detail:
+      "Locations can’t be listed yet: the per-location read is built and governed, switched off in " +
+      "this environment.",
+    // ...and the long form, verbatim, for the disclosure. Kept as its own field rather than deleted:
+    // the balance-versus-location distinction is real, and it stays stated somewhere reachable.
+    detailLong:
       "Per-location quantities come from the governed balance and location reads. Both are built and " +
       "governed, and neither is switched on in this environment, so this part's locations cannot be " +
       "listed here yet.",
