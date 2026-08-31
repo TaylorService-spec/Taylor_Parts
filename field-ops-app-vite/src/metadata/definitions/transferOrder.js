@@ -14,7 +14,9 @@ import { TRANSFER_STATUS_META } from "../../domain/transfersView.js";
 // X-TRANSFER-ORDER-NO-REFERENCE). This definition previously held identity empty — genuinely no
 // nameField (nothing on the stored document or the read model is a human-entered name) and, at
 // the time, no referenceField either, because no allocateTransferOrderNumber (or equivalent)
-// existed anywhere in functions/src or field-ops-app-vite/src. modules/inventory/Transfers.jsx's
+// existed anywhere in functions/src or field-ops-app-vite/src. THAT WAS TRUE THEN AND IS NOT TRUE modules/inventory/Transfers.jsx's
+// NOW — see the correction below. The historical note is kept because it explains why this
+// definition once held identity empty, not because it still describes the repository.
 // table never even falls back to the id — transferOrderId is used ONLY as the React `key` and the
 // opaque argument to dispatch/receive/cancel action handlers, never printed on screen.
 // Inventing a nameField (or promoting partId, a REFERENCE to a DIFFERENT entity describing what
@@ -26,13 +28,27 @@ import { TRANSFER_STATUS_META } from "../../domain/transfersView.js";
 // `transferOrderNumber` (TO-YYYY-######), the same numbering FAMILY as WO-/OPP-/SO- and the sibling
 // RO-/RR- references this program's other held definitions now also declare. `identity:
 // makeIdentity({ referenceField: "transferOrderNumber" })` records the ruling — see the
-// transferOrderNumber field below for what is and is not true about it TODAY: the number is
-// server-allocated at creation by a numbering lane that has not been built yet, and the field is
-// absent on every existing (legacy) document. Declaring the reference field is not a claim that
-// numbering is live; it is the identity contract this entity now carries, with the honest gap
-// recorded on the field itself rather than papered over with a documentId fallback (the Owner's
-// ruling is explicit that documentId must never be exposed while legacy references are absent).
-// Numbering + backfill tooling remain a separate lane's work — REGISTRATION_PENDING below.
+// transferOrderNumber field below for what is and is not true about it TODAY.
+//
+// ============================ CORRECTED (RCV-G4): NUMBERING IS LIVE HERE ============================
+//
+// This header used to say the number was "server-allocated at creation by a numbering lane that has
+// not been built yet". It has been built, and it runs:
+//
+//     functions/src/inventoryTransfer/transferOrderNumbering.ts  allocateTransferOrderNumber
+//     functions/src/inventoryTransfer/transferOrderCommand.ts    createTransferOrder calls it inside
+//                                                                its transaction and serializes the
+//                                                                result onto the stored record
+//
+// So a Transfer Order created through the governed command DOES carry a TO-YYYY-###### number. The
+// stale sentence was not a harmless leftover: metadata that says an authority does not exist is read
+// as evidence that it does not exist, and the next reader would have built a second one.
+//
+// WHAT REMAINS TRUE, and is a different statement: orders created BEFORE the allocator have no
+// number, and no backfill has run. So a renderer still must not fall back to the Firestore document
+// id when the field is missing — an honest empty/placeholder state is required, per the Owner's
+// ruling that documentId must never be exposed while legacy references are absent. Backfill tooling
+// for those legacy rows remains a separate lane's work.
 //
 // READ: CLIENT_DIRECT, GATED BY ROLE/RELATIONSHIP, NEVER BY A CAPABILITY. firestore.rules'
 // `transfer_orders` match block: `allow read: if isAdminOrDispatcher() ||
@@ -143,10 +159,10 @@ export const transferOrderEntity = makeEntityDefinition({
       sortable: true,
       description:
         "TO-YYYY-######, the identity.referenceField per the Owner's identity-modes ruling (A-IDENTITY-MODES, " +
-        "X-TRANSFER-ORDER-NO-REFERENCE). Server-allocated at creation by a numbering lane that does not yet " +
-        "exist — no allocateTransferOrderNumber (or equivalent) is implemented anywhere in functions/src or " +
-        "field-ops-app-vite/src as of this definition. ABSENT ON EVERY EXISTING (LEGACY) transfer_orders " +
-        "document — the collection predates this field and no backfill has run. A renderer must not fall " +
+        "X-TRANSFER-ORDER-NO-REFERENCE). SERVER-ALLOCATED AT CREATION, and the allocator is LIVE: " +
+        "allocateTransferOrderNumber (functions/src/inventoryTransfer/transferOrderNumbering.ts) is called by " +
+        "createTransferOrder inside its transaction and serialized onto the stored record. ABSENT ON LEGACY " +
+        "transfer_orders documents that predate the allocator — no backfill has run. A renderer must not fall " +
         "back to the Firestore document id when this field is missing; an honest empty/placeholder state is " +
         "required instead, per the Owner's ruling that documentId must never be exposed while legacy " +
         "references are absent.",
