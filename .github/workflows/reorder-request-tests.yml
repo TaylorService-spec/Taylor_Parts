@@ -68,6 +68,7 @@ jobs:
 
       - name: Reorder Request numbering allocator tests (build + run)
         run: npm run test:reorderRequestNumbering
+        working-directory: functions
 
       # Workstream 2B. These had NO workflow naming them: the lane existed, path-filtered on
       # functions/src/reorderRequest/**, and ran only the numbering allocator -- so the trusted
