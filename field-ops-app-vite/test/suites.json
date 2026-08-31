@@ -714,6 +714,10 @@
       "runner": "node"
     },
     {
+      "file": "test/reorderTrustedWritePathContract.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/reportAccess.test.mjs",
       "runner": "node"
     },
