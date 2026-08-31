@@ -1352,3 +1352,35 @@ deployment parameter.
 
 Nothing about ND-33 itself changed: same command, same capability, same Rules, same Roles, same
 schema, and no Keystone secret value was created.
+
+**ND-33 IS CLOSED — Owner ruling, 2026-08-31.**
+
+| | |
+|---|---|
+| Authority | COMPLETE |
+| Callable | LIVE |
+| Real sandbox acquisition | PASS — fixture serial `GATE-ND33-DO-NOT-DELETE`, result AVAILABLE at Main Distribution Center |
+| Available Equipment visibility | PASS — visible, with no customer assignment |
+| Idempotent replay | confirmed |
+| **Status** | **CLOSED** |
+
+The gap this entry opened with — an authority that was registered, granted, activated and called by
+nothing — is shut end to end: capability, command, seams, callable, `index.ts` export, deployed
+Function, client surface, and a live acquisition that a person performed and a governed read then
+showed. Not one of those was inferred from an exit code.
+
+**The UX follow-up was CLOSED, NOT MERGED.** [PR #1639](https://github.com/TaylorService-spec/Taylor_Parts/pull/1639)
+composed the Add existing unit dialog to North Star quality and is not part of ND-33's closure. Its
+work is not lost — it stands on `claude/receiving-acquire-ux` — and **the next pass belongs to the
+Receiving page stream**, where the whole workspace is composed at once rather than one dialog inside
+it. ND-33 asked whether the company can record a unit it already owns. It can. How that screen reads
+is a different question with a different owner.
+
+**One defect rides along to that stream, and it is a behavioural one rather than a matter of taste.**
+The dialog compares the governed location read against `"READY"` while the transport returns
+`RECEIVING_OUTCOME.READY`, which is the lowercase `"ready"`. The comparison can never succeed, so a
+*successful* read prints "the company locations could not be read" beside the options it has just
+loaded. It is live in sandbox now and does not block acquisition — the picker still works and the
+command still validates the chosen location — but it tells an operator the opposite of what is true
+at the moment they are choosing where a machine lives. The fix and its regression tests are on that
+branch already; whoever picks up Receiving inherits them.
