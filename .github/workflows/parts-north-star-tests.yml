@@ -50,6 +50,10 @@ on:
       - "field-ops-app-vite/test/partsCollectionFrame1a.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarP1v2.test.jsx"
       - "field-ops-app-vite/test/partsInfoDisclosure.test.jsx"
+      # THE GATE SCRIPT IS A TRIGGER PATH, because partsNorthStarP1v2.test.jsx asserts its
+      # anchors. Without this a PR that edits the gate does not run the suite that guards it --
+      # which is exactly how three re-anchored checks shipped without landing in #1642.
+      - "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs"
       - ".github/workflows/parts-north-star-tests.yml"
   push:
     branches: [main]
@@ -77,6 +81,10 @@ on:
       - "field-ops-app-vite/test/partsCollectionFrame1a.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarP1v2.test.jsx"
       - "field-ops-app-vite/test/partsInfoDisclosure.test.jsx"
+      # THE GATE SCRIPT IS A TRIGGER PATH, because partsNorthStarP1v2.test.jsx asserts its
+      # anchors. Without this a PR that edits the gate does not run the suite that guards it --
+      # which is exactly how three re-anchored checks shipped without landing in #1642.
+      - "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/partsNorthStarQuickGate.mjs"
       - ".github/workflows/parts-north-star-tests.yml"
   workflow_dispatch:
 
