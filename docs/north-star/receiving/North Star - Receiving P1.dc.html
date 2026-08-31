@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 40px;">
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Receiving workspace — desktop 1440 · dispatcher session · receiving activated</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Composes existing governed reads only — receivable POs, reorder candidates, warehouse options. No new authority.</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Inventory</div>
+        <div style="padding: 5px 16px 5px 34px;">Parts</div>
+        <div style="padding: 5px 16px 5px 34px;">Part Master</div>
+        <div style="padding: 5px 16px 5px 34px;">Warehouse Workspace</div>
+        <div style="padding: 5px 16px 5px 34px;">Warehouses</div>
+        <div style="padding: 5px 16px 5px 34px;">Truck Inventory</div>
+        <div style="padding: 5px 16px 5px 34px;">Transfers</div>
+        <div style="margin: 2px 12px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Receiving</div>
+        <div style="padding: 5px 16px 5px 34px;">Cycle Counts</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Administration</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px;">
+        <div style="width: 1360px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+            <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Inventory → Receiving</span>
+            <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 9:12 AM · <a href="#r">Refresh</a></span>
+          </div>
+          <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+          <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 22px 0 8px;">
+            <div>
+              <h1 style="font-family: 'Source Serif 4', serif; font-size: 36px; font-weight: 700; margin: 0 0 4px;">Receiving</h1>
+              <p style="font-size: 13.5px; color: #4A5B55; margin: 0;">Receive purchased inventory and record company-owned units entering managed custody.</p>
+            </div>
+            <span style="font-size: 12px; color: #6B7A74;">Governed transaction · limited to Admin, Dispatcher, Owner</span>
+          </header>
+          <div style="display: flex; gap: 10px; align-items: center; padding: 14px 0 18px;">
+            <span style="font-size: 12.5px; color: #6B7A74; padding: 9px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; min-width: 380px;">Scan a purchase order, or type its number</span>
+            <span style="font: 600 13px Inter, sans-serif; padding: 9px 18px; background: #102B24; color: #fff;">Open</span>
+            <span style="font-size: 12px; color: #6B7A74;">A hardware scanner types here like a keyboard — the fastest path from a box on the dock to its order.</span>
+          </div>
+          <h3 class="rh">Awaiting receipt · 5 orders</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead><tr><th class="ls">Order</th><th class="ls">Journey</th><th class="ls">Supplier</th><th class="ls">Lines</th><th class="ls">Receipt progress</th><th class="ls">Order status</th><th class="ls" style="padding-right: 0; text-align: right;">Action</th></tr></thead>
+            <tbody>
+              <tr style="background: #FCFAF6;"><td class="ls"><strong>PO-2026-000214</strong></td><td class="ls">Supplier PO · multi-scan</td><td class="ls">Taylor Distribution</td><td class="ls" style="font-variant-numeric: tabular-nums;">6</td><td class="ls"><span style="color: #8A6D28; font-weight: 600;">Partially received</span> · 2 lines open</td><td class="ls">SENT</td><td class="ls" style="padding-right: 0; text-align: right;"><a href="#1b">Receive →</a></td></tr>
+              <tr><td class="ls"><strong>PO-2026-000231</strong></td><td class="ls">Supplier PO · multi-scan</td><td class="ls">Ventana Supply</td><td class="ls" style="font-variant-numeric: tabular-nums;">3</td><td class="ls" style="color: #4A5B55;">Not started</td><td class="ls">SENT</td><td class="ls" style="padding-right: 0; text-align: right;"><a href="#1b">Receive →</a></td></tr>
+              <tr><td class="ls"><strong>PO-2026-000228</strong><br><span style="color: #6B7A74; font-size: 12.5px;">X49463-3 — Scraper Blade Kit · qty 12</span></td><td class="ls">Reorder PO · full quantity</td><td class="ls">Taylor Distribution</td><td class="ls" style="font-variant-numeric: tabular-nums;">1</td><td class="ls" style="color: #4A5B55;">Not started</td><td class="ls">ORDERED</td><td class="ls" style="padding-right: 0; text-align: right;"><a href="#1d">Receive →</a></td></tr>
+              <tr><td class="ls"><strong>PO-2026-000226</strong><br><span style="color: #6B7A74; font-size: 12.5px;">C712-COMP — Compressor Assembly · qty 2 · serialized</span></td><td class="ls">Reorder PO · full quantity</td><td class="ls">Refrigeration Wholesale</td><td class="ls" style="font-variant-numeric: tabular-nums;">1</td><td class="ls" style="color: #4A5B55;">Not started</td><td class="ls">ORDERED</td><td class="ls" style="padding-right: 0; text-align: right;"><a href="#1d">Receive →</a></td></tr>
+              <tr><td class="ls"><strong>PO-2026-000219</strong><br><span style="color: #6B7A74; font-size: 12.5px;">016132 — O-Ring, Feed Tube · qty 200</span></td><td class="ls">Reorder PO · full quantity</td><td class="ls">Taylor Distribution</td><td class="ls" style="font-variant-numeric: tabular-nums;">1</td><td class="ls" style="color: #4A5B55;">Not started</td><td class="ls">ORDERED</td><td class="ls" style="padding-right: 0; text-align: right;"><a href="#1d">Receive →</a></td></tr>
+            </tbody>
+          </table>
+          <div style="font-size: 12px; color: #6B7A74; padding: 8px 0 0;">One queue, two governed journeys — the row states which it is, because a reorder PO (one part, immutable, full quantity) and a supplier PO (several lines, partial receipts) are different things the operator has to know they are holding. The union of the two existing reads is client-side composition only; each row routes to its own governed workflow and both submit through the same trusted command.</div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 34px;">
+            <div>
+              <h3 class="rh">A unit the company already owns</h3>
+              <p style="font-size: 13.5px; color: #4A5B55; margin: 0 0 12px; max-width: 56ch;">For an opening balance, a legacy migration, or a machine the company owns that was never recorded. This does not create a purchase order or supplier receipt, and it does not assign the unit to a customer.</p>
+              <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; border: 1px solid #102B24; color: #102B24; display: inline-block;">Add existing unit</span>
+              <div style="font-size: 12px; color: #6B7A74; margin-top: 10px;">Absent — not merely disabled — for a session that does not hold the acquire capability. Deliberately below and apart from the receipt queue: it is not a third way to receive. Opens the side sheet at <a href="#1c">1c</a>.</div>
+            </div>
+            <div>
+              <h3 class="rh">Recent receipts</h3>
+              <div style="border: 1px dashed #C3BCAB; padding: 16px 18px; font-size: 13px; color: #4A5B55;">
+                <strong style="color: #8A6D28;">Not connected yet.</strong> Receipts are recorded by the platform, but no read exists to show them back — receipt history cannot honestly render today.
+                <div style="font-size: 12px; color: #6B7A74; margin-top: 8px;"><strong style="color: #B08A55;">AUTHORITY GAP — DO NOT INVENT (RCV-G1):</strong> a governed receipt-history read. Slot preserved per North Star rules. When it lights, rows are labeled by the receiving order number (RO-YYYY-######) — numbering is itself pending (RCV-G2), and the document id is never shown in its place.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 1140px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b</span>Supplier PO — multi-scan session · scanning never moves inventory</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Every quantity shown is the server's derivation; the client only mirrors rules the command re-validates</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 0 28px 26px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+        <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Inventory → <a href="#1a">Receiving</a> → PO-2026-000214</span>
+        <span style="font-size: 11.5px; color: #6B7A74;"><a href="#1a">← Choose a different purchase order</a></span>
+      </div>
+      <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+      <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 18px 0 12px;">
+        <div>
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 0 0 4px;">PO-2026-000214</h2>
+          <div style="font-size: 13px; color: #4A5B55;">Receipt progress <strong style="color: #8A6D28;">partially received</strong> · order status SENT · Taylor Distribution</div>
+        </div>
+        <span style="font-size: 12px; color: #6B7A74;">Derived progress and stored lifecycle are different facts, shown as two.</span>
+      </header>
+      <div style="display: flex; gap: 10px; align-items: center; padding: 6px 0 4px;">
+        <span style="font-size: 12.5px; color: #102B24; padding: 9px 14px; outline: 2px solid #102B24; outline-offset: -2px; min-width: 260px; background: #FCFAF6;">Scan a part<span style="color: #B08A55;">▏</span></span>
+        <span style="font-size: 12.5px; color: #6B7A74; padding: 9px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; min-width: 220px;">Serial (serialized parts only)</span>
+        <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #102B24; color: #fff;">Add</span>
+        <span style="flex: 1;"></span>
+        <span style="font: 600 12.5px Inter, sans-serif; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #1C4638;">Undo last scan</span>
+        <span style="font-size: 12.5px; color: #4A5B55; padding: 8px 6px;">Clear queue</span>
+      </div>
+      <div style="font-size: 12.5px; color: #6B7A74; padding: 2px 0 16px;">7 scans · 9 units queued. Scanning records what you saw — nothing moves until you submit. Focus returns here after every Add, so a hardware scanner never needs a touch.</div>
+      <h3 class="rh">Expected versus observed</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead><tr><th class="ls">Line</th><th class="ls">Part</th><th class="ls" style="text-align: right;">Ordered</th><th class="ls" style="text-align: right;">Already received</th><th class="ls" style="text-align: right;">Outstanding</th><th class="ls" style="text-align: right;">Scanned now</th><th class="ls" style="text-align: right; padding-right: 0;">Remaining after</th></tr></thead>
+        <tbody>
+          <tr style="background: #FCFAF6;"><td class="ls">L1</td><td class="ls"><strong>X49463-3</strong> <span style="color: #6B7A74;">Scraper Blade Kit</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">12</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">8</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">4</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;"><strong>4</strong></td><td class="ls" style="text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; color: #237A45; font-weight: 600;">0</td></tr>
+          <tr style="background: #FCFAF6;"><td class="ls">L2</td><td class="ls"><strong>C712-COMP</strong> <span style="color: #6B7A74;">Compressor Assembly · serialized</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">2</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">0</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">2</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;"><strong>2</strong></td><td class="ls" style="text-align: right; padding-right: 0; font-variant-numeric: tabular-nums;">0</td></tr>
+          <tr><td class="ls">L3</td><td class="ls"><strong>016132</strong> <span style="color: #6B7A74;">O-Ring, Feed Tube</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">200</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">200</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">0</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">0</td><td class="ls" style="text-align: right; padding-right: 0; font-variant-numeric: tabular-nums;">0</td></tr>
+          <tr style="background: #FCFAF6;"><td class="ls">L4</td><td class="ls"><strong>X31350</strong> <span style="color: #6B7A74;">Drive Belt, 441 series</span></td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">10</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">0</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;">10</td><td class="ls" style="text-align: right; font-variant-numeric: tabular-nums;"><strong>3</strong></td><td class="ls" style="text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; color: #8A6D28; font-weight: 600;">7 stays open</td></tr>
+        </tbody>
+      </table>
+      <div style="border: 1px solid #B08A55; background: #FCFAF6; padding: 11px 16px; margin: 18px 0; display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: baseline; font-size: 13.5px;">
+        <span style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #B08A55;">Needs attention · 1</span>
+        <span><strong>044719</strong> · scanned, but not on this order. A blocked scan is never silently dropped and never silently included — resolve it before this receipt can be submitted.</span>
+        <a href="#rm">Remove</a>
+      </div>
+      <div style="display: flex; gap: 16px; align-items: center; border-top: 2px solid #102B24; padding-top: 16px;">
+        <span style="font-size: 13px; color: #4A5B55;">Receiving location</span>
+        <span style="font-size: 13px; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; min-width: 240px;"><strong>Main Warehouse — Phoenix</strong> ▾</span>
+        <span style="flex: 1;"></span>
+        <span style="font: 600 13px Inter, sans-serif; padding: 10px 20px; background: #C3BCAB; color: #6B7A74;">Submit receipt</span>
+        <span style="font-size: 12px; color: #8A6D28; font-weight: 600;">Resolve the blocked scan first.</span>
+      </div>
+      <div style="font-size: 12px; color: #6B7A74; padding-top: 10px;">One atomic receipt against this purchase order. A line still short stays open and a partially received order stays SENT — no control here can close a line short, because no governed command exists to do it. A protected action always says out loud why it is protected.</div>
+    </div>
+  </div>
+
+  <div id="1c" style="width: 1420px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1c</span>Add existing unit — side sheet · two-stage consequential action</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Compose (no write) → Confirm (read-back) → Added. Existing acquire authority, composed — nothing invented.</span>
+    </div>
+    <div style="display: flex; gap: 24px; align-items: flex-start;">
+      <div style="width: 440px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 24px 26px 26px; box-shadow: -8px 0 24px rgba(16,43,36,0.12);">
+        <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #B08A55; margin-bottom: 6px;">Stage 1 · Compose</div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 0 0 6px;">Add existing unit</h2>
+        <p style="font-size: 12.5px; color: #4A5B55; margin: 0 0 18px;">Records a serialized unit the company already owns. No purchase order or supplier receipt is created.</p>
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+          <label style="display: block;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Part</span><span style="display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; background: #FCFAF6;"><strong>C712-COMP</strong> — Compressor Assembly, Taylor C712 ▾</span><span style="font-size: 11.5px; color: #6B7A74;">Only serial-tracked parts are offered — only they have individual units.</span></label>
+          <label style="display: block;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Serial number</span><span style="display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; background: #FCFAF6;">SN-C712-88401</span><span style="font-size: 11.5px; color: #6B7A74;">The serial stamped on the unit. Required — asked for plainly, not flagged red before you've touched it.</span></label>
+          <label style="display: block;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Company location</span><span style="display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; background: #FCFAF6;">Main Warehouse — Phoenix ▾</span><span style="font-size: 11.5px; color: #6B7A74;">The same governed warehouse list Receiving uses. A customer's site is not in it.</span></label>
+          <fieldset style="border: none; margin: 0; padding: 0;">
+            <legend style="font-weight: 600; padding: 0; margin-bottom: 6px; font-size: 13px;">Reason — why is this being added without a purchase?</legend>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: baseline;"><span style="width: 12px; height: 12px; border: 1px solid #6B7A74; border-radius: 50%; display: inline-block;"></span><span><strong>Opening balance</strong><br><span style="color: #6B7A74; font-size: 12px;">Already in company custody when this system began tracking inventory.</span></span></label>
+              <label style="display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: baseline;"><span style="width: 12px; height: 12px; border: 1px solid #6B7A74; border-radius: 50%; display: inline-block;"></span><span><strong>Legacy migration</strong><br><span style="color: #6B7A74; font-size: 12px;">Carried into managed inventory from a prior system or governed migration process.</span></span></label>
+              <label style="display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: baseline;"><span style="width: 12px; height: 12px; border: 4px solid #102B24; border-radius: 50%; display: inline-block;"></span><span><strong>Existing company asset</strong><br><span style="color: #6B7A74; font-size: 12px;">A unit the company already owns that was not previously recorded in managed inventory.</span></span></label>
+            </div>
+            <div style="font-size: 11.5px; color: #6B7A74; margin-top: 6px;">A closed set with no default — no reason is true by omission, and "we bought it" is deliberately not among them.</div>
+          </fieldset>
+          <label style="display: block;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Provenance note <span style="color: #6B7A74; font-weight: 400;">(optional)</span></span><span style="display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; background: #FCFAF6; color: #4A5B55;">In the Mesa van since 2023 — confirmed by R. Otero</span><span style="font-size: 11.5px; color: #6B7A74;">Supporting context only. It does not stand in for the Reason above.</span></label>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; align-items: center;">
+          <span style="font: 600 13px Inter, sans-serif; padding: 10px 18px; background: #102B24; color: #fff;">Review acquisition</span>
+          <span style="font-size: 13px; color: #4A5B55; padding: 10px 6px;">Cancel</span>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 8px;">Performs no write. If something is still missing it is said once, plainly: <em>"Still needed: company location and reason."</em></div>
+      </div>
+      <div style="width: 440px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 24px 26px 26px;">
+        <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #B08A55; margin-bottom: 6px;">Stage 2 · Confirm</div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 0 0 10px;">Confirm acquisition</h2>
+        <div style="border: 1px solid #B23B3B; background: #FCFAF6; padding: 11px 14px; font-size: 13px; margin-bottom: 16px;">This creates a company-owned serialized asset in <strong>AVAILABLE</strong> inventory without a purchase order or supplier receipt. It does not assign the unit to a customer.</div>
+        <dl style="margin: 0 0 18px; display: grid; grid-template-columns: 140px 1fr; gap: 8px 14px; font-size: 13.5px;">
+          <dt style="color: #6B7A74;">Part</dt><dd style="margin: 0;"><strong>C712-COMP</strong> — Compressor Assembly, Taylor C712</dd>
+          <dt style="color: #6B7A74;">Serial number</dt><dd style="margin: 0; font-variant-numeric: tabular-nums;"><strong>SN-C712-88401</strong></dd>
+          <dt style="color: #6B7A74;">Company location</dt><dd style="margin: 0;">Main Warehouse — Phoenix</dd>
+          <dt style="color: #6B7A74;">Reason</dt><dd style="margin: 0;">Existing company asset</dd>
+          <dt style="color: #6B7A74;">Provenance note</dt><dd style="margin: 0; color: #4A5B55;">In the Mesa van since 2023 — confirmed by R. Otero</dd>
+        </dl>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <span style="font: 600 13px Inter, sans-serif; padding: 10px 18px; background: #102B24; color: #fff;">Confirm acquisition</span>
+          <span style="font-size: 13px; color: #4A5B55; padding: 10px 6px;">Back</span>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 8px;">The same sheet and the same command — a read-back, not a second step — so nothing here can disagree with the form it reads. The button names the act; never generic "Save".</div>
+      </div>
+      <div style="width: 400px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 24px 26px 26px;">
+        <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #237A45; margin-bottom: 6px;">Success</div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 0 0 8px;">Added to company inventory</h2>
+        <p style="font-size: 13.5px; margin: 0 0 12px;"><strong>C712-COMP · SN-C712-88401</strong> is now recorded at Main Warehouse — Phoenix, <strong style="color: #237A45;">AVAILABLE</strong> and unassigned.</p>
+        <p style="font-size: 12.5px; color: #4A5B55; margin: 0 0 16px;">It will appear under Equipment → Available Equipment, where the separately-held <em>Install at customer</em> action lives. No navigation to an Equipment record — acquiring creates none.</p>
+        <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; border: 1px solid #102B24; color: #102B24; display: inline-block;">Close</span>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 14px;">A replayed submission reports <em>"Already recorded — no duplicate unit was added."</em> in this same calm register. The workflow stops looking armed: the form is gone, not merely disabled.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1d" style="width: 1420px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1d</span>Reorder PO — linear journey · full ordered quantity, serialized capture when required</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Location → Serials (serial-tracked only) → Confirm → Result. Quantity is a confirmation, never an editable field (v1 contract).</span>
+    </div>
+    <div style="display: flex; gap: 24px; align-items: flex-start;">
+      <div style="width: 430px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 22px 26px 24px;">
+        <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin-bottom: 6px;">Step 2 of 4 · Destination</div>
+        <p style="font-size: 13.5px; margin: 0 0 14px;">Receiving <strong>C712-COMP</strong> (qty 2, full order) against PO-2026-000226. Where is it going?</p>
+        <label style="display: block; font-size: 13px;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Receiving location</span><span style="display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; background: #FCFAF6;">Main Warehouse — Phoenix ▾</span></label>
+        <span style="font: 600 13px Inter, sans-serif; padding: 10px 18px; background: #102B24; color: #fff; display: inline-block; margin-top: 16px;">Continue</span>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 10px;">The part's tracking mode is resolved through the governed Part Master read while you choose — a failed or denied read blocks the receipt honestly rather than assuming no serials are needed.</div>
+      </div>
+      <div style="width: 430px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 22px 26px 24px;">
+        <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin-bottom: 6px;">Step 3 of 4 · Serial numbers</div>
+        <p style="font-size: 13.5px; margin: 0 0 14px;">Scan or enter all 2 serial numbers for <strong>C712-COMP</strong>. One serial is one physical unit.</p>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+          <label style="display: block;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Serial 1</span><span style="display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; background: #FCFAF6; font-variant-numeric: tabular-nums;">SN-C712-90112</span></label>
+          <label style="display: block;"><span style="font-weight: 600; display: block; margin-bottom: 4px;">Serial 2</span><span style="display: block; padding: 9px 12px; outline: 2px solid #B23B3B; outline-offset: -2px; background: #FCFAF6; font-variant-numeric: tabular-nums;">SN-C712-90112</span></label>
+        </div>
+        <p style="font-size: 12.5px; color: #B23B3B; font-weight: 600; margin: 10px 0 0;">Duplicate serial numbers aren't allowed — each unit needs its own.</p>
+        <span style="font: 600 13px Inter, sans-serif; padding: 10px 18px; background: #C3BCAB; color: #6B7A74; display: inline-block; margin-top: 14px;">Continue</span>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 10px;">Enter advances to the next field — a hardware scanner walks the list hands-free. Serial identity is case-significant; nothing is folded or normalized.</div>
+      </div>
+      <div style="width: 430px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 22px 26px 24px;">
+        <div style="font: 600 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin-bottom: 6px;">Step 4 of 4 · Confirm</div>
+        <dl style="margin: 0 0 14px; display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px; font-size: 13.5px;">
+          <dt style="color: #6B7A74;">Part</dt><dd style="margin: 0;"><strong>C712-COMP</strong></dd>
+          <dt style="color: #6B7A74;">Purchase order</dt><dd style="margin: 0;">PO-2026-000226</dd>
+          <dt style="color: #6B7A74;">Quantity to receive</dt><dd style="margin: 0;"><strong>2</strong> (full order)</dd>
+          <dt style="color: #6B7A74;">Receiving location</dt><dd style="margin: 0;">Main Warehouse — Phoenix</dd>
+          <dt style="color: #6B7A74;">Serial numbers</dt><dd style="margin: 0; font-variant-numeric: tabular-nums;">SN-C712-90112, SN-C712-90180</dd>
+        </dl>
+        <p style="font-size: 12.5px; color: #4A5B55; margin: 0 0 14px;">Receiving records the full ordered quantity. This is a governed transaction.</p>
+        <span style="font: 600 13px Inter, sans-serif; padding: 10px 18px; background: #102B24; color: #fff; display: inline-block;">Confirm receipt</span>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 10px;">A retry rebuilds the identical request — a double press yields <em>"Already received"</em>, never duplicate stock.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1e" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1e</span>Truth states — mutually exclusive, never collapsed</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">EMPTY ≠ DENIED ≠ ERROR ≠ NOT ACTIVATED. A stale selection is never presented as validated truth.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+      <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 16px 18px;">
+        <h3 class="rh">Not activated</h3>
+        <p style="font-size: 13px; color: #4A5B55; margin: 0;">Receiving is built but not switched on in this environment, so the orders awaiting receipt cannot be read.</p>
+        <p style="font-size: 12px; color: #6B7A74; margin: 8px 0 0;">This is not an empty list — it is an unread one. No queue rows, no counts, nothing armed. Fail-closed at the transport; no attempt is made.</p>
+      </div>
+      <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 16px 18px;">
+        <h3 class="rh">Denied</h3>
+        <p style="font-size: 13px; color: #4A5B55; margin: 0;">You are not authorized to receive stock. This action is limited to authorized purchasing roles.</p>
+        <p style="font-size: 12px; color: #6B7A74; margin: 8px 0 0;">Authorization-specific — retry is not implied, because retrying will not help. Add existing unit is absent entirely, not disabled.</p>
+      </div>
+      <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 16px 18px;">
+        <h3 class="rh">Locations unreadable</h3>
+        <p style="font-size: 13px; color: #4A5B55; margin: 0;">Company locations could not be loaded, so none can be chosen.</p>
+        <p style="font-size: 12px; color: #6B7A74; margin: 8px 0 0;">Picker disabled with no default — a selected location and "could not be read" are never shown together. A genuinely empty set says so instead: "No eligible company locations are available."</p>
+      </div>
+      <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 16px 18px;">
+        <h3 class="rh">Held, not received</h3>
+        <p style="font-size: 13px; color: #4A5B55; margin: 0;">Connection lost — this receipt is queued on this device and will submit when back online. Nothing has been received.</p>
+        <p style="font-size: 12px; color: #6B7A74; margin: 8px 0 0;">Rendered above the receipt block, never inside it — the word "Received" belongs only to a receipt the platform returned. The idempotency key travels with it, so sync can never double-apply.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="1f" style="width: 430px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1f</span>Handheld — dock posture · 390</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Same authority, one column</span>
+    </div>
+    <div style="width: 390px; background: #F3F0E9; outline: 1px solid #C3BCAB; padding: 0 18px 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 8px; font-size: 11px;">
+        <span style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55;">Receiving</span>
+        <span style="color: #6B7A74;">PO-2026-000214</span>
+      </div>
+      <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+      <div style="padding: 12px 0 4px;">
+        <div style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 700;">PO-2026-000214</div>
+        <div style="font-size: 12px; color: #8A6D28; font-weight: 600;">Partially received · 2 lines open</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 10px 0;">
+        <span style="font-size: 14px; color: #102B24; padding: 13px 14px; outline: 2px solid #102B24; outline-offset: -2px; background: #FCFAF6;">Scan a part<span style="color: #B08A55;">▏</span></span>
+        <span style="font-size: 13px; color: #6B7A74; padding: 12px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px;">Serial (serialized parts only)</span>
+        <span style="font: 600 14px Inter, sans-serif; padding: 13px; background: #102B24; color: #fff; text-align: center;">Add</span>
+      </div>
+      <div style="font-size: 12px; color: #6B7A74; padding-bottom: 10px;">7 scans · 9 units queued. Nothing moves until you submit.</div>
+      <div style="border-top: 1px solid #C3BCAB; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+        <div style="display: flex; justify-content: space-between;"><span><strong>X49463-3</strong> <span style="color: #6B7A74;">outst. 4</span></span><strong>4</strong></div>
+        <div style="display: flex; justify-content: space-between;"><span><strong>C712-COMP</strong> <span style="color: #6B7A74;">· serialized</span></span><strong>2</strong></div>
+        <div style="display: flex; justify-content: space-between; color: #8A6D28;"><span><strong>X31350</strong> <span>outst. 10</span></span><strong>3 · 7 stays open</strong></div>
+        <div style="display: flex; justify-content: space-between; color: #B23B3B;"><span><strong>044719</strong> not on this order</span><a href="#rm2" style="color: #B23B3B;">Remove</a></div>
+      </div>
+      <div style="border-top: 2px solid #102B24; margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 13px; padding: 12px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px;"><strong>Main Warehouse — Phoenix</strong> ▾</span>
+        <span style="font: 600 14px Inter, sans-serif; padding: 14px; background: #C3BCAB; color: #6B7A74; text-align: center;">Submit receipt</span>
+        <span style="font-size: 12px; color: #8A6D28; font-weight: 600; text-align: center;">Resolve the blocked scan first.</span>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

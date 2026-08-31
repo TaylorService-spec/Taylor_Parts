@@ -1608,3 +1608,31 @@ None of these is a Parts P1 debt, and none blocks acceptance:
 | **P-G1** | Whole-collection read; cold record deep-link. Its own performance concern. |
 | **Serialized / lot live exercise** | Additional live coverage. The treatments are proved in `test/partsNorthStarRecord.test.jsx`. |
 | **Shared workspace document outline** | Two `<h1>`s per page — `AppShell`'s hidden domain landmark plus `PageHeader`'s visible title — across all 14 conformant workspaces. A shared-shell accessibility concern, **not Parts-specific**, and the reason a correct page once looked like a cross-family regression. |
+
+## Family 9 — Receiving
+
+**OPENED 2026-08-30. Design source received; no UI code changed yet.** This row records the
+starting state so the family begins from a written baseline rather than memory.
+
+| | |
+|---|---|
+| **Composition** | Workspace `src/modules/inventory/Receiving.jsx` with `src/modules/receiving/MultiScanReceiving.jsx`, `ReceiveAgainstPurchaseOrder.jsx`, `AcquireExistingUnit.jsx` over `domain/receivingScanQueue.js`, `receiveAgainstPurchaseOrder.js`, `receivingLocationOptionAdapter.js`, `serializedAssetAcquireForm.js` |
+| **Visual authority** | `docs/north-star/receiving/North Star - Receiving P1.dc.html` (frames 1a–1f) + `DESIGN-HANDOFF-RECEIVING-P1.md`, received 2026-08-30 (`Claude Design Docs/Receiving North Star P1v1.zip`). Binding brief committed beside them: `RECEIVING-NORTH-STAR-DESIGN-START.md` |
+| **Baseline** | `7d221497` — PR #1639 already composed the Add existing unit dialog (two-stage Review → Confirm, truthful location states); frame 1c re-hosts that work, it does not redo it. ND-33 (non-PO acquisition) is **CLOSED** (#1640) and is settled authority this family composes, not a question it may reopen |
+| **Reconciliation** | Handoff composition map verified against the repository 2026-08-30: every COMPOSE row's module exists. One handoff claim corrected on the way in — see RCV-G2 below |
+| **Proof** | Existing suites anchor the behavior being re-composed: `receivingScanQueue`, `receiveAgainstPurchaseOrder(+Component)`, `receivingLocationOptionAdapter`, `multiScanReceiving`, `acquireExistingUnitComposition`, `serializedAssetAcquire`. Family-specific North Star suites not yet written |
+| **Named decisions** | **RCV-G1** (no governed read of `receiving_orders` — deny-all is deliberate; Recent receipts renders an honest unavailable slot until a read-service ruling), **RCV-G2**, **RCV-D1** (one Awaiting-receipt queue with a Journey column, replacing the chip toggle — Owner may prefer two entries; only frame 1a would change) |
+| **Gate** | Not yet built |
+| **Acceptance** | `DESIGN_RECEIVED — implementation not started` |
+
+### RCV-G2 — the handoff's stale claim was corrected before it could become a defect
+
+The handoff zip's README said the `RO-YYYY-######` numbering lane was "not built, absent on all
+documents." The lane **is** built: `functions/src/inventoryReceiving/receivingOrderNumbering.ts`
+(merged 2026-08-18, #1259) allocates the number transaction-safely inside
+`receiveInventoryStockCommand`. What survives as the gap is narrower and is what Design actually
+needs: no governed read exposes the number to any client (RCV-G1 blocks the only surface that
+would), documents created before #1259 carry no number, and the deployed Functions release may
+predate the allocator. Renderers show an honest placeholder wherever the number is absent — never
+the document id. The committed `DESIGN-HANDOFF-RECEIVING-P1.md` records the corrected form; the
+zip's README keeps the stale sentence and is superseded.
