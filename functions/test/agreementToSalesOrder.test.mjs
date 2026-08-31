@@ -89,14 +89,15 @@ test("an agreement with no lines is refused", () => {
 
 test("exact quantity and integer price survive Agreement -> Sales Order", () => {
   const lines = salesOrderLinesFromAgreement(acceptedAgreement(PRICED));
-  assert.deepEqual(lines, [{ kind: "EQUIPMENT_MODEL", ref: "C713", orderedQty: 2, unitPrice: 500000 }]);
+  // FIN-002: the line's reporting unit travels with its committed price.
+  assert.deepEqual(lines, [{ kind: "EQUIPMENT_MODEL", ref: "C713", businessUnitId: "EQUIPMENT_SALES", orderedQty: 2, unitPrice: 500000 }]);
 });
 
 test("multiple prices survive unchanged, and a zero survives as zero", () => {
   const a = acceptedAgreement([
     { kind: "PART", ref: "A", quantity: 1, unitPrice: 1 },
     { kind: "PART", ref: "B", quantity: 3, unitPrice: 0 },
-    { kind: "SERVICE", ref: "C", quantity: 2, unitPrice: 999999 },
+    { kind: "SERVICE", ref: "C", businessUnitId: "SERVICE", quantity: 2, unitPrice: 999999 },
   ]);
   const lines = salesOrderLinesFromAgreement(a);
   assert.deepEqual(lines.map((l) => l.unitPrice), [1, 0, 999999]);

@@ -9,6 +9,7 @@
 import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
 import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
 import type { OwnerDerivation } from "../ownership/typedOwner";
+import { AttributionError, deriveLineBusinessUnit, resolveCreditedSalesperson } from "../finance/financialAttribution";
 import {
   SALES_ORDER_LINE_KINDS,
   isSalesChannel,
@@ -33,6 +34,8 @@ export type SalesOrderErrorCode =
   // is well formed -- the commercial decision is what is missing, and the caller needs to be sent
   // to a person, not to a validator.
   | "UNPRICED_LINE"
+  /** FIN-002: a line's business-unit attribution is missing where required, invalid, or contradicts its kind. */
+  | "BUSINESS_UNIT_INVALID"
   | "QTY_INVALID"
   | "TERMINAL"
   | "ILLEGAL_TRANSITION"
@@ -50,6 +53,12 @@ export class SalesOrderCommandError extends Error {
 export interface SalesOrderLineInput {
   kind: SalesOrderLineKind;
   ref: string; // model number / partId / service code — PRODUCT-level, never a serial
+  /**
+   * FIN-002 reporting attribution. EQUIPMENT_MODEL/PART classify themselves (an explicit value
+   * must match); a SERVICE line MUST declare SERVICE or INSTALLATION — a mixed order is attributed
+   * line by line, never flattened to one false order-level unit.
+   */
+  businessUnitId?: string;
   orderedQty: number;
   // COMMITTED UNIT PRICE, integer minor units. REQUIRED, because creation goes straight to
   // CONFIRMED -- see requireCompletePricing below. Still not COMPUTED here: this command records
@@ -70,6 +79,11 @@ export interface CreateSalesOrderInput {
   // followed -- a later correction upstream must never rewrite an order already placed.
   operatingCompanyId?: string;
   inheritedOperatingCompanyId?: string | null;
+  // FIN-002 (DECISIONS #146): sales credit, distinct from ownership. Explicit → inherited from the
+  // accepted Agreement/Opportunity (passed by the conversion caller from its own transactional
+  // read) → this order's resolved commercial owner. Never the creating actor.
+  creditedSalespersonId?: string;
+  inheritedCreditedSalespersonId?: string | null;
   salesChannel: SalesChannel;
   locationId?: string;
   sourceOpportunityId?: string;
@@ -88,6 +102,8 @@ interface BuiltLine {
   lineId: string;
   kind: SalesOrderLineKind;
   ref: string;
+  /** FIN-002: governed reporting unit for this line. */
+  businessUnitId: string;
   orderedQty: number;
   allocatedQty: number;
   fulfilledQty: number;
@@ -122,10 +138,22 @@ function validateLine(line: unknown, index: number): BuiltLine {
       `Line ${index} unitPrice must be a non-negative integer in minor units`
     );
   }
+  // FIN-002: line-level reporting attribution, derived-or-required exactly as on the Agreement —
+  // one authority (deriveLineBusinessUnit), two call sites, no laxer path.
+  let businessUnitId: string;
+  try {
+    businessUnitId = deriveLineBusinessUnit(l.kind as SalesOrderLineKind, l.businessUnitId as string | undefined);
+  } catch (err) {
+    if (err instanceof AttributionError) {
+      throw new SalesOrderCommandError("BUSINESS_UNIT_INVALID", `Line ${index}: ${err.message}`);
+    }
+    throw err;
+  }
   const out: BuiltLine = {
     lineId: `line-${index + 1}`,
     kind: l.kind as SalesOrderLineKind,
     ref: (l.ref as string).trim(),
+    businessUnitId,
     orderedQty: l.orderedQty as number,
     allocatedQty: 0,
     fulfilledQty: 0,
@@ -191,6 +219,15 @@ export interface BuiltSalesOrder {
   currency: string;
   /** Ruling R-14. Copied from upstream at creation, then historical. null until supplied. */
   operatingCompanyId: string | null;
+  /** FIN-002: sales credit, frozen at creation. Distinct from ownerEmployeeId; never the actor. */
+  creditedSalespersonId: string;
+  /**
+   * FIN-002 BOOKED basis (DECISIONS #146): the moment commercial terms were committed. For an
+   * order derived from an accepted Agreement this is the agreement's server-stamped
+   * acceptedAtMillis, passed via ctx by the conversion; for a direct creation it is the server
+   * creation time. ALWAYS server-authoritative — ctx-supplied, never a caller input.
+   */
+  bookedAtMillis: number;
   locationId: string | null;
   sourceOpportunityId: string | null;
   customerPO: string | null;
@@ -204,7 +241,10 @@ export interface BuiltSalesOrder {
 
 // Build a NEW Sales Order (CONFIRMED = the commercial commitment following a WON Opportunity). Reuses
 // canonical refs; never assigns serialized assets. `actorUid`/`nowMillis` come from the callable.
-export function buildCreateSalesOrder(input: CreateSalesOrderInput, ctx: { actorUid: string; nowMillis: number }): BuiltSalesOrder {
+export function buildCreateSalesOrder(
+  input: CreateSalesOrderInput,
+  ctx: { actorUid: string; nowMillis: number; bookedAtMillis?: number }
+): BuiltSalesOrder {
   if (!input || typeof input !== "object") throw new SalesOrderCommandError("INVALID", "Missing input");
   if (!nonEmpty(input.accountId)) throw new SalesOrderCommandError("ACCOUNT_REQUIRED", "accountId is required");
   // Ruling D-4. OWNER_REQUIRED is preserved as the refusal code, so a caller that supplies nothing
@@ -224,6 +264,14 @@ export function buildCreateSalesOrder(input: CreateSalesOrderInput, ctx: { actor
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
     operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId),
+    // Credit chain: explicit → inherited (agreement's frozen credit, read transactionally by the
+    // conversion caller) → this order's resolved commercial owner. ctx.actorUid deliberately
+    // absent — the person who clicked Create is an actor, not the credited salesperson.
+    creditedSalespersonId: resolveCreditedSalesperson(
+      input.creditedSalespersonId, input.inheritedCreditedSalespersonId, resolvedOwner.ownerEmployeeId) as string,
+    // Server context only. A conversion passes the agreement's acceptedAtMillis; direct creation
+    // books at server creation time. Never a caller-supplied clock.
+    bookedAtMillis: ctx.bookedAtMillis ?? ctx.nowMillis,
     currency: "USD",
     locationId: nonEmpty(input.locationId) ? input.locationId.trim() : null,
     sourceOpportunityId: nonEmpty(input.sourceOpportunityId) ? input.sourceOpportunityId.trim() : null,

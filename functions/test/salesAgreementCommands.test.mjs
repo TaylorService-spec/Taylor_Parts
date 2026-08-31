@@ -95,7 +95,7 @@ test("ACCEPTANCE REQUIRES A PRICE ON EVERY LINE, and names every one missing", (
   const draft = build([
     { kind: "PART", ref: "PRT-A", quantity: 1 },
     { kind: "PART", ref: "PRT-B", quantity: 1, unitPrice: 500 },
-    { kind: "SERVICE", ref: "SVC-C", quantity: 1 },
+    { kind: "SERVICE", ref: "SVC-C", businessUnitId: "SERVICE", quantity: 1 },
   ]);
   try {
     buildAcceptSalesAgreement(draft, CTX);
@@ -144,8 +144,9 @@ test("an accepted agreement yields Sales Order lines WITH their committed prices
   ]);
   const lines = deriveSalesOrderLinesFromAgreement({ ...a, state: "ACCEPTED" });
   assert.deepEqual(lines, [
-    { kind: "EQUIPMENT_MODEL", ref: "C713", orderedQty: 2, unitPrice: 500000 },
-    { kind: "PART", ref: "PRT-1", orderedQty: 4, unitPrice: 2500 },
+    // FIN-002: the reporting unit travels with the committed price.
+    { kind: "EQUIPMENT_MODEL", ref: "C713", businessUnitId: "EQUIPMENT_SALES", orderedQty: 2, unitPrice: 500000 },
+    { kind: "PART", ref: "PRT-1", businessUnitId: "PARTS", orderedQty: 4, unitPrice: 2500 },
   ]);
 });
 

@@ -16,6 +16,7 @@
 // is rejected. It reuses computeBillingEligibility (billingEligibility.ts) — the fulfillment→finance seam —
 // rather than re-deriving eligibility rules here.
 import { computeBillingEligibility, type BillingEligibilityInput } from "../fulfillment/billingEligibility";
+import { buildFinancialAttributionSnapshot, type FinancialAttributionSnapshot } from "./financialAttribution";
 
 export class InvoiceCommandError extends Error {
   code: string;
@@ -53,6 +54,8 @@ export interface SalesOrderSnapshotLine {
   lineId: string;
   kind: string;
   ref: string;
+  /** FIN-002 reporting attribution stamped on the SO line; absent on pre-FIN-002 orders. */
+  businessUnitId?: string | null;
   unitPrice?: number; // committed SO pricing snapshot; absent ⇒ no basis to bill against
   orderedQty: number;
   fulfilledQty?: number;
@@ -65,6 +68,9 @@ export interface SalesOrderSnapshot {
   state?: string; // CONFIRMED | IN_FULFILLMENT | FULFILLED | CLOSED | CANCELLED
   operationalBlocked?: boolean;
   additionalWorkPending?: boolean;
+  /** FIN-002 attribution frozen on the SO at creation; absent on pre-FIN-002 orders. */
+  operatingCompanyId?: string | null;
+  creditedSalespersonId?: string | null;
   lines: SalesOrderSnapshotLine[];
 }
 
@@ -138,6 +144,12 @@ export interface InvoiceLineRecord {
   salesOrderLineId: string;
   kind: string;
   ref: string;
+  /**
+   * FIN-002: the reporting unit of the SO line this bills — taken from the GOVERNED Sales Order
+   * snapshot, never from the client's line input. null for pre-FIN-002 orders (an honest absence,
+   * never a guess).
+   */
+  businessUnitId: string | null;
   billableQty: number;
   unitPriceMinor: number;
   subtotalMinor: number;
@@ -164,13 +176,24 @@ export interface InvoiceRecord {
   totalMinor: number;
   outstandingMinor: number; // = totalMinor at issuance (no payments/adjustments yet)
   taxProvenance: string | null;
+  /**
+   * FIN-002: the canonical event-time attribution snapshot (financialAttribution.ts — the ONE
+   * definition, composed here, never a finance-local copy). Frozen at issuance with the rest of
+   * the record: a later change to the Sales Order, the Customer, or ownership rewrites nothing
+   * here. null only when the caller had no governed SO snapshot to compose from (pre-FIN-002
+   * fixtures) — never partially fabricated.
+   */
+  attribution: FinancialAttributionSnapshot | null;
 }
 
 // Build the immutable ISSUED invoice record. `deps` carries the trusted sequence/number (from the counter, in
 // the caller's transaction) + now. Pure + fail-closed. Recomputes every amount with exact integer arithmetic.
 export function buildInvoiceRecord(
   input: IssueInvoiceInput,
-  deps: { invoiceNumber: string; sequence: number; nowMillis: number },
+  // `so` is the SAME governed snapshot verifySalesOrderMatch already reads (tx.get, never client
+  // claims). Optional so pre-FIN-002 callers/fixtures keep working; when present it supplies the
+  // line business units and the frozen attribution snapshot.
+  deps: { invoiceNumber: string; sequence: number; nowMillis: number; so?: SalesOrderSnapshot },
 ): InvoiceRecord {
   if (!input || typeof input !== "object") throw new InvoiceCommandError("INVALID_INPUT", "invoice input required");
   for (const [field, v] of [["companyId", input.companyId], ["accountId", input.accountId], ["salesOrderId", input.salesOrderId], ["currency", input.currency]] as const) {
@@ -199,7 +222,12 @@ export function buildInvoiceRecord(
     const taxableBaseMinor = subtotalMinor - discountMinor;
     if (taxableBaseMinor < 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} discount exceeds subtotal`);
     const lineTotalMinor = taxableBaseMinor + l.taxMinor;
-    out.push({ salesOrderLineId: l.salesOrderLineId, kind: l.kind, ref: l.ref, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
+    // Business unit comes from the GOVERNED SO line, matched by lineId — a client cannot label its
+    // own billing. Absent snapshot / absent stamp ⇒ null, honestly.
+    const soLine = deps.so?.lines?.find((s) => s.lineId === l.salesOrderLineId);
+    const businessUnitId = typeof soLine?.businessUnitId === "string" && soLine.businessUnitId.length > 0
+      ? soLine.businessUnitId : null;
+    out.push({ salesOrderLineId: l.salesOrderLineId, kind: l.kind, ref: l.ref, businessUnitId, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
   }
 
   const subtotalMinor = out.reduce((s, l) => s + l.subtotalMinor, 0);
@@ -224,5 +252,20 @@ export function buildInvoiceRecord(
     totalMinor,
     outstandingMinor: totalMinor, // AR open balance at issuance; payments/adjustments reduce it later
     taxProvenance: typeof input.taxProvenance === "string" ? input.taxProvenance : null,
+    // The ONE canonical snapshot (FIN-002). Composed from the governed SO facts; the invoice
+    // header's businessUnitId is deliberately null — a mixed order bills mixed units, and the
+    // truthful unit lives on each line above.
+    attribution: deps.so
+      ? buildFinancialAttributionSnapshot({
+          operatingCompanyId: deps.so.operatingCompanyId ?? null,
+          businessUnitId: null,
+          creditedSalespersonId: deps.so.creditedSalespersonId ?? null,
+          customerId: input.accountId,
+          sourceType: "SALES_ORDER",
+          sourceRecordId: input.salesOrderId,
+          eventAtMillis: deps.nowMillis,
+          currency: input.currency,
+        })
+      : null,
   };
 }

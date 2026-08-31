@@ -15,7 +15,7 @@ write must independently enforce governed financial visibility and scope.
 | ID | Workstream | Status |
 |---|---|---|
 | FIN-001 | Financial Authority & State Model | **COMPLETE** (audit: [FIN-001_FINANCIAL_AUTHORITY_MAP.md](./FIN-001_FINANCIAL_AUTHORITY_MAP.md); authority mode ratified — EOS = governed operational financial subledger, external accounting = future authority of record (not yet selected), GL in EOS out of scope; DECISIONS #145) |
-| FIN-002 | Reporting Attribution Model | **OPEN** |
+| FIN-002 | Reporting Attribution Model | **COMPLETE** (repository authority — [FIN-002_REPORTING_ATTRIBUTION_MODEL.md](./FIN-002_REPORTING_ATTRIBUTION_MODEL.md); DECISIONS #146; canonical `financialAttribution.ts`; creation paths preserve truthful attribution; visibility/exposure stays FIN-004; backfill plan only, not executed) |
 | FIN-003 | Plan vs Actual Model | **OPEN** |
 | FIN-004 | Financial Visibility Model | **OPEN** |
 | FIN-005 | Forecast Model | **OPEN** |

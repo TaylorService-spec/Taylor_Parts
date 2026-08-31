@@ -84,7 +84,13 @@ async function requireCapability(uid: string, capability: string, humanAction: s
 // ═══════════════════════════════════════════════════════════ CREATE
 
 export interface CreateSalesAgreementCallableInput
-  extends Omit<CreateSalesAgreementInput, "accountId" | "sourceOpportunityId"> {
+  extends Omit<
+    CreateSalesAgreementInput,
+    // Server-derived, never client-supplied: account and lineage come from the Opportunity, and
+    // the FIN-002 inherited-attribution values are read in-transaction (a client-claimed
+    // "inherited" value would be a client-authored fact wearing a server label).
+    "accountId" | "sourceOpportunityId" | "inheritedOperatingCompanyId" | "inheritedCreditedSalespersonId"
+  > {
   /** The negotiation this agreement records. The ACCOUNT is derived from it, never sent. */
   opportunityId: string;
   idempotencyKey: string;
@@ -136,7 +142,12 @@ export async function persistCreateSalesAgreement(
   const oppRef = db.collection(OPPORTUNITIES_COLLECTION).doc(opportunityId);
   const oppSnap = await tx.get(oppRef);
   if (!oppSnap.exists) throw new HttpsError("not-found", `No Opportunity with id ${opportunityId}`);
-  const opp = oppSnap.data() as { accountId?: string; outcome?: string | null };
+  const opp = oppSnap.data() as {
+    accountId?: string;
+    outcome?: string | null;
+    operatingCompanyId?: string | null;
+    creditedSalespersonId?: string | null;
+  };
   if (typeof opp.accountId !== "string" || opp.accountId.trim().length === 0) {
     throw new HttpsError("failed-precondition", "Opportunity has no accountId; cannot derive the Agreement's customer.");
   }
@@ -164,7 +175,16 @@ export async function persistCreateSalesAgreement(
   // ── 4. BUILD, before any write. Every rule lives in the pure command; a validation failure here
   //       must not leave a reserved counter behind.
   const built = buildCreateSalesAgreement(
-    { ...input, accountId: opp.accountId.trim(), sourceOpportunityId: opportunityId },
+    {
+      ...input,
+      accountId: opp.accountId.trim(),
+      sourceOpportunityId: opportunityId,
+      // FIN-002: attribution is INHERITED from the Opportunity read in THIS transaction — copied,
+      // not followed (R-14), so a later upstream correction never rewrites this agreement. The
+      // company and credit the chain committed at entry are what the accepted deal will freeze.
+      inheritedOperatingCompanyId: opp.operatingCompanyId ?? null,
+      inheritedCreditedSalespersonId: opp.creditedSalespersonId ?? null,
+    },
     { actorUid, nowMillis: Date.now() },
   );
 
