@@ -39,12 +39,14 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
       - "field-ops-app-vite/src/shared/search/searchProviders.js"
+      - "field-ops-app-vite/src/shared/ui/WorkspaceShell.jsx"
       - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
       - "field-ops-app-vite/test/partsReorderPointSemantics.test.jsx"
       - "field-ops-app-vite/test/partsCollectionFrame1a.test.jsx"
+      - "field-ops-app-vite/test/partsNorthStarP1v2.test.jsx"
       - ".github/workflows/parts-north-star-tests.yml"
   push:
     branches: [main]
@@ -61,12 +63,14 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
       - "field-ops-app-vite/src/shared/search/searchProviders.js"
+      - "field-ops-app-vite/src/shared/ui/WorkspaceShell.jsx"
       - "field-ops-app-vite/test/partsNorthStarProjection.test.mjs"
       - "field-ops-app-vite/test/partsNorthStarIdentity.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarRecord.test.jsx"
       - "field-ops-app-vite/test/partsNorthStarWorkspace.test.mjs"
       - "field-ops-app-vite/test/partsReorderPointSemantics.test.jsx"
       - "field-ops-app-vite/test/partsCollectionFrame1a.test.jsx"
+      - "field-ops-app-vite/test/partsNorthStarP1v2.test.jsx"
       - ".github/workflows/parts-north-star-tests.yml"
   workflow_dispatch:
 

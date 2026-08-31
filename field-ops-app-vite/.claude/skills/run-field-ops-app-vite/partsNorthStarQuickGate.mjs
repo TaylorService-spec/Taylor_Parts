@@ -192,6 +192,33 @@ async function overflow(page, label, width) {
   );
 }
 
+// THE HEIGHT BUDGETS ARE THE POINT OF THE P1v2 COMPOSITION, so they are measured rather than
+// trusted. The audit that produced the redesign was quantitative -- 3,406px of workspace at 1440,
+// 9,277px at 375 (11.4 screens, and 2.7x the desktop page) -- and a composition that looks right in
+// a screenshot while measuring 3,000px has not solved the problem it was drawn to solve.
+//
+// Budgets are Design's own, from DESIGN-HANDOFF-PARTS-P1v2.md. They are CEILINGS, not targets: a
+// shorter page passes. The reference figure is carried in the detail so a regression reads as a
+// number moving rather than as a bare fail.
+const HEIGHT_BUDGET = {
+  "workspace 1440": { max: 1700, was: 3406 },
+  "workspace 375": { max: 2400, was: 9277 },
+  "record 1440": { max: 1050, was: 1508 },
+  "record 375": { max: 1500, was: 2615 },
+};
+
+async function heightBudget(page, label, width) {
+  const key = `${label} ${width}`;
+  const budget = HEIGHT_BUDGET[key];
+  if (!budget) return true;
+  const h = await page.evaluate(() => document.documentElement.scrollHeight);
+  return record(
+    `H  P1v2 ${key} within its height budget`,
+    h <= budget.max,
+    `height=${h}px budget=${budget.max}px (was ${budget.was}px before P1v2)`,
+  );
+}
+
 async function main() {
   if (!/^https:\/\/eos-platform-sandbox\./.test(ORIGIN)) {
     console.error(`REFUSING: ${ORIGIN} is not the sandbox origin. This gate is sandbox-only.`);
@@ -236,6 +263,7 @@ async function main() {
     await openWorkspace(page);
     record(`1  workspace loads at ${width}`, (await catalogTable(page).count()) > 0, "Parts Catalog table present");
     await overflow(page, "2  workspace", width);
+    await heightBudget(page, "workspace", width);
   }
 
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -250,7 +278,7 @@ async function main() {
   const quantityHeadings = headings.filter((h) => /^(warehouse available|on hand|available)$/i.test(h));
   record("3  ND-25 workspace declares no quantity column", quantityHeadings.length === 0, `headings=[${headings.join(", ")}]`);
 
-  const FRAME_1A_COLUMNS = ["Part", "Manufacturer", "Category", "Control", "Status", "Attention"];
+  const FRAME_1A_COLUMNS = ["Part", "Category", "Control", "Status", "Attention"];
   const lowered = headings.map((h) => h.toLowerCase());
   record(
     "3a ND-30 the catalogue states Frame 1a's column grammar",
@@ -293,7 +321,11 @@ async function main() {
   //       disagrees with what it selects is how a list lies about how much work there is.
   // fo-filter-bar is FilterBar’s chips-variant class (ns-collection__views is the collection-page
   // variant this panel deliberately does not use -- see ND-30 in the composition map).
-  const chips = await panel.locator(".fo-filter-bar button").allInnerTexts().catch(() => []);
+  // .ns-tabrail__tab, NOT .fo-filter-bar button. P1v2 draws the views as underlined tabs, and the
+  // control already existed: .ns-tabrail is the shared workspace tab rail (Equipment uses it) and is
+  // NOT .ns-collection__views, so wearing it does not make /inventory declare itself a collection
+  // page -- which is the identity ND-30 withholds from this route.
+  const chips = await panel.locator(".ns-tabrail__tab").allInnerTexts().catch(() => []);
   const chipText = chips.map((c) => c.replace(/\s+/g, " ").trim());
   const hasViews = chipText.some((c) => /^all\b/i.test(c)) && chipText.some((c) => /needs attention/i.test(c));
   record("3c ND-30 the catalogue offers view chips with counts", hasViews, `chips=${JSON.stringify(chipText.slice(0, 6))}`);
@@ -358,9 +390,21 @@ async function main() {
         : `  [routeId="${routeId}" differs, so the cell demonstrably reads the Part Number]`),
   );
 
-  // ── 4b: the Attention column speaks the projection's words, or says nothing at all. A stored
-  //        reorder-request status reaching the reader would be the enum leak this family keeps
-  //        finding; an empty cell would be a claim that nothing was checked.
+  // ── 4b: the Attention column speaks the projection's words, or nothing.
+  //
+  // A STORED REORDER-REQUEST STATUS REACHING THE READER is the enum leak this family keeps finding,
+  // and that half of the check is unchanged and is the half that matters.
+  //
+  // WHAT CHANGED, AND WHY IT IS NOT A WEAKENING. This also required every cell to be NON-EMPTY, on
+  // the reasoning that a blank cell claims nothing was checked and a dash is "a statement that the
+  // projection was consulted". P1v2 draws the cell EMPTY when there is nothing to say, and the
+  // Owner approved it: that statement is made once, in the header's own "N need attention", and a
+  // column of 23 dashes is noise in the one column a parts manager scans for work.
+  //
+  // So the emptiness assertion inverts rather than disappears -- a blank cell must correspond to a
+  // part the attention projection does not hold, which is checked from the other end: the number of
+  // NON-blank cells on this page may never exceed the header's own attention count. A cell that
+  // silently stopped rendering a real attention item still fails here.
   const attentionIdx = lowered.indexOf("attention");
   let attentionOk = true;
   let attentionDetail = "(no Attention column)";
@@ -370,11 +414,14 @@ async function main() {
       .allInnerTexts();
     const trimmed = cells.map((c) => c.trim());
     const leaked = trimmed.filter((c) => /^[A-Z][A-Z_]{3,}$/.test(c));
-    const blank = trimmed.filter((c) => c.length === 0);
-    attentionOk = trimmed.length > 0 && leaked.length === 0 && blank.length === 0;
-    attentionDetail = `rows=${trimmed.length} leaked=${JSON.stringify(leaked.slice(0, 2))} blank=${blank.length} sample=${JSON.stringify(trimmed.slice(0, 3))}`;
+    const spoken = trimmed.filter((c) => c.length > 0);
+    const headerCount = Number(/(\d+)\s+needs?\s+attention/i.exec(panelText)?.[1] ?? "0");
+    attentionOk = trimmed.length > 0 && leaked.length === 0 && spoken.length <= headerCount;
+    attentionDetail =
+      `rows=${trimmed.length} leaked=${JSON.stringify(leaked.slice(0, 2))} ` +
+      `spoken=${spoken.length} headerCount=${headerCount} sample=${JSON.stringify(spoken.slice(0, 3))}`;
   }
-  record("4b ND-30 Attention renders governed words or an explicit dash", attentionOk, attentionDetail);
+  record("4b ND-30 Attention renders governed words, and nothing where there is nothing", attentionOk, attentionDetail);
 
   // ── 5: the typed search finds what the row displays. See the header: this is the defect ND-26
   //      created, and only a live typed search proves the deployed bundle carries the fix.
@@ -533,13 +580,16 @@ async function main() {
       ? "VACUOUS: this part has no ledger activity, so the forecast and its reorder control did not render — check 6a explains why no better row was available"
       : `namesDerivation=${namesDerivation} reorderReachable=${reorderReachable}`;
   }
-  record("13 ND-28 Stock forecast names its derivation; reorder stays reachable", reorderOk, reorderDetail);
+  record("13 ND-28 Availability / Inventory names its derivation; reorder stays reachable", reorderOk, reorderDetail);
 
   // ── 14: the record at 375 — a warehouse reads this on a handheld.
   await page.setViewportSize({ width: 375, height: 900 });
   await page.waitForTimeout(1200);
   await overflow(page, "14 record", 375);
+  await heightBudget(page, "record", 375);
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(1200);
+  await heightBudget(page, "record", 1440);
 
   // ── 15: NOT FOUND is its own sentence, never borrowed from a blocked read.
   await openRecord(page, "definitely-not-a-real-part-id-9999");

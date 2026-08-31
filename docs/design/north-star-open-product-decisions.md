@@ -1106,6 +1106,26 @@ as a presentation change, minus its quantity column.
 
 **Shipped meanwhile:** nothing changed. The ledger's acceptance surfaces are corrected to the record
 family only, so no one is asked to accept `/inventory` against a frame it was never built to.
+
+#### ND-30 amendment — **the scope boundary protects route ownership, not pixel placement** (Owner, 2026-08-31)
+
+ND-30's closing boundary reads *"DO NOT relocate the Work group / relocate the Flow group / relocate
+governed reorder queues."* The Parts P1v2 composition puts both groups in a 320px secondary rail, and
+the implementation delta raised the two instruments as contradictory rather than choosing a reading.
+The Owner amended ND-30 to the **narrow reading**:
+
+> *"Do not relocate Work / Flow"* means: **do not move them off `/inventory`**; **do not create
+> another workspace as their new home**; **do not remove their governed functions from the Parts
+> workspace**. It does **not** freeze their exact visual placement within `/inventory`.
+
+So the boundary is about **route ownership and functional presence**, not about where on the page the
+groups sit. Design's 320px secondary rail is **approved**: Parts and the catalogue remain the
+workspace's dominant purpose, and Work and Flow remain present on `/inventory` — visually
+subordinate, functionally intact.
+
+**What is still forbidden, unchanged:** moving either group to another route, removing a governed
+reorder queue, or dropping any of their functions from this workspace.
+
 ---
 
 ## Open — raised by the Equipment P1v2.1 composition map (2026-08-30)
