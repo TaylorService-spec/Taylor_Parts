@@ -3631,3 +3631,81 @@ browser-side fallback to the collection read when the callable fails (rejected �
 models for one selector, and the one that works for an admin would hide the one that fails for
 everyone else); restricting the reorder surfaces to admin/dispatcher (rejected — closes a capability
 those roles hold today to avoid deciding the scope question).
+
+## #148 — OWNER RULING: the two Reorder activation blockers are classified, and the ownership sequence becomes 2A.1 → 2B → 2C
+
+**Date:** 2026-08-31
+**Status:** Ruled. R-17 **ACCEPTED** (#147). Neither blocker is resolved; both have named follow-up workstreams.
+
+**R-17 accepted.** The trusted picker and the create command share the same capability, the same
+warehouse-scope authority and the same eligibility resolver, and *offered == accepted* is the right
+invariant. No warehouse LIST widening, no browser fallback, no second warehouse-validity opinion.
+
+### BLOCKER A — PARTS_MANAGER scope. Classification: **GOVERNED ROLE-SCOPE GAP**
+
+**Not to be resolved inside Reorder.** The repository defines no authoritative answer to "which
+warehouse(s) may a PARTS_MANAGER operate for", so `PARTS_MANAGER_SCOPE_UNDEFINED` failing closed is
+**correct**.
+
+Explicitly forbidden as a way to unblock Reorder: treating PARTS_MANAGER as all warehouses; copying
+WAREHOUSE_MANAGER's `assignedWarehouseIds` semantics; inferring from location, company, or employee
+title/name; defaulting to Taylor; broadening warehouse LIST.
+
+**→ WORKSTREAM 2C — Parts Manager warehouse operating scope.** Reconciliation required before any
+implementation: (1) is the scope one warehouse, several, operating-company scoped, enterprise-wide,
+or assigned some other way; (2) where is it stored authoritatively; (3) does it govern only Reorder
+or also receiving / transfers / cycle count / pick-stage / other warehouse operations; (4) how is it
+granted, revoked and audited. *Do not invent this solely to unblock Reorder.*
+
+### BLOCKER B — a Warehouse cannot carry its own company. Classification: **PHYSICAL-ROOT AUTHORITY CONTRACT MISMATCH**
+
+**This belongs to the Ownership program, and the ownership model is not what changes.** The approved
+model already states that a Warehouse IS a physical COMPANY root and that
+`warehouse.operatingCompanyId` is a persisted governed fact. The contradiction lives in the existing
+§3A warehouse/receiving shape contract, which predates the ownership requirement and rejects the new
+governed fact as `unknown_field`.
+
+**Ruling:** do NOT give Reorder its own warehouse-validity definition; do NOT move
+`operatingCompanyId` elsewhere merely to satisfy the old allow-list. Reconcile the canonical Warehouse
+authority so that ONE Warehouse definition recognizes `operatingCompanyId` as an allowed governed root
+fact.
+
+**→ WORKSTREAM 2A.1 — Physical-root company compatibility.** A compatibility amendment to the COMMON
+Warehouse authority, not a Reorder-specific exception. Target: a valid governed Warehouse may contain
+`operatingCompanyId` without ceasing to be a valid governed Receiving/Warehouse record.
+
+**Measurement required BEFORE any code:** the exact canonical §3A validator; every caller/importer of
+it; every test asserting the current 12-key shape; every writer capable of creating or updating a
+Warehouse record; whether those writers could author `operatingCompanyId`; whether the field must be
+immutable after root creation; whether warehouse status or other transitions use `affectedKeys()`;
+Receiving's behaviour with the extra governed field; migration behaviour for existing warehouses
+without it; and the exact Rules / Function / fixture / verifier delta.
+
+**Hard stop condition:** stop before implementing if widening the canonical shape would accidentally
+give any existing client writer authority to add or change `operatingCompanyId`.
+
+**Expected direction, to be proven not assumed:** allowed in the canonical shape; required for new
+ownership-governed physical roots; immutable through ordinary client Warehouse transitions; authored
+only through an explicitly governed root-authority path; optional on historical rows until separately
+migrated.
+
+### Sequence
+
+**2A.1 → 2B activation → 2C** (2C may run in parallel if it can be resolved independently).
+
+- Activation for **all intended roles** needs both 2A.1 and 2C.
+- Activation for **admin / dispatcher / defined WAREHOUSE_MANAGER scope only** needs 2A.1;
+  PARTS_MANAGER stays intentionally unavailable. **Intended role coverage must not be silently
+  redefined** to declare activation complete.
+
+### Merge vs activation for PR #1646
+
+Once every CI lane settles PASS, the Legacy Authorization Surface Gate is legitimately corrected
+(not waived), and no new authority regression appears, #1646 **may** merge as **dormant governed
+code** while activation stays blocked by 2A.1 and 2C. Merging authorizes no deployment, and it is
+conditional on main's normal build/test contract not assuming the new path is immediately executable.
+
+### Not authorized
+
+Warehouse `operatingCompanyId` writes; §3A shape modification (yet); inventing Parts Manager scope;
+deploy; sandbox mutation; production mutation.

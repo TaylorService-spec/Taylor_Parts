@@ -207,8 +207,8 @@ followed, and how each step is undone.
 | 3 | `listReorderWarehouseOptions` deployed alongside them (R-17) | The selector has no other read authority. Without it the picker is empty and no reorder can be raised at all. |
 | 4 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
 | 5 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
-| 6 | Every persona who may raise a reorder can obtain the warehouse pick-list | RESOLVED by R-17 for admin / dispatcher / WAREHOUSE_MANAGER. STILL OPEN for PARTS_MANAGER -- see below. |
-| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | It cannot today. The two authorities contradict; see the BLOCKING DEFECT below. |
+| 6 | Every persona who may raise a reorder can obtain the warehouse pick-list | RESOLVED by R-17 for admin / dispatcher / WAREHOUSE_MANAGER. STILL OPEN for PARTS_MANAGER -- WORKSTREAM 2C (DECISIONS #148). |
+| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | It cannot today. WORKSTREAM 2A.1, and it must land BEFORE 2B activation (DECISIONS #148). |
 
 ### Condition 6 — RESOLVED by R-17: `listReorderWarehouseOptions`
 
@@ -243,7 +243,7 @@ authority already stated in Rules: admin/dispatcher are unscoped; a WAREHOUSE_MA
 their linked Employee's `assignedWarehouseIds` (Issue #226), under the same fail-closed contract —
 absent, empty or malformed assignment denies every warehouse, never "all".
 
-### STILL OPEN — the PARTS_MANAGER warehouse scope
+### STILL OPEN — the PARTS_MANAGER warehouse scope (WORKSTREAM 2C)
 
 `reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
 WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PARTS_MANAGER has none.**
@@ -258,7 +258,7 @@ cannot be closed by accident. **A Parts Manager therefore still cannot raise a r
 to change that without a ruling would both be inventions: granting them every warehouse, or reading
 `assignedWarehouseIds` for a role no authority says it scopes.
 
-### BLOCKING DEFECT — a warehouse cannot be both §3A-governed and company-bearing
+### BLOCKING DEFECT — a warehouse cannot be both §3A-governed and company-bearing (WORKSTREAM 2A.1)
 
 Found while building the projection, and it blocks activation independently of everything above.
 
