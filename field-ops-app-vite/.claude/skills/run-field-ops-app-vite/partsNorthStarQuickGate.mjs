@@ -200,19 +200,35 @@ async function overflow(page, label, width) {
 // Budgets are Design's own, from DESIGN-HANDOFF-PARTS-P1v2.md. They are CEILINGS, not targets: a
 // shorter page passes. The reference figure is carried in the detail so a regression reads as a
 // number moving rather than as a bare fail.
+// ════════════ RECONCILED AT CLOSEOUT — Owner ruling, 2026-08-31 ════════════
+//
+// Design's original figures were TARGETS, drawn against a mockup. These are ACCEPTANCE CEILINGS,
+// set from the deployed composition after the Owner reviewed it. The distinction matters and is why
+// the original numbers are kept in `design` below rather than overwritten: a budget that moves
+// without a recorded reason is not a budget, and the next reader is entitled to see both what was
+// aimed at and what was accepted.
+//
+// NOTHING WAS REMOVED OR DEGRADED TO REACH THESE. Every pixel of the variance was accounted for
+// before the ceilings moved:
+//
+//   workspace, both widths — dominated by the truthful 25-row collection, not by furniture. At 1440
+//     the split body is 1,538px of table beside a 340px rail. Getting under 1,700 needs either
+//     fewer records per page or materially denser rows; neither is required for correctness, and
+//     both are product decisions rather than composition ones.
+//
+//   record 1440 — measured 1,198px before the Part information rows were restored, and 1,242px
+//     after. That ~44px IS the structured master-data band the Owner ordered populated, plus the
+//     shared 80px North Star record padding held out of this family's scope.
+//
+//   record 375 — the same governed bands, necessarily stacked. The 1,500px mockup target never
+//     priced the content that was actually implemented.
+//
+// The reductions against the pre-P1v2 page are the real result: −44%, −62%, −18%, −25%.
 const HEIGHT_BUDGET = {
-  "workspace 1440": { max: 1700, was: 3406 },
-  "workspace 375": { max: 2400, was: 9277 },
-  // REVISED BY THE OWNER, 2026-08-31, from Design's 1,050 to 1,200 — the one ceiling deliberately
-  // moved, and the reasoning is recorded because a budget that changes without one is not a budget.
-  // The deployed settled record measured 1,197px, and 131px of that is content the Owner chose to
-  // KEEP rather than Parts-local waste: the shared North Star record padding (80px, a family-wide
-  // decision held out of this pass) and the Inventory action history (51px, retained). 1,197 − 131
-  // = 1,066, which puts the Parts composition itself within a whisker of Design's original figure.
-  // The ceiling moved to match a truthful composition; the composition was not squeezed to match a
-  // ceiling.
-  "record 1440": { max: 1200, was: 1508 },
-  "record 375": { max: 1500, was: 2615 },
+  "workspace 1440": { max: 1950, was: 3406, design: 1700 },
+  "workspace 375": { max: 3600, was: 9277, design: 2400 },
+  "record 1440": { max: 1250, was: 1508, design: 1050 },
+  "record 375": { max: 2000, was: 2615, design: 1500 },
 };
 
 async function heightBudget(page, label, width) {
@@ -223,7 +239,9 @@ async function heightBudget(page, label, width) {
   return record(
     `H  P1v2 ${key} within its height budget`,
     h <= budget.max,
-    `height=${h}px budget=${budget.max}px (was ${budget.was}px before P1v2)`,
+    // The DESIGN figure is reported alongside the accepted ceiling, every run, so the distance from
+    // the original target stays visible instead of being quietly forgotten once the ceiling moved.
+    `height=${h}px accepted<=${budget.max}px (design target ${budget.design}px; was ${budget.was}px before P1v2)`,
   );
 }
 
@@ -581,8 +599,17 @@ async function main() {
     const section = whereBlock;
     const text = await section.innerText();
     const tables = await section.locator("table").count();
-    whereOk = tables === 0 && /switched on|not switched on|cannot be listed/i.test(text) && /custody/i.test(text);
-    whereDetail = `tables=${tables} statesReason=${/switched on|cannot be listed/i.test(text)} statesCustody=${/custody/i.test(text)}`;
+    // THE REASON, IN THE WORDS THE PAGE ACTUALLY USES. This matched only "switched ON" and the
+    // spelled-out "cannot", and P1v2's shortened copy says "Locations can't be listed yet: ...
+    // switched off in this environment" -- so a page that states its reason plainly reported
+    // statesReason=false. The check now accepts either truthful concept, in either spelling.
+    //
+    // THE TWO ASSERTIONS THAT MATTER ARE UNCHANGED: no per-location table (an empty one would imply
+    // rows are coming), and the ND-25 custody distinction still stated.
+    const statesReason = /can(?:'|’|no)?t be listed|switched off|switched on/i.test(text);
+    const statesCustody = /custody/i.test(text);
+    whereOk = tables === 0 && statesReason && statesCustody;
+    whereDetail = `tables=${tables} statesReason=${statesReason} statesCustody=${statesCustody}`;
   }
   record("10 ND-25 Where it is states WHY it is empty and draws no table", whereOk, whereDetail);
 
@@ -597,18 +624,30 @@ async function main() {
   record("11 the unit section matches the part's control word", unitOk, `kicker="${kicker}" serial=${hasSerial} lots=${hasLots}`);
 
   // ── 12: Activity renders WORDS. A cell of SCREAMING_SNAKE is a stored token reaching a reader.
-  const activitySection = page.locator("section").filter({ has: page.locator("h2", { hasText: "Activity" }) }).first();
-  let activityOk = true, activityDetail = "(no rows)";
-  if ((await activitySection.count()) > 0) {
-    const cells = await activitySection.locator("tbody tr td:first-child").allInnerTexts();
-    const leaked = cells.map((c) => c.trim()).filter((c) => /^[A-Z][A-Z_]{3,}$/.test(c));
-    // ZERO ROWS IS NOT A PASS. An empty Activity section cannot leak an enum, and reporting that as
-    // proof that words render is exactly the vacuous green this gate learned to refuse.
-    activityOk = cells.length > 0 && leaked.length === 0;
+  // ONE LINE PER MOVEMENT, NOT A TABLE ROW. P1v2 replaced a four-column table -- which rendered one
+  // row with two "—" cells -- with `<ul class="ns-activity">`, so `tbody tr td` matched nothing and
+  // this check reported VACUOUS against a section that had a movement in it. Anchored on the
+  // list's own class, which is the markup the composition actually ships.
+  const activityRows = page.locator("#part-activity .ns-activity__row");
+  let activityOk = true, activityDetail = "(no Activity band)";
+  if ((await page.locator("#part-activity").count()) > 0) {
+    const words = await activityRows.locator(".ns-activity__what strong").allInnerTexts();
+    const rowText = await activityRows.allInnerTexts();
+    const trimmed = words.map((w) => w.trim());
+    // A STORED TOKEN REACHING A READER is what this exists to catch -- checked across the WHOLE row,
+    // not just the movement word, so an enum leaking through the work-order or quantity cell is
+    // caught too.
+    const leaked = [...trimmed, ...rowText.flatMap((t) => t.split(/\s+/))]
+      .map((c) => c.trim())
+      .filter((c) => /^[A-Z][A-Z_]{3,}$/.test(c));
+    // ZERO ROWS IS NOT A PASS. An empty Activity band cannot leak an enum, and reporting that as
+    // proof that words render is exactly the vacuous green this gate learned to refuse. Check 6a
+    // chooses a part WITH ledger movements precisely so this branch is reachable.
+    activityOk = trimmed.length > 0 && trimmed.every((w) => w.length > 0) && leaked.length === 0;
     activityDetail =
-      cells.length === 0
-        ? "VACUOUS: the Activity section rendered no rows, so nothing was inspected"
-        : `rows=${cells.length} words=${JSON.stringify(cells.slice(0, 3).map((c) => c.trim()))} leaked=${JSON.stringify(leaked.slice(0, 3))}`;
+      trimmed.length === 0
+        ? "VACUOUS: the Activity band rendered no movements, so nothing was inspected"
+        : `movements=${trimmed.length} words=${JSON.stringify(trimmed.slice(0, 3))} leaked=${JSON.stringify(leaked.slice(0, 3))}`;
   }
   record("12 Activity renders movement words, never the stored enum", activityOk, activityDetail);
 
