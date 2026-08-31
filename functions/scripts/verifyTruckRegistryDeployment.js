@@ -49,7 +49,23 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 //
 // Previous pin: c2840d12f30ed89becbc9223a4acda69748ae6be8f777ee57f9c9ac2fd017b27 (the
 // sales_agreements ruleset, and the one currently live on the sandbox).
-const GOVERNED_RULES_SHA256 = "b94e287a918acb12b000bf717a8cce5c8678b6afd02184eacaa21624bae969d4";
+//
+// Re-anchored 2026-08-30 for Workstream 2B (Owner rulings R-13/R-15/R-16). The governed ruleset now
+// retires three client-direct authoring paths, because each authored a governed ownership fact:
+//   reorder_requests        allow create      -> trusted createReorderRequest
+//   reorder_requests        Record PO branch  -> trusted recordReorderPurchaseOrder
+//   reorder_purchase_orders allow create      -> trusted recordReorderPurchaseOrder
+// and permits (never requires) warehouseId + operatingCompanyId in the canonical key set.
+//
+// The paragraph above applies with full force: this pin is AHEAD OF LIVE and deliberately so. Until
+// the coordinated activation runs, the verifier will refuse with LIVE != GOVERNED. That refusal is
+// correct and is the signal to deploy. It must NOT be resolved by moving the pin back, and the Rules
+// deploy must not run before the callables exist -- retiring these creates without them would break
+// reorder creation outright.
+//
+// Previous pin: b94e287a918acb12b000bf717a8cce5c8678b6afd02184eacaa21624bae969d4 (the ruleset with
+// the client-direct reorder authoring paths still open).
+const GOVERNED_RULES_SHA256 = "3464bda22a0a50eed81c1eee60daddbd1003332f61966cd545a6c49ae531f44a";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------
