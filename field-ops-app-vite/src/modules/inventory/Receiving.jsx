@@ -7,6 +7,7 @@ import AcquireExistingUnit from "../receiving/AcquireExistingUnit";
 import { useAuth } from "../../auth/AuthContext";
 import { useSerializedAssetAcquireCapability } from "../../access/useSerializedAssetAcquireCapability";
 import { fetchReceivingLocationOptions } from "../../services/receivingCallableClient";
+import { RECEIVING_OUTCOME } from "../../domain/receivingTransport";
 
 // Inventory > Receiving -- the FIRST-CLASS workspace for the Receiving business capability
 // (Enterprise Operations OS platform-first; Taylor Parts flagship). Receiving IS a workspace;
@@ -63,14 +64,21 @@ export default function Receiving() {
   // acquisition that accepted a location receiving would reject would be a second answer to a
   // question one authority already owns.
   const [locations, setLocations] = useState({ status: null, options: [] });
+  // A retry is a NEW read, not a re-render of the last answer. Bumping the attempt returns the
+  // picker to its loading state first, so a second failure is visibly a second attempt rather than
+  // the first one's message still sitting there.
+  const [locationAttempt, setLocationAttempt] = useState(0);
   useEffect(() => {
     if (!acquiring) return undefined;
     let cancelled = false;
+    setLocations({ status: null, options: [] });
     fetchReceivingLocationOptions()
       .then((res) => { if (!cancelled) setLocations({ status: res.status, options: res.options ?? [] }); })
-      .catch(() => { if (!cancelled) setLocations({ status: "UNAVAILABLE", options: [] }); });
+      // The transport's own vocabulary, not a hand-typed string. A literal here is exactly how the
+      // dialog came to compare `status !== "READY"` against a value that is `"ready"`.
+      .catch(() => { if (!cancelled) setLocations({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] }); });
     return () => { cancelled = true; };
-  }, [acquiring]);
+  }, [acquiring, locationAttempt]);
 
   return (
     <div className="fo-panel">
@@ -134,6 +142,7 @@ export default function Receiving() {
           canAcquire={canAcquire}
           locationOptions={locations.options}
           locationsStatus={locations.status}
+          onRetryLocations={() => setLocationAttempt((n) => n + 1)}
           onClose={() => setAcquiring(false)}
           // The unit is now in AVAILABLE company stock. Remounting the receiving journey reconciles
           // the reads that have a new unit to show. It does NOT navigate into an Equipment record —

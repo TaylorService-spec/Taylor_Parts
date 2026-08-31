@@ -228,3 +228,66 @@ export function acquireConfirmationSummary({ form, part, location } = {}) {
 export const ACQUIRE_CONSEQUENCE =
   "This creates a company-owned serialized asset in AVAILABLE inventory without a purchase or "
   + "receiving record. It does not assign the unit to a customer.";
+
+// ═══════════════════════ THE TWO STAGES, AND WHY THE FORM IS NOT ONE SCREEN ═══════════════════════
+//
+// The read-back used to appear inline, below the fields, the moment the form became valid — and the
+// single button beneath it said "Confirm acquisition". So the act of completing the last field
+// silently armed the write, and the summary a person was meant to CHECK sat in the same scroll as
+// the controls they were still editing. Nothing distinguished "I am filling this in" from "I have
+// read this back and I mean it".
+//
+// Two stages make that distinction structural. Review assembles; Confirm commits. Neither calls the
+// backend except the second, and Back returns to the form with every answer intact.
+
+export const ACQUIRE_STAGE = Object.freeze({
+  FORM: "FORM",
+  CONFIRM: "CONFIRM",
+  DONE: "DONE",
+});
+
+/**
+ * What is still outstanding, named as things rather than as instructions.
+ *
+ * DELIBERATELY DIFFERENT WORDS FROM `validateAcquireForm`. Each field already carries its own
+ * instruction beside the control it is about ("Say why this unit is being added without a
+ * purchase."). Repeating that same sentence again next to the button was the duplication the surface
+ * was reported for: the same message twice says nothing twice.
+ *
+ * What the action needs to answer is a different question — not "what should I type here?" but "why
+ * can I not go on?" — so it names the missing facts and lets the field-level messages say how.
+ */
+export function outstandingRequirements(form) {
+  const { problems } = validateAcquireForm(form);
+  return problems.map((problem) => OUTSTANDING_NOUN[problem.field] ?? problem.field);
+}
+
+const OUTSTANDING_NOUN = Object.freeze({
+  part: "the part",
+  serialNo: "the serial number",
+  location: "the company location",
+  reason: "a reason",
+});
+
+/** "the part and a reason" — an English list, because a person reads this, not a machine. */
+export function outstandingRequirementSummary(form) {
+  const missing = outstandingRequirements(form);
+  if (missing.length === 0) return null;
+  const list = missing.length === 1
+    ? missing[0]
+    : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+  return `Still needed: ${list}.`;
+}
+
+/**
+ * May the form-stage action be pressed?
+ *
+ * Review assembles a read-back and calls nothing, so the only things that can stop it are the
+ * capability and the missing facts — never the submit status, which belongs to the stage after it.
+ */
+export function deriveAcquireReviewAction({ canAcquire, form }) {
+  if (!canAcquire) return { enabled: false, reason: ACQUIRE_DISABLED_REASON };
+  const summary = outstandingRequirementSummary(form);
+  if (summary) return { enabled: false, reason: summary };
+  return { enabled: true, reason: null };
+}
