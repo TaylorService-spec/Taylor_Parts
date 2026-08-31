@@ -1317,3 +1317,38 @@ boundary forbids new commands, capabilities or UI scope. P1 is correct as delive
 owed and did not pay was *naming the gap* in the composition map rather than leaving the Owner to
 find it on the deployed screen — recorded here so it is no longer invisible.
 
+
+**BUILT, AND THEN BLOCKED BY SOMETHING UNRELATED — 2026-08-31.**
+
+The endpoint and the client surface were subsequently built and merged: `acquireCallables.ts`
+declares the `onCall` adapter, `index.ts` exports it as `acquireSerializedAsset`, and Inventory →
+Receiving offers **Add existing unit**. Hosting shipped. The Functions deploy did not, and the
+reason had nothing to do with acquisition.
+
+```
+firebase deploy --only functions:acquireSerializedAsset --project eos-platform-sandbox
+→ prompts:  KEYSTONE_GATEWAY_URL
+```
+
+`acquireSerializedAsset` has no Keystone dependency of any kind. What it shares with the Keystone
+work-order interpretation function is a Functions codebase, and that turned out to be enough.
+
+**Root cause: `defineSecret` makes two claims, and only one of them was wanted.** It binds a secret
+to the function that lists it — correct, and unchanged — and it *also* declares a deployment
+parameter on the whole codebase. firebase-tools resolves every declared param during
+`functions:prepare`, over the full codebase build, **before** `--only` filters endpoints, and
+prompts to create any secret Secret Manager does not already hold. Secret *bindings* are validated
+later, against the **filtered** backend. So a param is a claim on every deploy of the codebase; a
+binding is a claim on deploys of one function.
+
+**The correction, in one line:** the five Keystone secrets are now named as strings in that
+function's own `secrets:` option instead of being declared as codebase params. The SDK emits an
+identical endpoint either way, so the Keystone function still requires all five and still cannot
+deploy without them — the claim simply stopped being codebase-wide.
+
+**Principle, recorded so the next secret-backed function does not re-create this: secret ownership
+is local to the function that uses it.** A test now fails if anything in `functions/src` declares a
+deployment parameter.
+
+Nothing about ND-33 itself changed: same command, same capability, same Rules, same Roles, same
+schema, and no Keystone secret value was created.
