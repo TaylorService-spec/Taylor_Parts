@@ -14,9 +14,10 @@ import { TRANSFER_STATUS_META } from "../../domain/transfersView.js";
 // X-TRANSFER-ORDER-NO-REFERENCE). This definition previously held identity empty — genuinely no
 // nameField (nothing on the stored document or the read model is a human-entered name) and, at
 // the time, no referenceField either, because no allocateTransferOrderNumber (or equivalent)
-// existed anywhere in functions/src or field-ops-app-vite/src. THAT WAS TRUE THEN AND IS NOT TRUE modules/inventory/Transfers.jsx's
+// existed anywhere in functions/src or field-ops-app-vite/src. THAT WAS TRUE THEN AND IS NOT TRUE
 // NOW — see the correction below. The historical note is kept because it explains why this
 // definition once held identity empty, not because it still describes the repository.
+// modules/inventory/Transfers.jsx's
 // table never even falls back to the id — transferOrderId is used ONLY as the React `key` and the
 // opaque argument to dispatch/receive/cancel action handlers, never printed on screen.
 // Inventing a nameField (or promoting partId, a REFERENCE to a DIFFERENT entity describing what
