@@ -1352,3 +1352,40 @@ deployment parameter.
 
 Nothing about ND-33 itself changed: same command, same capability, same Rules, same Roles, same
 schema, and no Keystone secret value was created.
+
+**ND-33 IS CLOSED — Owner ruling, 2026-08-31.**
+
+| | |
+|---|---|
+| Authority | COMPLETE |
+| Callable | LIVE |
+| Real sandbox acquisition | PASS — fixture serial `GATE-ND33-DO-NOT-DELETE`, result AVAILABLE at Main Distribution Center |
+| Available Equipment visibility | PASS — visible, with no customer assignment |
+| Idempotent replay | confirmed |
+| **Status** | **CLOSED** |
+
+The gap this entry opened with — an authority that was registered, granted, activated and called by
+nothing — is shut end to end: capability, command, seams, callable, `index.ts` export, deployed
+Function, client surface, and a live acquisition that a person performed and a governed read then
+showed. Not one of those was inferred from an exit code.
+
+**The UX follow-up landed separately.** [PR #1639](https://github.com/TaylorService-spec/Taylor_Parts/pull/1639)
+composed the Add existing unit dialog to North Star quality and merged as `7d221497`, squashed at the
+exact guarded head. It is not part of ND-33's authority and reopened none of it: no Functions, Rules,
+capability, Role, schema or command-payload change, and the request the callable receives is
+byte-identical. **The next UX pass belongs to the Receiving page stream**, where the whole workspace
+is composed at once rather than one dialog inside it. ND-33 asked whether the company can record a
+unit it already owns. It can. How that screen reads is a different question with a different owner.
+
+**One behavioural defect was corrected on the way through — fixed in the repository, not yet on the
+screen.** The dialog compared the governed location read against `"READY"` while the transport
+returns `RECEIVING_OUTCOME.READY`, which is the lowercase `"ready"`. The comparison could never
+succeed, so a *successful* read printed "the company locations could not be read" beside the options
+it had just loaded. It never blocked acquisition — the picker worked and the command still validated
+the chosen location — but it told an operator the opposite of what was true at the moment they were
+choosing where a machine lives.
+
+The correction derives one state from the transport's own enum and empties the options in every
+non-READY state, so a chosen location beside a failure message is unrepresentable rather than merely
+avoided. **Merged is not live.** This reaches an operator at the next Hosting refresh and not before;
+until that runs, the sandbox still shows the contradiction.
