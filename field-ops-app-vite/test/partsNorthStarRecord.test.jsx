@@ -147,7 +147,7 @@ describe("ND-25 — the record states no quantity it does not have", () => {
     await renderRecord();
     // The record still renders whole — a part with no movements is a valid part, not a missing one.
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(PART_NUMBER);
-    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const forecast = document.getElementById("part-availability");
     expect(forecast.textContent).toContain("no stock forecast can be made");
     expect(forecast.textContent).toContain("not a statement about how many exist");
   });
@@ -165,7 +165,7 @@ describe("the reorder point states what it does not know", () => {
       recommendation: { urgency: null, reorderPoint: 0, recommendedOrderQty: 0, daysRemaining: Infinity },
     }];
     await renderRecord();
-    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const forecast = document.getElementById("part-availability");
     const row = within(forecast).getByText("Reorder point").closest("tr");
     // THE VALUE CELL, asserted exactly. The defect this replaces was a bare 0 sitting beside the
     // sentence explaining why it is zero, so "contains the words" is not enough -- the cell must
@@ -187,7 +187,7 @@ describe("the reorder point states what it does not know", () => {
       recommendation: { urgency: "MEDIUM", reorderPoint: 3.4, recommendedOrderQty: 6, daysRemaining: 15 },
     }];
     await renderRecord();
-    const forecast = screen.getByRole("heading", { name: "Stock forecast" }).closest("section");
+    const forecast = document.getElementById("part-availability");
     const row = within(forecast).getByText("Reorder point").closest("tr");
     expect(row.textContent).toContain("4");
     expect(row.textContent).not.toContain("Not established");
@@ -245,7 +245,7 @@ describe("tracking mode decides the unit section — one treatment per Part", ()
 describe("the composition rules", () => {
   it("the rail does not repeat a fact the header already stated", async () => {
     await renderRecord();
-    const rail = document.querySelector(".ns-rail");
+    const information = document.getElementById("part-information");
     const identity = document.querySelector(".ns-identity");
     // Stated once, in the header.
     expect(identity.textContent).toContain("Active");
@@ -253,10 +253,12 @@ describe("the composition rules", () => {
     expect(identity.textContent).toContain("Refrigeration");
     expect(identity.textContent).toContain("Each");
     expect(identity.textContent).toContain("OEM (Genuine)");
-    // ...and not again in the rail's classification block.
-    const classification = within(rail).queryByRole("heading", { name: "Classification" });
-    if (classification) {
-      const dl = classification.closest("section").querySelector(".ns-rail__dl");
+    // ...and not again in the Part information band, which is where the classification facts moved
+    // when P1v2 replaced the rail with five bands. The RULE is unchanged and so is its strength:
+    // a fact the header states is not restated below it. Only the container it is read from moved,
+    // and it is now read from a stable id rather than a heading the composition may rename again.
+    const dl = information.querySelector(".ns-rail__dl");
+    if (dl) {
       expect(dl.textContent).not.toContain("Active");
       expect(dl.textContent).not.toContain("Refrigeration");
       expect(dl.textContent).not.toContain("OEM (Genuine)");
