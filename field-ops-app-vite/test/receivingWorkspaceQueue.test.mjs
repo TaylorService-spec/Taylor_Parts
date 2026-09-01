@@ -184,6 +184,42 @@ test("a reorder row renders its governed external PO number and NEVER the reorde
   }
 });
 
+test("a legitimately long, machine-shaped external PO number is ACCEPTED as the reference", () => {
+  // The first deployed Quick Gate (0abc2353) rejected `PO-LIVE-1788220473108` with an id-shape
+  // heuristic — a gate false positive against a governed externalPoNumber value. Field provenance
+  // is proved HERE, not inferred from string shape: whatever the governed field holds, renders.
+  const row = buildReorderQueueRow(candidate({ externalPoNumber: "PO-LIVE-1788220473108" }));
+  assert.equal(row.orderReference, "PO-LIVE-1788220473108");
+});
+
+test("PROVENANCE PIN: orderReference comes from externalPoNumber and NOTHING else", () => {
+  // The correct live-gate/source split — the live gate proves what the operator sees; this proves
+  // which governed field supplied it. Rewiring either builder's reference to a document id fails.
+  const src = read("src/domain/receivingWorkspaceQueue.js");
+  const reorderBuilder = src.slice(src.indexOf("function buildReorderQueueRow"), src.indexOf("// ─────────────────────────────────────────────── the combined queue"));
+  assert.match(reorderBuilder, /orderReference: typeof row\.externalPoNumber/);
+  assert.doesNotMatch(reorderBuilder, /orderReference:[^,\n]*reorderRequestId/);
+  const supplierBuilder = src.slice(src.indexOf("function buildSupplierQueueRow"), src.indexOf("function buildReorderQueueRow"));
+  assert.match(supplierBuilder, /orderReference: null/);
+  assert.doesNotMatch(supplierBuilder, /orderReference:[^,\n]*purchaseOrderId/);
+  // The ids appear ONLY inside the opaque navigation argument.
+  assert.match(supplierBuilder, /open: \{ journey: RECEIVING_JOURNEY\.SUPPLIER, purchaseOrderId: po\.purchaseOrderId \}/);
+  assert.match(reorderBuilder, /open: \{ journey: RECEIVING_JOURNEY\.REORDER, reorderRequestId: row\.reorderRequestId \}/);
+});
+
+test("GATE CONTRACT: the corrected Quick Gate asserts the real crumb and never infers provenance from shape", () => {
+  // Pins the two corrections so the false negative and the false positive cannot quietly return.
+  const gate = read(".claude/skills/run-field-ops-app-vite/receivingNorthStarQuickGate.mjs");
+  // Crumb: the actual element, strict equality on the full directional relationship — removing
+  // the crumb, duplicating it, or losing either side fails the live gate.
+  assert.match(gate, /page\.locator\("\.ns-page__context"\)/);
+  assert.match(gate, /=== "Inventory → Receiving"/);
+  assert.match(gate, /\(await crumb\.count\(\)\) === 1/);
+  // Order reference: journey-conditional truth, no id-shape heuristic anywhere.
+  assert.match(gate, /orderPrimary !== "No order number recorded"/);
+  assert.doesNotMatch(gate, /\{18,28\}|id-?shaped token/i);
+});
+
 test("MUTATION PROOF: no RR-number is synthesized while the RR lane is unwired (RCV-G4)", () => {
   // The allocator exists but nothing calls it, so no reorder document carries a number — a queue
   // that prints one would be claiming numbering is live. Any RR-shaped string in a built row fails.

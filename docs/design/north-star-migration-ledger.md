@@ -1781,3 +1781,20 @@ All six frames are merged (1a `543303ae` · 1b `69bf5981` · 1d `10e06190` · 1c
 | **Quick Gate** | `receivingNorthStarQuickGate.mjs` now exists (this entry's commit) — sandbox-only, read-only, data-adaptive with honest SKIPs; asserts the deployed commit, the queue's mutually exclusive truth states, stated reference absences, RCV-G1/G7 held, ND-33 sheet composition with a measured no-command-left-the-page close, deny-all discipline, and a live 375px overflow measurement |
 | **Next** | Hosting refresh (platform-sandbox build via `buildForEnvironment.mjs`, deploy `--only hosting`) → verify `/version.json` → run the gate against that exact SHA → Owner visual acceptance |
 | **Acceptance** | unchanged — `AWAITING` |
+
+### Family 9 — deployed, and the first Quick Gate run failed its own gate, not the product (2026-08-31)
+
+**Hosting refresh ran (Owner-executed): deployed commit `0abc2353`, `platform-sandbox`, verified
+from the environment (`/version.json`). Functions and Rules NOT deployed — none were needed.**
+
+**First Quick Gate run vs `0abc2353`: 18 PASS · 2 FAIL · 0 SKIP. Both failures were GATE defects;
+no product defect surfaced; the deployed artifact was not changed.** Recorded as run, not
+rewritten as green:
+
+| | |
+|---|---|
+| **False negative (crumb)** | the gate searched `document.body.innerText` for `Inventory → Receiving` while `.ns-page__context` was rendering the crumb correctly. Corrected: the gate now reads the actual crumb element and requires exactly one, with the full directional relationship |
+| **False positive (order reference)** | an id-shape heuristic (`/^[A-Za-z0-9_-]{18,28}$/`) rejected `PO-LIVE-1788220473108` — a legitimate governed `externalPoNumber` value. The parts gate's own lesson, relearned: a gate must not reverse-engineer field provenance from string shape. Corrected: the live gate asserts journey-conditional truth (supplier rows MUST state the RCV-G5 absence; reorder rows carry a reference or state theirs), and WHICH field supplied a visible reference is pinned by the source contract (`orderReference ← externalPoNumber` only; ids only inside `open`) |
+| **Gate-contract pins** | the corrected assertions are themselves source-pinned (crumb element + strict equality; no shape heuristic; journey-conditional check), with new domain proofs: a long machine-shaped external PO number is ACCEPTED; rewiring either builder's reference to a document id fails |
+| **Second run, corrected gate, same artifact** | **20 PASS · 0 FAIL · 0 SKIP** vs deployed `0abc2353` — identity, truth grammar (3 reorder rows live), held gaps, ND-33 sheet with measured no-command close, deny-all discipline, live 375px overflow 0 |
+| **Acceptance** | unchanged — `AWAITING_OWNER_VISUAL_ACCEPTANCE`. A green gate is not acceptance |
