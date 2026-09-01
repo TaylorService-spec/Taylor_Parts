@@ -125,6 +125,10 @@ const FinancialsCostToBudget = lazy(() => import("./modules/financials/Financial
 const FinancialsForecasting = lazy(() => import("./modules/financials/FinancialsForecasting.jsx"));
 const FinancialsBudgets = lazy(() => import("./modules/financials/FinancialsBudgets.jsx"));
 const FinancialsGoals = lazy(() => import("./modules/financials/FinancialsGoals.jsx"));
+// Wave UX-4 — performance.
+const FinancialsProfitability = lazy(() => import("./modules/financials/FinancialsProfitability.jsx"));
+const FinancialsCompanyPerformance = lazy(() => import("./modules/financials/FinancialsCompanyPerformance.jsx"));
+const FinancialsEmployeePerformance = lazy(() => import("./modules/financials/FinancialsEmployeePerformance.jsx"));
 import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -730,6 +734,15 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "financials" && item.key === "goals") {
     return <FinancialsGoals />;
+  }
+  if (domain.key === "financials" && item.key === "profitability") {
+    return <FinancialsProfitability />;
+  }
+  if (domain.key === "financials" && item.key === "companyPerformance") {
+    return <FinancialsCompanyPerformance />;
+  }
+  if (domain.key === "financials" && item.key === "employeePerformance") {
+    return <FinancialsEmployeePerformance />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];

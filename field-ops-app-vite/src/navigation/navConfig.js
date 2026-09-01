@@ -482,29 +482,11 @@ export const NAV_DOMAINS = [
       { key: "salesToGoal", label: "Sales to Goal", path: "sales-to-goal" },
       { key: "costToBudget", label: "Cost to Budget", path: "cost-to-budget" },
       { key: "forecasting", label: "Forecasting", path: "forecasting" },
-      {
-        key: "profitability",
-        label: "Gross Margin & Profitability",
-        path: "profitability",
-        placeholderExplanation:
-          "Profitability will compose governed revenue and cost authority. Margin must not be calculated until authoritative cost sources are established.",
-      },
+      { key: "profitability", label: "Gross Margin & Profitability", path: "profitability" },
       { key: "budgets", label: "Budget Management", path: "budgets" },
       { key: "goals", label: "Goal Management", path: "goals" },
-      {
-        key: "companyPerformance",
-        label: "Company & Business Unit Performance",
-        path: "company-performance",
-        placeholderExplanation:
-          "Company and Business Unit Performance will support Consolidated, Taylor, Ventana, Sales, Service, Parts, Installation, and future governed reporting dimensions.",
-      },
-      {
-        key: "employeePerformance",
-        label: "Salesperson & Employee Performance",
-        path: "employee-performance",
-        placeholderExplanation:
-          "Employee Performance will use explicit historical reporting attribution rather than current customer ownership or mutable employee relationships.",
-      },
+      { key: "companyPerformance", label: "Company & Business Unit Performance", path: "company-performance" },
+      { key: "employeePerformance", label: "Salesperson & Employee Performance", path: "employee-performance" },
       {
         key: "reconciliation",
         label: "Reconciliation & Exceptions",

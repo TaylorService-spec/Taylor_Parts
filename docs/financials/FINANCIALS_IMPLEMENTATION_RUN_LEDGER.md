@@ -475,3 +475,21 @@ STREAM SEPARATION above). Run start 2026-09-01. START MAIN: dfb362d5e863472f0dd5
   disabled actions, basis rail verified.
 - DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
 - NEXT: WAVE UX-4 (11 Profitability, 14 Company Performance, 15 Employee Performance).
+
+#### WAVE UX-4 — Performance (2026-09-01)
+- PAGES: 11 Gross Margin & Profitability · 14 Company & Business Unit Performance ·
+  15 Salesperson & Employee Performance.
+- BASE MAIN: 22630ecb (Wave UX-3 merge). HEAD/PR/MERGE: recorded at PR close.
+- DESIGN SOURCES: North Star - Financials {11,14,15}*.dc.html + frames.
+- AUTHORITY: page 11 IS the truthful FIN-006 state — UNKNOWN margin (never derived from
+  sell price / partial cost), reserved cost/GM/GM% columns, never-on-this-page rail
+  (statutory profit/overhead/tax → external authority). Page 14 keeps the UNELIMINATED_SUM
+  caveat on every consolidated figure (FIN-009 classification dormant; eliminations
+  external; FIN-BLOCK-004 open); consolidated attainment deliberately "—" (would mix
+  bases). Page 15 composes FIN-004 truth: scope statement in header (honestly "none" —
+  finance.visibility.* inactive), NAMED withheld panel (never zeros, never fetch-and-hide),
+  credit vs responsibility views never merged, margin-by-person absence (FIN-PQ-15a).
+- TESTS: three composition cases added; sweep 2,996 · runSuites 269 · typecheck/build/lint
+  green. VISUAL GATE: 1440 (11/14) + 375 (15) verified.
+- DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
+- NEXT: WAVE UX-5 (16 Reconciliation, 17 Intercompany, 18 Audit, 19 Reports, 20 Governance).

@@ -242,3 +242,50 @@ describe("13 Goal Management — /financials/goals", () => {
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
+
+// ─── Wave UX-4 — performance ───
+
+describe("11 Gross Margin & Profitability — /financials/profitability", () => {
+  test("the truthful unavailable state IS the page: UNKNOWN margin, reserved columns, never-on-this-page rail", async () => {
+    const { default: FinancialsProfitability } = await import("../src/modules/financials/FinancialsProfitability.jsx");
+    const { container } = mount(<FinancialsProfitability />);
+    expect(container.textContent).toMatch(/Margin cannot be reported yet/);
+    expect(container.textContent).toMatch(/UNKNOWN/);
+    expect(container.textContent).toMatch(/never derived from sell price/i);
+    expect(container.textContent).toMatch(/Statutory net profit, overhead allocation and tax/);
+    for (const col of ["Billed revenue", "Cost", "Gross margin", "GM %"]) {
+      expect(screen.getAllByText(col, { exact: false }).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("14 Company & Business Unit Performance — /financials/company-performance", () => {
+  test("UNELIMINATED_SUM caveat kept; consolidated attainment deliberately '—'; reserved rows", async () => {
+    const { default: FinancialsCompanyPerformance } = await import("../src/modules/financials/FinancialsCompanyPerformance.jsx");
+    const { container } = mount(<FinancialsCompanyPerformance />);
+    expect(container.textContent).toMatch(/UNELIMINATED_SUM/);
+    expect(container.textContent).toMatch(/not accounting consolidation/i);
+    for (const col of ["Taylor", "Ventana", "Consolidated", "Fact class"]) {
+      expect(screen.getAllByText(col).length).toBeGreaterThanOrEqual(1);
+    }
+    // The attainment row's consolidated cell is the deliberate em dash.
+    expect(container.textContent).toMatch(/silently mix measurement bases/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("15 Salesperson & Employee Performance — /financials/employee-performance", () => {
+  test("scope statement in header; withheld panel named; views never merged; margin absence", async () => {
+    const { default: FinancialsEmployeePerformance } = await import("../src/modules/financials/FinancialsEmployeePerformance.jsx");
+    const { container } = mount(<FinancialsEmployeePerformance />);
+    expect(container.textContent).toMatch(/no financial visibility scope granted/);
+    expect(container.textContent).toMatch(/Outside your scope/);
+    expect(container.textContent).toMatch(/withheld by the server/);
+    for (const label of ["Salesperson credit", "Service responsibility"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).toMatch(/FIN-PQ-15a/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});

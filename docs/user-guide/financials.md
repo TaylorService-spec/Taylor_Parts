@@ -73,3 +73,16 @@ The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an ho
 - **Budget Management / Goal Management** — versioned plans. A revision creates a new
   version; history is never rewritten. "New budget" / "New goal" stay disabled until plan
   record-keeping and an approval policy are switched on.
+
+## Fourth wave: performance
+
+- **Gross Margin & Profitability** — until the business decides how costs are captured,
+  the page says plainly that margin cannot be reported yet. Margin is never guessed from
+  sell prices. Net profit, overhead and tax will never appear here — they belong to a
+  future accounting system.
+- **Company & Business Unit Performance** — Taylor vs Ventana side by side. "Consolidated"
+  is a plain arithmetic sum across the two companies, clearly labelled as such — it is not
+  an accounting consolidation.
+- **Salesperson & Employee Performance** — what you see here follows your granted
+  visibility scope. Anything outside your scope is named as withheld — you'll never see a
+  misleading zero where a number was hidden.
