@@ -5,7 +5,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildAdjustment, ADJUSTMENT_TYPES, AdjustmentCommandError } from "../lib/finance/adjustmentCommands.js";
 
-const inv = (over = {}) => ({ currency: "USD", state: "ISSUED", totalMinor: 10000, ...over });
+const inv = (over = {}) => ({
+  currency: "USD",
+  state: "ISSUED",
+  totalMinor: 10000,
+  companyId: "taylor",
+  accountId: "A1",
+  attribution: { businessUnitId: null, creditedSalespersonId: "emp-sales-1", responsibleEmployeeId: null },
+  ...over,
+});
 const input = (over = {}) => ({ type: "CREDIT_MEMO", invoiceId: "INVID", companyId: "taylor", accountId: "A1", currency: "USD", amountMinor: 3000, reason: "goodwill", effectiveDate: "2026-08-08", ...over });
 const DEPS = { nowMillis: 1_700_000_100_000 };
 
@@ -57,4 +65,25 @@ test("fail-closed: bad type / missing reason / bad date / bad amount / currency 
   assert.throws(() => buildAdjustment(input({ currency: "EUR" }), inv(), DEPS), (e) => e.code === "CURRENCY_MISMATCH");
   assert.throws(() => buildAdjustment(input(), inv({ state: "VOID" }), DEPS), (e) => e.code === "INVOICE_VOID");
   assert.throws(() => buildAdjustment(input({ invoiceId: "" }), inv(), DEPS), (e) => e.code === "REQUIRED");
+});
+
+test("FIN-002: company/customer come from the INVOICE; caller ids assertion-only; canonical attribution stamped", () => {
+  const r = buildAdjustment(input({ companyId: undefined, accountId: undefined }), inv(), DEPS);
+  assert.equal(r.adjustment.companyId, "taylor");
+  assert.equal(r.adjustment.accountId, "A1");
+  assert.deepEqual(r.adjustment.attribution, {
+    operatingCompanyId: "taylor",
+    businessUnitId: null,
+    creditedSalespersonId: "emp-sales-1", // the invoice's frozen credit — never the adjusting actor
+    responsibleEmployeeId: null,
+    customerId: "A1",
+    sourceType: "INVOICE",
+    sourceRecordId: "INVID",
+    eventAtMillis: DEPS.nowMillis,
+    currency: "USD",
+  });
+  assert.throws(() => buildAdjustment(input({ companyId: "ventana" }), inv(), DEPS), (e) => e.code === "COMPANY_MISMATCH");
+  assert.throws(() => buildAdjustment(input({ accountId: "A2" }), inv(), DEPS), (e) => e.code === "ACCOUNT_MISMATCH");
+  assert.throws(() => buildAdjustment(input(), inv({ companyId: undefined }), DEPS), (e) => e.code === "COMPANY_REQUIRED");
+  assert.throws(() => buildAdjustment(input(), inv({ accountId: undefined }), DEPS), (e) => e.code === "ACCOUNT_REQUIRED");
 });

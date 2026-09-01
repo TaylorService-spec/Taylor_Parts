@@ -207,6 +207,10 @@ createdBy, location names, or today's salesperson.
 
 ## 17. Remaining gaps
 
+- ~~Invoice-downstream money events (payment receipt/application, adjustment, refund) carried
+  no attribution and took company/account from the caller~~ — CLOSED by F3 (finance core
+  activation readiness): `requireInvoiceParty` + `buildInvoiceEventAttribution` derive both
+  from the governed invoice; caller ids are assertion-only.
 - Company at the REPORTABLE boundary is now code-enforced (accept/order/invoice gates above).
   An Opportunity may still open company-unresolved (R-14, deliberate); the chain simply cannot
   COMMIT that way — the accept/create refusals name the upstream fix.
