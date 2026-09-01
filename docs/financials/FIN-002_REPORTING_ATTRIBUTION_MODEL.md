@@ -1,7 +1,7 @@
 # FIN-002 — Reporting Attribution Model
 
 **Status:** IMPLEMENTED (repository authority; nothing deployed, nothing activated)
-**Ruling:** DECISIONS #152 (Owner, 2026-08-31) · **Boundary preserved:** DECISIONS #145 —
+**Ruling:** DECISIONS #154 (Owner, 2026-08-31) · **Boundary preserved:** DECISIONS #145 —
 EOS = governed operational financial subledger; external accounting = future authority of
 record (not selected); GL out of scope.
 **Canonical authority:** `functions/src/finance/financialAttribution.ts` (the ONE definition)
@@ -193,7 +193,7 @@ certification synthetic data — production carries none; live reads were not pe
 | Field | Existing records | Classification |
 |---|---|---|
 | operatingCompanyId (Opp/Agr/SO) | none stamped anywhere | **MISSING_SOURCE** (no governed historical source names a company; do NOT infer) |
-| creditedSalespersonId | absent | **DERIVABLE_FROM_GOVERNED_SOURCE** — each record's own stored `ownerEmployeeId` is the owner-at-creation (no handoff has ever run; handoff command inert), which is exactly the #152 default |
+| creditedSalespersonId | absent | **DERIVABLE_FROM_GOVERNED_SOURCE** — each record's own stored `ownerEmployeeId` is the owner-at-creation (no handoff has ever run; handoff command inert), which is exactly the #154 default |
 | line businessUnitId | absent | **DERIVABLE** for EQUIPMENT_MODEL/PART lines (kind); **UNSAFE_TO_INFER** for SERVICE lines (must remain absent until explicitly classified) |
 | bookedAtMillis | absent | **DERIVABLE** for agreement-derived orders (source agreement `acceptedAtMillis`); **MISSING_SOURCE** for any direct-created order |
 | currency | present (server-set USD) | **ALREADY_VALID** |

@@ -35,10 +35,10 @@
 import type { Role } from "../types/access";
 import { PERMISSION_CATALOG } from "./permissionCatalog";
 
-const PARTS_MANAGER_ONLY = { role: "PARTS_MANAGER" };
+// R-32 (#152): PARTS_MANAGER_ONLY / WAREHOUSE_MANAGER_ONLY / MANAGER_OR_WAREHOUSE were removed with
+// the six manager-conditioned grants they parameterised. The operational-role CONDITION mechanism is
+// untouched and still in use below -- only this Role's manager bindings are gone.
 const PARTS_ASSOCIATE_ONLY = { role: "PARTS_ASSOCIATE" };
-const WAREHOUSE_MANAGER_ONLY = { role: "WAREHOUSE_MANAGER" };
-const MANAGER_OR_WAREHOUSE = { roles: ["PARTS_MANAGER", "WAREHOUSE_MANAGER"] };
 
 // Shared base: every Permission both admin and dispatcher hold today,
 // per the Assessment's current-state matrix. Not exported -- ADMIN_ROLE
@@ -292,34 +292,24 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
   compatibility: true,
   permissions: [
     "workOrder.transition",
-    "reorder.request.read.queue",
     "reorder.request.read.own",
-    "reorder.request.create.manual",
-    "reorder.request.assign",
     "reorder.request.startPurchasing",
     "reorder.request.postPurchasingUpdate",
     "reorder.request.recordPurchaseOrder",
     "reorder.request.markReceived",
     "reorder.purchaseOrder.read",
     "reorder.purchaseOrder.create",
-    "inventory.transaction.read",
-    "inventory.action.read",
-    // Wave 6 Owner Decision (2026-08-15): declared for parity with the two capabilities directly
-    // above (same operational-role-conditioned shape below), matching the Owner's requested reader
-    // list (active Parts Manager / Warehouse Manager). NOTE: like its siblings, this DENIES today
-    // through resolveEffectiveAccess's coarse feed (effectiveAccessFeed.ts always passes an empty
-    // condition context by design -- no callable in this repo has ever supplied a populated
-    // operationalRoleActive resolver). Declared here so the grant is documented and consistent with
-    // existing precedent, not silently omitted; see manufacturerReadService.ts's header comment.
-  // CORRECTION (2026-09-01, R-29 measurement): the "DENIES today through resolveEffectiveAccess"
-  // claim above is NO LONGER TRUE and is kept only as the record of what it used to do.
-  // effectiveAccessFeed.ts now builds a REAL operationalRoleActive resolver
-  // (buildOperationalRoleActiveResolverFromEmployeeId, Wave 7 PART 4), so every
-  // operationalRoleActive-conditioned capability on this Role resolves for real. Measured live
-  // against eos-platform-sandbox: the denials observed for the warehouseManager/partsManager
-  // personas come from those principals holding no assignment to THIS Role at all, not from an
-  // unpopulated condition context.
-    "inventory.catalog.read",
+    // R-32 (#152): SIX manager-conditioned capabilities were REMOVED from this Role --
+    //   reorder.request.create.manual / read.queue / assign,
+    //   inventory.transaction.read / inventory.action.read / inventory.catalog.read
+    // Each was carried here under operationalRoleActive(PARTS_MANAGER|WAREHOUSE_MANAGER), which
+    // meant a business manager could obtain manager authority ONLY by being assigned a Role
+    // literally named `technician`. THAT was the defect -- not merely that one Reorder capability
+    // sat in the wrong place. Each now lives on the governed business Role its own condition
+    // already named, with the SAME eligibility, in governedBusinessRoles.ts.
+    //
+    // WHAT REMAINS IS PARTS_ASSOCIATE AND TECHNICIAN AUTHORITY ONLY. A principal holding this Role
+    // gains no manager authority from it -- by construction now, not by an unsatisfied condition.
   ],
   // reorder.purchaseOrder.void is deliberately NOT granted to technician
   // at all -- firestore.rules (current `main`) keeps Void gated to
@@ -328,17 +318,8 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
   // already the assignee (matching the Assessment's Inventory domain
   // audit table: "no operational role gets Approve/Reject/Cancel/Void").
   conditionsByPermission: {
-    "reorder.request.read.queue": [
-      { kind: "operationalRoleActive", params: PARTS_MANAGER_ONLY },
-    ],
     "reorder.request.read.own": [
       { kind: "operationalRoleActive", params: PARTS_ASSOCIATE_ONLY },
-    ],
-    "reorder.request.create.manual": [
-      { kind: "operationalRoleActive", params: MANAGER_OR_WAREHOUSE },
-    ],
-    "reorder.request.assign": [
-      { kind: "operationalRoleActive", params: PARTS_MANAGER_ONLY },
     ],
     "reorder.request.startPurchasing": [
       { kind: "operationalRoleActive", params: PARTS_ASSOCIATE_ONLY },
@@ -357,15 +338,6 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
     ],
     "reorder.purchaseOrder.create": [
       { kind: "operationalRoleActive", params: PARTS_ASSOCIATE_ONLY },
-    ],
-    "inventory.transaction.read": [
-      { kind: "operationalRoleActive", params: MANAGER_OR_WAREHOUSE },
-    ],
-    "inventory.action.read": [
-      { kind: "operationalRoleActive", params: WAREHOUSE_MANAGER_ONLY },
-    ],
-    "inventory.catalog.read": [
-      { kind: "operationalRoleActive", params: MANAGER_OR_WAREHOUSE },
     ],
   },
 }) as Role;

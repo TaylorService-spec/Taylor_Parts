@@ -30,7 +30,7 @@ const FIELD_TO_INPUT = Object.freeze({
 export const COMMAND_EDITABLE_FIELDS = Object.freeze([
   "accountId",
   "ownerEmployeeId",
-  // FIN-002 (DECISIONS #152): explicit pre-close sales-credit reassignment. Distinct from
+  // FIN-002 (DECISIONS #154): explicit pre-close sales-credit reassignment. Distinct from
   // ownerEmployeeId — OWNERSHIP != SALES CREDIT; moving the owner never moves credit.
   "creditedSalespersonId",
   "salesChannel",

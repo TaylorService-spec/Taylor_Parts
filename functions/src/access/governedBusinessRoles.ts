@@ -600,12 +600,12 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
   id: "warehouseManager",
   name: "Warehouse Manager",
   description:
-    "Org-chart position: head of the warehouse branch under Operations, with Warehouse Associates beneath. Distinct from the WAREHOUSE_MANAGER operational role on the employee record, which is an operational qualification rather than a security Role. Carries no permissions of its own.",
+    "Org-chart position: head of the warehouse branch under Operations, with Warehouse Associates beneath. Distinct from the WAREHOUSE_MANAGER operational role on the employee record, which is an operational qualification rather than a security Role. R-32 (#152): this Role now carries the warehouse-manager authority that was previously routed through the technician compatibility Role, and its reorder-create and inventory-transaction bindings are grantable ONLY at location scope.",
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "customer.record.read",
     "audit.event.read",
+    "customer.record.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
@@ -613,9 +613,25 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
     "reorder.purchaseOrder.read",
+    "reorder.request.create.manual",
     "salesOrder.read",
     "warehouse.transferOrder.read",
   ],
+  // R-32 (#152) -- PER-BINDING assignment-scope policy. THIS Role's grant of THESE permissions may
+  // only be conferred by a RoleAssignment scoped to a single governed Warehouse. Absent entries are
+  // unrestricted, so every other permission above still resolves from a global assignment exactly as
+  // it did before R-32 -- that is what makes `warehouseManager @ global` and
+  // `warehouseManager @ location:wh-main` COMPOSABLE rather than rivals.
+  // 
+  // SCOPE IS DECLARED ON THE BINDING, NOT THE CAPABILITY. `inventory.transaction.read` is carried by
+  // eighteen Roles -- salesperson, controller, accountingManager among them -- every one legitimately
+  // global. Restricting the capability id would break seventeen Roles to constrain one.
+  // 
+  // NOT DECLARED HERE, deliberately: `inventory.catalog.read` (global reference data, R-32 section 6).
+  scopesByPermission: {
+    "reorder.request.create.manual": ["location"],
+    "inventory.transaction.read": ["location"],
+  },
 }) as Role;
 
 export const WAREHOUSE_ASSOCIATE_ROLE: Role = Object.freeze({
@@ -641,12 +657,12 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
   id: "partsManager",
   name: "Parts Manager",
   description:
-    "Org-chart position: head of the parts branch under Operations, with Parts Associates beneath. Distinct from the PARTS_MANAGER operational role on the employee record. Carries no permissions of its own.",
+    "Org-chart position: head of the parts branch under Operations, with Parts Associates beneath. Distinct from the PARTS_MANAGER operational role on the employee record. R-32 (#152): this Role now carries the parts-manager authority that was previously routed through the technician compatibility Role, and its reorder-create and inventory-transaction bindings are grantable ONLY at location scope.",
   systemSeed: true,
   compatibility: false,
   permissions: [
-    "customer.record.read",
     "audit.event.read",
+    "customer.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.read",
@@ -655,10 +671,24 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    "reorder.request.assign",
+    "reorder.request.create.manual",
+    "reorder.request.read.queue",
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",
   ],
+  // R-32 (#152) -- PER-BINDING assignment-scope policy; see WAREHOUSE_MANAGER_ROLE above for the full
+  // rationale. The eleven permissions NOT listed here (finance.*, workOrder.*, customer.record.read,
+  // salesOrder.read, the catalog ids) stay unrestricted and keep resolving from a global assignment.
+  // 
+  // reorder.request.read.queue and reorder.request.assign are DELIBERATELY ABSENT (R-32 section 6):
+  // their runtime enforcement is Rules-backed and status-scoped, not location-scoped, and inventing a
+  // location policy for a binding nothing evaluates would be asserting semantics we have not measured.
+  scopesByPermission: {
+    "reorder.request.create.manual": ["location"],
+    "inventory.transaction.read": ["location"],
+  },
 }) as Role;
 
 export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({

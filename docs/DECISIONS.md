@@ -3997,7 +3997,176 @@ Named because R-30 anticipates them; **neither is adopted here.**
 Selecting between them is the next Owner ruling. Both are blocked on the same prior question the table
 above exposes: **what a LOCATION_REQUIRED capability should do about records that have no location** —
 legacy `reorder_requests`, and every `reorder_purchase_orders` document.
-## #152 — OWNER RULING: FIN-002 reporting attribution — company, business unit, sales credit, booked basis
+
+---
+
+## #152 — OWNER RULING R-32: the per-binding assignment-scope policy, implemented (Workstream 2C.3)
+
+**Date:** 2026-09-01
+**Classification:** GOVERNED AUTHORITY IMPLEMENTATION. Builds R-29 (#150) under the reach and
+scope-safety constraints of R-30/R-31 (#151).
+**Status:** IMPLEMENTED, repo-only. No grant, no sandbox mutation, no deploy, `firestore.rules`
+byte-unchanged.
+
+### What was built
+
+1. **`Role.scopesByPermission?: Partial<Record<PermissionId, ScopeType[]>>`** — a side map in the
+   same shape and for the same reason `conditionsByPermission` already exists: per-(Role,
+   Permission) metadata the Specification-frozen `PermissionId[]` shape cannot carry.
+   `Role.permissions` is unchanged. **Absent means pre-R-32 behaviour exactly**, which is why the
+   thirty-eight Roles that declare nothing — admin and dispatcher among them — are untouched.
+
+2. **One canonical opinion**, `functions/src/access/bindingScopePolicy.ts`, consumed by BOTH
+   enforcement points so they cannot drift: `bindingAllowsAssignmentScope(role, permissionId,
+   assignmentScopeType)` and `roleHasAnyBindingAtAssignmentScope(role, assignmentScopeType)`.
+
+3. **Resolution-time enforcement** — one line in `resolveEffectivePermission`'s qualifying loop,
+   beside `scopeMatches()` and `evaluateConditions()`. **AUTHORITATIVE BY PLACEMENT:** 113
+   RoleAssignments already exist in sandbox, written before R-32, and no grant-time check can ever
+   see them. `scopeMatches()` was not touched.
+
+4. **Grant-time defence in depth** — `grantRole` consults the SAME helper and refuses a Role that
+   could confer nothing at the requested scope. Deliberately **some-binding, never every-binding**:
+   a mixed Role is the normal case, and requiring every binding would make
+   `partsManager @ global` and `partsManager @ location:wh-main` rivals instead of composable.
+
+5. **The six-capability home correction.** All six moved off `technician` with each capability's
+   existing eligibility preserved separately — not flattened into one bundle. Measured delta,
+   verified against main before editing: `warehouseManager` **+1** (`create.manual`),
+   `partsManager` **+3** (`create.manual`, `read.queue`, `assign`). The other three were already on
+   their governed Roles. The regenerated governance artifact shows **exactly those four grants and
+   nothing else**.
+
+6. **Binding declarations**, only where 2C.2 classified the MANAGER binding LOCATION_REQUIRED with
+   direct evidence: `reorder.request.create.manual` and `inventory.transaction.read`, on both
+   manager Roles. **`inventory.catalog.read` is deliberately NOT declared** (global reference data),
+   and neither are `reorder.request.read.queue`/`assign`, whose runtime enforcement is Rules-backed
+   and status-scoped rather than location-scoped.
+
+7. **Reorder is the first location consumer.** `listReorderWarehouseOptions` and
+   `createReorderRequest` share ONE loaded authority
+   (`reorderRequest/reorderWarehouseAuthority.ts`) that resolves the governed permission against
+   `{ type: "location", value: warehouseId }`. `reorderWarehouseEligibility.ts` is **retired** —
+   Reorder no longer reads `employees.assignedWarehouseIds` for any authorization decision.
+
+### The bypass, measured before and after
+
+`partsManager @ global` against a `location` target used to resolve **ALLOW** for every permission
+on the Role — the R-30 OPEN-1 loophole. It now resolves **DENY** for the two declared bindings and
+**ALLOW** for the rest, from the same assignment. admin and dispatcher at global scope still resolve
+ALLOW against any location target, through the generic resolver with no Reorder-specific bypass.
+
+### Two things this change deliberately does NOT do
+
+- **`reorder.request.read.queue` and `reorder.request.assign` are DECLARATION_CORRECTED,
+  RUNTIME_ENFORCEMENT_GAP_OPEN.** Their live authority remains status-scoped `firestore.rules`; no
+  governed consumer evaluates either id. Moving their declaration changes no runtime behaviour, and
+  this entry does not claim otherwise.
+- **Legacy reorder data is untouched.** 6 of 7 sandbox `reorder_requests` carry no `warehouseId`
+  and no lineage to one. Nothing was migrated, derived, or filtered; create/options do not need
+  legacy resolution because their target is an explicit candidate or selected Warehouse.
+
+### An intentional parity divergence, recorded rather than hidden
+
+Five `parityFixtures` entries were REMOVED, each asserting that an active operational manager
+obtained one of the six THROUGH `technician`. They were not wrong when written — legacy Rules do
+grant those reads — so R-32 knowingly breaks parity, and the governed model is now the narrower of
+the two. They were removed rather than flipped to DENY, because a flipped fixture still reads as
+"parity holds", which would be false.
+
+**Who is affected:** a principal holding `technician` AND an active PARTS_MANAGER/WAREHOUSE_MANAGER
+operational role loses these capabilities through the governed feed until granted the governed
+manager Role. Measured in `eos-platform-sandbox`: **no principal is in that state**, so the live
+effect there is nil. **Production was not measured and nothing is deployed.**
+
+### A cross-tranche collision worth recording
+
+PR #1666 (cert-world governed warehouse) merged into main mid-tranche and added a test driving
+`projectReorderWarehouseOptions` through the retired eligibility module's `ALL_GOVERNED` scope
+object. **Git reported no conflict** — the two changes touch different files — and the collision
+surfaced only when the governance suite ran. The test's intent (the company gates the picker) was
+preserved exactly; only its expression of "entitled to every warehouse" changed to the authority
+predicate. This is why a moving-main reconciliation cannot stop at textual conflict detection.
+
+---
+
+## #153 — OWNER RULING R-33: 2C.3 accepted and merged; production deployment BLOCKED pending a census
+
+**Date:** 2026-09-01
+**Classification:** REVIEW + MERGE AUTHORIZATION for R-32 (#152), plus two durable open items.
+**Status:** MERGED as `5d475f9f` (PR #1668). **No deployment followed, and none is authorized.**
+
+### Accepted
+
+`scopesByPermission` as Role→Permission binding metadata (no separate registry, no Permission object
+rewrite, no `scopeMatches()` change) · resolution-time validation authoritative with grant-time as
+defence in depth · the **at least one binding** rule for mixed Roles, explicitly **not** "every
+permission must support the scope" · the four-grant capability-home delta · Reorder evaluating
+`reorder.request.create.manual` against a `location` TargetContext · the retirement of
+`employees.assignedWarehouseIds` as a Reorder Functions authorization source.
+
+### THE DEPLOYMENT BLOCKER — read this before any 2C activation
+
+**Production has NOT been measured** for principals combining the `technician` compatibility Role
+with an active `PARTS_MANAGER`/`WAREHOUSE_MANAGER` operational role. Such a principal LOSES the six
+capabilities through the governed feed until granted a governed manager Role.
+
+    REPOSITORY_MERGE        ALLOWED  (done)
+    PRODUCTION_DEPLOYMENT   BLOCKED_PENDING_CENSUS
+
+The unknown does not invalidate R-32 and did not block the merge. It **does** prohibit production
+activation or deployment until a **bounded, read-only** census establishes the exposure. **The census
+must not mutate production.** Sandbox was measured: no principal is in that state, so sandbox
+exposure is nil.
+
+### RULES / GOVERNED PARITY — open, and intentional
+
+For the six paths, `firestore.rules` still ALLOWs where the governed model now DENIES. That equality
+was real before R-32 and is deliberately ended by it. Recorded as an explicit open reconciliation
+item, with two standing prohibitions:
+
+- do **NOT** weaken Rules to restore test parity;
+- do **NOT** widen governed authority to restore test parity.
+
+Removing the five stale parity fixtures was correct; they must not be resurrected as DENY fixtures,
+because a flipped fixture reads as "parity holds", which is now false.
+
+### Merging 2C.3 authorizes NOTHING operational
+
+Not sandbox Role grants, not scope grants, not `assignedWarehouseIds` changes, not Rules changes, not
+Functions deployment. Each belongs to the next 2C activation tranche.
+
+### The moving-main rule is now permanent
+
+`origin/main` advanced **three times** during 2C.3 — #1666, #1667, #1669 — and each was reconciled
+with an ancestry check, a per-path authority-surface check, affected-suite runs and a FINAL
+governance run on the reconciled tree. **Clean Git reconciliation is not sufficient evidence.** The
+#1666 collision proves it: a cert-world test drove the retired eligibility module through an
+`ALL_GOVERNED` scope object, in different files, with no textual conflict, and surfaced only when the
+governance suite ran.
+
+A second consumer of the same retired module — `warehousePhysicalRootCompany.test.mjs`, the 2A.1A
+"all six consumers" suite — was missed locally and caught by CI. The lesson is recorded because it
+generalizes: **when retiring a module, enumerate every importer first**, rather than discovering them
+one failing lane at a time. The reorder CI lane was retargeted onto `functions/src/access/**` and
+`bindingScopePolicy.test.mjs` in the same fix, so the R-32 successors are covered by the lane that
+used to cover what they replaced.
+
+### Standing classifications after this ruling
+
+    CAPABILITY_HOME_SPLIT_BRAIN            CLOSED
+    PER_BINDING_SCOPE_POLICY               IMPLEMENTED
+    GLOBAL_SCOPE_MANAGER_BYPASS            CLOSED
+    REORDER_LOCATION_SCOPE_CONSUMER        IMPLEMENTED
+    REORDER_ASSIGNED_WAREHOUSE_AUTHORITY   RETIRED
+    READ_QUEUE_RUNTIME_ENFORCEMENT         OPEN — DECLARATION ONLY
+    ASSIGN_RUNTIME_ENFORCEMENT             OPEN — DECLARATION ONLY
+    RULES_GOVERNED_PARITY                  OPEN — INTENTIONAL DIFFERENCE RECORDED
+    LEGACY_UNSCOPED_REORDER                PRESERVED
+    PRODUCTION_EXPOSURE                    UNMEASURED — DEPLOYMENT BLOCKER
+    SANDBOX / PRODUCTION / CERTIFICATION   NOT MUTATED
+    DEPLOYMENT                             NOT PERFORMED
+## #154 — OWNER RULING: FIN-002 reporting attribution — company, business unit, sales credit, booked basis
 
 **Decision (Owner, 2026-08-31, via the Financials master execution contract; implements FIN-002):**
 

@@ -618,6 +618,58 @@
    ]
   },
   {
+   "roleId": "partsManager",
+   "label": "Parts Manager",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader"
+   ],
+   "grantedCount": 18,
+   "operableCount": 9,
+   "blockedCount": 9,
+   "granted": [
+    "audit.event.read",
+    "customer.record.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "reorder.request.assign",
+    "reorder.request.create.manual",
+    "reorder.request.read.queue",
+    "salesOrder.read",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "audit.event.read",
+    "customer.record.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.request.assign",
+    "reorder.request.create.manual",
+    "reorder.request.read.queue",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "salesOrder.read"
+   ]
+  },
+  {
    "roleId": "accountingManager",
    "label": "Accounting Manager",
    "composedFunctionalRoles": [],
@@ -756,52 +808,6 @@
    ]
   },
   {
-   "roleId": "partsManager",
-   "label": "Parts Manager",
-   "composedFunctionalRoles": [
-    "inventoryLookupReader"
-   ],
-   "grantedCount": 15,
-   "operableCount": 6,
-   "blockedCount": 9,
-   "granted": [
-    "audit.event.read",
-    "customer.record.read",
-    "finance.adjustment.record",
-    "finance.invoice.issue",
-    "finance.read",
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.catalog.manage",
-    "inventory.catalog.read",
-    "inventory.location.display.read",
-    "inventory.serializedAsset.read",
-    "inventory.transaction.read",
-    "salesOrder.read",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "operableNow": [
-    "audit.event.read",
-    "customer.record.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "grantedButInactive": [
-    "finance.adjustment.record",
-    "finance.invoice.issue",
-    "finance.read",
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.catalog.read",
-    "inventory.location.display.read",
-    "inventory.serializedAsset.read",
-    "salesOrder.read"
-   ]
-  },
-  {
    "roleId": "operationsManager",
    "label": "Operations Manager",
    "composedFunctionalRoles": [],
@@ -851,8 +857,8 @@
    "composedFunctionalRoles": [
     "inventoryLookupReader"
    ],
-   "grantedCount": 13,
-   "operableCount": 7,
+   "grantedCount": 14,
+   "operableCount": 8,
    "blockedCount": 6,
    "granted": [
     "audit.event.read",
@@ -866,6 +872,7 @@
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
     "reorder.purchaseOrder.read",
+    "reorder.request.create.manual",
     "salesOrder.read",
     "warehouse.transferOrder.read"
    ],
@@ -876,6 +883,7 @@
     "inventory.catalog.manage",
     "inventory.transaction.read",
     "reorder.purchaseOrder.read",
+    "reorder.request.create.manual",
     "warehouse.transferOrder.read"
    ],
    "grantedButInactive": [

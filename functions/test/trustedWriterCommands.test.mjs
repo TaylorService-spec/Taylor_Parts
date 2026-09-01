@@ -320,6 +320,66 @@ async function main() {
     );
   });
 
+  // ------------------------------------------------------------------
+  // R-32 (#152) -- grant-time binding-scope defence in depth
+  // ------------------------------------------------------------------
+
+  await check("R-32 grantRole: a mixed governed manager Role is grantable at BOTH global and location", async () => {
+    // THE COMPOSITION R-32 section 4 requires to remain valid. partsManager carries sixteen
+    // permissions of which two are location-restricted; refusing the global grant would make the
+    // two assignments rivals instead of composable, and strip the eleven global-capable bindings.
+    for (const scope of [{ type: "global" }, { type: "location", value: "wh-main" }]) {
+      const actor = await makeAdminActor();
+      const principal = await makePrincipal();
+      const key = `grant-r32-ok-${uid("k")}`;
+      const result = await grantRole({ actorUid: actor, principalUid: principal, roleId: "partsManager", scope, idempotencyKey: key });
+      assert.equal(result.status, "applied");
+      const snap = await db.collection("roleAssignments").doc(key).get();
+      assert.equal(snap.exists, true);
+      assert.deepEqual(snap.data().scope, scope);
+      // audit is unchanged in shape and records the scope actually granted
+      const audits = (await findAuditEventsWithIdPrefix(key)).docs.map((d) => d.data());
+      assert.equal(
+        audits.some((d) => d.targetId === principal && d.scope?.type === scope.type),
+        true,
+        "grantRole must still audit, recording the scope actually granted",
+      );
+    }
+  });
+
+  await check("R-32 grantRole: the check is SOME-binding, never EVERY-binding", async () => {
+    // STATED RATHER THAN HIDDEN: NoBindingAtRequestedScopeError is UNREACHABLE with today's seeded
+    // Roles -- not one has every binding restricted -- so the refusal branch itself is proven
+    // against the pure helper in bindingScopePolicy.test.mjs, and this suite does not pretend to
+    // exercise it. What is proven HERE is the property that matters for the Roles that DO exist:
+    // a mixed Role stays grantable at a scope only some of its bindings accept, because refusing
+    // it would silently strip the bindings that are legitimately global.
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "not-a-real-role", scope: { type: "ownAssignment" }, idempotencyKey: `grant-r32-x-${uid("k")}` }),
+      UnknownRoleError,
+    );
+    // and the real shape of the refusal, on a Role that IS known: ownAssignment carries no
+    // location-restricted binding, but partsManager still has global-capable ones, so it is
+    // ALLOWED -- proving the check is "some", never "every".
+    const key = `grant-r32-own-${uid("k")}`;
+    const ok = await grantRole({ actorUid: actor, principalUid: principal, roleId: "partsManager", scope: { type: "ownAssignment" }, idempotencyKey: key });
+    assert.equal(ok.status, "applied");
+  });
+
+  await check("R-32 grantRole: replay of a scoped grant is still idempotent, and writes once", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const key = `grant-r32-replay-${uid("k")}`;
+    const input = { actorUid: actor, principalUid: principal, roleId: "warehouseManager", scope: { type: "location", value: "wh-main" }, idempotencyKey: key };
+    const first = await grantRole(input);
+    const second = await grantRole(input);
+    assert.equal(first.status, "applied");
+    assert.equal(second.status, "alreadyApplied", "the same key + payload is a no-op, not a second grant");
+    const all = await db.collection("roleAssignments").where("principalUid", "==", principal).get();
+    assert.equal(all.size, 1, "a replay must not create a second assignment");
+  });
   await check("grantRole: malformed input (idempotencyKey too short) is rejected", async () => {
     const actor = await makeAdminActor();
     const principal = uid("principal");

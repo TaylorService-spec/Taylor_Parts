@@ -102,7 +102,7 @@ export interface CreateSalesAgreementInput {
   // honest "no company attribution", never a value to be guessed later.
   operatingCompanyId?: string;
   inheritedOperatingCompanyId?: string | null;
-  // FIN-002 (DECISIONS #152): sales credit, distinct from ownership. Explicit wins; else inherited
+  // FIN-002 (DECISIONS #154): sales credit, distinct from ownership. Explicit wins; else inherited
   // from the source Opportunity's credit; else the agreement's commercial owner. Never the actor.
   creditedSalespersonId?: string;
   inheritedCreditedSalespersonId?: string | null;
@@ -345,7 +345,7 @@ export function buildAcceptSalesAgreement(
   const check = checkAgreementTransition(current.state, "ACCEPTED");
   if (!check.ok) throw new SalesAgreementCommandError("ILLEGAL_TRANSITION", check.reason ?? "Illegal transition");
 
-  // ACCEPTANCE IS ALSO THE COMPANY GATE (company-authority correction, DECISIONS #152 addendum).
+  // ACCEPTANCE IS ALSO THE COMPANY GATE (company-authority correction, DECISIONS #154 addendum).
   // An accepted agreement is a REPORTABLE commercial commitment, and no reportable financial fact
   // exists without its operating company. A DRAFT may negotiate company-unresolved (R-14 posture);
   // committing that way is refused HERE, atomically, before anything is stamped — no inference,
