@@ -36,7 +36,7 @@ export default function FinancialsAccountsReceivable() {
             <div key={bucket.key} className="fin-scorecard__slot">
               <div className="fin-figure">
                 <div className="fin-figure__label">{bucket.label}</div>
-                <div className="fin-figure__absence">Read not activated</div>
+                <div className="fin-figure__absence">No read on this surface</div>
                 <span className="fin-factclass">Operational actual</span>
               </div>
             </div>
@@ -52,7 +52,7 @@ export default function FinancialsAccountsReceivable() {
         id="fin-ar-by-customer"
         title="Exposure by customer"
         meta="largest exposure first · drills to invoice records and Customer Financials"
-        honest={{ state: "NOT_ENABLED", detail: READ_STATE_DETAIL.notActivated }}
+        honest={{ state: "NOT_ENABLED", detail: READ_STATE_DETAIL.noReadOnSurface }}
         subject="A/R reads"
       >
         <div className="ns-table-wrap">

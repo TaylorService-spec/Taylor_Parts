@@ -7402,3 +7402,55 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-gov-chip--configured { background: var(--color-text-primary); color: var(--color-surface-page, #fff); }
 .fin-gov-chip--dormant { background: var(--color-warning-surface, #F7EFE4); color: var(--color-warning, #8A6D28); outline: 1px solid var(--color-border); outline-offset: -1px; }
 .fin-gov-chip--future { outline: 1px solid var(--color-border); outline-offset: -1px; color: var(--color-text-secondary); }
+
+/* ══════ Financials — Owner visual-acceptance corrections (2026-09-01) ══════ */
+
+/* F6. Billing Queue's totals band carries two slots; the four-column variant left half a
+   full-width ruled row empty. */
+.fin-scorecard--pair { grid-template-columns: repeat(2, 1fr); }
+
+/* F5. Governance rows: keep each chip whole and keep its trailing words with it, so
+   "Policy not configured" no longer breaks mid-phrase and strands the ⓘ on its own line. */
+.fin-gov-row__value { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 4px 8px; }
+.fin-gov-chip { white-space: nowrap; }
+.fin-gov-row__words { margin-left: 0; }
+
+/* F2. TOUCH-TARGET GOVERNANCE AT 375 (44px).
+   The family shipped ~83 interactive targets under 44px at mobile width — the ⓘ
+   annotation buttons and every cross-page "→" link — while other North Star families
+   have none. Height is added with padding and a min-height so the visual size of the
+   ⓘ glyph and the link text is unchanged; only the hit area grows. Desktop keeps the
+   compact inline treatment, where the rule does not apply. */
+@media (max-width: 640px) {
+  .fin-hlp {
+    width: 44px;
+    height: 44px;
+    /* The circle stays 16px visually; the extra area is transparent padding around it. */
+    background-clip: content-box;
+    padding: 14px;
+    border: none;
+    position: relative;
+  }
+  .fin-hlp::before {
+    content: "i";
+    position: absolute;
+    inset: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 50%;
+    font: 700 10px var(--font-interface, Inter, sans-serif);
+  }
+  /* The glyph now comes from ::before, so the button's own text would double it. */
+  .fin-hlp { font-size: 0; }
+  .fin-hlp:hover::before, .fin-hlp:focus-visible::before { border-color: var(--color-text-primary); }
+
+  .fin-figure__link,
+  .fin-section-note a,
+  .fin-identity-line a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

@@ -37,12 +37,12 @@ export default function FinancialsReconciliation() {
         <p className="fin-custody-note">
           The internal core classifies each reconciled record <strong>IN_SYNC</strong> or{" "}
           <strong>DRIFT</strong>; malformed or foreign facts never report false sync.
-          <FinAnnotation tip="Merged capability: invoice projections are recomputed from durable facts (applications, credits, charges, write-offs) and diffed against stored state; receipts reconcile applied+unapplied against amount. BUILT_DORMANT — no results read is activated, so only actual governed results ever render here." />
+          <FinAnnotation tip="Merged capability: invoice projections are recomputed from durable facts (applications, credits, charges, write-offs) and diffed against stored state; receipts reconcile applied+unapplied against amount. BUILT_DORMANT — no results read surface exists, so only actual governed results ever render here." />
         </p>
         <div className="fin-truth-band">
           <strong>No governed reconciliation results to show.</strong>
           <p>
-            The internal reconciliation core exists but its results read is not activated
+            The internal reconciliation core exists but it has no results read surface
             (BUILT_DORMANT). When activated, records classified DRIFT list here first; IN_SYNC
             totals follow. No external provider is involved in this section.
           </p>

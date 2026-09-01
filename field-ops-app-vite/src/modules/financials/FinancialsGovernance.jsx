@@ -109,7 +109,7 @@ export default function FinancialsGovernance() {
             <Row
               label="Visibility policy summary"
               words="SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED"
-              tip="Read-only summary of the platform's visibility grants as they apply to financial facts (all five finance.visibility.* capabilities are currently inactive). Administration of the grants stays in the platform's role system; this page never duplicates it."
+              tip="Read-only summary of the visibility scope VOCABULARY as it applies to financial facts. It lists the scopes that exist, not who holds them and not which are active — grants and activation live in the platform's role system and are resolved server-side per principal; this page never duplicates or asserts them."
             />
             <Row label="Financial classifications (FIN-009)" state="Not configured" last />
           </section>

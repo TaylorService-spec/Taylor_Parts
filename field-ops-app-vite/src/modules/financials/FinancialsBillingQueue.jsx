@@ -46,8 +46,8 @@ export default function FinancialsBillingQueue() {
             Create invoices
           </button>
           <span className="fin-inact">
-            Invoice issuance is not active (finance.invoice.issue inactive)
-            <FinAnnotation tip="The invoice command core (issueInvoice) is merged and dormant; its capability is inactive in every environment and no grants exist. Blocked items never expose the action regardless of capability. Issuance activates by Owner decision, never from this page." />
+            Issuing isn&rsquo;t wired to this queue yet, and no items are listed to issue
+            <FinAnnotation tip="The invoice command core (issueInvoice) exists, but this page has no governed command path wired to it and no readiness read to select items from — so the action stays disabled. Blocked items would never expose the action regardless of capability. This one-liner deliberately does not assert whether any capability is active: the page has not resolved that, and the server decides at execution time." />
           </span>
         </span>
       }
@@ -61,7 +61,9 @@ export default function FinancialsBillingQueue() {
       />
 
       <section className="fin-scorecard-section" aria-label="Queue totals">
-        <div className="fin-scorecard fin-scorecard--customer">
+        {/* Two slots, so a two-column band — the four-column variant left the right half
+            of a full-width ruled row empty. */}
+        <div className="fin-scorecard fin-scorecard--pair">
           <div className="fin-scorecard__slot">
             <FinancialFigure label="Eligible to invoice" factClass="OPERATIONAL_ACTUAL" absence="No readiness read" />
           </div>

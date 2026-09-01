@@ -3,13 +3,16 @@
 //
 // Same shape as dispatchNorthStarQuickGate.mjs / partsNorthStarQuickGate.mjs: drive the
 // DEPLOYED sandbox as the seeded admin persona and assert the family's rulings against
-// the running pages. This gate validates the UX composition while every finance
-// capability is dormant — the claims are about what the pages may SAY:
+// the running pages. The claims are about what the pages may SAY:
 //
 //   - all 20 routes render inside the shell at 1440 AND recompose at 375 without
 //     horizontal overflow;
-//   - NO dollar amount appears anywhere (capabilities inactive ⇒ any $-figure is either
-//     a Design specimen leak or a fabricated fact — both gate failures);
+//   - NO dollar amount appears anywhere. No Financials page issues a read that returns
+//     money today, so any $-figure would be a Design specimen leak or a fabricated fact —
+//     both gate failures. (This is deliberately NOT phrased as "capabilities are
+//     inactive": in platform-sandbox finance.read is activated by an Owner-authorized
+//     environment override and the governed AR read answers. Owner visual review
+//     2026-09-01 found pages asserting the opposite; the gate must not repeat the claim.)
 //   - dormant/unconfigured authority renders its truthful words (Method TBD, UNKNOWN,
 //     UNELIMINATED_SUM, FUTURE AUTHORITY, Built dormant · Policy not configured,
 //     internal IN_SYNC/DRIFT split from external FUTURE INTEGRATION);
@@ -42,7 +45,7 @@ const ROUTES = [
   }],
   ["/financials/billing-queue", {
     h1: "Billing Queue",
-    contains: ["never inferred from Work Order COMPLETE", "No governed read surface"],
+    contains: ["never inferred from Work Order COMPLETE", "No governed read surface", "wired to this queue"],
     disabledActions: ["Create invoices"],
   }],
   ["/financials/invoices", {
@@ -99,7 +102,7 @@ const ROUTES = [
   }],
   ["/financials/employee-performance", {
     h1: "Salesperson & Employee Performance",
-    contains: ["no financial visibility scope granted", "Outside your scope", "withheld by the server"],
+    contains: ["resolved by the server when this page issues its read", "Outside your scope", "withheld by the server"],
   }],
   ["/financials/reconciliation", {
     h1: "Reconciliation & Exceptions",
