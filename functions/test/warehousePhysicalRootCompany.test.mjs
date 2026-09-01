@@ -32,7 +32,11 @@ import { listEligibleReceivingLocationOptions } from "../lib/warehouseGovernance
 import { makeResolveWarehouseLocationActive } from "../lib/inventoryReceiving/receivingLocationResolver.js";
 import { makeResolveTransferLocationActive } from "../lib/inventoryTransfer/transferLocationResolver.js";
 import { projectReorderWarehouseOptions } from "../lib/reorderRequest/reorderCallables.js";
-import { resolveReorderWarehouseScope } from "../lib/reorderRequest/reorderWarehouseEligibility.js";
+// R-32 (#152): reorderWarehouseEligibility.js is retired; the picker now takes an authority
+// predicate. `allows: () => true` is the exact substitution for the ALL_GOVERNED scope this test
+// used -- both mean 'every candidate id is permitted' -- so CONSUMER 5 still measures what it did:
+// the COMPANY requirement, not the authorization one.
+const UNSCOPED_AUTHORITY = { allows: () => true, reason: "GOVERNED_ASSIGNMENT" };
 
 const TS = Timestamp.fromMillis(1_756_000_000_000);
 
@@ -149,13 +153,7 @@ test("CONSUMER 4 -- the governance verifier reports it GOVERNED, and the run PAS
 });
 
 test("CONSUMER 5 -- Reorder eligibility offers it (and still excludes a company-less one)", () => {
-  const scope = resolveReorderWarehouseScope({
-    uid: "u1", userSecurityRole: "admin", userEmployeeId: null,
-    employeeExists: false, employeeUserId: undefined,
-    employeeEmploymentStatus: undefined, employeeOperationalRoles: undefined,
-    employeeAssignedWarehouseIds: undefined,
-  });
-  const options = projectReorderWarehouseOptions(scope, [
+  const options = projectReorderWarehouseOptions(UNSCOPED_AUTHORITY, [
     { id: "wh-owned", data: OWNED },
     { id: "wh-legacy", data: LEGACY },
   ]);
