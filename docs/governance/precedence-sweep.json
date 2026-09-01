@@ -9,7 +9,8 @@
   "EXPLICIT_OWNER_DECISION": 68,
   "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
-  "LEGACY_COMPATIBILITY_ONLY": 2
+  "LEGACY_COMPATIBILITY_ONLY": 2,
+  "UNJUSTIFIED": 4
  },
  "rows": [
   {
@@ -1138,6 +1139,21 @@
   },
   {
    "roleId": "warehouseManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "controller",
+    "accountingManager",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
    "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
@@ -1155,21 +1171,6 @@
     "partsManager",
     "shopManager",
     "shopAssociate"
-   ]
-  },
-  {
-   "roleId": "warehouseManager",
-   "capability": "audit.event.read",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
-   "alsoHeldBy": [
-    "generalManager",
-    "salesManager",
-    "fieldManager",
-    "controller",
-    "accountingManager",
-    "partsManager",
-    "shopManager"
    ]
   },
   {
@@ -1285,6 +1286,15 @@
     "purchasingManager",
     "controller",
     "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "reorder.request.create.manual",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": [
+    "partsManager"
    ]
   },
   {
@@ -1625,7 +1635,9 @@
    "capability": "reorder.request.read.queue",
    "classification": "WORKFLOW_REQUIRED",
    "basis": "Owner roster 2026-08-20 + ruling 2026-08-19 'Purchasing falls under accounting': the buyer must see what needs buying",
-   "alsoHeldBy": []
+   "alsoHeldBy": [
+    "partsManager"
+   ]
   },
   {
    "roleId": "purchasingManager",
@@ -2363,6 +2375,21 @@
   },
   {
    "roleId": "partsManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "accountingManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
    "capability": "customer.record.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
@@ -2380,21 +2407,6 @@
     "partsAssociate",
     "shopManager",
     "shopAssociate"
-   ]
-  },
-  {
-   "roleId": "partsManager",
-   "capability": "audit.event.read",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
-   "alsoHeldBy": [
-    "generalManager",
-    "salesManager",
-    "fieldManager",
-    "warehouseManager",
-    "controller",
-    "accountingManager",
-    "shopManager"
    ]
   },
   {
@@ -2524,6 +2536,31 @@
     "partsAssociate",
     "shopManager",
     "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "reorder.request.assign",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "reorder.request.create.manual",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": [
+    "warehouseManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "reorder.request.read.queue",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": [
+    "purchasingManager"
    ]
   },
   {
@@ -2920,5 +2957,5 @@
  "reverseSweep": {
   "missingDecidedMappings": []
  },
- "decisionsFileSha": "sha256:ac21a3315e57ddbe9c58d87079e51d6a3769bdca10aef15ffbff8c297a0f7f09"
+ "decisionsFileSha": "sha256:d4a061344b2814aa83bed124c7d004ecfccb546b2b6e0d895514fa8d8695cc93"
 }

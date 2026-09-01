@@ -470,11 +470,30 @@ async function main() {
     return { principalUid, employeeId };
   }
 
-  await check("operationalRoleActive: technician with PARTS_MANAGER ALLOWs reorder.request.read.queue (Condition params.role)", async () => {
+  // RETARGETED BY R-32 (#152). This used reorder.request.read.queue, which no longer lives on the
+  // technician compatibility Role. The property under test was never that capability -- it is that
+  // THIS FEED supplies a real operationalRoleActive resolver instead of an empty condition context
+  // (the Wave 7 PART 4 defect). reorder.request.read.own is conditioned on PARTS_ASSOCIATE and is
+  // untouched by R-32, so it proves the identical mechanism.
+  await check("operationalRoleActive: technician with PARTS_ASSOCIATE ALLOWs reorder.request.read.own (Condition params.role)", async () => {
+    const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["PARTS_ASSOCIATE"] });
+    await grantRole(principalUid, "technician");
+    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["reorder.request.read.own"] });
+    assert.equal(result.decisions["reorder.request.read.own"], true);
+  });
+
+  // R-32: and the moved capability is now unreachable through this Role, for the role that used to
+  // satisfy it. This is the regression guard for the carrier ever coming back.
+  await check("R-32: technician with PARTS_MANAGER no longer obtains reorder.request.read.queue", async () => {
     const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["PARTS_MANAGER"] });
     await grantRole(principalUid, "technician");
-    const result = await resolveEffectiveAccess({ principalUid, permissionIds: ["reorder.request.read.queue"] });
-    assert.equal(result.decisions["reorder.request.read.queue"], true);
+    const result = await resolveEffectiveAccess({
+      principalUid,
+      permissionIds: ["reorder.request.read.queue", "reorder.request.assign", "reorder.request.create.manual"],
+    });
+    assert.equal(result.decisions["reorder.request.read.queue"], false);
+    assert.equal(result.decisions["reorder.request.assign"], false);
+    assert.equal(result.decisions["reorder.request.create.manual"], false);
   });
 
   await check("operationalRoleActive: technician with PARTS_ASSOCIATE (not PARTS_MANAGER) DENIEs reorder.request.read.queue -- wrong role", async () => {
@@ -484,18 +503,22 @@ async function main() {
     assert.equal(result.decisions["reorder.request.read.queue"], false);
   });
 
-  await check("operationalRoleActive: a SECOND, distinct conditioned capability (inventory.transaction.read, params.roles ANY-of) also resolves via the same shared resolver", async () => {
-    const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["WAREHOUSE_MANAGER"] });
+  // RETARGETED BY R-32 (#152). inventory.transaction.read was the params.roles (ANY-of) example and
+  // has moved to the governed manager Roles. Every ANY-of Condition on this Role went with it, so
+  // the ANY-of half of this check cannot be re-pointed within `technician` -- the surviving property
+  // is that ONE call resolves MULTIPLE conditioned ids against the SAME resolver instance, which is
+  // what the two assertions below still prove. The ANY-of shape itself is covered in
+  // resolveEffectivePermission.test.mjs, which tests the resolver directly.
+  await check("operationalRoleActive: several conditioned ids in ONE call resolve via the same shared resolver instance", async () => {
+    const { principalUid } = await seedEmployeeLinkedUser({ operationalRoles: ["PARTS_ASSOCIATE"] });
     await grantRole(principalUid, "technician");
     const result = await resolveEffectiveAccess({
       principalUid,
-      // One call, multiple conditioned ids -- proves the SAME resolver
-      // instance answers correctly for a params.role id AND a params.roles
-      // (ANY-of) id in the same response.
-      permissionIds: ["inventory.transaction.read", "reorder.request.read.own"],
+      permissionIds: ["reorder.request.read.own", "reorder.request.startPurchasing", "workOrder.transition"],
     });
-    assert.equal(result.decisions["inventory.transaction.read"], true, "WAREHOUSE_MANAGER qualifies via MANAGER_OR_WAREHOUSE");
-    assert.equal(result.decisions["reorder.request.read.own"], false, "WAREHOUSE_MANAGER does not satisfy PARTS_ASSOCIATE_ONLY");
+    assert.equal(result.decisions["reorder.request.read.own"], true, "PARTS_ASSOCIATE satisfies this Condition");
+    assert.equal(result.decisions["reorder.request.startPurchasing"], true, "and this one, in the same response");
+    assert.equal(result.decisions["workOrder.transition"], true, "an UNconditioned id in the same call is unaffected");
   });
 
   await check("operationalRoleActive: technician whose Employee is INACTIVE DENIEs despite having the role", async () => {

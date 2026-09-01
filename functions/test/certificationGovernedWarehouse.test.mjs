@@ -424,7 +424,12 @@ test("CERT-UPGRADE-FLAGS-04: a full-world additive upgrade requires BOTH live fl
 const { OPERATING_COMPANY_IDS, resolveOperatingCompany } =
   await import(L("functions/lib/ownership/operatingCompanyAuthority.js"));
 const { projectReorderWarehouseOptions } = await import(L("functions/lib/reorderRequest/reorderCallables.js"));
-const { REORDER_WAREHOUSE_SCOPE } = await import(L("functions/lib/reorderRequest/reorderWarehouseEligibility.js"));
+// R-32 (#152): reorderWarehouseEligibility.js is retired. A principal entitled to every warehouse
+// is now expressed as an authority predicate rather than an ALL_GOVERNED scope object. The
+// substitution is exact -- ALL_GOVERNED meant isWarehouseInReorderScope() returned true for every
+// id, which is what `allows: () => true` says. What this test measures (the company gates the
+// picker) is unchanged.
+const UNSCOPED_AUTHORITY = { allows: () => true, reason: "GOVERNED_ASSIGNMENT" };
 
 const { CERT_WAREHOUSE_OPERATING_COMPANY_ID } =
   await import(L("functions/scripts/certificationWorld/data/warehouses.mjs"));
@@ -460,9 +465,7 @@ test("Reorder now OFFERS wh-main -- the picker was empty without the company", (
   const candidates = certificationWarehouseRecords().map((r) => ({
     id: r.id, data: { ...r.data, createdAt: Timestamp.fromMillis(1), updatedAt: Timestamp.fromMillis(1) },
   }));
-  const scope = { kind: REORDER_WAREHOUSE_SCOPE.ALL_GOVERNED, reason: "test", warehouseIds: null };
-
-  const offered = projectReorderWarehouseOptions(scope, candidates);
+  const offered = projectReorderWarehouseOptions(UNSCOPED_AUTHORITY, candidates);
   assert.equal(offered.length, 1, "the governed warehouse must be offered");
   assert.equal(offered[0].warehouseId, CERT_WAREHOUSE_ID);
 
@@ -471,7 +474,7 @@ test("Reorder now OFFERS wh-main -- the picker was empty without the company", (
     const { operatingCompanyId, ...rest } = data;
     return { id, data: rest };
   });
-  assert.deepEqual(projectReorderWarehouseOptions(scope, withoutCompany), [],
+  assert.deepEqual(projectReorderWarehouseOptions(UNSCOPED_AUTHORITY, withoutCompany), [],
     "this is why the field could not simply be left absent: an empty picker and nothing to read");
 });
 
