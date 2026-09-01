@@ -4,7 +4,10 @@
 autonomously: under the North Star three-authority model (DECISIONS #122), **visual
 composition belongs to the Design authority**; minting twenty financial screens without
 approved design sources would be Design inventing itself in code. Recorded as
-FIN-BLOCK-005. Every section keeps its honest Frame 0 PlaceholderPage. Recorded
+FIN-BLOCK-005. Every section keeps its honest Frame 0 PlaceholderPage.
+(UPDATE 2026-09-01: design direction APPROVED and UX implementation is underway in a
+SEPARATE stream — this map remains the authority-binding contract those surfaces compose;
+repo ingest of the Design package is still pending.) Recorded
 2026-09-01, overnight financials run phase F12.
 
 This map states, per navigation section, WHICH governed dormant authority the surface will

@@ -360,3 +360,20 @@ final.
   current operations); consolidated stays UNELIMINATED_SUM; found + recorded a stale D-3
   citation (BusinessEntityModel.md:1236-1244 does not exist — the live ruling is in the
   Ventana lifecycle responsibility model).
+
+### FIN-BLOCK-005 — UPDATE (Owner, 2026-09-01): DESIGN DIRECTION APPROVED; UX IN A SEPARATE STREAM
+- The corrected Financials North Star P1 Design package was delivered OUTSIDE the repo and
+  reviewed: DESIGN DIRECTION APPROVED · AUTHORITY CORRECTION PASS 1: PASS · REDESIGN
+  REQUIRED: NO · DESIGN AUTHORITY: AVAILABLE.
+- STILL REQUIRED: repo ingest of the package + reconciliation against current main. The
+  package text is not in this stream's possession — ingest happens when its content reaches
+  a stream (no placeholder was committed; absence of the repo copy is NOT permission to
+  invent design).
+- UX IMPLEMENTATION: IN PROGRESS in a separate Claude stream. STREAM SEPARATION (Owner):
+  this continuation stream owns authority / decision packages / activation readiness and
+  MUST NOT implement or modify the 20 Financials UX surfaces; the UX stream owns Design
+  composition. Owner visual acceptance remains sandbox/Quick-Gate dependent.
+- Remaining Owner decisions in THIS stream stay focused on: (1) financial roles/
+  capabilities + activation-registry authorization; (2) FIN-BLOCK-002 service billing
+  route/policy; (3) FIN-BLOCK-003 cost basis/capture authority; (4) FIN-BLOCK-004
+  intercompany ratification.
