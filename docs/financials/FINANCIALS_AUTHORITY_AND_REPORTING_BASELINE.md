@@ -19,7 +19,7 @@ write must independently enforce governed financial visibility and scope.
 | FIN-003 | Plan vs Actual Model | **OPEN** |
 | FIN-004 | Financial Visibility Model | **IMPLEMENTED** (server-enforced scope model — [FIN-004_FINANCIAL_VISIBILITY_MODEL.md](./FIN-004_FINANCIAL_VISIBILITY_MODEL.md); DECISIONS #156; SELF/TEAM/CONSOLIDATED enforced, COMPANY/BU principal-binding blocked on the Owner's access-scope ruling FIN-BLOCK-001; all capabilities `active:false`, nothing granted) |
 | FIN-005 | Forecast Model | **OPEN** |
-| FIN-006 | Cost & Margin Authority | **OPEN** |
+| FIN-006 | Cost & Margin Authority | **INVARIANT CORE IMPLEMENTED** (margin = governed cost facts only, else UNKNOWN — [FIN-006_COST_MARGIN_MODEL.md](./FIN-006_COST_MARGIN_MODEL.md); cost supply undecided — FIN-BLOCK-003) |
 | FIN-007 | Adjustment / Approval / Exception Governance | **OPEN** |
 | FIN-008 | Period & Close Governance | **OPEN** |
 | FIN-009 | Allocation & Intercompany Governance | **OPEN** |

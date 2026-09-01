@@ -12,8 +12,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 |---|---|---|---|---|---|---|
 | F2 | FIN-004 Financial Visibility | COMPLETE_MERGED | cfe9c8fb | c7742232 | #1675 | 4b75fa45 |
 | F3 | Finance Core Activation Readiness | COMPLETE_MERGED | 5a70fa6c | 45392f24 | #1676 | 04126d41 |
-| F4 | Service Billing Model | COMPLETE_PR_OPEN | 04126d41 | (see PR) | (opened below) | — |
-| F5 | FIN-006 Cost & Margin | NOT_STARTED | — | — | — | — |
+| F4 | Service Billing Model | COMPLETE_MERGED | 04126d41 | f1627d63 | #1677 | bda2c5b2 |
+| F5 | FIN-006 Cost & Margin | COMPLETE_PR_OPEN | bda2c5b2 | (see PR) | (opened below) | — |
 | F6 | FIN-003 Plan vs Actual | NOT_STARTED | — | — | — | — |
 | F7 | FIN-005 Forecasting | NOT_STARTED | — | — | — | — |
 | F8 | FIN-007 Adjustments/Approvals | NOT_STARTED | — | — | — | — |
@@ -80,6 +80,21 @@ Details per phase are appended below as each phase closes.
   registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number
   (composes #145/#154; the undecided parts are recorded as a blocker, not decided).
 
+### F5 — FIN-006 Cost & Margin
+- SCOPE: the ONE margin invariant, encoded so it cannot be quietly violated; the cost-fact
+  supply left explicitly undecided.
+- IMPLEMENTED: pure derivation core (costMargin.ts, deriveGrossMargin) — COMPUTED only when
+  EVERY revenue line has a governed cost fact (integer costMinor + basis + sourceType +
+  sourceRecordId); otherwise UNKNOWN with NO margin number (never revenue − 0, never a
+  borrowed supplier quote, never a partial margin); malformed facts thrown, orphan facts
+  force UNKNOWN, negative margin legitimate; revenue still reported (it is governed).
+  Today every real invocation returns UNKNOWN — the truthful current answer.
+- NOT DECIDED (deliberate): costing method/basis vocabulary, capture point (receiving vs
+  Epic-5 PO layer vs new record), labor cost policy, ND-27 valuation authority —
+  FIN-BLOCK-003 (below).
+- DOC: docs/financials/FIN-006_COST_MARGIN_MODEL.md · TESTS: pure 10/10; finance CI lane
+  registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
 ## Blockers (running list)
 
 ### FIN-BLOCK-001 — principal-to-company/business-unit scope binding
@@ -111,4 +126,22 @@ Details per phase are appended below as each phase closes.
 - CURRENT SAFE BEHAVIOR: service work cannot enter the Billing Queue at all — fail-closed
   by absence; the SO-anchored queue is complete for Sales-Order-committed work.
 - WHAT REMAINS UNIMPLEMENTED: any WO/service input into billing.
+
+### FIN-BLOCK-003 — the governed cost-fact supply (FIN-006)
+- PHASE: F5; also constrains F12 Gross Margin surface and F13 margin/cost reporting (both
+  can only ever show UNKNOWN until ruled).
+- EXACT QUESTIONS: (1) costing method + admissible basis vocabulary (receipt/landed vs
+  standard vs average vs last; supplier quote ruled non-admissible by FIN-001); (2) the
+  capture point for cost EVENTS (receiving carries no price deliberately; Epic-5 PO price
+  layer is UNKNOWN_REQUIRES_DECISION; or a new governed record); (3) labor cost policy
+  (rates do not exist; hours ≠ cost ratified) — composes FIN-BLOCK-002(2); (4) ND-27
+  inventory valuation authority (freight/landed allocation, revaluation, external
+  accounting relation per DECISIONS #145).
+- WHY CODE CANNOT ANSWER: costing method and valuation basis are accounting-policy
+  decisions with cash/tax consequences; any repo-chosen default would silently become the
+  company's costing policy.
+- CURRENT SAFE BEHAVIOR: deriveGrossMargin returns UNKNOWN for everything — no fabricated
+  cost, no margin number without governed facts.
+- WHAT REMAINS UNIMPLEMENTED: cost capture, cost storage, any margin surface showing a
+  number.
 
