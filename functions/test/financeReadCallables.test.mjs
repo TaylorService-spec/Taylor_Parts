@@ -118,4 +118,24 @@ await check("over the cap: status unavailable -- NEVER a ready partial summary (
   assert.equal(result.summary.count, 0);
 });
 
+// ── The REPORTING read seam shares this boundary. It resolves reach through the SAME canonical
+// loader, so the same two facts must hold for it: no identity is unauthenticated, and an active
+// admin with finance.read still inactive reaches nothing. Admin is not a bypass.
+const reporting = await import("../lib/finance/financialReportingRead.js");
+
+await check("reporting read rejects unauthenticated callers", async () => {
+  await expectHttps(reporting.listFinancialFacts.run(request({})), "unauthenticated");
+});
+
+await check("reporting read denies an active admin while finance.read remains inactive (no admin bypass)", async () => {
+  await expectHttps(reporting.listFinancialFacts.run(request({}, uid)), "permission-denied");
+});
+
+await check("reporting read denies a caller-supplied filter just the same — a filter is not a credential", async () => {
+  await expectHttps(
+    reporting.listFinancialFacts.run(request({ companyId: "taylor", creditedSalespersonId: "cw-emp-034" }, uid)),
+    "permission-denied",
+  );
+});
+
 console.log(`\n${passed} finance AR read callable checks passed`);

@@ -103,6 +103,7 @@ export { recordInvoiceAdjustment } from "./finance/adjustmentCallables";
 // Finance (Billing/AR) — trusted AR read projection. EXPORT != DEPLOY; capability `finance.read` active:false;
 // backend read only (invoices stay Admin-SDK-only / deny-all client Rules).
 export { listAccountInvoiceAr } from "./finance/financeReadCallables";
+export { listFinancialFacts } from "./finance/financialReportingRead";
 // Commercial Coverage & Territory (#15) — governed coverage writes. EXPORT != DEPLOY; capability
 // `coverage.write` active:false; sales_territories / commercial_coverage_assignments are Admin-SDK-only.
 export { createSalesTerritory, createCoverageAssignment } from "./coverage/coverageCallables";
