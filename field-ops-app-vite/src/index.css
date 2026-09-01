@@ -7468,9 +7468,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fin-overview-grid--home .fin-ov-cost { display: none; }
 }
 
-/* F8. Page 07's five-figure summary. Five slots wrap 3+2 on desktop and 2-up on mobile
-   (the shared mobile rule below already collapses every scorecard to two columns). */
-.fin-scorecard--five { grid-template-columns: repeat(3, 1fr); }
+/* F8. Page 07's five-figure summary — one row of five, the same ribbon shape the A/R
+   aging strip already uses at this width. (A three-column grid wrapped 3+2 and left a
+   ruled empty cell, which reads as a missing sixth figure.) */
+.fin-scorecard--five { grid-template-columns: repeat(5, 1fr); }
 
 /* F11. Dimension vocabulary that is NOT a control: the basis chip, quieted. No hover, no
    pointer, no selected state — nothing that reads as clickable. */
