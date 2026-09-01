@@ -18,8 +18,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F7 | FIN-005 Forecasting | COMPLETE_MERGED | 73ba30cd | 85cd4c97 | #1680 | 208c7aea |
 | F8 | FIN-007 Adjustments/Approvals | COMPLETE_MERGED | 208c7aea | 96dd3e8d | #1681 | fff6bef6 |
 | F9 | FIN-008 Period & Close | COMPLETE_MERGED | fff6bef6 | 921579d4 | #1682 | 5303706d |
-| F10 | FIN-009 Allocation & Intercompany | COMPLETE_PR_OPEN | 5303706d | (see PR) | (opened below) | — |
-| F11 | FIN-010 Reconciliation/Traceability | NOT_STARTED | — | — | — | — |
+| F10 | FIN-009 Allocation & Intercompany | COMPLETE_MERGED | 5303706d | 385e7ca3 | #1683 | 92066be6 |
+| F11 | FIN-010 Reconciliation/Traceability | COMPLETE_PR_OPEN | 92066be6 | (see PR) | (opened below) | — |
 | F12 | Financials Product Surfaces | NOT_STARTED | — | — | — | — |
 | F13 | Reporting Matrix | NOT_STARTED | — | — | — | — |
 | F14 | Sandbox Activation Readiness | NOT_STARTED | — | — | — | — |
@@ -161,6 +161,20 @@ Details per phase are appended below as each phase closes.
   — FIN-BLOCK-004 (below).
 - DOC: docs/financials/FIN-009_ALLOCATION_INTERCOMPANY_MODEL.md · TESTS: pure 9/9; finance
   CI lane registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
+### F11 — FIN-010 Reconciliation / Traceability
+- SCOPE: the projection promise made checkable; external reconciliation deferred with cause.
+- IMPLEMENTED: financialReconciliation.ts — reconcileInvoiceProjection (recompute
+  applied/credits/charges/writeoffs/outstanding/state from durable facts, diff vs stored;
+  IN_SYNC or DRIFT with per-field stored/derived values; VOID terminal; foreign/malformed
+  facts THROWN — an unreconcilable set never reports sync; nothing auto-fixed) and
+  reconcileReceipt (amount = applied + unapplied; applied = Σ application facts;
+  over-application drifts).
+- DEFERRED WITH CAUSE (not a blocker): EXTERNAL reconciliation — the authority of record
+  is not yet selected (DECISIONS #145); a speculative matcher would guess an interface.
+  Drift sweeps/surfaces → F12/F14.
+- DOC: docs/financials/FIN-010_RECONCILIATION_MODEL.md · TESTS: pure 9/9; finance CI lane
+  registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
 
