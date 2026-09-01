@@ -36,6 +36,17 @@ export {
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
 // runs in production until a separate deploy + Owner grant.
 export { createOpportunity, transitionOpportunity, updateOpportunity } from "./opportunity/opportunityCallables";
+// Workstream 2B -- the two reorder writes that author a governed company fact. EXPORT != DEPLOY:
+// these are exported for build and test, and deployment is NOT authorized. They are half of a
+// three-part activation (Functions + Rules + Hosting) that must land together, because the Rules
+// retirement below removes the client-direct path these replace.
+export {
+  createReorderRequest,
+  recordReorderPurchaseOrder,
+  // R-17. The trusted warehouse projection the reorder picker reads, INSTEAD of a `warehouses`
+  // collection LIST. Same capability as the create it serves; no warehouse.list capability exists.
+  listReorderWarehouseOptions,
+} from "./reorderRequest/reorderCallables";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";

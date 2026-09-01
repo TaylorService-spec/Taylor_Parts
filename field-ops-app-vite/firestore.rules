@@ -164,6 +164,20 @@ service cloud.firestore {
             || isActiveOperationalRole("WAREHOUSE_MANAGER"));
     }
 
+    // ============ DORMANT SINCE WORKSTREAM 2B -- NOTHING CALLS THIS, OR THE BASELINE BELOW ============
+    //
+    // reorder_requests is `allow create: if false` (see the create rule further down). These two
+    // functions are the creation contract, and the creation rule that invoked them is gone, so
+    // NEITHER IS EVALUATED BY ANY RULE TODAY. Adding a key here permits nothing; removing one
+    // forbids nothing.
+    //
+    // They are kept rather than deleted because they are the most precise statement in this file of
+    // what a Reorder Request IS, they are what the trusted createReorderRequest command was written
+    // against, and they become live again the moment anyone restores a client create -- which is
+    // exactly when a stale contract would do the most damage.
+    //
+    // Read every claim below as describing the SHAPE, not an enforcement. The enforcement of that
+    // shape now lives in functions/src/reorderRequest/reorderCommands.ts and its tests.
     // Codex REQUEST CHANGES on PR #91 -- the new-shape create rule
     // originally validated only the recommendation fields
     // (recommendationStatus/urgency/quantitySource/recommendedQty/
@@ -221,7 +235,23 @@ service cloud.firestore {
         // non-WO creates without it remain valid and no historical migration is needed. Value validated in
         // hasCanonicalReorderRequestCreationBaseline(). Back-link/provenance only -- confers no Work Order
         // lifecycle authority here and no procurement authority on the Work Order.
-        "workOrderId"
+        "workOrderId",
+        // Workstream 2B (Owner rulings R-13/R-15) -- the two governed ownership facts the trusted
+        // createReorderRequest command authors: which warehouse needs replenishment, and the
+        // operating company derived from it. Listed in hasOnly and deliberately NOT in hasAll, so a
+        // legacy row's shape stays valid. Dormant today, per the banner above this function: the
+        // create rule that consulted it is retired, so this listing describes the record rather than
+        // permitting anything.
+        //
+        // THE IMMUTABILITY IS REAL, AND IT IS NOT HERE. It comes from machinery that was in this
+        // file first: every retained update branch ends with diff(resource.data).affectedKeys()
+        // .hasOnly([...]), and not one of those lists names warehouseId or operatingCompanyId. An
+        // update touching either puts it in affectedKeys() and fails the branch. That is live, it is
+        // what the emulator suite proves on both record generations, and it is why no per-branch
+        // equality pin is added: an equality check would have to dereference a key legacy rows do
+        // not have, whereas diff() compares the maps and never reports a key absent from both. A
+        // retained client update therefore cannot become a company transfer, on either generation.
+        "warehouseId", "operatingCompanyId"
       ]) && data.keys().hasAll([
         "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
         "status", "currentOwner", "requestedBy", "createdAt",
@@ -662,22 +692,18 @@ service cloud.firestore {
       // hasCanonicalReorderRequestKeys()/...CreationBaseline() (above)
       // apply to BOTH branches identically -- enforced for both since
       // Codex's PR #91 finding.
-      allow create: if hasCanonicalReorderRequestKeys(request.resource.data)
-        && hasCanonicalReorderRequestCreationBaseline(request.resource.data)
-        && request.resource.data.partId is string && request.resource.data.partId.size() > 0
-        && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
-        && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
-        && (request.resource.data.recommendationStatus == "READY"
-              ? (isAdminOrDispatcher()
-                 && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-                 && request.resource.data.quantitySource == "ANALYTICS"
-                 && request.resource.data.recommendedQty is number
-                 && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
-              : (canSubmitManualZeroHistoryQuantity()
-                 && request.resource.data.urgency == null
-                 && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
-                 && request.resource.data.recommendedQty == null
-                 && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0));
+      // WORKSTREAM 2B -- CLIENT CREATE RETIRED (Owner rulings R-13/R-15).
+      //
+      // Creating a reorder request now authors a governed ownership fact: warehouseId, and the
+      // operatingCompanyId DERIVED from that warehouse. A client cannot be the authority for a
+      // derived company -- so creation moved to the trusted callable
+      // functions/src/reorderRequest/reorderCallables.ts (createReorderRequest), which resolves the
+      // governed ACTIVE warehouse, derives the company, refuses a client-supplied one outright, and
+      // writes through the Admin SDK.
+      //
+      // ONE COMMAND, ONE WRITE AUTHORITY (R-15): this is removed in the SAME change that deploys the
+      // callable, so there is never a window where both paths can create.
+      allow create: if false;
 
       // Issue #100 PR 3a -- RESTRUCTURED (docs/specifications/
       // inventory-nav-access-alignment.md's "Restructuring
@@ -795,43 +821,17 @@ service cloud.firestore {
             && request.resource.data.reviewNotes == resource.data.reviewNotes
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"]) )
-          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Record PO (reorder_requests half) -- gains the new OR (Issue #100 PR 3a)
-            && resource.data.status == "PURCHASING_IN_PROGRESS"
-            && request.resource.data.status == "ORDERED"
-            && request.auth.uid == resource.data.assignedToUserId
-            && request.resource.data.purchaseOrderId == requestId
-            && request.resource.data.orderedBy == request.auth.uid
-            && request.resource.data.orderedAt is number
-            && request.resource.data.currentOwner == resource.data.currentOwner
-            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-            && request.resource.data.assignedBy == resource.data.assignedBy
-            && request.resource.data.assignedAt == resource.data.assignedAt
-            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
-            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
-            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
-            && request.resource.data.vendorContacted == resource.data.vendorContacted
-            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
-            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
-            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
-            && request.resource.data.reviewDecision == resource.data.reviewDecision
-            && request.resource.data.reviewedBy == resource.data.reviewedBy
-            && request.resource.data.reviewedAt == resource.data.reviewedAt
-            && request.resource.data.reviewNotes == resource.data.reviewNotes
-            && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])
-            // Cross-document invariant (ChatGPT PR #77 review): a
-            // rules-independent write of THIS transition alone,
-            // without the matching reorder_purchase_orders/{requestId}
-            // create also landing in the SAME commit, is rejected --
-            // getAfter()/existsAfter() read the post-transaction state,
-            // so both writes are provably part of one atomic operation,
-            // not just independently-valid writes that happened to be
-            // sent together.
-            && existsAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
-            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
-            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
-            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
-            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId )
+          // WORKSTREAM 2B -- RECORD PO BRANCH RETIRED (Owner rulings R-15/R-16).
+          //
+          // This branch and the reorder_purchase_orders create rule used to cross-pin each other
+          // with existsAfter()/getAfter(), so the PO create and this ORDERED transition provably
+          // landed in one commit. That invariant is GOVERNED BEHAVIOUR, not an implementation
+          // detail, and it has MOVED rather than been dropped: recordReorderPurchaseOrder performs
+          // both writes inside a single Admin-SDK transaction, and its pure builder returns both
+          // halves from one call so neither can be produced without the other.
+          //
+          // Equal strength, different enforcement point. Retiring the branch here is what stops a
+          // client from performing the ORDERED half alone once the PO create is gone.
           // Sprint 2.1.11 -- Receiving (Reorder Request closeout).
           // Terminal ORDERED -> RECEIVED transition, assignee-restricted,
           // same single-document-transition shape as Sprint 2.1.7/
@@ -1062,33 +1062,20 @@ service cloud.firestore {
       // this single-condition allow create is not shared with any
       // other transition, so this is a safe additive ||, same reasoning
       // as every read-side widening above).
-      allow create: if (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))
-        && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId
-        && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "PURCHASING_IN_PROGRESS"
-        && request.resource.data.keys().hasOnly([
-             "reorderRequestId", "partId", "supplierName", "externalPoNumber",
-             "orderedQuantity", "orderedDate", "expectedArrivalDate", "status",
-             "createdBy", "createdAt"
-           ])
-        && request.resource.data.reorderRequestId == requestId
-        && request.resource.data.partId == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.partId
-        && request.resource.data.supplierName is string
-        && request.resource.data.supplierName.size() > 0
-        && request.resource.data.externalPoNumber is string
-        && request.resource.data.externalPoNumber.size() > 0
-        && request.resource.data.orderedQuantity is number
-        && request.resource.data.orderedQuantity > 0
-        && request.resource.data.orderedDate is string
-        && request.resource.data.orderedDate.size() > 0
-        && (request.resource.data.expectedArrivalDate == null || request.resource.data.expectedArrivalDate is string)
-        && request.resource.data.status == "ORDERED"
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.createdAt is number
-        && existsAfter(/databases/$(database)/documents/reorder_requests/$(requestId))
-        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "ORDERED"
-        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.purchaseOrderId == requestId
-        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedBy == request.auth.uid
-        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedAt == request.resource.data.createdAt;
+      // WORKSTREAM 2B -- CLIENT CREATE RETIRED (Owner rulings R-15/R-16).
+      //
+      // A purchase order now carries operatingCompanyId, INHERITED from its reorder request. A
+      // client cannot be the authority for that fact, and it must not be able to supply or override
+      // it -- so creation moved to recordReorderPurchaseOrder, which reads the request inside the
+      // transaction, copies its governed company, and writes both documents through the Admin SDK.
+      //
+      // The cross-document existsAfter()/getAfter() pinning that used to live here now lives in that
+      // transaction. Identity is unchanged: the document id is still the reorder request id, and
+      // reorderRequestId is still pinned equal to it -- this is not a multi-line purchasing model.
+      //
+      // Immutability is untouched: allow update, delete stays `if false`, so no update-side pin for
+      // operatingCompanyId is needed or possible.
+      allow create: if false;
       allow update, delete: if false;
     }
 

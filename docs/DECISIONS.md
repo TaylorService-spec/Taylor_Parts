@@ -3464,7 +3464,343 @@ is selected, and operational billing needs precede the integration); promoting E
 explicitly disclaims becoming "the accounting ledger of record"); leaving the mode undecided while
 building surfaces (rejected — that is how an authority decision gets made by accident).
 
-## #146 — OWNER RULING: FIN-002 reporting attribution — company, business unit, sales credit, booked basis
+## #146 — OWNER RULING: the Reorder trusted command authority (R-13, R-15, R-16, and the activation dependency)
+
+**Date:** 2026-08-31
+**Status:** Ruled and implemented in the repository. **NOT ACTIVE** — no deploy, no warehouse data write.
+
+**The problem.** A Reorder Request is raised for a warehouse, and under EOS Ownership Model v1
+(#142) a warehouse belongs to an operating company. So creating a request, and recording the
+Purchase Order that follows it, author a governed ownership fact: `warehouseId`, and the
+`operatingCompanyId` **derived** from it. Both writes were client-direct under `firestore.rules`. A
+browser cannot be the authority for a derived company — it can only assert one.
+
+### Ruling
+
+1. **R-13 — the Warehouse is the governed authority for a reorder's company.** The caller states a
+   governed `warehouseId`; the command derives `operatingCompanyId` from it. There is no other
+   source, and specifically no inference from the part, the requesting user, the truck, the page,
+   or the sandbox root configuration at runtime.
+
+2. **R-15 — ONE COMMAND → ONE GOVERNED WRITE AUTHORITY.** The two writes move to trusted callables
+   (`createReorderRequest`, `recordReorderPurchaseOrder`) and the three client-direct paths are
+   retired in Rules in the same change: `reorder_requests` create, `reorder_purchase_orders`
+   create, and the Record-PO update branch. **No fallback.** A client that fails the callable does
+   not retry into the old path — that would be two write authorities for one command, which is the
+   thing the retirement exists to prevent.
+
+3. **A client-supplied `operatingCompanyId` is REFUSED, not ignored.** Ignoring it would let a
+   caller believe it was accepted. The command rejects the call outright, before anything else.
+
+4. **R-16 — the atomicity invariant MOVES, it does not go away.** Rules cross-pinned the PO create
+   and the ORDERED transition with `existsAfter`/`getAfter`. `recordReorderPurchaseOrder` now
+   performs both inside one Admin-SDK transaction, and its pure builder returns both halves from a
+   single call so neither can be produced without the other. Equal strength, different enforcement
+   point. Identity and cardinality are unchanged: the Purchase Order document id **is** the request
+   id, strictly 1:1.
+
+5. **No new capability.** The callables reuse existing active capabilities and keep **no**
+   operational-role fallback.
+
+6. **Two record generations coexist, and neither is migrated.** Rows that predate the command have
+   no warehouse or company key. Both generations keep every retained transition, and neither can
+   gain or change `warehouseId`/`operatingCompanyId` through a client update.
+
+7. **The immutability guard stays missing-safe.** It comes from the pre-existing
+   `diff(resource.data).affectedKeys().hasOnly([...])` on every retained update branch, none of
+   which names either key. **No equality pin may be added** — an equality check would have to
+   dereference a key legacy rows do not have, whereas `diff()` compares the maps and never reports
+   a key absent from both. A future maintainer must not "strengthen" this into field dereferences.
+
+8. **Activation has four conditions and one order:** warehouse company facts → Functions → Hosting
+   → Rules. Rules-before-Functions is the destructive ordering — reorder creation stops working
+   with nothing to replace it. The runbook, including rollback and what rollback cannot undo, is
+   `docs/specifications/reorder-trusted-command-authority.md` §13.
+
+### Consequences worth recording
+
+- **`hasCanonicalReorderRequestKeys()` and its creation baseline are now DORMANT.** The create rule
+  that invoked them is `if false`, so they are evaluated by nothing. The approved
+  `warehouseId`/`operatingCompanyId` addition to that key set therefore permits nothing today. They
+  are kept because they are the file's most precise statement of what a Reorder Request is, and
+  they go live again the moment anyone restores a client create.
+- **Every remaining `403` create assertion in the Rules suites now passes for a different reason
+  than its name gives.** `allow create: if false` refuses everyone, so those assertions are no
+  longer evidence about payload or authority validation. They are kept as proof the door is shut,
+  and labelled so nobody reads them as coverage of something else. Fourteen sibling assertions that
+  expected a create or the atomic Record-PO commit to **succeed** were found failing on the branch
+  and retargeted — a direct instance of the #144 lesson, caught by running the lane rather than
+  reading the PR.
+
+### Rejected
+
+Silently ignoring a client-supplied company (rejected — a caller must learn its assertion was not
+accepted); keeping a client-direct fallback for resilience (rejected — R-15); moving all eight
+reorder transitions rather than the two that author a company fact (rejected — that is rebuilding a
+working state machine, not migrating an authority); backfilling the legacy rows to make one
+generation (rejected — no governed source exists for their warehouse, and inventing one is the
+inference this ruling forbids).
+
+## #147 — OWNER RULING R-17: the Reorder warehouse-option authority (and the Parts Manager scope question it leaves open)
+
+**Date:** 2026-08-31
+**Status:** Ruled and implemented in the repository. **NOT ACTIVE** — no deploy, no warehouse data write.
+
+**The problem, measured.** Workstream 2B (#146) made `warehouseId` a mandatory governed creation
+fact. `firestore.rules` grants `warehouses` read as `isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId)`;
+the second half is a per-document test, and a pick-list is a collection LIST, which no per-document
+condition can satisfy. Measured on the emulator: admin and dispatcher LIST 200; an ACTIVE
+PARTS_MANAGER technician 403; an ACTIVE WAREHOUSE_MANAGER technician 403 even for the warehouse it
+can GET individually. The two roles the manual-entry path exists for could not supply the identity
+the new authority required — a regression created by the requirement itself.
+
+### Ruling
+
+1. **APPROVED: a trusted projection. REJECTED: widening `warehouses` LIST.** Granting a standing
+   collection LIST to populate a picker is a broader disclosure than the task needs, and easy to
+   make but hard to take back. `listReorderWarehouseOptions` follows the precedent
+   `listReceivingLocationOptions` already set for exactly this shape.
+
+2. **Minimal projection.** `{ warehouseId, label }`. Not `operatingCompanyId` — the client must never
+   hold the company as an authority, and shipping it would invite a caller to send it back, which
+   the create refuses outright. Not inventory, staffing, status, provenance or any other operational
+   or company-private fact. The client still sends only `warehouseId`; the company stays
+   server-derived.
+
+3. **No new capability vocabulary.** The read exists solely to serve the governed reorder create, so
+   it is authorized by that create's own capability (`reorder.request.create.manual`). No
+   `warehouse.list` capability was introduced. No operational-role fallback inside the callable.
+
+4. **ONE eligibility, TWO consumers.** `reorderWarehouseEligibility.ts` answers *can this principal
+   raise a reorder for THIS warehouse?* once. The list filters by it; the create enforces it.
+   Required invariant, and it holds in both directions: everything the picker offers is accepted, and
+   a `warehouseId` posted by hand is refused (`WAREHOUSE_NOT_IN_SCOPE`) exactly when it was not
+   offered. **The selector is UX. The create callable is enforcement.**
+
+5. **Scope from existing authority only.** It mirrors the warehouse-read authority already in Rules:
+   admin/dispatcher unscoped; a WAREHOUSE_MANAGER holds exactly their linked Employee's
+   `assignedWarehouseIds` (Issue #226) under the same fail-closed contract — absent, empty or
+   malformed assignment denies every warehouse, never "all". Holding both manager roles resolves to
+   the governed scope, not the undefined one.
+
+6. **No Rules change.** `warehouses` read/write authority is untouched, and a static contract test
+   asserts the match block is unchanged and that no `warehouse.list` appears anywhere in Rules.
+
+7. **This is INSIDE Workstream 2B, not a separate stream.** 2B made `warehouseId` mandatory;
+   supplying a legitimate warehouse identity to already-authorized reorder creators is part of
+   completing that authority migration, not an adjacent concern.
+
+### STILL OPEN — the PARTS_MANAGER warehouse scope
+
+`reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
+WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PARTS_MANAGER has none:**
+`assignedWarehouseIds` is consulted by exactly one authority in this repository and that authority
+requires WAREHOUSE_MANAGER membership, and no capability, Rule, ADR or fixture defines a Parts
+Manager's warehouse scope.
+
+Per the ruling's own instruction, this STOPS here rather than being invented. The resolver returns
+`NONE` with the reason `PARTS_MANAGER_SCOPE_UNDEFINED` — a named state, not a silent zero — and a
+test pins it so the gap cannot be closed by accident. **A Parts Manager therefore still cannot raise a
+reorder**, and Workstream 2B is not complete until this is ruled on.
+
+### BLOCKING DEFECT found while implementing — the warehouse cannot hold its own company
+
+`createReorderRequest` validates the warehouse through the receiving-location authority, which
+checks the **whole document** against the §3A governed shape — a strict allow-list of twelve keys.
+The same command then requires `warehouses/{id}.operatingCompanyId`, because the company is derived
+from the warehouse (R-13). That field is not in the allow-list, so writing it makes the document fail
+§3A as `unknown_field`.
+
+The command therefore refuses in both directions — `WAREHOUSE_NO_COMPANY` without it,
+`WAREHOUSE_NOT_GOVERNED` with it. **Activation condition 1 breaks the command by construction**, and
+no reorder can be created in any state. The behaviour is coherent (picker and create both refuse, so
+the R-17 invariant holds) but the path is unreachable.
+
+Not repaired here: widening the §3A allow-list changes the Receiving authority's shape contract
+(Decision-tracked, I-LA C2); giving the reorder its own warehouse-validity opinion is the second
+opinion the 2B design refused to invent; and storing the company off the warehouse document would
+change the ownership model's physical-root shape. All three are Owner decisions.
+`functions/test/reorderWarehouseEligibility.test.mjs` pins the contradiction in a test named BLOCKER,
+which fails when it is resolved.
+
+### Rejected
+
+Widening `warehouses` collection LIST for the picker (rejected by ruling); a generic `warehouse.list`
+capability (rejected — the read serves one command and is authorized as that command); a
+browser-side fallback to the collection read when the callable fails (rejected — two read-authority
+models for one selector, and the one that works for an admin would hide the one that fails for
+everyone else); restricting the reorder surfaces to admin/dispatcher (rejected — closes a capability
+those roles hold today to avoid deciding the scope question).
+
+## #148 — OWNER RULING: the two Reorder activation blockers are classified, and the ownership sequence becomes 2A.1 → 2B → 2C
+
+**Date:** 2026-08-31
+**Status:** Ruled. R-17 **ACCEPTED** (#147). Neither blocker is resolved; both have named follow-up workstreams.
+
+**R-17 accepted.** The trusted picker and the create command share the same capability, the same
+warehouse-scope authority and the same eligibility resolver, and *offered == accepted* is the right
+invariant. No warehouse LIST widening, no browser fallback, no second warehouse-validity opinion.
+
+### BLOCKER A — PARTS_MANAGER scope. Classification: **GOVERNED ROLE-SCOPE GAP**
+
+**Not to be resolved inside Reorder.** The repository defines no authoritative answer to "which
+warehouse(s) may a PARTS_MANAGER operate for", so `PARTS_MANAGER_SCOPE_UNDEFINED` failing closed is
+**correct**.
+
+Explicitly forbidden as a way to unblock Reorder: treating PARTS_MANAGER as all warehouses; copying
+WAREHOUSE_MANAGER's `assignedWarehouseIds` semantics; inferring from location, company, or employee
+title/name; defaulting to Taylor; broadening warehouse LIST.
+
+**→ WORKSTREAM 2C — Parts Manager warehouse operating scope.** Reconciliation required before any
+implementation: (1) is the scope one warehouse, several, operating-company scoped, enterprise-wide,
+or assigned some other way; (2) where is it stored authoritatively; (3) does it govern only Reorder
+or also receiving / transfers / cycle count / pick-stage / other warehouse operations; (4) how is it
+granted, revoked and audited. *Do not invent this solely to unblock Reorder.*
+
+### BLOCKER B — a Warehouse cannot carry its own company. Classification: **PHYSICAL-ROOT AUTHORITY CONTRACT MISMATCH**
+
+**This belongs to the Ownership program, and the ownership model is not what changes.** The approved
+model already states that a Warehouse IS a physical COMPANY root and that
+`warehouse.operatingCompanyId` is a persisted governed fact. The contradiction lives in the existing
+§3A warehouse/receiving shape contract, which predates the ownership requirement and rejects the new
+governed fact as `unknown_field`.
+
+**Ruling:** do NOT give Reorder its own warehouse-validity definition; do NOT move
+`operatingCompanyId` elsewhere merely to satisfy the old allow-list. Reconcile the canonical Warehouse
+authority so that ONE Warehouse definition recognizes `operatingCompanyId` as an allowed governed root
+fact.
+
+**→ WORKSTREAM 2A.1 — Physical-root company compatibility.** A compatibility amendment to the COMMON
+Warehouse authority, not a Reorder-specific exception. Target: a valid governed Warehouse may contain
+`operatingCompanyId` without ceasing to be a valid governed Receiving/Warehouse record.
+
+**Measurement required BEFORE any code:** the exact canonical §3A validator; every caller/importer of
+it; every test asserting the current 12-key shape; every writer capable of creating or updating a
+Warehouse record; whether those writers could author `operatingCompanyId`; whether the field must be
+immutable after root creation; whether warehouse status or other transitions use `affectedKeys()`;
+Receiving's behaviour with the extra governed field; migration behaviour for existing warehouses
+without it; and the exact Rules / Function / fixture / verifier delta.
+
+**Hard stop condition:** stop before implementing if widening the canonical shape would accidentally
+give any existing client writer authority to add or change `operatingCompanyId`.
+
+**Expected direction, to be proven not assumed:** allowed in the canonical shape; required for new
+ownership-governed physical roots; immutable through ordinary client Warehouse transitions; authored
+only through an explicitly governed root-authority path; optional on historical rows until separately
+migrated.
+
+### Sequence
+
+**2A.1 → 2B activation → 2C** (2C may run in parallel if it can be resolved independently).
+
+- Activation for **all intended roles** needs both 2A.1 and 2C.
+- Activation for **admin / dispatcher / defined WAREHOUSE_MANAGER scope only** needs 2A.1;
+  PARTS_MANAGER stays intentionally unavailable. **Intended role coverage must not be silently
+  redefined** to declare activation complete.
+
+### Merge vs activation for PR #1646
+
+Once every CI lane settles PASS, the Legacy Authorization Surface Gate is legitimately corrected
+(not waived), and no new authority regression appears, #1646 **may** merge as **dormant governed
+code** while activation stays blocked by 2A.1 and 2C. Merging authorizes no deployment, and it is
+conditional on main's normal build/test contract not assuming the new path is immediately executable.
+
+### Not authorized
+
+Warehouse `operatingCompanyId` writes; §3A shape modification (yet); inventing Parts Manager scope;
+deploy; sandbox mutation; production mutation.
+
+## #149 — OWNER RULING R-18: the Warehouse company fact is CANONICAL (Workstream 2A.1A, implemented)
+
+**Date:** 2026-08-31
+**Classification:** SHARED PHYSICAL-ROOT AUTHORITY COMPATIBILITY — **not** a Reorder fix, a Receiving
+fix, or a migration workaround. The canonical Warehouse authority was too narrow for Ownership v1.
+**Status:** IMPLEMENTED. No `firestore.rules` change, no governed-hash change, no data written.
+
+### Ruling
+
+**`operatingCompanyId` is an ALLOWED field on the canonical governed Warehouse shape** — and
+deliberately **not required**, for this compatibility change. Warehouses legitimately predate
+Ownership v1, no governed root-authority writer exists, and no migration is authorized; requiring it
+now would strand every historical record.
+
+- warehouse **with** a valid governed company → VALID GOVERNED WAREHOUSE
+- warehouse **without** one → VALID **LEGACY** GOVERNED WAREHOUSE
+- warehouse with an ungoverned company value → fails closed, `operating_company_invalid`
+- warehouse with any other unknown key → still fails closed, `unknown_field`
+
+Whether the field becomes required for **newly created** physical roots is the ownership-enforcement
+phase's decision, not this amendment's.
+
+### One canonical opinion
+
+Receiving, Transfers, the Receiving location picker, the status writer, the governance verifier and
+Reorder eligibility all read the **same** validator. None gained a private interpretation. Before the
+amendment, every one of them rejected a company-bearing warehouse — which is why the blocker was
+never Reorder's, and why the regression is a single suite covering all six rather than six suites.
+
+### The erase path, closed at both ends
+
+The measurement found that a company-bearing warehouse failed the validator, so `classifyWarehouse`
+fell through to the legacy branch and returned **DERIVE**; `executeMigration` would then have replaced
+the document with `buildMigratedRecord`'s fixed field list — **silently erasing the company** — while
+`STALE_PRESTATE` raised no objection, because the erasure was the planned action rather than drift.
+
+Both ends are now closed: classification returns GOVERNED (a byte-stable no-op that is never
+restaged), and the builder preserves an existing company for the case where migration legitimately
+processes a record. The migration may normalize what it owns; it may never drop a governed ownership
+fact because an older fixed-field builder predates it.
+
+### Storage validity is NOT write authority
+
+The measurement's safety clearance held in its strongest form: `firestore.rules` denies **every**
+client write to `warehouses` (`allow create, update, delete: if false`), so widening a stored shape
+could not grant a client writer anything. That is now a permanent test, not a one-time finding.
+
+No writer was added. Both trusted writers reject unknown request keys against exact allow-lists that
+exclude the field, and `setWarehouseStatus` updates four named fields, so a stored company travels
+through a status transition untouched — asserted, so it stays deliberate rather than accidental if
+that update ever widens.
+
+### Delivered
+
+`types/warehouse.ts` (optional field) · `governedWarehouseValidation.ts` (allow-list + value
+validation through the governed company authority + carried into the sanitized reconstruction) ·
+`warehouseGovernanceMigration.ts` (preservation) · `functions/test/warehousePhysicalRootCompany.test.mjs`
+(17 cases across all six consumers, offline) · registered in `warehouse-status-writer-tests.yml`.
+
+The Workstream 2B BLOCKER test did what it was written to do — it **failed** when the contradiction
+was resolved — and has been replaced with real coverage proving the reorder picker works against the
+real validator.
+
+### What this does NOT solve
+
+A Warehouse can now **hold** `operatingCompanyId`. **Nothing may put it there.**
+
+**→ WORKSTREAM 2A.1B — physical-root company write authority.** To be measured against existing
+administration/migration authority before implementation: creation-time only versus controlled
+assignment to legacy roots; which capability; immutability after assignment; the required audit event;
+idempotent assignment; mismatch refusal; sandbox operator path versus a permanent application command;
+production protections; and whether warehouse and mobile-location roots should eventually share one
+physical-root company assignment authority. Expected direction — unset → valid company is a controlled
+one-time assignment, same company is idempotent, a different company is REFUSED, and ordinary
+Warehouse writers can never change it — but measure before building.
+
+### Absolute ordering rule
+
+**Never write a warehouse `operatingCompanyId` before 2A.1A is deployed** wherever a migration,
+status, receiving or transfer consumer could touch it. This is a data-safety rule, not a rollout
+preference: the erase path above was real.
+
+Sequence: **2A.1A → 2A.1B → authorized sandbox assignment of the five Warehouse roots → 2B sandbox
+activation → 2C** (Parts Manager scope, if full intended persona coverage is required).
+
+### Recorded asymmetry
+
+`mobile_locations`, the other ownership physical root, never had this problem: its reader checks
+required fields rather than enforcing a closed allow-list, so an added company passes untouched. Only
+`warehouses` needed the amendment, and a future reader should not assume both roots were blocked.
+## #150 — OWNER RULING: FIN-002 reporting attribution — company, business unit, sales credit, booked basis
 
 **Decision (Owner, 2026-08-31, via the Financials master execution contract; implements FIN-002):**
 

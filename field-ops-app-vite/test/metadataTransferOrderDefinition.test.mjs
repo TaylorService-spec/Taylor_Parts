@@ -7,10 +7,16 @@
 // (modules/inventory/Transfers.jsx never prints even the document id) -- a genuine identity gap,
 // not an oversight, and this lane correctly refused to invent a number on its own authority. The
 // Owner has since ruled (A-IDENTITY-MODES, X-TRANSFER-ORDER-NO-REFERENCE): identityMode
-// BUSINESS_REFERENCE, referenceField transferOrderNumber (TO-YYYY-######), server-allocated by a
-// numbering lane not yet built and absent on every existing document. This suite now asserts the
-// definition validates cleanly and that the reference field is declared honestly -- absent
-// on legacy records, never falling back to the document id.
+// BUSINESS_REFERENCE, referenceField transferOrderNumber (TO-YYYY-######), server-allocated at
+// creation.
+//
+// CORRECTED (RCV-G4). This header used to say the numbering lane was "not yet built" and the field
+// "absent on every existing document". The lane IS built and wired -- allocateTransferOrderNumber is
+// called by createTransferOrder -- so a Transfer Order created through the governed command carries a
+// number, and "absent on every existing document" became false. The assertion below moved with it:
+// it now pins the invariant that survived (absent on LEGACY records, never a document-id fallback)
+// rather than a sentence that stopped being true, which is what let the stale claim sit unnoticed.
+// The allocator's existence and wiring are asserted in metadataNumberingAuthority.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -50,7 +56,8 @@ test("transferOrderNumber is declared STRING, sortable, and documented as absent
   const transferOrderNumber = findField(transferOrderEntity, "transferOrderNumber");
   assert.equal(transferOrderNumber.type, "STRING");
   assert.equal(transferOrderNumber.sortable, true);
-  assert.match(transferOrderNumber.description, /ABSENT ON EVERY EXISTING/);
+  // The surviving invariant: legacy rows have no number, and nothing may substitute the document id.
+  assert.match(transferOrderNumber.description, /ABSENT ON LEGACY/);
   assert.match(transferOrderNumber.description, /must not fall.*back to the Firestore document id/s);
 });
 

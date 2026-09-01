@@ -12,6 +12,13 @@ on:
       - "functions/src/warehouseGovernance/**"
       - "functions/src/types/warehouse.ts"
       - "functions/test/warehouseStatusWriter.test.mjs"
+      - "functions/test/warehousePhysicalRootCompany.test.mjs"
+      - "functions/scripts/seedTruckFleetFixtures.mjs"
+      - "functions/test/seedWarehouseCanonicalId.test.mjs"
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
+      - "functions/src/inventoryReceiving/receivingLocationResolver.ts"
+      - "functions/src/inventoryTransfer/transferLocationResolver.ts"
+      - "functions/src/reorderRequest/**"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/warehouse-status-writer-tests.yml"
@@ -21,6 +28,13 @@ on:
       - "functions/src/warehouseGovernance/**"
       - "functions/src/types/warehouse.ts"
       - "functions/test/warehouseStatusWriter.test.mjs"
+      - "functions/test/warehousePhysicalRootCompany.test.mjs"
+      - "functions/scripts/seedTruckFleetFixtures.mjs"
+      - "functions/test/seedWarehouseCanonicalId.test.mjs"
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
+      - "functions/src/inventoryReceiving/receivingLocationResolver.ts"
+      - "functions/src/inventoryTransfer/transferLocationResolver.ts"
+      - "functions/src/reorderRequest/**"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/warehouse-status-writer-tests.yml"
@@ -60,6 +74,19 @@ jobs:
 
       - name: Offline governed warehouse validator tests
         run: npm run test:warehouseGovernance
+        working-directory: functions
+
+      # 2A.1A. The compatibility amendment reaches SIX consumers of one validator, so its regression
+      # is one suite covering all of them -- a per-consumer test would be the per-consumer opinion the
+      # ruling forbids. Offline: pure functions plus a Firestore double, no emulator needed.
+      - name: Warehouse physical-root company compatibility (offline, all six consumers)
+        run: npm run test:warehouseRootCompany
+        working-directory: functions
+
+      # The seeder writes the governed shape, so it is held to it. Two sandbox warehouses were
+      # created without the stored id and were not governed warehouses at all until it was noticed.
+      - name: Seeded warehouse carries its canonical id (offline)
+        run: npm run test:seedWarehouseShape
         working-directory: functions
 
       - name: Start Firestore emulator (background)

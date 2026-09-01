@@ -59,11 +59,16 @@ const scanPart = (partId, serial = "") => {
 // ────────────────────────────────────────────── the journey
 
 describe("Multi-scan receiving (the journey)", () => {
-  it("lists receivable orders and opens one", async () => {
+  it("lists receivable orders and opens one — identity is the governed supplier, never the id", async () => {
+    // This assertion used to pin the OPPOSITE: `heading { name: "PO-1" }` — the opaque document id
+    // promoted to the journey title. North Star frame 1b corrected the surface (RCV-G5: no business
+    // order number exists, so the supplier name is the human identity and the number's absence is
+    // stated), and the test moved with it rather than restating the old claim.
     const d = deps();
     await openOrder(d);
     expect(d.fetchPurchaseOrderProgress).toHaveBeenCalledWith("PO-1");
-    expect(screen.getByRole("heading", { name: "PO-1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Acme" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "PO-1" })).toBeNull();
   });
 
   it("shows the ordered lines with what was already received and what is outstanding", async () => {
@@ -298,5 +303,99 @@ describe("Multi-scan receiving (out-of-scope operations are absent, not disabled
   it("states that a short line stays open", async () => {
     await openOrder(deps());
     expect(screen.getByText(/still short stays open/i)).toBeTruthy();
+  });
+});
+
+// ────────────────────────────────────────────── North Star frame 1b — identity & id truth
+
+describe("Frame 1b — journey identity and RCV-G5/G7 truth rules", () => {
+  it("renders ONE journey title and states the missing order number instead of substituting anything", async () => {
+    await openOrder(deps());
+    const session = document.querySelector(".fo-receiving-session");
+    expect(session.querySelectorAll("h2")).toHaveLength(1);
+    expect(session.querySelector("h2").textContent).toBe("Acme");
+    expect(screen.getByText(/No order number recorded/)).toBeTruthy();
+  });
+
+  it("MUTATION PROOF: the opaque purchaseOrderId never renders inside the session", async () => {
+    // The id is the navigation argument, not a label. If any element prints it — title, facts
+    // line, loading copy, receipt — this fails.
+    await openOrder(deps());
+    expect(document.querySelector(".fo-receiving-session").textContent).not.toContain("PO-1");
+  });
+
+  it("MUTATION PROOF: no PO-number is synthesized anywhere on the surface", async () => {
+    await openOrder(deps());
+    expect(document.body.textContent).not.toMatch(/PO-\d{4}/);
+  });
+
+  it("falls back to a truthful generic title when the read carries no supplier name", async () => {
+    await openOrder(deps({
+      fetchPurchaseOrderProgress: vi.fn().mockResolvedValue({
+        status: RECEIVING_OUTCOME.READY,
+        progress: progress({ supplierName: null }),
+      }),
+    }));
+    expect(screen.getByRole("heading", { name: "Supplier purchase order" })).toBeTruthy();
+  });
+
+  it("MUTATION PROOF: no claimed purchase-order scan identifier returns (RCV-G7)", async () => {
+    // Scanning a PART is existing governed behaviour and stays; a field claiming the ORDER itself
+    // is scannable would assert a scan-label authority that does not exist.
+    await openOrder(deps());
+    expect(document.body.textContent).not.toMatch(/scan (the|a|an) (purchase )?order/i);
+    expect(screen.getByLabelText(/^part$/i)).toBeTruthy();
+  });
+
+  it("stored order status renders in words only when the read carries one", async () => {
+    await openOrder(deps());
+    expect(screen.getByText(/order status/).textContent).toMatch(/Sent to supplier/);
+    cleanup();
+    await openOrder(deps({
+      fetchPurchaseOrderProgress: vi.fn().mockResolvedValue({
+        status: RECEIVING_OUTCOME.READY,
+        progress: progress({ storedStatus: null }),
+      }),
+    }));
+    expect(screen.queryByText(/order status/)).toBeNull();
+  });
+
+  it("MUTATION PROOF: an unreadable order never becomes a table of zeros", async () => {
+    // Missing progress must stay an explicit failure — recomposing it as lines with "0 received"
+    // would fabricate progress the read never returned.
+    render(<MultiScanReceiving deps={deps({
+      fetchPurchaseOrderProgress: vi.fn().mockResolvedValue({ status: "failed", progress: null }),
+    })} initialPurchaseOrderId="PO-1" />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByText(/The order could not be loaded/)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(document.body.textContent).not.toContain("PO-1");
+  });
+
+  it("opened from the workspace (onExit), the session renders no duplicate internal back link", async () => {
+    const onExit = vi.fn();
+    render(<MultiScanReceiving deps={deps()} initialPurchaseOrderId="PO-1" onExit={onExit} />);
+    await screen.findByLabelText(/^part$/i);
+    // The workspace owns the single "Back to the receipt queue" affordance (frame 1a); a second
+    // stacked back link here is the duplicate-affordance clutter the recomposition removed.
+    expect(screen.queryByRole("button", { name: /choose a different purchase order/i })).toBeNull();
+  });
+
+  it("every reconciliation cell carries the data-label the handheld stacked layout keys on", async () => {
+    await openOrder(deps());
+    const table = screen.getByRole("table", { name: /expected versus observed/i });
+    expect(table.closest(".fo-table-scroll")).toBeTruthy();
+    const cells = table.querySelectorAll("tbody td");
+    expect(cells.length).toBeGreaterThan(0);
+    for (const td of cells) expect(td.getAttribute("data-label")).toBeTruthy();
+  });
+
+  it("the legacy standalone picker presents the id as an internal reference, never a scan target", async () => {
+    render(<MultiScanReceiving deps={deps()} />);
+    expect(await screen.findByLabelText(/order id/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/internal order id/i)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/scan the order/i);
+    // The raw supplierId from the list read does not render.
+    expect(document.body.textContent).not.toContain("SUP-1");
   });
 });

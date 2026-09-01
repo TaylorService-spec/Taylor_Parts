@@ -4,6 +4,19 @@
 against the NEW design artifact, not merely fix H1 in isolation. Produce an implementation delta
 before changing code."***
 
+> ## CLOSED — Owner visual acceptance given 2026-08-31
+>
+> **Accepted release `0f1ac714`**, deployed to `platform-sandbox`, release identity proved from
+> `/version.json` with `git merge-base --is-ancestor` rather than inferred from a matching string.
+> Closing gate: `partsNorthStarQuickGate.mjs --expect 0f1ac714` → **29/29 PASS**.
+>
+> The full closeout — what the frames could not supply, the ND-30 amendment, the two seams that
+> turned out to already exist, the four reader defects corrected on the way through, the gate defect
+> that was mine, and the reconciled height ceilings — is recorded at the end of
+> [`north-star-migration-ledger.md`](../../design/north-star-migration-ledger.md).
+>
+> Parts is not to be reopened to chase the original mockup height numbers.
+
 **Status: the Owner ruled on all seven items on 2026-08-31 — design direction APPROVED with authority
 corrections. §6 is now the implementation contract.** The delta below is preserved as written, so the
 rulings can be read against the evidence that produced them.

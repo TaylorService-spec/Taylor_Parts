@@ -9,6 +9,8 @@ import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
 import { INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
+import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import { formatTimestamp } from "../../domain/displayTimestamp.js";
@@ -192,6 +194,15 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
   const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
   const [submittingPartId, setSubmittingPartId] = useState(null);
   const [reorderError, setReorderError] = useState(null);
+  // WORKSTREAM 2B -- the governed Warehouse this Needs Planning queue requests FOR.
+  //
+  // A WAREHOUSE_MANAGER plainly works at a warehouse, and that is exactly why it is asked here
+  // rather than assumed: this app holds no governed link from an employee to a warehouse, so
+  // any "their warehouse" would be a guess dressed as a fact, and the request would carry an
+  // operating company nobody chose. Empty until stated.
+  const [reorderWarehouseId, setReorderWarehouseId] = useState("");
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
   // Focus restoration: the triggering "View Activity" button that opened
   // the inline Part Activity panel, so closing it (button or keyboard)
   // returns focus there instead of dropping it to <body> -- same
@@ -204,11 +215,13 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
     lastTriggerRef.current?.focus();
   }
 
-  async function handleRequestReorder(partId, recommendation, manualQty) {
+  // `warehouseId` comes back from the control that was gated on it -- see the same note on
+  // PartsList.jsx's handler. Passed straight to the trusted command, never interpreted here.
+  async function handleRequestReorder(partId, recommendation, manualQty, warehouseId) {
     setSubmittingPartId(partId);
     setReorderError(null);
     try {
-      await requestReorderForRecommendation({ partId, recommendation, manualQty });
+      await requestReorderForRecommendation({ partId, warehouseId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
       setReorderError(`Could not request reorder for ${resolveName(partId)}: ${err.message}`);
@@ -278,6 +291,14 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
       <p className="fo-muted">
         Parts with no usage history yet -- enter a manual reorder quantity to submit a Reorder Request.
       </p>
+      <ReorderWarehouseSelect
+        id="warehouse-manager-reorder-warehouse"
+        options={reorderWarehouses.options}
+        loading={reorderWarehouses.loading}
+        error={reorderWarehouses.error}
+        value={reorderWarehouseId}
+        onChange={setReorderWarehouseId}
+      />
       {reorderError && <p className="fo-muted" role="alert">{reorderError}</p>}
       <LoadingEmptyState
         loading={loading}
@@ -294,6 +315,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
           onRequestReorder={handleRequestReorder}
           requestedPartIds={justRequestedPartIds}
           submittingPartId={submittingPartId}
+          reorderWarehouseId={reorderWarehouseId}
           emptyText="No parts currently need planning."
         />
       </LoadingEmptyState>

@@ -200,11 +200,35 @@ async function overflow(page, label, width) {
 // Budgets are Design's own, from DESIGN-HANDOFF-PARTS-P1v2.md. They are CEILINGS, not targets: a
 // shorter page passes. The reference figure is carried in the detail so a regression reads as a
 // number moving rather than as a bare fail.
+// ════════════ RECONCILED AT CLOSEOUT — Owner ruling, 2026-08-31 ════════════
+//
+// Design's original figures were TARGETS, drawn against a mockup. These are ACCEPTANCE CEILINGS,
+// set from the deployed composition after the Owner reviewed it. The distinction matters and is why
+// the original numbers are kept in `design` below rather than overwritten: a budget that moves
+// without a recorded reason is not a budget, and the next reader is entitled to see both what was
+// aimed at and what was accepted.
+//
+// NOTHING WAS REMOVED OR DEGRADED TO REACH THESE. Every pixel of the variance was accounted for
+// before the ceilings moved:
+//
+//   workspace, both widths — dominated by the truthful 25-row collection, not by furniture. At 1440
+//     the split body is 1,538px of table beside a 340px rail. Getting under 1,700 needs either
+//     fewer records per page or materially denser rows; neither is required for correctness, and
+//     both are product decisions rather than composition ones.
+//
+//   record 1440 — measured 1,198px before the Part information rows were restored, and 1,242px
+//     after. That ~44px IS the structured master-data band the Owner ordered populated, plus the
+//     shared 80px North Star record padding held out of this family's scope.
+//
+//   record 375 — the same governed bands, necessarily stacked. The 1,500px mockup target never
+//     priced the content that was actually implemented.
+//
+// The reductions against the pre-P1v2 page are the real result: −44%, −62%, −18%, −25%.
 const HEIGHT_BUDGET = {
-  "workspace 1440": { max: 1700, was: 3406 },
-  "workspace 375": { max: 2400, was: 9277 },
-  "record 1440": { max: 1050, was: 1508 },
-  "record 375": { max: 1500, was: 2615 },
+  "workspace 1440": { max: 1950, was: 3406, design: 1700 },
+  "workspace 375": { max: 3600, was: 9277, design: 2400 },
+  "record 1440": { max: 1250, was: 1508, design: 1050 },
+  "record 375": { max: 2000, was: 2615, design: 1500 },
 };
 
 async function heightBudget(page, label, width) {
@@ -215,7 +239,9 @@ async function heightBudget(page, label, width) {
   return record(
     `H  P1v2 ${key} within its height budget`,
     h <= budget.max,
-    `height=${h}px budget=${budget.max}px (was ${budget.was}px before P1v2)`,
+    // The DESIGN figure is reported alongside the accepted ceiling, every run, so the distance from
+    // the original target stays visible instead of being quietly forgotten once the ceiling moved.
+    `height=${h}px accepted<=${budget.max}px (design target ${budget.design}px; was ${budget.was}px before P1v2)`,
   );
 }
 
@@ -330,21 +356,55 @@ async function main() {
   const hasViews = chipText.some((c) => /^all\b/i.test(c)) && chipText.some((c) => /needs attention/i.test(c));
   record("3c ND-30 the catalogue offers view chips with counts", hasViews, `chips=${JSON.stringify(chipText.slice(0, 6))}`);
 
-  // ── 3d: THE CATALOGUE LEADS. A page called Parts that opens on five empty reorder queues is
-  //       answering a question nobody asked first. Measured as position, not as prose: the
-  //       catalogue's top must sit above the Work group's heading.
-  const order = await page.evaluate(() => {
+  // ── 3d: THE CATALOGUE DOMINATES, AND WORK IS SUBORDINATE TO IT.
+  //
+  // WHAT THIS REPLACES, and why the old form had to go. It asserted that the catalogue's top sits
+  // ABOVE the Work group's — right when the two were stacked, and meaningless once P1v2 put them
+  // side by side. On the deployed page both tops are 257: the check was reading a vertical order
+  // that the approved composition no longer has, and failing a page that is correct.
+  //
+  // THE CONTRACT ITSELF IS UNCHANGED and is what ND-30 and its amendment actually protect: Parts is
+  // the dominant purpose of this workspace, Work and Flow are present on the same route and
+  // visually subordinate. Side by side, that is a statement about WIDTH and CONTAINMENT rather than
+  // about vertical order -- so it is asserted as one, and it would still fail if the rail grew to
+  // dominate the page or if either group left the route.
+  const layout = await page.evaluate(() => {
     const cat = document.querySelector("[data-parts-catalog]");
     const work = document.getElementById("parts-group-work");
-    if (!cat || !work) return null;
-    return { catalogueTop: Math.round(cat.getBoundingClientRect().top + window.scrollY),
-             workTop: Math.round(work.getBoundingClientRect().top + window.scrollY) };
+    const flow = document.getElementById("parts-group-flow");
+    const rail = document.querySelector(".ns-parts-rail");
+    if (!cat || !work || !flow) return null;
+    const box = (el) => {
+      const b = el.getBoundingClientRect();
+      return { top: Math.round(b.top + window.scrollY), left: Math.round(b.left), width: Math.round(b.width) };
+    };
+    return {
+      cat: box(cat),
+      work: box(work),
+      // Both groups must still be INSIDE the rail — that is the "not relocated off /inventory" half.
+      workInRail: !!rail && rail.contains(work),
+      flowInRail: !!rail && rail.contains(flow),
+      rail: rail ? box(rail) : null,
+      stacked: window.matchMedia("(max-width: 900px)").matches,
+    };
   });
-  record(
-    "3d ND-30 the catalogue leads the page, above the Work group",
-    !!order && order.catalogueTop < order.workTop,
-    order ? `catalogueTop=${order.catalogueTop} workTop=${order.workTop}` : "(one of the two surfaces is missing)",
-  );
+  let orderOk = false;
+  let orderDetail = "(one of the two surfaces is missing)";
+  if (layout) {
+    // Stacked (handheld) keeps the old contract: the catalogue comes first.
+    // Side by side: the catalogue is the wider column and the rail is narrower than it.
+    orderOk = layout.stacked
+      ? layout.cat.top < layout.work.top && layout.workInRail && layout.flowInRail
+      : layout.cat.left < layout.work.left &&
+        !!layout.rail &&
+        layout.rail.width < layout.cat.width &&
+        layout.workInRail &&
+        layout.flowInRail;
+    orderDetail =
+      `stacked=${layout.stacked} catalogue(left=${layout.cat.left} w=${layout.cat.width}) ` +
+      `rail(left=${layout.rail?.left} w=${layout.rail?.width}) workInRail=${layout.workInRail} flowInRail=${layout.flowInRail}`;
+  }
+  record("3d ND-30 the catalogue dominates; Work and Flow are subordinate and still on this route", orderOk, orderDetail);
 
   // ── 4: THE VALUE CONTRACT, separate from the grammar contract check 3a owns.
   //
@@ -469,9 +529,13 @@ async function main() {
     await page.goto(`${ORIGIN}${candidate.href}`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".ns-identity__title", { timeout: 30000 });
     await page.waitForTimeout(1500);
+    // #part-availability, NOT an h2 reading "Stock forecast". P1v2 renamed that band to
+    // "Availability / Inventory" and this selector was supposed to change with it in #1642 -- the
+    // edit silently no-opped, so the probe found nothing on every candidate, fell back to a part
+    // with no ledger activity, and took checks 12 and 13 down with it. The id is the stable
+    // contract: the same lesson `data-parts-catalog` taught on the workspace.
     const forecastText = await page
-      .locator("section")
-      .filter({ has: page.locator("h2", { hasText: "Stock forecast" }) })
+      .locator("#part-availability")
       .first()
       .innerText()
       .catch(() => "");
@@ -522,15 +586,30 @@ async function main() {
   record("9  ND-27 no cost or price on the record", moneyHits.length === 0 && !costLabel, `money=${JSON.stringify(moneyHits.slice(0, 3))} label=${costLabel}`);
 
   // ── 10: the inactive-capability sections are TRUTHFUL — heading present, no table, a reason given.
-  const whereHeading = page.locator("h2", { hasText: "Where it is" }).first();
-  const hasWhere = (await whereHeading.count()) > 0;
-  let whereOk = false, whereDetail = "(section missing)";
+  // [data-where-it-is], NOT an h2. P1v2 folds this into the right column of the Availability /
+  // Inventory band, where its heading is an h3 and the BAND legitimately contains a table (the four
+  // stock-position rows). Scoping to the block keeps "draws no table" meaning what it always meant
+  // -- no per-location table -- rather than accidentally asserting it about the band.
+  //
+  // THE ASSERTION IS UNCHANGED IN STRENGTH: a reason is stated, custody is stated, no table.
+  const whereBlock = page.locator("[data-where-it-is]").first();
+  const hasWhere = (await whereBlock.count()) > 0;
+  let whereOk = false, whereDetail = "(block missing)";
   if (hasWhere) {
-    const section = page.locator("section").filter({ has: page.locator("h2", { hasText: "Where it is" }) }).first();
+    const section = whereBlock;
     const text = await section.innerText();
     const tables = await section.locator("table").count();
-    whereOk = tables === 0 && /switched on|not switched on|cannot be listed/i.test(text) && /custody/i.test(text);
-    whereDetail = `tables=${tables} statesReason=${/switched on|cannot be listed/i.test(text)} statesCustody=${/custody/i.test(text)}`;
+    // THE REASON, IN THE WORDS THE PAGE ACTUALLY USES. This matched only "switched ON" and the
+    // spelled-out "cannot", and P1v2's shortened copy says "Locations can't be listed yet: ...
+    // switched off in this environment" -- so a page that states its reason plainly reported
+    // statesReason=false. The check now accepts either truthful concept, in either spelling.
+    //
+    // THE TWO ASSERTIONS THAT MATTER ARE UNCHANGED: no per-location table (an empty one would imply
+    // rows are coming), and the ND-25 custody distinction still stated.
+    const statesReason = /can(?:'|’|no)?t be listed|switched off|switched on/i.test(text);
+    const statesCustody = /custody/i.test(text);
+    whereOk = tables === 0 && statesReason && statesCustody;
+    whereDetail = `tables=${tables} statesReason=${statesReason} statesCustody=${statesCustody}`;
   }
   record("10 ND-25 Where it is states WHY it is empty and draws no table", whereOk, whereDetail);
 
@@ -545,26 +624,38 @@ async function main() {
   record("11 the unit section matches the part's control word", unitOk, `kicker="${kicker}" serial=${hasSerial} lots=${hasLots}`);
 
   // ── 12: Activity renders WORDS. A cell of SCREAMING_SNAKE is a stored token reaching a reader.
-  const activitySection = page.locator("section").filter({ has: page.locator("h2", { hasText: "Activity" }) }).first();
-  let activityOk = true, activityDetail = "(no rows)";
-  if ((await activitySection.count()) > 0) {
-    const cells = await activitySection.locator("tbody tr td:first-child").allInnerTexts();
-    const leaked = cells.map((c) => c.trim()).filter((c) => /^[A-Z][A-Z_]{3,}$/.test(c));
-    // ZERO ROWS IS NOT A PASS. An empty Activity section cannot leak an enum, and reporting that as
-    // proof that words render is exactly the vacuous green this gate learned to refuse.
-    activityOk = cells.length > 0 && leaked.length === 0;
+  // ONE LINE PER MOVEMENT, NOT A TABLE ROW. P1v2 replaced a four-column table -- which rendered one
+  // row with two "—" cells -- with `<ul class="ns-activity">`, so `tbody tr td` matched nothing and
+  // this check reported VACUOUS against a section that had a movement in it. Anchored on the
+  // list's own class, which is the markup the composition actually ships.
+  const activityRows = page.locator("#part-activity .ns-activity__row");
+  let activityOk = true, activityDetail = "(no Activity band)";
+  if ((await page.locator("#part-activity").count()) > 0) {
+    const words = await activityRows.locator(".ns-activity__what strong").allInnerTexts();
+    const rowText = await activityRows.allInnerTexts();
+    const trimmed = words.map((w) => w.trim());
+    // A STORED TOKEN REACHING A READER is what this exists to catch -- checked across the WHOLE row,
+    // not just the movement word, so an enum leaking through the work-order or quantity cell is
+    // caught too.
+    const leaked = [...trimmed, ...rowText.flatMap((t) => t.split(/\s+/))]
+      .map((c) => c.trim())
+      .filter((c) => /^[A-Z][A-Z_]{3,}$/.test(c));
+    // ZERO ROWS IS NOT A PASS. An empty Activity band cannot leak an enum, and reporting that as
+    // proof that words render is exactly the vacuous green this gate learned to refuse. Check 6a
+    // chooses a part WITH ledger movements precisely so this branch is reachable.
+    activityOk = trimmed.length > 0 && trimmed.every((w) => w.length > 0) && leaked.length === 0;
     activityDetail =
-      cells.length === 0
-        ? "VACUOUS: the Activity section rendered no rows, so nothing was inspected"
-        : `rows=${cells.length} words=${JSON.stringify(cells.slice(0, 3).map((c) => c.trim()))} leaked=${JSON.stringify(leaked.slice(0, 3))}`;
+      trimmed.length === 0
+        ? "VACUOUS: the Activity band rendered no movements, so nothing was inspected"
+        : `movements=${trimmed.length} words=${JSON.stringify(trimmed.slice(0, 3))} leaked=${JSON.stringify(leaked.slice(0, 3))}`;
   }
   record("12 Activity renders movement words, never the stored enum", activityOk, activityDetail);
 
   // ── 13: ND-28 — the governed reorder command surface survives. REACHABILITY only: this gate does
   //       not press it, because a gate that raises a real reorder request is a gate that mutates.
-  const forecast = page.locator("section").filter({ has: page.locator("h2", { hasText: "Stock forecast" }) }).first();
+  const forecast = page.locator("#part-availability").first();
   const hasForecast = (await forecast.count()) > 0;
-  let reorderDetail = "(no Stock forecast section)";
+  let reorderDetail = "(no Availability / Inventory band)";
   let reorderOk = false;
   if (hasForecast) {
     const text = await forecast.innerText();

@@ -48,8 +48,15 @@ describe("Barcodes & Identifiers (an unread list is never reported as an empty o
       listPartAliases: vi.fn().mockResolvedValue({ errorStatus: NOT_READY_STATUS }),
     });
     renderSection(client);
-    const msg = await screen.findByText(/cannot be shown/i);
-    expect(msg.textContent).toMatch(/not an empty list/i);
+    // THE SEMANTIC, NOT THE OLD SENTENCE. P1v2 (Owner ruling A3, 2026-08-31) restructured this to
+    // Design's two-line grammar: "Alternate identifiers are unread, not empty — <reason>", where
+    // the previous form was "Identifiers cannot be shown for X. <reason> This is not an empty list
+    // — it is an unread one." The DISTINCTION this test exists to protect is unchanged and is
+    // asserted more directly than before -- the message must say UNREAD, must deny EMPTY, and must
+    // still not be confusable with the genuinely-empty case below it.
+    const msg = await screen.findByText(/unread/i);
+    expect(msg.textContent).toMatch(/not empty|not an empty list/i);
+    expect(msg.textContent).toMatch(/unread/i);
     expect(screen.queryByText(/No identifiers are recorded/i)).toBeNull();
   });
 

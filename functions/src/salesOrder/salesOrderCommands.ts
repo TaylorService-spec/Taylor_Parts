@@ -79,7 +79,7 @@ export interface CreateSalesOrderInput {
   // followed -- a later correction upstream must never rewrite an order already placed.
   operatingCompanyId?: string;
   inheritedOperatingCompanyId?: string | null;
-  // FIN-002 (DECISIONS #146): sales credit, distinct from ownership. Explicit → inherited from the
+  // FIN-002 (DECISIONS #150): sales credit, distinct from ownership. Explicit → inherited from the
   // accepted Agreement/Opportunity (passed by the conversion caller from its own transactional
   // read) → this order's resolved commercial owner. Never the creating actor.
   creditedSalespersonId?: string;
@@ -222,7 +222,7 @@ export interface BuiltSalesOrder {
   /** FIN-002: sales credit, frozen at creation. Distinct from ownerEmployeeId; never the actor. */
   creditedSalespersonId: string;
   /**
-   * FIN-002 BOOKED basis (DECISIONS #146): the moment commercial terms were committed. For an
+   * FIN-002 BOOKED basis (DECISIONS #150): the moment commercial terms were committed. For an
    * order derived from an accepted Agreement this is the agreement's server-stamped
    * acceptedAtMillis, passed via ctx by the conversion; for a direct creation it is the server
    * creation time. ALWAYS server-authoritative — ctx-supplied, never a caller input.

@@ -79,11 +79,32 @@ import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OW
 //
 // The Owner has now ruled: Reorder Request gets identityMode BUSINESS_REFERENCE, referenceField
 // `reorderRequestNumber` (RR-YYYY-######). `identity: makeIdentity({ referenceField:
-// "reorderRequestNumber" })` records the ruling. See the reorderRequestNumber field below: it is
-// server-allocated by a numbering lane that does not yet exist, and it is absent on every
-// existing document — declaring the field is not a claim that numbering is live, and no fallback
-// to the document id is added while it is absent. Numbering + backfill tooling remain a separate
-// lane's work — REGISTRATION_PENDING.
+// "reorderRequestNumber" })` records the ruling. See the reorderRequestNumber field below.
+//
+// ======================= CORRECTED (RCV-G4): THE ALLOCATOR EXISTS, UNWIRED =======================
+//
+// This header used to say the number was "server-allocated by a numbering lane that does not yet
+// exist". Half of that was false and the half that was true is a different statement, so both are
+// now said separately — measured, not assumed:
+//
+//   THE ALLOCATOR EXISTS.  functions/src/reorderRequest/reorderRequestNumbering.ts exports
+//                          allocateReorderRequestNumber. It is tested by its own suite and by
+//                          operationalNumberingContention.test.mjs.
+//
+//   NOTHING CALLS IT.      No production code path allocates one — createReorderRequest, the trusted
+//                          command that is now the SOLE writer of this collection, does not. So no
+//                          reorder_requests document carries a number, and none ever has.
+//
+// The distinction is load-bearing in both directions. "No allocator is implemented anywhere" would
+// send the next reader to build a second one. "Numbering is live" would imply documents carry
+// numbers, and a renderer would be written expecting one. Neither sentence is true; both halves are.
+//
+// Contrast transferOrder.js, whose allocator exists AND is wired into createTransferOrder — the two
+// definitions are in genuinely different states and are corrected differently.
+//
+// Declaring the reference field is therefore still not a claim that numbering is live, and no
+// fallback to the document id is added while the field is absent. Wiring the allocator into the
+// create path, and any backfill, remain a separate lane's work — REGISTRATION_PENDING.
 //
 // readVia IS CLIENT_DIRECT, READ CAPABILITY IS null. firestore.rules' `allow read` on
 // `reorder_requests/{requestId}` is five OR'd role/relationship branches (admin/dispatcher
@@ -148,12 +169,13 @@ export const reorderRequestEntity = makeEntityDefinition({
       sortable: true,
       description:
         "RR-YYYY-######, the identity.referenceField per the Owner's identity-modes ruling (A-IDENTITY-MODES, " +
-        "X-PROCUREMENT-ENTITIES-NO-IDENTITY). Server-allocated at creation by a numbering lane that does not " +
-        "yet exist — no allocateReorderRequestNumber (or equivalent) is implemented anywhere in this " +
-        "repository. ABSENT ON EVERY EXISTING (LEGACY) reorder_requests document. A renderer must not fall " +
-        "back to the Firestore document id when this field is missing; an honest empty/placeholder state is " +
-        "required instead, per the Owner's ruling that documentId must never be exposed while legacy " +
-        "references are absent.",
+        "X-PROCUREMENT-ENTITIES-NO-IDENTITY). THE ALLOCATOR EXISTS — allocateReorderRequestNumber " +
+        "(functions/src/reorderRequest/reorderRequestNumbering.ts), tested — BUT NOTHING CALLS IT: " +
+        "createReorderRequest, the trusted command that is the sole writer of this collection, does not " +
+        "allocate a number. So the field is ABSENT ON EVERY EXISTING reorder_requests document, and always has been. " +
+        "A renderer must not fall back to the Firestore document id when this field is missing; an honest " +
+        "empty/placeholder state is required instead, per the Owner's ruling that documentId must never be " +
+        "exposed while legacy references are absent.",
     }),
     makeFieldDefinition({
       id: "partId",

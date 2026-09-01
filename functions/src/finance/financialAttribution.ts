@@ -5,7 +5,7 @@
 // EVENT TIME, WHICH CURRENCY. This module is the single definition of that vocabulary and of the
 // snapshot those facts freeze into. There is deliberately NO Sales copy, NO Finance copy, NO
 // Service copy — commercial commands, the dormant finance core, and future Service billing all
-// import from here (docs/financials/FIN-002_REPORTING_ATTRIBUTION_MODEL.md; DECISIONS #146).
+// import from here (docs/financials/FIN-002_REPORTING_ATTRIBUTION_MODEL.md; DECISIONS #150).
 //
 // ============================ WHAT THIS MODULE REFUSES TO DO ============================
 //
@@ -217,7 +217,7 @@ export function buildFinancialAttributionSnapshot(input: BuildAttributionInput):
 }
 
 /**
- * Default sales credit for a NEW commercial record (Owner policy, DECISIONS #146):
+ * Default sales credit for a NEW commercial record (Owner policy, DECISIONS #150):
  * explicit credit wins; else the credit inherited from the governed upstream commercial record;
  * else the governed commercial OWNER at the point the sale enters the chain. NEVER the creating
  * actor — an assistant creating an Opportunity for Salesperson A's customer credits A, not the

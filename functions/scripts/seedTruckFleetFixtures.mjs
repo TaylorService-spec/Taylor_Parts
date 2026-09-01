@@ -81,12 +81,23 @@ async function call(name, personaKey, data) {
 
 // Governed warehouse shape -- functions/src/types/warehouse.ts GovernedWarehouse, provenance NATIVE
 // (created fresh, not migrated), no legacy `active` key.
+//
+// `id` IS PART OF THE GOVERNED SHAPE, AND THIS OMITTED IT. The §3A validator binds the STORED `id`
+// to the document id, so a record without one fails `id_invalid` and is not a governed warehouse at
+// all. Two sandbox warehouses seeded by this function -- wh-sandbox-central and wh-sandbox-north --
+// were in exactly that state: Receiving and Transfers already refused them as a destination and an
+// endpoint, and the Ownership root-company assignment refused to touch them.
+//
+// Nothing else about this function changes. The invariant it now keeps is the narrow one:
+//
+//     a seeded warehouse's STORED id equals its DOCUMENT id
 async function seedWarehouse(id, name, location) {
   const ref = db.collection("warehouses").doc(id);
   const existing = await ref.get();
   if (existing.exists) { console.log(`warehouse ${id}: already exists, skipping`); return; }
   const now = admin.firestore.FieldValue.serverTimestamp();
   await ref.set({
+    id,
     name, location, status: "ACTIVE", version: 1,
     updatedAt: now, updatedBy: "seed-script",
     createdAt: now, createdBy: "seed-script",

@@ -21,8 +21,11 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
+import ReorderWarehouseSelect from "../../shared/inventory/ReorderWarehouseSelect.jsx";
+import { useReorderWarehouseOptions } from "../../hooks/useReorderWarehouseOptions";
 import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { partsAttentionItems } from "../../domain/partsAttentionProjection.js";
@@ -550,6 +553,13 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
   const [submittingPartId, setSubmittingPartId] = useState(null);
   const [reorderError, setReorderError] = useState(null);
+  // WORKSTREAM 2B -- the governed Warehouse this queue is requesting FOR. One choice for the
+  // whole panel, because the queue is a list of parts and not a list of warehouses. Starts
+  // empty and is never defaulted: an unstated warehouse leaves every Request Reorder button
+  // off, which is honest, where a silent default would author a company fact nobody chose.
+  const [reorderWarehouseId, setReorderWarehouseId] = useState("");
+  // R-17. The trusted projection, not a warehouses collection LIST -- see the hook's header.
+  const reorderWarehouses = useReorderWarehouseOptions(true);
 
   const needsPlanningEntries = useMemo(
     () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),
@@ -580,11 +590,15 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
     return set;
   }, [pendingRequests, justRequestedPartIds]);
 
-  async function handleRequestReorder(partId, recommendation, manualQty) {
+  // `warehouseId` arrives from the control that was gated on it, not from this page's state
+  // read a second time -- so the value that enabled the button is the value that is written.
+  // It is passed straight through to the trusted command, which re-reads the warehouse and
+  // derives the operating company itself. Nothing here interprets it.
+  async function handleRequestReorder(partId, recommendation, manualQty, warehouseId) {
     setSubmittingPartId(partId);
     setReorderError(null);
     try {
-      await requestReorderForRecommendation({ partId, recommendation, manualQty });
+      await requestReorderForRecommendation({ partId, warehouseId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
       const partName = resolveName(partId);
@@ -696,6 +710,14 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
             activeKey={queueFilter}
             onChange={setQueueFilter}
           />
+          <ReorderWarehouseSelect
+            id="parts-queue-reorder-warehouse"
+            options={reorderWarehouses.options}
+            loading={reorderWarehouses.loading}
+            error={reorderWarehouses.error}
+            value={reorderWarehouseId}
+            onChange={setReorderWarehouseId}
+          />
           {reorderError && <p className="fo-muted">{reorderError}</p>}
           <LoadingEmptyState
             loading={loading}
@@ -712,6 +734,7 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
               onRequestReorder={handleRequestReorder}
               requestedPartIds={requestedPartIds}
               submittingPartId={submittingPartId}
+              reorderWarehouseId={reorderWarehouseId}
               emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
             />
           </LoadingEmptyState>
@@ -1278,29 +1301,34 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
                 production catalogue is ~1,400 parts. So pagination stays, and the count states the
                 range as well as the total -- because "62 parts" alone, over 25 rows, would tell the
                 reader the page IS the catalogue. */}
+            {/* THE COUNT IS VISIBLE; THE EXPLANATION IS BEHIND THE (i) — Frame 1a's own footer, and
+                Owner ruling B §4. The ND-25 material about why there is no quantity column was
+                rendering as three permanent lines under the collection; it is not deleted, it is
+                one tap away, exactly where the frame draws the control. */}
             <span className="fo-muted">
               Showing {filteredParts.length === 0 ? 0 : currentPage * PAGE_SIZE + 1}–
               {Math.min((currentPage + 1) * PAGE_SIZE, filteredParts.length)} of {filteredParts.length}{" "}
               {filteredParts.length === 1 ? "part" : "parts"}
+              <PartsInfoDisclosure label="The catalogue — what this list counts, and what it does not show" align="end">
+                This count is the whole catalogue, not a company-wide inventory universe: the page
+                performs a whole-collection read and pages through it. No stock quantity is shown
+                here — the governed balance read is single-part, so there is no list-scale quantity
+                to answer from, and the static catalogue is a baseline rather than a count. Attention
+                comes from the governed reorder-request projection and nothing else. Search matches
+                the part number, description and category carried on each row; barcodes and aliases
+                need the identifier read, which is not active in this environment.
+              </PartsInfoDisclosure>
             </span>
             <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
               Next
             </button>
           </div>
 
-          {/* THE SAME SENTENCE, MOVED RATHER THAN DROPPED. It stood above the table, where three
-              lines of governance prose were the first thing a reader met on a page whose subject is
-              parts -- the brief's own finding that explanation was outranking fact. Frame 1a draws
-              no such paragraph and puts an information affordance beside the count instead.
-
-              It is not deleted, because what it says is still true and still load-bearing: ND-25's
-              reason for having no quantity column is exactly the kind of absence this family
-              refuses to leave unexplained. It reads as a footnote to the table it is about. */}
-          <p className="fo-muted ns-parts-catalogue__note">
-            Attention comes from the governed reorder-request projection. No stock quantity is shown
-            here: the governed balance read is single-part, so there is no list-scale quantity to
-            answer from, and the static catalogue is a baseline rather than a count.
-          </p>
+          {/* AND NO PARAGRAPH HERE. It lives behind the (i) beside the count, and only there.
+              Owner ruling B §4: "Do NOT render that explanation permanently underneath the
+              collection." It was rendered in BOTH places on 096d320b -- the disclosure was added and
+              the paragraph was not removed, so the same ND-25 text stood twice on one page. That is
+              the defect this removes; nothing is lost, because the (i) carries a superset of it. */}
         </>
       </LoadingEmptyState>
       </>

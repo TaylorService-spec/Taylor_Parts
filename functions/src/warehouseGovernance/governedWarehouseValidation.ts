@@ -22,6 +22,7 @@
 // expected id must itself be a non-blank string; an invalid expected id fails closed too.
 
 import { Timestamp } from "firebase-admin/firestore";
+import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority.js";
 import { isPlainObject, isNonEmptyString } from "../inventoryLedger/operationalMovementValidation.js";
 import {
   WAREHOUSE_STATUSES,
@@ -45,6 +46,12 @@ const ALLOWED_KEYS: ReadonlySet<string> = new Set([
   "createdBy",
   "governanceInitializedAt",
   "governanceInitializedBy",
+  // Ownership v1 / R-18. The operating company this physical root belongs to. ALLOWED, never
+  // required -- see the OPTIONAL note on GovernedWarehouse. Adding it here is a COMPATIBILITY
+  // amendment to the one canonical Warehouse shape, not a per-consumer exception: Receiving,
+  // Transfers, the status writer, the governance verifier and Reorder all read this same
+  // validator, and before this change every one of them rejected a company-bearing warehouse.
+  "operatingCompanyId",
 ]);
 
 // Bounded governed failure reasons. Stable tokens (no raw values) so callers/tests can
@@ -70,6 +77,9 @@ export const GOVERNED_WAREHOUSE_REASONS = Object.freeze({
   NATIVE_REQUIRES_CREATED: "native_requires_created",
   NATIVE_FORBIDS_GOVERNANCE_INIT: "native_forbids_governance_init",
   MIGRATED_REQUIRES_GOVERNANCE_INIT: "migrated_requires_governance_init",
+  // R-18. Present but not a governed operating company id. Distinct from UNKNOWN_FIELD: the field
+  // is permitted, the VALUE is not.
+  OPERATING_COMPANY_INVALID: "operating_company_invalid",
 } as const);
 
 function fail(reason: string): GovernedWarehouseValidationResult {
@@ -161,6 +171,16 @@ export function validateGovernedWarehouse(
     if (governanceState !== "present-valid") return fail(GOVERNED_WAREHOUSE_REASONS.MIGRATED_REQUIRES_GOVERNANCE_INIT);
   }
 
+  // R-18. Permitted, optional, and VALIDATED WHEN PRESENT. An absent field is a legacy root and
+  // is fine; a present one must resolve through the governed company authority, so a typo, a
+  // display name, or a company that does not exist fails closed rather than being stored as an
+  // ownership fact nobody can resolve. Checked LAST, after the shape is otherwise known good, so
+  // its reason is never what a caller sees for an unrelated defect.
+  if (hasOwn(input, "operatingCompanyId")) {
+    const resolved = resolveOperatingCompany(input.operatingCompanyId);
+    if (resolved.company === null) return fail(GOVERNED_WAREHOUSE_REASONS.OPERATING_COMPANY_INVALID);
+  }
+
   // Deterministic sanitized reconstruction: a fresh object in fixed key order carrying
   // exactly the governed fields present. Never mutates `input`; never echoes extra keys.
   const value: GovernedWarehouse = {
@@ -181,5 +201,8 @@ export function validateGovernedWarehouse(
     value.governanceInitializedAt = input.governanceInitializedAt as Timestamp;
     value.governanceInitializedBy = input.governanceInitializedBy as string;
   }
+  // Carried into the reconstruction, so every consumer reading `value` sees the ownership fact
+  // rather than only the twelve fields that predate it.
+  if (hasOwn(input, "operatingCompanyId")) value.operatingCompanyId = input.operatingCompanyId as string;
   return { valid: true, value, reason: null };
 }

@@ -95,6 +95,21 @@ export interface GovernedWarehouse {
   createdBy?: string;
   governanceInitializedAt?: Timestamp;
   governanceInitializedBy?: string;
+  /**
+   * EOS Ownership Model v1 -- the operating company this physical root belongs to
+   * (Owner ruling R-18, DECISIONS #149). A Warehouse IS a company root, and this is where that
+   * fact is persisted.
+   *
+   * OPTIONAL, DELIBERATELY. Warehouses legitimately predate Ownership v1, no governed
+   * root-authority writer exists yet, and no migration is authorized -- so requiring it would
+   * strand every historical record. A warehouse without it is a VALID LEGACY GOVERNED WAREHOUSE.
+   * Whether it becomes required for NEWLY created roots is the ownership-enforcement phase's
+   * decision, not this compatibility amendment's.
+   *
+   * Storage validity is not write authority: nothing in this repository may author this field
+   * yet. See 2A.1B.
+   */
+  operatingCompanyId?: string;
 }
 
 // Sanitized, non-throwing result of the shared §3A validator/deserializer. On

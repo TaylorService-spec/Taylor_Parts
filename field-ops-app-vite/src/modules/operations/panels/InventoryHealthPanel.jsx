@@ -54,6 +54,12 @@ export default function InventoryHealthPanel({
   onRequestReorder,
   requestedPartIds,
   submittingPartId,
+  // WORKSTREAM 2B -- the governed Warehouse the caller's selector is currently on. This panel
+  // does not choose it, does not remember it and does not default it; it forwards it to each
+  // row's control and the control hands it straight back on submit, so one page-level choice
+  // reaches the write unchanged. Absent means every row's button is off, which is the correct
+  // state for a queue whose warehouse has not been stated.
+  reorderWarehouseId = null,
   // Inventory Health / Parts Catalog separation (PR B, docs/specifications/
   // inventory-operational-queue.md) -- optional, defaults to the original
   // string so Operations.jsx's own call site (no filter tabs, no
@@ -125,9 +131,12 @@ export default function InventoryHealthPanel({
                   <td>
                     <RequestReorderControl
                       recommendation={recommendation}
-                      onSubmit={(manualQty) => onRequestReorder(partId, recommendation, manualQty)}
+                      onSubmit={(manualQty, warehouseId) =>
+                        onRequestReorder(partId, recommendation, manualQty, warehouseId)
+                      }
                       submitting={submittingPartId === partId}
                       alreadyRequested={requestedPartIds?.has(partId)}
+                      warehouseId={reorderWarehouseId}
                     />
                   </td>
                 )}
