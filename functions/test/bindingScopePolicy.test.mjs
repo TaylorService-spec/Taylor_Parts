@@ -400,3 +400,48 @@ test("fail-closed: a read error yields an authority that allows nothing, and say
   assert.equal(authority.allows("wh-main"), false);
   assert.equal(authority.reason, REORDER_WAREHOUSE_AUTHORITY_REASON.AUTHORITY_UNRESOLVED);
 });
+
+// ---------------------------------------------------------------------------
+// THE DEFECT LIVE PROOF CAUGHT, AND THE TESTS DID NOT
+// ---------------------------------------------------------------------------
+// Every test above exercises loadReorderWarehouseAuthority DIRECTLY. None of them went through the
+// callable's own entry sequence, and that is precisely where the bug was: both reorder callables
+// opened with a `requireCapability` that resolves through the effective-access feed, which builds a
+// GLOBAL TargetContext by construction. A location-scoped assignment can never match a global
+// target, so `warehouseManager @ location:wh-main` was refused 403 BEFORE the location authority
+// ran -- the exact principal R-32 exists to serve.
+//
+// Two guards, because one alone is weak:
+//   1. the behavioural asymmetry that made the gate wrong (global DENY, location ALLOW)
+//   2. a static guard, so reinstating the gate FAILS rather than silently re-denying managers
+test("DEFECT GUARD: the manager whose location grant works is DENIED by a global-target evaluation", () => {
+  const a = [assign("warehouseManager", { type: "location", value: "wh-main" })];
+  // What the removed gate asked -- and would still answer -- for this principal:
+  assert.equal(decide(CREATE, a, globalTarget()), "DENY");
+  // What the authority the callables now use answers for the same principal:
+  assert.equal(decide(CREATE, a, atWarehouse("wh-main")), "ALLOW");
+  // So any global-target precondition in front of the location authority is unsatisfiable for
+  // every location-scoped manager. That is the defect, stated as an assertion.
+});
+
+test("DEFECT GUARD: neither reorder callable gates create.manual on a global target", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(
+    new URL("../src/reorderRequest/reorderCallables.ts", import.meta.url),
+    "utf8",
+  );
+  // recordReorderPurchaseOrder legitimately keeps its gate: its capability carries no location
+  // binding, so a global target is the correct question for it. Exactly one gate may remain.
+  const gates = src.match(/await requireCapability\(/g) ?? [];
+  assert.equal(gates.length, 1, "only recordReorderPurchaseOrder may gate on a global capability check");
+  assert.equal(
+    src.includes("await requireCapability(request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY)"),
+    false,
+    "reinstating a global-target gate on create.manual re-breaks every location-scoped manager",
+  );
+  assert.equal(
+    src.includes("await requireCapability(request.auth.uid, REORDER_RECORD_PO_CAPABILITY)"),
+    true,
+    "recordReorderPurchaseOrder must keep its gate",
+  );
+});

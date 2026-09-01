@@ -210,7 +210,12 @@ export async function persistCreatedReorderRequest(
 
 export const createReorderRequest = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
-  await requireCapability(request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY);
+  // NO GLOBAL-TARGET CAPABILITY GATE (see listReorderWarehouseOptions for the full reasoning).
+  // The per-warehouse decision below IS the authorization: the command receives
+  // `warehouseInScope: authority.allows(warehouseId)` and refuses with WAREHOUSE_NOT_IN_SCOPE,
+  // which maps to permission-denied. A principal with no governed reorder authority therefore
+  // still cannot create anything -- the refusal simply names the warehouse rather than the
+  // capability, which is the more precise answer now that authority is per-target.
 
   const data = (request.data ?? {}) as CreateReorderRequestInput & { idempotencyKey?: string };
   if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
@@ -398,7 +403,22 @@ export function projectReorderWarehouseOptions(
  */
 export const listReorderWarehouseOptions = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
-  await requireCapability(request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY);
+  // NO GLOBAL-TARGET CAPABILITY GATE HERE. There used to be one, and under R-32 it was a defect
+  // that denied exactly the principals R-32 exists to serve: `requireCapability` resolves through
+  // the effective-access feed, which builds a GLOBAL TargetContext by construction, and a
+  // location-scoped assignment can never match a global target. A warehouse manager holding
+  // `warehouseManager @ location:wh-main` was refused 403 before the location authority ran.
+  //
+  // Caught by live sandbox proof, not by tests: every contract test exercised
+  // loadReorderWarehouseAuthority directly and never went through the callable's own gate.
+  //
+  // Authorization is not weakened by removing it -- it is made per-target, which is what R-32
+  // requires. `authority.allows(warehouseId)` decides each candidate, so a principal with no
+  // governed reorder authority is offered nothing, exactly as before. The one honest difference:
+  // such a principal now receives an EMPTY LIST with a reason instead of a 403. That distinction
+  // ("you may not do this" vs "you may, but no warehouse is governed to you") genuinely collapses
+  // once authority is per-warehouse, and pretending to preserve it would require a second opinion
+  // about who may reorder -- the exact drift this module exists to prevent.
 
   const db = getFirestore();
   const authority = await loadReorderWarehouseAuthority(db, request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY);
