@@ -56,20 +56,27 @@ const { STATE_COLLECTION, STATE_DOC_ID } = await import(L("functions/scripts/cer
 /**
  * The world genesis is willing to bootstrap. Anything else is a different world.
  *
- * v1.7.0 / fcc38a5f as of 2026-08-30. EOS Ownership Model v1 changed deterministic account and
- * equipment content without changing the row count, so the dataset version moved -- and because
- * every record carries its marker version and the marker is hashed, the fingerprint moved with it.
- * The transitional value ed95c91d (ownership content, version not yet bumped) was never a resting
- * authority and is deliberately not pinned here.
+ * v1.8.0 / 1782e853 / 1093 as of 2026-08-31, CERT-WH-MAIN-01: the governed warehouse joined the
+ * world, so the row count moved 1092 -> 1093 and the fingerprint moved with it.
+ *
+ * The preceding authority was v1.7.0 / fcc38a5f / 1092, where EOS Ownership Model v1 changed
+ * deterministic account and equipment content without changing the row count. Because every
+ * marker-bearing record carries its version and the marker is hashed, a version bump moves the
+ * fingerprint by construction. The transitional value ed95c91d (ownership content, version not yet
+ * bumped) was never a resting authority and is deliberately not pinned here.
+ *
+ * A LIVE 1.7.0 WORLD NO LONGER SATISFIES THIS, which is the point of the bump rather than a
+ * regression: the live baseline must be migrated to 1.8.0 before these preconditions pass again.
+ * Genesis is already COMPLETE live, so this pin now guards a RE-RUN, not a first run.
  *
  * THE FINGERPRINT PRECONDITION IS NOT WEAKENED, it is RETARGETED. Genesis establishes real,
  * durable authority over whatever world it is pointed at, and the resulting role assignment looks
  * identical whichever world that was. Pinning exact content is what makes "the right world" a check
  * rather than an assumption.
  */
-export const EXPECTED_DATASET_VERSION = "1.7.0";
-export const EXPECTED_FINGERPRINT = "fcc38a5f";
-export const EXPECTED_RECORDS = 1092;
+export const EXPECTED_DATASET_VERSION = "1.8.0";
+export const EXPECTED_FINGERPRINT = "1782e853";
+export const EXPECTED_RECORDS = 1093;
 export const EXPECTED_PRINCIPALS = 47;
 
 /**

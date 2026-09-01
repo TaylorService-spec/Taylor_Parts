@@ -137,7 +137,29 @@ function repoCommit() {
   }
 }
 
-/** Every record the world expects, flattened with its marker attached. */
+/**
+ * Every record the world expects, flattened with its marker attached.
+ *
+ * ============================ MARKERLESS GROUPS ============================
+ *
+ * CERT-WH-MAIN-01. Almost every record carries `certificationWorld: { version, datasetId }`, which
+ * is what makes reset safe and what scopes verify to this world's own documents. `warehouses` cannot.
+ * validateGovernedWarehouse is CLOSED-KEY: any field outside its allowed set fails UNKNOWN_FIELD, and
+ * the marker is such a field. A markered warehouse would seed successfully, count correctly,
+ * fingerprint correctly -- and be refused by Receiving, Transfers and Reorder alike. That is the
+ * exact defect class this correction exists to close, reproduced one layer up.
+ *
+ * The FIXTURE YIELDS TO THE GOVERNED CONTRACT rather than the contract widening to admit the
+ * fixture. Adding "certificationWorld" to the validator's allowed keys would have been a one-line
+ * change, and it would have made a certification marker on a PRODUCTION warehouse validate -- turning
+ * a loud contamination signal into a permitted field, in a validator Receiving and Transfers depend
+ * on. The closed-key check earns its keep precisely by refusing fields nobody planned for.
+ *
+ * So a markerless group is identified by DOCUMENT ID instead: the builder already knows exactly which
+ * ids it owns, and that set is as precise as the marker was. readInstalled() takes the map and admits
+ * those documents to `found`, so counting, the observed fingerprint and reset all behave exactly as
+ * they do for every other group -- the identification changes, nothing downstream does.
+ */
 export function expectedRecords() {
   const w = buildWorld();
   const groups = [
@@ -160,14 +182,27 @@ export function expectedRecords() {
     // returning them, which is exactly the failure mode its comment describes.
     ["fieldops_technicians", w.technicians],
     ["fieldops_jobs", w.jobs],
+    // warehouses ADDED with 1.8.0 -- CERT-WH-MAIN-01. MARKERLESS: see the note above. All 571 units
+    // of warehouse opening stock book to this record, and until it joined the world the governed
+    // on-hand read returned zero for every part while the world reported COMPLETE.
+    ["warehouses", w.warehouses, { markerless: true }],
   ];
   const out = [];
-  for (const [datasetId, rows] of groups) {
+  const markerlessIds = new Map();
+  for (const [datasetId, rows, opts] of groups) {
     for (const r of rows) {
+      if (opts && opts.markerless) {
+        // Written EXACTLY as the builder produced it. No marker, no extra key of any kind: the
+        // governed validator rejects every field it does not name.
+        out.push({ ...r, data: { ...r.data } });
+        if (!markerlessIds.has(r.collection)) markerlessIds.set(r.collection, new Set());
+        markerlessIds.get(r.collection).add(r.id);
+        continue;
+      }
       out.push({ ...r, data: { ...r.data, [MARKER_FIELD]: { version: w.version, datasetId } } });
     }
   }
-  return { world: w, records: out };
+  return { world: w, records: out, markerlessIds };
 }
 
 function countByCollection(rows) {
@@ -182,16 +217,25 @@ function countByCollection(rows) {
  * MARKER-SCOPED, which is what makes reset safe: unrelated sandbox data -- baseline packs,
  * transactional fixtures, persona records -- is never read and therefore never a deletion candidate.
  */
-async function readInstalled(db, collections) {
+async function readInstalled(db, collections, markerlessIds = new Map()) {
   const found = [];
   const versions = new Set();
   for (const c of collections) {
     const snap = await db.collection(c).get().catch(() => null);
     if (!snap) continue;
+    // The ids this world owns in a MARKERLESS collection. Membership by id is as exact as the
+    // marker was -- the builder emits this set -- and it is the only identification a closed-key
+    // governed record can carry. An unrelated document in the same collection is still invisible
+    // here and therefore still never a deletion candidate, which is the property that made
+    // marker-scoping safe in the first place.
+    const owned = markerlessIds.get(c) ?? null;
     snap.forEach((d) => {
       const data = d.data();
       const m = data ? data[MARKER_FIELD] : null;
-      if (!m || typeof m.version !== "string") return;
+      if (!m || typeof m.version !== "string") {
+        if (owned && owned.has(d.id)) found.push({ collection: c, id: d.id, data });
+        return;
+      }
       versions.add(m.version);
       found.push({ collection: c, id: d.id, data });
     });
@@ -200,9 +244,9 @@ async function readInstalled(db, collections) {
 }
 
 async function doVerify(db, quiet) {
-  const { world, records } = expectedRecords();
+  const { world, records, markerlessIds } = expectedRecords();
   const collections = [...new Set(records.map((r) => r.collection))];
-  const { found, versions } = await readInstalled(db, collections);
+  const { found, versions } = await readInstalled(db, collections, markerlessIds);
 
   const actual = countByCollection(found);
 
@@ -303,12 +347,14 @@ async function deleteRefs(db, refs, label, report) {
 }
 
 async function doReset(db, opts) {
-  const { records } = expectedRecords();
+  const { records, markerlessIds } = expectedRecords();
   const collections = [...new Set(records.map((r) => r.collection))];
   const report = {};
 
-  // 1. MARKER-SCOPED. Exactly and only what this world created.
-  const { found } = await readInstalled(db, collections);
+  // 1. MARKER-SCOPED, plus the id-owned records of any MARKERLESS group. Exactly and only what this
+  //    world created -- see the note on expectedRecords(). A rebuild must be able to remove the
+  //    governed warehouse it wrote, or reset would leave a record no later version could correct.
+  const { found } = await readInstalled(db, collections, markerlessIds);
   const byCollection = {};
   for (const r of found) {
     if (!byCollection[r.collection]) byCollection[r.collection] = [];
