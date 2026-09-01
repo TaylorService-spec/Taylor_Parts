@@ -650,3 +650,44 @@ separately gated action. STATUS: FINANCIALS_READY_FOR_SANDBOX_UX_GATE.
 - DEPLOYMENT: HOSTING ONLY (5a67502f → 0c005b85 → aeb413bd). Functions/Rules/Indexes NOT
   deployed. CAPABILITIES/GRANTS/POLICY/BACKFILL/PRODUCTION/CERTIFICATION: unchanged, none.
 - STATUS: AWAITING_OWNER_VISUAL_ACCEPTANCE (round 3, on aeb413bd + this gate fix).
+
+### OWNER REVIEW FIXTURES — FINANCIAL_REVIEW_P1 (2026-09-01)
+- START MAIN ab64af79 → fixtures merged (#1707) + company-assertion fix (#1708).
+- SANDBOX: eos-platform-sandbox. Hosting/Functions/Rules/Indexes: NOT deployed (fixture data
+  only; the deployed runtime is unchanged at aeb413bd).
+- METHOD: `functions/scripts/financialReviewFixtures.mjs` — bounded, idempotent, sandbox-only
+  (refuses any other projectId, refuses a disagreeing ambient project, requires --apply AND
+  --apply-live-sandbox). Modes verify/install/remove; own marker `financialReviewP1`, so it
+  never touches certificationWorld-marked or hand-created records. NOT a rebuild: the sandbox
+  certification world is at 1.6.0 vs repo 1.8.0, so `certificationWorld rebuild` would have
+  destructively reset unrelated review state — installed alongside instead.
+- SEEDED SOURCE FACTS (Admin SDK, ADC): 6 governed Sales Orders, fulfilled/priced/attributed.
+- DERIVED THROUGH GOVERNED COMMANDS (deployed issueInvoice/applyPayment, admin persona token):
+  6 invoices, 4 payment applications. The seeder cannot express a total, balance or aging
+  bucket — a test asserts it does not — and both commands replay on a deterministic
+  idempotencyKey (proved live: a rerun replayed the first invoice rather than re-issuing).
+- DERIVED RESULT: taylor INV-000001..5 + ventana INV-000001 (separate governed per-company
+  sequences). PAID ×2 (outstanding 0) · PARTIALLY_PAID ×2 (570000, 815000) · open ×2
+  (2735000 overdue by governed dueDate, 187500 ventana). Arithmetic reconciles exactly.
+- ATTRIBUTION: creditedSalespersonId explicit and frozen per order — A cw-emp-034 (Lucian
+  Brightwater, 4 events, 3 customers) and B cw-emp-035 (Petra Lindqvist, 2 events, 2
+  customers). Two orders carry ownerEmployeeId != creditedSalespersonId; createdByUid is the
+  operator on all six, so neither ownership nor record creation can be read as sales credit.
+- VISIBILITY (verified live through listAccountInvoiceAr as the seeded admin): cw-acct-0000
+  1 invoice/0 open · cw-acct-0001 1/1 open $8,150 · cw-acct-0002 1/1 open AND 1 OVERDUE
+  $27,350 · cw-acct-0003 3 invoices/2 open $7,575.
+- NOT SEEDED, DELIBERATELY: no cost facts (FIN-BLOCK-003 — Profitability still says UNKNOWN),
+  no service-origin billing (FIN-BLOCK-002), no intercompany/eliminations (FIN-BLOCK-004 —
+  the Ventana order is an ordinary same-company sale; consolidated stays UNELIMINATED_SUM),
+  no unapplied cash (page 05 keeps FUTURE AUTHORITY), no adjustments (FIN-007 policy
+  unconfigured), no goals/budgets/forecasts (FIN-003/FIN-005 have NO persistence path — no
+  collection, no command, no read; seeding one would have meant inventing storage).
+- CAPABILITIES/GRANTS/POLICY: unchanged. No production or certification path touched.
+- PAGE STATUS AFTER SEED (deployed sandbox, seeded admin):
+  · /financials/customer-financials POPULATED — real per-invoice receivables, "Overdue ·
+    75d overdue", $27,350.00, "1 open, 1 overdue"; summary/split/history slots remain honest.
+  · every other Financials route HONESTLY_DORMANT — unchanged by the seed, because those
+    pages issue no read of their own. MISSING READ SEAM (the single blocker to a populated
+    review): a company/BU/salesperson-scoped financial read. Only the account-scoped
+    listAccountInvoiceAr exists today, which is why page 07 alone populates.
+- OWNER VISUAL ACCEPTANCE: PENDING (unchanged by this run).

@@ -243,3 +243,14 @@ test("the payment request is a valid application, deterministic and namespaced",
   // An application never exceeds what the command would compute as outstanding.
   assert.ok(req.amountMinor <= expectedTotalMinor(paid));
 });
+
+test("the company assertion is sent, and always equals the order's governed company", () => {
+  // The build deployed to sandbox predates the company-authority correction and reads the
+  // caller's companyId; current authority treats it as an assertion and refuses a mismatch.
+  // Sending the order's own governed id is the one value correct under both.
+  for (const f of FIXTURES) {
+    assert.equal(issueInvoiceRequest(f).companyId, f.operatingCompanyId);
+    assert.equal(applyPaymentRequest(f, "inv").companyId, f.operatingCompanyId);
+    assert.equal(applyPaymentRequest(f, "inv").accountId, f.accountId);
+  }
+});
