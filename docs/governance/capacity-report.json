@@ -49,10 +49,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2138,
-  "fromCompatibilityRoleOnly": 1336,
+  "operableHoldingsTotal": 2072,
+  "fromCompatibilityRoleOnly": 1262,
   "fromGovernedRoleOnly": 403,
-  "fromBoth": 399,
+  "fromBoth": 407,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -850,8 +850,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -874,8 +874,8 @@
     "equipmentInstaller"
    ],
    "functionalRoles": [],
-   "grantedCount": 15,
-   "operableCount": 15,
+   "grantedCount": 9,
+   "operableCount": 9,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -896,8 +896,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -918,8 +918,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -940,8 +940,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -964,8 +964,8 @@
     "equipmentInstaller"
    ],
    "functionalRoles": [],
-   "grantedCount": 15,
-   "operableCount": 15,
+   "grantedCount": 9,
+   "operableCount": 9,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -986,8 +986,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1008,8 +1008,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1030,8 +1030,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1052,8 +1052,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",
@@ -1074,8 +1074,8 @@
    "securityRole": "technician",
    "businessRoles": [],
    "functionalRoles": [],
-   "grantedCount": 14,
-   "operableCount": 14,
+   "grantedCount": 8,
+   "operableCount": 8,
    "assignments": [
     {
      "workstream": "SERVICE",

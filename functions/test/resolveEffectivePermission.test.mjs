@@ -247,15 +247,19 @@ check("technician: workOrder.transition ALLOW unconditioned (direction narrowed 
 });
 
 // --- technician: Issue #100 operational-role Conditions, S2 (operationalRole never grants by itself) ---
-check("technician: reorder.request.assign DENY when PARTS_MANAGER not active", () => {
-  const target = baseTarget({ condition: { operationalRoleActive: () => false } });
-  assert.equal(resolve("technician", "reorder.request.assign", target).decision, "DENY");
-});
-check("technician: reorder.request.assign ALLOW when PARTS_MANAGER active", () => {
-  const target = baseTarget({
-    condition: { operationalRoleActive: (role) => role === "PARTS_MANAGER" },
-  });
-  assert.equal(resolve("technician", "reorder.request.assign", target).decision, "ALLOW");
+// RETIRED BY R-32 (#152). These two asserted that an active PARTS_MANAGER obtained
+// reorder.request.assign THROUGH the technician compatibility Role. That carrier is exactly the
+// defect R-32 removed: a business manager could obtain manager authority only by holding a Role
+// named `technician`. The capability now lives on the governed partsManager Role.
+//
+// The invariant they protected -- an operationalRole never becomes a Permission by itself -- is NOT
+// weakened: it is still proven by the PARTS_ASSOCIATE-conditioned checks above and below, which are
+// untouched. What is asserted here now is the NEW truth, and it fails if the carrier ever returns.
+check("R-32: technician does NOT carry reorder.request.assign, for any operational role", () => {
+  for (const role of ["PARTS_MANAGER", "WAREHOUSE_MANAGER", "PARTS_ASSOCIATE"]) {
+    const target = baseTarget({ condition: { operationalRoleActive: (r) => r === role } });
+    assert.equal(resolve("technician", "reorder.request.assign", target).decision, "DENY");
+  }
 });
 check("technician: reorder.request.startPurchasing DENY for a PARTS_MANAGER (wrong operational role)", () => {
   const target = baseTarget({
@@ -263,11 +267,28 @@ check("technician: reorder.request.startPurchasing DENY for a PARTS_MANAGER (wro
   });
   assert.equal(resolve("technician", "reorder.request.startPurchasing", target).decision, "DENY");
 });
-check("technician: reorder.request.create.manual ALLOW for either PARTS_MANAGER or WAREHOUSE_MANAGER (ANY-of)", () => {
-  const asManager = baseTarget({ condition: { operationalRoleActive: (r) => r === "PARTS_MANAGER" } });
-  const asWarehouse = baseTarget({ condition: { operationalRoleActive: (r) => r === "WAREHOUSE_MANAGER" } });
-  assert.equal(resolve("technician", "reorder.request.create.manual", asManager).decision, "ALLOW");
-  assert.equal(resolve("technician", "reorder.request.create.manual", asWarehouse).decision, "ALLOW");
+// RETIRED BY R-32 (#152), same reason as reorder.request.assign above. Replaced by the assertion
+// that the compatibility carrier is gone for ALL SIX manager-conditioned capabilities -- a single
+// mutation-resistant check, so re-adding any one of them to technician fails CI.
+check("R-32: technician carries NONE of the six manager-conditioned capabilities", () => {
+  const SIX = [
+    "reorder.request.create.manual",
+    "reorder.request.read.queue",
+    "reorder.request.assign",
+    "inventory.transaction.read",
+    "inventory.action.read",
+    "inventory.catalog.read",
+  ];
+  for (const permissionId of SIX) {
+    assert.equal(
+      COMPATIBILITY_ROLES.technician.permissions.includes(permissionId),
+      false,
+      `technician must not carry ${permissionId}`,
+    );
+    // and it cannot be reached by satisfying any operational role either
+    const target = baseTarget({ condition: { operationalRoleActive: () => true } });
+    assert.equal(resolve("technician", permissionId, target).decision, "DENY");
+  }
 });
 check("technician: reorder.purchaseOrder.void DENY even as an active PARTS_ASSOCIATE and the request's own assignee (no operational role gets Void)", () => {
   const target = baseTarget({

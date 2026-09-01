@@ -102,6 +102,23 @@ export type RoleConditionsByPermission = Partial<
   Record<PermissionId, Condition[]>
 >;
 
+// R-32 (DECISIONS #152) -- per-BINDING assignment-scope policy, in the same shape and for the
+// same reason `conditionsByPermission` already exists: a fact that belongs to one Role's grant of
+// one Permission, which the Specification-frozen `PermissionId[]` shape cannot carry.
+//
+// WHY PER BINDING AND NOT PER CAPABILITY. Measured (2C.2): `inventory.transaction.read` is held by
+// EIGHTEEN Roles and `inventory.catalog.read` by eighteen -- salesperson, controller,
+// accountingManager and more -- all legitimately global. The SAME capability id is global on
+// salesperson and location-required on a manager. A capability-wide policy would break seventeen
+// unrelated Roles to constrain one.
+//
+// SEMANTICS. A PermissionId absent from this map carries NO scope restriction -- byte-identical to
+// behaviour before R-32, which is why every existing Role (admin and dispatcher included) is
+// untouched by its introduction. Present means: an assignment may confer THIS Role's grant of THIS
+// Permission only from one of the listed assignment `Scope.type`s. It never widens: it can only
+// remove a candidate that `scopeMatches()` would otherwise have accepted.
+export type RoleScopesByPermission = Partial<Record<PermissionId, ScopeType[]>>;
+
 // The three seeded compatibility Roles (`admin`, `dispatcher`,
 // `technician`) are `systemSeed: true, compatibility: true` and their
 // grants are repository-declared and frozen to reproduce today's
@@ -112,6 +129,8 @@ export interface Role {
   description: string;
   permissions: RolePermissions;
   conditionsByPermission?: RoleConditionsByPermission;
+  // R-32. Optional and additive; absent means no scope restriction (pre-R-32 behaviour).
+  scopesByPermission?: RoleScopesByPermission;
   compatibility?: boolean;
   systemSeed?: boolean;
   // Row 7 (Task 12) / ADR-005 sec2.4: a privileged Role's grant/revoke

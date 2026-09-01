@@ -54,6 +54,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  * itself, so removing it is not an option the way removing a pathname was.
  */
 export const SYNCED_MODULES = Object.freeze([
+  "bindingScopePolicy.ts",
   "compactClaims.ts",
   "compatibilityRoles.ts",
   "resolveEffectivePermission.ts",

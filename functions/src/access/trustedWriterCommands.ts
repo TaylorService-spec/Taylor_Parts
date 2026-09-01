@@ -47,6 +47,7 @@ import { getApp } from "firebase-admin/app";
 import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
 import { ENVIRONMENT_ACTIVATION_REGISTRY, type ActivationRegistryEnv } from "./environmentCapabilityOverrides";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
+import { roleHasAnyBindingAtAssignmentScope, NO_BINDING_AT_SCOPE_REASON } from "./bindingScopePolicy";
 import {
   INVENTORY_CREATE_EXECUTOR_ROLE,
   INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
@@ -115,6 +116,14 @@ export class InsufficientApproverAuthorityError extends Error {}
 export class MalformedAccessDataError extends Error {}
 export class UnavailableAccessDataError extends Error {}
 export class InvalidStateError extends Error {}
+
+// R-32 (#152) -- grant-time defence in depth. Raised when NO binding on the requested Role could
+// ever be conferred from the requested Scope.type, which would create an assignment granting
+// nothing. Deliberately NOT raised when only SOME bindings are invalid at that scope: a mixed Role
+// is the normal case (partsManager carries sixteen permissions, two location-restricted), and
+// refusing those would make `partsManager @ global` and `partsManager @ location:wh-main`
+// mutually exclusive -- the exact composition R-32 section 4 requires to remain valid.
+export class NoBindingAtRequestedScopeError extends Error {}
 // Thrown when the Firestore state (mutation + accessVersion bump +
 // Audit Event) committed successfully, but the post-commit cross-
 // service step (Auth claims refresh, and for setUserStatus, the Auth
@@ -732,6 +741,18 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
     async () => {
       const role = ASSIGNABLE_ROLES[input.roleId];
       if (!role) throw new UnknownRoleError(`unknown roleId: "${input.roleId}"`);
+
+      // R-32 (#152) -- the SAME binding-scope opinion resolveEffectivePermission enforces, asked
+      // here so an assignment that could confer nothing is never created. Defence in depth, NOT
+      // the invariant: assignments written before R-32 already exist and this check cannot see
+      // them, which is why resolution-time enforcement is the authoritative one.
+      if (!roleHasAnyBindingAtAssignmentScope(role, input.scope.type)) {
+        throw new NoBindingAtRequestedScopeError(
+          NO_BINDING_AT_SCOPE_REASON +
+            `: no permission on role "${input.roleId}" may be conferred from a ` +
+            `"${input.scope.type}"-scoped assignment`,
+        );
+      }
 
       if (role.privileged) {
         if (input.actorUid === input.principalUid) {

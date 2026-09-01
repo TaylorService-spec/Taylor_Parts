@@ -17,6 +17,7 @@
 // scripts/syncAccessContracts.mjs -- never by hand-editing two copies.
 import type { PermissionId, Role, RoleAssignment, Scope } from "../types/access";
 import { findPermission } from "./permissionCatalog";
+import { bindingAllowsAssignmentScope } from "./bindingScopePolicy";
 
 export interface ConditionContext {
   status?: string;
@@ -265,6 +266,14 @@ export function resolveEffectivePermission(input: ResolveInput): ResolveResult {
     if (!role || !Array.isArray(role.permissions)) continue;
     if (!role.permissions.includes(input.permissionId)) continue;
     if (!scopeMatches(candidate.scope, input.target)) continue;
+    // R-32 (#152) STEP 3 -- the per-binding assignment-scope policy, asked here and nowhere else
+    // in this function. AUTHORITATIVE by placement: RoleAssignments written before R-32 existed
+    // are already in Firestore, and a grant-time check can never see them, so a global manager
+    // assignment must be refused HERE or the bypass survives its own fix. Distinct from
+    // scopeMatches() above, which asks whether the assignment reaches the TARGET; this asks
+    // whether that KIND of assignment may carry this Role's grant of this Permission at all.
+    // Absent policy => allow, so every Role that declares none behaves exactly as before.
+    if (!bindingAllowsAssignmentScope(role, input.permissionId, candidate.scope.type)) continue;
     if (!evaluateConditions(role, input.permissionId, input.target.condition)) continue;
 
     qualifying.push({ assignment: candidate, role });

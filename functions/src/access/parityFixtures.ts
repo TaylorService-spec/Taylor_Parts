@@ -59,6 +59,32 @@ function onlyRole(role: string) {
   return (candidate: string) => candidate === role;
 }
 
+// ============================ RETIRED BY R-32 (#152) ============================
+//
+// FIVE fixtures were REMOVED here, each of the form "technician + PARTS_MANAGER/WAREHOUSE_MANAGER
+// (active) -> ALLOW": reorder.request.create.manual, reorder.request.read.queue,
+// reorder.request.assign, inventory.transaction.read, inventory.action.read.
+//
+// THEY WERE NOT WRONG WHEN WRITTEN, AND THIS IS NOT A FIXTURE FIX. They recorded a real legacy
+// behaviour: today's Rules DO grant those reads to an active operational manager, and the
+// compatibility Role reproduced that faithfully. R-32 deliberately ENDS that reproduction -- manager
+// authority may no longer be obtained by holding a Role named `technician` -- so the governed model
+// now DENIES where legacy Rules still ALLOW.
+//
+// THAT IS AN INTENTIONAL, OWNER-RULED DIVERGENCE, and it is recorded here rather than hidden by
+// flipping each fixture's expectation to DENY. A flipped fixture would still read as "parity
+// holds", which would be false: parity for these five is deliberately broken, and the governed
+// model is the narrower of the two.
+//
+// WHO IS AFFECTED: a principal holding the technician compatibility Role AND an active
+// PARTS_MANAGER/WAREHOUSE_MANAGER operational role loses these capabilities through the governed
+// feed until granted the governed manager Role. Measured in eos-platform-sandbox: NO principal is
+// in that state (the technician persona has operationalRoles: [], and the two manager personas hold
+// no assignment to `technician`), so the live effect there is nil. Production was NOT measured and
+// nothing is deployed by this change.
+//
+// The INACTIVE-employment and broken-linkage DENY fixtures for the same capabilities are KEPT: they
+// still hold, and they still prove the fail-closed contract they were written for.
 export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   // --- admin / dispatcher: Customer + Issue #175 governed field ---
   {
@@ -300,18 +326,6 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
       target: target(),
-    },
-  },
-  {
-    fixtureLabel: "technician + PARTS_MANAGER (active): reorder request read queue",
-    permissionId: "reorder.request.read.queue",
-    legacyDecision: "ALLOW",
-    resolverInput: {
-      permissionId: "reorder.request.read.queue",
-      assignments: [assignment("technician")],
-      roles: COMPATIBILITY_ROLES,
-      currentAccessVersion: 1,
-      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
     },
   },
   {
@@ -629,18 +643,6 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
     },
   },
   {
-    fixtureLabel: "technician + PARTS_MANAGER (active): inventory transaction read",
-    permissionId: "inventory.transaction.read",
-    legacyDecision: "ALLOW",
-    resolverInput: {
-      permissionId: "inventory.transaction.read",
-      assignments: [assignment("technician")],
-      roles: COMPATIBILITY_ROLES,
-      currentAccessVersion: 1,
-      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
-    },
-  },
-  {
     fixtureLabel: "admin: inventory action read",
     permissionId: "inventory.action.read",
     legacyDecision: "ALLOW",
@@ -662,18 +664,6 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
       target: target(),
-    },
-  },
-  {
-    fixtureLabel: "technician + WAREHOUSE_MANAGER (active): inventory action read",
-    permissionId: "inventory.action.read",
-    legacyDecision: "ALLOW",
-    resolverInput: {
-      permissionId: "inventory.action.read",
-      assignments: [assignment("technician")],
-      roles: COMPATIBILITY_ROLES,
-      currentAccessVersion: 1,
-      target: target({ operationalRoleActive: onlyRole("WAREHOUSE_MANAGER") }),
     },
   },
   {
@@ -741,30 +731,6 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
   },
 
   // --- Issue #100 operational-role combos ---
-  {
-    fixtureLabel: "technician + PARTS_MANAGER (active): assign reorder request",
-    permissionId: "reorder.request.assign",
-    legacyDecision: "ALLOW",
-    resolverInput: {
-      permissionId: "reorder.request.assign",
-      assignments: [assignment("technician")],
-      roles: COMPATIBILITY_ROLES,
-      currentAccessVersion: 1,
-      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
-    },
-  },
-  {
-    fixtureLabel: "technician + WAREHOUSE_MANAGER (active): manual NEEDS_PLANNING create",
-    permissionId: "reorder.request.create.manual",
-    legacyDecision: "ALLOW",
-    resolverInput: {
-      permissionId: "reorder.request.create.manual",
-      assignments: [assignment("technician")],
-      roles: COMPATIBILITY_ROLES,
-      currentAccessVersion: 1,
-      target: target({ operationalRoleActive: onlyRole("WAREHOUSE_MANAGER") }),
-    },
-  },
   {
     fixtureLabel: "technician + PARTS_ASSOCIATE (active): own-assignment read",
     permissionId: "reorder.request.read.own",

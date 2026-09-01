@@ -3997,3 +3997,93 @@ Named because R-30 anticipates them; **neither is adopted here.**
 Selecting between them is the next Owner ruling. Both are blocked on the same prior question the table
 above exposes: **what a LOCATION_REQUIRED capability should do about records that have no location** —
 legacy `reorder_requests`, and every `reorder_purchase_orders` document.
+
+---
+
+## #152 — OWNER RULING R-32: the per-binding assignment-scope policy, implemented (Workstream 2C.3)
+
+**Date:** 2026-09-01
+**Classification:** GOVERNED AUTHORITY IMPLEMENTATION. Builds R-29 (#150) under the reach and
+scope-safety constraints of R-30/R-31 (#151).
+**Status:** IMPLEMENTED, repo-only. No grant, no sandbox mutation, no deploy, `firestore.rules`
+byte-unchanged.
+
+### What was built
+
+1. **`Role.scopesByPermission?: Partial<Record<PermissionId, ScopeType[]>>`** — a side map in the
+   same shape and for the same reason `conditionsByPermission` already exists: per-(Role,
+   Permission) metadata the Specification-frozen `PermissionId[]` shape cannot carry.
+   `Role.permissions` is unchanged. **Absent means pre-R-32 behaviour exactly**, which is why the
+   thirty-eight Roles that declare nothing — admin and dispatcher among them — are untouched.
+
+2. **One canonical opinion**, `functions/src/access/bindingScopePolicy.ts`, consumed by BOTH
+   enforcement points so they cannot drift: `bindingAllowsAssignmentScope(role, permissionId,
+   assignmentScopeType)` and `roleHasAnyBindingAtAssignmentScope(role, assignmentScopeType)`.
+
+3. **Resolution-time enforcement** — one line in `resolveEffectivePermission`'s qualifying loop,
+   beside `scopeMatches()` and `evaluateConditions()`. **AUTHORITATIVE BY PLACEMENT:** 113
+   RoleAssignments already exist in sandbox, written before R-32, and no grant-time check can ever
+   see them. `scopeMatches()` was not touched.
+
+4. **Grant-time defence in depth** — `grantRole` consults the SAME helper and refuses a Role that
+   could confer nothing at the requested scope. Deliberately **some-binding, never every-binding**:
+   a mixed Role is the normal case, and requiring every binding would make
+   `partsManager @ global` and `partsManager @ location:wh-main` rivals instead of composable.
+
+5. **The six-capability home correction.** All six moved off `technician` with each capability's
+   existing eligibility preserved separately — not flattened into one bundle. Measured delta,
+   verified against main before editing: `warehouseManager` **+1** (`create.manual`),
+   `partsManager` **+3** (`create.manual`, `read.queue`, `assign`). The other three were already on
+   their governed Roles. The regenerated governance artifact shows **exactly those four grants and
+   nothing else**.
+
+6. **Binding declarations**, only where 2C.2 classified the MANAGER binding LOCATION_REQUIRED with
+   direct evidence: `reorder.request.create.manual` and `inventory.transaction.read`, on both
+   manager Roles. **`inventory.catalog.read` is deliberately NOT declared** (global reference data),
+   and neither are `reorder.request.read.queue`/`assign`, whose runtime enforcement is Rules-backed
+   and status-scoped rather than location-scoped.
+
+7. **Reorder is the first location consumer.** `listReorderWarehouseOptions` and
+   `createReorderRequest` share ONE loaded authority
+   (`reorderRequest/reorderWarehouseAuthority.ts`) that resolves the governed permission against
+   `{ type: "location", value: warehouseId }`. `reorderWarehouseEligibility.ts` is **retired** —
+   Reorder no longer reads `employees.assignedWarehouseIds` for any authorization decision.
+
+### The bypass, measured before and after
+
+`partsManager @ global` against a `location` target used to resolve **ALLOW** for every permission
+on the Role — the R-30 OPEN-1 loophole. It now resolves **DENY** for the two declared bindings and
+**ALLOW** for the rest, from the same assignment. admin and dispatcher at global scope still resolve
+ALLOW against any location target, through the generic resolver with no Reorder-specific bypass.
+
+### Two things this change deliberately does NOT do
+
+- **`reorder.request.read.queue` and `reorder.request.assign` are DECLARATION_CORRECTED,
+  RUNTIME_ENFORCEMENT_GAP_OPEN.** Their live authority remains status-scoped `firestore.rules`; no
+  governed consumer evaluates either id. Moving their declaration changes no runtime behaviour, and
+  this entry does not claim otherwise.
+- **Legacy reorder data is untouched.** 6 of 7 sandbox `reorder_requests` carry no `warehouseId`
+  and no lineage to one. Nothing was migrated, derived, or filtered; create/options do not need
+  legacy resolution because their target is an explicit candidate or selected Warehouse.
+
+### An intentional parity divergence, recorded rather than hidden
+
+Five `parityFixtures` entries were REMOVED, each asserting that an active operational manager
+obtained one of the six THROUGH `technician`. They were not wrong when written — legacy Rules do
+grant those reads — so R-32 knowingly breaks parity, and the governed model is now the narrower of
+the two. They were removed rather than flipped to DENY, because a flipped fixture still reads as
+"parity holds", which would be false.
+
+**Who is affected:** a principal holding `technician` AND an active PARTS_MANAGER/WAREHOUSE_MANAGER
+operational role loses these capabilities through the governed feed until granted the governed
+manager Role. Measured in `eos-platform-sandbox`: **no principal is in that state**, so the live
+effect there is nil. **Production was not measured and nothing is deployed.**
+
+### A cross-tranche collision worth recording
+
+PR #1666 (cert-world governed warehouse) merged into main mid-tranche and added a test driving
+`projectReorderWarehouseOptions` through the retired eligibility module's `ALL_GOVERNED` scope
+object. **Git reported no conflict** — the two changes touch different files — and the collision
+surfaced only when the governance suite ran. The test's intent (the company gates the picker) was
+preserved exactly; only its expression of "entitled to every warehouse" changed to the authority
+predicate. This is why a moving-main reconciliation cannot stop at textual conflict detection.
