@@ -487,41 +487,11 @@ export const NAV_DOMAINS = [
       { key: "goals", label: "Goal Management", path: "goals" },
       { key: "companyPerformance", label: "Company & Business Unit Performance", path: "company-performance" },
       { key: "employeePerformance", label: "Salesperson & Employee Performance", path: "employee-performance" },
-      {
-        key: "reconciliation",
-        label: "Reconciliation & Exceptions",
-        path: "reconciliation",
-        placeholderExplanation:
-          "Reconciliation and Exceptions will identify differences between EOS operational financial facts and authoritative external accounting facts.",
-      },
-      {
-        key: "intercompany",
-        label: "Intercompany",
-        path: "intercompany",
-        placeholderExplanation:
-          "Intercompany will govern Taylor-to-Ventana and Ventana-to-Taylor financial activity while preventing incorrect consolidated double counting.",
-      },
-      {
-        key: "audit",
-        label: "Financial Audit & History",
-        path: "audit",
-        placeholderExplanation:
-          "Financial Audit and History will provide immutable lineage for financial events, approvals, attribution changes, budgets, goals, allocations, and reconciliation activity.",
-      },
-      {
-        key: "reports",
-        label: "Reporting & Exports",
-        path: "reports",
-        placeholderExplanation:
-          "Financial Reporting will support governed multidimensional reporting and exports. Export access must obey the same financial visibility policy as EOS screens.",
-      },
-      {
-        key: "governance",
-        label: "Financial Settings & Governance",
-        path: "governance",
-        placeholderExplanation:
-          "Financial Settings and Governance will expose authorized configuration for visibility, periods, attribution, goals, budgets, approvals, and reporting policy when those authorities are implemented.",
-      },
+      { key: "reconciliation", label: "Reconciliation & Exceptions", path: "reconciliation" },
+      { key: "intercompany", label: "Intercompany", path: "intercompany" },
+      { key: "audit", label: "Financial Audit & History", path: "audit" },
+      { key: "reports", label: "Reporting & Exports", path: "reports" },
+      { key: "governance", label: "Financial Settings & Governance", path: "governance" },
     ],
   },
   {

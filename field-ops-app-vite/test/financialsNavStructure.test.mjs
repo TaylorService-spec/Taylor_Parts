@@ -38,6 +38,12 @@ const IMPLEMENTED_SECTION_KEYS = new Set([
   "profitability",
   "companyPerformance",
   "employeePerformance",
+  // Wave UX-5 — governance / integrity. All twenty sections are now implemented.
+  "reconciliation",
+  "intercompany",
+  "audit",
+  "reports",
+  "governance",
 ]);
 
 const APPROVED_SECTION_KEYS = [

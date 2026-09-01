@@ -289,3 +289,76 @@ describe("15 Salesperson & Employee Performance — /financials/employee-perform
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
+
+// ─── Wave UX-5 — governance / integrity ───
+
+describe("16 Reconciliation & Exceptions — /financials/reconciliation", () => {
+  test("internal (IN_SYNC/DRIFT, dormant) and external (FUTURE, no provider) never conflated", async () => {
+    const { default: FinancialsReconciliation } = await import("../src/modules/financials/FinancialsReconciliation.jsx");
+    const { container } = mount(<FinancialsReconciliation />);
+    expect(container.textContent).toMatch(/Operational integrity — internal reconciliation/);
+    expect(container.textContent).toMatch(/IN_SYNC/);
+    expect(container.textContent).toMatch(/DRIFT/);
+    expect(container.textContent).toMatch(/No governed reconciliation results to show/);
+    expect(container.textContent).toMatch(/External accounting reconciliation/);
+    expect(container.textContent).toMatch(/no counts, not zero counts/);
+    // The external specimen is dimmed structure with deliberately empty values.
+    expect(container.querySelector(".fin-dimmed")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("17 Intercompany — /financials/intercompany", () => {
+  test("classification never elimination; unclassified is the loud exception; no fabricated events", async () => {
+    const { default: FinancialsIntercompany } = await import("../src/modules/financials/FinancialsIntercompany.jsx");
+    const { container } = mount(<FinancialsIntercompany />);
+    expect(container.textContent).toMatch(/classified — never eliminated/i);
+    expect(container.textContent).toMatch(/FIN-BLOCK-004/);
+    for (const label of ["Taylor → Ventana", "Ventana → Taylor", "Unclassified"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("18 Financial Audit & History — /financials/audit", () => {
+  test("a lens over the one audit authority — no raw sweep, correlation column reserved", async () => {
+    const { default: FinancialsAudit } = await import("../src/modules/financials/FinancialsAudit.jsx");
+    const { container } = mount(<FinancialsAudit />);
+    expect(container.textContent).toMatch(/Never a second audit ledger/);
+    expect(container.textContent).toMatch(/never issues a raw read over the whole audit log/);
+    expect(container.textContent).toMatch(/FIN-PQ-CORRELATION-IDS/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("19 Reporting & Exports — /financials/reports", () => {
+  test("catalog names blocking phases; export never wired; restricted = named panel", async () => {
+    const { default: FinancialsReports } = await import("../src/modules/financials/FinancialsReports.jsx");
+    const { container } = mount(<FinancialsReports />);
+    for (const group of ["Sales", "Revenue & collections", "Plan", "Margin & cost", "Governance"]) {
+      expect(screen.getAllByText(group).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(screen.queryByRole("button", { name: /export/i })).toBeNull();
+    expect(container.textContent).toMatch(/never a partial render/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("20 Financial Settings & Governance — /financials/governance", () => {
+  test("period row reads BUILT_DORMANT + policy not configured — never AUTHORITY NOT IMPLEMENTED", async () => {
+    const { default: FinancialsGovernance } = await import("../src/modules/financials/FinancialsGovernance.jsx");
+    const { container } = mount(<FinancialsGovernance />);
+    // The required current-main correction: the period model exists.
+    expect(container.textContent).toMatch(/Financial periods \(FIN-008\)/);
+    expect(screen.getAllByText("Built dormant").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText("Policy not configured").length).toBeGreaterThanOrEqual(3);
+    // No CHIP says it (the state-vocabulary tooltip may name it as a possible state).
+    expect(screen.queryByText("Authority not implemented")).toBeNull();
+    // Configured facts render as facts.
+    expect(container.textContent).toMatch(/Operational subledger/);
+    expect(container.textContent).toMatch(/USD/);
+    expect(container.textContent).toMatch(/Taylor · Ventana/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
