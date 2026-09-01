@@ -1753,3 +1753,19 @@ reason-enum or numbering change in either.
 | **Guards that caught real things** | css-class coverage refused an unstyled journey class (1d); the acquire suite's portal re-point carries a non-null guard so zero-length assertions cannot pass vacuously (1c) |
 | **Remaining** | 1e truth states · 1f handheld sweep · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
 | **Acceptance** | unchanged — `AWAITING` |
+
+### Family 9 — frame 1e merged: the family truth sweep found two real defects (2026-08-31)
+
+Appended per the ledger's rule. **Merged is not accepted; nothing in frames 1a–1e is live until a
+Hosting refresh.** No authority change.
+
+| | |
+|---|---|
+| **Frame 1e** | #1659, squash-merged `3adcc15d` — family-level truth/state sweep across 1a/1b/1d/1c |
+| **Defect 1** | 1b's destination picker discarded the location read's STATUS — a denied/unavailable/failed read rendered as an innocently empty select. Now five mutually exclusive states with their own sentences, picker rendered only from READY, and the protected submit repeats the state instead of advising "choose one" when none can be chosen. Pattern source-pinned unrepresentable |
+| **Defect 2** | 1b's option label fell back to the raw `locationId` — a storage key as a place name. Dropped (the governed adapter guarantees READY labels); pattern source-pinned |
+| **Alignment** | queue rows state each journey's OWN reference absence: supplier "No order number recorded" (RCV-G5 — no authority), reorder "No PO number recorded" (a governed field, absent on the record — frame 1d's words) |
+| **Stale claims corrected** | "legacy reorder-PO workflow is untouched" (recomposed in 1d) · "when the dialog opens" (a sheet since 1c) · a submit reason advising the impossible under a failed read. Historical defect narrations deliberately kept |
+| **Family pins added** | no synthesized RR/PO/RO numbers · no PO scan-identity wording outside a gap-recording comment (RCV-G4 quoting discipline) · no raw err.message/stack rendering · no new firebase/callable/readiness surface |
+| **Remaining** | 1f handheld sweep · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` |
