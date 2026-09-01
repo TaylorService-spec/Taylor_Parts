@@ -16,7 +16,7 @@ write must independently enforce governed financial visibility and scope.
 |---|---|---|
 | FIN-001 | Financial Authority & State Model | **COMPLETE** (audit: [FIN-001_FINANCIAL_AUTHORITY_MAP.md](./FIN-001_FINANCIAL_AUTHORITY_MAP.md); authority mode ratified — EOS = governed operational financial subledger, external accounting = future authority of record (not yet selected), GL in EOS out of scope; DECISIONS #145) |
 | FIN-002 | Reporting Attribution Model | **COMPLETE** (repository authority — [FIN-002_REPORTING_ATTRIBUTION_MODEL.md](./FIN-002_REPORTING_ATTRIBUTION_MODEL.md); DECISIONS #154; canonical `financialAttribution.ts`; creation paths preserve truthful attribution; visibility/exposure stays FIN-004; backfill plan only, not executed) |
-| FIN-003 | Plan vs Actual Model | **OPEN** |
+| FIN-003 | Plan vs Actual Model | **CORE IMPLEMENTED** (versioned plans + never-blend comparison — [FIN-003_PLAN_VS_ACTUAL_MODEL.md](./FIN-003_PLAN_VS_ACTUAL_MODEL.md); approval authority → FIN-007; storage/activation → F12/F14) |
 | FIN-004 | Financial Visibility Model | **IMPLEMENTED** (server-enforced scope model — [FIN-004_FINANCIAL_VISIBILITY_MODEL.md](./FIN-004_FINANCIAL_VISIBILITY_MODEL.md); DECISIONS #156; SELF/TEAM/CONSOLIDATED enforced, COMPANY/BU principal-binding blocked on the Owner's access-scope ruling FIN-BLOCK-001; all capabilities `active:false`, nothing granted) |
 | FIN-005 | Forecast Model | **OPEN** |
 | FIN-006 | Cost & Margin Authority | **INVARIANT CORE IMPLEMENTED** (margin = governed cost facts only, else UNKNOWN — [FIN-006_COST_MARGIN_MODEL.md](./FIN-006_COST_MARGIN_MODEL.md); cost supply undecided — FIN-BLOCK-003) |

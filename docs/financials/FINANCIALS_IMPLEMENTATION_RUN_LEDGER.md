@@ -13,8 +13,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F2 | FIN-004 Financial Visibility | COMPLETE_MERGED | cfe9c8fb | c7742232 | #1675 | 4b75fa45 |
 | F3 | Finance Core Activation Readiness | COMPLETE_MERGED | 5a70fa6c | 45392f24 | #1676 | 04126d41 |
 | F4 | Service Billing Model | COMPLETE_MERGED | 04126d41 | f1627d63 | #1677 | bda2c5b2 |
-| F5 | FIN-006 Cost & Margin | COMPLETE_PR_OPEN | bda2c5b2 | (see PR) | (opened below) | — |
-| F6 | FIN-003 Plan vs Actual | NOT_STARTED | — | — | — | — |
+| F5 | FIN-006 Cost & Margin | COMPLETE_MERGED | bda2c5b2 | 1cf358b1 | #1678 | 12ee21bc |
+| F6 | FIN-003 Plan vs Actual | COMPLETE_PR_OPEN | 12ee21bc | (see PR) | (opened below) | — |
 | F7 | FIN-005 Forecasting | NOT_STARTED | — | — | — | — |
 | F8 | FIN-007 Adjustments/Approvals | NOT_STARTED | — | — | — | — |
 | F9 | FIN-008 Period & Close | NOT_STARTED | — | — | — | — |
@@ -93,6 +93,19 @@ Details per phase are appended below as each phase closes.
   Epic-5 PO layer vs new record), labor cost policy, ND-27 valuation authority —
   FIN-BLOCK-003 (below).
 - DOC: docs/financials/FIN-006_COST_MARGIN_MODEL.md · TESTS: pure 10/10; finance CI lane
+  registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
+### F6 — FIN-003 Plan vs Actual
+- SCOPE: versioned plan records + the never-blend comparison — invariant A made mechanical.
+- IMPLEMENTED: planVsActual.ts — buildPlanRecord (GOAL≠BUDGET; DRAFT→APPROVED→SUPERSEDED;
+  EXPLICIT measurementBasis BOOKED/BILLED/COLLECTED/COST; integer minor units; ISO period;
+  scope = FIN-002 dimensions, nullable = unconstrained; frozen) and comparePlanToActual
+  (only APPROVED measures; BASIS_MISMATCH/CURRENCY_MISMATCH are thrown category errors —
+  compared never blended; out-of-period/out-of-scope facts are NAMED exclusions; variance =
+  actual − plan).
+- NOT DECIDED (deliberate, no new blocker): approval authority → FIN-007 (F8); storage +
+  capability activation → F12/F14; actual-fact wiring is a surface concern.
+- DOC: docs/financials/FIN-003_PLAN_VS_ACTUAL_MODEL.md · TESTS: pure 10/10; finance CI lane
   registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
