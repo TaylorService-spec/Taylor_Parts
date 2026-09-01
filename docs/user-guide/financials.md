@@ -59,3 +59,17 @@ The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an ho
   corrections create new governed events; the original event remains history. "New
   correction" stays disabled until correction commands and an approval policy are activated.
   Declined corrections are always shown, never hidden.
+
+## Third wave: plans and forecasts
+
+- **Sales to Goal** — performance against goals, with each goal's measurement basis
+  (Booked, Billed, Collected, Revenue, Gross margin) shown beside it. Different bases are
+  never added together, so there is no grand total — that's deliberate.
+- **Cost to Budget** — budgets beside cost columns that stay empty-with-words until the
+  business decides how costs are captured. You will never see a $0 that means "unknown."
+- **Forecasting** — forecasts stay separate from actuals, goals and budgets. Each future
+  forecast will carry a version and as-of date; the method reads "Method TBD" until a
+  forecasting method is chosen.
+- **Budget Management / Goal Management** — versioned plans. A revision creates a new
+  version; history is never rewritten. "New budget" / "New goal" stay disabled until plan
+  record-keeping and an approval policy are switched on.

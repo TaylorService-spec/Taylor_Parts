@@ -479,27 +479,9 @@ export const NAV_DOMAINS = [
       { key: "payments", label: "Payments", path: "payments" },
       { key: "creditsAdjustments", label: "Credits & Adjustments", path: "credits-adjustments" },
       { key: "customerFinancials", label: "Customer Financials", path: "customer-financials" },
-      {
-        key: "salesToGoal",
-        label: "Sales to Goal",
-        path: "sales-to-goal",
-        placeholderExplanation:
-          "Sales to Goal will compare governed actual performance with versioned goals by company, business unit, team, salesperson, and period.",
-      },
-      {
-        key: "costToBudget",
-        label: "Cost to Budget",
-        path: "cost-to-budget",
-        placeholderExplanation:
-          "Cost to Budget will compare governed actual costs with approved, versioned budgets by company, business unit, team, employee, category, and period.",
-      },
-      {
-        key: "forecasting",
-        label: "Forecasting",
-        path: "forecasting",
-        placeholderExplanation:
-          "Forecasting will keep projected financial outcomes explicitly separate from actual, budget, goal, and reconciled accounting facts.",
-      },
+      { key: "salesToGoal", label: "Sales to Goal", path: "sales-to-goal" },
+      { key: "costToBudget", label: "Cost to Budget", path: "cost-to-budget" },
+      { key: "forecasting", label: "Forecasting", path: "forecasting" },
       {
         key: "profitability",
         label: "Gross Margin & Profitability",
@@ -507,20 +489,8 @@ export const NAV_DOMAINS = [
         placeholderExplanation:
           "Profitability will compose governed revenue and cost authority. Margin must not be calculated until authoritative cost sources are established.",
       },
-      {
-        key: "budgets",
-        label: "Budget Management",
-        path: "budgets",
-        placeholderExplanation:
-          "Budget Management will maintain approved and versioned financial plans without rewriting prior-period budgets.",
-      },
-      {
-        key: "goals",
-        label: "Goal Management",
-        path: "goals",
-        placeholderExplanation:
-          "Goal Management will maintain versioned performance targets and their explicit measurement basis, such as booked, billed, collected, revenue, cost, or margin.",
-      },
+      { key: "budgets", label: "Budget Management", path: "budgets" },
+      { key: "goals", label: "Goal Management", path: "goals" },
       {
         key: "companyPerformance",
         label: "Company & Business Unit Performance",

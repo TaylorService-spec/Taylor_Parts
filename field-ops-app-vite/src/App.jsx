@@ -119,6 +119,12 @@ const FinancialsCustomerFinancials = lazy(() => import("./modules/financials/Fin
 // Wave UX-2 — billing / corrections.
 const FinancialsBillingQueue = lazy(() => import("./modules/financials/FinancialsBillingQueue.jsx"));
 const FinancialsCreditsAdjustments = lazy(() => import("./modules/financials/FinancialsCreditsAdjustments.jsx"));
+// Wave UX-3 — plan / forecast.
+const FinancialsSalesToGoal = lazy(() => import("./modules/financials/FinancialsSalesToGoal.jsx"));
+const FinancialsCostToBudget = lazy(() => import("./modules/financials/FinancialsCostToBudget.jsx"));
+const FinancialsForecasting = lazy(() => import("./modules/financials/FinancialsForecasting.jsx"));
+const FinancialsBudgets = lazy(() => import("./modules/financials/FinancialsBudgets.jsx"));
+const FinancialsGoals = lazy(() => import("./modules/financials/FinancialsGoals.jsx"));
 import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -709,6 +715,21 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "financials" && item.key === "creditsAdjustments") {
     return <FinancialsCreditsAdjustments />;
+  }
+  if (domain.key === "financials" && item.key === "salesToGoal") {
+    return <FinancialsSalesToGoal />;
+  }
+  if (domain.key === "financials" && item.key === "costToBudget") {
+    return <FinancialsCostToBudget />;
+  }
+  if (domain.key === "financials" && item.key === "forecasting") {
+    return <FinancialsForecasting />;
+  }
+  if (domain.key === "financials" && item.key === "budgets") {
+    return <FinancialsBudgets />;
+  }
+  if (domain.key === "financials" && item.key === "goals") {
+    return <FinancialsGoals />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
