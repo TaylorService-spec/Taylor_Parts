@@ -216,8 +216,19 @@ function countByCollection(rows) {
  *
  * MARKER-SCOPED, which is what makes reset safe: unrelated sandbox data -- baseline packs,
  * transactional fixtures, persona records -- is never read and therefore never a deletion candidate.
+ *
+ * EXPORTED, and it is the ONE definition of "which live records belong to the certification world"
+ * -- CERT-VERIFIER-MARKERLESS-06. verifyPrivateAiFailClosed.mjs used to answer that question with
+ * its own `where(certificationWorld.version == ...)` count, which cannot see a markerless record by
+ * construction. After the governed warehouse joined the world as a markerless group, that verifier
+ * reported warehouses 0/1 and world total 1092/1093 against a world this reader and the deployment
+ * record both agreed was COMPLETE at 1093/1093.
+ *
+ * Two readers, two answers, one of them wrong: exactly the failure the markerless design was
+ * introduced to avoid elsewhere, reproduced in the second consumer. The fix is not a warehouse
+ * special case in the verifier -- it is that there is only ever one membership algorithm, here.
  */
-async function readInstalled(db, collections, markerlessIds = new Map()) {
+export async function readInstalled(db, collections, markerlessIds = new Map()) {
   const found = [];
   const versions = new Set();
   for (const c of collections) {
