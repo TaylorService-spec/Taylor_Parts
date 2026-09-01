@@ -352,6 +352,62 @@ test("FAMILY PIN: frame 1e introduced no new authority surface", () => {
   }
 });
 
+// ── frame 1f — handheld structural pins (the stylesheet contracts the measured pass relies on) ──
+// Layout was measured in a real browser (375/320/768/1440) against rendered family states; jsdom
+// computes none of it, so what CI holds in place is the exact stylesheet structure that produced
+// those measurements. Removing any of these rules is how the measured result silently rots.
+
+const css = () => read("src/index.css");
+
+test("FRAME 1f PIN: both family tables carry the stacked handheld recomposition, and no receiving rule forces a pan", () => {
+  const s = css();
+  // The queue and the reconciliation table both stack at ≤640px: hidden thead + block rows +
+  // labelled flex cells reading from data-label.
+  for (const cls of ["fo-receiving-queue", "fo-receiving-session__table"]) {
+    assert.match(s, new RegExp(`\\.${cls} thead \\{ position: absolute;`), `${cls}: thead visually hidden on phone`);
+    assert.match(s, new RegExp(`\\.${cls}[^{]*td \\{ display: block; \\}|\\.${cls}, \\.${cls} tbody, \\.${cls} tr,?\\s*\\n?\\s*\\.?${cls}? ?td \\{ display: block; \\}|\\.${cls} td \\{ border: 0;`), `${cls}: stacked cells`);
+    assert.match(s, new RegExp(`\\.${cls} td::before \\{ content: attr\\(data-label\\)`), `${cls}: labels come from data-label`);
+  }
+  // MUTATION PROOF: no receiving-family selector may pin a fixed width wider than a 375px handheld
+  // (max-width caps are fine; fixed width floors are how tables come to pan).
+  const receivingRules = s.match(/\.fo-receiving[^{}]*\{[^}]*\}|\.fo-reorder[^{}]*\{[^}]*\}|\.fo-acquire[^{}]*\{[^}]*\}|\.fo-modal--sheet[^{}]*\{[^}]*\}/g) ?? [];
+  for (const rule of receivingRules) {
+    assert.doesNotMatch(rule, /(?<!max-)(?<!min-)width:\s*(3[89]\d|[4-9]\d\d|\d{4,})px/, `fixed over-wide width in: ${rule.slice(0, 70)}`);
+    assert.doesNotMatch(rule, /min-width:\s*(3[89]\d|[4-9]\d\d|\d{4,})px/, `min-width pan floor in: ${rule.slice(0, 70)}`);
+  }
+});
+
+test("FRAME 1f PIN: the sheet is full-width at handheld and long values keep wrap protection", () => {
+  const s = css();
+  assert.match(s, /@media \(max-width: 640px\) \{ \.fo-modal--sheet \{ max-width: 100%;/);
+  // MUTATION PROOF: the review read-back's long-value wrap (serial lists) survives.
+  assert.match(s, /\.fo-receive-confirm dd \{ overflow-wrap: anywhere; \}/);
+});
+
+test("FRAME 1f PIN: the measured touch-floor fix stands — workspace link-buttons clear 44px on phones", () => {
+  const s = css();
+  const block = s.match(/\.fo-receiving-workspace \.fo-link-btn \{[^}]*\}/)?.[0] ?? "";
+  assert.match(block, /min-height:\s*44px/);
+  // And the workspace actually carries the scoping class the rule keys on.
+  assert.match(read("src/modules/inventory/Receiving.jsx"), /className="fo-receiving-workspace"/);
+});
+
+test("FRAME 1f PIN: no handheld rule hides a truth state or the review/consequence stage", () => {
+  // Every ≤640px media block in the stylesheet: nothing inside it may display:none an error,
+  // warning, status message, confirm read-back, or the queue's disclosure copy.
+  const s = css();
+  const mobileBlocks = [...s.matchAll(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+  assert.ok(mobileBlocks.length > 0, "the handheld blocks must exist to be checked");
+  for (const block of mobileBlocks) {
+    for (const guarded of ["fo-warning", "fo-error", "fo-inline-error", "fo-receive-confirm", "fo-confirm-readback", "data-locations-message", "fo-receiving-queue__note"]) {
+      const rules = block.match(new RegExp(`[^{}]*${guarded}[^{}]*\\{[^}]*\\}`, "g")) ?? [];
+      for (const rule of rules) {
+        assert.doesNotMatch(rule, /display:\s*none/, `a phone rule must not hide ${guarded}`);
+      }
+    }
+  }
+});
+
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {
   const src = read("src/modules/inventory/Receiving.jsx");
   assert.match(src, /Not connected yet/);

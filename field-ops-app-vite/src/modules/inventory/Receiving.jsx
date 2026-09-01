@@ -118,6 +118,7 @@ export default function Receiving({ deps }) {
 
   return (
     <WorkspaceShell
+      className="fo-receiving-workspace"
       crumb={
         <>
           <div className="ns-page__utility">
