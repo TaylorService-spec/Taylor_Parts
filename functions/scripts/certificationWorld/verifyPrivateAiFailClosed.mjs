@@ -33,7 +33,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 
-const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
+const { expectedRecords, readInstalled } = await import(L("functions/scripts/certificationWorld.mjs"));
 const { worldFingerprint } = await import(L("functions/scripts/certificationWorld/state.mjs"));
 const { MARKER_FIELD } = await import(L("functions/scripts/certificationWorld/manifest.mjs"));
 const { STATE_COLLECTION, STATE_DOC_ID } = await import(L("functions/scripts/certificationWorld/state.mjs"));
@@ -95,7 +95,7 @@ async function main() {
 
   // ── 1. THE REPOSITORY EXPECTATION. Computed fresh from source, never hardcoded here: the CI test
   //       pins the numbers; this command's job is agreement between repo and live.
-  const { world, records } = expectedRecords();
+  const { world, records, markerlessIds } = expectedRecords();
   const fp = worldFingerprint(records);
   const expectedByCollection = {};
   for (const r of records) expectedByCollection[r.collection] = (expectedByCollection[r.collection] || 0) + 1;
@@ -118,20 +118,43 @@ async function main() {
       `${s.fingerprint} vs ${fp.hash}`);
   }
 
+  // ── MEMBERSHIP COMES FROM THE CANONICAL READER -- CERT-VERIFIER-MARKERLESS-06.
+  //
+  // This block used to run its own `where(certificationWorld.version == ...)` count per collection.
+  // That is a SECOND definition of world membership, and it cannot see a markerless record at all:
+  // the governed warehouse carries no marker, because validateGovernedWarehouse is closed-key and
+  // refuses the field. So a correct, COMPLETE 1093-record world reported warehouses 0/1 here while
+  // the canonical verifier reported 1093/1093 -- two readers, two answers, one wrong.
+  //
+  // readInstalled() admits marker-bearing records by their marker and markerless records by the
+  // exact document ids the BUILDER owns (expectedRecords().markerlessIds). No warehouse special
+  // case, no second hardcoded id list, no widening of the governed validator.
+  const collections = [...new Set(records.map((r) => r.collection))];
+  const { found } = await readInstalled(db, collections, markerlessIds);
+
+  // VERSION STRICTNESS IS PRESERVED, deliberately and separately. readInstalled answers "does this
+  // world own the document"; it does not filter by version, and a verifier that dropped the version
+  // check would report a stale 1.7.0 world as fully present. A markerless record carries no version
+  // to check -- its membership IS its builder-owned id -- so it is admitted on that basis, exactly
+  // as the canonical verifier treats it.
+  const ownedMarkerless = (r) => (markerlessIds.get(r.collection) ?? new Set()).has(r.id);
+  const atVersion = found.filter((r) => ownedMarkerless(r)
+    || r.data?.[MARKER_FIELD]?.version === world.version);
+
+  const liveByCollection = {};
+  for (const r of atVersion) liveByCollection[r.collection] = (liveByCollection[r.collection] ?? 0) + 1;
+
   let liveTotal = 0;
   for (const [collection, expected] of Object.entries(expectedByCollection)) {
-    const snap = await db.collection(collection)
-      .where(`${MARKER_FIELD}.version`, "==", world.version).count().get();
-    const got = snap.data().count;
+    const got = liveByCollection[collection] ?? 0;
     liveTotal += got;
     check(`${collection}: ${expected} governed record(s) live`, got === expected, `${got}/${expected}`);
   }
   check(`world total: ${records.length} governed records live`, liveTotal === records.length,
     `${liveTotal}/${records.length}`);
 
-  const employees = await db.collection("employees")
-    .where(`${MARKER_FIELD}.version`, "==", world.version).get();
-  const linked = employees.docs.filter((d) => typeof d.data().userId === "string" && d.data().userId.length > 0).length;
+  const linked = atVersion.filter((r) => r.collection === "employees"
+    && typeof r.data?.userId === "string" && r.data.userId.length > 0).length;
   check(`employee->principal linkage: ${EXPECTED_LINKED_EMPLOYEES}/${EXPECTED_LINKED_EMPLOYEES} linked`,
     linked === EXPECTED_LINKED_EMPLOYEES, `${linked}/${EXPECTED_LINKED_EMPLOYEES}`);
 
