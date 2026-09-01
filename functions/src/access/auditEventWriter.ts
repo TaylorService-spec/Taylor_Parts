@@ -293,6 +293,8 @@ const SCOPE_TYPES: readonly ScopeType[] = [
   "domain",
   "location",
   "ownAssignment",
+  "operatingCompany",
+  "businessUnit",
 ];
 
 // Defense-in-depth (Spec sec5.8/sec14: an Audit Event must "never

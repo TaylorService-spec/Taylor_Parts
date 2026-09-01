@@ -4402,3 +4402,39 @@ synchronized access-core edit points incl. trustedWriterCommands, inside the Own
 R-2x workstream); appropriating "domain" without a ruling (rejected — undocumented intent);
 role-name special-casing for admin (rejected — identity is not authority); per-surface
 visibility checks (rejected — drift by construction).
+
+## #157 — OWNER RULING (FIN-BLOCK-001 closed): financial company/BU visibility bindings are governed access-scope facts
+
+**Date:** 2026-09-01 · **Context:** the FIN-004 visibility model (#156) left COMPANY/BUSINESS_UNIT
+reach BLOCKED pending the principal-binding mechanism (FIN-BLOCK-001). The Owner directed this
+continuation run to close it with explicit governed access scope types.
+
+**Decision:** a principal's OPERATING_COMPANY / BUSINESS_UNIT financial visibility reach is bound
+through two new members of the governed access ScopeType union — `operatingCompany` and
+`businessUnit` — carried on RoleAssignments exactly like `location`. They are ACCESS AUTHORITY
+FACTS: never inferred from employee master data, current Customer owner, warehouse assignment,
+location names, UI filters, or caller-supplied ids.
+
+- **Scope validation authority:** `operatingCompany` values validate against the governed
+  operating-company authority (`ownership/operatingCompanyAuthority.ts` — `taylor`/`ventana`);
+  `businessUnit` values validate against the canonical BUSINESS_UNITS
+  (`finance/financialAttribution.ts`). Free text is refused at grant time
+  (trustedWriterCommands scope validation) — no second vocabulary exists.
+- **Resolution:** value-matched in the ONE canonical resolver (`resolveEffectivePermission`,
+  identical rule to domain/location); the FIN-004 loader enumerates the governed value sets and
+  asks the resolver per scoped target (the R-32/#1672 loaded-authority pattern). A scoped
+  assignment never matches the always-global effective-access feed target, so the new types widen
+  nothing anywhere else; GLOBAL and LOCATION semantics are unchanged; existing assignments retain
+  prior behavior.
+- **No automatic grants, no migration, no census mutation:** the types existing confers nothing;
+  a principal without an explicit binding has no scoped financial reach. All `finance.visibility.*`
+  capabilities remain registered `active:false` and in NO environment activation registry —
+  activation, grants, and deployment remain separate Owner acts (F14 package).
+- **No UI-only authority:** every financial read/report/export path composes the same loader +
+  predicate (`loadFinancialVisibilityAuthority` / `isInvoiceVisible`); admin reach flows through
+  the same resolver — no bypass path exists.
+
+**Enforced by:** `types/access.ts` (both mirrors), `resolveEffectivePermission` (synced shared
+contract), `trustedWriterCommands`/`auditEventWriter` scope validation,
+`finance/financeReadCallables.ts` loader; suites `financialScopeBinding.test.mjs`,
+`trustedWriterCommands.test.mjs` (FIN-BLOCK-001 section), `financeVisibilityRead.test.mjs`.

@@ -296,3 +296,54 @@ Details per phase are appended below as each phase closes.
   the Owner exactly what each screen can truthfully bind to.
 - WHAT REMAINS UNIMPLEMENTED: every real financial screen.
 
+
+## POST-OVERNIGHT CONTINUATION (2026-09-01)
+
+Owner-directed continuation from main `9d6c1348`. Append-only; the overnight history above is
+final.
+
+### FIN-BLOCK-001 — CLOSED (DECISIONS #157)
+- MECHANISM: two new governed access ScopeTypes `operatingCompany` / `businessUnit` on
+  RoleAssignments (Owner-directed; explicit scopes, NOT employee master data, NOT Customer
+  owner, NOT warehouse projections, NOT the generic "domain" scope).
+- SYNCHRONIZED EDIT POINTS: types/access.ts (both mirrors), resolveEffectivePermission
+  (scopeMatches value-match + narrowness order + shape validator; synced via
+  scripts/syncAccessContracts.mjs), trustedWriterCommands (SCOPE_TYPES + governed-value grant
+  validation — free text refused), auditEventWriter SCOPE_TYPES.
+- LOADER: loadFinancialVisibilityAuthority now resolves COMPANY/BU reach per governed value
+  (2 companies × 4 units) through the ONE canonical resolver from a single principal-state
+  snapshot (the R-32/#1672 loaded-authority pattern); global-target semantics for the other
+  ids unchanged; a held capability with no scoped binding is surfaced BLOCKED and confers
+  nothing.
+- UNCHANGED: GLOBAL/LOCATION semantics; existing assignments; no automatic grants; no
+  migration; all finance capabilities stay active:false and in NO activation registry.
+- TESTS: financialScopeBinding.test.mjs 15/15 pure (company/BU reach, cross-refusals,
+  never-widens, legacy semantics, R-32 binding-policy composition, dormant active:false
+  reality); trustedWriterCommands +3 grant-validation checks (CI lane);
+  financeVisibilityRead 10/10 on isolated emulator incl. the bound-but-dormant deny;
+  financeReadCallables 5/5 regression; access pure suites 52/52.
+
+### FIN-BLOCK-005 — RECLASSIFIED (Owner): DESIGN AUTHORITY HANDOFF IN PROGRESS
+- No longer an Owner-decision blocker; blocks final 20-page UI composition only.
+- Expected corrected master package
+  docs/north-star/financials/FINANCIALS-NORTH-STAR-P1-DESIGN-REVIEW-PACKAGE.md: ABSENT on
+  current main and on every remote branch (checked this run). UI implementation gate remains
+  CLOSED; no UI invented.
+
+### Activation package (F14) — UPDATED
+- Stage B prerequisite replaced with the #157 governed mechanism; persona grant-example table
+  added (mechanism governed; carrying roles marked TBD — no repository role carries
+  finance.visibility.* and choosing one is an Owner act); activation-registry step made
+  explicit (finance.visibility.* are in NO registry — sandbox activation needs the
+  Owner-authorized registry PR + deploy).
+
+### Emulator dry-run (repository/emulator only, nothing persisted beyond test fixtures)
+- inactive capability ⇒ DENY (loader + resolver) · active(simulated) + no binding ⇒ DENY ·
+  active + taylor binding ⇒ taylor only, ventana refused · BU binding ⇒ that unit only,
+  cross-BU refused · company binding ⇏ consolidated · consolidated ⇒ via express grant only ·
+  caller-supplied ids expand nothing · mixed-BU invoice hidden under BU scope · admin reach
+  only through the same resolver. ALL PASS (financialScopeBinding + financeVisibilityRead).
+
+### Decision packages for FIN-BLOCK-002/003/004
+- Prepared this run as docs/financials/FIN-BLOCK-00{2,3,4}_*_DECISION_PACKAGE.md (see below
+  sections when merged) — assessment only, no policy coded.
