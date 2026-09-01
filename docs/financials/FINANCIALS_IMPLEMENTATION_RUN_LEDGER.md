@@ -19,8 +19,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F8 | FIN-007 Adjustments/Approvals | COMPLETE_MERGED | 208c7aea | 96dd3e8d | #1681 | fff6bef6 |
 | F9 | FIN-008 Period & Close | COMPLETE_MERGED | fff6bef6 | 921579d4 | #1682 | 5303706d |
 | F10 | FIN-009 Allocation & Intercompany | COMPLETE_MERGED | 5303706d | 385e7ca3 | #1683 | 92066be6 |
-| F11 | FIN-010 Reconciliation/Traceability | COMPLETE_PR_OPEN | 92066be6 | (see PR) | (opened below) | — |
-| F12 | Financials Product Surfaces | NOT_STARTED | — | — | — | — |
+| F11 | FIN-010 Reconciliation/Traceability | COMPLETE_MERGED | 92066be6 | dcca36b4 | #1684 | 7b4a021f |
+| F12 | Financials Product Surfaces | COMPLETE_MERGED (map only — surfaces design-gated) | 7b4a021f | 80c051b4 | #1685 | b742d56b |
 | F13 | Reporting Matrix | COMPLETE_PR_OPEN | b742d56b | (see PR) | (opened below) | — |
 | F14 | Sandbox Activation Readiness | NOT_STARTED | — | — | — | — |
 | F15 | E2E Financial Certification Readiness | NOT_STARTED | — | — | — | — |
@@ -176,6 +176,19 @@ Details per phase are appended below as each phase closes.
 - DOC: docs/financials/FIN-010_RECONCILIATION_MODEL.md · TESTS: pure 9/9; finance CI lane
   registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
+### F12 — Financials Product Surfaces
+- SCOPE: readiness map ONLY. Under the North Star three-authority model (DECISIONS #122)
+  visual composition belongs to the DESIGN authority — twenty financial screens may not be
+  minted autonomously. No surface was built or altered; every section keeps its honest
+  Frame 0 placeholder.
+- DELIVERED: docs/financials/F12_SURFACE_READINESS_MAP.md — per-section binding map
+  (which merged dormant authority each of the 20 sections composes when its design source
+  exists) + the four binding rules (compose cores only; FIN-004 on every read; UNKNOWN
+  renders as unknown / UNELIMINATED_SUM carries its caveat; impeccable + taste bar against
+  an approved design source).
+- BLOCKER: FIN-BLOCK-005 (below) — design sources for financial surfaces.
+- CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
 ### F13 — Reporting Matrix
 - DELIVERED: docs/financials/F13_REPORTING_MATRIX.md — the five approved axes (Company/BU/
   Person/Period/Basis) mapped to merged governed authority, with honest statuses: Cost and
@@ -251,4 +264,13 @@ Details per phase are appended below as each phase closes.
   sums that state they removed nothing; per-company totals are exact.
 - WHAT REMAINS UNIMPLEMENTED: any intercompany record type, elimination, cross-company
   AR/AP.
+
+### FIN-BLOCK-005 — design sources for financial surfaces (F12)
+- PHASE: F12; gates all twenty Financials sections' real UI.
+- EXACT QUESTION: approved North Star design sources (Design authority) for the Financials
+  page family — none exist; the behavioral authority (this repo) may not invent visual
+  composition (DECISIONS #122).
+- CURRENT SAFE BEHAVIOR: honest Frame 0 placeholders; the readiness map tells Design and
+  the Owner exactly what each screen can truthfully bind to.
+- WHAT REMAINS UNIMPLEMENTED: every real financial screen.
 
