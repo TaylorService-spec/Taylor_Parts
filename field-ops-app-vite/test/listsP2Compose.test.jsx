@@ -84,6 +84,10 @@ const COLLECTION_PAGES = [
   // ratified collection header on it -- crumb, rule pair, serif title, workload summary line.
   // Listed here so GATE 2d holds it to that grammar instead of letting a board invent its own.
   "modules/dispatcherBoard/DispatcherBoard.jsx",
+  // FINANCIALS NORTH STAR P1 (2026-09-01). The family's shared frame is the ONE consumer of
+  // WorkspaceIdentity for all /financials pages (same declared-primitive shape as the
+  // conformance gate records): the pages import FinancialsPageFrame, not the header itself.
+  "modules/financials/FinancialsPrimitives.jsx",
 ];
 
 /**
@@ -108,7 +112,17 @@ const RETIRED_UNROUTED = [
  * two files does not make either of them a related section, but only ONE of them composes the
  * header, so the two lists below are deliberately different sets rather than one.
  */
-const COLLECTION_SURFACES = [...COLLECTION_PAGES, "modules/equipment/CustomerEquipment.jsx"];
+const COLLECTION_SURFACES = [
+  ...COLLECTION_PAGES,
+  "modules/equipment/CustomerEquipment.jsx",
+  // FINANCIALS NORTH STAR P1 — the same split-collection shape as Equipment, per family: the
+  // declared primitives module composes the header for every /financials page, and the two
+  // COLLECTION pages of Wave UX-1 (Invoices, Payments) own their views rows. They are
+  // collections (the invoice and payment registries), not related sections; the header lives
+  // in the shared frame, so only the frame appears in COLLECTION_PAGES above.
+  "modules/financials/FinancialsInvoices.jsx",
+  "modules/financials/FinancialsPayments.jsx",
+];
 
 const RELATED_DEFS = [
   ["contact", contactRelatedList, contactEntity],
