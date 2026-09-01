@@ -25,6 +25,9 @@ const IMPLEMENTED_SECTION_KEYS = new Set([
   "accountsReceivable",
   "payments",
   "customerFinancials",
+  // Wave UX-2 — billing / corrections.
+  "billingQueue",
+  "creditsAdjustments",
 ]);
 
 const APPROVED_SECTION_KEYS = [

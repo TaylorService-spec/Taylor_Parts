@@ -49,3 +49,13 @@ focus them.
 
 The remaining fifteen pages (Billing Queue, Forecasting, Budgets, Reconciliation, …) still
 show an honest "not built yet" placeholder and will fill in wave by wave.
+
+## Second wave: billing and corrections
+
+- **Billing Queue** — what can be invoiced and what is blocked, with the blocking reason on
+  the row. The "Create invoices" button is visible but disabled until invoice issuance is
+  switched on; a note under it says exactly why.
+- **Credits & Adjustments** — the correction workspace. Its rule is printed on the page:
+  corrections create new governed events; the original event remains history. "New
+  correction" stays disabled until correction commands and an approval policy are activated.
+  Declined corrections are always shown, never hidden.

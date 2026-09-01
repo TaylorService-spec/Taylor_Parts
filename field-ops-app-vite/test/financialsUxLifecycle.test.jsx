@@ -28,6 +28,8 @@ import FinancialsInvoices from "../src/modules/financials/FinancialsInvoices.jsx
 import FinancialsAccountsReceivable from "../src/modules/financials/FinancialsAccountsReceivable.jsx";
 import FinancialsPayments from "../src/modules/financials/FinancialsPayments.jsx";
 import FinancialsCustomerFinancials from "../src/modules/financials/FinancialsCustomerFinancials.jsx";
+import FinancialsBillingQueue from "../src/modules/financials/FinancialsBillingQueue.jsx";
+import FinancialsCreditsAdjustments from "../src/modules/financials/FinancialsCreditsAdjustments.jsx";
 import { HONEST_STATE } from "../src/shared/ui/HonestState.jsx";
 
 const mount = (node) => render(<MemoryRouter>{node}</MemoryRouter>);
@@ -136,5 +138,41 @@ describe("07 Customer Financials — /financials/customer-financials", () => {
     expect(container.textContent).not.toMatch(/\$\d/);
     // Summary slots keep their places with honest absences.
     expect(screen.getAllByText("Read not activated").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ─── Wave UX-2 — billing / corrections ───
+
+describe("02 Billing Queue — /financials/billing-queue", () => {
+  test("gated bulk action disabled with the capability-inactive line; honest queue body", () => {
+    const { container } = mount(<FinancialsBillingQueue />);
+    const action = screen.getByRole("button", { name: "Create invoices" });
+    expect(action.disabled).toBe(true);
+    expect(container.textContent).toMatch(/finance\.invoice\.issue inactive/);
+    // The approved queue grammar: views with the four states, readiness columns.
+    for (const label of ["Eligible", "Blocked", "Partially invoiced", "All"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    for (const col of ["Source", "Responsible", "Eligibility", "Invoice state"]) {
+      expect(screen.getAllByText(col, { exact: false }).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).toMatch(/never inferred from Work Order COMPLETE/i);
+    expect(container.textContent).toMatch(/No governed read surface/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("06 Credits & Adjustments — /financials/credits-adjustments", () => {
+  test("invariant sentence visible; New correction disabled with policy truth; declined never hidden", () => {
+    const { container } = mount(<FinancialsCreditsAdjustments />);
+    expect(container.textContent).toMatch(/Corrections create new governed events\. The original event remains history\./);
+    const action = screen.getByRole("button", { name: "New correction" });
+    expect(action.disabled).toBe(true);
+    expect(container.textContent).toMatch(/approval policy not configured/i);
+    for (const label of ["Credit", "Adjustment", "Refund", "Write-off", "Awaiting approval", "Approved", "Declined"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).toMatch(/No governed read surface/);
+    expect(container.textContent).not.toMatch(/\$\d/);
   });
 });

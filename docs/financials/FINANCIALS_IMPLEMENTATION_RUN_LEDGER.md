@@ -436,3 +436,22 @@ STREAM SEPARATION above). Run start 2026-09-01. START MAIN: dfb362d5e863472f0dd5
 - BLOCKERS: none for this wave. FIN-BLOCK-002/003/004 unchanged (rendered truthfully).
 - DEPLOYMENT: NONE. CERT_WORLD_IMPACT: NONE. CAPABILITIES/GRANTS: NONE.
 - NEXT: WAVE UX-2 (02 Billing Queue, 06 Credits & Adjustments).
+
+#### WAVE UX-2 — Billing / corrections (2026-09-01)
+- PAGES: 02 Billing Queue (/financials/billing-queue) · 06 Credits & Adjustments
+  (/financials/credits-adjustments).
+- BASE MAIN: 47b84bfb (Wave UX-1 merge). HEAD/PR/MERGE: recorded at PR close.
+- DESIGN SOURCES: North Star - Financials {02,06}*.dc.html + frames.
+- AUTHORITY: no billing-readiness read exists (service side = FIN-BLOCK-002, commercial SO
+  eligibility logic server-side only); invoice/adjustment/refund cores dormant, capabilities
+  inactive; FIN-007 policy not configured (self-approval forbidden, fails closed). Both
+  gated actions render DISABLED with the capability-inactive / policy-not-configured
+  one-liners the design draws; queue and corrections bodies state the not-wired truth.
+- TESTS: two composition cases added to financialsUxLifecycle.test.jsx (disabled gated
+  actions, invariant sentence, view/type grammar, no specimen values); registries updated
+  (listsP2Compose COLLECTION_SURFACES). Full component sweep (2,988) + runSuites (269) +
+  typecheck + build + lint green.
+- VISUAL GATE: emulator-backed live check 1440 + 375 (disabled actions with one-liners,
+  totals slots, honest bodies; 375 recomposes without horizontal scroll).
+- DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
+- NEXT: WAVE UX-3 (08 Sales to Goal, 09 Cost to Budget, 10 Forecasting, 12 Budgets, 13 Goals).

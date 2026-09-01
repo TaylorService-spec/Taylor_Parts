@@ -7378,3 +7378,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fin-overview-grid { grid-template-columns: 1fr; gap: var(--space-4, 16px); }
   .fin-figure__value { font-size: 22px; }
 }
+
+/* Financials Wave UX-2: gated primary action slot (design: dark action button; disabled
+   while the governing capability is inactive, with the capability-inactive one-liner). */
+.fin-action-slot { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 300px; text-align: right; }
+.fin-primary-action { font: 600 13px var(--font-interface, Inter, sans-serif); padding: 9px 16px; min-height: 44px; background: var(--color-text-primary); color: var(--color-surface-page, #fff); border: none; cursor: pointer; }
+.fin-primary-action:disabled { opacity: 0.45; cursor: not-allowed; }
