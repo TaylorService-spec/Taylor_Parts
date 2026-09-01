@@ -468,13 +468,11 @@ export const NAV_DOMAINS = [
     label: "Financials",
     path: "financials",
     subnav: [
-      {
-        key: "overview",
-        label: "Overview",
-        path: "",
-        placeholderExplanation:
-          "Financial performance overview will compose governed financial facts, reporting attribution, goals, budgets, forecasts, and reconciliation status. No financial authority is created by this surface.",
-      },
+      // Wave UX-1 (North Star P1): overview, invoices, accountsReceivable, payments and
+      // customerFinancials render real compositions (App.jsx branches) — no
+      // placeholderExplanation. Access posture unchanged: PLACEHOLDER_DEFAULT_ROLES for nav
+      // visibility; financial DATA authorization stays server-side (FIN-004), fail-closed.
+      { key: "overview", label: "Overview", path: "" },
       {
         key: "billingQueue",
         label: "Billing Queue",
@@ -482,27 +480,9 @@ export const NAV_DOMAINS = [
         placeholderExplanation:
           "Billing Queue will identify operational records that are eligible, blocked, or awaiting action before invoicing. Billing authority is not implemented by this placeholder.",
       },
-      {
-        key: "invoices",
-        label: "Invoices",
-        path: "invoices",
-        placeholderExplanation:
-          "Invoices will surface governed invoice records and their source lineage when invoice authority is established.",
-      },
-      {
-        key: "accountsReceivable",
-        label: "Accounts Receivable",
-        path: "accounts-receivable",
-        placeholderExplanation:
-          "Accounts Receivable will surface issued but unpaid financial obligations from governed or reconciled accounting facts.",
-      },
-      {
-        key: "payments",
-        label: "Payments",
-        path: "payments",
-        placeholderExplanation:
-          "Payments will surface governed or reconciled payment activity. This placeholder does not create payment authority.",
-      },
+      { key: "invoices", label: "Invoices", path: "invoices" },
+      { key: "accountsReceivable", label: "Accounts Receivable", path: "accounts-receivable" },
+      { key: "payments", label: "Payments", path: "payments" },
       {
         key: "creditsAdjustments",
         label: "Credits & Adjustments",
@@ -510,13 +490,7 @@ export const NAV_DOMAINS = [
         placeholderExplanation:
           "Credits and Adjustments will record governed corrections without rewriting historical issued financial events.",
       },
-      {
-        key: "customerFinancials",
-        label: "Customer Financials",
-        path: "customer-financials",
-        placeholderExplanation:
-          "Customer Financials will provide cross-record financial visibility while preserving the authority of originating Sales, Service, invoice, payment, and accounting records.",
-      },
+      { key: "customerFinancials", label: "Customer Financials", path: "customer-financials" },
       {
         key: "salesToGoal",
         label: "Sales to Goal",

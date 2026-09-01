@@ -400,3 +400,39 @@ STREAM SEPARATION above). Run start 2026-09-01. START MAIN: dfb362d5e863472f0dd5
   acceptance NOT claimed — that follows sandbox deployment + Quick Gate.
 
 ### Wave ledger (append per wave)
+
+#### WAVE UX-1 — Financial lifecycle read spine (2026-09-01)
+- PAGES: 01 Overview (/financials) · 03 Invoices · 04 Accounts Receivable · 05 Payments ·
+  07 Customer Financials.
+- BASE MAIN: 429d8de1 (design-install merge). HEAD/PR/MERGE: recorded at PR close below.
+- DESIGN SOURCES: docs/north-star/financials/North Star - Financials {01,03,04,05}*.dc.html
+  + 07; frames 01/03/04/05/07 at 1440+375.
+- AUTHORITY SOURCES: FINANCIALS-UX-CURRENT-MAIN-RECONCILIATION.md truth table; the one wired
+  read chain (useAccountAr → financeReadCallableClient → listAccountInvoiceAr, dormant) is
+  composed on page 07 via the existing AccountArSection; account selection via the governed
+  bounded accountSearch read. All other fact families render their reconciled honest state
+  (NOT_ENABLED with the not-activated / not-wired contract sentences). No new callable, no
+  raw collection read, no client financial arithmetic.
+- NEW SURFACES: src/modules/financials/ (5 pages + FinancialsPrimitives: page frame, filter
+  rail, figure block w/ fact-class label, hover-ⓘ annotation, honest section);
+  src/domain/financialsSurface.js (surface vocabulary + read-state mapping); fin-* CSS
+  extending the ns-* grammar with 375 recomposition (2-up scorecards, stacked rail).
+- VISIBLE DESIGN DELTAS: none beyond the reconciliation (compositions follow the approved
+  sources adapted to the shipped app shell; specimen values replaced by honest states per
+  the run instructions).
+- TESTS: test/financialsSurface.test.mjs (vocabulary + source-level contracts: no specimen
+  values, no raw Firestore, no float money) · test/financialsUxLifecycle.test.jsx (8
+  composition cases incl. DENIED-as-permission-fact and FUTURE AUTHORITY payments) ·
+  financialsNavStructure.test.mjs evolved (implemented-sections set). Full registered suite
+  (runSuites, 270 files) green; typecheck + build + oxlint green.
+- CI: new lane .github/workflows/financials-north-star-tests.yml (path-filtered; runs the
+  three suites + lint + typecheck). NOTE: a PR adding a workflow gets no pull_request run of
+  that lane on itself — suites executed locally and via the standard build lane.
+- VISUAL GATE: emulator-backed live check at 1440 and 375 (admin persona): scorecard/fact
+  classes/truth bands/exception rail/Method TBD verified on 01; no New Invoice on 03; one
+  aging grammar on 04; FUTURE AUTHORITY band on 05; live governed customer search with
+  truthful EMPTY on 07; 375 recomposes without horizontal scroll. (Local gate only — Owner
+  visual acceptance remains sandbox Quick-Gate dependent.)
+- BLOCKERS: none for this wave. FIN-BLOCK-002/003/004 unchanged (rendered truthfully).
+- DEPLOYMENT: NONE. CERT_WORLD_IMPACT: NONE. CAPABILITIES/GRANTS: NONE.
+- NEXT: WAVE UX-2 (02 Billing Queue, 06 Credits & Adjustments).

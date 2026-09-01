@@ -107,6 +107,15 @@ import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "./config/capabilityActivatio
 import { useReportCapabilities } from "./access/useReportCapabilities";
 const ReportBuilder = lazy(() => import("./modules/reporting/ReportBuilder"));
 const SavedReports = lazy(() => import("./modules/reporting/SavedReports"));
+// Financials North Star P1, Wave UX-1 (design: docs/north-star/financials/). Desktop/admin
+// surfaces — lazy like every other non-technician module. Data authorization is server-side
+// (finance.read + finance.visibility.*, all inactive today); these pages compose governed
+// reads and honest states only.
+const FinancialsOverview = lazy(() => import("./modules/financials/FinancialsOverview.jsx"));
+const FinancialsInvoices = lazy(() => import("./modules/financials/FinancialsInvoices.jsx"));
+const FinancialsAccountsReceivable = lazy(() => import("./modules/financials/FinancialsAccountsReceivable.jsx"));
+const FinancialsPayments = lazy(() => import("./modules/financials/FinancialsPayments.jsx"));
+const FinancialsCustomerFinancials = lazy(() => import("./modules/financials/FinancialsCustomerFinancials.jsx"));
 import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -672,6 +681,25 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // (same convention as PartDetail / the inventoryRole surfaces).
   if (item.legacyKey === "operations") {
     return <Operations accessVersion={operationalContext?.accessVersion} />;
+  }
+  // Financials North Star P1 — Wave UX-1 (lifecycle read spine). Dispatched HERE like every
+  // other real subnav page: the generic loop emits the route and renders what this returns,
+  // so a separate <Route> at the same path would never win (see the Sales Order note above).
+  // Remaining Financials items keep falling through to PlaceholderPage until their wave lands.
+  if (domain.key === "financials" && item.key === "overview") {
+    return <FinancialsOverview />;
+  }
+  if (domain.key === "financials" && item.key === "invoices") {
+    return <FinancialsInvoices />;
+  }
+  if (domain.key === "financials" && item.key === "accountsReceivable") {
+    return <FinancialsAccountsReceivable />;
+  }
+  if (domain.key === "financials" && item.key === "payments") {
+    return <FinancialsPayments />;
+  }
+  if (domain.key === "financials" && item.key === "customerFinancials") {
+    return <FinancialsCustomerFinancials />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];

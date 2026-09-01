@@ -1072,6 +1072,10 @@
     {
       "file": "test/workOrderWorkflowMirrorContract.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/financialsSurface.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

@@ -195,6 +195,12 @@ const NORTH_STAR_COLLECTION_PAGES = [
   // ratified collection header on it -- crumb, rule pair, serif title, workload summary line.
   // Listed here so GATE 2d holds it to that grammar instead of letting a board invent its own.
   "modules/dispatcherBoard/DispatcherBoard.jsx",
+  // FINANCIALS NORTH STAR P1 (2026-09-01). The family's shared page frame: every /financials
+  // page composes WorkspaceIdentity through FinancialsPrimitives' FinancialsPageFrame, so the
+  // ONE consumer of the collection grammar is this primitives module, and it is what GATE 2d
+  // holds to the grammar (WorkspaceIdentity, never WorkspaceShell). The individual pages
+  // (FinancialsOverview etc.) import the frame, not WorkspaceIdentity, and so stay derived.
+  "modules/financials/FinancialsPrimitives.jsx",
 ];
 
 function walk(dir) {

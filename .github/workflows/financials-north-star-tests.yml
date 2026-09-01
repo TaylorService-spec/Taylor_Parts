@@ -1,0 +1,88 @@
+name: Financials North Star Tests
+
+# CI for the Financials North Star P1 UX migration (the 20 routes under /financials).
+#
+# Design authority: docs/north-star/financials/ (approved P1 package).
+# Behavioral authority: docs/north-star/financials/FINANCIALS-UX-CURRENT-MAIN-RECONCILIATION.md.
+#
+# Three suites, three kinds of claim:
+#   financialsNavStructure.test.mjs   Frame 0's pinned 20-route structure + which sections are
+#                                     implemented vs placeholder, and the family's access posture
+#                                     (no invented capability ids; data authorization is server-side).
+#   financialsSurface.test.mjs        The pure surface vocabulary (slot order, one aging grammar,
+#                                     governed company keys, read-state mapping) PLUS the source-level
+#                                     page contracts: no specimen fixture numbers in product code, no
+#                                     raw Firestore reads, no client-side money arithmetic.
+#   financialsUxLifecycle.test.jsx    Wave UX-1 compositions render honestly: every approved slot
+#                                     present with its fact class; absent authority renders words,
+#                                     never zeros; DENIED is a permission fact; no ungoverned actions;
+#                                     unapplied cash stays FUTURE AUTHORITY.
+#
+# All three are ALSO registered in test/suites.json (npm test); this lane exists so a Financials
+# change reports as a Financials failure. Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/financialsSurface.js"
+      - "field-ops-app-vite/src/modules/financials/**"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/financialsNavStructure.test.mjs"
+      - "field-ops-app-vite/test/financialsSurface.test.mjs"
+      - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
+      - ".github/workflows/financials-north-star-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/financialsSurface.js"
+      - "field-ops-app-vite/src/modules/financials/**"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/financialsNavStructure.test.mjs"
+      - "field-ops-app-vite/test/financialsSurface.test.mjs"
+      - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
+      - ".github/workflows/financials-north-star-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  financials-north-star-tests:
+    name: Financials North Star P1 (structure + surface contracts + compositions + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Frame 0 structure + access posture (node:test)
+        run: node --test test/financialsNavStructure.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Surface vocabulary + page-level source contracts (node:test)
+        run: node --test test/financialsSurface.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Wave compositions render honestly (vitest + jsdom)
+        run: npx vitest run test/financialsUxLifecycle.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the touched surfaces
+        run: npx oxlint src/modules/financials src/domain/financialsSurface.js src/navigation/navConfig.js src/App.jsx
+        working-directory: field-ops-app-vite
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: field-ops-app-vite
