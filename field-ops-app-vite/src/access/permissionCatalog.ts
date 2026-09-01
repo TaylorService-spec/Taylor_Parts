@@ -318,9 +318,57 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "finance.read",
     description:
-      "Read the minimal Finance AR projection (invoice + derived AR position) for an account via the trusted listAccountInvoiceAr callable. Backend read only; the client never reads invoices/payments/adjustments directly.",
+      "The Finance AR FACT-FAMILY gate (FIN-004): may this principal see AR facts at all, via the trusted listAccountInvoiceAr callable. REACH additionally requires a finance.visibility.* scope grant — this id alone reads nothing (the pre-FIN-004 behavior where it served any accountId consolidated-wide is retired). Backend read only; the client never reads invoices/payments/adjustments directly.",
     resource: "finance",
     action: "read",
+    active: false,
+  }),
+  // FIN-004 Financial Visibility (finance/financialVisibility.ts) -- the five reach scopes.
+  // CAN PERFORM WORK != CAN SEE FINANCIAL RESULT: every financial read requires the fact-family
+  // gate (finance.read) AND one of these scopes; reach is the union of held scopes; UI hiding is
+  // never authority. All registered active:false -- REGISTER != GRANT != ACTIVATE. The COMPANY and
+  // BUSINESS_UNIT scopes additionally require a principal-to-value binding mechanism the Owner's
+  // access-scope workstream (R-29/R-32 lineage) has not yet ruled (FIN-BLOCK-001): until then a
+  // held grant of those two confers NO reach (fail-closed in loadFinancialVisibilityAuthority),
+  // never "all companies"/"all units".
+  Object.freeze({
+    id: "finance.visibility.self",
+    description:
+      "FIN-004 reach scope SELF: financial records credited to this principal (attribution.creditedSalespersonId == the principal's linked employeeId). Requires finance fact-family capability in addition; confers nothing alone.",
+    resource: "finance.visibility",
+    action: "self",
+    active: false,
+  }),
+  Object.freeze({
+    id: "finance.visibility.team",
+    description:
+      "FIN-004 reach scope TEAM: SELF plus records credited to employees the governed role hierarchy (access/hierarchicalVisibility.ts) places under this principal. No peer visibility; requires the finance fact-family capability in addition.",
+    resource: "finance.visibility",
+    action: "team",
+    active: false,
+  }),
+  Object.freeze({
+    id: "finance.visibility.businessUnit",
+    description:
+      "FIN-004 reach scope BUSINESS_UNIT: financial records wholly attributable to one governed business unit (a cross-unit document stays hidden entirely — visibility follows the number). BLOCKED pending the principal-to-unit binding ruling (FIN-BLOCK-001): a held grant currently confers no reach.",
+    resource: "finance.visibility",
+    action: "businessUnit",
+    active: false,
+  }),
+  Object.freeze({
+    id: "finance.visibility.company",
+    description:
+      "FIN-004 reach scope OPERATING_COMPANY: financial records of one governed operating company (invoice companyId, which FIN-002 pins to the Sales Order's operatingCompanyId). BLOCKED pending the principal-to-company binding ruling (FIN-BLOCK-001): a held grant currently confers no reach.",
+    resource: "finance.visibility",
+    action: "company",
+    active: false,
+  }),
+  Object.freeze({
+    id: "finance.visibility.consolidated",
+    description:
+      "FIN-004 reach scope CONSOLIDATED: every financial record across companies and units. Never a default and never implied by any operational capability — expressly granted only. Requires the finance fact-family capability in addition.",
+    resource: "finance.visibility",
+    action: "consolidated",
     active: false,
   }),
   // Finance (Billing/AR) -- record a refund (money returned after payment) via the trusted recordRefund

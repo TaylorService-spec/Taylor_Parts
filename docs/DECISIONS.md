@@ -4233,7 +4233,9 @@ no default company, no current-user fallback.
 
 ---
 
-## #154 — WORKSTREAM 2C CLOSED, and the 2B Rules-deployment defect corrected (R-34)
+## #155 — WORKSTREAM 2C CLOSED, and the 2B Rules-deployment defect corrected (R-34)
+
+*(Renumbered 2026-09-01 from a colliding #154: FIN-002 reporting attribution merged first and holds #154; this entry landed later numbering from a stale tail. Content unchanged — see the Financials run ledger.)*
 
 **Date:** 2026-09-01
 **Classification:** DEPLOYMENT-VERIFICATION DEFECT CORRECTION + 2C activation closeout.
@@ -4361,3 +4363,42 @@ deployed artifact before declaring deployment unnecessary or complete.** Do not 
 from git history, from unchanged local files, from prior deployment assumptions, or from application
 behaviour alone. A retirement that is merged but undeployed leaves the old path open, and the
 document claiming otherwise is what stops anyone from checking.
+
+## #156 — OWNER RULING (standing FIN-004 contract): financial visibility is scoped, server-enforced, and never implied
+
+**Decision (via the Financials master execution contract + overnight run authorization, 2026-09-01;
+implements FIN-004):**
+
+1. **CAN PERFORM WORK ≠ CAN SEE FINANCIAL RESULT.** No operational capability implies financial
+   reach; UI hiding is never authority; every financial read is scoped SERVER-SIDE.
+2. **Two grants per read:** the fact-family gate (`finance.read` for AR facts) AND a
+   `finance.visibility.*` scope (self / team / businessUnit / company / consolidated). Either
+   alone reaches nothing. Reach is the UNION of granted scopes. All ids registered
+   `active:false`; no Role carries them yet — granting is a separate activation decision.
+3. **Scope semantics** (canonical authority `functions/src/finance/financialVisibility.ts`):
+   SELF = records credited to the principal's linked employee; TEAM = SELF plus the governed
+   role hierarchy's descendants (`hierarchicalVisibility.ts`, first live consumer — no peer
+   visibility); BUSINESS_UNIT = wholly-attributable records only (a cross-unit invoice stays
+   hidden entirely); OPERATING_COMPANY = exact governed company; CONSOLIDATED = everything,
+   expressly granted only — never a default and never an admin implication (no role branch
+   exists in the authority; test-asserted).
+4. **Fail-closed everywhere:** valueless company/BU grants confer nothing; a caller-supplied
+   accountId never expands scope; summaries sum only visible records; truncation honesty is
+   judged on the unfiltered set; hidden is indistinguishable from absent.
+5. **FIN-BLOCK-001 (deliberately undecided):** the mechanism binding a principal to a COMPANY or
+   BUSINESS_UNIT value belongs to the Owner's access-scope workstream (R-29/R-32 lineage: new
+   ScopeType vs the unused "domain" ScopeType vs a governed Employee fact). Until ruled, held
+   grants of those two scopes resolve to BLOCKED — no reach, never a guess.
+6. **Single authority:** every later financial fact family, surface, report, and export composes
+   this scope authority and re-authorizes at execution time. No surface-local visibility.
+
+**Reason:** FIN-001/FIN-GAP-007 measured the pre-FIN-004 state: one coarse `finance.read`
+boolean whose first activation would have granted consolidated AR over any caller-supplied
+accountId, with team-visibility machinery built but consumed by nothing. FIN-004 had to land
+BEFORE finance-core exposure (program order) so no activation event ever confers unscoped reach.
+
+**Alternatives rejected:** minting a company/BU ScopeType unilaterally (rejected — four
+synchronized access-core edit points incl. trustedWriterCommands, inside the Owner's active
+R-2x workstream); appropriating "domain" without a ruling (rejected — undocumented intent);
+role-name special-casing for admin (rejected — identity is not authority); per-surface
+visibility checks (rejected — drift by construction).
