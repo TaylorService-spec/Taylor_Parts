@@ -17,8 +17,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F6 | FIN-003 Plan vs Actual | COMPLETE_MERGED | 12ee21bc | c5c55812 | #1679 | 73ba30cd |
 | F7 | FIN-005 Forecasting | COMPLETE_MERGED | 73ba30cd | 85cd4c97 | #1680 | 208c7aea |
 | F8 | FIN-007 Adjustments/Approvals | COMPLETE_MERGED | 208c7aea | 96dd3e8d | #1681 | fff6bef6 |
-| F9 | FIN-008 Period & Close | COMPLETE_PR_OPEN | fff6bef6 | (see PR) | (opened below) | — |
-| F10 | FIN-009 Allocation & Intercompany | NOT_STARTED | — | — | — | — |
+| F9 | FIN-008 Period & Close | COMPLETE_MERGED | fff6bef6 | 921579d4 | #1682 | 5303706d |
+| F10 | FIN-009 Allocation & Intercompany | COMPLETE_PR_OPEN | 5303706d | (see PR) | (opened below) | — |
 | F11 | FIN-010 Reconciliation/Traceability | NOT_STARTED | — | — | — | — |
 | F12 | Financials Product Surfaces | NOT_STARTED | — | — | — | — |
 | F13 | Reporting Matrix | NOT_STARTED | — | — | — | — |
@@ -150,6 +150,18 @@ Details per phase are appended below as each phase closes.
 - DOC: docs/financials/FIN-008_PERIOD_CLOSE_MODEL.md · TESTS: pure 8/8; finance CI lane
   registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
+### F10 — FIN-009 Allocation & Intercompany
+- SCOPE: the arithmetic every allocation policy must use + consolidation that cannot lie.
+- IMPLEMENTED: financialAllocation.ts — allocateAmountExactly (largest-remainder integer
+  allocation; parts sum EXACTLY to the whole; deterministic; credits symmetric) and
+  summarizeByCompany (per-company totals; company-less facts refuse; consolidated figure
+  TYPED as UNELIMINATED_SUM — no invented elimination, per FIN-001 FIN-GAP-011 + D-3).
+- NOT DECIDED (deliberate): intercompany treatment (supplier transactions vs governed
+  events), elimination policy, cross-company customer work, the 8 ambiguous ledger records
+  — FIN-BLOCK-004 (below).
+- DOC: docs/financials/FIN-009_ALLOCATION_INTERCOMPANY_MODEL.md · TESTS: pure 9/9; finance
+  CI lane registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
 ## Blockers (running list)
 
 ### FIN-BLOCK-001 — principal-to-company/business-unit scope binding
@@ -199,4 +211,20 @@ Details per phase are appended below as each phase closes.
   cost, no margin number without governed facts.
 - WHAT REMAINS UNIMPLEMENTED: cost capture, cost storage, any margin surface showing a
   number.
+
+### FIN-BLOCK-004 — intercompany treatment & elimination policy (FIN-009)
+- PHASE: F10; constrains F13's Consolidated reporting column (stays UNELIMINATED_SUM) and
+  any future cross-company AR/AP or shared-cost surface.
+- EXACT QUESTIONS: (1) is Taylor↔Ventana activity modeled as ordinary supplier
+  transactions (Owner ruling D-3: Ventana = upstream SUPPLIER, not a peer) or as governed
+  intercompany events; (2) the consolidation/elimination policy for double-counting
+  prevention; (3) cross-company customer work treatment (FIN-001:
+  UNKNOWN_REQUIRES_DECISION); (4) disposition of the 8 cross-company-ambiguous ledger
+  records FIN-001 measured.
+- WHY CODE CANNOT ANSWER: FIN-001 explicitly prohibits inventing elimination logic; D-3
+  already constrains the shape and only the Owner can extend or specialize it.
+- CURRENT SAFE BEHAVIOR: consolidated figures are TYPED UNELIMINATED_SUM — arithmetic
+  sums that state they removed nothing; per-company totals are exact.
+- WHAT REMAINS UNIMPLEMENTED: any intercompany record type, elimination, cross-company
+  AR/AP.
 
