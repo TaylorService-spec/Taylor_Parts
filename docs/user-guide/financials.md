@@ -47,8 +47,8 @@ Filters (Company, Business unit, Period) appear in the same order with the same 
 every Financials page. The little ⓘ markers explain the rules behind a figure — hover or
 focus them.
 
-The remaining fifteen pages (Billing Queue, Forecasting, Budgets, Reconciliation, …) still
-show an honest "not built yet" placeholder and will fill in wave by wave.
+The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an honest
+"not built yet" placeholder and will fill in wave by wave.
 
 ## Second wave: billing and corrections
 
