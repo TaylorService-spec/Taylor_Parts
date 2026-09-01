@@ -147,16 +147,26 @@ async function overflowsHorizontally(page) {
 async function sweep(page, viewportLabel) {
   for (const [route, spec] of ROUTES) {
     const id = `${viewportLabel} ${route}`;
-    // THREE attempts, not two. The first navigation after a Hosting deploy pulls a cold
-    // bundle through a cold CDN edge, and a lazy route chunk can lose that race twice —
-    // observed on /financials at both widths immediately after two separate deploys,
-    // passing on every later run against the same build. A gate that reports a cold cache
-    // as a missing page is a gate that gets re-run by hand and eventually ignored.
+    // THE PAGE TITLE, ADDRESSED UNAMBIGUOUSLY — `h1.ns-workspace__title`, not getByRole.
+    //
+    // This intermittently reported "/financials h1 not found" on a page that was rendering
+    // perfectly, and the first diagnosis (cold CDN edge) was WRONG. The app shell renders a
+    // visually-hidden <h1> carrying the DOMAIN name, and on /financials alone the domain and
+    // the page title are the same word — so `getByRole("heading", {level:1, name:"Financials"})`
+    // matched two elements and threw a strict-mode violation. It "passed" only when the check
+    // won the race against the workspace title painting, leaving one match. Every other route
+    // was immune because its title differs from the domain name.
+    //
+    // Retries stay (a genuinely cold chunk is still possible) but they are no longer papering
+    // over a locator bug that no number of retries could fix.
     let loaded = false;
     for (let attempt = 1; attempt <= 3 && !loaded; attempt += 1) {
       await page.goto(`${ORIGIN}${route}`, { waitUntil: "domcontentloaded" });
       try {
-        await page.getByRole("heading", { level: 1, name: spec.h1 }).waitFor({ timeout: 20000 });
+        await page
+          .locator("h1.ns-workspace__title", { hasText: spec.h1 })
+          .first()
+          .waitFor({ timeout: 20000 });
         loaded = true;
       } catch {
         if (attempt < 3) await page.waitForTimeout(1500);
