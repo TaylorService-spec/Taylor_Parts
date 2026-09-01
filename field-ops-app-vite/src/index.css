@@ -7314,3 +7314,67 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     align-items: center;
   }
 }
+
+/* ════════════════════ FINANCIALS NORTH STAR P1 (fin-*) ════════════════════
+   Design authority: docs/north-star/financials/ (approved P1 package).
+   Extends the ns-* grammar; semantic tokens only. Figures use the serif record face
+   (Source Serif 4) per the family's typographic law; absence states are words, never
+   zeros. 375 recomposes (2-up scorecard) rather than shrinking. */
+
+.fin-custody-note { font-size: var(--font-size-small, 12.5px); color: var(--color-text-secondary); margin: 4px 0 0; }
+
+.fin-filter-rail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3, 12px); padding: var(--space-2, 8px) 0 var(--space-4, 16px); border-bottom: 1px solid var(--color-border); }
+.fin-period { font-size: 12.5px; color: var(--color-text-secondary); }
+
+.fin-scorecard-section { padding: var(--space-4, 16px) 0 var(--space-2, 8px); }
+.fin-scorecard { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 2px solid var(--color-text-primary); }
+.fin-scorecard--aging { grid-template-columns: repeat(5, 1fr); }
+.fin-scorecard--customer { grid-template-columns: repeat(4, 1fr); }
+.fin-scorecard__slot { padding: 12px 18px 12px 0; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.fin-scorecard__slot + .fin-scorecard__slot { padding-left: 18px; }
+.fin-scorecard__slot:last-child { border-right: none; }
+
+.fin-figure { min-width: 0; }
+.fin-rail { min-width: 0; }
+.fin-figure__label { font: 600 11px var(--font-interface, Inter, sans-serif); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); }
+.fin-figure__value { font-family: var(--font-record-title, "Source Serif 4", serif); font-size: 28px; font-weight: 700; margin-top: 2px; }
+.fin-figure__absence { font-size: 13px; font-style: italic; color: var(--color-text-secondary); margin-top: 6px; }
+.fin-figure__link { display: inline-block; font-size: 12px; margin-top: 4px; }
+.fin-factclass { display: block; font: 600 9.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); margin-top: 3px; }
+
+.fin-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-6, 32px); margin-top: var(--space-4, 16px); }
+
+.fin-truth-band { background: var(--color-surface-raised, #FCFAF6); border: 1px solid var(--color-border); padding: 14px 16px; font-size: 13px; max-width: 620px; }
+.fin-truth-band p { color: var(--color-text-secondary); margin: 4px 0 0; line-height: 1.6; }
+.fin-truth-band--future { border-left: 3px solid var(--color-warning, #8A6D28); margin: var(--space-4, 16px) 0; }
+
+.fin-exception-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.fin-exception-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--color-border); }
+.fin-exception-list li:last-child { border-bottom: none; }
+.fin-inact { font-size: 12.5px; color: var(--color-text-secondary); font-style: italic; }
+
+.fin-section-note { font-size: 12px; color: var(--color-text-secondary); margin-top: 8px; }
+
+/* Hover-ⓘ annotation: contract copy visible, explanation behind a focusable ⓘ. */
+.fin-hlp-wrap { position: relative; display: inline-block; }
+.fin-hlp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--color-text-secondary); border-radius: 50%; background: transparent; color: var(--color-text-secondary); font: 700 10px var(--font-interface, Inter, sans-serif); cursor: help; vertical-align: middle; margin-left: 6px; }
+.fin-hlp:hover, .fin-hlp:focus-visible { border-color: var(--color-text-primary); color: var(--color-text-primary); }
+.fin-tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: min(340px, 78vw); background: var(--color-text-primary); color: var(--color-surface-page, #fff); padding: 12px 14px; font: 400 12px/1.6 var(--font-interface, Inter, sans-serif); text-align: left; z-index: 40; box-shadow: var(--shadow-overlay, 0 6px 20px rgba(0,0,0,0.35)); }
+.fin-hlp:hover + .fin-tip, .fin-hlp:focus-visible + .fin-tip, .fin-hlp-wrap:hover .fin-tip { display: block; }
+
+.fin-search-label { display: block; font: 600 11px var(--font-interface, Inter, sans-serif); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); margin-bottom: 4px; }
+.fin-search-input { width: min(420px, 100%); min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-border); background: var(--color-surface-raised, #fff); font-size: 14px; }
+.fin-search-results { list-style: none; margin: 8px 0 0; padding: 0; max-width: 420px; border: 1px solid var(--color-border); }
+.fin-search-result { display: block; width: 100%; min-height: 44px; padding: 10px 12px; text-align: left; background: transparent; color: var(--color-text-primary); border: none; border-bottom: 1px solid var(--color-border); font-size: 13.5px; cursor: pointer; }
+.fin-search-results li:last-child .fin-search-result { border-bottom: none; }
+.fin-search-result:hover, .fin-search-result:focus-visible { background: var(--color-surface-page); }
+
+.fin-identity-line { font-size: 14px; }
+
+/* 375 recomposition: scorecards become 2-up grids; the rail stacks under the work column. */
+@media (max-width: 640px) {
+  .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer { grid-template-columns: 1fr 1fr; }
+  .fin-scorecard__slot { padding: 12px 12px 12px 0; }
+  .fin-overview-grid { grid-template-columns: 1fr; gap: var(--space-4, 16px); }
+  .fin-figure__value { font-size: 22px; }
+}

@@ -16,6 +16,17 @@ import { ROLE_NAV_ACCESS } from "../src/domain/constants.js";
 
 const financials = NAV_DOMAINS.find((domain) => domain.key === "financials");
 
+// Sections whose real North Star composition has shipped (App.jsx branch exists; the item
+// no longer renders PlaceholderPage and must not carry placeholder copy). Grows per wave.
+const IMPLEMENTED_SECTION_KEYS = new Set([
+  // Wave UX-1 — lifecycle read spine (design: docs/north-star/financials/).
+  "overview",
+  "invoices",
+  "accountsReceivable",
+  "payments",
+  "customerFinancials",
+]);
+
 const APPROVED_SECTION_KEYS = [
   "overview",
   "billingQueue",
@@ -118,8 +129,20 @@ test("technician access is not broadened anywhere by this change", () => {
   }
 });
 
+test("implemented sections carry no placeholder copy — the real page renders, not PlaceholderPage", () => {
+  for (const item of financials.subnav) {
+    if (!IMPLEMENTED_SECTION_KEYS.has(item.key)) continue;
+    assert.equal(
+      item.placeholderExplanation,
+      undefined,
+      `'${item.key}' is implemented and must not carry stale placeholder copy`,
+    );
+  }
+});
+
 test("placeholder explanations never claim that financial authority already exists", () => {
   for (const item of financials.subnav) {
+    if (IMPLEMENTED_SECTION_KEYS.has(item.key)) continue;
     const copy = item.placeholderExplanation;
     assert.ok(typeof copy === "string" && copy.length > 0, `'${item.key}' must carry honest placeholder copy`);
     // Future-tense contract: every explanation describes what the section WILL do.

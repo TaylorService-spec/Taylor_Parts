@@ -1,0 +1,51 @@
+# Financials — user guide
+
+The **Financials** section in the left navigation is the operational financial subledger for
+Taylor and Ventana. It is not the general ledger: no external accounting system is connected
+yet, and every page says so where it matters.
+
+Who sees it: administrators and dispatchers. Seeing a page never by itself grants access to
+financial numbers — every figure is authorized on the server when it is read, so two people
+on the same page can legitimately see different data (or an explicit "not available to you").
+
+## What the pages show today
+
+Financial record-keeping (invoices, payments, corrections) is built but **not switched on**
+in any environment yet. Until it is activated, the Financials pages show their full layout
+with plain statements in place of numbers. This is deliberate: a missing number is stated in
+words — you will never see a `0` that secretly means "we couldn't read it."
+
+Sentences you will meet and what they mean:
+
+- **"Read not activated"** — the record-keeping behind this figure exists but hasn't been
+  turned on. Nothing is wrong.
+- **"No governed read surface exists…"** — this kind of record can't be listed by the app
+  yet at all.
+- **"Not available to you."** — the server declined your access. That is a permissions fact;
+  ask an administrator if you believe you need it.
+- **"FUTURE AUTHORITY"** — a workflow shown for completeness that is not implemented (for
+  example, unapplied payment cash). It will not accept input.
+- **"Method TBD"** — a forecast exists in design but no forecasting method has been chosen.
+
+## The five working pages (first wave)
+
+- **Overview** (`Financials → Overview`) — the management scorecard: Booked, Billable now,
+  Billed, Collected, A/R outstanding, and Unbilled (the one derived figure, always labelled
+  "booked − billed"). Each figure links to the page that owns it.
+- **Invoices** — the invoice list. There is intentionally **no "New Invoice" button**:
+  invoices are issued from the Billing Queue, and an issued invoice is permanent history —
+  corrections happen in Credits & Adjustments.
+- **Accounts Receivable** — money invoiced but not yet collected, aged from each invoice's
+  due date into Current / 1–30 / 31–60 / 61+ days.
+- **Payments** — payments received and how they were applied to invoices. The "Unapplied"
+  view is part of the design but the unapplied-cash workflow is future.
+- **Customer Financials** — pick a customer to see their financial picture in one place.
+  Nothing loads until you choose a customer; the customer's identity links back to their
+  Account record.
+
+Filters (Company, Business unit, Period) appear in the same order with the same wording on
+every Financials page. The little ⓘ markers explain the rules behind a figure — hover or
+focus them.
+
+The remaining fifteen pages (Billing Queue, Forecasting, Budgets, Reconciliation, …) still
+show an honest "not built yet" placeholder and will fill in wave by wave.
