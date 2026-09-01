@@ -216,7 +216,7 @@ export async function persistSalesOrderFromOpportunity(
         notes: fromAgreement.notes,
         lines,
       },
-      // BOOKED at acceptance (DECISIONS #150); fallback to now for pre-FIN-002 agreements.
+      // BOOKED at acceptance (DECISIONS #152); fallback to now for pre-FIN-002 agreements.
       { actorUid, nowMillis: Date.now(), bookedAtMillis: (agreement.acceptedAtMillis as number | undefined) ?? undefined },
     );
   } catch (err) {

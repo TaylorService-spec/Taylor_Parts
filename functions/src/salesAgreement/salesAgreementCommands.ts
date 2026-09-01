@@ -100,7 +100,7 @@ export interface CreateSalesAgreementInput {
   // honest "no company attribution", never a value to be guessed later.
   operatingCompanyId?: string;
   inheritedOperatingCompanyId?: string | null;
-  // FIN-002 (DECISIONS #150): sales credit, distinct from ownership. Explicit wins; else inherited
+  // FIN-002 (DECISIONS #152): sales credit, distinct from ownership. Explicit wins; else inherited
   // from the source Opportunity's credit; else the agreement's commercial owner. Never the actor.
   creditedSalespersonId?: string;
   inheritedCreditedSalespersonId?: string | null;

@@ -10,6 +10,7 @@ import { CERTIFICATION_WORLD_VERSION, PROVENANCE, SYNTHETIC_OWNERSHIP_DISCLAIMER
 import { REAL_BUSINESSES, syntheticBusinesses, FIELD_PROVENANCE } from "./data/accounts.mjs";
 import { TAYLOR_MODELS, ICETRO_MODELS, ALL_MODELS, modelIdOf } from "./data/equipmentMasters.mjs";
 import { CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE } from "./data/inventory.mjs";
+import { certificationWarehouseRecords } from "./data/warehouses.mjs";
 import { buildWorkforce } from "./data/workforce.mjs";
 import { buildTechnicianRecords, buildJobRecords } from "./data/workforceLoad.mjs";
 import { equipmentForAccount } from "./data/equipmentAssets.mjs";
@@ -79,6 +80,11 @@ export function buildWorld() {
   // service part's condition by eight and silently rewrite the six inventory scenarios.
   const parts = [...CERT_PARTS.map(partRecordFor), ...WHOLE_UNIT_PARTS.map(wholeUnitPartRecordFor)];
   const trucks = [];
+  // CERT-WH-MAIN-01. The governed warehouse every warehouse-side opening balance books to. Defined
+  // in data/warehouses.mjs against the real validator and shared with the emulator, so the canonical
+  // shape has exactly ONE definition. See that file for why it carries no dataProvenance, no
+  // `active`, and no fixture marker.
+  const warehouses = certificationWarehouseRecords();
   const employees = [];
 
   // EQUIPMENT MODELS ARE REGISTRY RECORDS, NOT FIXTURE ROWS.
@@ -303,7 +309,7 @@ export function buildWorld() {
   });
 
   return { version: CERTIFICATION_WORLD_VERSION, accounts, locations, contacts, equipmentModels,
-    equipment, parts, trucks, employees, technicians, jobs, marker };
+    equipment, parts, warehouses, trucks, employees, technicians, jobs, marker };
 }
 
 export { TAYLOR_MODELS, ICETRO_MODELS, CERT_TRUCKS, stateForIndex, partsRoomQtyFor, truckAllocationFor, INVENTORY_STATE };

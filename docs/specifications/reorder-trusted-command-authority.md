@@ -198,17 +198,43 @@ followed, and how each step is undone.
 
 **None of this is authorized to run.** It is the runbook the authorization would govern.
 
-### The activation conditions
+### The activation conditions — STATUS AS OF 2026-08-31
 
-| # | Condition | Why it is a condition |
+**Workstream 2B is ACTIVATED in `eos-platform-sandbox`.** The table below is kept as the record of
+what had to be true, with what actually happened against each row.
+
+| # | Condition | Status |
 |---|---|---|
-| 1 | Every governed Warehouse a reorder can be raised against holds an `operatingCompanyId` | The callable DERIVES the request's company from the warehouse. A warehouse without one makes the command refuse — correctly, and unhelpfully. |
-| 2 | `createReorderRequest` + `recordReorderPurchaseOrder` deployed | Nothing can create a request once Rules retire the direct path. |
-| 3 | `listReorderWarehouseOptions` deployed alongside them (R-17) | The selector has no other read authority. Without it the picker is empty and no reorder can be raised at all. |
-| 4 | Hosting serving the client that calls them | The old bundle writes directly and would start failing the moment Rules land. |
-| 5 | `firestore.rules` deployed with the three retirements | Until this lands, the direct path is still open — one command, two write authorities. |
-| 6 | Every persona who may raise a reorder can obtain the warehouse pick-list | RESOLVED by R-17 for admin / dispatcher / WAREHOUSE_MANAGER. STILL OPEN for PARTS_MANAGER -- WORKSTREAM 2C (DECISIONS #148). |
-| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | **RESOLVED by R-18 / Workstream 2A.1A** (DECISIONS #149). The canonical shape now permits it; a legacy warehouse without it stays valid. Still no authority may WRITE it -- that is 2A.1B. |
+| 1 | Every governed Warehouse a reorder can be raised against holds an `operatingCompanyId` | **DONE** — the five R-1 authored roots were assigned under R-28 by the bounded operator, each with one `OWNERSHIP_HANDOFF` (`previousOwner: null`); a re-run wrote 0. |
+| 2 | `createReorderRequest` + `recordReorderPurchaseOrder` deployed | **DONE** — deployed to sandbox. |
+| 3 | `listReorderWarehouseOptions` deployed alongside them (R-17) | **DONE** — same deploy. 128 → 131 Functions, exactly +3, nothing else created or removed. |
+| 4 | Hosting serving the client that calls them | **NOT DONE, and it turned out not to gate activation.** The callables are live and were verified by direct invocation; the browser bundle is a separate deploy, and until it ships the UI still calls what it always did. |
+| 5 | `firestore.rules` deployed with the three retirements | **NOT DONE — and NOT NEEDED.** Measured rather than assumed: `firestore.rules` is byte-unchanged since 2A.1A and the governed hash never moved, so there was nothing to deploy. The Rules retirement this condition anticipated had already landed. |
+| 6 | Every persona who may raise a reorder can obtain the warehouse pick-list | **PARTIAL.** admin and dispatcher: verified live. PARTS_MANAGER: still open, **WORKSTREAM 2C**. WAREHOUSE_MANAGER: see the note below — it is a *grant* gap, not a scope gap. |
+| 7 | A governed Warehouse can hold `operatingCompanyId` AND still pass the §3A governed check | **DONE** — R-18 / 2A.1A (DECISIONS #149). |
+
+### What was observed live, against the deployed callables
+
+Company derived from the Warehouse · a client-supplied company **refused even when it agrees** with
+the derived value · a warehouse the picker withholds (`wh-retired`, INACTIVE) refused by the create,
+so *offered == accepted* holds in production, not just in tests · PO company inherited from the
+request · strict 1:1 PO identity · `ORDERED` and the PO landing together · an idempotent replay.
+
+The PO chain was driven through the **real retained client-direct transitions under live Rules**, not
+seeded with the Admin SDK — bypassing the Rules would have hollowed out the proof.
+
+### One row that could not be exercised, and why it is not a scope defect
+
+`WAREHOUSE_MANAGER` was denied at the **capability** layer, before scope resolution ran. Its governed
+facts are correct (ACTIVE, reciprocally linked, `operationalRoles: ["WAREHOUSE_MANAGER"]`,
+`assignedWarehouseIds: ["wh-main"]`) — but the sandbox persona holds four narrow inventory Roles and
+none of them carries `reorder.request.create.manual`, which lives on the technician compatibility
+Role. The effective-access feed confirms `false`.
+
+So the scope behaviour is **contract-proven and live-unobserved**, and closing that gap is a
+capability grant — a separate authorization, not a code change. `PARTS_MANAGER` is fail-closed live
+for the same capability reason, which is *not* the `PARTS_MANAGER_SCOPE_UNDEFINED` path 2C exists to
+define; that behaviour remains contract-proven only.
 
 ### Condition 6 — RESOLVED by R-17: `listReorderWarehouseOptions`
 
@@ -243,7 +269,7 @@ authority already stated in Rules: admin/dispatcher are unscoped; a WAREHOUSE_MA
 their linked Employee's `assignedWarehouseIds` (Issue #226), under the same fail-closed contract —
 absent, empty or malformed assignment denies every warehouse, never "all".
 
-### STILL OPEN — the PARTS_MANAGER warehouse scope (WORKSTREAM 2C)
+### RULED — the PARTS_MANAGER warehouse scope (WORKSTREAM 2C, R-29 / DECISIONS #150)
 
 `reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
 WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PARTS_MANAGER has none.**
@@ -251,12 +277,19 @@ WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PART
 requires WAREHOUSE_MANAGER membership; no capability, Rule, ADR or fixture says which warehouses a
 Parts Manager may reorder for.
 
-Per the ruling ("If current authority does not actually define Parts Manager warehouse scope, STOP on
-that specific scope question rather than inventing one"), the resolver returns `NONE` with the reason
-`PARTS_MANAGER_SCOPE_UNDEFINED` — a named state, not a silent zero — and a test pins it so the gap
-cannot be closed by accident. **A Parts Manager therefore still cannot raise a reorder.** The two ways
-to change that without a ruling would both be inventions: granting them every warehouse, or reading
-`assignedWarehouseIds` for a role no authority says it scopes.
+The paragraph above is kept as the record of WHY R-17 stopped where it did.
+
+**R-29 (DECISIONS #150) has since ruled the question.** Warehouse scope is `RoleAssignment.scope` with
+`type: "location"` and `value` = a governed `warehouseId`, and a PARTS_MANAGER may hold it — through
+governed location-scoped assignments only, with no implicit all-warehouse, operating-company or
+title-inherited scope. `employees.assignedWarehouseIds` is demoted to a derived projection of that
+authority, never an independent grant.
+
+Until that consumer is built, `resolveReorderWarehouseScope` still returns `NONE` /
+`PARTS_MANAGER_SCOPE_UNDEFINED` and a Parts Manager still cannot raise a reorder — but the reason has
+changed, and the reason is the point. The constant now means **NOT YET BUILT**, not **UNDEFINED**, and
+the test pinning it protects a build gap rather than an authority gap. Whoever closes it implements
+R-29 §1/§3; they do not get to choose what the scope means.
 
 ### RESOLVED — a warehouse may now be both §3A-governed and company-bearing (WORKSTREAM 2A.1A)
 

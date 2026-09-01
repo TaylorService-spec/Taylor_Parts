@@ -302,7 +302,7 @@ export async function persistCloseOpportunityAsWon(
         lines: agreementLines,
       },
       // BOOKED at acceptance: the agreement's server-stamped acceptedAtMillis is when the
-      // commercial terms were committed (DECISIONS #150). Fallback to now only if a pre-FIN-002
+      // commercial terms were committed (DECISIONS #152). Fallback to now only if a pre-FIN-002
       // accepted agreement carries no stamp.
       { actorUid, nowMillis: Date.now(), bookedAtMillis: (agreementData.acceptedAtMillis as number | undefined) ?? undefined },
     );

@@ -184,6 +184,42 @@ test("a reorder row renders its governed external PO number and NEVER the reorde
   }
 });
 
+test("a legitimately long, machine-shaped external PO number is ACCEPTED as the reference", () => {
+  // The first deployed Quick Gate (0abc2353) rejected `PO-LIVE-1788220473108` with an id-shape
+  // heuristic — a gate false positive against a governed externalPoNumber value. Field provenance
+  // is proved HERE, not inferred from string shape: whatever the governed field holds, renders.
+  const row = buildReorderQueueRow(candidate({ externalPoNumber: "PO-LIVE-1788220473108" }));
+  assert.equal(row.orderReference, "PO-LIVE-1788220473108");
+});
+
+test("PROVENANCE PIN: orderReference comes from externalPoNumber and NOTHING else", () => {
+  // The correct live-gate/source split — the live gate proves what the operator sees; this proves
+  // which governed field supplied it. Rewiring either builder's reference to a document id fails.
+  const src = read("src/domain/receivingWorkspaceQueue.js");
+  const reorderBuilder = src.slice(src.indexOf("function buildReorderQueueRow"), src.indexOf("// ─────────────────────────────────────────────── the combined queue"));
+  assert.match(reorderBuilder, /orderReference: typeof row\.externalPoNumber/);
+  assert.doesNotMatch(reorderBuilder, /orderReference:[^,\n]*reorderRequestId/);
+  const supplierBuilder = src.slice(src.indexOf("function buildSupplierQueueRow"), src.indexOf("function buildReorderQueueRow"));
+  assert.match(supplierBuilder, /orderReference: null/);
+  assert.doesNotMatch(supplierBuilder, /orderReference:[^,\n]*purchaseOrderId/);
+  // The ids appear ONLY inside the opaque navigation argument.
+  assert.match(supplierBuilder, /open: \{ journey: RECEIVING_JOURNEY\.SUPPLIER, purchaseOrderId: po\.purchaseOrderId \}/);
+  assert.match(reorderBuilder, /open: \{ journey: RECEIVING_JOURNEY\.REORDER, reorderRequestId: row\.reorderRequestId \}/);
+});
+
+test("GATE CONTRACT: the corrected Quick Gate asserts the real crumb and never infers provenance from shape", () => {
+  // Pins the two corrections so the false negative and the false positive cannot quietly return.
+  const gate = read(".claude/skills/run-field-ops-app-vite/receivingNorthStarQuickGate.mjs");
+  // Crumb: the actual element, strict equality on the full directional relationship — removing
+  // the crumb, duplicating it, or losing either side fails the live gate.
+  assert.match(gate, /page\.locator\("\.ns-page__context"\)/);
+  assert.match(gate, /=== "Inventory → Receiving"/);
+  assert.match(gate, /\(await crumb\.count\(\)\) === 1/);
+  // Order reference: journey-conditional truth, no id-shape heuristic anywhere.
+  assert.match(gate, /orderPrimary !== "No order number recorded"/);
+  assert.doesNotMatch(gate, /\{18,28\}|id-?shaped token/i);
+});
+
 test("MUTATION PROOF: no RR-number is synthesized while the RR lane is unwired (RCV-G4)", () => {
   // The allocator exists but nothing calls it, so no reorder document carries a number — a queue
   // that prints one would be claiming numbering is live. Any RR-shaped string in a built row fails.
@@ -255,6 +291,157 @@ test("frame 1b recomposition changed presentation only — same submit path, no 
   // demotes its id to code, and the receipt states the missing RO number rather than receivingId.
   assert.doesNotMatch(src, /<h2[^>]*>\{progress\.purchaseOrderId\}/);
   assert.doesNotMatch(src, /Receipt \{receipt\.receivingId\}/);
+});
+
+test("frame 1d recomposition changed presentation only — same submit path, no new authority", () => {
+  const src = read("src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx");
+  // The one governed submit, reached only through the readiness-gated client — no new transport,
+  // callable, command, resolver, or numbering implementation.
+  assert.match(src, /submitReceiveInventoryStock/);
+  assert.doesNotMatch(src, /httpsCallable|from "firebase/);
+  assert.doesNotMatch(src, /aliasScan|scanResolver|resolveScan/i);
+  assert.doesNotMatch(src, /RR-\$\{|`RR-/);
+  // The opaque reorderRequestId never renders: not as the title and not as the review's
+  // purchase-order fallback (the exact defect this frame removed).
+  assert.doesNotMatch(src, /externalPoNumber \?\? candidate\.reorderRequestId/);
+  assert.doesNotMatch(src, /externalPoNumber \?\? c\.reorderRequestId/);
+  // Full-quantity contract intact: the received quantity is still the ordered quantity, derived in
+  // the domain builder — no quantity input exists on this surface.
+  assert.doesNotMatch(src, /type="number"|spinbutton/);
+});
+
+test("frame 1c re-hosting changed presentation only — same command, closed reasons, no new authority", () => {
+  const acquire = read("src/modules/receiving/AcquireExistingUnit.jsx");
+  // The one governed command, through its existing client — no new callable/command/transport.
+  assert.match(acquire, /callAcquireSerializedAsset/);
+  assert.doesNotMatch(acquire, /httpsCallable|from "firebase/);
+  // No location resolver of its own, no Equipment creation, no receiving-order creation.
+  assert.doesNotMatch(acquire, /createEquipment|installSerializedAsset|receiveInventoryStock|receiving_orders/);
+  // The sheet is the SHARED Modal primitive, not a new overlay system.
+  assert.match(acquire, /from "\.\.\/\.\.\/shared\/ui\/Modal\.jsx"/);
+  // The reason vocabulary remains the closed governed set of exactly three — a fourth value, or a
+  // coercion of an unknown one, is unrepresentable while this holds.
+  const vocab = read("src/domain/serializedAssetAcquireVocabulary.js");
+  for (const reason of ["OPENING_BALANCE", "LEGACY_MIGRATION", "EXISTING_COMPANY_ASSET"]) {
+    assert.match(vocab, new RegExp(reason), `${reason} must remain in the closed set`);
+  }
+  const reasonTokens = vocab.match(/[A-Z][A-Z_]+: "(OPENING_BALANCE|LEGACY_MIGRATION|EXISTING_COMPANY_ASSET|[A-Z_]+)"/g) ?? [];
+  assert.ok(!/(OTHER|ADJUSTMENT|CORRECTION|FOUND)/.test(reasonTokens.join(" ")), "no new reason value may appear");
+});
+
+// ── frame 1e — FAMILY-LEVEL truth pins, swept across all four merged frames ─────────────
+
+const FAMILY_SURFACES = [
+  "src/modules/inventory/Receiving.jsx",
+  "src/modules/receiving/MultiScanReceiving.jsx",
+  "src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx",
+  "src/modules/receiving/AcquireExistingUnit.jsx",
+  "src/domain/receivingWorkspaceQueue.js",
+];
+
+test("FAMILY PIN: no surface synthesizes an RR/PO/RO business number", () => {
+  for (const path of FAMILY_SURFACES) {
+    const src = read(path);
+    assert.doesNotMatch(src, /`RR-|`PO-|`RO-|"RR-\d|"PO-\d|"RO-\d/, `${path} must not manufacture a business number`);
+  }
+});
+
+test("FAMILY PIN: no purchase-order scan-identity claim anywhere (RCV-G7)", () => {
+  // The RCV-G4 discipline: a corrected surface may QUOTE the forbidden claim in the comment that
+  // records the gap — so a line carrying the phrase passes only when it names the gap it records.
+  for (const path of FAMILY_SURFACES) {
+    const lines = read(path).split("\n");
+    const offenders = lines
+      .map((line, i) => ({ line, i }))
+      .filter(({ line }) => /[Ss]can (the|an?) (purchase )?order|type its number/i.test(line))
+      // The recording comment block names the gap within a few lines of the quotation.
+      .filter(({ i }) => !lines.slice(Math.max(0, i - 6), i + 1).some((l) => /RCV-G7/.test(l)))
+      .map(({ line }) => line.trim());
+    assert.deepEqual(offenders, [], `${path} must not claim a PO scan identity`);
+  }
+});
+
+test("FAMILY PIN: no surface renders a raw backend error message", () => {
+  // Family error copy is sanitized vocabulary; the raw Error object's own text never reaches the
+  // screen. (Codes/status tokens from the bounded transport vocabulary are permitted.)
+  for (const path of FAMILY_SURFACES) {
+    const src = read(path);
+    assert.doesNotMatch(src, /\{\s*(err|error|e)\.message\s*\}|error\?\.message/, `${path} must not print err.message`);
+    assert.doesNotMatch(src, /\.stack\b/, path);
+  }
+});
+
+test("FAMILY PIN: the 1b destination picker keeps the location read's status (never options-only)", () => {
+  // The frame-1e defect, made unrepresentable: consuming `res.options ?? []` while discarding
+  // `res.status` is how a denied read became an innocently empty picker.
+  const src = read("src/modules/receiving/MultiScanReceiving.jsx");
+  assert.match(src, /setLocations\(\{ status: res\.status, options: res\.options \?\? \[\] \}\)/);
+  // And the raw locationId is not a fallback label for an option.
+  assert.doesNotMatch(src, /o\.label \?\? o\.locationId/);
+});
+
+test("FAMILY PIN: frame 1e introduced no new authority surface", () => {
+  for (const path of FAMILY_SURFACES) {
+    const src = read(path);
+    assert.doesNotMatch(src, /httpsCallable|from "firebase\/functions"/, path);
+    assert.doesNotMatch(src, /READINESS_OVERRIDE|_TRANSPORT_READY\s*=/, `${path} must not define/override readiness`);
+  }
+});
+
+// ── frame 1f — handheld structural pins (the stylesheet contracts the measured pass relies on) ──
+// Layout was measured in a real browser (375/320/768/1440) against rendered family states; jsdom
+// computes none of it, so what CI holds in place is the exact stylesheet structure that produced
+// those measurements. Removing any of these rules is how the measured result silently rots.
+
+const css = () => read("src/index.css");
+
+test("FRAME 1f PIN: both family tables carry the stacked handheld recomposition, and no receiving rule forces a pan", () => {
+  const s = css();
+  // The queue and the reconciliation table both stack at ≤640px: hidden thead + block rows +
+  // labelled flex cells reading from data-label.
+  for (const cls of ["fo-receiving-queue", "fo-receiving-session__table"]) {
+    assert.match(s, new RegExp(`\\.${cls} thead \\{ position: absolute;`), `${cls}: thead visually hidden on phone`);
+    assert.match(s, new RegExp(`\\.${cls}[^{]*td \\{ display: block; \\}|\\.${cls}, \\.${cls} tbody, \\.${cls} tr,?\\s*\\n?\\s*\\.?${cls}? ?td \\{ display: block; \\}|\\.${cls} td \\{ border: 0;`), `${cls}: stacked cells`);
+    assert.match(s, new RegExp(`\\.${cls} td::before \\{ content: attr\\(data-label\\)`), `${cls}: labels come from data-label`);
+  }
+  // MUTATION PROOF: no receiving-family selector may pin a fixed width wider than a 375px handheld
+  // (max-width caps are fine; fixed width floors are how tables come to pan).
+  const receivingRules = s.match(/\.fo-receiving[^{}]*\{[^}]*\}|\.fo-reorder[^{}]*\{[^}]*\}|\.fo-acquire[^{}]*\{[^}]*\}|\.fo-modal--sheet[^{}]*\{[^}]*\}/g) ?? [];
+  for (const rule of receivingRules) {
+    assert.doesNotMatch(rule, /(?<!max-)(?<!min-)width:\s*(3[89]\d|[4-9]\d\d|\d{4,})px/, `fixed over-wide width in: ${rule.slice(0, 70)}`);
+    assert.doesNotMatch(rule, /min-width:\s*(3[89]\d|[4-9]\d\d|\d{4,})px/, `min-width pan floor in: ${rule.slice(0, 70)}`);
+  }
+});
+
+test("FRAME 1f PIN: the sheet is full-width at handheld and long values keep wrap protection", () => {
+  const s = css();
+  assert.match(s, /@media \(max-width: 640px\) \{ \.fo-modal--sheet \{ max-width: 100%;/);
+  // MUTATION PROOF: the review read-back's long-value wrap (serial lists) survives.
+  assert.match(s, /\.fo-receive-confirm dd \{ overflow-wrap: anywhere; \}/);
+});
+
+test("FRAME 1f PIN: the measured touch-floor fix stands — workspace link-buttons clear 44px on phones", () => {
+  const s = css();
+  const block = s.match(/\.fo-receiving-workspace \.fo-link-btn \{[^}]*\}/)?.[0] ?? "";
+  assert.match(block, /min-height:\s*44px/);
+  // And the workspace actually carries the scoping class the rule keys on.
+  assert.match(read("src/modules/inventory/Receiving.jsx"), /className="fo-receiving-workspace"/);
+});
+
+test("FRAME 1f PIN: no handheld rule hides a truth state or the review/consequence stage", () => {
+  // Every ≤640px media block in the stylesheet: nothing inside it may display:none an error,
+  // warning, status message, confirm read-back, or the queue's disclosure copy.
+  const s = css();
+  const mobileBlocks = [...s.matchAll(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+  assert.ok(mobileBlocks.length > 0, "the handheld blocks must exist to be checked");
+  for (const block of mobileBlocks) {
+    for (const guarded of ["fo-warning", "fo-error", "fo-inline-error", "fo-receive-confirm", "fo-confirm-readback", "data-locations-message", "fo-receiving-queue__note"]) {
+      const rules = block.match(new RegExp(`[^{}]*${guarded}[^{}]*\\{[^}]*\\}`, "g")) ?? [];
+      for (const rule of rules) {
+        assert.doesNotMatch(rule, /display:\s*none/, `a phone rule must not hide ${guarded}`);
+      }
+    }
+  }
 });
 
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {

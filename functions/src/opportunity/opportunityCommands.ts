@@ -73,7 +73,7 @@ export interface CreateOpportunityInput {
   // OPTIONAL and never inferred -- one salesperson and one customer may legitimately transact with
   // either company, so nothing about the Account can decide this. A bad value is still rejected.
   operatingCompanyId?: string;
-  // FIN-002 (DECISIONS #150): SALES CREDIT, distinct from ownership. Defaults from the resolved
+  // FIN-002 (DECISIONS #152): SALES CREDIT, distinct from ownership. Defaults from the resolved
   // commercial OWNER at the point the sale enters the chain -- never from the creating actor (an
   // assistant creating for Salesperson A's customer credits A, not the assistant). Explicitly
   // reassignable pre-close through the ordinary edit; frozen downstream at the commercial

@@ -390,6 +390,44 @@ describe("Frame 1b — journey identity and RCV-G5/G7 truth rules", () => {
     for (const td of cells) expect(td.getAttribute("data-label")).toBeTruthy();
   });
 
+  it("MUTATION PROOF (frame 1e): a failed location read is never an innocently empty destination picker", async () => {
+    // This select used to receive only `res.options ?? []`, so DENIED / UNAVAILABLE / a failure all
+    // rendered as a pickable-looking empty list. Each is now its own sentence, the picker is
+    // disabled, and the protected submit repeats that state instead of advising "choose one".
+    const cases = [
+      [RECEIVING_OUTCOME.DENIED, /not authorized to read receiving locations/i],
+      [RECEIVING_OUTCOME.UNAVAILABLE, /cannot be read right now/i],
+      ["failed", /could not be loaded/i],
+    ];
+    for (const [status, sentence] of cases) {
+      cleanup();
+      await openOrder(deps({
+        fetchReceivingLocationOptions: vi.fn().mockResolvedValue({ status, options: [] }),
+      }));
+      const picker = await screen.findByLabelText(/receiving location/i);
+      expect(picker.disabled).toBe(true);
+      expect(picker.querySelectorAll("option")).toHaveLength(1); // placeholder only, nothing fabricated
+      expect(screen.getByText(sentence)).toBeTruthy();
+      // And the failure is never the EMPTY claim.
+      expect(screen.queryByText(/No eligible receiving location is available/)).toBeNull();
+    }
+  });
+
+  it("location EMPTY is its own truthful claim, distinct from every failure", async () => {
+    await openOrder(deps({
+      fetchReceivingLocationOptions: vi.fn().mockResolvedValue({ status: RECEIVING_OUTCOME.READY, options: [] }),
+    }));
+    expect(await screen.findByText("No eligible receiving location is available.")).toBeTruthy();
+    expect(screen.queryByText(/could not be loaded|not authorized|cannot be read/i)).toBeNull();
+  });
+
+  it("a READY location option renders its governed label and never the raw locationId", async () => {
+    await openOrder(deps());
+    const picker = screen.getByLabelText(/receiving location/i);
+    expect(picker.textContent).toContain("Main warehouse");
+    expect(picker.textContent).not.toContain("WH-1");
+  });
+
   it("the legacy standalone picker presents the id as an internal reference, never a scan target", async () => {
     render(<MultiScanReceiving deps={deps()} />);
     expect(await screen.findByLabelText(/order id/i)).toBeTruthy();

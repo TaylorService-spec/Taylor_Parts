@@ -317,6 +317,14 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
     // condition context by design -- no callable in this repo has ever supplied a populated
     // operationalRoleActive resolver). Declared here so the grant is documented and consistent with
     // existing precedent, not silently omitted; see manufacturerReadService.ts's header comment.
+  // CORRECTION (2026-09-01, R-29 measurement): the "DENIES today through resolveEffectiveAccess"
+  // claim above is NO LONGER TRUE and is kept only as the record of what it used to do.
+  // effectiveAccessFeed.ts now builds a REAL operationalRoleActive resolver
+  // (buildOperationalRoleActiveResolverFromEmployeeId, Wave 7 PART 4), so every
+  // operationalRoleActive-conditioned capability on this Role resolves for real. Measured live
+  // against eos-platform-sandbox: the denials observed for the warehouseManager/partsManager
+  // personas come from those principals holding no assignment to THIS Role at all, not from an
+  // unpopulated condition context.
     "inventory.catalog.read",
   ],
   // reorder.purchaseOrder.void is deliberately NOT granted to technician

@@ -27,19 +27,30 @@
 // predicate is the ability to answer it as a SET (which warehouses) rather than one at a time,
 // because a picker needs the set.
 //
-// ============================ THE PARTS_MANAGER GAP IS DECLARED, NOT FILLED ============================
+// ============================ THE PARTS_MANAGER SCOPE: RULED, NOT YET BUILT ============================
 //
 // `reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
-// WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. A PARTS_MANAGER does not:
-// `assignedWarehouseIds` is consulted by exactly one authority in this repository, and that
-// authority requires WAREHOUSE_MANAGER membership. No capability, Rule, ADR or fixture defines which
-// warehouses a Parts Manager may reorder for.
+// WAREHOUSE_MANAGER. When R-17 wrote this module, three of those four had a governed warehouse scope
+// and a PARTS_MANAGER had none, so this resolver returned NONE with the reason
+// PARTS_MANAGER_SCOPE_UNDEFINED -- a named state rather than a silent zero.
 //
-// So this resolver returns NONE for them, with the reason PARTS_MANAGER_SCOPE_UNDEFINED -- a named
-// state, not a silent zero. The alternatives were to grant them every warehouse (inventing an
-// unscoped authority nobody granted) or to read `assignedWarehouseIds` for a role no authority says
-// it scopes (inventing a meaning for stored data). The Owner's ruling is explicit that the scope
-// question stops here rather than being answered by this workstream.
+// OWNER RULING R-29 (DECISIONS #150) HAS SINCE ANSWERED THE SCOPE QUESTION. The canonical authority is
+// `RoleAssignment.scope` with type "location" and value = a governed warehouseId, and a PARTS_MANAGER
+// MAY hold warehouse scope through such an assignment. `employees.assignedWarehouseIds` is demoted to a
+// derived projection of that authority; it is no longer an independent grant.
+//
+// THE BEHAVIOUR BELOW IS DELIBERATELY UNCHANGED. This resolver still returns NONE for a PARTS_MANAGER,
+// because the location-scoped consumer R-29 requires does not exist yet: no caller in this repository
+// constructs a non-global TargetContext, so the location arm of resolveEffectivePermission.scopeMatches()
+// is implemented and unreached. What changed is the MEANING of the constant, and the meaning is the
+// point of the constant existing:
+//
+//     PARTS_MANAGER_SCOPE_UNDEFINED now reads NOT YET BUILT, not UNDEFINED.
+//
+// Whoever builds it implements R-29 §1/§3 -- resolve the principal's location-scoped assignments that
+// carry this capability, and confine the command to those warehouseIds. They do not get to choose a
+// scope meaning, and the two shortcuts R-17 refused are still refused: granting every warehouse, or
+// reading assignedWarehouseIds as if it were the grant.
 //
 // PURE. No Firestore, no clock, no throwing -- every malformed input resolves to a denial.
 import { evaluateOperationalRoleActive, type OperationalRoleResolutionFacts } from "../access/operationalRoleContext";
@@ -68,7 +79,8 @@ export const REORDER_WAREHOUSE_SCOPE_REASON = {
   WAREHOUSE_MANAGER_ASSIGNMENT: "WAREHOUSE_MANAGER_ASSIGNMENT",
   /** The role is held, but the assignment is absent, empty or malformed. Denies every warehouse. */
   WAREHOUSE_MANAGER_WITHOUT_ASSIGNMENT: "WAREHOUSE_MANAGER_WITHOUT_ASSIGNMENT",
-  /** THE OPEN QUESTION. See the header: no authority defines a Parts Manager's warehouse scope. */
+  /** RULED BUT NOT YET BUILT. R-29 defines the scope (RoleAssignment.scope.location); the
+   *  location-scoped consumer does not exist yet, so a Parts Manager still resolves to NONE. */
   PARTS_MANAGER_SCOPE_UNDEFINED: "PARTS_MANAGER_SCOPE_UNDEFINED",
   /** Nothing about this principal grants any warehouse. */
   NO_GOVERNED_WAREHOUSE_AUTHORITY: "NO_GOVERNED_WAREHOUSE_AUTHORITY",
