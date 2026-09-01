@@ -26,7 +26,7 @@ const CTX = { actorUid: "uid-1", nowMillis: 1_754_600_000_000 };
 const LATER = { actorUid: "uid-2", nowMillis: 1_754_699_999_999 };
 const draft = (over = {}) =>
   buildCreateSalesAgreement(
-    { accountId: "acct-1", ownerEmployeeId: "emp-1", sourceOpportunityId: "opp-1",
+    { accountId: "acct-1", ownerEmployeeId: "emp-1", sourceOpportunityId: "opp-1", inheritedOperatingCompanyId: "taylor",
       lines: [{ kind: "PART", ref: "A", quantity: 2, unitPrice: 1000 }], ...over },
     CTX,
   );
@@ -170,7 +170,7 @@ test("an edited draft still has to pass the acceptance gate", () => {
   // removes a price makes the agreement unacceptable again.
   const d = draft();
   const patch = buildUpdateSalesAgreementDraft(d, { lines: [{ kind: "PART", ref: "TBD", quantity: 1 }] }, LATER);
-  assert.equal(code(() => buildAcceptSalesAgreement({ state: "DRAFT", lines: patch.lines }, LATER)), "UNPRICED_LINE");
+  assert.equal(code(() => buildAcceptSalesAgreement({ state: "DRAFT", operatingCompanyId: d.operatingCompanyId, lines: patch.lines }, LATER)), "UNPRICED_LINE");
   const repriced = buildUpdateSalesAgreementDraft(d, { lines: [{ kind: "PART", ref: "TBD", quantity: 1, unitPrice: 900 }] }, LATER);
-  assert.doesNotThrow(() => buildAcceptSalesAgreement({ state: "DRAFT", lines: repriced.lines }, LATER));
+  assert.doesNotThrow(() => buildAcceptSalesAgreement({ state: "DRAFT", operatingCompanyId: d.operatingCompanyId, lines: repriced.lines }, LATER));
 });

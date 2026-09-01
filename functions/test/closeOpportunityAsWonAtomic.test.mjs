@@ -47,6 +47,7 @@ async function seedAgreement(opportunityId, over = {}) {
     accountId: "acct-1",
     ownerEmployeeId: "emp-1",
     sourceOpportunityId: opportunityId,
+    operatingCompanyId: "taylor",
     state: "ACCEPTED",
     currency: "USD",
     lines: [{ lineId: "l1", kind: "PART", ref: "PRT-1005", quantity: 1, unitPrice: 2500, extendedMinor: 2500 }],
@@ -61,6 +62,7 @@ async function seedOpportunity(over = {}) {
   const id = uniq();
   await db.collection("opportunities").doc(id).set({
     opportunityNumber: `OPP-2026-${String(seq).padStart(6, "0")}`,
+    operatingCompanyId: "taylor",
     accountId: "acct-1",
     ownerEmployeeId: "emp-1",
     salesChannel: "RETAIL",

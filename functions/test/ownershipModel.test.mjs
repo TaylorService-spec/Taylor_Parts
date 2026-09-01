@@ -302,6 +302,7 @@ test("D-4: BACKWARD COMPATIBILITY -- an existing caller that supplies an owner i
     {
       accountId: "acct-1",
       ownerEmployeeId: "emp-legacy",
+      operatingCompanyId: "taylor", // company-authority correction: creation requires a company
       salesChannel: "RETAIL",
       lines: [{ kind: "PART", ref: "PRT-1", orderedQty: 1, unitPrice: 100 }],
     },
@@ -315,6 +316,7 @@ test("D-4: a downstream Sales Order inherits the Opportunity owner when none is 
     {
       accountId: "acct-1",
       inheritedOwner: deriveEmployeeRefOwner({ ownerEmployeeId: "emp-opp" }),
+      operatingCompanyId: "taylor", // company-authority correction: creation requires a company
       salesChannel: "RETAIL",
       lines: [{ kind: "PART", ref: "PRT-1", orderedQty: 1, unitPrice: 100 }],
     },
@@ -326,6 +328,7 @@ test("D-4: a downstream Sales Order inherits the Opportunity owner when none is 
     buildCreateSalesOrder(
       {
         accountId: "acct-1",
+        operatingCompanyId: "taylor",
         salesChannel: "RETAIL",
         lines: [{ kind: "PART", ref: "PRT-1", orderedQty: 1, unitPrice: 100 }],
       },
@@ -601,7 +604,7 @@ test("R-14/R-15: the two axes are independent on one record", () => {
   assert.equal(inherited.operatingCompanyId, null, "an inherited owner must NOT bring a company with it");
 });
 
-test("R-14: a Sales Order copies the company at creation and is unaffected without one", () => {
+test("R-14: a Sales Order copies the company at creation — and now REQUIRES one (company-authority correction)", () => {
   const lines = [{ kind: "PART", ref: "PRT-1", orderedQty: 1, unitPrice: 100 }];
   const copied = buildCreateSalesOrder(
     { accountId: "a", ownerEmployeeId: "emp-1", inheritedOperatingCompanyId: "ventana", salesChannel: "RETAIL", lines },
@@ -610,12 +613,17 @@ test("R-14: a Sales Order copies the company at creation and is unaffected witho
   assert.equal(copied.operatingCompanyId, "ventana");
   assert.equal(copied.ownerEmployeeId, "emp-1");
 
-  // BACKWARD COMPATIBLE: an existing caller supplying no company is unchanged.
-  const legacy = buildCreateSalesOrder(
-    { accountId: "a", ownerEmployeeId: "emp-1", salesChannel: "RETAIL", lines },
-    { actorUid: "u", nowMillis: 1 },
+  // HARDENED (2026-09-01): the old backward-compatible null is gone. A CONFIRMED order is a
+  // reportable commitment; a caller with no explicit or inherited company is refused rather than
+  // allowed to mint a company-less order. Copy semantics above are unchanged — the change is only
+  // that ABSENT now refuses instead of persisting null.
+  assert.throws(
+    () => buildCreateSalesOrder(
+      { accountId: "a", ownerEmployeeId: "emp-1", salesChannel: "RETAIL", lines },
+      { actorUid: "u", nowMillis: 1 },
+    ),
+    (e) => e.code === "COMPANY_REQUIRED",
   );
-  assert.equal(legacy.operatingCompanyId, null);
 });
 
 test("R-13: a reorder request derives its company from the WAREHOUSE, and a PO cannot mix companies", async () => {

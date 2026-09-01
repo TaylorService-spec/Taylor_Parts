@@ -38,7 +38,12 @@ export interface IssueInvoiceLineInput {
 }
 
 export interface IssueInvoiceInput {
-  companyId: string;
+  /**
+   * ASSERTION-ONLY since the company-authority correction: the invoice's company is the governed
+   * Sales Order's operatingCompanyId, never a caller choice. Supplied → must match (COMPANY_MISMATCH
+   * refused before numbering/write/audit); omitted → the order's company is used outright.
+   */
+  companyId?: string;
   accountId: string;
   salesOrderId: string;
   currency: string;
@@ -91,6 +96,24 @@ export function verifySalesOrderMatch(input: IssueInvoiceInput, so: SalesOrderSn
   }
   if (input.currency !== so.currency) {
     throw new InvoiceCommandError("CURRENCY_MISMATCH", "currency does not match the sales order's committed currency");
+  }
+  // ═══════════ COMPANY AUTHORITY (company-authority correction, 2026-09-01) ═══════════
+  // ONE company authority for a Sales-Order-derived invoice: the governed Sales Order's
+  // operatingCompanyId. The caller does NOT choose the company — `input.companyId` survives only
+  // as an ASSERTION for compatibility, and a caller asserting a different company than the order's
+  // is refused HERE, before any counter allocation, write, or audit. A Sales Order with no company
+  // (pre-correction data) cannot be invoiced until its company is resolved by governed means.
+  if (typeof so.operatingCompanyId !== "string" || so.operatingCompanyId.trim().length === 0) {
+    throw new InvoiceCommandError(
+      "COMPANY_REQUIRED",
+      "the sales order has no resolved operatingCompanyId; an invoice is a reportable financial event and cannot be issued without its governed company"
+    );
+  }
+  if (typeof input.companyId === "string" && input.companyId.trim().length > 0 && input.companyId !== so.operatingCompanyId) {
+    throw new InvoiceCommandError(
+      "COMPANY_MISMATCH",
+      `companyId "${input.companyId}" does not match the sales order's governed operatingCompanyId "${so.operatingCompanyId}" — the caller does not choose the invoice's company`
+    );
   }
   const eligibilityInput: BillingEligibilityInput = {
     salesOrderState: so.state,
@@ -183,7 +206,7 @@ export interface InvoiceRecord {
    * here. null only when the caller had no governed SO snapshot to compose from (pre-FIN-002
    * fixtures) — never partially fabricated.
    */
-  attribution: FinancialAttributionSnapshot | null;
+  attribution: FinancialAttributionSnapshot;
 }
 
 // Build the immutable ISSUED invoice record. `deps` carries the trusted sequence/number (from the counter, in
@@ -191,13 +214,23 @@ export interface InvoiceRecord {
 export function buildInvoiceRecord(
   input: IssueInvoiceInput,
   // `so` is the SAME governed snapshot verifySalesOrderMatch already reads (tx.get, never client
-  // claims). Optional so pre-FIN-002 callers/fixtures keep working; when present it supplies the
-  // line business units and the frozen attribution snapshot.
-  deps: { invoiceNumber: string; sequence: number; nowMillis: number; so?: SalesOrderSnapshot },
+  // claims). REQUIRED since the company-authority correction: it supplies the line business units,
+  // the frozen attribution snapshot, and THE company — the caller's `companyId` is assertion-only.
+  deps: { invoiceNumber: string; sequence: number; nowMillis: number; so: SalesOrderSnapshot },
 ): InvoiceRecord {
   if (!input || typeof input !== "object") throw new InvoiceCommandError("INVALID_INPUT", "invoice input required");
-  for (const [field, v] of [["companyId", input.companyId], ["accountId", input.accountId], ["salesOrderId", input.salesOrderId], ["currency", input.currency]] as const) {
+  for (const [field, v] of [["accountId", input.accountId], ["salesOrderId", input.salesOrderId], ["currency", input.currency]] as const) {
     if (typeof v !== "string" || v.trim().length === 0) throw new InvoiceCommandError("REQUIRED", `${field} is required`);
+  }
+  // COMPANY: from the governed Sales Order, never the caller. verifySalesOrderMatch enforced
+  // presence and the assertion-match before numbering; re-asserted here so this builder is safe
+  // even for a caller that skipped the verify (a defect, but not one that may mint a company).
+  const soCompany = deps.so?.operatingCompanyId;
+  if (typeof soCompany !== "string" || soCompany.trim().length === 0) {
+    throw new InvoiceCommandError("COMPANY_REQUIRED", "the sales order snapshot carries no operatingCompanyId; the invoice's company comes from the governed order, never the caller");
+  }
+  if (typeof input.companyId === "string" && input.companyId.trim().length > 0 && input.companyId !== soCompany) {
+    throw new InvoiceCommandError("COMPANY_MISMATCH", "companyId assertion does not match the sales order's governed operatingCompanyId");
   }
   if (!isInt(input.dueDate)) throw new InvoiceCommandError("DUE_DATE_INVALID", "dueDate (ms epoch) is required for AR aging");
   // Eligibility ≠ policy: only an explicit BILL_NOW decision may be issued here (§5). PARTIALLY_ELIGIBLE that
@@ -238,7 +271,9 @@ export function buildInvoiceRecord(
   return {
     invoiceNumber: deps.invoiceNumber,
     sequence: deps.sequence,
-    companyId: input.companyId,
+    // STRUCTURAL INVARIANT: invoice.companyId === invoice.attribution.operatingCompanyId, always —
+    // both read the same governed Sales Order fact; neither is caller-chosen.
+    companyId: soCompany,
     accountId: input.accountId,
     salesOrderId: input.salesOrderId,
     currency: input.currency,
@@ -252,20 +287,20 @@ export function buildInvoiceRecord(
     totalMinor,
     outstandingMinor: totalMinor, // AR open balance at issuance; payments/adjustments reduce it later
     taxProvenance: typeof input.taxProvenance === "string" ? input.taxProvenance : null,
-    // The ONE canonical snapshot (FIN-002). Composed from the governed SO facts; the invoice
-    // header's businessUnitId is deliberately null — a mixed order bills mixed units, and the
-    // truthful unit lives on each line above.
-    attribution: deps.so
-      ? buildFinancialAttributionSnapshot({
-          operatingCompanyId: deps.so.operatingCompanyId ?? null,
-          businessUnitId: null,
-          creditedSalespersonId: deps.so.creditedSalespersonId ?? null,
-          customerId: input.accountId,
-          sourceType: "SALES_ORDER",
-          sourceRecordId: input.salesOrderId,
-          eventAtMillis: deps.nowMillis,
-          currency: input.currency,
-        })
-      : null,
+    // The ONE canonical snapshot (FIN-002 / company correction). Composed from the governed SO
+    // facts; company is REQUIRED (the snapshot builder refuses without it) and identical to the
+    // header companyId above by construction. The header's businessUnitId is deliberately null —
+    // a mixed order bills mixed units, and the truthful unit lives on each line. Company is
+    // different: an invoice cannot span operating companies under this Sales Order authority.
+    attribution: buildFinancialAttributionSnapshot({
+      operatingCompanyId: soCompany,
+      businessUnitId: null,
+      creditedSalespersonId: deps.so.creditedSalespersonId ?? null,
+      customerId: input.accountId,
+      sourceType: "SALES_ORDER",
+      sourceRecordId: input.salesOrderId,
+      eventAtMillis: deps.nowMillis,
+      currency: input.currency,
+    }),
   };
 }

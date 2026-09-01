@@ -36,6 +36,8 @@ export type SalesOrderErrorCode =
   | "UNPRICED_LINE"
   /** FIN-002: a line's business-unit attribution is missing where required, invalid, or contradicts its kind. */
   | "BUSINESS_UNIT_INVALID"
+  /** Company-authority correction: creation attempted while the governed operating company is unresolved. */
+  | "COMPANY_REQUIRED"
   | "QTY_INVALID"
   | "TERMINAL"
   | "ILLEGAL_TRANSITION"
@@ -217,8 +219,13 @@ export interface BuiltSalesOrder {
   // matches the money model; a multi-currency source (account/company) is a
   // separate future seam.
   currency: string;
-  /** Ruling R-14. Copied from upstream at creation, then historical. null until supplied. */
-  operatingCompanyId: string | null;
+  /**
+   * Ruling R-14, hardened by the company-authority correction (2026-09-01): copied from upstream
+   * at creation, then historical — and REQUIRED. A CONFIRMED Sales Order is a reportable
+   * commercial commitment; creation refuses (COMPANY_REQUIRED) when neither explicit nor
+   * inherited authority resolves a governed company. Never null on a created order.
+   */
+  operatingCompanyId: string;
   /** FIN-002: sales credit, frozen at creation. Distinct from ownerEmployeeId; never the actor. */
   creditedSalespersonId: string;
   /**
@@ -259,11 +266,25 @@ export function buildCreateSalesOrder(
   if (!Array.isArray(input.lines) || input.lines.length === 0) throw new SalesOrderCommandError("NO_LINES", "A Sales Order requires at least one line");
   const lines = input.lines.map((l, i) => validateLine(l, i));
   requireCompletePricing(lines);
+  // COMPANY GATE (company-authority correction). A CONFIRMED order is a reportable commitment; if
+  // neither explicit nor inherited governed authority resolves a company, creation refuses HERE —
+  // pure, before any write, so both conversion transactions abort whole (no order written, no
+  // Opportunity falsely WON, no half-committed Agreement→Order lineage) and the direct callable
+  // refuses cleanly. No inference, no Taylor default, no actor fallback.
+  const resolvedCompany = resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId);
+  if (resolvedCompany === null) {
+    throw new SalesOrderCommandError(
+      "COMPANY_REQUIRED",
+      "This Sales Order has no resolved operating company. A confirmed order is a reportable " +
+        "commercial commitment and requires a governed operatingCompanyId — set it on the source " +
+        "Opportunity/Agreement (or supply it explicitly) and retry; it is never inferred or defaulted."
+    );
+  }
   return {
     accountId: input.accountId.trim(),
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
-    operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId),
+    operatingCompanyId: resolvedCompany,
     // Credit chain: explicit → inherited (agreement's frozen credit, read transactionally by the
     // conversion caller) → this order's resolved commercial owner. ctx.actorUid deliberately
     // absent — the person who clicked Create is an actor, not the credited salesperson.

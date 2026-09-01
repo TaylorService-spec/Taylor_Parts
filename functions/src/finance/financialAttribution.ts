@@ -57,6 +57,9 @@ export type AttributionErrorCode =
   | "BUSINESS_UNIT_REQUIRED"
   | "BUSINESS_UNIT_INVALID"
   | "BUSINESS_UNIT_MISMATCH"
+  /** A reportable snapshot with no operating company. Distinct from COMPANY_INVALID: absence is a
+   *  resolution failure the caller must fix upstream; a malformed value is a caller defect. */
+  | "COMPANY_REQUIRED"
   | "COMPANY_INVALID"
   | "CUSTOMER_REQUIRED"
   | "SOURCE_REQUIRED"
@@ -142,14 +145,20 @@ export function deriveWorkOrderBusinessUnit(workOrderType: unknown): BusinessUni
  * The event-time attribution snapshot every reportable financial event preserves.
  *
  * Not every dimension is valid for every event: a payment has no credited salesperson of its own,
- * a Service fact may have a responsible technician and no sales credit. Company, business unit and
- * both person dimensions are therefore NULLABLE — null means "this event genuinely has no such
- * attribution", recorded honestly, never a value waiting to be inferred later. Customer, source
- * lineage, event time and currency are REQUIRED on every snapshot: an event that cannot say whose
- * money, from where, when, in what currency is not reportable at all.
+ * a Service fact may have a responsible technician and no sales credit. Business unit and both
+ * person dimensions are therefore NULLABLE — null means "this event genuinely has no such
+ * attribution", recorded honestly, never a value waiting to be inferred later.
+ *
+ * OPERATING COMPANY IS NOT NULLABLE (company-authority correction, 2026-09-01):
+ * NO REPORTABLE OPERATIONAL FINANCIAL EVENT EXISTS WITHOUT operatingCompanyId. A pre-commit CRM
+ * record may still be company-unresolved where R-14 governance permits — but the moment a fact
+ * becomes REPORTABLE (accepted agreement, created order, issued invoice), its company must have
+ * resolved from governed explicit/inherited authority. Absence here is a refusal
+ * (COMPANY_REQUIRED), never a null to fill in later, and never an inferred or defaulted value.
+ * Customer, source lineage, event time and currency remain REQUIRED as before.
  */
 export interface FinancialAttributionSnapshot {
-  operatingCompanyId: string | null;
+  operatingCompanyId: string;
   businessUnitId: BusinessUnitId | null;
   creditedSalespersonId: string | null;
   responsibleEmployeeId: string | null;
@@ -198,9 +207,19 @@ export function buildFinancialAttributionSnapshot(input: BuildAttributionInput):
     if (!nonEmpty(v)) throw new AttributionError("PERSON_INVALID", `${label} must be a non-empty id or absent`);
     return v.trim();
   };
-  const company = (v: unknown): string | null => {
-    if (v === undefined || v === null) return null;
-    if (!nonEmpty(v)) throw new AttributionError("COMPANY_INVALID", "operatingCompanyId must be a non-empty id or absent");
+  // COMPANY: REQUIRED. Absent / null / empty-or-whitespace = unresolved upstream → COMPANY_REQUIRED.
+  // A non-string value is a caller defect, not a resolution failure → COMPANY_INVALID.
+  const company = (v: unknown): string => {
+    if (v !== undefined && v !== null && typeof v !== "string") {
+      throw new AttributionError("COMPANY_INVALID", "operatingCompanyId must be a governed company id string");
+    }
+    if (!nonEmpty(v)) {
+      throw new AttributionError(
+        "COMPANY_REQUIRED",
+        "A reportable financial snapshot requires operatingCompanyId — resolve the governed company " +
+          "upstream (explicit or inherited); it is never inferred, defaulted, or left to fill in later"
+      );
+    }
     return v.trim();
   };
   return Object.freeze({

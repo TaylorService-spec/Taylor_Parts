@@ -371,7 +371,11 @@ export async function persistAcceptSalesAgreement(
   const ref = db.collection(SALES_AGREEMENTS_COLLECTION).doc(input.salesAgreementId);
   const snap = await tx.get(ref);
   if (!snap.exists) throw new HttpsError("not-found", `No Sales Agreement with id ${input.salesAgreementId}`);
-  const current = snap.data() as { state: SalesAgreementState; lines: BuiltAgreementLine[] };
+  const current = snap.data() as {
+    state: SalesAgreementState;
+    lines: BuiltAgreementLine[];
+    operatingCompanyId?: string | null;
+  };
 
   // The DRAFT check and the pricing-completeness gate both live in the pure command. Acceptance is
   // the moment provisional prices become a commitment, so it is the right place for the gate — and

@@ -24,7 +24,7 @@ const { buildCreateOpportunity, buildUpdateOpportunity } = await import("../lib/
 const { buildCreateSalesAgreement, buildAcceptSalesAgreement, buildUpdateSalesAgreementDraft, deriveSalesOrderLinesFromAgreement } =
   await import("../lib/salesAgreement/salesAgreementCommands.js");
 const { buildCreateSalesOrder } = await import("../lib/salesOrder/salesOrderCommands.js");
-const { buildInvoiceRecord } = await import("../lib/finance/invoiceCommands.js");
+const { buildInvoiceRecord, verifySalesOrderMatch } = await import("../lib/finance/invoiceCommands.js");
 
 const CTX = { actorUid: "uid-assistant", nowMillis: 1_756_600_000_000 };
 
@@ -87,13 +87,34 @@ test("a snapshot requires customer, source, event time and currency — and free
   }
 });
 
-test("company and person dimensions may be honestly null — never fabricated", () => {
+test("COMPANY IS REQUIRED on every reportable snapshot; person/unit dimensions stay honestly nullable", () => {
+  // Company-authority correction: NO REPORTABLE OPERATIONAL FINANCIAL EVENT EXISTS WITHOUT
+  // operatingCompanyId. A payment still has no salesperson of its own — but it inherits the
+  // company of the invoices it applies to, and the snapshot refuses to exist without one.
   const snap = buildFinancialAttributionSnapshot({
+    operatingCompanyId: "taylor",
     customerId: "acct-1", sourceType: "PAYMENT", sourceRecordId: "pay-1", eventAtMillis: 5, currency: "USD",
   });
-  assert.equal(snap.operatingCompanyId, null);
+  assert.equal(snap.operatingCompanyId, "taylor");
   assert.equal(snap.creditedSalespersonId, null, "a payment is not owned by a salesperson");
   assert.equal(snap.businessUnitId, null);
+  assert.equal(snap.responsibleEmployeeId, null);
+});
+
+test("company absent / null / empty → COMPANY_REQUIRED; malformed → COMPANY_INVALID; never inferred", () => {
+  const rest = { customerId: "acct-1", sourceType: "PAYMENT", sourceRecordId: "pay-1", eventAtMillis: 5, currency: "USD" };
+  for (const missing of [undefined, null, "", "   "]) {
+    assert.throws(
+      () => buildFinancialAttributionSnapshot({ ...rest, operatingCompanyId: missing }),
+      (e) => e instanceof AttributionError && e.code === "COMPANY_REQUIRED",
+      `${JSON.stringify(missing)} must refuse as COMPANY_REQUIRED`,
+    );
+  }
+  assert.throws(
+    () => buildFinancialAttributionSnapshot({ ...rest, operatingCompanyId: 42 }),
+    (e) => e.code === "COMPANY_INVALID",
+    "a non-string company is a caller defect, not a resolution failure",
+  );
 });
 
 test("credit resolution: explicit → inherited → commercial owner; NEVER an actor parameter at all", () => {
@@ -217,12 +238,43 @@ test("direct Sales Order creation books at server time and never accepts a calle
   const so = buildCreateSalesOrder(
     {
       accountId: "acct-1", ownerEmployeeId: "emp-A", salesChannel: "RETAIL",
+      operatingCompanyId: "taylor",
       bookedAtMillis: 7, // a caller-supplied clock — must be ignored (not part of the input contract)
       lines: [{ kind: "PART", ref: "P1", orderedQty: 1, unitPrice: 100 }],
     },
     { actorUid: "u", nowMillis: 9000 },
   );
   assert.equal(so.bookedAtMillis, 9000, "bookedAt is ctx-supplied (server), never input-supplied");
+});
+
+// ── COMPANY GATES AT THE COMMITMENT BOUNDARIES ────────────────────────────────────────────────
+
+test("Agreement ACCEPT refuses an unresolved company atomically — the agreement stays unaccepted", () => {
+  const draft = buildCreateSalesAgreement(
+    { ...AGREEMENT_INPUT, inheritedOperatingCompanyId: null },
+    { actorUid: "u", nowMillis: 2000 },
+  );
+  assert.equal(draft.operatingCompanyId, null, "a DRAFT may negotiate company-unresolved (R-14 posture)");
+  assert.throws(
+    () => buildAcceptSalesAgreement(draft, CTX),
+    (e) => e.code === "COMPANY_REQUIRED" && /never inferred or defaulted/.test(e.message),
+  );
+  assert.equal(draft.state, "DRAFT", "nothing was stamped — refusal happens before any accept patch exists");
+});
+
+test("Sales Order creation refuses an unresolved company — both explicit and inherited absent", () => {
+  assert.throws(
+    () => buildCreateSalesOrder(
+      {
+        accountId: "acct-1", ownerEmployeeId: "emp-A", salesChannel: "RETAIL",
+        lines: [{ kind: "PART", ref: "P1", orderedQty: 1, unitPrice: 100 }],
+      },
+      { actorUid: "u", nowMillis: 1 },
+    ),
+    (e) => e.code === "COMPANY_REQUIRED",
+  );
+  // The refusal throws from the PURE builder, before any write in either conversion transaction —
+  // which is what guarantees no order is written and the Opportunity is never falsely left WON.
 });
 
 // ── HISTORICAL STAYS HISTORICAL ───────────────────────────────────────────────────────────────
@@ -261,7 +313,7 @@ test("the dormant invoice composes the canonical snapshot from the governed SO �
   };
   const inv = buildInvoiceRecord(
     {
-      companyId: "taylor-legacy-numbering-key", accountId: "acct-1", salesOrderId: "so-1", currency: "USD",
+      accountId: "acct-1", salesOrderId: "so-1", currency: "USD",
       dueDate: 999, billingAction: "BILL_NOW",
       lines: [
         { salesOrderLineId: "line-1", kind: "PART", ref: "P1", billableQty: 3, unitPriceMinor: 100, taxMinor: 0 },
@@ -272,7 +324,9 @@ test("the dormant invoice composes the canonical snapshot from the governed SO �
   );
   assert.deepEqual(inv.lines.map((l) => l.businessUnitId), ["PARTS", "INSTALLATION"],
     "line units come from the governed SO snapshot, never the client's payload");
+  assert.equal(inv.companyId, "ventana", "a Ventana Sales Order yields a Ventana invoice — the caller chose nothing");
   assert.equal(inv.attribution.operatingCompanyId, "ventana");
+  assert.equal(inv.companyId, inv.attribution.operatingCompanyId, "structural invariant: header === attribution company");
   assert.equal(inv.attribution.creditedSalespersonId, "emp-A");
   assert.equal(inv.attribution.sourceType, "SALES_ORDER");
   assert.equal(inv.attribution.sourceRecordId, "so-1");
@@ -282,20 +336,49 @@ test("the dormant invoice composes the canonical snapshot from the governed SO �
   assert.ok(Object.isFrozen(inv.attribution));
 });
 
-test("a pre-FIN-002 order (no stamps) yields honest nulls on the invoice — never fabricated attribution", () => {
-  const so = {
+test("a company-less (pre-correction) Sales Order CANNOT be invoiced, and a caller cannot supply the company", () => {
+  // Company-authority correction: this used to yield "honest nulls". An invoice is a reportable
+  // financial event, and a reportable event without a company may no longer exist — the refusal
+  // replaces the null, and the fix is resolving the ORDER's company by governed means, never the
+  // caller typing one into the invoice input.
+  const companylessSo = {
     accountId: "acct-1", currency: "USD", state: "FULFILLED",
     lines: [{ lineId: "line-1", kind: "PART", ref: "P1", unitPrice: 100, orderedQty: 1, fulfilledQty: 1 }],
   };
-  const inv = buildInvoiceRecord(
-    {
-      companyId: "k", accountId: "acct-1", salesOrderId: "so-1", currency: "USD",
-      dueDate: 1, billingAction: "BILL_NOW",
-      lines: [{ salesOrderLineId: "line-1", kind: "PART", ref: "P1", billableQty: 1, unitPriceMinor: 100, taxMinor: 0 }],
-    },
-    { invoiceNumber: "INV-2", sequence: 2, nowMillis: 1, so },
+  const input = {
+    accountId: "acct-1", salesOrderId: "so-1", currency: "USD",
+    dueDate: 1, billingAction: "BILL_NOW",
+    lines: [{ salesOrderLineId: "line-1", kind: "PART", ref: "P1", billableQty: 1, unitPriceMinor: 100, taxMinor: 0 }],
+  };
+  assert.throws(
+    () => buildInvoiceRecord(input, { invoiceNumber: "INV-2", sequence: 2, nowMillis: 1, so: companylessSo }),
+    (e) => e.code === "COMPANY_REQUIRED",
   );
-  assert.equal(inv.attribution.operatingCompanyId, null);
+  // The caller's companyId does not fill the gap — the SO is the only company authority.
+  assert.throws(
+    () => buildInvoiceRecord({ ...input, companyId: "taylor" }, { invoiceNumber: "INV-2", sequence: 2, nowMillis: 1, so: companylessSo }),
+    (e) => e.code === "COMPANY_REQUIRED",
+  );
+  // Pre-correction stamped lines still yield null LINE business units (an honest absence) once the
+  // company exists — line units and company are different dimensions with different rules.
+  const taylorSo = { ...companylessSo, operatingCompanyId: "taylor" };
+  const inv = buildInvoiceRecord(input, { invoiceNumber: "INV-3", sequence: 3, nowMillis: 1, so: taylorSo });
+  assert.equal(inv.companyId, "taylor", "a Taylor Sales Order yields a Taylor invoice");
   assert.equal(inv.attribution.creditedSalespersonId, null);
   assert.equal(inv.lines[0].businessUnitId, null);
+});
+
+test("verifySalesOrderMatch refuses a company mismatch or a company-less order BEFORE any numbering", () => {
+  const so = {
+    accountId: "acct-1", currency: "USD", state: "FULFILLED", operatingCompanyId: "taylor",
+    lines: [{ lineId: "line-1", kind: "PART", ref: "P1", unitPrice: 100, orderedQty: 1, fulfilledQty: 1 }],
+  };
+  const input = {
+    accountId: "acct-1", salesOrderId: "so-1", currency: "USD", dueDate: 1, billingAction: "BILL_NOW",
+    lines: [{ salesOrderLineId: "line-1", kind: "PART", ref: "P1", billableQty: 1, unitPriceMinor: 100, taxMinor: 0 }],
+  };
+  assert.throws(() => verifySalesOrderMatch({ ...input, companyId: "ventana" }, so), (e) => e.code === "COMPANY_MISMATCH");
+  assert.throws(() => verifySalesOrderMatch(input, { ...so, operatingCompanyId: null }), (e) => e.code === "COMPANY_REQUIRED");
+  assert.doesNotThrow(() => verifySalesOrderMatch({ ...input, companyId: "taylor" }, so));
+  assert.doesNotThrow(() => verifySalesOrderMatch(input, so), "an omitted assertion is fine — the order decides");
 });

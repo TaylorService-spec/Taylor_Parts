@@ -23,11 +23,28 @@ mutable state ≠ historical event attribution.
 
 ## 2. Canonical dimensions
 
-`FinancialAttributionSnapshot` = { operatingCompanyId·null, businessUnitId·null,
+`FinancialAttributionSnapshot` = { **operatingCompanyId (REQUIRED)**, businessUnitId·null,
 creditedSalespersonId·null, responsibleEmployeeId·null, customerId, sourceType,
 sourceRecordId, eventAtMillis, currency } — frozen (`Object.freeze`), built only by
-`buildFinancialAttributionSnapshot()`, which requires customer/source/event-time/currency and
-validates every optional dimension. Storage favors explicit top-level fields on commercial
+`buildFinancialAttributionSnapshot()`, which requires **company** (absent/null/empty →
+`COMPANY_REQUIRED`; malformed → `COMPANY_INVALID`), customer, source, event-time and currency,
+and validates every optional dimension.
+
+**Company-authority correction (2026-09-01):**
+- **NO REPORTABLE OPERATIONAL FINANCIAL EVENT EXISTS WITHOUT operatingCompanyId.**
+- **PRE-COMMIT COMPANY may be unresolved** where existing commercial governance permits it: an
+  open Opportunity and a DRAFT Sales Agreement may carry `operatingCompanyId: null` (R-14
+  posture, unchanged — company is never forced at initial CRM creation merely for Financials).
+- **COMMITTED / REPORTABLE COMPANY is REQUIRED**: Sales Agreement **ACCEPT refuses**
+  (`COMPANY_REQUIRED`) an unresolved company, atomically — no accepted agreement with null
+  company exists; **Sales Order creation refuses** (`COMPANY_REQUIRED`) on both conversion
+  paths and the direct path, from the pure builder before any write — no order is written and
+  the Opportunity is never falsely left WON; the **invoice refuses** a company-less order.
+- **INVOICE COMPANY IS GOVERNED BY ITS SOURCE SALES ORDER, NOT CHOSEN INDEPENDENTLY BY THE
+  CALLER**: `input.companyId` is assertion-only (mismatch → `COMPANY_MISMATCH`, refused before
+  numbering/write/audit; omitted → the order's company is used); numbering is keyed by the
+  order's company; structurally `invoice.companyId === invoice.attribution.operatingCompanyId`.
+- No inference, no Taylor default, no current-user fallback — anywhere. Storage favors explicit top-level fields on commercial
 records (repository convention); the snapshot OBJECT is stored where an event is composed
 whole (invoice `attribution`). The invariant is the single definition, not the shape.
 
@@ -190,9 +207,9 @@ createdBy, location names, or today's salesperson.
 
 ## 17. Remaining gaps
 
-- Company attribution on NEW chains requires the Opportunity to carry a company; Opportunity
-  creation still accepts null (R-14 posture, unchanged). Activation policy for requiring it is
-  a product decision recorded for FIN-004/F12 surfaces, not forced here.
+- Company at the REPORTABLE boundary is now code-enforced (accept/order/invoice gates above).
+  An Opportunity may still open company-unresolved (R-14, deliberate); the chain simply cannot
+  COMMIT that way — the accept/create refusals name the upstream fix.
 - Sales Order read projections deliberately do NOT yet expose company/credit/BU/bookedAt —
   exposure is a visibility decision (FIN-004 decides who may see which attribution).
 - Post-commitment attribution corrections → FIN-007 (adjustment events + audit before/after).

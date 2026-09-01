@@ -29,6 +29,7 @@ const CTX = { actorUid: "uid-1", nowMillis: 1_754_600_000_000 };
 const base = (lines) => ({
   accountId: "ACCT-1",
   ownerEmployeeId: "EMP-9",
+  operatingCompanyId: "taylor",
   salesChannel: "RETAIL",
   lines,
 });

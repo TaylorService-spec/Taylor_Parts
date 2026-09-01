@@ -85,7 +85,10 @@ export async function persistIssuedInvoice(db: Firestore, tx: Transaction, data:
   const nextLines = applyBilledQuantities(data, salesOrder);
 
   // Allocate the per-company number INSIDE the transaction (concurrency-safe; never reused).
-  const allocated = await allocateInvoiceNumber(tx, data.companyId);
+  // Keyed by the GOVERNED company — the Sales Order's operatingCompanyId — never the caller's
+  // assertion (applyBilledQuantities→verifySalesOrderMatch above already refused presence/mismatch
+  // BEFORE this allocation, so a refused call burns no sequence value).
+  const allocated = await allocateInvoiceNumber(tx, salesOrder.operatingCompanyId as string);
   // FIN-002: the SAME governed snapshot verifySalesOrderMatch read supplies line business units
   // and the frozen attribution — the client's payload labels nothing.
   const record = buildInvoiceRecord(data, { invoiceNumber: allocated.invoiceNumber, sequence: allocated.sequence, nowMillis: Date.now(), so: salesOrder });

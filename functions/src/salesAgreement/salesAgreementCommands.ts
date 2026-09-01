@@ -61,6 +61,8 @@ export type SalesAgreementErrorCode =
   | "REFERENCE_WRONG_KIND"
   /** FIN-002: a line's business-unit attribution is missing where required, invalid, or contradicts its kind. */
   | "BUSINESS_UNIT_INVALID"
+  /** Company-authority correction: ACCEPT attempted while the agreement's operating company is unresolved. */
+  | "COMPANY_REQUIRED"
   | "ILLEGAL_TRANSITION";
 
 export class SalesAgreementCommandError extends Error {
@@ -337,11 +339,26 @@ export function buildCreateSalesAgreement(
  * somebody who cannot fix it.
  */
 export function buildAcceptSalesAgreement(
-  current: { state: SalesAgreementState; lines: BuiltAgreementLine[] },
+  current: { state: SalesAgreementState; lines: BuiltAgreementLine[]; operatingCompanyId?: string | null },
   ctx: { actorUid: string; nowMillis: number }
 ): { state: SalesAgreementState; acceptedAtMillis: number; acceptedByUid: string; updatedAtMillis: number } {
   const check = checkAgreementTransition(current.state, "ACCEPTED");
   if (!check.ok) throw new SalesAgreementCommandError("ILLEGAL_TRANSITION", check.reason ?? "Illegal transition");
+
+  // ACCEPTANCE IS ALSO THE COMPANY GATE (company-authority correction, DECISIONS #152 addendum).
+  // An accepted agreement is a REPORTABLE commercial commitment, and no reportable financial fact
+  // exists without its operating company. A DRAFT may negotiate company-unresolved (R-14 posture);
+  // committing that way is refused HERE, atomically, before anything is stamped — no inference,
+  // no Taylor default, no current-user fallback. Fix it upstream (Opportunity/explicit) and accept
+  // again.
+  if (typeof current.operatingCompanyId !== "string" || current.operatingCompanyId.trim().length === 0) {
+    throw new SalesAgreementCommandError(
+      "COMPANY_REQUIRED",
+      "This agreement has no resolved operating company. An accepted agreement is a reportable " +
+        "commercial commitment and must carry a governed operatingCompanyId (explicit or inherited " +
+        "from its Opportunity) — it is never inferred or defaulted."
+    );
+  }
 
   const unpriced = (current.lines ?? []).filter((l) => l.unitPrice === null || l.unitPrice === undefined);
   if (unpriced.length > 0) {

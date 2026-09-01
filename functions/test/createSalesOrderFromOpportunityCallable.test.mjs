@@ -64,6 +64,7 @@ function makeOpportunity(overrides = {}) {
   return {
     accountId: "acct-1",
     ownerEmployeeId: "emp-owner",
+    operatingCompanyId: "taylor",
     salesChannel: "RETAIL",
     stage: "DECISION",
     outcome: "WON",

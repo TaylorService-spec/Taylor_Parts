@@ -21,7 +21,7 @@ import { checkAgreementTransition, SALES_AGREEMENT_STATES } from "../lib/salesAg
 
 const CTX = { actorUid: "uid-1", nowMillis: 1_754_600_000_000 };
 const base = (lines, extra = {}) => ({
-  accountId: "acct-1", ownerEmployeeId: "emp-1", lines, ...extra,
+  accountId: "acct-1", ownerEmployeeId: "emp-1", inheritedOperatingCompanyId: "taylor", lines, ...extra,
 });
 const build = (lines, extra) => buildCreateSalesAgreement(base(lines, extra), CTX);
 const priced = (unitPrice = 12000) => [{ kind: "EQUIPMENT_MODEL", ref: "C713", quantity: 2, unitPrice }];

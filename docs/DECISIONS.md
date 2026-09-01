@@ -4051,3 +4051,13 @@ be silently mislabeled); deriving credit from current Customer ownership forever
 silently rewrites history); auto-defaulting ambiguous SERVICE lines to SERVICE (rejected — a
 guess that poisons installation reporting); a finance-local attribution type (rejected — two
 definitions of one snapshot is how they drift).
+
+**Addendum (2026-09-01, same ruling, company-authority correction):** the snapshot's
+`operatingCompanyId` is REQUIRED — no reportable operational financial event exists without it.
+Pre-commit CRM records (open Opportunity, DRAFT Agreement) may remain company-unresolved where
+R-14 governance permits; the REPORTABLE boundary refuses: Agreement ACCEPT and Sales Order
+creation (both conversion paths and direct) refuse `COMPANY_REQUIRED` atomically, and a
+Sales-Order-derived invoice takes its company from the governed order alone —
+`input.companyId` is assertion-only (`COMPANY_MISMATCH` refused before numbering/write/audit),
+and `invoice.companyId === invoice.attribution.operatingCompanyId` structurally. No inference,
+no default company, no current-user fallback.
