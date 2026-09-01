@@ -32,8 +32,8 @@ import { canonicalPoStatusWords } from "../../domain/receivingWorkspaceQueue.js"
 // remaining quantity stays open and a partially received order stays SENT — there is no control on
 // this screen that could close one short, because no governed command exists to do it.
 //
-// The legacy reorder-PO workflow is untouched and lives beside this one (modules/inventory/
-// Receiving.jsx composes both); this is not a replacement for it.
+// The reorder-PO workflow lives beside this one (modules/inventory/Receiving.jsx composes both,
+// and frame 1d recomposed it to the same family grammar); this is not a replacement for it.
 
 const FIELD_STATE = Object.freeze({ IDLE: "IDLE", LOADING: "LOADING", READY: "READY", UNAVAILABLE: "UNAVAILABLE", DENIED: "DENIED", FAILED: "FAILED" });
 
@@ -189,7 +189,11 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   const [progressState, setProgressState] = useState(FIELD_STATE.LOADING);
   const [progress, setProgress] = useState(null);
   const [queue, setQueue] = useState(createQueue);
-  const [locations, setLocations] = useState([]);
+  // status null = the read has not settled. The STATUS IS KEPT (frame 1e): this select used to
+  // receive only `res.options ?? []`, so a denied, unavailable or failed location read rendered as
+  // an innocently empty picker — a failure presented as zero choices, exactly the collapse the
+  // family's truth grammar forbids.
+  const [locations, setLocations] = useState({ status: null, options: [] });
   const [locationId, setLocationId] = useState("");
   const [typedScan, setTypedScan] = useState("");
   const [typedSerial, setTypedSerial] = useState("");
@@ -223,7 +227,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
     let live = true;
     (async () => {
       const res = await api.fetchReceivingLocationOptions();
-      if (live) setLocations(res.options ?? []);
+      if (live) setLocations({ status: res.status, options: res.options ?? [] });
     })();
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -336,6 +340,22 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   const blocked = reconciliation.blocked;
   const canSubmit = reconciliation.submittable && !!locationId && !submitting;
   const storedStatusWords = canonicalPoStatusWords(progress.storedStatus);
+  // One truthful location state, kept mutually exclusive (frame 1e). The picker renders ONLY in
+  // READY-with-options; every other state is its own sentence, so a failed or denied read can
+  // never look like an empty destination list — and a selection cannot sit beside a failure.
+  const locationsState =
+    locations.status === null ? "LOADING"
+      : locations.status === RECEIVING_OUTCOME.READY ? (locations.options.length === 0 ? "EMPTY" : "READY")
+        : locations.status === RECEIVING_OUTCOME.DENIED ? "DENIED"
+          : locations.status === RECEIVING_OUTCOME.UNAVAILABLE ? "UNAVAILABLE"
+            : "FAILED";
+  const LOCATION_SENTENCE = {
+    LOADING: "Loading receiving locations…",
+    EMPTY: "No eligible receiving location is available.",
+    DENIED: "You are not authorized to read receiving locations.",
+    UNAVAILABLE: "Receiving locations cannot be read right now.",
+    FAILED: "Receiving locations could not be loaded.",
+  };
 
   return (
     <div className="fo-receiving-session">
@@ -499,13 +519,32 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         <h3>Submit receipt</h3>
         <div className="fo-identifier-form__row">
           <label htmlFor="rcv-location">Receiving location</label>
-          <select id="rcv-location" className="fo-input" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+          <select
+            id="rcv-location"
+            className="fo-input"
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            disabled={locationsState !== "READY"}
+            data-locations-state={locationsState}
+          >
             <option value="">Choose a destination…</option>
-            {locations.map((o) => (
-              <option key={o.locationId} value={o.locationId}>{o.label ?? o.locationId}</option>
+            {/* Rendered only from a READY read. The governed adapter guarantees READY options carry
+                labels — there is deliberately NO fallback to the raw locationId, which is a storage
+                key and not a place an operator can recognise. */}
+            {locationsState === "READY" && locations.options.map((o) => (
+              <option key={o.locationId} value={o.locationId}>{o.label}</option>
             ))}
           </select>
         </div>
+        {locationsState !== "READY" && (
+          <p
+            className={locationsState === "LOADING" ? "fo-muted" : "fo-warning"}
+            role={locationsState === "LOADING" ? undefined : "status"}
+            data-locations-message={locationsState}
+          >
+            {LOCATION_SENTENCE[locationsState]}
+          </p>
+        )}
         {error === NOT_DURABLE_TEXT ? (
           // Not a refusal: the platform never saw this. The scans stay on screen because this is the
           // only copy of them that exists.
@@ -526,7 +565,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
                 ? "Resolve the blocked scans first."
                 : "Scan at least one item."
               : !locationId
-                ? "Choose a receiving location."
+                // "Choose a location" is only honest advice while one CAN be chosen; in every
+                // other location state the reason repeats that state's own sentence.
+                ? (locationsState === "READY" ? "Choose a receiving location." : LOCATION_SENTENCE[locationsState])
                 : undefined
           }
           onClick={submit}

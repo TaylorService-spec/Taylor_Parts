@@ -115,7 +115,11 @@ describe("awaiting-receipt queue", () => {
     const table = await screen.findByRole("table", { name: /orders awaiting receipt/i });
     expect(table.textContent).not.toContain("fs-auto-9pQ7xW");
     expect(table.textContent).not.toContain("reorder-doc-1");
-    expect(within(table).getAllByText("No order number recorded").length).toBe(2);
+    // Each journey states ITS OWN absence (frame 1e): the supplier row has no order-number
+    // authority at all; the reorder row's governed external PO number is absent on that record —
+    // the same words its opened journey (frame 1d) uses.
+    expect(within(table).getByText("No order number recorded")).toBeTruthy();
+    expect(within(table).getByText("No PO number recorded")).toBeTruthy();
     // And no RR-number is claimed while the RR lane is unwired.
     expect(table.textContent).not.toMatch(/RR-\d{4}/);
   });
@@ -223,6 +227,9 @@ describe("beside the queue", () => {
     await renderReady([]);
     expect(screen.getByText("Recent receipts")).toBeTruthy();
     expect(screen.getByText("Not connected yet.")).toBeTruthy();
+    // MUTATION PROOF: the unavailable slot must never become a false empty list — "no receipts"
+    // is a claim about the data, and no governed read exists to make it.
+    expect(document.body.textContent).not.toMatch(/no receipts|no recent receipts/i);
   });
 });
 
