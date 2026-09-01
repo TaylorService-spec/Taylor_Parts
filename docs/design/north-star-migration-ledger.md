@@ -1798,3 +1798,31 @@ rewritten as green:
 | **Gate-contract pins** | the corrected assertions are themselves source-pinned (crumb element + strict equality; no shape heuristic; journey-conditional check), with new domain proofs: a long machine-shaped external PO number is ACCEPTED; rewiring either builder's reference to a document id fails |
 | **Second run, corrected gate, same artifact** | **20 PASS · 0 FAIL · 0 SKIP** vs deployed `0abc2353` — identity, truth grammar (3 reorder rows live), held gaps, ND-33 sheet with measured no-command close, deny-all discipline, live 375px overflow 0 |
 | **Acceptance** | unchanged — `AWAITING_OWNER_VISUAL_ACCEPTANCE`. A green gate is not acceptance |
+
+### Family 9 — CLOSED, Owner accepted 2026-08-31
+
+**The Owner gave visual acceptance on the deployed `0abc2353` (`platform-sandbox`).** Family 9 —
+Receiving — is closed: six frames merged, Hosting refreshed, the Quick Gate green against the
+exact deployed SHA (20 PASS · 0 FAIL · 0 SKIP, second run after the gate corrected its own two
+defects), and the acceptance itself given by the Owner, not inferred from a gate.
+
+| | |
+|---|---|
+| **Deployed release** | `0abc2353` — `platform-sandbox` / `sandbox`, verified from `/version.json` |
+| **Quick Gate** | `receivingNorthStarQuickGate.mjs` — **20/20** vs that live release |
+| **Functions / Rules** | NOT deployed — the whole family was presentation/composition; no authority changed at any point |
+| **Acceptance** | **CLOSED — Owner visual acceptance given 2026-08-31** |
+
+### What stays open, deliberately, and is NOT Family 9 debt
+
+The named gaps are recorded seams awaiting their own rulings, each rendered honestly by the
+shipped surfaces in the meantime:
+
+| | |
+|---|---|
+| **RCV-G1** | governed receipt-history read (`receiving_orders` deny-all is deliberate; the slot renders "Not connected yet") |
+| **RCV-G2** | receiving-order number readable client-side (allocated server-side since #1259; absence stated, never `receivingId`) |
+| **RCV-G5** | canonical supplier PO business number (none exists; absence stated) |
+| **RCV-G6** | per-row receipt progress on the list read (progress renders per opened order) |
+| **RCV-G7** | purchase-order scan-identifier contract (no scan-entry field until ruled and built) |
+| **RR numbering** | declared, allocator built, UNWIRED (RCV-G4 record governs the metadata truth) |
