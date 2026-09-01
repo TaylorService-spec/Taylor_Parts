@@ -22,7 +22,7 @@ Registered ids (both catalog mirrors), all `active:false` today:
 | Stage | Capabilities | Prerequisite |
 |---|---|---|
 | A. Read spine | `finance.read` + `finance.visibility.self` / `.team` / `.consolidated` | uid→employeeId links exist for SELF/TEAM principals |
-| B. Company/BU reach | `finance.visibility.company` / `.businessUnit` | **FIN-BLOCK-001 ruled first** (principal→company/BU binding mechanism) — grants held before that resolve BLOCKED (safe) |
+| B. Company/BU reach | `finance.visibility.company` / `.businessUnit` | **RULED — DECISIONS #157 (FIN-BLOCK-001 CLOSED):** reach binds via `operatingCompany`/`businessUnit`-scoped RoleAssignments, grant-time-validated against the governed vocabularies; a capability grant with no scoped binding still confers no reach |
 | C. Money-in writes | `finance.payment.apply` | Stage A; FIN-007 policy values if payments are approval-gated |
 | D. Corrections | `finance.adjustment.record`, `finance.refund.record` | Stage C; FIN-007 approval policy values + approver grants |
 | E. Issuance | `finance.invoice.issue` | tax determination injection decision (issuance refuses without tax — TAX_REQUIRES_REVIEW) |
@@ -33,6 +33,26 @@ Registered ids (both catalog mirrors), all `active:false` today:
 - FIN-008 period cadence/calendar + closer authority (no periods declared = nothing closed — safe).
 - FIN-004 scope grants per principal (reach = union; no grant = no reach).
 - FIN-BLOCK-002/003/004 rulings unlock service billing / cost & margin / intercompany respectively — activation without them is safe (those paths stay structurally absent/UNKNOWN).
+- **Activation registry:** the `finance.visibility.*` ids are deliberately in NO environment
+  activation registry today. Sandbox activation of Stage A/B requires the Owner-authorized PR
+  adding them to the sandbox entry of `config/environments.json` + the embedded snapshot in
+  `functions/src/access/environmentCapabilityOverrides.ts` (drift-guard-tested pair), followed
+  by a Functions deploy.
+
+### Grant examples (persona → capability grant + scope binding; ILLUSTRATIVE — nothing granted)
+
+Every grant is two facts: the ROLE carrying the capability (no repository role carries
+`finance.visibility.*` today — the carrying role itself is an Owner decision, marked TBD) and
+the RoleAssignment's SCOPE. Reach = capability ∧ binding, through the one resolver.
+
+| Persona | Capabilities | RoleAssignment scope | Status |
+|---|---|---|---|
+| Admin (governed full) | `finance.read` + `finance.visibility.consolidated` | `{type:"global"}` | role carriage TBD (admin role does not carry finance ids today — deliberate) |
+| Financial company manager (Taylor) | `finance.read` + `finance.visibility.company` | `{type:"operatingCompany", value:"taylor"}` | mechanism GOVERNED (#157); carrying role TBD |
+| BU manager (Service) | `finance.read` + `finance.visibility.businessUnit` | `{type:"businessUnit", value:"SERVICE"}` | mechanism GOVERNED (#157); carrying role TBD |
+| Self-view salesperson | `finance.read` + `finance.visibility.self` | `{type:"global"}` (reach limited by SELF's employeeId binding) | requires `users/{uid}.employeeId` link |
+| Team manager | `finance.read` + `finance.visibility.team` | `{type:"global"}` (reach limited by hierarchy visibility) | requires position hierarchy rows |
+| Consolidated executive | `finance.read` + `finance.visibility.consolidated` | `{type:"global"}` | carrying role TBD |
 
 ## 3. Deployment steps (Owner-executed, in order)
 

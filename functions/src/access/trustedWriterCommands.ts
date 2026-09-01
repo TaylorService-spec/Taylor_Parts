@@ -48,6 +48,8 @@ import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
 import { ENVIRONMENT_ACTIVATION_REGISTRY, type ActivationRegistryEnv } from "./environmentCapabilityOverrides";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { roleHasAnyBindingAtAssignmentScope, NO_BINDING_AT_SCOPE_REASON } from "./bindingScopePolicy";
+import { OPERATING_COMPANY_IDS } from "../ownership/operatingCompanyAuthority";
+import { BUSINESS_UNITS } from "../finance/financialAttribution";
 import {
   INVENTORY_CREATE_EXECUTOR_ROLE,
   INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
@@ -285,7 +287,18 @@ const SCOPE_TYPES: readonly ScopeType[] = [
   "domain",
   "location",
   "ownAssignment",
+  "operatingCompany",
+  "businessUnit",
 ];
+
+// FIN-BLOCK-001: financial reach scopes bind to GOVERNED ids only — free text is refused at
+// grant time. Companies come from the operating-company authority; units from the canonical
+// business-unit vocabulary. Value validation for these two types happens here (grant validation)
+// so an unbindable assignment can never be written, matching the fail-closed resolver side.
+const GOVERNED_SCOPE_VALUE_SETS: Partial<Record<ScopeType, readonly string[]>> = {
+  operatingCompany: Object.values(OPERATING_COMPANY_IDS),
+  businessUnit: BUSINESS_UNITS,
+};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -300,6 +313,17 @@ function assertValidScope(scope: unknown): asserts scope is Scope {
   }
   if (scope.value !== undefined && typeof scope.value !== "string") {
     throw new InvalidInputError("scope.value must be a string when present");
+  }
+  const governedValues = GOVERNED_SCOPE_VALUE_SETS[scope.type as ScopeType];
+  if (governedValues) {
+    if (typeof scope.value !== "string" || scope.value.length === 0) {
+      throw new InvalidInputError(`scope.value is required for a ${scope.type} scope`);
+    }
+    if (!governedValues.includes(scope.value)) {
+      throw new InvalidInputError(
+        `scope.value "${scope.value}" is not a governed ${scope.type} id (expected one of: ${governedValues.join(", ")})`,
+      );
+    }
   }
 }
 

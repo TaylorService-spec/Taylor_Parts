@@ -1,8 +1,9 @@
 # FIN-004 — Financial Visibility Model
 
-**Status:** IMPLEMENTED, server-enforced (SELF / TEAM / CONSOLIDATED live in the model;
-OPERATING_COMPANY / BUSINESS_UNIT predicates implemented, principal-binding BLOCKED — see
-FIN-BLOCK-001). Everything remains dormant behind `active:false` capabilities: nothing is
+**Status:** IMPLEMENTED, server-enforced — ALL FIVE scopes (SELF / TEAM / BUSINESS_UNIT /
+OPERATING_COMPANY / CONSOLIDATED). COMPANY/BU principal-binding ruled by DECISIONS #157
+(FIN-BLOCK-001 CLOSED): governed access ScopeTypes `operatingCompany`/`businessUnit` on
+RoleAssignments, grant-time-validated against the governed vocabularies. Everything remains dormant behind `active:false` capabilities: nothing is
 granted or activated by this workstream.
 **Ruling:** DECISIONS #156 · **Boundary preserved:** #145 (subledger), #154 (attribution).
 **Canonical authority:** `functions/src/finance/financialVisibility.ts`
@@ -25,8 +26,8 @@ company-wide AR over any caller-supplied accountId.
 |---|---|---|---|
 | SELF | `finance.visibility.self` | records credited to me (`attribution.creditedSalespersonId == users/{uid}.employeeId`) | ENFORCED |
 | TEAM | `finance.visibility.team` | SELF + employees the governed role hierarchy places under me (`access/hierarchicalVisibility.ts` — its first live consumer; no peer visibility) | ENFORCED |
-| BUSINESS_UNIT | `finance.visibility.businessUnit` | records wholly attributable to one unit — a cross-unit invoice stays hidden entirely | predicate ENFORCED; principal-binding **BLOCKED (FIN-BLOCK-001)** |
-| OPERATING_COMPANY | `finance.visibility.company` | records of one governed company (invoice `companyId` = the SO's `operatingCompanyId`, per #154) | predicate ENFORCED; principal-binding **BLOCKED (FIN-BLOCK-001)** |
+| BUSINESS_UNIT | `finance.visibility.businessUnit` | records wholly attributable to one unit — a cross-unit invoice stays hidden entirely | ENFORCED — binds via a scoped RoleAssignment (`businessUnit`/`operatingCompany`, DECISIONS #157) |
+| OPERATING_COMPANY | `finance.visibility.company` | records of one governed company (invoice `companyId` = the SO's `operatingCompanyId`, per #154) | ENFORCED — binds via a scoped RoleAssignment (`businessUnit`/`operatingCompany`, DECISIONS #157) |
 | CONSOLIDATED | `finance.visibility.consolidated` | everything — only when expressly granted; never a default, never implied by admin | ENFORCED |
 
 Reach = the UNION of granted scopes. All five ids are registered `active:false`
@@ -60,15 +61,16 @@ join; team set via `loadPrincipalPositions` + `visibleEmployeeIdsFor`) and the p
 decides per record. Exports, reports, and any future financial surface must consume this same
 authority — no surface-local visibility.
 
-## FIN-BLOCK-001 (recorded, not decided)
+## FIN-BLOCK-001 — CLOSED (DECISIONS #157, 2026-09-01)
 
-HOW a principal is bound to a company or business-unit VALUE is an access-governance decision
-belonging to the Owner's live scope workstream (R-29 bound warehouses via
-`RoleAssignment.scope {type:"location"}`; R-32 made scope per-binding). Candidates: a new
-`ScopeType` (4 synchronized edit points incl. `trustedWriterCommands`), appropriating the
-defined-but-unused `"domain"` ScopeType, or a governed Employee fact. None may be minted
-unilaterally. Until ruled: held COMPANY/BU grants resolve to BLOCKED (no reach), and the
-blocked reason is carried on the authority for honest reporting.
+The Owner ruled the binding mechanism: two new governed access ScopeTypes —
+`operatingCompany` and `businessUnit` — carried on RoleAssignments exactly like R-29's
+`{type:"location"}` warehouse bindings. Values are grant-time-validated against the governed
+company authority (taylor/ventana) and the canonical BUSINESS_UNITS; the loader resolves reach
+per governed value through the ONE canonical resolver (the R-32/#1672 loaded-authority
+pattern). No automatic grants, no migration; existing assignments keep prior semantics; a held
+capability with no scoped binding still confers nothing (surfaced as a blocked scope with its
+reason).
 
 ## What later phases inherit
 

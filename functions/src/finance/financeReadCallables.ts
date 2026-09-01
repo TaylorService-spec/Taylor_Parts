@@ -14,7 +14,15 @@
 //     position as if it were the whole account.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
-import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
+import { resolveEffectivePermission } from "../access/resolveEffectivePermission";
+import { resolveRuntimeCapabilityOverrides } from "../access/environmentCapabilityOverrides";
+import { isValidAccessVersionValue } from "../access/compactClaims";
+import { buildOperationalRoleActiveResolverFromEmployeeId } from "../access/operationalRoleContext";
+import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles";
+import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles";
+import type { RoleAssignment, Scope } from "../types/access";
+import { OPERATING_COMPANY_IDS } from "../ownership/operatingCompanyAuthority";
+import { BUSINESS_UNITS } from "./financialAttribution";
 import { INVOICES_COLLECTION } from "../constants/collections";
 import { projectInvoiceAr, summarizeAccountAr, type InvoiceArRead } from "./financeReadProjection";
 import {
@@ -33,43 +41,98 @@ export const FINANCE_READ_CAPABILITY = FINANCE_READ_FACT_FAMILY_CAPABILITY;
 // ============================ FIN-004: THE VISIBILITY LOADER ============================
 //
 // `finance.read` is the FACT-FAMILY gate; REACH comes from a visibility scope
-// (financialVisibility.ts). Both are resolved here, server-side, in one effective-access call —
-// following the R-32/#1672 lesson the reorder callables learned: authorization for a scoped
-// domain is the per-record decision itself, and the loaded authority (not a global boolean) is
-// what the read enforces with. SELF binds to users/{uid}.employeeId (the canonical uid→employee
-// join, server-read only); TEAM composes access/hierarchicalVisibility.ts — its first live
-// consumer. COMPANY/BUSINESS_UNIT grants resolve to BLOCKED (no reach) until the Owner's access
-// workstream rules how a principal is bound to a company/unit value (FIN-BLOCK-001): a held-but-
-// unbindable scope must confer nothing, never "everything of that kind".
+// (financialVisibility.ts). Both are resolved here, server-side, from ONE principal-state
+// snapshot — following the R-32/#1672 lesson the reorder callables learned: authorization for a
+// scoped domain is the per-record decision itself, and the loaded authority (not a global
+// boolean) is what the read enforces with. SELF binds to users/{uid}.employeeId (the canonical
+// uid→employee join, server-read only); TEAM composes access/hierarchicalVisibility.ts.
+//
+// COMPANY/BUSINESS_UNIT (FIN-BLOCK-001 CLOSED, Owner-directed): reach is bound through the
+// governed access-scope types `operatingCompany` / `businessUnit` on the principal's
+// RoleAssignments — ACCESS AUTHORITY FACTS, never employee/customer/location/warehouse
+// inference. The value sets are small and governed (2 companies, 4 units), so the loader asks
+// the ONE canonical resolver per candidate value with a scoped target — exactly how the reorder
+// warehouse authority resolves {type:"location"}. A held company/BU capability with NO scoped
+// binding still confers nothing (BLOCKED, with the reason) — never "everything of that kind".
 export async function loadFinancialVisibilityAuthority(db: Firestore, uid: string): Promise<FinancialVisibilityAuthority> {
-  const ids = [
-    FINANCE_READ_FACT_FAMILY_CAPABILITY,
-    FINANCIAL_VISIBILITY_CAPABILITIES.CONSOLIDATED,
-    FINANCIAL_VISIBILITY_CAPABILITIES.OPERATING_COMPANY,
-    FINANCIAL_VISIBILITY_CAPABILITIES.BUSINESS_UNIT,
-    FINANCIAL_VISIBILITY_CAPABILITIES.TEAM,
-    FINANCIAL_VISIBILITY_CAPABILITIES.SELF,
-  ];
-  let decisions: Readonly<Record<string, boolean>>;
+  const grants: FinancialVisibilityGrant[] = [];
+  const blockedScopes: Array<{ scope: FinancialVisibilityScope; reason: string }> = [];
+
+  let decisions: Record<string, boolean>;
+  let allowsAt: (permissionId: string, scope: Scope) => boolean;
   try {
-    ({ decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: ids }));
+    const [userSnap, assignmentsSnap] = await Promise.all([
+      db.collection("users").doc(uid).get(),
+      db.collection("roleAssignments").where("principalUid", "==", uid).where("status", "==", "active").get(),
+    ]);
+    const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown> | undefined) : undefined;
+    const rawVersion = userData?.accessVersion;
+    let accessVersion = 0;
+    if (rawVersion !== undefined && rawVersion !== null) {
+      // Malformed access data is a denial, never a default (same rule as the reorder authority).
+      if (!isValidAccessVersionValue(rawVersion)) {
+        return buildFinancialVisibilityAuthority({ factFamilyAllowed: false, grants: [] });
+      }
+      accessVersion = rawVersion;
+    }
+    const assignments = assignmentsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as RoleAssignment[];
+    const operationalRoleActive = await buildOperationalRoleActiveResolverFromEmployeeId(db, uid, userData?.employeeId);
+    const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+    const activationOverrides = resolveRuntimeCapabilityOverrides();
+
+    allowsAt = (permissionId, scope) =>
+      resolveEffectivePermission({
+        permissionId,
+        assignments,
+        roles,
+        currentAccessVersion: accessVersion,
+        target: { scope, condition: { operationalRoleActive } },
+        activationOverrides,
+      }).decision === "ALLOW";
+
+    // Capability-level (global-target) decisions — identical semantics to the effective-access
+    // feed, resolved against this same snapshot so every decision below is mutually consistent.
+    decisions = {};
+    for (const id of [
+      FINANCE_READ_FACT_FAMILY_CAPABILITY,
+      FINANCIAL_VISIBILITY_CAPABILITIES.CONSOLIDATED,
+      FINANCIAL_VISIBILITY_CAPABILITIES.OPERATING_COMPANY,
+      FINANCIAL_VISIBILITY_CAPABILITIES.BUSINESS_UNIT,
+      FINANCIAL_VISIBILITY_CAPABILITIES.TEAM,
+      FINANCIAL_VISIBILITY_CAPABILITIES.SELF,
+    ]) {
+      decisions[id] = allowsAt(id, { type: "global" });
+    }
   } catch (err) {
     console.error("[loadFinancialVisibilityAuthority] capability resolution failed", err);
     return buildFinancialVisibilityAuthority({ factFamilyAllowed: false, grants: [] });
   }
 
-  const grants: FinancialVisibilityGrant[] = [];
-  const blockedScopes: Array<{ scope: FinancialVisibilityScope; reason: string }> = [];
-
   if (decisions[FINANCIAL_VISIBILITY_CAPABILITIES.CONSOLIDATED] === true) {
     grants.push({ scope: "CONSOLIDATED" });
   }
-  // FIN-BLOCK-001: company/BU value binding is an undecided access mechanism. Held ⇒ BLOCKED.
-  if (decisions[FINANCIAL_VISIBILITY_CAPABILITIES.OPERATING_COMPANY] === true) {
-    blockedScopes.push({ scope: "OPERATING_COMPANY", reason: "principal-to-company binding mechanism undecided (FIN-BLOCK-001); grant confers no reach" });
+
+  // COMPANY/BU reach: enumerate the governed value sets and ask the canonical resolver with a
+  // value-matched scoped target. A company/BU-scoped assignment can NEVER satisfy the global
+  // targets above, and a global assignment carrying the capability reaches every governed value
+  // here only through the same resolver rules that govern everything else (admin included — no
+  // bypass path exists outside resolveEffectivePermission).
+  for (const companyId of Object.values(OPERATING_COMPANY_IDS)) {
+    if (allowsAt(FINANCIAL_VISIBILITY_CAPABILITIES.OPERATING_COMPANY, { type: "operatingCompany", value: companyId })) {
+      grants.push({ scope: "OPERATING_COMPANY", operatingCompanyId: companyId });
+    }
   }
-  if (decisions[FINANCIAL_VISIBILITY_CAPABILITIES.BUSINESS_UNIT] === true) {
-    blockedScopes.push({ scope: "BUSINESS_UNIT", reason: "principal-to-unit binding mechanism undecided (FIN-BLOCK-001); grant confers no reach" });
+  for (const businessUnitId of BUSINESS_UNITS) {
+    if (allowsAt(FINANCIAL_VISIBILITY_CAPABILITIES.BUSINESS_UNIT, { type: "businessUnit", value: businessUnitId })) {
+      grants.push({ scope: "BUSINESS_UNIT", businessUnitId });
+    }
+  }
+  // A held capability that bound to no governed value is surfaced honestly, and confers nothing.
+  if (decisions[FINANCIAL_VISIBILITY_CAPABILITIES.OPERATING_COMPANY] === true && !grants.some((g) => g.scope === "OPERATING_COMPANY")) {
+    blockedScopes.push({ scope: "OPERATING_COMPANY", reason: "no operatingCompany-scoped binding resolves for this principal; a valueless grant confers no reach" });
+  }
+  if (decisions[FINANCIAL_VISIBILITY_CAPABILITIES.BUSINESS_UNIT] === true && !grants.some((g) => g.scope === "BUSINESS_UNIT")) {
+    blockedScopes.push({ scope: "BUSINESS_UNIT", reason: "no businessUnit-scoped binding resolves for this principal; a valueless grant confers no reach" });
   }
 
   const needsEmployee = decisions[FINANCIAL_VISIBILITY_CAPABILITIES.SELF] === true

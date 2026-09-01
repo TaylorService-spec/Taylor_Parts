@@ -321,10 +321,11 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // CAN PERFORM WORK != CAN SEE FINANCIAL RESULT: every financial read requires the fact-family
   // gate (finance.read) AND one of these scopes; reach is the union of held scopes; UI hiding is
   // never authority. All registered active:false -- REGISTER != GRANT != ACTIVATE. The COMPANY and
-  // BUSINESS_UNIT scopes additionally require a principal-to-value binding mechanism the Owner's
-  // access-scope workstream (R-29/R-32 lineage) has not yet ruled (FIN-BLOCK-001): until then a
-  // held grant of those two confers NO reach (fail-closed in loadFinancialVisibilityAuthority),
-  // never "all companies"/"all units".
+  // BUSINESS_UNIT scopes bind through the governed access-scope types operatingCompany /
+  // businessUnit on RoleAssignments (DECISIONS #157 -- FIN-BLOCK-001 CLOSED): values are
+  // validated against the governed company/unit vocabularies at grant time, and a held grant
+  // with NO scoped binding still confers NO reach (fail-closed in
+  // loadFinancialVisibilityAuthority), never "all companies"/"all units".
   Object.freeze({
     id: "finance.visibility.self",
     description:
@@ -344,7 +345,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "finance.visibility.businessUnit",
     description:
-      "FIN-004 reach scope BUSINESS_UNIT: financial records wholly attributable to one governed business unit (a cross-unit document stays hidden entirely — visibility follows the number). BLOCKED pending the principal-to-unit binding ruling (FIN-BLOCK-001): a held grant currently confers no reach.",
+      "FIN-004 reach scope BUSINESS_UNIT: financial records wholly attributable to one governed business unit (a cross-unit document stays hidden entirely — visibility follows the number). Reach binds through a businessUnit-scoped RoleAssignment validated against the canonical unit vocabulary (DECISIONS #157); a grant with no scoped binding confers no reach.",
     resource: "finance.visibility",
     action: "businessUnit",
     active: false,
@@ -352,7 +353,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "finance.visibility.company",
     description:
-      "FIN-004 reach scope OPERATING_COMPANY: financial records of one governed operating company (invoice companyId, which FIN-002 pins to the Sales Order's operatingCompanyId). BLOCKED pending the principal-to-company binding ruling (FIN-BLOCK-001): a held grant currently confers no reach.",
+      "FIN-004 reach scope OPERATING_COMPANY: financial records of one governed operating company (invoice companyId, which FIN-002 pins to the Sales Order's operatingCompanyId). Reach binds through an operatingCompany-scoped RoleAssignment validated against the governed company authority (DECISIONS #157); a grant with no scoped binding confers no reach.",
     resource: "finance.visibility",
     action: "company",
     active: false,
