@@ -125,6 +125,8 @@ const COLLECTION_SURFACES = [
   // Wave UX-2 — same shape: the Billing Queue and Corrections registries own their views rows.
   "modules/financials/FinancialsBillingQueue.jsx",
   "modules/financials/FinancialsCreditsAdjustments.jsx",
+  // Wave UX-3 — Budget Management is the versioned-budget registry and owns its views row.
+  "modules/financials/FinancialsBudgets.jsx",
 ];
 
 const RELATED_DEFS = [

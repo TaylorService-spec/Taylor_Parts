@@ -176,3 +176,69 @@ describe("06 Credits & Adjustments — /financials/credits-adjustments", () => {
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
+
+// ─── Wave UX-3 — plan / forecast ───
+
+describe("08 Sales to Goal — /financials/sales-to-goal", () => {
+  test("basis grammar, no total row, honest attainment body", async () => {
+    const { default: FinancialsSalesToGoal } = await import("../src/modules/financials/FinancialsSalesToGoal.jsx");
+    const { container } = mount(<FinancialsSalesToGoal />);
+    expect(container.textContent).toMatch(/never summed or compared silently/);
+    for (const basis of ["Booked", "Billed", "Collected", "Revenue", "Gross margin"]) {
+      expect(screen.getAllByText(basis).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).toMatch(/deliberately no single total/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("09 Cost to Budget — /financials/cost-to-budget", () => {
+  test("reserved columns with the cost truth band; never zero-filled", async () => {
+    const { default: FinancialsCostToBudget } = await import("../src/modules/financials/FinancialsCostToBudget.jsx");
+    const { container } = mount(<FinancialsCostToBudget />);
+    expect(container.textContent).toMatch(/Cost actuals are not yet governed/);
+    expect(container.textContent).toMatch(/FIN-BLOCK-003/);
+    for (const col of ["Category", "Budget", "Actual", "Variance", "Remaining"]) {
+      expect(screen.getAllByText(col, { exact: false }).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("10 Forecasting — /financials/forecasting", () => {
+  test("method stays TBD; no version fabricated; expectedValue never promoted", async () => {
+    const { default: FinancialsForecasting } = await import("../src/modules/financials/FinancialsForecasting.jsx");
+    const { container } = mount(<FinancialsForecasting />);
+    expect(container.textContent).toMatch(/Method TBD — FIN-005/);
+    expect(container.textContent).toMatch(/no governed forecast version exists/i);
+    expect(container.textContent).toMatch(/never passed through as forecast revenue/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("12 Budget Management — /financials/budgets", () => {
+  test("versioned grammar; New budget disabled with policy truth", async () => {
+    const { default: FinancialsBudgets } = await import("../src/modules/financials/FinancialsBudgets.jsx");
+    const { container } = mount(<FinancialsBudgets />);
+    expect(screen.getByRole("button", { name: "New budget" }).disabled).toBe(true);
+    expect(container.textContent).toMatch(/approval policy not configured/i);
+    for (const label of ["Active budgets", "Awaiting approval", "Superseded", "Draft"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).toMatch(/never rewritten/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});
+
+describe("13 Goal Management — /financials/goals", () => {
+  test("basis chips unmissable; New goal disabled with policy truth", async () => {
+    const { default: FinancialsGoals } = await import("../src/modules/financials/FinancialsGoals.jsx");
+    const { container } = mount(<FinancialsGoals />);
+    expect(screen.getByRole("button", { name: "New goal" }).disabled).toBe(true);
+    for (const basis of ["Booked", "Billed", "Collected", "Revenue", "Gross margin"]) {
+      expect(screen.getAllByText(basis).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.textContent).toMatch(/explicit measurement basis/);
+    expect(container.textContent).not.toMatch(/\$\d/);
+  });
+});

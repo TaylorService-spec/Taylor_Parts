@@ -63,6 +63,11 @@ export function FinancialFigure({ label, valueMinor = null, currency = "USD", fa
   );
 }
 
+// ─── Measurement-basis chip (pages 08/10/13): the basis is unmissable, in its own slot. ───
+export function BasisChip({ basis }) {
+  return <span className="fin-basis">{basis}</span>;
+}
+
 // ─── The shared filter rail: Company · Business Unit · Period. ───
 // Identical wording and order on every Financials page (design contract). These controls
 // parameterize governed read requests only — they are never client-side visibility

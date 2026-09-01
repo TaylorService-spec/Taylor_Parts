@@ -86,6 +86,18 @@ export const AR_AGING_BUCKETS = Object.freeze([
   Object.freeze({ key: "b61_plus", label: "61+ days", tone: "danger" }),
 ]);
 
+// ─── Measurement bases (FIN-003 vocabulary; page 08/10/13 grammar). ───
+// Unlike bases are never summed or compared silently — a table over these carries no
+// total row, and rollups group by basis only. GROSS_MARGIN-basis attainment cannot be
+// computed truthfully until FIN-006 cost supply exists.
+export const MEASUREMENT_BASES = Object.freeze([
+  Object.freeze({ key: "BOOKED", label: "Booked" }),
+  Object.freeze({ key: "BILLED", label: "Billed" }),
+  Object.freeze({ key: "COLLECTED", label: "Collected" }),
+  Object.freeze({ key: "REVENUE", label: "Revenue" }),
+  Object.freeze({ key: "GROSS_MARGIN", label: "Gross margin" }),
+]);
+
 // ─── Read-state mapping ───
 //
 // Every Financials read renders through this one mapping so the same fact gets the same

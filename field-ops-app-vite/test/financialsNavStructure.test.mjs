@@ -28,6 +28,12 @@ const IMPLEMENTED_SECTION_KEYS = new Set([
   // Wave UX-2 — billing / corrections.
   "billingQueue",
   "creditsAdjustments",
+  // Wave UX-3 — plan / forecast.
+  "salesToGoal",
+  "costToBudget",
+  "forecasting",
+  "budgets",
+  "goals",
 ]);
 
 const APPROVED_SECTION_KEYS = [

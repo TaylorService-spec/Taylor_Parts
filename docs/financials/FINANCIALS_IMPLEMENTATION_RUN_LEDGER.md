@@ -455,3 +455,23 @@ STREAM SEPARATION above). Run start 2026-09-01. START MAIN: dfb362d5e863472f0dd5
   totals slots, honest bodies; 375 recomposes without horizontal scroll).
 - DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
 - NEXT: WAVE UX-3 (08 Sales to Goal, 09 Cost to Budget, 10 Forecasting, 12 Budgets, 13 Goals).
+
+#### WAVE UX-3 — Plan / Forecast (2026-09-01)
+- PAGES: 08 Sales to Goal · 09 Cost to Budget · 10 Forecasting · 12 Budget Management ·
+  13 Goal Management.
+- BASE MAIN: a2afa845 (Wave UX-2 merge). HEAD/PR/MERGE: recorded at PR close.
+- DESIGN SOURCES: North Star - Financials {08,09,10,12,13}*.dc.html + frames.
+- AUTHORITY: FIN-003 plan core (GOAL ≠ BUDGET, versioned, explicit basis) and FIN-005
+  forecast core (as-of versioning, method label) merged, dormant, NO storage/read — bodies
+  state that truth. Measurement-basis vocabulary (BOOKED/BILLED/COLLECTED/REVENUE/
+  GROSS_MARGIN) as chips; no total rows across bases. Page 10 approved as drawn — method
+  stays "Method TBD — FIN-005", version selector honestly empty, expectedValue never
+  promoted. Page 09 reserved columns never zero-filled (FIN-BLOCK-003 stated). New budget/
+  New goal actions DISABLED with command-inactive + policy-not-configured truth.
+- VOCAB FIX: "Active" tab → "Active budgets" (ADR-012 §2.2a bare-Active gate).
+- TESTS: five composition cases added; registries updated (FinancialsBudgets in
+  COLLECTION_SURFACES). Component sweep 2,993 green · runSuites 269 · typecheck/build/lint.
+- VISUAL GATE: emulator-backed 1440 (08/09/10/12) + 375 (13) — grammar, truth bands,
+  disabled actions, basis rail verified.
+- DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
+- NEXT: WAVE UX-4 (11 Profitability, 14 Company Performance, 15 Employee Performance).

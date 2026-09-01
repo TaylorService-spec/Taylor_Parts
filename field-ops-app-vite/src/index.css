@@ -7384,3 +7384,6 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-action-slot { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 300px; text-align: right; }
 .fin-primary-action { font: 600 13px var(--font-interface, Inter, sans-serif); padding: 9px 16px; min-height: 44px; background: var(--color-text-primary); color: var(--color-surface-page, #fff); border: none; cursor: pointer; }
 .fin-primary-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Financials Wave UX-3: measurement-basis chip (outlined, uppercase, its own slot). */
+.fin-basis { display: inline-block; font: 600 10.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-primary); border: 1px solid var(--color-border-strong, var(--color-border)); padding: 2px 8px; }
