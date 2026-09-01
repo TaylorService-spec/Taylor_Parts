@@ -98,7 +98,12 @@ describe("PartDetail -- Edit/Status entry points", () => {
   it("shows the resolved Manufacturer NAME (via the trusted catalog read), not the opaque manufacturerId", async () => {
     fetchPartMasterList.mockResolvedValue(READY);
     render(<PartDetail />);
-    await screen.findByText("Acme Valve Co");
+    // findAllByText, not findByText: P1v2 states the manufacturer TWICE by design (Owner ruling,
+    // 2026-08-31) — once in the identity line for recognition, once in the Part information band's
+    // master-data summary. What this test is about is unchanged and is asserted on the line below:
+    // the NAME reaches the reader and the opaque id never does, wherever it appears.
+    const shown = await screen.findAllByText("Acme Valve Co");
+    expect(shown.length).toBeGreaterThan(0);
     expect(screen.queryByText("MFG-1")).toBeNull();
   });
 

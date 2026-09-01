@@ -12,6 +12,9 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 let mockAvailableEquipmentSource = { connected: false, status: "loading", assets: [] };
 let mockEquipmentList = {
@@ -420,5 +423,198 @@ describe("one visible page identity, whichever tab is selected", () => {
     expect(container.querySelector("#eq-panel-available").hasAttribute("hidden")).toBe(true);
     expect(container.querySelector("#eq-panel-add").hasAttribute("hidden")).toBe(true);
     expect(visibleH1s(container)).toEqual(["Equipment"]);
+  });
+});
+
+// ══════════════════════ THE PAGE'S OWN PALETTE ══════════════════════
+//
+// Owner, from the deployed Available Equipment tab: "still has a white background". It did. Every
+// colour in `.fo-filters` was a hardcoded COOL-GREY hex — background #F7F9F8, border #E1E6E5, labels
+// #445559, controls #fff on #C8D1CF — while the product's ground is warm stone (#F3F0E9 page,
+// #FCFAF6 card, #EDE8DE sunken). A cold near-white card on a warm page does not read as a slightly
+// different white; it reads as a component from another application.
+//
+// Asserted against the STYLESHEET rather than a render, because jsdom computes no cascade — the
+// defect lives in the rule, so that is where it is caught. It is scoped to this one block: a
+// repo-wide no-hex rule is a different, larger decision and is not smuggled in here.
+
+describe("the Available Equipment filter block is on the palette", () => {
+  const css = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.css"),
+    "utf8",
+  );
+  // The block's own rules: from `.fo-filters {` up to the responsive override that closes it out.
+  const block = css.slice(css.indexOf(".fo-filters {"), css.indexOf("@media (max-width: 760px)", css.indexOf(".fo-filters {")));
+
+  it("declares no off-palette hex — the exact six that shipped", () => {
+    // These are the literals the Owner was looking at. Naming them keeps the failure diagnosable
+    // instead of "some hex somewhere".
+    for (const offPalette of ["#F7F9F8", "#E1E6E5", "#445559", "#C8D1CF", "#23383D", "#2E4A50"]) {
+      expect(block, `${offPalette} is a cool-grey literal on a warm-stone page`)
+        .not.toContain(offPalette);
+    }
+    // And no bare white, which is the one that reads worst against warm stone.
+    expect(block).not.toMatch(/background:\s*#fff\b/i);
+  });
+
+  it("takes its surface, border and text from tokens", () => {
+    expect(block).toMatch(/background:\s*var\(--color-surface-sunken\)/);
+    expect(block).toMatch(/border:\s*1px solid var\(--color-border\)/);
+    expect(block).toMatch(/color:\s*var\(--color-text-secondary\)/);
+  });
+
+  it("changes colour only — the grid and spacing are untouched", () => {
+    // A palette fix that quietly re-laid-out the filters would be a different change wearing this
+    // one's clothes.
+    expect(block).toMatch(/grid-template-columns:\s*minmax\(220px, 1\.7fr\) repeat\(4, minmax\(110px, 1fr\)\)/);
+    expect(block).toMatch(/padding:\s*16px/);
+    expect(block).toMatch(/gap:\s*12px/);
+  });
+});
+
+// ── THE TAB RAIL'S HOVER, and the specificity trap it was sitting in.
+//
+// Owner: the three tabs should carry the same hover as the Opportunity list — the fill turns dark
+// green and the text turns white. They did not, and the reason is documented on `.ns-view` because
+// that control hit it first: setting only a COLOUR on hover leaves the global `button:hover`
+// (0-1-1) to supply a dark evergreen BACKGROUND, while the more specific rule (0-2-0) wins the
+// colour back to near-black. Dark text on a dark fill. Neither rule is wrong alone; the pair is.
+
+describe("the tab rail matches the ratified collection view chips", () => {
+  const css = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.css"),
+    "utf8",
+  );
+  const rail = css.slice(css.indexOf(".ns-tabrail {"), css.indexOf(".ns-tabrail__tab:focus-visible"));
+
+  it("states BOTH halves of hover — the fill and the text", () => {
+    expect(rail).toMatch(/\.ns-tabrail__tab:hover\s*\{[^}]*background:\s*var\(--color-brand-secondary\)/);
+    expect(rail).toMatch(/\.ns-tabrail__tab:hover\s*\{[^}]*color:\s*#FFFFFF/);
+  });
+
+  it("the selected tab inverts on hover too — it must not read as disabled", () => {
+    expect(rail).toMatch(/\.ns-tabrail__tab--on:hover\s*\{[^}]*background:\s*var\(--color-brand-secondary\)/);
+    expect(rail).toMatch(/\.ns-tabrail__tab--on:hover\s*\{[^}]*color:\s*#FFFFFF/);
+  });
+
+  it("a colour-only hover cannot come back", () => {
+    // The regression itself: a `:hover` that sets `color` and no `background` re-opens the trap,
+    // because the global button rule then decides the fill.
+    const hoverRules = [...rail.matchAll(/\.ns-tabrail__tab[^{]*:hover\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(hoverRules.length).toBeGreaterThan(0);
+    for (const body of hoverRules) {
+      expect(body, `a :hover rule sets colour without a background: ${body.trim()}`)
+        .toMatch(/background:/);
+    }
+  });
+
+  it("the chips carry their own padding and a real touch target", () => {
+    // 44px, and horizontal padding so the green fill is not flush against the words.
+    expect(rail).toMatch(/min-height:\s*44px/);
+    expect(rail).toMatch(/padding:\s*0 14px/);
+  });
+});
+
+// ══════════════════════ THE TWO RAILS RUN THE SAME FOUR STATES ══════════════════════
+//
+// Customer Equipment carries TWO rails: the primary Equipment tabs (.ns-tabrail__tab) and the saved
+// -view row beneath them, All Equipment / Active (.ns-view). The Owner reported they did not share
+// the same shading and interaction grammar, and they did not — in one state.
+//
+// `.ns-view:hover` and `.ns-view.is-active` have IDENTICAL specificity (0-2-0) and `.is-active` is
+// declared later, so it won: hovering the SELECTED chip took the green background from `:hover` and
+// the near-black colour from `.is-active`. Dark text on a dark fill — the same trap the stylesheet
+// already documents for the UN-selected state, reproduced in the one state that comment did not
+// name, and the same trap the primary rail hit before `.ns-tabrail__tab--on:hover` was written.
+//
+// Asserted against the STYLESHEET, because jsdom computes no cascade and the defect lives in the
+// rule ordering rather than in any rendered element.
+
+describe("the saved-view rail runs the same four states as the Equipment tab rail", () => {
+  const css = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.css"),
+    "utf8",
+  );
+  // One rule body, by exact selector — never a slice of the file, so a rule moving cannot silently
+  // empty the haystack and pass everything.
+  // A plain string scan rather than a built regex: CSS selectors are full of regex metacharacters
+  // and escaping them correctly is a second thing to get wrong. This finds the selector where it
+  // begins a declaration — preceded by a newline and followed by " {" — so `.ns-view` cannot match
+  // inside `.ns-view.is-active`, which is the confusion that would make every assertion below read
+  // the wrong rule body.
+  const rule = (selector) => {
+    const needle = `\n${selector} {`;
+    const at = css.indexOf(needle);
+    if (at < 0) return null;
+    const open = at + needle.length;
+    const close = css.indexOf("}", open);
+    return close < 0 ? null : css.slice(open, close);
+  };
+
+  it("1. RESTING — both rails sit on no background and the same secondary text token", () => {
+    for (const sel of [".ns-tabrail__tab", ".ns-view"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist`).toBeTruthy();
+      expect(body, `${sel} resting background`).toMatch(/background:\s*none/);
+      expect(body, `${sel} resting colour`).toMatch(/color:\s*var\(--color-text-secondary\)/);
+    }
+  });
+
+  it("2. HOVER — both state BOTH halves, background and text, at the level that owns the control", () => {
+    for (const sel of [".ns-tabrail__tab:hover", ".ns-view:hover"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist`).toBeTruthy();
+      expect(body, `${sel} needs an explicit fill`).toMatch(/background:\s*var\(--color-brand-secondary\)/);
+      expect(body, `${sel} needs explicit white text`).toMatch(/color:\s*#FFFFFF/);
+    }
+  });
+
+  it("3. SELECTED — both mark it the same way, and not by colour alone", () => {
+    for (const sel of [".ns-tabrail__tab--on", ".ns-view.is-active"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist`).toBeTruthy();
+      expect(body, `${sel} selected colour`).toMatch(/color:\s*var\(--color-text-primary\)/);
+      expect(body, `${sel} selected weight`).toMatch(/font-weight:\s*600/);
+      // WCAG 1.4.1 — the rule underneath is the non-colour channel, so the state survives greyscale.
+      expect(body, `${sel} selected rule`).toMatch(/border-bottom-color:\s*var\(--color-text-primary\)/);
+    }
+  });
+
+  it("4. SELECTED + HOVER — both invert explicitly, so neither is decided by rule order", () => {
+    // THE DEFECT. Without this rule `.ns-view.is-active` (0-2-0, declared later) beats
+    // `.ns-view:hover` (0-2-0) and puts near-black text on the green fill.
+    for (const sel of [".ns-tabrail__tab--on:hover", ".ns-view.is-active:hover"]) {
+      const body = rule(sel);
+      expect(body, `${sel} must exist — otherwise rule order decides the contrast`).toBeTruthy();
+      expect(body, `${sel} fill`).toMatch(/background:\s*var\(--color-brand-secondary\)/);
+      expect(body, `${sel} text`).toMatch(/color:\s*#FFFFFF/);
+    }
+    // And the count travels with the label, or a number stays dark on the green.
+    expect(rule(".ns-view.is-active:hover .ns-view__count")).toMatch(/color:\s*#FFFFFF/);
+  });
+
+  it("5. no hardcoded off-palette colour is introduced by either rail", () => {
+    for (const sel of [
+      ".ns-tabrail__tab", ".ns-tabrail__tab:hover", ".ns-tabrail__tab--on", ".ns-tabrail__tab--on:hover",
+      ".ns-view", ".ns-view:hover", ".ns-view.is-active", ".ns-view.is-active:hover",
+    ]) {
+      const body = rule(sel) ?? "";
+      // #FFFFFF is the one literal both rails use deliberately: inverted text on the brand fill,
+      // which is not a palette choice but the readable pair for it. Anything else must be a token.
+      const literals = (body.match(/#[0-9A-Fa-f]{3,8}/g) ?? []).filter((h) => h.toUpperCase() !== "#FFFFFF");
+      expect(literals, `${sel} introduced an off-palette literal`).toEqual([]);
+    }
+  });
+
+  it("6. a colour-only hover cannot come back on EITHER rail", () => {
+    // The regression itself, on both families: a `:hover` that sets colour and no background hands
+    // the fill to the global `button:hover` and re-opens the specificity trap.
+    const hovers = [...css.matchAll(/(\.ns-tabrail__tab[^{,]*|\.ns-view[^{,]*):hover\s*\{([^}]*)\}/g)]
+      .filter(([, sel]) => !sel.includes("__count"));
+    expect(hovers.length).toBeGreaterThanOrEqual(4);
+    for (const [, sel, body] of hovers) {
+      if (!/color:/.test(body)) continue;   // a rule that sets no colour cannot create the mismatch
+      expect(body, `${sel}:hover sets colour without a background`).toMatch(/background:/);
+    }
   });
 });

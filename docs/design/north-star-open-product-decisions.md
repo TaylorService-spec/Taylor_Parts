@@ -1106,6 +1106,26 @@ as a presentation change, minus its quantity column.
 
 **Shipped meanwhile:** nothing changed. The ledger's acceptance surfaces are corrected to the record
 family only, so no one is asked to accept `/inventory` against a frame it was never built to.
+
+#### ND-30 amendment — **the scope boundary protects route ownership, not pixel placement** (Owner, 2026-08-31)
+
+ND-30's closing boundary reads *"DO NOT relocate the Work group / relocate the Flow group / relocate
+governed reorder queues."* The Parts P1v2 composition puts both groups in a 320px secondary rail, and
+the implementation delta raised the two instruments as contradictory rather than choosing a reading.
+The Owner amended ND-30 to the **narrow reading**:
+
+> *"Do not relocate Work / Flow"* means: **do not move them off `/inventory`**; **do not create
+> another workspace as their new home**; **do not remove their governed functions from the Parts
+> workspace**. It does **not** freeze their exact visual placement within `/inventory`.
+
+So the boundary is about **route ownership and functional presence**, not about where on the page the
+groups sit. Design's 320px secondary rail is **approved**: Parts and the catalogue remain the
+workspace's dominant purpose, and Work and Flow remain present on `/inventory` — visually
+subordinate, functionally intact.
+
+**What is still forbidden, unchanged:** moving either group to another route, removing a governed
+reorder queue, or dropping any of their functions from this workspace.
+
 ---
 
 ## Open — raised by the Equipment P1v2.1 composition map (2026-08-30)
@@ -1208,7 +1228,7 @@ assumed:
 |---|---|
 | capability `inventory.serializedAsset.acquire` | registered (`permissionCatalog.ts`) |
 | command `acquireSerializedAssetCommand.ts` | built |
-| callable `acquireCallableWiring.ts` | wired |
+| callable endpoint | **NONE — see the correction below** |
 | Role | a dedicated station carries it, and confers **no** `equipment.install` |
 | sandbox | present in `capabilityActivationOverrides` — **ACTIVATED** |
 | client surface | `grep` across `field-ops-app-vite/src` → **NONE** |
@@ -1216,6 +1236,100 @@ assumed:
 The entire authority is built, granted and switched on, and nothing in the application calls it.
 
 **Status: APPROVED PRODUCT PLACEMENT — CLIENT COMPOSITION NOT YET BUILT.**
+**CORRECTION, 2026-08-31 — the gap is one step further back than this entry first said.**
+
+The row above originally read *"callable `acquireCallableWiring.ts` — wired"*. **That was wrong, and
+it was my error.** The filename says `CallableWiring`; the file contains no callable. Its four
+exports are `makeResolveAcquirePermissionThroughTxn`, `resolveAcquirePartThroughTxn`,
+`makeResolveAcquireLocationActive` and `stageAcquireAuditEvent` — the production **seams** the
+command takes as dependencies. There is:
+
+- no `onCall` handler anywhere for `acquireSerializedAsset`
+- no export from `functions/src/index.ts` (the word "acquire" appears there once, in a comment)
+- therefore nothing deployed, and no client service either
+
+Contrast the install path, which is complete: `installCallables.ts` declares
+`export const installSerializedAssetCallable = onCall(REGION, …)` and `index.ts` re-exports it as
+`installSerializedAssetCallable as installSerializedAsset`. Acquire has the equivalent of the
+command and its wiring, and stops before the endpoint.
+
+**What this changes.** "Build the client surface" was never a presentation task. Registering and
+deploying a HIGH-TRUST callable that creates owned inventory with no procurement record is a
+**Functions change plus a production-path deploy** — an authority decision, and outside every scope
+boundary this programme has set. A button built now would call an endpoint that does not exist and
+fail closed at the network, which is a worse answer than the honest absence that is there today.
+
+**The corrected state of the gap:**
+
+| | |
+|---|---|
+| capability `inventory.serializedAsset.acquire` | registered, granted to a dedicated Role, sandbox-ACTIVATED |
+| pure command `acquireSerializedAssetCommand.ts` | built — validation, closed reason set, idempotency, `AVAILABLE` initial state, `NON_PO_ACQUISITION` provenance |
+| production seams `acquireCallableWiring.ts` | built — permission, Part, warehouse-location and audit resolvers, reusing Receiving's own location authority |
+| **callable endpoint** | **MISSING** |
+| **`index.ts` export** | **MISSING** |
+| **deployed** | **NO** |
+| client surface | NONE |
+
+The request shape the endpoint would take is already fixed by the command:
+`partId`, `serialNo`, `locationId`, `reason` ∈ {`OPENING_BALANCE`, `LEGACY_MIGRATION`,
+`EXISTING_COMPANY_ASSET`}, `idempotencyKey`, and an optional `provenanceNote`. An unrecognised reason
+is refused, never coerced.
+
+**Status unchanged and now accurate: APPROVED PRODUCT PLACEMENT — NOT BUILT, AND THE FIRST MISSING
+PIECE IS SERVER-SIDE, NOT CLIENT-SIDE.**
+**IMPLEMENTED 2026-08-31 — the endpoint exists and the client composes it.**
+
+| | before | after |
+|---|---|---|
+| capability | registered, granted, sandbox-activated | unchanged — **no new capability** |
+| pure command | built | unchanged — **no semantics changed** |
+| production seams | built | unchanged — reused verbatim |
+| **callable endpoint** | **MISSING** | `functions/src/serializedAsset/acquireCallables.ts` |
+| **`index.ts` export** | **MISSING** | `acquireSerializedAssetCallable as acquireSerializedAsset` |
+| **client composition** | **MISSING** | Inventory → Receiving → **Add existing unit** |
+| **sandbox deployment** | not possible | **AWAITING OWNER DEPLOY** |
+
+**The callable adds no authority and validates nothing.** It authenticates a caller, derives the
+actor from the trusted auth context, constructs the existing dependencies from the four existing
+seams, calls the existing command, and maps its seven failure codes to HTTPS statuses. An unmapped
+code fails closed rather than reaching `mapped.status` as undefined — a TypeError inside the catch
+would have surfaced as an unhandled internal error with no message anyone could act on.
+
+**The client sends only the command's own keys.** `partId`, `serialNo`, `locationId`, `reason`,
+`idempotencyKey` and an optional `provenanceNote` — nothing else, because the command's allow-list
+refuses an unknown field outright and would fail the whole request rather than ignore it. There is
+deliberately no field for a supplier, a PO, a receipt, a customer, an owner or a provenance type.
+
+**Placement follows the ruling exactly.** It sits under Inventory → Receiving, set apart by a rule
+AFTER both purchase-order journeys rather than as a third chip among them — a third chip would read
+as a third way to receive, and receiving is precisely what it is not. It is not called "Receive
+without PO" or "Manual receive"; both blur two authorities.
+
+**The location list is Receiving's own.** `fetchReceivingLocationOptions()`, the same governed
+warehouse read both existing journeys use. An acquisition that accepted a location receiving would
+reject would be a second, weaker answer to a question one authority already owns — and a customer's
+location can never appear in it.
+
+**The part list is the set the command accepts**, and only that: `controlType == "SERIALIZED"`.
+Deliberately not `useWholeUnitParts`, which reads `wholeUnit == true` — a narrower, different
+question that would have made a serial-tracked component silently unacquirable through the UI while
+the command accepted it happily.
+
+**Proof.** `functions/test/acquireCallable.test.mjs` (20, Firestore emulator, real
+`roleAssignments`) — auth, actor identity, the installer denied, every input and Part and location
+refusal, replay, conflict, **a received unit never rewritten as acquired**, the audit event, and a
+mapping assertion that reads the failure union off the command so a new code without a mapping fails
+the test. `field-ops-app-vite/test/serializedAssetAcquire.test.mjs` (27) — the closed reason set,
+the request's exact keys, idempotency, replay-as-success, conflict-as-its-own-state, and a part
+option never labelled with its document key.
+
+**Live gate:** `acquireSerializedAssetLiveGate.mjs`, which acquires ONE reserved fixture
+(`GATE-ND33-DO-NOT-DELETE`) with a stable idempotency key, so the first run acquires and every run
+after replays. A gate that minted a new serial per run would leave the sandbox holding a hundred
+machines nobody owns.
+
+
 
 **Why Equipment North Star P1 did not close this, and should not have.** The locked design draws
 three tabs over three populations and no stock-creation surface, and the handoff's hard scope
@@ -1223,3 +1337,75 @@ boundary forbids new commands, capabilities or UI scope. P1 is correct as delive
 owed and did not pay was *naming the gap* in the composition map rather than leaving the Owner to
 find it on the deployed screen — recorded here so it is no longer invisible.
 
+
+**BUILT, AND THEN BLOCKED BY SOMETHING UNRELATED — 2026-08-31.**
+
+The endpoint and the client surface were subsequently built and merged: `acquireCallables.ts`
+declares the `onCall` adapter, `index.ts` exports it as `acquireSerializedAsset`, and Inventory →
+Receiving offers **Add existing unit**. Hosting shipped. The Functions deploy did not, and the
+reason had nothing to do with acquisition.
+
+```
+firebase deploy --only functions:acquireSerializedAsset --project eos-platform-sandbox
+→ prompts:  KEYSTONE_GATEWAY_URL
+```
+
+`acquireSerializedAsset` has no Keystone dependency of any kind. What it shares with the Keystone
+work-order interpretation function is a Functions codebase, and that turned out to be enough.
+
+**Root cause: `defineSecret` makes two claims, and only one of them was wanted.** It binds a secret
+to the function that lists it — correct, and unchanged — and it *also* declares a deployment
+parameter on the whole codebase. firebase-tools resolves every declared param during
+`functions:prepare`, over the full codebase build, **before** `--only` filters endpoints, and
+prompts to create any secret Secret Manager does not already hold. Secret *bindings* are validated
+later, against the **filtered** backend. So a param is a claim on every deploy of the codebase; a
+binding is a claim on deploys of one function.
+
+**The correction, in one line:** the five Keystone secrets are now named as strings in that
+function's own `secrets:` option instead of being declared as codebase params. The SDK emits an
+identical endpoint either way, so the Keystone function still requires all five and still cannot
+deploy without them — the claim simply stopped being codebase-wide.
+
+**Principle, recorded so the next secret-backed function does not re-create this: secret ownership
+is local to the function that uses it.** A test now fails if anything in `functions/src` declares a
+deployment parameter.
+
+Nothing about ND-33 itself changed: same command, same capability, same Rules, same Roles, same
+schema, and no Keystone secret value was created.
+
+**ND-33 IS CLOSED — Owner ruling, 2026-08-31.**
+
+| | |
+|---|---|
+| Authority | COMPLETE |
+| Callable | LIVE |
+| Real sandbox acquisition | PASS — fixture serial `GATE-ND33-DO-NOT-DELETE`, result AVAILABLE at Main Distribution Center |
+| Available Equipment visibility | PASS — visible, with no customer assignment |
+| Idempotent replay | confirmed |
+| **Status** | **CLOSED** |
+
+The gap this entry opened with — an authority that was registered, granted, activated and called by
+nothing — is shut end to end: capability, command, seams, callable, `index.ts` export, deployed
+Function, client surface, and a live acquisition that a person performed and a governed read then
+showed. Not one of those was inferred from an exit code.
+
+**The UX follow-up landed separately.** [PR #1639](https://github.com/TaylorService-spec/Taylor_Parts/pull/1639)
+composed the Add existing unit dialog to North Star quality and merged as `7d221497`, squashed at the
+exact guarded head. It is not part of ND-33's authority and reopened none of it: no Functions, Rules,
+capability, Role, schema or command-payload change, and the request the callable receives is
+byte-identical. **The next UX pass belongs to the Receiving page stream**, where the whole workspace
+is composed at once rather than one dialog inside it. ND-33 asked whether the company can record a
+unit it already owns. It can. How that screen reads is a different question with a different owner.
+
+**One behavioural defect was corrected on the way through — fixed in the repository, not yet on the
+screen.** The dialog compared the governed location read against `"READY"` while the transport
+returns `RECEIVING_OUTCOME.READY`, which is the lowercase `"ready"`. The comparison could never
+succeed, so a *successful* read printed "the company locations could not be read" beside the options
+it had just loaded. It never blocked acquisition — the picker worked and the command still validated
+the chosen location — but it told an operator the opposite of what was true at the moment they were
+choosing where a machine lives.
+
+The correction derives one state from the transport's own enum and empties the options in every
+non-READY state, so a chosen location beside a failure message is unrepresentable rather than merely
+avoided. **Merged is not live.** This reaches an operator at the next Hosting refresh and not before;
+until that runs, the sandbox still shows the contradiction.

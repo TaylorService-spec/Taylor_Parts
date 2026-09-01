@@ -36,6 +36,17 @@ export {
 // build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
 // runs in production until a separate deploy + Owner grant.
 export { createOpportunity, transitionOpportunity, updateOpportunity } from "./opportunity/opportunityCallables";
+// Workstream 2B -- the two reorder writes that author a governed company fact. EXPORT != DEPLOY:
+// these are exported for build and test, and deployment is NOT authorized. They are half of a
+// three-part activation (Functions + Rules + Hosting) that must land together, because the Rules
+// retirement below removes the client-direct path these replace.
+export {
+  createReorderRequest,
+  recordReorderPurchaseOrder,
+  // R-17. The trusted warehouse projection the reorder picker reads, INSTEAD of a `warehouses`
+  // collection LIST. Same capability as the create it serves; no warehouse.list capability exists.
+  listReorderWarehouseOptions,
+} from "./reorderRequest/reorderCallables";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
@@ -369,6 +380,32 @@ export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryRet
 // (equipmentInstaller) -- deliberately NOT the same Role that may acquire units, so no single person
 // can take a machine from non-existence to a customer. EXPORT != DEPLOY.
 export { installSerializedAssetCallable as installSerializedAsset } from "./equipmentInstall/installCallables";
+
+// --- NON-PO SERIALIZED ASSET ACQUISITION (ND-33) ---
+//
+// The other end of the same story the block above tells. Installing puts a unit the company already
+// holds into a customer's hands; this brings a unit the company ALREADY OWNS onto the books without
+// a purchase — an opening balance, a legacy migration, a machine that has been in the van for three
+// years. Quantity stock could always say "we already hold 571 of these" through an ADJUSTED
+// movement; serialized stock could not, because its only creator was receipt against a purchase
+// order, so the platform could not say "we already own THIS machine" without inventing a purchase
+// that never happened.
+//
+// HIGH TRUST, and narrow by construction: it creates owned inventory with NO procurement record, and
+// every acquisition must name a reason from a closed set in which "we bought it" does not appear.
+// The unit starts AVAILABLE with acquisitionProvenance NON_PO_ACQUISITION and no
+// activatedByReceivingId, so the two populations stay distinguishable in every report forever.
+//
+// IT CREATES NO EQUIPMENT AND NO CUSTOMER RELATIONSHIP. Gated on
+// inventory.serializedAsset.acquire, registered active:false and carried by exactly one Role —
+// deliberately NOT the Role that may install, so no single person can take a machine from
+// non-existence to a customer.
+//
+// THIS EXPORT IS THE GAP ND-33 RECORDED. The command and its production seams were both built and
+// nothing exposed them; `acquireCallableWiring.ts` holds dependency resolvers, not a callable, and
+// an earlier claim that it was "wired" was wrong. EXPORT != DEPLOY — the sandbox Functions deploy
+// remains a separate Owner gate.
+export { acquireSerializedAssetCallable as acquireSerializedAsset } from "./serializedAsset/acquireCallables";
 
 // --- Equipment install AT WORK ORDER CLOSEOUT (WO-01A) ---
 // The technician's path to the SAME equipment.install authority. Not a second install command: it

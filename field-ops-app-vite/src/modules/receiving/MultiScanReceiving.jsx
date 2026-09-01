@@ -13,6 +13,7 @@ import {
   fetchReceivingLocationOptions,
   submitCanonicalReceive,
 } from "../../services/receivingCallableClient.js";
+import { canonicalPoStatusWords } from "../../domain/receivingWorkspaceQueue.js";
 
 // MULTI-SCAN RECEIVING — the canonical warehouse journey.
 //
@@ -68,25 +69,34 @@ function OrderPicker({ deps, onPick }) {
     return () => { live = false; };
   }, [deps]);
 
+  // LEGACY / INTERNAL ENTRY — not the North Star identity model. This picker survives for the
+  // standalone launch points (ScanWorkspace) that have no Awaiting-receipt queue in front of them.
+  // Canonical purchase orders carry NO business order number (RCV-G5) and NO governed scan-label
+  // contract exists for them (RCV-G7), so the id field below resolves the platform's own opaque
+  // id — it is presented as exactly that, never as a scannable code or an order number, and the
+  // list demotes the id to an internal reference rather than promoting it as identity.
   return (
     <section className="fo-panel" aria-label="Choose a purchase order">
-      <h3>Scan or choose a purchase order</h3>
+      <h3>Choose a purchase order</h3>
       <form
         className="fo-scanline"
         onSubmit={(e) => { e.preventDefault(); if (typed.trim()) onPick(typed.trim()); }}
       >
-        <label htmlFor="po-scan">Purchase order</label>
+        <label htmlFor="po-scan">Order id</label>
         <input
           id="po-scan"
           className="fo-input"
           type="text"
           autoComplete="off"
           value={typed}
-          placeholder="Scan the order, or type its id"
+          placeholder="Enter the internal order id"
           onChange={(e) => setTyped(e.target.value)}
         />
         <Button type="submit" variant="primary" disabled={!typed.trim()}>Open</Button>
       </form>
+      <p className="fo-muted">
+        Purchase orders carry no order number yet, so this internal id is the only direct entry.
+      </p>
 
       {state === FIELD_STATE.LOADING && <p className="fo-muted">Loading orders awaiting receipt…</p>}
       {/* UNAVAILABLE is not "no orders". Saying "none" here would assert something about the data
@@ -110,12 +120,14 @@ function OrderPicker({ deps, onPick }) {
         <ul className="fo-list">
           {orders.map((o) => (
             <li key={o.purchaseOrderId}>
+              {/* The id is the only distinguishing fact this list read carries; it renders demoted
+                  as an internal reference (code), never as a business label — and the raw
+                  supplierId does not render at all. */}
               <button type="button" className="fo-link-btn" onClick={() => onPick(o.purchaseOrderId)}>
-                {o.purchaseOrderId}
+                <code>{o.purchaseOrderId}</code>
               </button>{" "}
               <span className="fo-muted">
-                {o.storedStatus} · {o.lineCount} line{o.lineCount === 1 ? "" : "s"}
-                {o.supplierId ? ` · ${o.supplierId}` : ""}
+                {canonicalPoStatusWords(o.storedStatus) ?? "Status not recorded"} · {o.lineCount} line{o.lineCount === 1 ? "" : "s"}
               </span>
             </li>
           ))}
@@ -128,25 +140,28 @@ function OrderPicker({ deps, onPick }) {
 // ─────────────────────────────────────────────────────────── reconciliation table
 
 function ReconciliationTable({ lines }) {
+  // data-label on every cell is the handheld structural contract: at phone widths the stylesheet
+  // recomposes each row into a labelled stacked block (the .fo-receiving-queue pattern), so a
+  // seven-column numeric table never squeezes or pans the page.
   return (
     <div className="fo-table-scroll">
-      <table className="fo-table" aria-label="Expected versus observed">
+      <table className="fo-table fo-receiving-session__table" aria-label="Expected versus observed">
         <thead>
           <tr>
             <th scope="col">Line</th>
             <th scope="col">Part</th>
-            <th scope="col">Ordered</th>
-            <th scope="col">Already received</th>
-            <th scope="col">Outstanding</th>
-            <th scope="col">Scanned now</th>
-            <th scope="col">Remaining after</th>
+            <th scope="col" className="num">Ordered</th>
+            <th scope="col" className="num">Already received</th>
+            <th scope="col" className="num">Outstanding</th>
+            <th scope="col" className="num">Scanned now</th>
+            <th scope="col" className="num">Remaining after</th>
           </tr>
         </thead>
         <tbody>
           {lines.map((l) => (
             <tr key={l.lineId} className={l.observedNow > 0 ? "is-observed" : undefined}>
-              <td>{l.lineId}</td>
-              <td>
+              <td data-label="Line">{l.lineId}</td>
+              <td data-label="Part">
                 {l.partId}
                 {l.trackingMode === "SERIAL" && <span className="fo-muted"> · serialized</span>}
                 {/* An unresolvable Part is stated, never defaulted to "no serial needed" -- the
@@ -155,11 +170,11 @@ function ReconciliationTable({ lines }) {
                   <span className="fo-warning" title="This part could not be resolved, so its serial requirement is unknown"> · unknown part</span>
                 )}
               </td>
-              <td>{l.orderedQuantity}</td>
-              <td>{l.previouslyReceived}</td>
-              <td>{l.remainingBefore}</td>
-              <td><strong>{l.observedNow}</strong></td>
-              <td>{l.remainingAfter}</td>
+              <td data-label="Ordered" className="num">{l.orderedQuantity}</td>
+              <td data-label="Already received" className="num">{l.previouslyReceived}</td>
+              <td data-label="Outstanding" className="num">{l.remainingBefore}</td>
+              <td data-label="Scanned now" className="num"><strong>{l.observedNow}</strong></td>
+              <td data-label="Remaining after" className="num">{l.remainingAfter}</td>
             </tr>
           ))}
         </tbody>
@@ -296,7 +311,9 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
     }
   };
 
-  if (progressState === FIELD_STATE.LOADING) return <p className="fo-muted">Loading {purchaseOrderId}…</p>;
+  // The four not-ready states stay distinct — and none of them labels the screen with the opaque
+  // order id: the id is a navigation argument, not something an operator is asked to read.
+  if (progressState === FIELD_STATE.LOADING) return <p className="fo-muted">Loading the order…</p>;
   if (progressState === FIELD_STATE.UNAVAILABLE) {
     return (
       <p className="fo-warning" role="status">
@@ -310,7 +327,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
   if (progressState === FIELD_STATE.FAILED || progress === null) {
     return (
       <p className="fo-inline-error" role="alert">
-        {purchaseOrderId} could not be loaded.{" "}
+        The order could not be loaded.{" "}
         <button type="button" className="fo-link-btn" onClick={loadProgress}>Retry</button>
       </p>
     );
@@ -318,23 +335,31 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
 
   const blocked = reconciliation.blocked;
   const canSubmit = reconciliation.submittable && !!locationId && !submitting;
+  const storedStatusWords = canonicalPoStatusWords(progress.storedStatus);
 
   return (
-    <>
-      <section className="fo-panel" aria-label="Purchase order">
-        <h3>{progress.purchaseOrderId}</h3>
+    <div className="fo-receiving-session">
+      {/* JOURNEY IDENTITY — one title. The governed supplier name is the human identity this read
+          carries; canonical purchase orders have NO business order number (RCV-G5), so its absence
+          is STATED, and the opaque purchaseOrderId never renders as a label. DERIVED progress and
+          STORED lifecycle are different facts and are shown as two. */}
+      <header className="fo-receiving-session__identity" aria-label="Purchase order">
+        {progress.supplierName ? (
+          <p className="fo-receiving-session__kicker">Supplier purchase order · multi-scan receipt</p>
+        ) : null}
+        <h2 className="fo-receiving-session__title">{progress.supplierName ?? "Supplier purchase order"}</h2>
         <p className="fo-muted">
-          {/* DERIVED progress and STORED lifecycle are different facts and are shown as two. */}
-          Receipt progress: <strong>{progress.derivedState.replace(/_/g, " ").toLowerCase()}</strong>
-          {progress.storedStatus ? <> · order status {progress.storedStatus}</> : null}
-          {progress.supplierName ? <> · {progress.supplierName}</> : null}
+          No order number recorded
+          {" · "}receipt progress <strong>{progress.derivedState.replace(/_/g, " ").toLowerCase()}</strong>
+          {storedStatusWords ? <> · order status {storedStatusWords}</> : null}
+          {" · "}{progress.lines.length} line{progress.lines.length === 1 ? "" : "s"}
         </p>
         {!progress.receivable && (
           <p className="fo-warning" role="status">
             This order is not in a state that accepts a receipt.
           </p>
         )}
-      </section>
+      </header>
 
       {/* HELD, NOT RECEIVED. Deliberately rendered ABOVE the receipt block and never inside it: the
           word "Received" belongs only to a receipt the platform actually returned. */}
@@ -345,7 +370,10 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
       {receipt && (
         <section className="fo-panel fo-receipt" aria-label="Receipt" role="status">
           <h3>{receipt.outcome === "replayed" ? "Already recorded" : "Received"}</h3>
-          <p className="fo-muted">Receipt {receipt.receivingId}</p>
+          {/* The receipt's receiving order number is not in this response and no governed read
+              exposes one (RCV-G1/RCV-G2) — the absence is stated, and the internal receivingId is
+              never shown in its place. */}
+          <p className="fo-muted">Recorded — the receiving order number is not yet readable here.</p>
           <ul className="fo-list">
             {receipt.lines.map((l) => (
               <li key={l.lineId}>
@@ -362,7 +390,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         </section>
       )}
 
-      <section className="fo-panel" aria-label="Scan">
+      <section className="fo-receiving-session__section" aria-label="Scan">
         <h3>Scan</h3>
         <form className="fo-scanline" onSubmit={submitScan}>
           <label htmlFor="part-scan">Part</label>
@@ -403,7 +431,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         </div>
       </section>
 
-      <section className="fo-panel" aria-label="Expected versus observed">
+      <section className="fo-receiving-session__section" aria-label="Expected versus observed">
         <h3>Expected versus observed</h3>
         <ReconciliationTable lines={reconciliation.lines} />
         {reconciliation.ambiguousParts.length > 0 && (
@@ -415,7 +443,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
       </section>
 
       {blocked.length > 0 && (
-        <section className="fo-panel" aria-label="Blocked scans">
+        <section className="fo-receiving-session__section fo-receiving-session__section--attention" aria-label="Blocked scans">
           <h3>Needs attention ({blocked.length})</h3>
           <p className="fo-muted">
             A blocked scan is never silently dropped and never silently included. Resolve each one —
@@ -435,7 +463,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         </section>
       )}
 
-      <section className="fo-panel" aria-label="Queued scans">
+      <section className="fo-receiving-session__section" aria-label="Queued scans">
         <h3>Queued scans</h3>
         {reconciliation.entries.length === 0 ? (
           <p className="fo-muted">Nothing scanned yet.</p>
@@ -467,7 +495,7 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
         )}
       </section>
 
-      <section className="fo-panel" aria-label="Submit">
+      <section className="fo-receiving-session__section fo-receiving-session__section--submit" aria-label="Submit">
         <h3>Submit receipt</h3>
         <div className="fo-identifier-form__row">
           <label htmlFor="rcv-location">Receiving location</label>
@@ -510,23 +538,33 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
           this screen cannot close a line short, and no governed command exists to do it.
         </p>
       </section>
-    </>
+    </div>
   );
 }
 
-export default function MultiScanReceiving({ deps }) {
-  const [purchaseOrderId, setPurchaseOrderId] = useState(null);
+// `initialPurchaseOrderId` / `onExit` — Receiving North Star frame 1a/1b entry seam. When the
+// workspace's Awaiting-receipt queue opens this journey it already knows the order, the queue IS
+// the picker, and the workspace renders the single "Back to the receipt queue" affordance itself —
+// so this root renders the session alone (two back links stacked on one screen would be the exact
+// duplicate-affordance clutter the North Star removes), and leaving in any way calls onExit.
+// Standalone use (ScanWorkspace) is unchanged: internal legacy OrderPicker, internal back link.
+// Presentation-only; the session, its reads and its submit path are untouched.
+export default function MultiScanReceiving({ deps, initialPurchaseOrderId = null, onExit = null }) {
+  const [purchaseOrderId, setPurchaseOrderId] = useState(initialPurchaseOrderId);
+  const leave = onExit ?? (() => setPurchaseOrderId(null));
   if (purchaseOrderId === null) return <OrderPicker deps={deps} onPick={setPurchaseOrderId} />;
   return (
     <>
-      <button type="button" className="fo-link-btn" onClick={() => setPurchaseOrderId(null)}>
-        ← Choose a different purchase order
-      </button>
+      {onExit === null && (
+        <button type="button" className="fo-link-btn" onClick={leave}>
+          ← Choose a different purchase order
+        </button>
+      )}
       <ScanSession
         key={purchaseOrderId}
         purchaseOrderId={purchaseOrderId}
         deps={deps}
-        onDone={() => setPurchaseOrderId(null)}
+        onDone={leave}
       />
     </>
   );

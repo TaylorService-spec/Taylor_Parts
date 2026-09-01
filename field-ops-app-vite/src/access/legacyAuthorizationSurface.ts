@@ -65,6 +65,19 @@ export interface LegacySurfaceEntry {
  * the count of non-comment, non-definition call sites and is the number the
  * test below enforces. The correction is recorded rather than quietly
  * swapped -- see DECISIONS.
+ *
+ * ============================ 47 -> 44 (Workstream 2B, 2026-08-31) ============================
+ *
+ * A SHRINK, which is the direction this corpus exists to evidence. Retiring the three
+ * client-direct reorder authoring paths (DECISIONS #146) removed three legacy call sites:
+ *
+ *   reorder_requests          10 -> 8   the create rule, and the Record-PO update branch
+ *   reorder_purchase_orders    2 -> 1   the create rule
+ *
+ * Those writes did not lose their authorization -- it MOVED, from a legacy users/{uid}.role
+ * helper in Rules to a capability check inside the trusted callables. That is exactly the
+ * convergence this gate was built to track, so the number moves in the same change that moved
+ * the authority, and nothing was waived to make a lane green.
  */
 const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
     // ── Row 23 · Customer / Account ──────────────────────────────────────
@@ -94,8 +107,10 @@ const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
 
     // ── Row 24 · Inventory / Reorder / Purchasing ────────────────────────
     {
+      // 10 -> 8: the create rule is now `allow create: if false` and the Record-PO update branch
+      // is gone; both authorizations live in the trusted callables as capability checks.
       collection: "reorder_requests",
-      sites: { isAdminOrDispatcher: 10 },
+      sites: { isAdminOrDispatcher: 8 },
       row: "row24",
       permissions: [
         "reorder.request.read.queue",
@@ -113,8 +128,9 @@ const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
       ],
     },
     {
+      // 2 -> 1: the create rule is now `allow create: if false`. The remaining site is the read.
       collection: "reorder_purchase_orders",
-      sites: { isAdminOrDispatcher: 2 },
+      sites: { isAdminOrDispatcher: 1 },
       row: "row24",
       permissions: [
         "reorder.purchaseOrder.read",

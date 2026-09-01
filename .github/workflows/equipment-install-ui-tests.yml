@@ -24,10 +24,17 @@ on:
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
+      - "functions/test/acquireCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
       - "functions/test/workOrderLabor.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/serializedAssetAcquireForm.js"
+      - "field-ops-app-vite/src/modules/receiving/AcquireExistingUnit.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Receiving.jsx"
+      - "field-ops-app-vite/src/domain/acquireLocationState.js"
+      - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
+      - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -89,10 +96,17 @@ on:
       - "functions/src/serializedAsset/**"
       - "functions/src/index.ts"
       - "functions/test/installCallable.test.mjs"
+      - "functions/test/acquireCallable.test.mjs"
       - "functions/test/workOrderInstall.test.mjs"
       - "functions/test/workOrderLabor.test.mjs"
       - "field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js"
       - "field-ops-app-vite/src/domain/equipmentInstallForm.js"
+      - "field-ops-app-vite/src/domain/serializedAssetAcquireForm.js"
+      - "field-ops-app-vite/src/modules/receiving/AcquireExistingUnit.jsx"
+      - "field-ops-app-vite/src/modules/inventory/Receiving.jsx"
+      - "field-ops-app-vite/src/domain/acquireLocationState.js"
+      - "field-ops-app-vite/test/serializedAssetAcquire.test.mjs"
+      - "field-ops-app-vite/test/acquireExistingUnitComposition.test.jsx"
       - "field-ops-app-vite/src/domain/workOrderInstallCloseout.js"
       - "field-ops-app-vite/src/modules/mobile/EquipmentInstallCloseout.jsx"
       - "field-ops-app-vite/src/modules/mobile/FieldMode.jsx"
@@ -199,6 +213,15 @@ jobs:
         run: npx vitest run test/availableEquipmentInstall.test.jsx test/equipmentInstallCloseout.test.jsx test/technicianHandheldMobile.test.jsx test/jobLabor.test.jsx
         working-directory: field-ops-app-vite
 
+      # ND-33 acquisition, at the render. The pure suite above proves what the request may
+      # contain; only a render catches what this surface was actually reported for -- three
+      # fields compressed onto one line, and a chosen company location sitting beside "locations
+      # could not be read". That second one was a case mismatch against the transport enum, which
+      # no pure test could see.
+      - name: Acquire composition — the column, the location states, the two stages
+        run: npx vitest run test/acquireExistingUnitComposition.test.jsx
+        working-directory: field-ops-app-vite
+
       # A queued note that renders as "saved" is the one failure this whole runtime exists to prevent,
       # and only a render can catch it.
       - name: Offline UI — queued is never saved, refusals read as situations, dictation offline
@@ -265,6 +288,15 @@ jobs:
       # resolves them. A stubbed authorizer would prove nothing about the separation this depends on.
       - name: Callable boundary — auth, actor identity, and every refusal code
         run: node test/installCallable.test.mjs
+        working-directory: functions
+
+      # ND-33. The other end of the same story, on the same emulator and against the same real
+      # roleAssignments: acquiring creates company-owned inventory with NO procurement record, and
+      # the two stations are deliberately different Roles. Each suite asserts the separation from
+      # its own side — installCallable proves the acquirer cannot install, and this proves the
+      # installer cannot acquire. Either alone would leave half the control unmeasured.
+      - name: Acquire callable boundary — auth, capability separation, idempotency, provenance
+        run: node test/acquireCallable.test.mjs
         working-directory: functions
 
       # The technician path against real work orders and real roleAssignments: own-WO scoping, the

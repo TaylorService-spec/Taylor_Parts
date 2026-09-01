@@ -338,6 +338,10 @@
       "runner": "node"
     },
     {
+      "file": "test/metadataNumberingAuthority.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/metadataAccountDefinition.test.mjs",
       "runner": "node --test"
     },
@@ -690,6 +694,10 @@
       "runner": "node"
     },
     {
+      "file": "test/receivingWorkspaceQueue.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/reconciliationRowHonesty.test.mjs",
       "runner": "node"
     },
@@ -712,6 +720,10 @@
     {
       "file": "test/reorderRequestPayload.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/reorderTrustedWritePathContract.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/reportAccess.test.mjs",
@@ -844,6 +856,10 @@
     {
       "file": "test/schedulingWorkspace.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/serializedAssetAcquire.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/serializedAssetIdentity.test.mjs",
