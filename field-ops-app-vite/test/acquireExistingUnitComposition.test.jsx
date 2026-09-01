@@ -42,7 +42,7 @@ const LOCATIONS = [
 /** Mount with everything READY unless a case says otherwise. */
 function mount(overrides = {}) {
   const useParts = () => overrides.parts ?? PARTS;
-  return render(
+  const utils = render(
     <AcquireExistingUnit
       canAcquire={overrides.canAcquire ?? true}
       locationOptions={overrides.locationOptions ?? LOCATIONS}
@@ -53,6 +53,13 @@ function mount(overrides = {}) {
       deps={{ useParts, callAcquire: overrides.callAcquire ?? (async () => ({})) }}
     />,
   );
+  // Frame 1c hosts the flow in the shared Modal SIDE SHEET, which portals onto document.body —
+  // so container-scoped assertions must target the sheet, not render()'s detached root. The
+  // non-null assertion keeps every zero-length expectation below honest: if the sheet ever fails
+  // to render, this throws here rather than letting an absence pass as a pass.
+  const sheet = document.querySelector(".fo-modal--sheet");
+  if (!sheet) throw new Error("the acquisition side sheet did not render");
+  return { ...utils, container: sheet };
 }
 
 /** Fill every governed fact. */
@@ -355,5 +362,90 @@ describe("the success state", () => {
 
     expect(await screen.findByText(/already on the books/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Confirm acquisition" })).toBeNull();
+  });
+});
+
+// ─────────────────────────────── North Star frame 1c — the side sheet ───────────────────────────────
+
+describe("Frame 1c — sheet identity, truth pins, and close behaviour", () => {
+  it("the sheet is a dialog with ONE identity ('Add existing unit') and no page H1", () => {
+    const { container } = mount();
+    const dialog = screen.getByRole("dialog", { name: "Add existing unit" });
+    expect(dialog).toBeTruthy();
+    expect(container.querySelectorAll("h2")).toHaveLength(1);
+    expect(document.querySelector("h1")).toBeNull();
+  });
+
+  it("MUTATION PROOF: the reason set is EXACTLY the three governed values — a fourth radio fails", () => {
+    mount();
+    const radios = screen.getAllByRole("radio");
+    expect(radios).toHaveLength(3);
+    for (const forbidden of [/other/i, /adjustment/i, /correction/i, /found/i]) {
+      expect(screen.queryByRole("radio", { name: forbidden })).toBeNull();
+    }
+  });
+
+  it("the provenance note is visibly optional and no other field is", () => {
+    const { container } = mount();
+    const optional = [...container.querySelectorAll(".fo-field-required")].map((n) => n.closest("label").textContent);
+    expect(optional).toHaveLength(1);
+    expect(optional[0]).toMatch(/Provenance note/);
+  });
+
+  it("MUTATION PROOF: the destination is the governed option list only — no free-text entry exists", () => {
+    const { container } = mount();
+    const location = container.querySelector("#acquire-location");
+    expect(location.tagName).toBe("SELECT");
+    // Exactly the governed READY options plus the placeholder; nothing typable, nothing injected.
+    expect(location.querySelectorAll("option")).toHaveLength(LOCATIONS.length + 1);
+    expect(container.querySelector("input[list]")).toBeNull();
+  });
+
+  it("MUTATION PROOF: success claims company inventory — never a receipt, never Equipment, never an id", async () => {
+    const callAcquire = vi.fn().mockResolvedValue({ outcome: { outcome: "acquired", serializedAssetId: "sa_9xQ44" } });
+    mount({ callAcquire });
+    completeForm();
+    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    expect(await screen.findByText("Added to company inventory.")).toBeTruthy();
+    const sheetText = document.querySelector(".fo-modal--sheet").textContent;
+    expect(sheetText).toContain("AVAILABLE");
+    expect(sheetText).toContain("No purchase order, supplier receipt, Equipment record, or customer assignment was created.");
+    expect(sheetText).not.toMatch(/Receipt recorded|Equipment created/);
+    // The internal serialized-asset id is a return value, not an identity to display.
+    expect(sheetText).not.toContain("sa_9xQ44");
+    expect(sheetText).not.toMatch(/RO-\d/);
+  });
+
+  it("closing before Confirm performs no write and discards only local draft input", () => {
+    const onClose = vi.fn();
+    const callAcquire = vi.fn();
+    mount({ onClose, callAcquire });
+    completeForm();
+    fireEvent.click(screen.getByRole("button", { name: "Close the sheet" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(callAcquire).not.toHaveBeenCalled();
+  });
+
+  it("Escape closes the sheet before Confirm — and is INERT while the write is in flight", async () => {
+    const onClose = vi.fn();
+    // A write that never settles: the sheet must not be closable out from under it.
+    const callAcquire = vi.fn(() => new Promise(() => {}));
+    mount({ onClose, callAcquire });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    completeForm();
+    fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm acquisition" }));
+    expect(await screen.findByRole("button", { name: "Adding…" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close the sheet" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("handheld structural contract: one column inside the sheet, no table, no horizontal structure", () => {
+    const { container } = mount();
+    expect(container.querySelector("table")).toBeNull();
+    expect(container.querySelector(".fo-acquire__form")).toBeTruthy();
   });
 });

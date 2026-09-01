@@ -32,7 +32,10 @@ function focusable(container) {
   ).filter((el) => el.offsetParent !== null || el === document.activeElement);
 }
 
-export default function Modal({ title, onClose, children, closeLabel = "Cancel" }) {
+// `variant="sheet"` (Receiving North Star frame 1c) — the same overlay contract (portal, focus
+// trap, Escape, backdrop, scroll lock, focus restore) presented as a right-docked side sheet
+// instead of a centered dialog. Purely a CSS re-composition; no behavioural fork.
+export default function Modal({ title, onClose, children, closeLabel = "Cancel", variant = null }) {
   const dialogRef = useRef(null);
   const titleId = useId();
   // Captured once, at mount, so we can restore focus to the trigger on close.
@@ -128,10 +131,14 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
     // per-keystroke teardown this fix removes.
   }, []);
 
+  const sheet = variant === "sheet";
   return createPortal(
-    <div className="fo-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}>
+    <div
+      className={sheet ? "fo-modal-backdrop fo-modal-backdrop--sheet" : "fo-modal-backdrop"}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
       <div
-        className="fo-modal"
+        className={sheet ? "fo-modal fo-modal--sheet" : "fo-modal"}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -66,6 +66,7 @@ import {
 import { callAcquireSerializedAsset } from "../../services/serializedAssetAcquireCallableClient";
 import { SERIAL_PARTS_STATUS, useSerialTrackedParts } from "../../hooks/useSerialTrackedParts";
 import { Button } from "../../shared/ui/primitives";
+import Modal from "../../shared/ui/Modal.jsx";
 
 /**
  * One attempt token, minted when the dialog opens.
@@ -191,13 +192,30 @@ export default function AcquireExistingUnit({
       : "The parts catalogue could not be read. Try again later.")
     : problemFor("part");
 
+  // NORTH STAR FRAME 1c — the flow is HOSTED in the shared Modal overlay as a side sheet. The
+  // sheet has ONE identity (the Modal's own title); the stage renders a subordinate heading only
+  // where it changes the act (Confirm), and the lede tells the truth of the CURRENT stage — after
+  // success the surface stops looking armed, so the consequence sentence is replaced by the
+  // post-state. Closing is the Modal contract (Escape / ✕ / backdrop / Cancel): before Confirm it
+  // discards only local draft input; while the write is in flight it is inert, because a sheet
+  // that vanishes mid-command leaves the operator unable to see the answer.
   return (
-    <div className="fo-panel fo-acquire" role="dialog" aria-modal="true" aria-labelledby="acquire-title">
-      <h3 id="acquire-title">{stage === ACQUIRE_STAGE.FORM ? "Add existing unit" : "Confirm acquisition"}</h3>
+    <Modal
+      title="Add existing unit"
+      variant="sheet"
+      closeLabel="Close the sheet"
+      onClose={busy ? () => {} : onClose}
+    >
+      <div className="fo-acquire" data-acquire-stage={stage}>
+      {stage === ACQUIRE_STAGE.CONFIRM ? (
+        <h3 className="fo-acquire__stage">Confirm acquisition</h3>
+      ) : null}
       <p className="fo-muted fo-acquire__lede">
         {stage === ACQUIRE_STAGE.FORM
           ? "This records a serialized unit the company already owns. It does not create a purchase order or supplier receipt."
-          : ACQUIRE_CONSEQUENCE}
+          : stage === ACQUIRE_STAGE.CONFIRM
+            ? ACQUIRE_CONSEQUENCE
+            : "The unit is recorded as company-owned, AVAILABLE stock at the chosen company location. No purchase order, supplier receipt, Equipment record, or customer assignment was created."}
       </p>
 
       {/* THE CAPABILITY IS SAID OUT LOUD, not implied by a greyed control. The server re-checks it
@@ -395,6 +413,7 @@ export default function AcquireExistingUnit({
       {stage === ACQUIRE_STAGE.FORM && canAcquire && !review.enabled && review.reason ? (
         <p className="fo-muted" data-acquire-blocking>{review.reason}</p>
       ) : null}
-    </div>
+      </div>
+    </Modal>
   );
 }

@@ -274,6 +274,25 @@ test("frame 1d recomposition changed presentation only — same submit path, no 
   assert.doesNotMatch(src, /type="number"|spinbutton/);
 });
 
+test("frame 1c re-hosting changed presentation only — same command, closed reasons, no new authority", () => {
+  const acquire = read("src/modules/receiving/AcquireExistingUnit.jsx");
+  // The one governed command, through its existing client — no new callable/command/transport.
+  assert.match(acquire, /callAcquireSerializedAsset/);
+  assert.doesNotMatch(acquire, /httpsCallable|from "firebase/);
+  // No location resolver of its own, no Equipment creation, no receiving-order creation.
+  assert.doesNotMatch(acquire, /createEquipment|installSerializedAsset|receiveInventoryStock|receiving_orders/);
+  // The sheet is the SHARED Modal primitive, not a new overlay system.
+  assert.match(acquire, /from "\.\.\/\.\.\/shared\/ui\/Modal\.jsx"/);
+  // The reason vocabulary remains the closed governed set of exactly three — a fourth value, or a
+  // coercion of an unknown one, is unrepresentable while this holds.
+  const vocab = read("src/domain/serializedAssetAcquireVocabulary.js");
+  for (const reason of ["OPENING_BALANCE", "LEGACY_MIGRATION", "EXISTING_COMPANY_ASSET"]) {
+    assert.match(vocab, new RegExp(reason), `${reason} must remain in the closed set`);
+  }
+  const reasonTokens = vocab.match(/[A-Z][A-Z_]+: "(OPENING_BALANCE|LEGACY_MIGRATION|EXISTING_COMPANY_ASSET|[A-Z_]+)"/g) ?? [];
+  assert.ok(!/(OTHER|ADJUSTMENT|CORRECTION|FOUND)/.test(reasonTokens.join(" ")), "no new reason value may appear");
+});
+
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {
   const src = read("src/modules/inventory/Receiving.jsx");
   assert.match(src, /Not connected yet/);

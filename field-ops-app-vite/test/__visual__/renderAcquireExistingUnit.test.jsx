@@ -62,20 +62,20 @@ describe.skipIf(!process.env.VISUAL)("visual harness — Add existing unit", () 
     );
 
     const ready = mount(RECEIVING_OUTCOME.READY, LOCATIONS);
-    write("acquire-form.rendered.html", page("Add existing unit — form", ready.container.innerHTML));
+    write("acquire-form.rendered.html", page("Add existing unit — form", document.body.innerHTML));
 
     fireEvent.change(screen.getByLabelText("Part"), { target: { value: "part_c712" } });
     fireEvent.change(screen.getByLabelText("Serial number"), { target: { value: "GATE-ND33-DO-NOT-DELETE" } });
     fireEvent.change(screen.getByLabelText("Company location"), { target: { value: "wh_main" } });
     fireEvent.click(screen.getByRole("radio", { name: /Opening balance/ }));
-    write("acquire-form-complete.rendered.html", page("Add existing unit — complete", ready.container.innerHTML));
+    write("acquire-form-complete.rendered.html", page("Add existing unit — complete", document.body.innerHTML));
 
     fireEvent.click(screen.getByRole("button", { name: "Review acquisition" }));
-    write("acquire-confirm.rendered.html", page("Confirm acquisition", ready.container.innerHTML));
+    write("acquire-confirm.rendered.html", page("Confirm acquisition", document.body.innerHTML));
 
     ready.unmount();
     // The state the invariant is about: no location may be shown as chosen beside this message.
-    const failed = mount(RECEIVING_OUTCOME.UNAVAILABLE, LOCATIONS);
-    write("acquire-location-error.rendered.html", page("Add existing unit — location unreadable", failed.container.innerHTML));
+    mount(RECEIVING_OUTCOME.UNAVAILABLE, LOCATIONS);
+    write("acquire-location-error.rendered.html", page("Add existing unit — location unreadable", document.body.innerHTML));
   });
 });
