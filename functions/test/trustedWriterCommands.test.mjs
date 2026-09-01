@@ -321,6 +321,43 @@ async function main() {
   });
 
   // ------------------------------------------------------------------
+  // FIN-BLOCK-001 -- governed financial reach scopes at grant time
+  // ------------------------------------------------------------------
+
+  await check("FIN-BLOCK-001 grantRole: an operatingCompany scope with a NON-GOVERNED value is refused (free text is not a company)", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "technician", scope: { type: "operatingCompany", value: "Taylor Freezer" }, idempotencyKey: `grant-fb1-badco-${uid("k")}` }),
+      InvalidInputError,
+    );
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "technician", scope: { type: "operatingCompany" }, idempotencyKey: `grant-fb1-noco-${uid("k")}` }),
+      InvalidInputError,
+    );
+  });
+
+  await check("FIN-BLOCK-001 grantRole: a businessUnit scope validates against the canonical unit vocabulary", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "technician", scope: { type: "businessUnit", value: "REFRIGERATION" }, idempotencyKey: `grant-fb1-badbu-${uid("k")}` }),
+      InvalidInputError,
+    );
+  });
+
+  await check("FIN-BLOCK-001 grantRole: governed values are accepted and persisted verbatim (no automatic conversion of anything)", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const key = `grant-fb1-ok-${uid("k")}`;
+    const scope = { type: "operatingCompany", value: "taylor" };
+    const result = await grantRole({ actorUid: actor, principalUid: principal, roleId: "technician", scope, idempotencyKey: key });
+    assert.equal(result.status, "applied");
+    const snap = await db.collection("roleAssignments").doc(key).get();
+    assert.deepEqual(snap.data().scope, scope);
+  });
+
+  // ------------------------------------------------------------------
   // R-32 (#152) -- grant-time binding-scope defence in depth
   // ------------------------------------------------------------------
 

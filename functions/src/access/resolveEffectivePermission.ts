@@ -72,11 +72,16 @@ export interface ResolveResult {
 }
 
 // Spec §8 step 5's total order for narrowest-matching-Scope audit
-// attribution: ownAssignment < location < domain < tenant < global.
+// attribution: ownAssignment < location < businessUnit/domain < operatingCompany/tenant < global.
 const SCOPE_NARROWNESS_ORDER: Record<Scope["type"], number> = {
   ownAssignment: 0,
   location: 1,
+  // FIN-BLOCK-001: a business unit is a slice of one company's activity, so it sorts narrower
+  // than a whole operating company; both are value-matched scopes like domain/location. Ties in
+  // this table are legal (the sort falls through to grantedAt).
+  businessUnit: 2,
   domain: 2,
+  operatingCompany: 3,
   tenant: 3,
   global: 4,
 };
@@ -93,7 +98,10 @@ function isValidScope(value: unknown): value is Scope {
     type === "tenant" ||
     type === "domain" ||
     type === "location" ||
-    type === "ownAssignment"
+    type === "ownAssignment" ||
+    // FIN-BLOCK-001: the governed financial reach scopes (value-matched in scopeMatches below).
+    type === "operatingCompany" ||
+    type === "businessUnit"
   );
 }
 
@@ -157,6 +165,13 @@ function scopeMatches(assignmentScope: Scope, target: TargetContext): boolean {
     case "tenant":
     case "domain":
     case "location":
+    // FIN-BLOCK-001: operatingCompany/businessUnit are value-matched EXACTLY like domain/
+    // location — the target must itself declare the same scope type and value. A financial
+    // read resolves them per-target (finance/financeReadCallables.ts enumerates the governed
+    // company/unit ids); the always-global effective-access feed target never matches them, so
+    // holding such an assignment widens nothing anywhere else.
+    case "operatingCompany":
+    case "businessUnit":
       return (
         target.scope.type === assignmentScope.type &&
         target.scope.value !== undefined &&

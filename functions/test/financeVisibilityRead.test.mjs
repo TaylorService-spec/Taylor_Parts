@@ -116,6 +116,18 @@ await check("the LOADER resolves no reach today (every finance capability regist
   assert.equal(a.factFamilyAllowed, false, "finance.read is registered active:false");
 });
 
+await check("FIN-BLOCK-001 dormant reality: a BOUND operatingCompany-scoped assignment still confers no reach pre-activation (active:false wins over the binding)", async () => {
+  const uid = `fin004-bound-${run}`;
+  await db.collection("users").doc(uid).set({ accessVersion: 1 });
+  await db.collection("roleAssignments").doc(`fin004-bound-role-${run}`).set({
+    principalUid: uid, roleId: "admin", scope: { type: "operatingCompany", value: "taylor" },
+    grantedBy: "test", grantedAt: admin.firestore.Timestamp.now(), status: "active", accessVersionAtGrant: 1,
+  });
+  const a = await loadFinancialVisibilityAuthority(db, uid);
+  assert.equal(a.anyReach, false, "binding without Owner activation reaches nothing");
+  assert.deepEqual([...a.grantedScopes], []);
+});
+
 await check("the CALLABLE refuses without reach — the pre-FIN-004 'finance.read serves any account' shape is retired", async () => {
   const uid = `fin004-caller-${run}`;
   await db.collection("users").doc(uid).set({ accessVersion: 1 });

@@ -34,18 +34,18 @@
 //    document is not a thing this model does.
 //  - OPERATING_COMPANY: exact match on the invoice's governed companyId (which FIN-002 pinned to
 //    the Sales Order's operatingCompanyId — never caller-chosen).
-//  - A COMPANY or BUSINESS_UNIT grant without a bound value confers NOTHING (see the blocker
-//    note below) — never "all companies", never inferred.
+//  - A COMPANY or BUSINESS_UNIT grant without a bound value confers NOTHING — never
+//    "all companies", never inferred (binding: DECISIONS #157).
 //
-// ============================ WHAT IS DELIBERATELY NOT DECIDED HERE ==================
+// ============================ COMPANY/BU BINDING (FIN-BLOCK-001 CLOSED) ==============
 //
-// HOW a principal is BOUND to a company or business-unit value is an access-governance decision
-// the Owner's R-2x scope workstream owns (R-29 bound warehouses via RoleAssignment.scope
-// {type:"location"}; R-32 made scope per-binding). The candidate mechanisms — a new ScopeType,
-// the unused "domain" ScopeType, or a governed Employee fact — each change access authority this
-// run may not decide (FIN-BLOCK-001 in the run ledger). Until that ruling, the COMPANY/BU
-// predicates below are implemented and tested, and `loadFinancialVisibilityAuthority` resolves
-// those two grants to BLOCKED (no reach), never to a guess.
+// HOW a principal is BOUND to a company or business-unit value is ruled (DECISIONS #157): the
+// governed access-scope types `operatingCompany` / `businessUnit` on RoleAssignments — ACCESS
+// AUTHORITY FACTS, exactly like R-29's {type:"location"} warehouse bindings, never inferred
+// from employee master data, Customer owner, warehouse assignment, or caller-supplied ids.
+// Values validate against the governed company/unit vocabularies at grant time;
+// `loadFinancialVisibilityAuthority` resolves reach per governed value through the ONE
+// canonical resolver. A held capability with no scoped binding still confers NOTHING.
 //
 // Pure: no Firestore, no clock, no identity. The loader beside the callable does the reads.
 
@@ -104,7 +104,7 @@ export interface FinancialVisibilityAuthority {
   factFamilyAllowed: boolean;
   /** The scopes that actually confer reach for this principal. */
   grantedScopes: ReadonlyArray<FinancialVisibilityScope>;
-  /** Scope grants held but NOT honored, with the reason (e.g. FIN-BLOCK-001 value binding). */
+  /** Scope grants held but NOT honored, with the reason (e.g. no scoped binding resolves). */
   blockedScopes: ReadonlyArray<{ scope: FinancialVisibilityScope; reason: string }>;
   /** True when the principal has the fact family AND at least one reach-conferring scope. */
   anyReach: boolean;
@@ -130,13 +130,13 @@ function validateGrant(g: FinancialVisibilityGrant): void {
     case "BUSINESS_UNIT":
       if (!nonEmpty(g.businessUnitId)) {
         throw new FinancialVisibilityError("SCOPE_VALUE_REQUIRED",
-          "BUSINESS_UNIT scope requires a bound unit — a valueless grant confers nothing (FIN-BLOCK-001)");
+          "BUSINESS_UNIT scope requires a bound unit — a valueless grant confers nothing (DECISIONS #157)");
       }
       return;
     case "OPERATING_COMPANY":
       if (!nonEmpty(g.operatingCompanyId)) {
         throw new FinancialVisibilityError("SCOPE_VALUE_REQUIRED",
-          "OPERATING_COMPANY scope requires a bound company — a valueless grant confers nothing (FIN-BLOCK-001)");
+          "OPERATING_COMPANY scope requires a bound company — a valueless grant confers nothing (DECISIONS #157)");
       }
       return;
     default:

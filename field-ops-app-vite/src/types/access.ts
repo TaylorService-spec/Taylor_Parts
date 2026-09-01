@@ -23,7 +23,15 @@ export type ScopeType =
   | "tenant"
   | "domain"
   | "location"
-  | "ownAssignment";
+  | "ownAssignment"
+  // FIN-BLOCK-001 closure (Owner-directed): financial visibility reach bindings are governed
+  // ACCESS-SCOPE facts, never inferred from employee/customer/location/warehouse state.
+  // `operatingCompany` values are the governed operating-company ids (domain/
+  // operatingCompanyAuthority.js); `businessUnit` values are the canonical business units.
+  // Value-matched exactly like domain/location; existing assignments and every non-financial
+  // scope keep their prior semantics unchanged.
+  | "operatingCompany"
+  | "businessUnit";
 
 // Spec §5.4 -- `tenant` is reserved and inert until Issue #140 defines
 // it; it must never widen access (§10 of the Specification).
