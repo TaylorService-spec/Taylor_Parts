@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    span.fc { display: block; font: 600 9.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-top: 3px; }
+    span.inact { font-size: 12.5px; color: #6B7A74; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #6B7A74; border-radius: 50%; color: #4A5B55; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); font-weight: 400; }
+    .hlp:hover .tip { display: block; }
+    .seg { display: inline-flex; outline: 1px solid #C3BCAB; font: 600 12px Inter, sans-serif; }
+    .seg span { padding: 6px 12px; color: #4A5B55; }
+    .seg span.on { background: #102B24; color: #fff; }
+    .fld { display: block; font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #4A5B55; margin-bottom: 4px; }
+    .inp { display: block; padding: 9px 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; font-size: 13.5px; background: #fff; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1500px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Budget Management — 1440 · /financials/budgets · versioned, approved, never rewritten</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">A revision supersedes; it does not erase</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Financials</div>
+        <div style="padding: 5px 16px 5px 34px;">Overview</div>
+        <div style="padding: 5px 16px 5px 34px;">Cost to Budget</div>
+        <div style="margin: 2px 12px; padding: 6px 10px 6px 22px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Budget Management</div>
+        <div style="padding: 5px 16px 5px 34px;">Goal Management</div>
+        <div style="padding: 5px 16px 5px 34px;">Governance</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Budget Management</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 6:15 AM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 18px 0 8px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 4px;">Budget Management</h1>
+            <div style="font-size: 13px; color: #4A5B55;"><strong style="color:#102B24;">14 budget lines govern FY2026</strong> · 1 revision awaiting approval</div>
+          </div>
+          <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #102B24; color: #fff;">New budget</span>
+        </header>
+        <div style="display: flex; gap: 18px; align-items: center; padding: 8px 0 14px; border-bottom: 1px solid #C3BCAB;">
+          <span class="seg"><span class="on">Consolidated</span><span>Taylor</span><span>Ventana</span></span>
+          <span class="seg"><span class="on">FY2026</span><span>Q3 2026</span><span>Q4 2026</span></span>
+        </div>
+        <div style="display: flex; gap: 20px; border-bottom: 1px solid #C3BCAB; font-size: 13px;">
+          <span style="padding: 7px 2px; font-weight: 700; border-bottom: 3px solid #B08A55; margin-bottom: -1px;">Active <span style="color: #6B7A74; font-weight: 600;">14</span></span>
+          <span style="padding: 7px 2px; color: #4A5B55;">Awaiting approval <span style="color: #8A6D28; font-weight: 600;">1</span></span>
+          <span style="padding: 7px 2px; color: #4A5B55;">Superseded <span style="color: #6B7A74; font-weight: 600;">6</span></span>
+          <span style="padding: 7px 2px; color: #4A5B55;">Draft <span style="color: #6B7A74; font-weight: 600;">2</span></span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+          <thead><tr><th class="ls">Scope</th><th class="ls">Category</th><th class="ls">Period</th><th class="ls" style="text-align:right;">Amount</th><th class="ls">Version</th><th class="ls">Approval</th><th class="ls" style="padding-right:0;">Status</th></tr></thead>
+          <tbody>
+            <tr style="background:#FCFAF6;"><td class="ls"><strong>Taylor · Service</strong></td><td class="ls">Labor</td><td class="ls">Q3 2026</td><td class="ls" style="text-align:right; font-weight:600;">$102,000</td><td class="ls">v3 <span style="color:#6B7A74; font-size:12px;">supersedes v2</span></td><td class="ls" style="color:#8A6D28; font-weight:600;">G. Marsh pending</td><td class="ls" style="padding-right:0;"><span style="color:#8A6D28; font-weight:600;">Awaiting approval</span></td></tr>
+            <tr><td class="ls"><strong>Taylor · Service</strong></td><td class="ls">Labor</td><td class="ls">Q3 2026</td><td class="ls" style="text-align:right;">$96,000</td><td class="ls">v2 <span style="color:#6B7A74; font-size:12px;">active</span></td><td class="ls" style="color:#4A5B55;">G. Marsh · Jun 28</td><td class="ls" style="padding-right:0;"><span style="color:#237A45; font-weight:600;">Active</span></td></tr>
+            <tr><td class="ls"><strong>Taylor · Service</strong></td><td class="ls">Parts</td><td class="ls">Q3 2026</td><td class="ls" style="text-align:right;">$41,500</td><td class="ls">v2</td><td class="ls" style="color:#4A5B55;">G. Marsh · Jun 28</td><td class="ls" style="padding-right:0;"><span style="color:#237A45; font-weight:600;">Active</span></td></tr>
+            <tr><td class="ls"><strong>Ventana · Equipment Sales</strong></td><td class="ls">Freight</td><td class="ls">Q3 2026</td><td class="ls" style="text-align:right;">$4,800</td><td class="ls">v1</td><td class="ls" style="color:#4A5B55;">T. Ruiz · Jun 30</td><td class="ls" style="padding-right:0;"><span style="color:#237A45; font-weight:600;">Active</span></td></tr>
+            <tr><td class="ls" style="color:#6B7A74;"><strong style="color:#6B7A74;">Taylor · Service</strong></td><td class="ls" style="color:#6B7A74;">Labor</td><td class="ls" style="color:#6B7A74;">Q3 2026</td><td class="ls" style="text-align:right; color:#6B7A74;">$90,000</td><td class="ls" style="color:#6B7A74;">v1 <span style="font-size:12px;">superseded by v2</span></td><td class="ls" style="color:#6B7A74;">G. Marsh · Jun 12</td><td class="ls" style="padding-right:0;"><span style="color:#6B7A74; font-weight:600;">Superseded</span></td></tr>
+          </tbody>
+        </table>
+        <div style="font-size: 12px; color: #6B7A74; padding-top: 8px;">Superseded versions stay listed, quieted — plan history is never rewritten<span class="hlp">i<span class="tip">Version chain is visible in place: v3 pending, v2 active, v1 superseded — one scope, three rows, three truths. Currency is USD across the workspace (single-currency operation; multi-currency is a named FUTURE seam). AUTHORITY GAP FIN-AG-PLAN: no budget collection, versioning or approval flow exists yet — budgets belong to FIN-003 Plan vs Actual; approval/exception governance to FIN-007. All capability names are conceptual — exact governed IDs TBD.</span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start;">
+    <div id="1a-mobile" style="width: 420px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Budgets 375</span>
+      <div id="f1am" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px;">
+        <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="color:#B9C1BE;">☰</span></div>
+        <div style="padding: 16px;">
+          <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Budget Management</div>
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700; margin: 6px 0 2px;">Budget Management</h1>
+          <div style="font-size: 12.5px; color: #4A5B55;">14 active · <span style="color:#8A6D28; font-weight:600;">1 awaiting approval</span></div>
+          <div style="border-top: 2px solid #102B24; margin-top: 10px;">
+            <div style="padding: 10px 0; border-bottom: 1px solid #D9D3C6; background:#FCFAF6;">
+              <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">Taylor · Service · Labor</strong><strong>$102,000</strong></div>
+              <div style="font-size: 12px; margin-top:2px;"><span style="color:#8A6D28; font-weight:600;">v3 awaiting approval</span> <span style="color:#6B7A74;">· supersedes v2</span></div>
+            </div>
+            <div style="padding: 10px 0; border-bottom: 1px solid #D9D3C6;">
+              <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">Taylor · Service · Parts</strong><strong>$41,500</strong></div>
+              <div style="font-size: 12px; color:#6B7A74; margin-top:2px;">v2 · <span style="color:#237A45; font-weight:600;">Active</span> · Q3 2026</div>
+            </div>
+            <div style="padding: 10px 0;">
+              <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">Ventana · Equip Sales · Freight</strong><strong>$4,800</strong></div>
+              <div style="font-size: 12px; color:#6B7A74; margin-top:2px;">v1 · <span style="color:#237A45; font-weight:600;">Active</span> · Q3 2026</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="width: 720px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b</span>Revise &amp; review — 1440 sheet</span>
+      <div id="f1b" style="width: 680px; background: #FCFAF6; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 24px 28px 28px;">
+        <div style="display:flex; justify-content: space-between; align-items: baseline;">
+          <div>
+            <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Budget → Revise</div>
+            <h2 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 6px 0 2px;">Revise budget — Taylor · Service · Labor · Q3 2026</h2>
+            <div style="font-size: 13px; color: #4A5B55;">Creates version 3. Version 2 ($96,000, active) remains history.</div>
+          </div>
+          <span style="font-size: 20px; color: #6B7A74;">✕</span>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px 28px; margin-top: 20px;">
+          <div><span class="fld">Scope</span><span class="inp" style="background:#F3F0E9; color:#4A5B55;">Taylor · Service — fixed on revision</span></div>
+          <div><span class="fld">Category</span><span class="inp" style="background:#F3F0E9; color:#4A5B55;">Labor — fixed on revision</span></div>
+          <div><span class="fld">Period</span><span class="inp" style="background:#F3F0E9; color:#4A5B55;">Q3 2026 — fixed on revision</span></div>
+          <div><span class="fld">Amount (USD)</span><span class="inp"><strong>102,000</strong></span></div>
+          <div style="grid-column: 1 / -1;"><span class="fld">Reason for revision</span><span class="inp" style="min-height: 44px;">Overtime coverage for two open technician positions through September.</span></div>
+        </div>
+        <div style="background:#F7EFE4; border:1px solid #D9C9A8; padding: 12px 14px; font-size: 13px; margin-top: 18px;">
+          <strong>Approval required.</strong> <span style="color:#4A5B55;">Revisions route to an approver under FIN-007 governance. Thresholds, self-approval and routing rules are governance decisions not yet set; the approval capability is conceptual — exact governed ID TBD.</span>
+          <span class="hlp">i<span class="tip">Scope/category/period are immutable on a revision — changing them is a new budget, not a version. The approval route will be computed from FIN-007 governance policy and shown before submission so the actor knows the consequence — Design asserts no thresholds. Nothing saves silently: submit creates the v3 record in AWAITING_APPROVAL.</span></span>
+        </div>
+        <div style="display:flex; gap: 10px; margin-top: 18px;">
+          <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #102B24; color: #fff;">Submit for approval</span>
+          <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #4A5B55;">Save draft</span>
+          <span style="font: 600 13px Inter, sans-serif; padding: 9px 16px; color: #4A5B55;">Cancel</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b-mobile" style="width: 420px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b-m</span>Review 375</span>
+      <div id="f1bm" style="width: 375px; background: #FCFAF6; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 18px 16px 20px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">← Budgets · Approval request</div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 8px 0 2px;">Taylor · Service · Labor — v3</h2>
+        <div style="font-size: 12.5px; color: #4A5B55;">Q3 2026 · requested by D. Whitfield · Aug 30</div>
+        <div style="border-top: 2px solid #102B24; margin-top: 10px; padding-top: 10px; font-size: 13px; line-height: 2;">
+          <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Current (v2)</span><span>$96,000</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Proposed (v3)</span><strong>$102,000</strong></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Change</span><strong style="color:#8A6D28;">+$6,000</strong></div>
+        </div>
+        <div style="font-size: 12.5px; color: #4A5B55; margin-top: 8px; line-height: 1.6;">"Overtime coverage for two open technician positions through September."</div>
+        <div style="display:flex; gap: 8px; margin-top: 14px;">
+          <span style="flex:1; text-align:center; font: 600 13px Inter, sans-serif; padding: 12px; background: #102B24; color: #fff;">Approve</span>
+          <span style="flex:1; text-align:center; font: 600 13px Inter, sans-serif; padding: 12px; outline: 1px solid #C3BCAB; outline-offset: -1px; color: #B23B3B;">Decline</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

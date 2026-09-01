@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    span.fc { display: block; font: 600 9.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-top: 3px; }
+    span.inact { font-size: 12.5px; color: #6B7A74; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #6B7A74; border-radius: 50%; color: #4A5B55; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); font-weight: 400; }
+    .hlp:hover .tip { display: block; }
+    .seg { display: inline-flex; outline: 1px solid #C3BCAB; font: 600 12px Inter, sans-serif; }
+    .seg span { padding: 6px 12px; color: #4A5B55; }
+    .seg span.on { background: #102B24; color: #fff; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1500px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Invoices — 1440 · /financials/invoices · governed, immutable records</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Issued history is never rewritten — corrections are new events</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Financials</div>
+        <div style="padding: 5px 16px 5px 34px;">Overview</div>
+        <div style="padding: 5px 16px 5px 34px;">Billing Queue</div>
+        <div style="margin: 2px 12px; padding: 6px 10px 6px 22px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Invoices</div>
+        <div style="padding: 5px 16px 5px 34px;">Accounts Receivable</div>
+        <div style="padding: 5px 16px 5px 34px;">Payments</div>
+        <div style="padding: 5px 16px 5px 34px;">Credits &amp; Adjustments</div>
+        <div style="padding: 5px 16px 5px 34px;">Reports</div>
+        <div style="padding: 5px 16px 5px 34px;">Governance</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Invoices</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 6:06 AM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 18px 0 8px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 4px;">Invoices</h1>
+            <div style="font-size: 13px; color: #4A5B55;"><strong style="color:#102B24;">41 issued this period</strong> · $288,150 billed · $56,250 outstanding</div>
+          </div>
+          <span style="font-size: 12.5px; color: #6B7A74;">Issuing happens from the <a href="#bq">Billing Queue</a><span class="hlp">i<span class="tip">No "New invoice" button here by design: invoices are issued from governed billable work in the Billing Queue, never typed free-form into the collection. This page is the record of what was issued.</span></span></span>
+        </header>
+        <div style="display: flex; gap: 18px; align-items: center; padding: 8px 0 14px; border-bottom: 1px solid #C3BCAB;">
+          <span class="seg"><span class="on">Consolidated</span><span>Taylor</span><span>Ventana</span></span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Period <strong style="color: #102B24;">Month · August 2026</strong> ▾</span>
+          <span style="font-size: 12.5px; color: #6B7A74; padding: 8px 14px; outline: 1px solid #C3BCAB; outline-offset: -1px; min-width: 300px;">Search invoice number or customer</span>
+        </div>
+        <div style="display: flex; gap: 20px; border-bottom: 1px solid #C3BCAB; font-size: 13px;">
+          <span style="padding: 7px 2px; font-weight: 700; border-bottom: 3px solid #B08A55; margin-bottom: -1px;">All <span style="color: #6B7A74; font-weight: 600;">41</span></span>
+          <span style="padding: 7px 2px; color: #4A5B55;">Open <span style="color: #6B7A74; font-weight: 600;">12</span></span>
+          <span style="padding: 7px 2px; color: #4A5B55;">Paid <span style="color: #6B7A74; font-weight: 600;">27</span></span>
+          <span style="padding: 7px 2px; color: #4A5B55;">Corrected <span style="color: #6B7A74; font-weight: 600;">2</span></span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+          <thead><tr><th class="ls">Invoice</th><th class="ls">Customer</th><th class="ls">Company · Unit</th><th class="ls">Issued</th><th class="ls">Due</th><th class="ls" style="text-align:right;">Total</th><th class="ls" style="text-align:right;">Applied</th><th class="ls" style="text-align:right;">Outstanding</th><th class="ls" style="padding-right:0;">Status</th></tr></thead>
+          <tbody>
+            <tr><td class="ls"><strong>INV-2026-0341</strong></td><td class="ls">Cactus Custard Co.</td><td class="ls">Taylor · Service</td><td class="ls">Aug 24</td><td class="ls">Sep 23</td><td class="ls" style="text-align:right;">$4,820.00</td><td class="ls" style="text-align:right;">$0.00</td><td class="ls" style="text-align:right; font-weight:600;">$4,820.00</td><td class="ls" style="padding-right:0;"><span style="color:#8A6D28; font-weight:600;">Open</span></td></tr>
+            <tr style="background:#FCFAF6;"><td class="ls"><strong>INV-2026-0339</strong></td><td class="ls">Route 9 Creamery</td><td class="ls">Ventana · <em>Mixed (2 units)</em><span class="hlp">i<span class="tip">A mixed invoice never gets one false Business Unit at collection level — the split lives on the lines. Filtering by unit matches invoices with any line in that unit and says so in the filter chip.</span></span></td><td class="ls">Aug 22</td><td class="ls">Sep 21</td><td class="ls" style="text-align:right;">$14,450.00</td><td class="ls" style="text-align:right;">$14,450.00</td><td class="ls" style="text-align:right;">$0.00</td><td class="ls" style="padding-right:0;"><span style="color:#237A45; font-weight:600;">Paid</span></td></tr>
+            <tr><td class="ls"><strong>INV-2026-0327</strong></td><td class="ls">Sun Devil Dining</td><td class="ls">Taylor · Service</td><td class="ls">Aug 12</td><td class="ls">Sep 11</td><td class="ls" style="text-align:right;">$1,980.00</td><td class="ls" style="text-align:right;">$1,340.00</td><td class="ls" style="text-align:right; font-weight:600;">$640.00</td><td class="ls" style="padding-right:0;"><span style="color:#8A6D28; font-weight:600;">Partially paid</span></td></tr>
+            <tr><td class="ls"><strong>INV-2026-0314</strong><br><span style="font-size:12px; color:#6B7A74;">Credit CR-0021 applied</span></td><td class="ls">Canyon Foods</td><td class="ls">Taylor · Parts</td><td class="ls">Aug 4</td><td class="ls">Sep 3</td><td class="ls" style="text-align:right;">$2,240.00<br><span style="font-size:12px; color:#6B7A74;">issued value</span></td><td class="ls" style="text-align:right;">$1,890.00</td><td class="ls" style="text-align:right;">$0.00</td><td class="ls" style="padding-right:0;"><span style="color:#4A5B55; font-weight:600;">Corrected</span></td></tr>
+            <tr><td class="ls"><strong>INV-2026-0302</strong></td><td class="ls">Mesa Frozen Yogurt</td><td class="ls">Taylor · Service</td><td class="ls">Jul 28</td><td class="ls">Aug 27</td><td class="ls" style="text-align:right;">$3,110.00</td><td class="ls" style="text-align:right;">$0.00</td><td class="ls" style="text-align:right; font-weight:600; color:#B23B3B;">$3,110.00</td><td class="ls" style="padding-right:0;"><span style="color:#B23B3B; font-weight:600;">Overdue</span></td></tr>
+          </tbody>
+        </table>
+        <div style="font-size: 12px; color: #6B7A74; padding-top: 8px;">41 invoices · Reconciliation column withheld<span class="hlp">i<span class="tip">The brief lists a Reconciliation Status column; it is withheld because no accounting authority exists (FIN-010) — a column of identical "not sent" values is noise claiming a read that doesn't exist. The column slot is reserved and returns when the reconciliation read lands. Corrected rows keep the issued value visible with a derivation label — history is never rewritten in place. Invoice command authority: BUILT_DORMANT — read/UI exposure not yet activated. INV-YYYY-NNNN is a SPECIMEN format; the current governed numbering authority is used at implementation.</span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start;">
+    <div id="1a-mobile" style="width: 420px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Collection 375</span>
+      <div id="f1am" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px;">
+        <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="color:#B9C1BE;">☰</span></div>
+        <div style="padding: 16px;">
+          <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Invoices</div>
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 6px 0 2px;">Invoices</h1>
+          <div style="font-size: 12.5px; color: #4A5B55;">41 issued · $56,250 outstanding</div>
+          <div style="display: flex; gap: 16px; border-bottom: 1px solid #C3BCAB; font-size: 12.5px; margin-top: 12px;">
+            <span style="padding: 6px 0; font-weight: 700; border-bottom: 3px solid #B08A55; margin-bottom: -1px;">All 41</span>
+            <span style="padding: 6px 0; color: #4A5B55;">Open 12</span>
+            <span style="padding: 6px 0; color: #4A5B55;">Paid 27</span>
+            <span style="padding: 6px 0; color: #4A5B55;">Corrected 2</span>
+          </div>
+          <div style="border-bottom: 1px solid #D9D3C6; padding: 10px 0;">
+            <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">INV-2026-0341 · Cactus Custard</strong><strong>$4,820</strong></div>
+            <div style="font-size: 12px; color: #6B7A74; margin-top:2px;">Taylor · Service · due Sep 23 · <span style="color:#8A6D28; font-weight:600;">Open</span></div>
+          </div>
+          <div style="border-bottom: 1px solid #D9D3C6; padding: 10px 0;">
+            <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">INV-2026-0339 · Route 9 Creamery</strong><strong>$14,450</strong></div>
+            <div style="font-size: 12px; color: #6B7A74; margin-top:2px;">Ventana · Mixed · <span style="color:#237A45; font-weight:600;">Paid</span></div>
+          </div>
+          <div style="padding: 10px 0 4px;">
+            <div style="display:flex; justify-content:space-between;"><strong style="font-size:13px;">INV-2026-0302 · Mesa Frozen Yogurt</strong><strong style="color:#B23B3B;">$3,110</strong></div>
+            <div style="font-size: 12px; margin-top:2px;"><span style="color:#B23B3B; font-weight:600;">Overdue</span> <span style="color:#6B7A74;">· due Aug 27</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="width: 900px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b</span>Invoice record — 1440 (workspace main column)</span>
+      <div id="f1b" style="width: 860px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 24px 32px 32px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Invoices → INV-2026-0314</div>
+        <header style="display:flex; justify-content: space-between; align-items: flex-end; padding: 12px 0 8px; border-bottom: 3px solid #102B24;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 0 0 4px;">Invoice INV-2026-0314</h1>
+            <div style="font-size: 13px; color: #4A5B55;"><a href="#c">Canyon Foods</a> · Taylor · Issued Aug 4, 2026 · Due Sep 3, 2026 · <span style="color:#4A5B55; font-weight:600;">Corrected</span></div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family: 'Source Serif 4', serif; font-size: 26px; font-weight: 700;">$0.00 outstanding</div>
+            <span class="fc">Issued $2,240.00 · applied $1,890.00 · credited $350.00</span>
+          </div>
+        </header>
+        <div style="display:grid; grid-template-columns: minmax(0,1fr) 300px; gap: 36px; margin-top: 20px;">
+          <div>
+            <h3 class="rh">Lines — issued values, immutable</h3>
+            <table style="width:100%; border-collapse: collapse;">
+              <thead><tr><th class="ls">Line</th><th class="ls">Business unit</th><th class="ls">Source</th><th class="ls" style="text-align:right; padding-right:0;">Issued</th></tr></thead>
+              <tbody>
+                <tr><td class="ls">Scraper blade kit × 4</td><td class="ls">Parts</td><td class="ls"><a href="#s">CW-SO-0071</a></td><td class="ls" style="text-align:right; padding-right:0;">$1,480.00</td></tr>
+                <tr><td class="ls">Freight</td><td class="ls">Parts</td><td class="ls"><a href="#s">CW-SO-0071</a></td><td class="ls" style="text-align:right; padding-right:0;">$120.00</td></tr>
+                <tr><td class="ls">On-site fitting, 2 hr</td><td class="ls">Service</td><td class="ls"><a href="#w">CW-WO-0186</a></td><td class="ls" style="text-align:right; padding-right:0;">$640.00</td></tr>
+                <tr><td class="ls" style="border-bottom:none;"><strong>Issued total</strong></td><td class="ls" style="border-bottom:none;"></td><td class="ls" style="border-bottom:none;"></td><td class="ls" style="text-align:right; padding-right:0; border-bottom:none;"><strong>$2,240.00</strong></td></tr>
+              </tbody>
+            </table>
+            <div style="font-size:12px; color:#6B7A74; margin-top:4px;">Line-level business unit is the only unit truth on a mixed invoice<span class="hlp">i<span class="tip">Lines carry unit and source lineage; the header never claims a single unit. Issued values are frozen at issuance — the correction below never edits these rows.</span></span></div>
+            <section style="margin-top: 22px;">
+              <h3 class="rh">Payments &amp; corrections</h3>
+              <div style="font-size:13px; line-height:1.8;">
+                <div style="display:flex; justify-content:space-between; border-bottom:1px solid #D9D3C6; padding: 6px 0;"><span>Aug 18 · Payment <a href="#p">PMT-0182</a> applied</span><span>$1,890.00</span></div>
+                <div style="display:flex; justify-content:space-between; padding: 6px 0;"><span>Aug 20 · Credit <a href="#cr">CR-0021</a> — freight billed in error · approved T. Ruiz</span><span>$350.00</span></div>
+              </div>
+              <div style="font-size:12px; color:#6B7A74; margin-top:4px;">Corrections are governed events with reason, actor and approval — the original stays above, unchanged.</div>
+            </section>
+          </div>
+          <aside>
+            <h3 class="rh">Record</h3>
+            <div style="font-size: 12.5px; line-height: 2;">
+              <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Customer</span><a href="#c">Canyon Foods</a></div>
+              <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Company</span><span>Taylor</span></div>
+              <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Issued by</span><span>D. Whitfield</span></div>
+              <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Terms</span><span>Net 30</span></div>
+              <div style="display:flex; justify-content:space-between;"><span style="color:#4A5B55;">Currency</span><span>USD</span></div>
+            </div>
+            <section style="margin-top: 18px;">
+              <h3 class="rh">Reconciliation</h3>
+              <div class="inact" style="line-height:1.6;">No external accounting authority is connected. This invoice has not been sent anywhere — and does not claim otherwise.</div>
+            </section>
+            <section style="margin-top: 18px;">
+              <h3 class="rh">Audit</h3>
+              <div style="font-size:12.5px; line-height:1.8; color:#4A5B55;">
+                Aug 4 · Issued · D. Whitfield<br>Aug 18 · Payment applied · system<br>Aug 20 · Credit approved · T. Ruiz<br><a href="#a">Full history →</a>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b-mobile" style="width: 420px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b-m</span>Record 375</span>
+      <div id="f1bm" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px; padding: 18px 16px 20px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">← Invoices</div>
+        <h2 style="font-family: 'Source Serif 4', serif; font-size: 20px; font-weight: 700; margin: 8px 0 2px;">INV-2026-0314</h2>
+        <div style="font-size: 12.5px; color: #4A5B55;">Canyon Foods · Taylor · Corrected</div>
+        <div style="border-top: 2px solid #102B24; margin-top: 10px; padding-top: 10px;">
+          <div style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700;">$0.00 outstanding</div>
+          <span class="fc">Issued $2,240.00 · applied $1,890.00 · credited $350.00</span>
+        </div>
+        <div style="margin-top: 14px;">
+          <h3 class="rh">Lines</h3>
+          <div style="font-size: 12.5px; line-height: 1.9;">
+            <div style="display:flex; justify-content:space-between;"><span>Scraper blade kit × 4 <span style="color:#6B7A74;">· Parts</span></span><span>$1,480.00</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Freight <span style="color:#6B7A74;">· Parts</span></span><span>$120.00</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>On-site fitting <span style="color:#6B7A74;">· Service</span></span><span>$640.00</span></div>
+          </div>
+        </div>
+        <div style="margin-top: 14px;">
+          <h3 class="rh">Payments &amp; corrections</h3>
+          <div style="font-size: 12.5px; line-height: 1.9;">
+            <div style="display:flex; justify-content:space-between;"><span>PMT-0182 applied</span><span>$1,890.00</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>CR-0021 credit</span><span>$350.00</span></div>
+          </div>
+        </div>
+        <div class="inact" style="margin-top: 14px;">Reconciliation: no accounting authority connected.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>
