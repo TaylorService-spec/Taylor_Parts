@@ -573,3 +573,44 @@ separately gated action. STATUS: FINANCIALS_READY_FOR_SANDBOX_UX_GATE.
   https://eos-platform-sandbox.web.app/financials (all 20 routes; version c88f1581).
 - DEPLOYMENT BOUNDARY: CAPABILITIES ACTIVATED NO · GRANTS NO · BACKFILL NO ·
   PRODUCTION WRITES NO · CERTIFICATION WRITES NO · policies untouched.
+
+### OWNER VISUAL ACCEPTANCE REVIEW — ROUND 1 (2026-09-01)
+- REVIEWED BUILD: c88f1581 on eos-platform-sandbox. Method: seeded ADMIN on the deployed
+  sandbox, 40 full-page captures (20 routes × 1440/375), structural metrics per view, live
+  interaction on page 07. No edits during the sweep.
+- OWNER DECISION: **B — ACCEPT WITH CORRECTIONS.** Owner visual acceptance remains PENDING
+  until the Owner accepts the corrected result.
+- MATERIAL FINDING F1 (V4, corrected): pages asserted `finance.read is inactive`,
+  `finance.visibility.* inactive`, `no financial visibility scope granted`. FALSE in
+  platform-sandbox — `finance.read` is activated there by the pre-existing Owner-authorized
+  environment override (`environmentCapabilityOverrides`, in the deployed Functions bundle,
+  NOT changed by any run in this program), and the governed callable returns
+  `{status:"ready"}` for the admin persona, which it only reaches when the fact-family gate
+  AND a visibility scope both allow. Direction of error was CONSERVATIVE (under-claimed
+  reach; no leak, no over-claim), but a surface stating an authority fact it never resolved
+  is the same defect class as one inventing a number. Copy now states what the SURFACE does.
+  NOTE: the earlier Quick Gate + release ledger entry repeated the same imprecise
+  "capabilities inactive" characterization; the gate's own header comment is corrected too.
+- CORRECTED (PR #1702, merged 648927d7 → main 6d0fae6f): F1 authority copy family-wide ·
+  F2 ~83 sub-44px touch targets at 375 (other North Star families had zero) · F3 footer
+  links rendered above the empty state · F4 Overview said the custody sentence twice ·
+  F5 Governance row wrapping · F6 Billing Queue totals band filled 2 of 4 ruled columns.
+  Follow-up (PR #1703): last 44px straggler + Quick Gate retry/assertion hardening.
+- GUARDS ADDED: two source-level contracts in `financialsSurface.test.mjs` — the honest-state
+  constants and every rendered string under `src/modules/financials/` may not assert a
+  capability's activation state. MUTATION-PROVED (reintroducing the claim fails the suite).
+  A literal control byte introduced by the first draft of that guard (which would have made
+  two assertions unfalsifiable) was caught by the repo's `noLiteralControlBytes` guard.
+- DEFERRED FOR OWNER STEER (not corrected): F7 (V2) page 01 mobile order — approved handoff
+  says exceptions outrank the plan table and the cost/margin band is omitted at 375 ·
+  F8 (V2) page 07 omits approved slots (Outstanding figure, Sales-vs-Service split,
+  financial history ledger, open-items/context rails) rather than showing honest-state slots ·
+  F10 Method TBD demoted to prose · F11 Profitability pivots look enabled while copy says
+  inactive · F12 NOT CONFIGURED and FUTURE INTEGRATION chips share identical styling.
+- RE-GATE ON CORRECTED BUILD: financialsNorthStarQuickGate 245/245 at 6d0fae6f; 20/20 routes
+  at 1440 and 375; zero $-figures; zero deny-all collection reads; zero console errors;
+  sub-44px targets at 375 reduced ~83 → 0.
+- DEPLOYMENT: HOSTING ONLY (c88f1581 → 6d0fae6f, and the follow-up build). Functions, Rules,
+  Indexes NOT deployed. CAPABILITIES ACTIVATED: NO · GRANTS: NO · POLICY: unchanged ·
+  BACKFILL/PRODUCTION/CERTIFICATION WRITES: NO.
+- STATUS: AWAITING_OWNER_VISUAL_ACCEPTANCE (round 2, on the corrected build).
