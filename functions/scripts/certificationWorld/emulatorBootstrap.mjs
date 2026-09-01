@@ -18,7 +18,6 @@ const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
 
-const WAREHOUSE_RECORD_AUTHOR = "certification-world-builder";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   console.error("FAILED: FIRESTORE_EMULATOR_HOST is not set. This tool only ever targets an emulator.");
@@ -51,32 +50,18 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
     written += Math.min(400, records.length - i);
   }
 
-  // The warehouse the plan stocks must exist, be ACTIVE, and be a GOVERNED warehouse.
+  // THE WAREHOUSE IS NO LONGER WRITTEN HERE -- CERT-WH-MAIN-01.
   //
-  // Availability counts only eligible warehouses, so an inactive one would make every balance read
-  // zero for reasons unrelated to the movements. That much the fixture always knew.
+  // This file used to carry its own handwritten governed `warehouses/wh-main` record, and it was
+  // the ONLY place one was ever written. buildWorld() did not produce it, so the emulator had a
+  // governed warehouse and every live certification world had none: readPartBalance dropped all 571
+  // units of warehouse stock, and verify still reported COMPLETE because the record was in no group
+  // it counted. Two independent definitions of one canonical shape is exactly how the two
+  // environments came to disagree.
   //
-  // What it did not know is that ACTIVE is not sufficient. Receiving resolves its destination
-  // through validateGovernedWarehouse, which requires the COMPLETE governed envelope -- location,
-  // version, updatedAt, updatedBy, provenance, coherent created/governance pairs, no stray fields,
-  // and no lingering `active` flag -- and only then checks the status. The fixture wrote four
-  // fields, every balance read worked perfectly for 142 movements, and the first real receipt was
-  // refused with DESTINATION_INVALID.
-  //
-  // The ledger never consults this contract; it takes a location reference at its word. Receiving
-  // is the first domain that asks whether the destination is a governed place to put goods.
-  await db.collection("warehouses").doc("wh-main").set({
-    id: "wh-main",
-    name: "Main Distribution Center",
-    location: "Phoenix, AZ",
-    status: "ACTIVE",
-    version: 1,
-    provenance: "NATIVE",
-    createdAt: FieldValue.serverTimestamp(),
-    createdBy: WAREHOUSE_RECORD_AUTHOR,
-    updatedAt: FieldValue.serverTimestamp(),
-    updatedBy: WAREHOUSE_RECORD_AUTHOR,
-  }, { merge: true });
+  // The record now comes from data/warehouses.mjs through buildWorld(), so it arrives in `records`
+  // above with the same server stamps as everything else and there is one definition to keep
+  // correct. The reasoning about WHY the shape is what it is lives with the definition.
 
   const employees = await db.collection("employees").count().get();
   const parts = await db.collection("parts").count().get();
