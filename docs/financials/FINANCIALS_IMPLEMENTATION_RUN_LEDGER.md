@@ -614,3 +614,39 @@ separately gated action. STATUS: FINANCIALS_READY_FOR_SANDBOX_UX_GATE.
   Indexes NOT deployed. CAPABILITIES ACTIVATED: NO · GRANTS: NO · POLICY: unchanged ·
   BACKFILL/PRODUCTION/CERTIFICATION WRITES: NO.
 - STATUS: AWAITING_OWNER_VISUAL_ACCEPTANCE (round 2, on the corrected build).
+
+### OWNER CORRECTIONS ROUND 2 (2026-09-01)
+- OWNER DIRECTION: F7 FIX · F8 FIX · F10 NO CHANGE · F11 FIX LIGHTLY · F12 FIX LIGHTLY.
+- F7 (PR #1704): page 01 at 375 now follows approved handoff §8 — exception rail outranks
+  the plan table, cost/margin band omitted (it lives on Cost to Budget and Profitability).
+  Scoped to a `--home` modifier inside the mobile breakpoint; DESKTOP UNCHANGED. Consequence
+  recorded: the rail is one grid child, so the Forecast teaser rises with Exceptions —
+  375 order is scorecard → exceptions → forecast → plan.
+- F8 (PR #1704, #1705): page 07 restores every approved slot — Outstanding (5th summary
+  figure), Sales-vs-Service split, financial history event ledger, open-items rail, context
+  rail. NO new reads, NO widened authority: each renders its honest state. Outstanding is a
+  SLOT not a figure — the wired AR read returns outstanding PER CURRENCY and collapsing it
+  would be the client-side arithmetic this family forbids; the AR section renders the
+  per-invoice truth. Five figures sit on one row (a 3-col grid wrapped 3+2 and left a ruled
+  empty cell reading as a missing sixth figure).
+- F10: unchanged by Owner decision — "Method TBD — FIN-005" in prose is accepted.
+- F11 (PR #1704): Profitability dimension pivots are no longer interactive chips while the
+  page states they are inactive; rendered in the family's existing static chip grammar.
+- F12 (PR #1704): Governance's four states now carry four treatments — "Not configured"
+  (solid quiet) and "Future integration" (dashed) no longer share one outline. Same chip,
+  same tokens, existing grammar; only the border treatment differs.
+- GATE HARDENING (PR #1705, this PR): viewport-aware assertions (the cost band is REQUIRED
+  at 1440 and FORBIDDEN at 375, so a viewport-blind check had to be wrong at one width);
+  a positive F7 check measuring EXCEPTIONS-BEFORE-PLAN by painted position, since the
+  recomposition is CSS `order` and a DOM-order check would report desktop sequence and pass.
+  ROOT-CAUSED A GATE DEFECT PREVIOUSLY MISDIAGNOSED AS A COLD-CDN FLAKE: on /financials
+  alone the shell's visually-hidden domain <h1> and the page title are both "Financials", so
+  the role query matched two elements and threw strict-mode; it passed only when the check
+  beat the title's paint. Now addressed via `h1.ns-workspace__title`. Two consecutive clean
+  runs.
+- RE-GATE: financialsNorthStarQuickGate **246/246** at aeb413bd; 20/20 routes at 1440 and
+  375; zero $-figures; zero deny-all collection reads; zero console errors; sub-44px targets
+  0 across all 20 routes.
+- DEPLOYMENT: HOSTING ONLY (5a67502f → 0c005b85 → aeb413bd). Functions/Rules/Indexes NOT
+  deployed. CAPABILITIES/GRANTS/POLICY/BACKFILL/PRODUCTION/CERTIFICATION: unchanged, none.
+- STATUS: AWAITING_OWNER_VISUAL_ACCEPTANCE (round 3, on aeb413bd + this gate fix).
