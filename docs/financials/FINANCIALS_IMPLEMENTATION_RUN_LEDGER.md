@@ -20,8 +20,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F9 | FIN-008 Period & Close | COMPLETE_MERGED | fff6bef6 | 921579d4 | #1682 | 5303706d |
 | F10 | FIN-009 Allocation & Intercompany | COMPLETE_MERGED | 5303706d | 385e7ca3 | #1683 | 92066be6 |
 | F11 | FIN-010 Reconciliation/Traceability | COMPLETE_MERGED | 92066be6 | dcca36b4 | #1684 | 7b4a021f |
-| F12 | Financials Product Surfaces | COMPLETE_PR_OPEN (map only — surfaces design-gated) | 7b4a021f | (see PR) | (opened below) | — |
-| F13 | Reporting Matrix | NOT_STARTED | — | — | — | — |
+| F12 | Financials Product Surfaces | COMPLETE_MERGED (map only — surfaces design-gated) | 7b4a021f | 80c051b4 | #1685 | b742d56b |
+| F13 | Reporting Matrix | COMPLETE_PR_OPEN | b742d56b | (see PR) | (opened below) | — |
 | F14 | Sandbox Activation Readiness | NOT_STARTED | — | — | — | — |
 | F15 | E2E Financial Certification Readiness | NOT_STARTED | — | — | — | — |
 
@@ -187,6 +187,16 @@ Details per phase are appended below as each phase closes.
   renders as unknown / UNELIMINATED_SUM carries its caveat; impeccable + taste bar against
   an approved design source).
 - BLOCKER: FIN-BLOCK-005 (below) — design sources for financial surfaces.
+- CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
+### F13 — Reporting Matrix
+- DELIVERED: docs/financials/F13_REPORTING_MATRIX.md — the five approved axes (Company/BU/
+  Person/Period/Basis) mapped to merged governed authority, with honest statuses: Cost and
+  Gross margin STRUCTURALLY UNKNOWN (FIN-BLOCK-003); Reconciled accounting fact ABSENT BY
+  DECISION (#145); Consolidated = UNELIMINATED_SUM (FIN-BLOCK-004); service billable
+  absent (FIN-BLOCK-002); plus the four rendering rules (one labeled basis per figure —
+  cross-basis via the comparison cores only; UNKNOWN renders as unknown; invariant E on
+  every export; reports compose cores/trusted reads, never raw collections).
 - CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
