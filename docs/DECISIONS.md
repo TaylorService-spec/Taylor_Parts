@@ -3800,3 +3800,200 @@ activation → 2C** (Parts Manager scope, if full intended persona coverage is r
 `mobile_locations`, the other ownership physical root, never had this problem: its reader checks
 required fields rather than enforcing a closed allow-list, so an added company passes untouched. Only
 `warehouses` needed the amendment, and a future reader should not assume both roots were blocked.
+
+---
+
+## #150 — OWNER RULING R-29: `RoleAssignment.scope.location` is the canonical warehouse-scope authority
+
+**Date:** 2026-09-01
+**Classification:** GOVERNED SCOPE AUTHORITY — settles the Workstream 2C question left open by #147
+(`PARTS_MANAGER_SCOPE_UNDEFINED`) and #148. Answers **Axis B** (which Warehouses may an actor act on),
+and re-homes part of **Axis A** (may the actor perform the operation at all).
+**Status:** RULED. No grant, no sandbox mutation, no deploy authorized by this entry.
+
+> **Naming note.** "R-29" here is the warehouse-scope ruling. An earlier, undocketed R-29 in the same
+> session was a live deploy/worktree reconciliation that produced no durable ruling and was never
+> recorded. There is no superseded text; this is the only R-29 in the repository.
+
+### The ruling
+
+1. **Canonical grant authority.** `RoleAssignment.scope` with `type: "location"` and `value` = a
+   governed `warehouseId`. This vocabulary already exists end to end: `ScopeType` declares it,
+   `resolveEffectivePermission.scopeMatches()` implements it as an exact `value` match with correct
+   narrowness ordering, `trustedWriterCommands.grantRole` validates and accepts it, and grant/revoke
+   already emit `grantRole` / `revokeRole` audit events. **What was missing was never the authority —
+   it was a consumer.** No caller in the repository has ever constructed a non-global `TargetContext`.
+
+2. **`employees.assignedWarehouseIds` is demoted.** It is no longer an independent grant authority. It
+   becomes a **derived, Rules-consumable projection** of (1), for the places where Firestore Rules
+   must test warehouse membership directly and cannot run the resolver. It must not be authored
+   independently by application or UI code.
+
+3. **Scope semantics are platform-wide; enforcement is capability-specific.** A location-scoped
+   assignment confines a capability to that Warehouse **whenever that capability operates on a
+   Warehouse target**. It does not confer every warehouse capability.
+
+4. **`PARTS_MANAGER` may hold warehouse scope** — and holds it only through governed location-scoped
+   assignments. No implicit all-warehouse scope, no implicit operating-company scope, and nothing
+   inherited from the title.
+
+5. **`WAREHOUSE_MANAGER` uses the same mechanism.** Its existing `assignedWarehouseIds` becomes
+   projection/compatibility, not the long-term source of truth.
+
+6. **Manager capabilities belong on the governed business Roles.** The `technician` compatibility Role
+   is not to be granted to manager personas to make a workflow function.
+
+7. **Reorder specifically:** `technician` must stop being the carrier through which an active
+   `WAREHOUSE_MANAGER` / `PARTS_MANAGER` obtains `reorder.request.create.manual`. Governed Role
+   ownership expresses the capability directly.
+
+8. **admin / dispatcher keep global behaviour.** 2C narrows nothing for them.
+
+9. **No sandbox grants and no deploy yet.**
+
+### What this ruling fixes, measured
+
+The 2C inventory found the blocker was **two** gaps on **different** principals, not one missing grant:
+`reorder.request.create.manual` is carried by exactly one Role (`technician`, compatibility) under the
+condition `operationalRoleActive ∈ {PARTS_MANAGER, WAREHOUSE_MANAGER}` — and in sandbox the personas
+holding the condition hold four narrow inventory Roles but not `technician`, while the persona holding
+`technician` has `operationalRoles: []`. Both halves never land together, so **the scope layer has
+never refused anything in a live environment**; every observed denial was Axis A. Item 7 dissolves that
+split by putting the capability where the principal already is.
+
+### Three things this ruling does NOT settle
+
+Recorded as open, because building past them would be inventing authority — the failure mode #147
+already ruled against.
+
+- **OPEN-1 — the global-scope loophole.** `scopeMatches()` returns `true` for a `global` assignment
+  against **any** target, including a location target. So granting a warehouse-bearing governed Role at
+  global scope would silently confer all-warehouse authority, contradicting §4. §8 requires `global` to
+  keep meaning "everything" for admin/dispatcher, so the resolver cannot be changed. The constraint
+  therefore belongs at **grant time** — warehouse-bearing Roles may only be granted at `location`
+  scope — and nothing enforces that today.
+  **SUPERSEDED IN PART by R-30 (#151): the remedy named here — a whole-Role location-only grant constraint — is EXPLICITLY REJECTED.** The required control is a CAPABILITY-scope constraint, not a ROLE-scope one, because both manager Roles carry permissions that are legitimately global. The loophole itself remains real and remains binding; only the proposed fix was wrong. See #151.
+- **OPEN-2 — the projection's writer and its Rules consumer.** §2 fixes the direction
+  (RoleAssignment → `assignedWarehouseIds`) but not who computes it, when, or what becomes of the two
+  tools that author it directly today (`warehouseAssignmentProvisioningCli.js`,
+  `provisionEmployeeAccess.js`). Separately, `firestore.rules`' `isAssignedToWarehouse()` still requires
+  `operationalRoles.hasAny(["WAREHOUSE_MANAGER"])`, so a location-scoped `PARTS_MANAGER` gains nothing
+  in Rules until that predicate changes — always a Tier-2 change.
+- **OPEN-3 — how far §7 reaches.** §7 names `reorder.request.create.manual`. `TECHNICIAN_ROLE`
+  conditions five further capabilities on the same manager operational roles
+  (`reorder.request.read.queue`, `reorder.request.assign`, `inventory.transaction.read`,
+  `inventory.action.read`, `inventory.catalog.read`). §6's principle implies all of them; §7 names one.
+  Moving only the named one leaves the identical split-brain in place for the rest.
+
+### Cross-workflow consequence, recorded
+
+Reorder is today the **only** warehouse workflow with any actor warehouse scope. Receiving, Transfers,
+Cycle Count, Put-away, Bins, Returns intake and Serialized-asset acquisition are capability-only: a
+principal holding `inventory.stock.receive` may receive at every status-eligible warehouse. §3 makes
+those workflows in-scope for confinement as and when each is ruled on; this entry authorizes no change
+to any of them.
+
+### Recorded stale claim
+
+`parityFixtures.ts` asserts `legacyDecision: "ALLOW"` for `reorder.request.create.manual` under a
+`technician` + active `WAREHOUSE_MANAGER` fixture. That oracle is a hand-authored literal describing
+pre-2B production Rules; the repository's `firestore.rules` now says `allow create: if false` for
+`reorder_requests`. Implementing §7 therefore **aligns** the compatibility Role with an
+already-retired legacy path rather than breaking parity — but the fixture must be retired in the same
+change, with that reason stated, or it becomes exactly the false-claim defect class RCV-G4 ruled on.
+
+---
+
+## #151 — OWNER RULING R-30: the 2C.1 implementation reach, and the mixed-Role contradiction it uncovered
+
+**Date:** 2026-09-01
+**Classification:** IMPLEMENTATION REACH + SCOPE-SAFETY. Governs how R-29 (#150) is built.
+**Status:** RULED. **Step A executed and returned a STOP** — see "The measured answer" below.
+No grant, no sandbox mutation, no deploy.
+
+### The ruling
+
+1. **§7 reach — all six, not one.** Every manager-conditioned capability moves off the `technician`
+   compatibility Role, preserving each capability's **existing per-capability eligibility exactly**:
+   PARTS_MANAGER-only → governed `partsManager`; WAREHOUSE_MANAGER-only → governed `warehouseManager`;
+   both → both. The six are **not** flattened into one identical bundle merely because they happen to
+   share a compatibility Role today. The defect boundary is *"business-manager authority is carried
+   through a Role named `technician`"* — not *"one Reorder capability sits in the wrong place."*
+   Afterwards `technician` must no longer be required to obtain those authorities, and real technician
+   behaviour must not change unless that principal independently holds a governed manager Role.
+
+2. **OPEN-1 — the control is CAPABILITY-scoped, not ROLE-scoped.** The loophole must be closed before
+   location-scoped authority counts as governed, but the remedy proposed in #150 is rejected: a
+   whole-Role location-only restriction could silently narrow unrelated global manager authority.
+   The required control is: **a GLOBAL RoleAssignment must not confer a capability whose governed
+   target semantics require warehouse/location scope.** `scopeMatches()` is not to be weakened and
+   Reorder is not to be special-cased. R-29 §4 stays binding — a convention is not sufficient.
+
+3. **Sequencing — one changeset.** §7 and §1/§3 belong in the same authority tranche (A classify →
+   B enforce → C move → D location `TargetContext` → E Reorder shares the decision → F prove
+   admin/dispatcher unchanged → G prove `technician` cannot become a manager → H only then mergeable).
+   Neither half may merge as a standalone final state.
+
+### The measured answer to Step A — BOTH ROLES ARE MIXED, so the tranche STOPS
+
+R-30 §2 required classifying every permission on both governed Roles *before* any enforcement rule,
+and stopping if either Role is mixed. Both are, decisively.
+
+| Role | Permission | Class | Evidence |
+|---|---|---|---|
+| both | `warehouse.transferOrder.read` | **LOCATION_REQUIRED** | catalog: "inter-warehouse stock transfer"; `firestore.rules` already scopes it by `fromWarehouseId`/`toWarehouseId` |
+| both | `inventory.transaction.read` | **LOCATION_REQUIRED** | every OPERATIONAL record stores `location {type, locationId}` |
+| both | `inventory.serializedAsset.read` | **LOCATION_REQUIRED** | projection includes `currentLocationId` |
+| both | `customer.record.read` | **OTHER_TARGET_TYPE** | Customer target; no warehouse exists in it |
+| both | `audit.event.read` | **OTHER_TARGET_TYPE** | cross-domain immutable history |
+| both | `salesOrder.read` | **OTHER_TARGET_TYPE** | account/Sales-Order target |
+| both | `inventory.catalog.manage` / `.read` | **GLOBAL_ALLOWED** | canonical Part/Manufacturer reference data — company-wide by definition |
+| both | `inventory.balance.read` | **UNRESOLVED** | reports on-hand **across all ACTIVE warehouses** for one Part; confining it would change what the number means, yet leaving it global leaks cross-warehouse on-hand to a location-scoped manager |
+| warehouseManager | `inventory.action.read` | **OTHER_TARGET_TYPE** | `inventory_actions` carries no warehouse or location field |
+| warehouseManager | `reorder.purchaseOrder.read` | **UNRESOLVED** | the PO document carries `operatingCompanyId` but **no `warehouseId`** — it is company-scoped and not warehouse-scoped, though the request that produced it is both |
+| partsManager | `finance.adjustment.record`, `finance.invoice.issue`, `finance.read` | **OTHER_TARGET_TYPE** | invoice / AR targets |
+| partsManager | `workOrder.create`, `workOrder.transition` | **OTHER_TARGET_TYPE** | Work Order target (ADR-002) |
+
+`warehouseManager` = 3 LOCATION_REQUIRED, 4 OTHER, 2 GLOBAL_ALLOWED, 2 UNRESOLVED (11).
+`partsManager` = 2 LOCATION_REQUIRED, 6 OTHER, 2 GLOBAL_ALLOWED, 1 UNRESOLVED (13, `inventory.catalog.manage`
+and `.read` counted as the two GLOBAL_ALLOWED).
+
+**Per R-30 §2 the tranche therefore STOPS at step B and does not proceed to C.** Neither Role may be
+forced to location scope; `scopeMatches()` is not to be weakened; Reorder is not to be special-cased.
+
+The **six moving capabilities are themselves mixed**, which sharpens the contradiction rather than
+softening it: `reorder.request.create.manual` and `inventory.transaction.read` are LOCATION_REQUIRED,
+`inventory.catalog.read` is GLOBAL_ALLOWED, `inventory.action.read` has no location field at all, and
+`reorder.request.read.queue` / `reorder.request.assign` are UNRESOLVED because `reorder_requests` has
+**two record generations** — rows predating the trusted command carry no `warehouseId` at all, so a
+location-confined read would silently hide legacy rows rather than deny them.
+
+### The §7 delta, measured (built only when the tranche is unblocked)
+
+Applying R-30 §1's preserve-eligibility rule to the six, most are already in place; the real delta is
+four grants:
+
+| Capability | Current condition | Destination | New? |
+|---|---|---|---|
+| `reorder.request.create.manual` | PARTS_MANAGER or WAREHOUSE_MANAGER | both governed Roles | **NEW to both** |
+| `reorder.request.read.queue` | PARTS_MANAGER only | `partsManager` | **NEW** |
+| `reorder.request.assign` | PARTS_MANAGER only | `partsManager` | **NEW** |
+| `inventory.action.read` | WAREHOUSE_MANAGER only | `warehouseManager` | already held |
+| `inventory.transaction.read` | either | both | already held by both |
+| `inventory.catalog.read` | either | both | already held by both |
+
+### Two candidate remedies, returned unselected
+
+Named because R-30 anticipates them; **neither is adopted here.**
+
+- **Split the warehouse-scoped permissions into a governed scoped Role**, leaving the existing manager
+  Roles global. Smallest change to the resolver; multiplies Roles, and the split must be maintained as
+  capabilities are added.
+- **Introduce an explicit capability-to-allowed-scope policy** — declare per capability which Scope
+  types may carry it, and refuse a grant (and a decision) that violates it. Matches R-30 §2's own
+  framing exactly, is the only option that answers UNRESOLVED cells rather than routing around them,
+  and is the larger authority decision R-30 predicted.
+
+Selecting between them is the next Owner ruling. Both are blocked on the same prior question the table
+above exposes: **what a LOCATION_REQUIRED capability should do about records that have no location** —
+legacy `reorder_requests`, and every `reorder_purchase_orders` document.
