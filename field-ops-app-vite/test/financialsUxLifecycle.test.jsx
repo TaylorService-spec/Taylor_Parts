@@ -367,3 +367,75 @@ describe("20 Financial Settings & Governance — /financials/governance", () => 
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
+
+// ─── Owner visual-acceptance corrections, round 2 (F7, F8, F11, F12) ───
+
+describe("F7 · page 01 mobile recomposition hooks (approved handoff §8)", () => {
+  test("the cost band and the rail carry the hooks the 375 rules key on", () => {
+    const { container } = mount(<FinancialsOverview />);
+    // The mobile rules live in a max-width media query, so jsdom cannot evaluate the
+    // ORDER itself. What is pinned here is that the hooks those rules depend on exist —
+    // deleting either silently restores desktop order at 375.
+    const grid = container.querySelector(".fin-overview-grid--home");
+    expect(grid).toBeTruthy();
+    expect(grid.querySelector(".fin-ov-cost")).toBeTruthy();
+    expect(grid.querySelector(".fin-rail")).toBeTruthy();
+    // Desktop composition is unchanged: the cost band is still rendered in the DOM.
+    expect(container.textContent).toMatch(/Gross margin cannot be reported yet/);
+  });
+});
+
+describe("F8 · page 07 carries every approved slot", () => {
+  test("five figures including Outstanding, plus split, history, open items and context", () => {
+    searchState.state = "READY";
+    searchState.results = [{ id: "acct-1", name: "Canyon Foods" }];
+    arState.errorStatus = "denied";
+    const { container } = mount(<FinancialsCustomerFinancials />);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Customer" }), { target: { value: "Can" } });
+    fireEvent.click(screen.getByRole("button", { name: "Canyon Foods" }));
+
+    for (const label of ["Booked", "Billed", "Collected", "Outstanding", "Credits"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(container.querySelectorAll(".fin-scorecard--five .fin-scorecard__slot").length).toBe(5);
+    for (const heading of ["Sales vs Service", "Financial history", "Open items", "Context"]) {
+      expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+    }
+    // Slots restored WITHOUT new reads: each states its absence, and no figure is invented.
+    expect(container.textContent).not.toMatch(/\$\d/);
+    // One destination, one link: the identity line owns the Account record link.
+    expect(screen.getAllByText("Account record →").length).toBe(1);
+  });
+});
+
+describe("F11 · Profitability dimensions are vocabulary, not controls", () => {
+  test("no dimension is rendered as an interactive control", async () => {
+    const { default: FinancialsProfitability } = await import("../src/modules/financials/FinancialsProfitability.jsx");
+    const { container } = mount(<FinancialsProfitability />);
+    for (const label of ["By unit", "By salesperson", "By customer", "By source"]) {
+      expect(screen.getByText(label)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: label })).toBeNull();
+    }
+    expect(container.querySelectorAll(".fin-basis--inactive").length).toBe(4);
+  });
+});
+
+describe("F12 · Governance distinguishes its four states", () => {
+  test("not-configured and future-integration carry different chip treatments", async () => {
+    const { default: FinancialsGovernance } = await import("../src/modules/financials/FinancialsGovernance.jsx");
+    const { container } = mount(<FinancialsGovernance />);
+    for (const cls of [
+      "fin-gov-chip--configured",
+      "fin-gov-chip--dormant",
+      "fin-gov-chip--notconfigured",
+      "fin-gov-chip--future",
+    ]) {
+      expect(container.querySelectorAll(`.${cls}`).length).toBeGreaterThanOrEqual(1);
+    }
+    // The two that used to look identical must not resolve to the same class.
+    const notConfigured = [...container.querySelectorAll(".fin-gov-chip--notconfigured")];
+    const future = [...container.querySelectorAll(".fin-gov-chip--future")];
+    expect(notConfigured.some((e) => e.textContent === "Not configured")).toBe(true);
+    expect(future.some((e) => e.textContent === "Future integration")).toBe(true);
+  });
+});

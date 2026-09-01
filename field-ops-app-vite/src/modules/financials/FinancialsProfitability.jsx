@@ -19,7 +19,6 @@ import {
   FinancialsHonestSection,
   FinAnnotation,
 } from "./FinancialsPrimitives.jsx";
-import FilterBar from "../../shared/ui/FilterBar";
 
 const PIVOT_OPTIONS = [
   { key: "unit", label: "By unit" },
@@ -30,7 +29,6 @@ const PIVOT_OPTIONS = [
 
 export default function FinancialsProfitability() {
   const [company, setCompany] = useState("consolidated");
-  const [pivot, setPivot] = useState("unit");
 
   return (
     <FinancialsPageFrame
@@ -40,15 +38,33 @@ export default function FinancialsProfitability() {
       custodyTip="The FIN-006 derivation core is merged: margin computes when every required governed cost fact exists and reports UNKNOWN otherwise. Cost is never derived from sell price; margin is never derived from partial cost; missing-cost lines are never silently omitted. Who may see margin by person when it exists is an open product question (FIN-PQ-15a)."
     >
       <FinancialsFilterRail company={company} onCompanyChange={setCompany} />
-      <FilterBar variant="chips" label="Dimension" options={PIVOT_OPTIONS} activeKey={pivot} onChange={setPivot} />
+
+      {/* THE PIVOTS ARE NOT ACTIONABLE YET, SO THEY MUST NOT LOOK ACTIONABLE (Owner visual
+          review, F11). They were interactive FilterBar chips while the page's own copy said
+          "dimension pivots stay inactive until the authority they pivot exists" — a control
+          that invites a click and changes nothing. They are rendered here in the family's
+          existing static chip grammar (the same .fin-basis chip the plan pages use for
+          vocabulary), as a list, with no button and no selected state to mistake for one. */}
+      <section className="ns-section" aria-label="Dimensions">
+        <p className="fin-section-note">
+          Dimensions (inactive until FIN-006):{" "}
+          {PIVOT_OPTIONS.map((option) => (
+            <span key={option.key}>
+              {" "}
+              <span className="fin-basis fin-basis--inactive">{option.label}</span>
+            </span>
+          ))}
+          <FinAnnotation tip="These are the dimensions margin will pivot by when FIN-006 cost supply exists. They are shown as vocabulary, not controls: nothing here filters anything today, so nothing here is clickable." />
+        </p>
+      </section>
 
       <div className="fin-truth-band" role="note">
         <strong>Margin cannot be reported yet.</strong>
         <p>
           Governed cost-fact supply does not exist (FIN-BLOCK-003, Owner decision). Until it does,
           gross margin is UNKNOWN — with no fabricated number. The composition below keeps every
-          slot; FIN-006 activation fills values, not structure. Dimension pivots stay inactive until
-          the authority they pivot exists.
+          slot; FIN-006 activation fills values, not structure. The dimensions below are vocabulary
+          only — nothing pivots until the authority they pivot exists.
         </p>
       </div>
 

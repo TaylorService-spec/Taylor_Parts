@@ -82,7 +82,10 @@ export default function FinancialsOverview() {
         </p>
       </section>
 
-      <div className="fin-overview-grid">
+      {/* --home carries the page-01 MOBILE recomposition the approved handoff §8 specifies:
+          at 375 the exception rail outranks the plan table and the cost/margin band is
+          omitted (it lives on Cost to Budget and Profitability). Desktop is untouched. */}
+      <div className="fin-overview-grid fin-overview-grid--home">
         <div>
           <section className="ns-section" aria-label="Performance against plan">
             <div className="ns-section__head">
@@ -100,7 +103,7 @@ export default function FinancialsOverview() {
             </p>
           </section>
 
-          <section className="ns-section" aria-label="Cost and margin">
+          <section className="ns-section fin-ov-cost" aria-label="Cost and margin">
             <div className="ns-section__head">
               <h2 className="ns-section__title">Cost &amp; margin</h2>
             </div>
