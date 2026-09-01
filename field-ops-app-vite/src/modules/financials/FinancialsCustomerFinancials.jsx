@@ -18,12 +18,20 @@ import AccountArSection from "../accounts/AccountArSection.jsx";
 import { FinancialsPageFrame, FinAnnotation, FinancialFigure } from "./FinancialsPrimitives.jsx";
 import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 
-// The five summary slots for one customer (page 07 grammar): Booked / Billed / Collected /
-// Outstanding / Credits. Outstanding activates first — it is the AR read AccountArSection
-// already composes per invoice; the summary figure itself waits for the same activation.
-const SUMMARY_SLOTS = LIFECYCLE_SCORECARD_SLOTS.filter((s) =>
-  ["booked", "billed", "collected"].includes(s.key),
-);
+// THE FIVE SUMMARY FIGURES the approved handoff specifies: Booked / Billed / Collected /
+// Outstanding / Credits.
+//
+// Outstanding is a SLOT, not a computed figure. The wired AR read below returns
+// `summary.outstandingByCurrency` — a per-currency map — and this page must not collapse it
+// into one number: "multi-currency balances list per currency, never summed" is the same
+// rule AccountArSection states, and summing across currencies would be exactly the
+// client-side financial authority this family forbids. So the figure keeps its place and
+// states its absence; the per-invoice outstanding truth is rendered by the AR section.
+const SUMMARY_SLOTS = [
+  ...LIFECYCLE_SCORECARD_SLOTS.filter((s) => ["booked", "billed", "collected"].includes(s.key)),
+  { key: "outstanding", label: "Outstanding", factClass: "OPERATIONAL_ACTUAL" },
+  { key: "credits", label: "Credits", factClass: "OPERATIONAL_ACTUAL", absence: "No corrections read" },
+];
 
 export default function FinancialsCustomerFinancials() {
   const [term, setTerm] = useState("");
@@ -80,30 +88,84 @@ export default function FinancialsCustomerFinancials() {
           </section>
 
           <section className="fin-scorecard-section" aria-label="Financial summary">
-            <div className="fin-scorecard fin-scorecard--customer">
+            <div className="fin-scorecard fin-scorecard--five">
               {SUMMARY_SLOTS.map((slot) => (
                 <div key={slot.key} className="fin-scorecard__slot">
                   <FinancialFigure
                     label={slot.label}
                     factClass={slot.factClass}
-                    absence="No read on this surface"
+                    absence={slot.absence ?? "No read on this surface"}
                   />
                 </div>
               ))}
-              <div className="fin-scorecard__slot">
-                <FinancialFigure label="Credits" factClass="OPERATIONAL_ACTUAL" absence="No corrections read" />
-              </div>
             </div>
             <p className="fin-section-note">
-              Summary figures activate with their governed reads; the per-invoice receivables below
-              are the one governed finance read wired today (server-authorized, fail-closed).
+              The per-invoice receivables below are the one governed finance read this page
+              composes; the figures above keep their places until their own reads are composed.
             </p>
           </section>
 
-          {/* The real composition: the same governed AR section the Account page mounts,
-              reading listAccountInvoiceAr under finance.read + finance.visibility.*.
-              DENIED and UNAVAILABLE render their own honest states inside. */}
-          <AccountArSection accountId={selected.id} />
+          <div className="fin-overview-grid">
+            <div>
+              <section className="ns-section" aria-label="Sales versus Service">
+                <div className="ns-section__head">
+                  <h2 className="ns-section__title">Sales vs Service</h2>
+                  <span className="ns-section__meta">· split from source lineage, never inferred</span>
+                </div>
+                <p className="ns-state ns-state--na">
+                  No split to show. The split is read from each event&rsquo;s source lineage
+                  (Sales Order vs Work Order); this page composes no lineage read yet, and a
+                  customer&rsquo;s activity is never apportioned by guess.
+                  <FinAnnotation tip="Unattributed lineage is reported as unattributed, never guessed. A split inferred from anything other than the governed source record would be a fabricated attribution — the same defect class as a fabricated number." />
+                </p>
+              </section>
+
+              {/* The real composition: the same governed AR section the Account page mounts,
+                  reading listAccountInvoiceAr. DENIED, UNAVAILABLE and EMPTY all render
+                  their own honest states inside it. */}
+              <AccountArSection accountId={selected.id} />
+
+              <section className="ns-section" aria-label="Financial history">
+                <div className="ns-section__head">
+                  <h2 className="ns-section__title">Financial history</h2>
+                  <span className="ns-section__meta">· newest first · every event links to its owning record</span>
+                </div>
+                <p className="ns-state ns-state--na">
+                  No event ledger to show. The ledger composes invoice, payment and correction
+                  events for this customer; those read surfaces are not built, so no history is
+                  assembled here — and none is reconstructed from what the page can already see.
+                </p>
+              </section>
+            </div>
+
+            <aside className="fin-rail">
+              <section className="ns-section" aria-label="Open items">
+                <div className="ns-section__head">
+                  <h2 className="ns-section__title">Open items</h2>
+                </div>
+                <p className="ns-state ns-state--na">
+                  Unapplied payments and blocked billing carry their exception colours here when
+                  their reads are composed. Neither read exists on this page today, so no open
+                  item is listed — and none is implied by silence: the receivables section above
+                  states its own result.
+                </p>
+              </section>
+
+              <section className="ns-section" aria-label="Context">
+                <div className="ns-section__head">
+                  <h2 className="ns-section__title">Context</h2>
+                </div>
+                {/* Deliberately no second "Account record →" link: the identity line at the
+                    top of the page already carries it, and one destination should not have
+                    two links on one page. */}
+                <p className="ns-state ns-state--na">
+                  Terms, credit posture and ownership are Customer authority. They are read from
+                  the Account record linked in the identity line above — this page never restates
+                  or edits them.
+                </p>
+              </section>
+            </aside>
+          </div>
         </>
       ) : (
         <p className="ns-state ns-state--na">

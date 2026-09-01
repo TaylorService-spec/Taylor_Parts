@@ -7456,3 +7456,35 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     min-height: 44px;
   }
 }
+
+/* ══════ Financials — Owner corrections round 2 (2026-09-01) ══════ */
+
+/* F7. Page 01 MOBILE recomposition, per approved handoff §8: the exception rail outranks
+   the plan table, and the cost/margin band is omitted (it lives on Cost to Budget and
+   Profitability, both linked from the nav). Desktop composition is untouched — these rules
+   exist only inside the mobile breakpoint, and only under the --home modifier. */
+@media (max-width: 640px) {
+  .fin-overview-grid--home > .fin-rail { order: -1; }
+  .fin-overview-grid--home .fin-ov-cost { display: none; }
+}
+
+/* F8. Page 07's five-figure summary. Five slots wrap 3+2 on desktop and 2-up on mobile
+   (the shared mobile rule below already collapses every scorecard to two columns). */
+.fin-scorecard--five { grid-template-columns: repeat(3, 1fr); }
+
+/* F11. Dimension vocabulary that is NOT a control: the basis chip, quieted. No hover, no
+   pointer, no selected state — nothing that reads as clickable. */
+.fin-basis--inactive { color: var(--color-text-secondary); border-color: var(--color-border); cursor: default; }
+
+/* F12. NOT CONFIGURED vs FUTURE INTEGRATION were both plain outline chips and read as one
+   state. They stay in the existing four-chip grammar and existing tokens; only their
+   BORDER TREATMENT differs, which is the distinction the two states actually carry:
+     · NOT CONFIGURED    — a governed slot that exists and is empty  → solid border
+     · FUTURE INTEGRATION — nothing to configure yet, by design      → dashed border
+   CONFIGURED (solid dark) and BUILT DORMANT (amber) are unchanged. */
+.fin-gov-chip--future { border: 1px dashed var(--color-border); outline: none; }
+.fin-gov-chip--notconfigured { border: 1px solid var(--color-text-secondary); outline: none; color: var(--color-text-secondary); }
+
+@media (max-width: 640px) {
+  .fin-scorecard--five { grid-template-columns: 1fr 1fr; }
+}

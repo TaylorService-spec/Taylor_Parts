@@ -17,12 +17,23 @@ import {
 import { OPERATING_COMPANIES } from "../../domain/operatingCompanyAuthority.js";
 import { BUSINESS_UNIT_FILTER_OPTIONS } from "../../domain/financialsSurface.js";
 
+// FOUR STATES, FOUR TREATMENTS (Owner visual review, F12). "Not configured" and "Future
+// integration" previously shared one plain-outline treatment and read as a single state,
+// which is precisely the distinction an administrator comes to this page for:
+//   Configured        — solid dark  — the setting exists and holds a value
+//   Built dormant     — amber       — the authority is merged; its policy is not set
+//   Not configured    — solid quiet — a governed slot that exists and is empty
+//   Future integration— dashed      — there is nothing to configure yet, by design
+// Same chip, same tokens; only the border treatment separates the last two.
+const CHIP_TONES = Object.freeze({
+  "Configured": "fin-gov-chip--configured",
+  "Built dormant": "fin-gov-chip--dormant",
+  "Not configured": "fin-gov-chip--notconfigured",
+  "Future integration": "fin-gov-chip--future",
+});
+
 function StateChip({ state }) {
-  const tone =
-    state === "Configured" ? "fin-gov-chip--configured"
-    : state === "Built dormant" ? "fin-gov-chip--dormant"
-    : "fin-gov-chip--future";
-  return <span className={`fin-gov-chip ${tone}`}>{state}</span>;
+  return <span className={`fin-gov-chip ${CHIP_TONES[state] ?? "fin-gov-chip--notconfigured"}`}>{state}</span>;
 }
 
 function Row({ label, state = null, words = null, tip = null, last = false }) {
