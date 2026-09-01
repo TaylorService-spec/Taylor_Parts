@@ -85,7 +85,8 @@ test("missing governed company is SURFACED (queue still shows the order; issuanc
 test("no amount or price exists anywhere on a queue entry (quantities and states only)", () => {
   const e = deriveBillingQueueEntry(so());
   const flat = JSON.stringify(e).toLowerCase();
-  for (const forbidden of ["amount", "price", "minor", "total", "tax", "discount"]) {
+  // "total" is excluded: the eligibility facts carry orderedTotal/fulfilledTotal — quantity totals, not money.
+  for (const forbidden of ["amount", "price", "minor", "tax", "discount", "revenue", "cost"]) {
     assert.equal(flat.includes(forbidden), false, `queue entry must not carry "${forbidden}"`);
   }
 });
