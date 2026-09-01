@@ -49,7 +49,8 @@ const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 const { resolveExecutionTarget, describeTarget, ExecutionTargetRefused, assertBothLiveFlags } =
   await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
-const { writeRecords } = await import(L("functions/scripts/certificationWorld/seedWrite.mjs"));
+const { writeRecords, TIMESTAMP_POLICY, differsOnDeclaredFields, classifyTimestampPolicy } =
+  await import(L("functions/scripts/certificationWorld/seedWrite.mjs"));
 const { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, stableShape, worldFingerprint } =
   await import(L("functions/scripts/certificationWorld/state.mjs"));
 const { MARKER_FIELD } = await import(L("functions/scripts/certificationWorld/manifest.mjs"));
@@ -65,23 +66,12 @@ function repoCommit() {
   }
 }
 
-/**
- * Compare on the parts that must match.
- *
- * stableShape strips the volatile fields the world contract already names -- server timestamps, the
- * environment-minted Auth uid, per-run idempotency keys. Reusing it rather than writing a comparison
- * here is the point: a second definition of "the same" would disagree with verify eventually, and
- * the disagreement would show up as a record this tool rewrites on every run forever.
- */
-const differs = (expected, stored) =>
-  JSON.stringify(stableShape(expected)) !== JSON.stringify(stableShape(pick(stored, Object.keys(expected))));
-
-/** Only the keys the fixture declares -- extra stored fields are not drift, they are history. */
-function pick(obj, keys) {
-  const out = {};
-  for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
-  return out;
-}
+// COMPARISON AND TIMESTAMP POLICY BOTH LIVE IN seedWrite.mjs.
+//
+// They used to be defined here, and the classifier had to be added beside them for
+// CERT-UPGRADE-TIMESTAMPS-05. Two copies of "are these the same record" is how the tool and verify
+// would drift apart, and a policy decided here could not be exercised by a test without executing
+// this whole script against a project. One definition, imported.
 
 let target = null;
 try {
@@ -137,7 +127,7 @@ if (target) {
   for (const r of records) {
     const stored = live.get(`${r.collection}/${r.id}`);
     if (stored === undefined) { missing.push(r); continue; }
-    if (differs(r.data, stored)) { changed.push({ r, stored }); continue; }
+    if (differsOnDeclaredFields(r.data, stored)) { changed.push({ r, stored }); continue; }
     identical += 1;
   }
 
@@ -164,16 +154,45 @@ if (target) {
   if (changed.length) console.log(`  DIFFERING ${JSON.stringify(byCollection(changed, (x) => x.r.collection))}`);
   for (const m of missing.slice(0, 12)) console.log(`    + ${m.collection}/${m.id}`);
   for (const c of changed.slice(0, 12)) {
-    const fields = Object.keys(c.r.data).filter((k) => differs({ [k]: c.r.data[k] }, c.stored));
+    const fields = Object.keys(c.r.data).filter((k) => differsOnDeclaredFields({ [k]: c.r.data[k] }, c.stored));
     console.log(`    ~ ${c.r.collection}/${c.r.id}  [${fields.join(", ")}]`);
   }
   for (const o of orphaned.slice(0, 12)) console.log(`    ? ${o}`);
 
-  const toWrite = [...missing, ...changed.map((c) => c.r)];
+  // ── TIMESTAMP TREATMENT, decided per record and carried WITH the record.
+  //
+  // merge:true preserves a stored field only when the payload omits it, so this classification is
+  // what stops the upgrade rewriting createdAt on every document it touches. See seedWrite.mjs.
+  const policyOf = (c) => classifyTimestampPolicy(c.r.data, c.stored);
+  const contentChanged = changed.filter((c) => policyOf(c) === TIMESTAMP_POLICY.CONTENT_UPDATE);
+  const markerOnly = changed.filter((c) => policyOf(c) === TIMESTAMP_POLICY.METADATA_ONLY);
+
+  const toWrite = [
+    ...missing.map((r) => ({ ...r, timestampPolicy: TIMESTAMP_POLICY.NEW_RECORD })),
+    ...contentChanged.map((c) => ({ ...c.r, timestampPolicy: TIMESTAMP_POLICY.CONTENT_UPDATE })),
+    ...markerOnly.map((c) => ({ ...c.r, timestampPolicy: TIMESTAMP_POLICY.METADATA_ONLY })),
+  ];
+
+  // THE LITERAL WRITE PAYLOAD, not a stable-shape summary. An operator reading "differing: 1092"
+  // cannot tell from that number alone whether 1092 createdAt values are about to be replaced, and
+  // that ambiguity is the whole of CERT-UPGRADE-TIMESTAMPS-05. So the mutation set is spelled out.
+  console.log("TIMESTAMP TREATMENT (the actual Firestore write payload):");
+  console.log(`  NEW_RECORD     ${String(missing.length).padStart(5)}  createdAt MINTED, updatedAt MINTED`);
+  console.log(`  CONTENT_UPDATE ${String(contentChanged.length).padStart(5)}  createdAt PRESERVED, updatedAt advances (business content changed)`);
+  console.log(`  METADATA_ONLY  ${String(markerOnly.length).padStart(5)}  createdAt PRESERVED, updatedAt PRESERVED (marker version only)`);
+  console.log("  no existing createdAt or updatedAt is replaced by this upgrade.");
+  console.log("");
   const evidence = {
     target: target.projectId, version: world.version,
     expected: records.length, identical, missing: missing.length, differing: changed.length,
     orphaned, applied: Boolean(target.apply),
+    timestampTreatment: {
+      NEW_RECORD: missing.length,
+      CONTENT_UPDATE: contentChanged.length,
+      METADATA_ONLY: markerOnly.length,
+      existingStampsReplaced: 0,
+    },
+    contentChangedIds: contentChanged.map((c) => `${c.r.collection}/${c.r.id}`),
     missingIds: missing.map((m) => `${m.collection}/${m.id}`),
     differingIds: changed.map((c) => `${c.r.collection}/${c.r.id}`),
   };
