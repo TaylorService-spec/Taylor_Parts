@@ -41,7 +41,12 @@ const ROUTES = [
   ["/financials", {
     h1: "Financials",
     contains: ["Booked", "Billable now", "Billed", "Collected", "A/R outstanding", "Unbilled",
-      "Method TBD — FIN-005", "Gross margin cannot be reported yet", "No accounting authority"],
+      "Method TBD — FIN-005", "No accounting authority"],
+    // F7: the approved handoff omits the cost/margin band at 375 (it lives on Cost to
+    // Budget and Profitability). So the band is REQUIRED on desktop and FORBIDDEN on
+    // mobile — a viewport-blind assertion would have to be wrong at one of the two.
+    desktopOnlyContains: ["Gross margin cannot be reported yet"],
+    mobileAbsent: ["Gross margin cannot be reported yet"],
   }],
   ["/financials/billing-queue", {
     h1: "Billing Queue",
@@ -173,11 +178,14 @@ async function sweep(page, viewportLabel) {
     // exist on any Financials page.
     record(`${id} no-$`, !/\$\d/.test(text), /\$\d/.test(text) ? "dollar figure present" : "");
 
-    for (const phrase of spec.contains ?? []) {
+    const isMobile = viewportLabel === "375";
+    const required = [...(spec.contains ?? []), ...(isMobile ? [] : spec.desktopOnlyContains ?? [])];
+    const forbidden = [...(spec.absent ?? []), ...(isMobile ? spec.mobileAbsent ?? [] : [])];
+    for (const phrase of required) {
       const hit = text.includes(phrase.toLowerCase());
       record(`${id} says`, hit, hit ? phrase.slice(0, 40) : `MISSING: ${phrase}`);
     }
-    for (const phrase of spec.absent ?? []) {
+    for (const phrase of forbidden) {
       record(`${id} never says`, !text.includes(phrase.toLowerCase()), phrase);
     }
     for (const name of spec.disabledActions ?? []) {
@@ -247,6 +255,31 @@ async function main() {
   // ── 375 recomposition sweep.
   await page.setViewportSize({ width: 375, height: 812 });
   await sweep(page, "375");
+
+  // ── F7: at 375 the exception rail must OUTRANK the plan table. Measured by painted
+  // position, not DOM order — the recomposition is done with CSS order, so reading the DOM
+  // would report the desktop sequence and pass while the page shows the wrong one.
+  await page.goto(`${ORIGIN}/financials`, { waitUntil: "domcontentloaded" });
+  // The visible workspace title, not getByRole — the app shell also renders a
+  // visually-hidden <h1> with the domain name, and a role query matches both.
+  await page.locator("h1.ns-workspace__title").first().waitFor({ timeout: 20000 });
+  const order = await page.evaluate(() => {
+    const top = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? el.getBoundingClientRect().top + window.scrollY : null;
+    };
+    return {
+      exceptions: top('[aria-label="Exceptions"]'),
+      plan: top('[aria-label="Performance against plan"]'),
+    };
+  });
+  record(
+    "375 exceptions outrank the plan table (handoff §8)",
+    order.exceptions != null && order.plan != null && order.exceptions < order.plan,
+    order.exceptions == null || order.plan == null
+      ? "a section was not found"
+      : `exceptions@${Math.round(order.exceptions)} < plan@${Math.round(order.plan)}`,
+  );
 
   // ── Spot-check the 44px touch-target rule on the mobile gated actions.
   await page.goto(`${ORIGIN}/financials/billing-queue`, { waitUntil: "domcontentloaded" });
