@@ -1,0 +1,9 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "docs/north-star/**/*.dc.html"
+    ],
+    "ignoreValues": []
+  }
+}

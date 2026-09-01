@@ -33,7 +33,14 @@ functions/.operator-access-intents/
 # Emulator debug output — generated at runtime, never a repo artifact.
 firestore-debug.log
 firebase-debug.log
-.impeccable/
+
+# The impeccable design hook's directory is machine-local (cache, local overrides) EXCEPT
+# config.json — the SHARED, reviewable detector config (`hook-admin ignore-file --shared`
+# writes it there). It carries the one authorized ignore: installed North Star Design
+# artifacts (docs/north-star/**/*.dc.html); test/impeccableIgnoreScope.test.mjs pins that
+# scope, so the config must be in the repo for CI to read.
+.impeccable/*
+!.impeccable/config.json
 
 # Emulator E2E harness — generated port-overridden firebase.json (functions/scripts/runE2eEmulatorSuite.mjs).
 .e2e-emulator-firebase.json

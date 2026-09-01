@@ -1076,6 +1076,10 @@
     {
       "file": "test/financialsSurface.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/impeccableIgnoreScope.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
