@@ -71,6 +71,14 @@ const CANONICAL_PO_STATUS_WORDS = Object.freeze({
   SENT: "Sent to supplier",
 });
 
+// Exported so the supplier journey (MultiScanReceiving) and the queue speak the same words for the
+// same stored fact. null in → null out (a stored status is checked-but-optional on the progress
+// read; its absence is stated by the caller, not papered over here).
+export function canonicalPoStatusWords(storedStatus) {
+  if (typeof storedStatus !== "string" || storedStatus.length === 0) return null;
+  return CANONICAL_PO_STATUS_WORDS[storedStatus] ?? storedStatus;
+}
+
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
@@ -116,7 +124,7 @@ export function buildSupplierQueueRow(po, supplierNamesById = {}) {
     orderedQuantity: null,
     lineCount: Number.isFinite(po.lineCount) ? po.lineCount : null,
     supplierName: typeof name === "string" && name.length > 0 ? name : null,
-    statusWords: CANONICAL_PO_STATUS_WORDS[po.storedStatus] ?? (typeof po.storedStatus === "string" ? po.storedStatus : null),
+    statusWords: canonicalPoStatusWords(po.storedStatus),
     open: { journey: RECEIVING_JOURNEY.SUPPLIER, purchaseOrderId: po.purchaseOrderId },
   };
 }
