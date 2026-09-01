@@ -4087,3 +4087,82 @@ object. **Git reported no conflict** — the two changes touch different files �
 surfaced only when the governance suite ran. The test's intent (the company gates the picker) was
 preserved exactly; only its expression of "entitled to every warehouse" changed to the authority
 predicate. This is why a moving-main reconciliation cannot stop at textual conflict detection.
+
+---
+
+## #153 — OWNER RULING R-33: 2C.3 accepted and merged; production deployment BLOCKED pending a census
+
+**Date:** 2026-09-01
+**Classification:** REVIEW + MERGE AUTHORIZATION for R-32 (#152), plus two durable open items.
+**Status:** MERGED as `5d475f9f` (PR #1668). **No deployment followed, and none is authorized.**
+
+### Accepted
+
+`scopesByPermission` as Role→Permission binding metadata (no separate registry, no Permission object
+rewrite, no `scopeMatches()` change) · resolution-time validation authoritative with grant-time as
+defence in depth · the **at least one binding** rule for mixed Roles, explicitly **not** "every
+permission must support the scope" · the four-grant capability-home delta · Reorder evaluating
+`reorder.request.create.manual` against a `location` TargetContext · the retirement of
+`employees.assignedWarehouseIds` as a Reorder Functions authorization source.
+
+### THE DEPLOYMENT BLOCKER — read this before any 2C activation
+
+**Production has NOT been measured** for principals combining the `technician` compatibility Role
+with an active `PARTS_MANAGER`/`WAREHOUSE_MANAGER` operational role. Such a principal LOSES the six
+capabilities through the governed feed until granted a governed manager Role.
+
+    REPOSITORY_MERGE        ALLOWED  (done)
+    PRODUCTION_DEPLOYMENT   BLOCKED_PENDING_CENSUS
+
+The unknown does not invalidate R-32 and did not block the merge. It **does** prohibit production
+activation or deployment until a **bounded, read-only** census establishes the exposure. **The census
+must not mutate production.** Sandbox was measured: no principal is in that state, so sandbox
+exposure is nil.
+
+### RULES / GOVERNED PARITY — open, and intentional
+
+For the six paths, `firestore.rules` still ALLOWs where the governed model now DENIES. That equality
+was real before R-32 and is deliberately ended by it. Recorded as an explicit open reconciliation
+item, with two standing prohibitions:
+
+- do **NOT** weaken Rules to restore test parity;
+- do **NOT** widen governed authority to restore test parity.
+
+Removing the five stale parity fixtures was correct; they must not be resurrected as DENY fixtures,
+because a flipped fixture reads as "parity holds", which is now false.
+
+### Merging 2C.3 authorizes NOTHING operational
+
+Not sandbox Role grants, not scope grants, not `assignedWarehouseIds` changes, not Rules changes, not
+Functions deployment. Each belongs to the next 2C activation tranche.
+
+### The moving-main rule is now permanent
+
+`origin/main` advanced **three times** during 2C.3 — #1666, #1667, #1669 — and each was reconciled
+with an ancestry check, a per-path authority-surface check, affected-suite runs and a FINAL
+governance run on the reconciled tree. **Clean Git reconciliation is not sufficient evidence.** The
+#1666 collision proves it: a cert-world test drove the retired eligibility module through an
+`ALL_GOVERNED` scope object, in different files, with no textual conflict, and surfaced only when the
+governance suite ran.
+
+A second consumer of the same retired module — `warehousePhysicalRootCompany.test.mjs`, the 2A.1A
+"all six consumers" suite — was missed locally and caught by CI. The lesson is recorded because it
+generalizes: **when retiring a module, enumerate every importer first**, rather than discovering them
+one failing lane at a time. The reorder CI lane was retargeted onto `functions/src/access/**` and
+`bindingScopePolicy.test.mjs` in the same fix, so the R-32 successors are covered by the lane that
+used to cover what they replaced.
+
+### Standing classifications after this ruling
+
+    CAPABILITY_HOME_SPLIT_BRAIN            CLOSED
+    PER_BINDING_SCOPE_POLICY               IMPLEMENTED
+    GLOBAL_SCOPE_MANAGER_BYPASS            CLOSED
+    REORDER_LOCATION_SCOPE_CONSUMER        IMPLEMENTED
+    REORDER_ASSIGNED_WAREHOUSE_AUTHORITY   RETIRED
+    READ_QUEUE_RUNTIME_ENFORCEMENT         OPEN — DECLARATION ONLY
+    ASSIGN_RUNTIME_ENFORCEMENT             OPEN — DECLARATION ONLY
+    RULES_GOVERNED_PARITY                  OPEN — INTENTIONAL DIFFERENCE RECORDED
+    LEGACY_UNSCOPED_REORDER                PRESERVED
+    PRODUCTION_EXPOSURE                    UNMEASURED — DEPLOYMENT BLOCKER
+    SANDBOX / PRODUCTION / CERTIFICATION   NOT MUTATED
+    DEPLOYMENT                             NOT PERFORMED
