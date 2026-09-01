@@ -344,6 +344,19 @@ final.
   caller-supplied ids expand nothing · mixed-BU invoice hidden under BU scope · admin reach
   only through the same resolver. ALL PASS (financialScopeBinding + financeVisibilityRead).
 
-### Decision packages for FIN-BLOCK-002/003/004
-- Prepared this run as docs/financials/FIN-BLOCK-00{2,3,4}_*_DECISION_PACKAGE.md (see below
-  sections when merged) — assessment only, no policy coded.
+### Decision packages for FIN-BLOCK-002/003/004 — PREPARED (assessment only, no policy coded)
+- FIN-BLOCK-002_SERVICE_BILLING_DECISION_PACKAGE.md — 12 questions answered from repo
+  evidence; headline findings: NO agreement linkage exists on Work Orders, NO payor concept,
+  NO labor rates of any kind, deriveWorkOrderBusinessUnit is exported-but-unwired; the SO
+  route needs no new pricing authority; 8 exact Owner choices listed.
+- FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md — 14 sources classified; exactly ONE
+  candidate capture path exists (the dead Epic-5 purchase_orders price layer; the live
+  reorder PO collection carries no money field); per-domain recommendations (receipt cost
+  for parts, specific identification for serialized equipment) evaluated but NOT adopted;
+  freezing-event doctrine stated; 5 Owner choices in dependency order.
+- FIN-BLOCK-004_INTERCOMPANY_DECISION_PACKAGE.md — every Taylor↔Ventana flow classified;
+  NO flow qualifies as a true intercompany event candidate; recommendation: NO generic
+  intercompany ledger yet (supplier transactions per D-3 + explicit attribution cover
+  current operations); consolidated stays UNELIMINATED_SUM; found + recorded a stale D-3
+  citation (BusinessEntityModel.md:1236-1244 does not exist — the live ruling is in the
+  Ventana lifecycle responsibility model).
