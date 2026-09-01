@@ -52,13 +52,35 @@ const quantityParts = CERT_PARTS.filter((p) => p.ledgerTrackingMode !== "SERIAL"
 const conditionOf = (part) =>
   deriveCondition(part, balances, { hasInboundPo: stateForIndex(part.index) === INVENTORY_STATE.ON_ORDER });
 
-test("ALL SIX conditions actually exist in the world", () => {
+test("every condition the SPREAD assigns actually exists in the world", () => {
   // The assertion that caught the index collision. A spread claiming 55% HEALTHY while producing
   // none is invisible to any check that only compares intent against itself.
+  //
+  // MEASURED AGAINST WHAT THE SPREAD CAN ASSIGN, not against the whole vocabulary --
+  // CERT-PURCH-UNKNOWN-07. INVENTORY_STATE also declares CRITICAL, which stateForIndex no longer
+  // returns, and asserting it here would demand an instance the world cannot truthfully contain.
+  // Derived from stateForIndex itself so a future spread change updates this by construction.
+  const assignable = new Set(Array.from({ length: 20 }, (_, i) => stateForIndex(i)));
   const present = new Set(quantityParts.map(conditionOf));
-  for (const state of Object.values(INVENTORY_STATE)) {
+  for (const state of assignable) {
     assert.ok(present.has(state), `no part derives ${state} -- that condition cannot be tested (${[...present].join("/")})`);
   }
+  assert.ok(assignable.has(INVENTORY_STATE.UNOBSERVED), "the spread must still exercise UNOBSERVED");
+});
+
+test("CRITICAL is legitimately ABSENT, and is not manufactured to satisfy a coverage check", () => {
+  // CRITICAL means governed evidence establishes ZERO. This world contains no such part: every
+  // part is either stocked, or has never been observed at all. Producing one would require
+  // inventing ledger evidence -- the prohibited remedy under CERT-PURCH-UNKNOWN-07.
+  //
+  // Pinned rather than left silent, so the absence reads as a decision instead of an oversight,
+  // and so a future part that legitimately reaches an observed zero makes this test fail loudly
+  // and get re-examined.
+  const present = new Set(quantityParts.map(conditionOf));
+  assert.ok(!present.has(INVENTORY_STATE.CRITICAL),
+    "a part derives CRITICAL -- confirm it has real ledger evidence netting to zero, then update this");
+  assert.ok(present.has(INVENTORY_STATE.UNOBSERVED),
+    "the parts that used to be called CRITICAL must now derive UNOBSERVED");
 });
 
 test("every part's DERIVED condition equals its intended one", () => {

@@ -21,7 +21,25 @@ export const INVENTORY_STATE = Object.freeze({
   HEALTHY: "HEALTHY",
   WATCH: "WATCH",
   REORDER: "REORDER",
+  // KNOWN ZERO: governed evidence exists and it establishes zero on the shelf.
   CRITICAL: "CRITICAL",
+  // ============================ UNOBSERVED IS NOT ZERO ============================
+  //
+  // Owner ruling CERT-PURCH-UNKNOWN-07. A part with NO governed ledger observation has not been
+  // measured at zero -- it has not been measured. readPartBalance says exactly that: it returns
+  // UNKNOWN when `sawAnyPhysical` is false, and a KNOWN 0 only when evidence exists and nets to
+  // zero. The fixture used to call these parts CRITICAL, which is a claim about a physical
+  // balance, while the product correctly answered "we have never observed this part."
+  //
+  // The two states must not be collapsed:
+  //   UNOBSERVED  no governed physical observation exists      -> readPartBalance UNKNOWN
+  //   CRITICAL    governed evidence establishes zero            -> readPartBalance KNOWN 0
+  //
+  // This is why an UNOBSERVED part emits NO ledger movement. That is not an omission to be
+  // repaired with a synthetic COUNTED 0, a zero-variance count, or an ADJUSTED 0 -- all three were
+  // considered and all three are prohibited, because manufacturing evidence to satisfy a label is
+  // how a fixture starts lying about what it contains.
+  UNOBSERVED: "UNOBSERVED",
   ON_ORDER: "ON_ORDER",
   FALSE_COMFORT: "FALSE_COMFORT",
 });
@@ -46,7 +64,9 @@ export const CERT_TRUCKS = Object.freeze([
  */
 export function stateForIndex(i) {
   const m = i % 20;
-  if (m === 0) return INVENTORY_STATE.CRITICAL;        //  5%
+  // Was CRITICAL. These parts carry no ledger movement at all, so what they actually demonstrate
+  // is the UNOBSERVED case -- the honest starting point of the Golden first-stocking scenario.
+  if (m === 0) return INVENTORY_STATE.UNOBSERVED;      //  5%
   if (m === 1 || m === 2) return INVENTORY_STATE.REORDER;      // 10%
   if (m === 3) return INVENTORY_STATE.ON_ORDER;        //  5%
   if (m === 4) return INVENTORY_STATE.FALSE_COMFORT;   //  5%
@@ -64,6 +84,8 @@ export function partsRoomQtyFor(state, reorderPoint) {
   const rp = Math.max(1, reorderPoint);
   switch (state) {
     case INVENTORY_STATE.CRITICAL: return 0;
+    // Nothing on the shelf AND nothing recorded. Same zero, different reason -- see INVENTORY_STATE.
+    case INVENTORY_STATE.UNOBSERVED: return 0;
     case INVENTORY_STATE.REORDER: return Math.max(0, rp - 1);
     case INVENTORY_STATE.ON_ORDER: return Math.max(0, rp - 1);
     // Sits just above the line: genuinely fine today, the first thing to tip tomorrow.
@@ -78,6 +100,7 @@ export function partsRoomQtyFor(state, reorderPoint) {
 /** Truck allocation for a part, or 0. Deterministic; trucks carry the fast-moving service parts. */
 export function truckAllocationFor(state, index, truckIndex) {
   if (state === INVENTORY_STATE.CRITICAL) return 0;
+  if (state === INVENTORY_STATE.UNOBSERVED) return 0;
   // FALSE_COMFORT is the point of the fixture: the stock exists, but it is on the trucks.
   if (state === INVENTORY_STATE.FALSE_COMFORT) return 3;
   if (index % 4 === truckIndex % 4) return 2;

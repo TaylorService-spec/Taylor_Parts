@@ -78,6 +78,7 @@ export function intendedWarehouseAfterFor(part) {
     case INVENTORY_STATE.REORDER: return Math.max(1, rp - 1); // below: replenishment due
     case INVENTORY_STATE.ON_ORDER: return Math.max(1, rp - 1); // same shortfall; a PO is the difference
     case INVENTORY_STATE.CRITICAL: return 0;                  // nothing on the shelf
+    case INVENTORY_STATE.UNOBSERVED: return 0;                // nothing on the shelf AND nothing recorded
     // Deliberately BELOW the threshold while the company total stays high. The warehouse cannot
     // fulfil, and the abundance elsewhere is exactly what makes that deceptive.
     case INVENTORY_STATE.FALSE_COMFORT: return Math.max(0, rp - 2);
@@ -102,6 +103,9 @@ export function truckAllocationFor(part, profile) {
   const rp = reorderPointFor(part);
   // A real shortage stays a real shortage. Nothing to spare.
   if (state === INVENTORY_STATE.CRITICAL) return 0;
+  // An UNOBSERVED part is not stocked anywhere, trucks included -- so it emits no movement at all,
+  // which is precisely what leaves readPartBalance at UNKNOWN rather than KNOWN 0.
+  if (state === INVENTORY_STATE.UNOBSERVED) return 0;
   if (state === INVENTORY_STATE.REORDER) return 0;
   if (state === INVENTORY_STATE.ON_ORDER) return 0;
   // The whole point: enough units sit on trucks that the company looks well supplied.
@@ -351,6 +355,20 @@ export function projectBalances(movements) {
  */
 export function deriveCondition(part, balances, { hasInboundPo = false } = {}) {
   const rp = reorderPointFor(part);
+
+  // ============================ ABSENCE IS NOT ZERO -- CERT-PURCH-UNKNOWN-07 ============================
+  //
+  // FIRST, and before any threshold comparison. `balances` is built from the movements that exist,
+  // so a part with no movement has no entry -- and `?? 0` used to turn that silence into a measured
+  // zero, which then fell through to CRITICAL. The fixture therefore asserted a physical balance
+  // for a part the ledger had never observed, while readPartBalance correctly answered UNKNOWN.
+  //
+  // `has` rather than `get`: the question is whether an observation EXISTS, not what it says. A
+  // genuine observation of zero would be present in the map with the value 0, and must still reach
+  // CRITICAL below -- which is exactly the distinction the two states exist to preserve.
+  const observed = balances.warehouse.has(part.partId) || balances.company.has(part.partId);
+  if (!observed) return INVENTORY_STATE.UNOBSERVED;
+
   const wh = balances.warehouse.get(part.partId) ?? 0;
   const total = balances.company.get(part.partId) ?? 0;
 
@@ -359,6 +377,7 @@ export function deriveCondition(part, balances, { hasInboundPo = false } = {}) {
   // with plenty of company stock and an empty warehouse be reported as merely CRITICAL, which is
   // the exact misreading the condition exists to prevent.
   if (total > rp && wh < rp) return INVENTORY_STATE.FALSE_COMFORT;
+  // Reached ONLY when an observation exists: this is a governed KNOWN ZERO, not an absence.
   if (wh === 0) return INVENTORY_STATE.CRITICAL;
   if (wh < rp) return hasInboundPo ? INVENTORY_STATE.ON_ORDER : INVENTORY_STATE.REORDER;
   if (wh <= rp + 2) return INVENTORY_STATE.WATCH;
