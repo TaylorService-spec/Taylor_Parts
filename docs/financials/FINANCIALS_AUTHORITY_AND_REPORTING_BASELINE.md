@@ -20,7 +20,7 @@ write must independently enforce governed financial visibility and scope.
 | FIN-004 | Financial Visibility Model | **IMPLEMENTED** (server-enforced scope model — [FIN-004_FINANCIAL_VISIBILITY_MODEL.md](./FIN-004_FINANCIAL_VISIBILITY_MODEL.md); DECISIONS #156; SELF/TEAM/CONSOLIDATED enforced, COMPANY/BU principal-binding blocked on the Owner's access-scope ruling FIN-BLOCK-001; all capabilities `active:false`, nothing granted) |
 | FIN-005 | Forecast Model | **CORE IMPLEMENTED** (as-of-stamped expectations, supersession by newer as-of, never-blend comparison — [FIN-005_FORECAST_MODEL.md](./FIN-005_FORECAST_MODEL.md); methodology/pipeline-feed undecided) |
 | FIN-006 | Cost & Margin Authority | **INVARIANT CORE IMPLEMENTED** (margin = governed cost facts only, else UNKNOWN — [FIN-006_COST_MARGIN_MODEL.md](./FIN-006_COST_MARGIN_MODEL.md); cost supply undecided — FIN-BLOCK-003) |
-| FIN-007 | Adjustment / Approval / Exception Governance | **OPEN** |
+| FIN-007 | Adjustment / Approval / Exception Governance | **MACHINERY IMPLEMENTED** (fail-closed requirement engine + self-approval prohibition + amount-bounded approvals — [FIN-007_APPROVAL_GOVERNANCE_MODEL.md](./FIN-007_APPROVAL_GOVERNANCE_MODEL.md); policy values/approver roles Owner-undecided) |
 | FIN-008 | Period & Close Governance | **OPEN** |
 | FIN-009 | Allocation & Intercompany Governance | **OPEN** |
 | FIN-010 | Reconciliation / Traceability / Audit | **OPEN** |
