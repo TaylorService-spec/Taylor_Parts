@@ -242,6 +242,21 @@ test("MUTATION PROOF: no scan/type-an-order-number entry returns without a gover
   assert.doesNotMatch(src, /placeholder="Scan/i);
 });
 
+test("frame 1b recomposition changed presentation only — same submit path, no new resolver, no scan-order claim", () => {
+  const src = read("src/modules/receiving/MultiScanReceiving.jsx");
+  // The one governed submit, reached only through the readiness-gated client.
+  assert.match(src, /submitCanonicalReceive/);
+  assert.doesNotMatch(src, /httpsCallable|from "firebase/);
+  // No scanner resolver was created or imported — a part scan still matches the governed line
+  // facts, and no purchase-order scan identifier exists to resolve (RCV-G7).
+  assert.doesNotMatch(src, /aliasScan|scanResolver|resolveScan/i);
+  assert.doesNotMatch(src, /[Ss]can (the|an?) (purchase )?order/);
+  // The opaque ids never render as labels: the session title is the supplier fact, the picker
+  // demotes its id to code, and the receipt states the missing RO number rather than receivingId.
+  assert.doesNotMatch(src, /<h2[^>]*>\{progress\.purchaseOrderId\}/);
+  assert.doesNotMatch(src, /Receipt \{receipt\.receivingId\}/);
+});
+
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {
   const src = read("src/modules/inventory/Receiving.jsx");
   assert.match(src, /Not connected yet/);
