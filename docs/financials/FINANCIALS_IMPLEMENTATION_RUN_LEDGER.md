@@ -15,8 +15,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F4 | Service Billing Model | COMPLETE_MERGED | 04126d41 | f1627d63 | #1677 | bda2c5b2 |
 | F5 | FIN-006 Cost & Margin | COMPLETE_MERGED | bda2c5b2 | 1cf358b1 | #1678 | 12ee21bc |
 | F6 | FIN-003 Plan vs Actual | COMPLETE_MERGED | 12ee21bc | c5c55812 | #1679 | 73ba30cd |
-| F7 | FIN-005 Forecasting | COMPLETE_PR_OPEN | 73ba30cd | (see PR) | (opened below) | — |
-| F8 | FIN-007 Adjustments/Approvals | NOT_STARTED | — | — | — | — |
+| F7 | FIN-005 Forecasting | COMPLETE_MERGED | 73ba30cd | 85cd4c97 | #1680 | 208c7aea |
+| F8 | FIN-007 Adjustments/Approvals | COMPLETE_PR_OPEN | 208c7aea | (see PR) | (opened below) | — |
 | F9 | FIN-008 Period & Close | NOT_STARTED | — | — | — | — |
 | F10 | FIN-009 Allocation & Intercompany | NOT_STARTED | — | — | — | — |
 | F11 | FIN-010 Reconciliation/Traceability | NOT_STARTED | — | — | — | — |
@@ -122,6 +122,20 @@ Details per phase are appended below as each phase closes.
 - DOC: docs/financials/FIN-005_FORECAST_MODEL.md · TESTS: pure 7/7 new + F6 10/10 unchanged;
   finance CI lane registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS
   number.
+
+### F8 — FIN-007 Adjustment/Approval/Exception Governance
+- SCOPE: the approval machinery, with policy VALUES left to the Owner.
+- IMPLEMENTED: financialApprovals.ts — closed approvable-action set (INVOICE_ADJUSTMENT/
+  WRITE_OFF/REFUND/PLAN_APPROVAL/ATTRIBUTION_CORRECTION); isApprovalRequired FAIL-CLOSED
+  (no policy line ⇒ required; ambiguous policy thrown; thresholds cannot exempt amountless
+  actions); buildApprovalRecord (frozen, mandatory reason, SELF-APPROVAL FORBIDDEN
+  unconditionally); assertActionApproved (missing/mismatched/REJECTED refuse; approving
+  100 is not approving 150; rejection is terminal).
+- NOT DECIDED (deliberate): which actions/thresholds, who approves (capability/role),
+  escalation/expiry — supplied as policy values + grants at F14 activation; until then all
+  composed actions fail closed to required.
+- DOC: docs/financials/FIN-007_APPROVAL_GOVERNANCE_MODEL.md · TESTS: pure 8/8; finance CI
+  lane registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
 
