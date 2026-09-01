@@ -7,6 +7,13 @@
 // REFUND (money returned after a payment) is payment-side (a receipt reversal) and is intentionally NOT part of
 // this increment — it is a distinct follow, not folded in here. Integer minor units, never float. No I/O.
 
+import {
+  buildInvoiceEventAttribution,
+  requireInvoiceParty,
+  type FinancialAttributionSnapshot,
+  type InvoiceAttributionFacts,
+} from "./financialAttribution";
+
 export const ADJUSTMENT_TYPES = Object.freeze(["CREDIT_MEMO", "DEBIT_CHARGE", "WRITE_OFF"]);
 
 export class AdjustmentCommandError extends Error {
@@ -24,7 +31,7 @@ function outstandingOf(inv: InvoiceAdjustState): number {
   return inv.totalMinor - nn(inv.appliedMinor) - nn(inv.creditsMinor) + nn(inv.chargesMinor) - nn(inv.writeOffMinor);
 }
 
-export interface InvoiceAdjustState {
+export interface InvoiceAdjustState extends InvoiceAttributionFacts {
   currency: string;
   state: string;
   totalMinor: number;
@@ -44,13 +51,17 @@ export interface AdjustmentRecord {
   reason: string;
   effectiveDate: string; // YYYY-MM-DD
   recordedAtMillis: number;
+  /** FIN-002: canonical attribution derived from the governed invoice — never caller-chosen. */
+  attribution: FinancialAttributionSnapshot;
 }
 
 export interface RecordAdjustmentInput {
   type: string;
   invoiceId: string;
-  companyId: string;
-  accountId: string;
+  /** Assertion-only: must match the invoice's governed companyId when supplied. Never a choice. */
+  companyId?: string;
+  /** Assertion-only: must match the invoice's accountId when supplied. Never a choice. */
+  accountId?: string;
   currency: string;
   amountMinor: number;
   reason: string;
@@ -66,7 +77,7 @@ export function buildAdjustment(
   deps: { nowMillis: number },
 ): { adjustment: AdjustmentRecord; invoicePatch: { creditsMinor?: number; chargesMinor?: number; writeOffMinor?: number; outstandingMinor: number } } {
   if (!ADJUSTMENT_TYPES.includes(input?.type)) throw new AdjustmentCommandError("TYPE_INVALID", `type must be one of ${ADJUSTMENT_TYPES.join("/")}`);
-  for (const [f, v] of [["invoiceId", input.invoiceId], ["companyId", input.companyId], ["accountId", input.accountId], ["currency", input.currency]] as const) {
+  for (const [f, v] of [["invoiceId", input.invoiceId], ["currency", input.currency]] as const) {
     if (typeof v !== "string" || v.trim().length === 0) throw new AdjustmentCommandError("REQUIRED", `${f} is required`);
   }
   if (typeof input.reason !== "string" || input.reason.trim().length === 0) throw new AdjustmentCommandError("REASON_REQUIRED", "reason is required for an adjustment");
@@ -75,6 +86,7 @@ export function buildAdjustment(
   if (!invoice || typeof invoice !== "object") throw new AdjustmentCommandError("INVOICE_NOT_FOUND", "invoice required");
   if (invoice.currency !== input.currency) throw new AdjustmentCommandError("CURRENCY_MISMATCH", `adjustment ${input.currency} != invoice ${invoice.currency}`);
   if (invoice.state === "VOID") throw new AdjustmentCommandError("INVOICE_VOID", "invoice is void");
+  const { companyId, accountId } = requireInvoiceParty(input, invoice, (code, msg) => new AdjustmentCommandError(code, msg));
 
   const outstanding = outstandingOf(invoice);
   const patch: { creditsMinor?: number; chargesMinor?: number; writeOffMinor?: number; outstandingMinor: number } = { outstandingMinor: outstanding };
@@ -100,13 +112,14 @@ export function buildAdjustment(
   const adjustment: AdjustmentRecord = {
     type: input.type,
     invoiceId: input.invoiceId,
-    companyId: input.companyId,
-    accountId: input.accountId,
+    companyId,
+    accountId,
     currency: input.currency,
     amountMinor: input.amountMinor,
     reason: input.reason.trim(),
     effectiveDate: input.effectiveDate,
     recordedAtMillis: deps.nowMillis,
+    attribution: buildInvoiceEventAttribution(input.invoiceId, invoice, deps.nowMillis),
   };
   return { adjustment, invoicePatch: patch };
 }

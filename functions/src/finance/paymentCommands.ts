@@ -8,6 +8,16 @@
 //       credit balance; and one invoice may receive many applications. This increment implements the current
 //       minimum (a receipt applied to one invoice) without foreclosing any of that.
 // Integer minor units only (never float); pure; no I/O (the callable owns the transaction).
+//   (3) FIN-002 doctrine applied to money-in: the caller does NOT choose the operating company or the
+//       customer — the governed INVOICE does. input.companyId/accountId are assertion-only, and every
+//       receipt/application carries the canonical attribution snapshot derived from the invoice.
+
+import {
+  buildInvoiceEventAttribution,
+  requireInvoiceParty,
+  type FinancialAttributionSnapshot,
+  type InvoiceAttributionFacts,
+} from "./financialAttribution";
 
 export class PaymentCommandError extends Error {
   code: string;
@@ -31,6 +41,8 @@ export interface CashReceiptRecord {
   externalRef: string | null;
   appliedMinor: number; // sum of this receipt's applications
   unappliedMinor: number; // amountMinor - appliedMinor (>= 0)
+  /** FIN-002: canonical attribution derived from the governed invoice — never caller-chosen. */
+  attribution: FinancialAttributionSnapshot;
 }
 
 // A PAYMENT APPLICATION — one fact linking a receipt to an invoice for an applied amount. Many-per-payment and
@@ -42,10 +54,14 @@ export interface PaymentApplicationRecord {
   currency: string;
   appliedAmountMinor: number;
   appliedAtMillis: number;
+  /** FIN-002: canonical attribution derived from the governed invoice — never caller-chosen. */
+  attribution: FinancialAttributionSnapshot;
 }
 
-// The minimal invoice fields the AR projection reads/maintains.
-export interface InvoiceProjectionState {
+// The minimal invoice fields the AR projection reads/maintains, plus the invoice's governed
+// attribution facts (companyId/accountId/attribution via InvoiceAttributionFacts) that every
+// downstream money event derives its own attribution from.
+export interface InvoiceProjectionState extends InvoiceAttributionFacts {
   currency: string;
   state: string; // ISSUED | PARTIALLY_PAID | PAID | VOID | ...
   totalMinor: number;
@@ -74,8 +90,10 @@ export function deriveInvoiceStateFromFacts(inv: InvoiceProjectionState): string
 }
 
 export interface ApplyPaymentInput {
-  companyId: string;
-  accountId: string;
+  /** Assertion-only: must match the invoice's governed companyId when supplied. Never a choice. */
+  companyId?: string;
+  /** Assertion-only: must match the invoice's accountId when supplied. Never a choice. */
+  accountId?: string;
   invoiceId: string;
   currency: string;
   amountMinor: number;
@@ -93,12 +111,13 @@ export function buildApplyPayment(
   invoice: InvoiceProjectionState,
   deps: { nowMillis: number },
 ): { receipt: CashReceiptRecord; application: Omit<PaymentApplicationRecord, "paymentId">; invoicePatch: { appliedMinor: number; outstandingMinor: number; state: string } } {
-  for (const [f, v] of [["companyId", input.companyId], ["accountId", input.accountId], ["invoiceId", input.invoiceId], ["currency", input.currency]] as const) {
+  for (const [f, v] of [["invoiceId", input.invoiceId], ["currency", input.currency]] as const) {
     if (typeof v !== "string" || v.trim().length === 0) throw new PaymentCommandError("REQUIRED", `${f} is required`);
   }
   if (!isPosInt(input.amountMinor)) throw new PaymentCommandError("AMOUNT_INVALID", "amountMinor must be a positive integer (minor units)");
   if (!isInt(input.receivedAtMillis)) throw new PaymentCommandError("RECEIVED_AT_INVALID", "receivedAtMillis (ms epoch) is required");
   if (!invoice || typeof invoice !== "object") throw new PaymentCommandError("INVOICE_NOT_FOUND", "invoice required");
+  const { companyId, accountId } = requireInvoiceParty(input, invoice, (code, msg) => new PaymentCommandError(code, msg));
   if (invoice.currency !== input.currency) throw new PaymentCommandError("CURRENCY_MISMATCH", `payment ${input.currency} != invoice ${invoice.currency}`);
   if (invoice.state === "PAID") throw new PaymentCommandError("ALREADY_PAID", "invoice is already fully paid");
   if (invoice.state === "VOID") throw new PaymentCommandError("INVOICE_VOID", "invoice is void");
@@ -116,9 +135,12 @@ export function buildApplyPayment(
   const outstandingMinor = deriveOutstandingMinor(nextState);
   const state = deriveInvoiceStateFromFacts(nextState);
 
+  // One snapshot derived once from the governed invoice, stamped on BOTH facts (receipt +
+  // application) — the two records report the same financial event's attribution identically.
+  const attribution = buildInvoiceEventAttribution(input.invoiceId, invoice, deps.nowMillis);
   const receipt: CashReceiptRecord = {
-    companyId: input.companyId,
-    accountId: input.accountId,
+    companyId,
+    accountId,
     currency: input.currency,
     amountMinor: input.amountMinor,
     method: typeof input.method === "string" && input.method.length > 0 ? input.method : null,
@@ -126,13 +148,15 @@ export function buildApplyPayment(
     externalRef: typeof input.externalRef === "string" && input.externalRef.length > 0 ? input.externalRef : null,
     appliedMinor: input.amountMinor, // fully applied to this invoice in the minimum flow
     unappliedMinor: 0, // no unapplied balance in this increment (over-application rejected above)
+    attribution,
   };
   const application: Omit<PaymentApplicationRecord, "paymentId"> = {
     invoiceId: input.invoiceId,
-    companyId: input.companyId,
+    companyId,
     currency: input.currency,
     appliedAmountMinor: input.amountMinor,
     appliedAtMillis: deps.nowMillis,
+    attribution,
   };
   // The invoice patch is a TRANSACTIONALLY-MAINTAINED PROJECTION of the application fact (not an independent
   // authority): appliedMinor is the running sum of applications; outstandingMinor/state are derived from it.

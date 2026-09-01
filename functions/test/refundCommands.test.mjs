@@ -4,7 +4,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildRefund, RefundCommandError } from "../lib/finance/refundCommands.js";
 
-const inv = (over = {}) => ({ currency: "USD", state: "PAID", totalMinor: 10000, appliedMinor: 10000, ...over });
+const inv = (over = {}) => ({
+  currency: "USD",
+  state: "PAID",
+  totalMinor: 10000,
+  appliedMinor: 10000,
+  companyId: "taylor",
+  accountId: "A1",
+  attribution: { businessUnitId: null, creditedSalespersonId: "emp-sales-1", responsibleEmployeeId: null },
+  ...over,
+});
 const input = (over = {}) => ({ invoiceId: "INVID", companyId: "taylor", accountId: "A1", currency: "USD", amountMinor: 3000, reason: "returned goods", effectiveDate: "2026-08-08", ...over });
 const DEPS = { nowMillis: 1_700_000_100_000 };
 
@@ -44,4 +53,25 @@ test("fail-closed: currency / void / missing reason / bad date / bad amount / mi
   assert.throws(() => buildRefund(input({ effectiveDate: "2026/08/08" }), inv(), DEPS), (e) => e.code === "EFFECTIVE_DATE_INVALID");
   assert.throws(() => buildRefund(input({ amountMinor: 0 }), inv(), DEPS), (e) => e.code === "AMOUNT_INVALID");
   assert.throws(() => buildRefund(input({ invoiceId: "" }), inv(), DEPS), (e) => e.code === "REQUIRED");
+});
+
+test("FIN-002: company/customer come from the INVOICE; caller ids assertion-only; canonical attribution stamped", () => {
+  const r = buildRefund(input({ companyId: undefined, accountId: undefined }), inv(), DEPS);
+  assert.equal(r.refund.companyId, "taylor");
+  assert.equal(r.refund.accountId, "A1");
+  assert.deepEqual(r.refund.attribution, {
+    operatingCompanyId: "taylor",
+    businessUnitId: null,
+    creditedSalespersonId: "emp-sales-1", // the invoice's frozen credit — never the refunding actor
+    responsibleEmployeeId: null,
+    customerId: "A1",
+    sourceType: "INVOICE",
+    sourceRecordId: "INVID",
+    eventAtMillis: DEPS.nowMillis,
+    currency: "USD",
+  });
+  assert.throws(() => buildRefund(input({ companyId: "ventana" }), inv(), DEPS), (e) => e.code === "COMPANY_MISMATCH");
+  assert.throws(() => buildRefund(input({ accountId: "A2" }), inv(), DEPS), (e) => e.code === "ACCOUNT_MISMATCH");
+  assert.throws(() => buildRefund(input(), inv({ companyId: undefined }), DEPS), (e) => e.code === "COMPANY_REQUIRED");
+  assert.throws(() => buildRefund(input(), inv({ accountId: undefined }), DEPS), (e) => e.code === "ACCOUNT_REQUIRED");
 });
