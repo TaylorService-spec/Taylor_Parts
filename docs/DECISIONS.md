@@ -3800,3 +3800,103 @@ activation → 2C** (Parts Manager scope, if full intended persona coverage is r
 `mobile_locations`, the other ownership physical root, never had this problem: its reader checks
 required fields rather than enforcing a closed allow-list, so an added company passes untouched. Only
 `warehouses` needed the amendment, and a future reader should not assume both roots were blocked.
+
+---
+
+## #150 — OWNER RULING R-29: `RoleAssignment.scope.location` is the canonical warehouse-scope authority
+
+**Date:** 2026-09-01
+**Classification:** GOVERNED SCOPE AUTHORITY — settles the Workstream 2C question left open by #147
+(`PARTS_MANAGER_SCOPE_UNDEFINED`) and #148. Answers **Axis B** (which Warehouses may an actor act on),
+and re-homes part of **Axis A** (may the actor perform the operation at all).
+**Status:** RULED. No grant, no sandbox mutation, no deploy authorized by this entry.
+
+> **Naming note.** "R-29" here is the warehouse-scope ruling. An earlier, undocketed R-29 in the same
+> session was a live deploy/worktree reconciliation that produced no durable ruling and was never
+> recorded. There is no superseded text; this is the only R-29 in the repository.
+
+### The ruling
+
+1. **Canonical grant authority.** `RoleAssignment.scope` with `type: "location"` and `value` = a
+   governed `warehouseId`. This vocabulary already exists end to end: `ScopeType` declares it,
+   `resolveEffectivePermission.scopeMatches()` implements it as an exact `value` match with correct
+   narrowness ordering, `trustedWriterCommands.grantRole` validates and accepts it, and grant/revoke
+   already emit `grantRole` / `revokeRole` audit events. **What was missing was never the authority —
+   it was a consumer.** No caller in the repository has ever constructed a non-global `TargetContext`.
+
+2. **`employees.assignedWarehouseIds` is demoted.** It is no longer an independent grant authority. It
+   becomes a **derived, Rules-consumable projection** of (1), for the places where Firestore Rules
+   must test warehouse membership directly and cannot run the resolver. It must not be authored
+   independently by application or UI code.
+
+3. **Scope semantics are platform-wide; enforcement is capability-specific.** A location-scoped
+   assignment confines a capability to that Warehouse **whenever that capability operates on a
+   Warehouse target**. It does not confer every warehouse capability.
+
+4. **`PARTS_MANAGER` may hold warehouse scope** — and holds it only through governed location-scoped
+   assignments. No implicit all-warehouse scope, no implicit operating-company scope, and nothing
+   inherited from the title.
+
+5. **`WAREHOUSE_MANAGER` uses the same mechanism.** Its existing `assignedWarehouseIds` becomes
+   projection/compatibility, not the long-term source of truth.
+
+6. **Manager capabilities belong on the governed business Roles.** The `technician` compatibility Role
+   is not to be granted to manager personas to make a workflow function.
+
+7. **Reorder specifically:** `technician` must stop being the carrier through which an active
+   `WAREHOUSE_MANAGER` / `PARTS_MANAGER` obtains `reorder.request.create.manual`. Governed Role
+   ownership expresses the capability directly.
+
+8. **admin / dispatcher keep global behaviour.** 2C narrows nothing for them.
+
+9. **No sandbox grants and no deploy yet.**
+
+### What this ruling fixes, measured
+
+The 2C inventory found the blocker was **two** gaps on **different** principals, not one missing grant:
+`reorder.request.create.manual` is carried by exactly one Role (`technician`, compatibility) under the
+condition `operationalRoleActive ∈ {PARTS_MANAGER, WAREHOUSE_MANAGER}` — and in sandbox the personas
+holding the condition hold four narrow inventory Roles but not `technician`, while the persona holding
+`technician` has `operationalRoles: []`. Both halves never land together, so **the scope layer has
+never refused anything in a live environment**; every observed denial was Axis A. Item 7 dissolves that
+split by putting the capability where the principal already is.
+
+### Three things this ruling does NOT settle
+
+Recorded as open, because building past them would be inventing authority — the failure mode #147
+already ruled against.
+
+- **OPEN-1 — the global-scope loophole.** `scopeMatches()` returns `true` for a `global` assignment
+  against **any** target, including a location target. So granting a warehouse-bearing governed Role at
+  global scope would silently confer all-warehouse authority, contradicting §4. §8 requires `global` to
+  keep meaning "everything" for admin/dispatcher, so the resolver cannot be changed. The constraint
+  therefore belongs at **grant time** — warehouse-bearing Roles may only be granted at `location`
+  scope — and nothing enforces that today.
+- **OPEN-2 — the projection's writer and its Rules consumer.** §2 fixes the direction
+  (RoleAssignment → `assignedWarehouseIds`) but not who computes it, when, or what becomes of the two
+  tools that author it directly today (`warehouseAssignmentProvisioningCli.js`,
+  `provisionEmployeeAccess.js`). Separately, `firestore.rules`' `isAssignedToWarehouse()` still requires
+  `operationalRoles.hasAny(["WAREHOUSE_MANAGER"])`, so a location-scoped `PARTS_MANAGER` gains nothing
+  in Rules until that predicate changes — always a Tier-2 change.
+- **OPEN-3 — how far §7 reaches.** §7 names `reorder.request.create.manual`. `TECHNICIAN_ROLE`
+  conditions five further capabilities on the same manager operational roles
+  (`reorder.request.read.queue`, `reorder.request.assign`, `inventory.transaction.read`,
+  `inventory.action.read`, `inventory.catalog.read`). §6's principle implies all of them; §7 names one.
+  Moving only the named one leaves the identical split-brain in place for the rest.
+
+### Cross-workflow consequence, recorded
+
+Reorder is today the **only** warehouse workflow with any actor warehouse scope. Receiving, Transfers,
+Cycle Count, Put-away, Bins, Returns intake and Serialized-asset acquisition are capability-only: a
+principal holding `inventory.stock.receive` may receive at every status-eligible warehouse. §3 makes
+those workflows in-scope for confinement as and when each is ruled on; this entry authorizes no change
+to any of them.
+
+### Recorded stale claim
+
+`parityFixtures.ts` asserts `legacyDecision: "ALLOW"` for `reorder.request.create.manual` under a
+`technician` + active `WAREHOUSE_MANAGER` fixture. That oracle is a hand-authored literal describing
+pre-2B production Rules; the repository's `firestore.rules` now says `allow create: if false` for
+`reorder_requests`. Implementing §7 therefore **aligns** the compatibility Role with an
+already-retired legacy path rather than breaking parity — but the fixture must be retired in the same
+change, with that reason stated, or it becomes exactly the false-claim defect class RCV-G4 ruled on.

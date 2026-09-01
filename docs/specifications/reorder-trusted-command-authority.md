@@ -269,7 +269,7 @@ authority already stated in Rules: admin/dispatcher are unscoped; a WAREHOUSE_MA
 their linked Employee's `assignedWarehouseIds` (Issue #226), under the same fail-closed contract —
 absent, empty or malformed assignment denies every warehouse, never "all".
 
-### STILL OPEN — the PARTS_MANAGER warehouse scope (WORKSTREAM 2C)
+### RULED — the PARTS_MANAGER warehouse scope (WORKSTREAM 2C, R-29 / DECISIONS #150)
 
 `reorder.request.create.manual` is held by admin, dispatcher, and an active PARTS_MANAGER or
 WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PARTS_MANAGER has none.**
@@ -277,12 +277,19 @@ WAREHOUSE_MANAGER. Three of those four have a governed warehouse scope. **A PART
 requires WAREHOUSE_MANAGER membership; no capability, Rule, ADR or fixture says which warehouses a
 Parts Manager may reorder for.
 
-Per the ruling ("If current authority does not actually define Parts Manager warehouse scope, STOP on
-that specific scope question rather than inventing one"), the resolver returns `NONE` with the reason
-`PARTS_MANAGER_SCOPE_UNDEFINED` — a named state, not a silent zero — and a test pins it so the gap
-cannot be closed by accident. **A Parts Manager therefore still cannot raise a reorder.** The two ways
-to change that without a ruling would both be inventions: granting them every warehouse, or reading
-`assignedWarehouseIds` for a role no authority says it scopes.
+The paragraph above is kept as the record of WHY R-17 stopped where it did.
+
+**R-29 (DECISIONS #150) has since ruled the question.** Warehouse scope is `RoleAssignment.scope` with
+`type: "location"` and `value` = a governed `warehouseId`, and a PARTS_MANAGER may hold it — through
+governed location-scoped assignments only, with no implicit all-warehouse, operating-company or
+title-inherited scope. `employees.assignedWarehouseIds` is demoted to a derived projection of that
+authority, never an independent grant.
+
+Until that consumer is built, `resolveReorderWarehouseScope` still returns `NONE` /
+`PARTS_MANAGER_SCOPE_UNDEFINED` and a Parts Manager still cannot raise a reorder — but the reason has
+changed, and the reason is the point. The constant now means **NOT YET BUILT**, not **UNDEFINED**, and
+the test pinning it protects a build gap rather than an authority gap. Whoever closes it implements
+R-29 §1/§3; they do not get to choose what the scope means.
 
 ### RESOLVED — a warehouse may now be both §3A-governed and company-bearing (WORKSTREAM 2A.1A)
 
