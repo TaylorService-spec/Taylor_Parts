@@ -22,8 +22,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F11 | FIN-010 Reconciliation/Traceability | COMPLETE_MERGED | 92066be6 | dcca36b4 | #1684 | 7b4a021f |
 | F12 | Financials Product Surfaces | COMPLETE_MERGED (map only — surfaces design-gated) | 7b4a021f | 80c051b4 | #1685 | b742d56b |
 | F13 | Reporting Matrix | COMPLETE_MERGED | b742d56b | c95d3a0d | #1686 | 4dc9fd82 |
-| F14 | Sandbox Activation Readiness | COMPLETE_PR_OPEN (package only — zero execution) | 4dc9fd82 | (see PR) | (opened below) | — |
-| F15 | E2E Financial Certification Readiness | NOT_STARTED | — | — | — | — |
+| F14 | Sandbox Activation Readiness | COMPLETE_MERGED (package only — zero execution) | 4dc9fd82 | be802ba5 | #1687 | 610d5b3c |
+| F15 | E2E Financial Certification Readiness | COMPLETE_PR_OPEN (scenario definition only) | 610d5b3c | (see PR) | (opened below) | — |
 
 Details per phase are appended below as each phase closes.
 
@@ -208,6 +208,16 @@ Details per phase are appended below as each phase closes.
   flagged; environment-truth verification), and the explicit out-of-scope list (production,
   backfill, genesis, cert writes, external accounting).
 - EXECUTION: NONE — no deploy, no activation, no grant, no data write occurred.
+- CERT_WORLD_IMPACT: NONE · No new DECISIONS number.
+
+### F15 — E2E Financial Certification Readiness (scenario definition only)
+- DELIVERED: docs/financials/F15_E2E_CERTIFICATION_READINESS.md — seven scenarios (S1
+  attribution end-to-end · S2 visibility scopes incl. held-COMPANY safe behavior · S3 AR
+  integrity + deliberate-drift detection · S4 approval governance · S5 per-company period
+  close · S6 plans/forecasts never-blend · S7 honest unknowns), each EXPECTED/RECORDED/
+  OBSERVED per the v1.7 correction discipline; preconditions = F14 stages A–D + policy
+  values. Blockers 001–005 do NOT block certification — S2/S7 certify their safe behavior.
+- EXECUTION: NONE — no cert-world write, no genesis, no run.
 - CERT_WORLD_IMPACT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
