@@ -119,6 +119,55 @@ export interface PlanComparisonResult {
   excluded: { ref: string; reason: string }[]; // every exclusion is named — nothing vanishes silently
 }
 
+/** The target window every never-blend accumulation runs against (a plan or a forecast). */
+export interface MeasurementWindow {
+  measurementBasis: MeasurementBasis;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  scope: PlanScope;
+  /** names the window kind in error messages ("plan" / "forecast") */
+  label: string;
+}
+
+// The ONE never-blend accumulation (shared by plan and forecast comparison): a basis or currency mismatch
+// is a thrown category error; out-of-period / out-of-scope facts are NAMED exclusions; included facts sum.
+export function accumulateActualFacts(
+  window: MeasurementWindow,
+  actuals: ActualFact[],
+): { actualMinor: number; includedCount: number; excluded: { ref: string; reason: string }[] } {
+  const facts = Array.isArray(actuals) ? actuals : [];
+  const excluded: { ref: string; reason: string }[] = [];
+  let actualMinor = 0;
+  let includedCount = 0;
+  for (const f of facts) {
+    if (!nonEmpty(f?.ref)) throw new PlanError("FACT_INVALID", "every actual fact requires a ref");
+    if (!isInt(f.amountMinor)) throw new PlanError("FACT_INVALID", `fact ${f.ref}: amountMinor must be an integer (minor units)`);
+    if (f.basis !== window.measurementBasis) {
+      throw new PlanError("BASIS_MISMATCH", `fact ${f.ref} is ${f.basis} but the ${window.label} measures ${window.measurementBasis} — bases are compared, never blended`);
+    }
+    if (f.currency !== window.currency) {
+      throw new PlanError("CURRENCY_MISMATCH", `fact ${f.ref} is ${f.currency} but the ${window.label} is ${window.currency}`);
+    }
+    if (!ISO_DATE.test(f.eventDate ?? "")) throw new PlanError("FACT_INVALID", `fact ${f.ref}: eventDate must be an ISO date`);
+    if (f.eventDate < window.periodStart || f.eventDate > window.periodEnd) {
+      excluded.push({ ref: f.ref, reason: `outside ${window.label} period ${window.periodStart}..${window.periodEnd}` });
+      continue;
+    }
+    const scopeMiss =
+      (window.scope.operatingCompanyId !== null && f.operatingCompanyId !== window.scope.operatingCompanyId && "operatingCompanyId") ||
+      (window.scope.businessUnitId !== null && f.businessUnitId !== window.scope.businessUnitId && "businessUnitId") ||
+      (window.scope.creditedSalespersonId !== null && f.creditedSalespersonId !== window.scope.creditedSalespersonId && "creditedSalespersonId");
+    if (scopeMiss) {
+      excluded.push({ ref: f.ref, reason: `outside ${window.label} scope (${scopeMiss})` });
+      continue;
+    }
+    actualMinor += f.amountMinor;
+    includedCount += 1;
+  }
+  return { actualMinor, includedCount, excluded };
+}
+
 // Compare APPROVED plan vs explicit actual facts. Refusals (thrown): non-APPROVED plan, a fact whose
 // basis differs from the plan's (comparing collected cash to a booked goal is a category error, not an
 // exclusion), or a currency mismatch. Exclusions (reported): facts outside the plan period or outside a
@@ -127,35 +176,10 @@ export function comparePlanToActual(plan: PlanRecord, actuals: ActualFact[]): Pl
   if (plan?.status !== "APPROVED") {
     throw new PlanError("PLAN_NOT_APPROVED", `only an APPROVED plan is a measurement authority (status ${plan?.status}) — drafts and superseded versions are history`);
   }
-  const facts = Array.isArray(actuals) ? actuals : [];
-  const excluded: { ref: string; reason: string }[] = [];
-  let actualMinor = 0;
-  let includedCount = 0;
-  for (const f of facts) {
-    if (!nonEmpty(f?.ref)) throw new PlanError("FACT_INVALID", "every actual fact requires a ref");
-    if (!isInt(f.amountMinor)) throw new PlanError("FACT_INVALID", `fact ${f.ref}: amountMinor must be an integer (minor units)`);
-    if (f.basis !== plan.measurementBasis) {
-      throw new PlanError("BASIS_MISMATCH", `fact ${f.ref} is ${f.basis} but the plan measures ${plan.measurementBasis} — bases are compared, never blended`);
-    }
-    if (f.currency !== plan.currency) {
-      throw new PlanError("CURRENCY_MISMATCH", `fact ${f.ref} is ${f.currency} but the plan is ${plan.currency}`);
-    }
-    if (!ISO_DATE.test(f.eventDate ?? "")) throw new PlanError("FACT_INVALID", `fact ${f.ref}: eventDate must be an ISO date`);
-    if (f.eventDate < plan.periodStart || f.eventDate > plan.periodEnd) {
-      excluded.push({ ref: f.ref, reason: `outside plan period ${plan.periodStart}..${plan.periodEnd}` });
-      continue;
-    }
-    const scopeMiss =
-      (plan.scope.operatingCompanyId !== null && f.operatingCompanyId !== plan.scope.operatingCompanyId && "operatingCompanyId") ||
-      (plan.scope.businessUnitId !== null && f.businessUnitId !== plan.scope.businessUnitId && "businessUnitId") ||
-      (plan.scope.creditedSalespersonId !== null && f.creditedSalespersonId !== plan.scope.creditedSalespersonId && "creditedSalespersonId");
-    if (scopeMiss) {
-      excluded.push({ ref: f.ref, reason: `outside plan scope (${scopeMiss})` });
-      continue;
-    }
-    actualMinor += f.amountMinor;
-    includedCount += 1;
-  }
+  const { actualMinor, includedCount, excluded } = accumulateActualFacts(
+    { measurementBasis: plan.measurementBasis, currency: plan.currency, periodStart: plan.periodStart, periodEnd: plan.periodEnd, scope: plan.scope, label: "plan" },
+    actuals,
+  );
   return {
     planType: plan.planType,
     measurementBasis: plan.measurementBasis,

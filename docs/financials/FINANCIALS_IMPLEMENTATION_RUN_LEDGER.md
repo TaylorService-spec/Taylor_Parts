@@ -14,8 +14,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F3 | Finance Core Activation Readiness | COMPLETE_MERGED | 5a70fa6c | 45392f24 | #1676 | 04126d41 |
 | F4 | Service Billing Model | COMPLETE_MERGED | 04126d41 | f1627d63 | #1677 | bda2c5b2 |
 | F5 | FIN-006 Cost & Margin | COMPLETE_MERGED | bda2c5b2 | 1cf358b1 | #1678 | 12ee21bc |
-| F6 | FIN-003 Plan vs Actual | COMPLETE_PR_OPEN | 12ee21bc | (see PR) | (opened below) | — |
-| F7 | FIN-005 Forecasting | NOT_STARTED | — | — | — | — |
+| F6 | FIN-003 Plan vs Actual | COMPLETE_MERGED | 12ee21bc | c5c55812 | #1679 | 73ba30cd |
+| F7 | FIN-005 Forecasting | COMPLETE_PR_OPEN | 73ba30cd | (see PR) | (opened below) | — |
 | F8 | FIN-007 Adjustments/Approvals | NOT_STARTED | — | — | — | — |
 | F9 | FIN-008 Period & Close | NOT_STARTED | — | — | — | — |
 | F10 | FIN-009 Allocation & Intercompany | NOT_STARTED | — | — | — | — |
@@ -107,6 +107,21 @@ Details per phase are appended below as each phase closes.
   capability activation → F12/F14; actual-fact wiring is a surface concern.
 - DOC: docs/financials/FIN-003_PLAN_VS_ACTUAL_MODEL.md · TESTS: pure 10/10; finance CI lane
   registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
+### F7 — FIN-005 Forecasting
+- SCOPE: forecast = as-of-stamped expectation, a distinct fact class that is never an actual.
+- IMPLEMENTED: forecasting.ts — buildForecastRecord (explicit basis/currency/period/scope +
+  REQUIRED asOfMillis + REQUIRED method label; frozen); selectCurrentForecast (newest as-of
+  supersedes per target; mixed targets and as-of ties REFUSED — never averaged, never
+  array-order); compareForecastToActual (reuses the F6 shared never-blend accumulator —
+  extracted as accumulateActualFacts in planVsActual.ts, plan comparison re-based on it,
+  F6 suite green unchanged).
+- NOT DECIDED (deliberate): forecast methodology/cadence; whether Opportunity pipeline ever
+  feeds a derived forecast (expectedValue has no currency — FIN-001); storage/activation →
+  F12/F14.
+- DOC: docs/financials/FIN-005_FORECAST_MODEL.md · TESTS: pure 7/7 new + F6 10/10 unchanged;
+  finance CI lane registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS
+  number.
 
 ## Blockers (running list)
 
