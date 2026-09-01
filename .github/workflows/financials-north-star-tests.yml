@@ -32,6 +32,8 @@ on:
       - "field-ops-app-vite/test/financialsNavStructure.test.mjs"
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
+      - "functions/scripts/financialReviewFixtures.mjs"
+      - "functions/test/financialReviewFixtures.test.mjs"
       - ".github/workflows/financials-north-star-tests.yml"
   push:
     branches: [main]
@@ -44,6 +46,8 @@ on:
       - "field-ops-app-vite/test/financialsNavStructure.test.mjs"
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
+      - "functions/scripts/financialReviewFixtures.mjs"
+      - "functions/test/financialReviewFixtures.test.mjs"
       - ".github/workflows/financials-north-star-tests.yml"
   workflow_dispatch:
 
@@ -86,3 +90,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
         working-directory: field-ops-app-vite
+      # The FINANCIAL_REVIEW_P1 sandbox fixture contract. Pure assertions over the fixture data
+      # and the documents it builds — no Firestore, no network, no credentials. It needs the
+      # functions workspace only because the builder imports firebase-admin at module scope.
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+      - name: Sandbox review fixture contract (node:test)
+        run: node --test test/financialReviewFixtures.test.mjs
+        working-directory: functions
