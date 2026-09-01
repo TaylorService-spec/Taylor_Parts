@@ -34,6 +34,10 @@ const IMPLEMENTED_SECTION_KEYS = new Set([
   "forecasting",
   "budgets",
   "goals",
+  // Wave UX-4 — performance.
+  "profitability",
+  "companyPerformance",
+  "employeePerformance",
 ]);
 
 const APPROVED_SECTION_KEYS = [
