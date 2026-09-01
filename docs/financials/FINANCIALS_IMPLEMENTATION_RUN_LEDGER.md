@@ -377,3 +377,26 @@ final.
   capabilities + activation-registry authorization; (2) FIN-BLOCK-002 service billing
   route/policy; (3) FIN-BLOCK-003 cost basis/capture authority; (4) FIN-BLOCK-004
   intercompany ratification.
+
+---
+
+## FINANCIALS NORTH STAR UX IMPLEMENTATION
+
+Stream: UX composition (separate from the authority/continuation stream, per Owner
+STREAM SEPARATION above). Run start 2026-09-01. START MAIN: dfb362d5e863472f0dd55b7121f4103f5d9cdba7.
+
+### FIN-BLOCK-005 — CLOSED (2026-09-01): DESIGN AUTHORITY AVAILABLE IN-REPO
+- The approved Financials North Star P1 design package (20 pages, corrected pass-1
+  handoffs, 44 frames, editable .dc.html sources) is installed at
+  `docs/north-star/financials/`.
+- Current-main authority reconciliation: COMPLETE —
+  `docs/north-star/financials/FINANCIALS-UX-CURRENT-MAIN-RECONCILIATION.md`.
+  Stale "FIN-003..010 OPEN" handoff wording superseded by the truth table there;
+  visible design deltas applied to pages 16 (internal/external reconciliation split)
+  and 20 (period + policy rows → BUILT_DORMANT / POLICY NOT CONFIGURED); pages 05/10
+  bindings updated with no visual change.
+- FINANCIALS NORTH STAR P1: DESIGN DIRECTION APPROVED · CURRENT-MAIN AUTHORITY
+  RECONCILIATION COMPLETE · IMPLEMENTATION COMPOSITION MAP READY. Owner visual
+  acceptance NOT claimed — that follows sandbox deployment + Quick Gate.
+
+### Wave ledger (append per wave)

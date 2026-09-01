@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    span.fc { display: block; font: 600 9.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-top: 3px; }
+    span.inact { font-size: 12.5px; color: #6B7A74; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #6B7A74; border-radius: 50%; color: #4A5B55; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); font-weight: 400; }
+    .hlp:hover .tip { display: block; }
+    .seg { display: inline-flex; outline: 1px solid #C3BCAB; font: 600 12px Inter, sans-serif; }
+    .seg span { padding: 6px 12px; color: #4A5B55; }
+    .seg span.on { background: #102B24; color: #fff; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1500px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Cost to Budget — 1440 · /financials/cost-to-budget · budgets real, cost honest</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">No authoritative cost is drawn before FIN-006</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Financials</div>
+        <div style="padding: 5px 16px 5px 34px;">Overview</div>
+        <div style="padding: 5px 16px 5px 34px;">Sales to Goal</div>
+        <div style="margin: 2px 12px; padding: 6px 10px 6px 22px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Cost to Budget</div>
+        <div style="padding: 5px 16px 5px 34px;">Forecasting</div>
+        <div style="padding: 5px 16px 5px 34px;">Budget Management</div>
+        <div style="padding: 5px 16px 5px 34px;">Reports</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Cost to Budget</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 6:12 AM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="padding: 18px 0 8px;">
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 4px;">Cost to Budget</h1>
+          <div style="font-size: 13px; color: #4A5B55;">Budgets are governed records. Actual cost has no authority yet — the actual column reports that, not a number.<span class="hlp">i<span class="tip">The page ships with its structure whole: budget facts render because Budget Management (FIN-003 Plan vs Actual scope) governs them; the Actual/Variance/Remaining columns render an honest single state until FIN-006 establishes cost authority. The slot is preserved, never faked — per the family rule, fact outranks absence but absence is never dressed as fact.</span></span></div>
+        </header>
+        <div style="display: flex; gap: 18px; align-items: center; padding: 8px 0 18px; border-bottom: 1px solid #C3BCAB;">
+          <span class="seg"><span class="on">Consolidated</span><span>Taylor</span><span>Ventana</span></span>
+          <span class="seg"><span class="on">All units</span><span>Service</span><span>Equipment Sales</span><span>Parts</span><span>Installation</span></span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Period <strong style="color: #102B24;">Quarter · Q3 2026</strong> ▾</span>
+        </div>
+        <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 14px 16px; font-size: 13px; margin-top: 18px; max-width: 640px;">
+          <strong>Cost authority is not yet established (FIN-006).</strong>
+          <div style="color: #4A5B55; margin-top: 4px; line-height: 1.6;">EOS does not yet govern labor, parts-at-cost, freight, vehicle or subcontractor cost actuals. Budgeted amounts below are real governed records; actuals appear when FIN-006 lands.</div>
+        </div>
+        <div style="margin-top: 20px;">
+          <h3 class="rh">Q3 2026 budgets — Taylor · Service</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead><tr><th class="ls">Category</th><th class="ls" style="text-align:right;">Budget</th><th class="ls" style="text-align:right;">Actual cost</th><th class="ls" style="text-align:right;">Variance</th><th class="ls" style="text-align:right; padding-right:0;">Remaining</th></tr></thead>
+            <tbody>
+              <tr><td class="ls"><strong>Labor</strong></td><td class="ls" style="text-align:right;">$96,000<span class="fc" style="display:inline; margin-left:6px;">Budget v2</span></td><td class="ls" style="text-align:right;"><span class="inact">No cost authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+              <tr><td class="ls"><strong>Parts</strong></td><td class="ls" style="text-align:right;">$41,500<span class="fc" style="display:inline; margin-left:6px;">Budget v2</span></td><td class="ls" style="text-align:right;"><span class="inact">No cost authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+              <tr><td class="ls"><strong>Freight</strong></td><td class="ls" style="text-align:right;">$6,200<span class="fc" style="display:inline; margin-left:6px;">Budget v1</span></td><td class="ls" style="text-align:right;"><span class="inact">No cost authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+              <tr><td class="ls"><strong>Vehicle</strong></td><td class="ls" style="text-align:right;">$18,400<span class="fc" style="display:inline; margin-left:6px;">Budget v1</span></td><td class="ls" style="text-align:right;"><span class="inact">No cost authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+              <tr><td class="ls"><strong>Subcontractor</strong></td><td class="ls" style="text-align:right; color:#6B7A74;"><span class="inact">No budget set</span></td><td class="ls" style="text-align:right;"><span class="inact">No cost authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+            </tbody>
+          </table>
+          <div style="font-size: 12px; color: #6B7A74; padding-top: 8px;">Budget figures link to their versioned records in <a href="#bm">Budget Management</a><span class="hlp">i<span class="tip">One repeated state, stated once per row and once in the banner — the table does not fill dead columns with zeros, which would be false cost claims. When FIN-006 lands, Actual/Variance/Remaining populate and over-budget rows take the exception treatment (red variance, first sort). Category vocabulary is the governed budget category list, not free text.</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1a-mobile" style="width: 420px;">
+    <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Cost to Budget 375</span>
+    <div id="f1am" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px;">
+      <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="color:#B9C1BE;">☰</span></div>
+      <div style="padding: 16px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Cost to Budget</div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 6px 0 2px;">Cost to Budget</h1>
+        <div style="font-size: 12.5px; color: #4A5B55;">Q3 2026 · Taylor · Service</div>
+        <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 10px 12px; font-size: 12.5px; margin-top: 12px; line-height: 1.6;">
+          <strong>Cost authority not yet established (FIN-006).</strong> <span style="color:#4A5B55;">Budgets are real; actuals arrive with cost authority.</span>
+        </div>
+        <div style="border-top: 2px solid #102B24; margin-top: 12px;">
+          <div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #D9D3C6;"><span><strong style="font-size:13px;">Labor</strong><br><span class="inact">Actual: no cost authority</span></span><strong>$96,000</strong></div>
+          <div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #D9D3C6;"><span><strong style="font-size:13px;">Parts</strong><br><span class="inact">Actual: no cost authority</span></span><strong>$41,500</strong></div>
+          <div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #D9D3C6;"><span><strong style="font-size:13px;">Vehicle</strong><br><span class="inact">Actual: no cost authority</span></span><strong>$18,400</strong></div>
+          <div style="display:flex; justify-content:space-between; padding: 10px 0;"><span><strong style="font-size:13px;">Freight</strong><br><span class="inact">Actual: no cost authority</span></span><strong>$6,200</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

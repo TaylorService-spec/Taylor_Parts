@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 9px 12px 9px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    span.fc { display: block; font: 600 9.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-top: 3px; }
+    span.inact { font-size: 12.5px; color: #6B7A74; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #6B7A74; border-radius: 50%; color: #4A5B55; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); font-weight: 400; }
+    .hlp:hover .tip { display: block; }
+    .seg { display: inline-flex; outline: 1px solid #C3BCAB; font: 600 12px Inter, sans-serif; }
+    .seg span { padding: 6px 12px; color: #4A5B55; }
+    .seg span.on { background: #102B24; color: #fff; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1500px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Gross Margin &amp; Profitability — 1440 · /financials/profitability · the truthful missing-authority page</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">GROSS_MARGIN_AUTHORITY = MISSING before FIN-006</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Financials</div>
+        <div style="padding: 5px 16px 5px 34px;">Overview</div>
+        <div style="padding: 5px 16px 5px 34px;">Sales to Goal</div>
+        <div style="padding: 5px 16px 5px 34px;">Cost to Budget</div>
+        <div style="margin: 2px 12px; padding: 6px 10px 6px 22px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Profitability</div>
+        <div style="padding: 5px 16px 5px 34px;">Reports</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Profitability</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 6:14 AM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="padding: 18px 0 8px;">
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 4px;">Gross Margin &amp; Profitability</h1>
+          <div style="font-size: 13px; color: #4A5B55;">Operational gross margin — never statutory net profit.</div>
+        </header>
+        <div style="display: flex; gap: 18px; align-items: center; padding: 8px 0 18px; border-bottom: 1px solid #C3BCAB;">
+          <span class="seg"><span class="on">Consolidated</span><span>Taylor</span><span>Ventana</span></span>
+          <span class="seg"><span class="on">By unit</span><span>By salesperson</span><span>By customer</span><span>By source</span></span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Period <strong style="color: #102B24;">Month · August 2026</strong> ▾</span>
+        </div>
+        <div style="display:grid; grid-template-columns: minmax(0,1fr) 340px; gap: 40px; margin-top: 22px;">
+          <div>
+            <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 20px 24px;">
+              <div style="font-family: 'Source Serif 4', serif; font-size: 21px; font-weight: 700;">Margin cannot be reported yet.</div>
+              <div style="font-size: 13.5px; color: #4A5B55; line-height: 1.7; margin-top: 8px; max-width: 560px;">
+                Gross margin is revenue minus cost. Revenue facts are governed today; <strong style="color:#102B24;">cost has no authority until FIN-006</strong> — so EOS declines to draw a margin rather than draw a wrong one. When cost authority lands, this page reports Revenue, Cost, Gross Margin and GM% across every dimension at left.
+              </div>
+              <div style="font-size: 12.5px; margin-top: 12px;"><a href="#ctb">Cost to Budget →</a> · <a href="#gov">Financial governance →</a></div>
+            </div>
+            <div style="margin-top: 22px;">
+              <h3 class="rh">What is reportable today</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead><tr><th class="ls">Business unit</th><th class="ls" style="text-align:right;">Revenue (billed)</th><th class="ls" style="text-align:right;">Cost</th><th class="ls" style="text-align:right;">Gross margin</th><th class="ls" style="text-align:right; padding-right:0;">GM%</th></tr></thead>
+                <tbody>
+                  <tr><td class="ls"><strong>Service</strong></td><td class="ls" style="text-align:right;">$121,300<span class="fc">Operational actual</span></td><td class="ls" style="text-align:right;"><span class="inact">No authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+                  <tr><td class="ls"><strong>Equipment Sales</strong></td><td class="ls" style="text-align:right;">$102,050<span class="fc">Operational actual</span></td><td class="ls" style="text-align:right;"><span class="inact">No authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+                  <tr><td class="ls"><strong>Parts</strong></td><td class="ls" style="text-align:right;">$64,800<span class="fc">Operational actual</span></td><td class="ls" style="text-align:right;"><span class="inact">No authority</span></td><td class="ls" style="text-align:right; color:#6B7A74;">—</td><td class="ls" style="text-align:right; padding-right:0; color:#6B7A74;">—</td></tr>
+                </tbody>
+              </table>
+              <div style="font-size: 12px; color: #6B7A74; padding-top: 8px;">Fact outranks absence: revenue renders at full strength; missing cost states one quiet phrase per row<span class="hlp">i<span class="tip">The Parts P1v2 hierarchy rule applied to a harder case: the page leads with what IS true (billed revenue by unit) and prices the absence at one line per row plus one explanatory band — not a page-wide dead state that hides real facts. Drillback from any future margin figure goes to the events that composed it.</span></span></div>
+            </div>
+          </div>
+          <aside>
+            <h3 class="rh">When FIN-006 lands</h3>
+            <div style="font-size: 12.5px; color: #4A5B55; line-height: 1.8;">
+              The table gains Cost, Gross Margin and GM% as governed values; the By salesperson / By customer / By source views activate; margin-based goals in Sales to Goal begin computing attainment. No layout change — the columns are already here.
+            </div>
+            <section style="margin-top: 20px;">
+              <h3 class="rh">Never on this page</h3>
+              <div style="font-size: 12.5px; color: #4A5B55; line-height: 1.8;">Statutory net profit · overhead allocation · tax — those belong to the future external accounting authority.</div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1a-mobile" style="width: 420px;">
+    <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Profitability 375</span>
+    <div id="f1am" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px;">
+      <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="color:#B9C1BE;">☰</span></div>
+      <div style="padding: 16px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Financials → Profitability</div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700; margin: 6px 0 2px;">Gross Margin &amp; Profitability</h1>
+        <div style="background: #FCFAF6; border: 1px solid #D9D3C6; padding: 12px; font-size: 12.5px; margin-top: 10px; line-height: 1.6;">
+          <strong>Margin cannot be reported yet.</strong> <span style="color:#4A5B55;">Cost has no authority until FIN-006. Revenue below is real.</span>
+        </div>
+        <div style="border-top: 2px solid #102B24; margin-top: 12px;">
+          <div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #D9D3C6;"><span><strong style="font-size:13px;">Service</strong><br><span class="inact">Margin — no authority</span></span><strong>$121,300</strong></div>
+          <div style="display:flex; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #D9D3C6;"><span><strong style="font-size:13px;">Equipment Sales</strong><br><span class="inact">Margin — no authority</span></span><strong>$102,050</strong></div>
+          <div style="display:flex; justify-content:space-between; padding: 10px 0;"><span><strong style="font-size:13px;">Parts</strong><br><span class="inact">Margin — no authority</span></span><strong>$64,800</strong></div>
+        </div>
+        <div style="font-size: 11.5px; color: #6B7A74; margin-top: 8px;">Amounts are billed revenue · operational actual</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>
