@@ -257,6 +257,23 @@ test("frame 1b recomposition changed presentation only — same submit path, no 
   assert.doesNotMatch(src, /Receipt \{receipt\.receivingId\}/);
 });
 
+test("frame 1d recomposition changed presentation only — same submit path, no new authority", () => {
+  const src = read("src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx");
+  // The one governed submit, reached only through the readiness-gated client — no new transport,
+  // callable, command, resolver, or numbering implementation.
+  assert.match(src, /submitReceiveInventoryStock/);
+  assert.doesNotMatch(src, /httpsCallable|from "firebase/);
+  assert.doesNotMatch(src, /aliasScan|scanResolver|resolveScan/i);
+  assert.doesNotMatch(src, /RR-\$\{|`RR-/);
+  // The opaque reorderRequestId never renders: not as the title and not as the review's
+  // purchase-order fallback (the exact defect this frame removed).
+  assert.doesNotMatch(src, /externalPoNumber \?\? candidate\.reorderRequestId/);
+  assert.doesNotMatch(src, /externalPoNumber \?\? c\.reorderRequestId/);
+  // Full-quantity contract intact: the received quantity is still the ordered quantity, derived in
+  // the domain builder — no quantity input exists on this surface.
+  assert.doesNotMatch(src, /type="number"|spinbutton/);
+});
+
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {
   const src = read("src/modules/inventory/Receiving.jsx");
   assert.match(src, /Not connected yet/);
