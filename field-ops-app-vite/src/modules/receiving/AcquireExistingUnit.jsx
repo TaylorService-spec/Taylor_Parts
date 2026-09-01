@@ -69,7 +69,7 @@ import { Button } from "../../shared/ui/primitives";
 import Modal from "../../shared/ui/Modal.jsx";
 
 /**
- * One attempt token, minted when the dialog opens.
+ * One attempt token, minted when the sheet opens.
  *
  * Stable for the life of this attempt so a network retry is recognisably the same request. It is
  * combined with the part, serial and location in deriveIdempotencyKey, so correcting any of those

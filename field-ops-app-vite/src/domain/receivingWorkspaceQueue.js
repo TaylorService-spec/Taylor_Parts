@@ -120,6 +120,11 @@ export function buildSupplierQueueRow(po, supplierNamesById = {}) {
     // RCV-G5 — no governed business reference exists for canonical POs. null means "state the
     // absence"; the doc id is carried ONLY inside `open` as the opaque navigation argument.
     orderReference: null,
+    // The two journeys' absences are DIFFERENT facts and carry different words (frame 1e): here no
+    // order-number authority exists at all; a reorder row's external PO number is a real governed
+    // field that happens to be absent on that record. Each surface says its own truth, and the
+    // queue row says the same thing the opened journey will.
+    orderReferenceAbsence: "No order number recorded",
     partId: null,
     orderedQuantity: null,
     lineCount: Number.isFinite(po.lineCount) ? po.lineCount : null,
@@ -142,6 +147,8 @@ export function buildReorderQueueRow(row) {
     // The governed nameField, or a stated absence — NEVER reorderRequestId, and never a
     // synthesized RR-number (the RR lane is unwired; see the module header).
     orderReference: typeof row.externalPoNumber === "string" && row.externalPoNumber.length > 0 ? row.externalPoNumber : null,
+    // Matches frame 1d's wording for the SAME fact: the external PO number field, absent here.
+    orderReferenceAbsence: "No PO number recorded",
     partId: typeof row.partId === "string" && row.partId.length > 0 ? row.partId : null,
     orderedQuantity: Number.isFinite(row.orderedQuantity) ? row.orderedQuantity : null,
     lineCount: 1,

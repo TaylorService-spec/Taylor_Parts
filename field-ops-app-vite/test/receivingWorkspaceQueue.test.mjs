@@ -293,6 +293,65 @@ test("frame 1c re-hosting changed presentation only — same command, closed rea
   assert.ok(!/(OTHER|ADJUSTMENT|CORRECTION|FOUND)/.test(reasonTokens.join(" ")), "no new reason value may appear");
 });
 
+// ── frame 1e — FAMILY-LEVEL truth pins, swept across all four merged frames ─────────────
+
+const FAMILY_SURFACES = [
+  "src/modules/inventory/Receiving.jsx",
+  "src/modules/receiving/MultiScanReceiving.jsx",
+  "src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx",
+  "src/modules/receiving/AcquireExistingUnit.jsx",
+  "src/domain/receivingWorkspaceQueue.js",
+];
+
+test("FAMILY PIN: no surface synthesizes an RR/PO/RO business number", () => {
+  for (const path of FAMILY_SURFACES) {
+    const src = read(path);
+    assert.doesNotMatch(src, /`RR-|`PO-|`RO-|"RR-\d|"PO-\d|"RO-\d/, `${path} must not manufacture a business number`);
+  }
+});
+
+test("FAMILY PIN: no purchase-order scan-identity claim anywhere (RCV-G7)", () => {
+  // The RCV-G4 discipline: a corrected surface may QUOTE the forbidden claim in the comment that
+  // records the gap — so a line carrying the phrase passes only when it names the gap it records.
+  for (const path of FAMILY_SURFACES) {
+    const lines = read(path).split("\n");
+    const offenders = lines
+      .map((line, i) => ({ line, i }))
+      .filter(({ line }) => /[Ss]can (the|an?) (purchase )?order|type its number/i.test(line))
+      // The recording comment block names the gap within a few lines of the quotation.
+      .filter(({ i }) => !lines.slice(Math.max(0, i - 6), i + 1).some((l) => /RCV-G7/.test(l)))
+      .map(({ line }) => line.trim());
+    assert.deepEqual(offenders, [], `${path} must not claim a PO scan identity`);
+  }
+});
+
+test("FAMILY PIN: no surface renders a raw backend error message", () => {
+  // Family error copy is sanitized vocabulary; the raw Error object's own text never reaches the
+  // screen. (Codes/status tokens from the bounded transport vocabulary are permitted.)
+  for (const path of FAMILY_SURFACES) {
+    const src = read(path);
+    assert.doesNotMatch(src, /\{\s*(err|error|e)\.message\s*\}|error\?\.message/, `${path} must not print err.message`);
+    assert.doesNotMatch(src, /\.stack\b/, path);
+  }
+});
+
+test("FAMILY PIN: the 1b destination picker keeps the location read's status (never options-only)", () => {
+  // The frame-1e defect, made unrepresentable: consuming `res.options ?? []` while discarding
+  // `res.status` is how a denied read became an innocently empty picker.
+  const src = read("src/modules/receiving/MultiScanReceiving.jsx");
+  assert.match(src, /setLocations\(\{ status: res\.status, options: res\.options \?\? \[\] \}\)/);
+  // And the raw locationId is not a fallback label for an option.
+  assert.doesNotMatch(src, /o\.label \?\? o\.locationId/);
+});
+
+test("FAMILY PIN: frame 1e introduced no new authority surface", () => {
+  for (const path of FAMILY_SURFACES) {
+    const src = read(path);
+    assert.doesNotMatch(src, /httpsCallable|from "firebase\/functions"/, path);
+    assert.doesNotMatch(src, /READINESS_OVERRIDE|_TRANSPORT_READY\s*=/, `${path} must not define/override readiness`);
+  }
+});
+
 test("the workspace states the RCV-G1 receipt-history slot honestly and renders no receiving_orders read", () => {
   const src = read("src/modules/inventory/Receiving.jsx");
   assert.match(src, /Not connected yet/);
