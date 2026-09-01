@@ -30,7 +30,9 @@ const OPP = { id: "opp-1", accountId: "acct-1" };
 /** A real agreement, built through the real command, then accepted through the real command. */
 function acceptedAgreement(lines, extra = {}) {
   const a = buildCreateSalesAgreement(
-    { accountId: "acct-1", ownerEmployeeId: "emp-1", sourceOpportunityId: "opp-1", lines, ...extra },
+    // Company-authority correction: ACCEPT is the company gate, so a fixture that accepts must
+    // carry a governed company, exactly as a real chain would (inherited from its Opportunity).
+    { accountId: "acct-1", ownerEmployeeId: "emp-1", sourceOpportunityId: "opp-1", inheritedOperatingCompanyId: "taylor", lines, ...extra },
     CTX,
   );
   const accepted = buildAcceptSalesAgreement(a, CTX);
@@ -89,14 +91,15 @@ test("an agreement with no lines is refused", () => {
 
 test("exact quantity and integer price survive Agreement -> Sales Order", () => {
   const lines = salesOrderLinesFromAgreement(acceptedAgreement(PRICED));
-  assert.deepEqual(lines, [{ kind: "EQUIPMENT_MODEL", ref: "C713", orderedQty: 2, unitPrice: 500000 }]);
+  // FIN-002: the line's reporting unit travels with its committed price.
+  assert.deepEqual(lines, [{ kind: "EQUIPMENT_MODEL", ref: "C713", businessUnitId: "EQUIPMENT_SALES", orderedQty: 2, unitPrice: 500000 }]);
 });
 
 test("multiple prices survive unchanged, and a zero survives as zero", () => {
   const a = acceptedAgreement([
     { kind: "PART", ref: "A", quantity: 1, unitPrice: 1 },
     { kind: "PART", ref: "B", quantity: 3, unitPrice: 0 },
-    { kind: "SERVICE", ref: "C", quantity: 2, unitPrice: 999999 },
+    { kind: "SERVICE", ref: "C", businessUnitId: "SERVICE", quantity: 2, unitPrice: 999999 },
   ]);
   const lines = salesOrderLinesFromAgreement(a);
   assert.deepEqual(lines.map((l) => l.unitPrice), [1, 0, 999999]);
@@ -106,9 +109,12 @@ test("multiple prices survive unchanged, and a zero survives as zero", () => {
 test("the committed price reaches a BUILT Sales Order, through the real order command", () => {
   // The whole chain in one assertion: agreement -> lines -> buildCreateSalesOrder. A price that
   // arrives here is a price the order will store.
-  const lines = salesOrderLinesFromAgreement(acceptedAgreement(PRICED));
+  const a = acceptedAgreement(PRICED);
+  const lines = salesOrderLinesFromAgreement(a);
   const so = buildCreateSalesOrder(
-    { accountId: "acct-1", ownerEmployeeId: "emp-1", salesChannel: "RETAIL", lines },
+    // Company travels with the chain (company-authority correction): the order inherits the
+    // accepted agreement's frozen company, exactly as the real conversion callables pass it.
+    { accountId: "acct-1", ownerEmployeeId: "emp-1", inheritedOperatingCompanyId: a.operatingCompanyId, salesChannel: "RETAIL", lines },
     CTX,
   );
   assert.equal(so.state, "CONFIRMED");

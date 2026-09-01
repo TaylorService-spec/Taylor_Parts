@@ -5,7 +5,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildInvoiceRecord, verifySalesOrderMatch, InvoiceCommandError } from "../lib/finance/invoiceCommands.js";
 
-const DEPS = { invoiceNumber: "INV-000042", sequence: 42, nowMillis: 1_700_000_000_000 };
+// Company-authority correction: the invoice's company comes from the GOVERNED Sales Order, so the
+// build deps always carry the SO snapshot (as the live callable always did) and `companyId` on the
+// input is assertion-only.
+const BASE_SO = () => ({
+  accountId: "ACCT-1", currency: "USD", state: "FULFILLED",
+  operatingCompanyId: "taylor", creditedSalespersonId: "emp-a",
+  lines: [
+    { lineId: "line-1", kind: "PART", ref: "L1", businessUnitId: "PARTS", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
+    { lineId: "line-2", kind: "SERVICE", ref: "L2", businessUnitId: "SERVICE", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },
+  ],
+});
+const DEPS = { invoiceNumber: "INV-000042", sequence: 42, nowMillis: 1_700_000_000_000, so: BASE_SO() };
 const base = () => ({
   companyId: "taylor", accountId: "ACCT-1", salesOrderId: "SO-1", currency: "USD",
   dueDate: 1_702_000_000_000, billingAction: "BILL_NOW",
@@ -51,7 +62,18 @@ test("missing committed unit price fails closed (UNPRICED) — no re-pricing", (
 });
 
 test("required fields + dueDate (AR aging) + non-empty lines are enforced", () => {
-  assert.throws(() => buildInvoiceRecord({ ...base(), companyId: "" }, DEPS), (e) => e.code === "REQUIRED");
+  // companyId is ASSERTION-ONLY now: an empty/omitted assertion is ignored and the governed SO
+  // company is used; a NON-matching assertion is refused; a missing SO company is refused.
+  assert.equal(buildInvoiceRecord({ ...base(), companyId: "" }, DEPS).companyId, "taylor");
+  assert.equal(buildInvoiceRecord({ ...base(), companyId: undefined }, DEPS).companyId, "taylor");
+  assert.throws(() => buildInvoiceRecord({ ...base(), companyId: "ventana" }, DEPS), (e) => e.code === "COMPANY_MISMATCH");
+  assert.throws(
+    () => buildInvoiceRecord(base(), { ...DEPS, so: { ...BASE_SO(), operatingCompanyId: undefined } }),
+    (e) => e.code === "COMPANY_REQUIRED",
+  );
+  // STRUCTURAL INVARIANT: header company === attribution company, always.
+  const rec = buildInvoiceRecord(base(), DEPS);
+  assert.equal(rec.companyId, rec.attribution.operatingCompanyId);
   assert.throws(() => buildInvoiceRecord({ ...base(), dueDate: "soon" }, DEPS), (e) => e.code === "DUE_DATE_INVALID");
   assert.throws(() => buildInvoiceRecord({ ...base(), lines: [] }, DEPS), (e) => e.code === "NO_LINES");
 });
@@ -68,6 +90,8 @@ const soBase = () => ({
   accountId: "ACCT-1",
   currency: "USD",
   state: "IN_FULFILLMENT",
+  // Company-authority correction: the governed order carries THE company the invoice will use.
+  operatingCompanyId: "taylor",
   lines: [
     { lineId: "line-1", kind: "PART", ref: "L1", unitPrice: 12000, orderedQty: 5, fulfilledQty: 5 },
     { lineId: "line-2", kind: "SERVICE", ref: "L2", unitPrice: 5000, orderedQty: 2, fulfilledQty: 2 },

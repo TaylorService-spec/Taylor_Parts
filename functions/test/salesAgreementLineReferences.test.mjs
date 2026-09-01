@@ -124,14 +124,14 @@ test("SERVICE lines remain valid — a supported kind is not deleted by a correc
   // Rejecting SERVICE because no catalog exists would silently remove a declared commercial
   // capability under the banner of fixing correctness, and a service line is not made truer by
   // refusing it. Left exactly as it is today, and reported.
-  const r = await run([{ kind: "SERVICE", ref: "annual-maintenance-visit" }]);
+  const r = await run([{ kind: "SERVICE", ref: "annual-maintenance-visit", businessUnitId: "SERVICE" }]);
   assert.equal(r.ok, true);
   assert.deepEqual(r.reads.getAll, [], "an unvalidatable kind must not cost a read");
 });
 
 test("SERVICE mixed with real products validates the products and passes the service through", async () => {
   const r = await run([
-    { kind: "SERVICE", ref: "install-labor" },
+    { kind: "SERVICE", ref: "install-labor", businessUnitId: "INSTALLATION" },
     { kind: "PART", ref: "CW-P-0000" },
   ]);
   assert.equal(r.ok, true);
@@ -140,7 +140,7 @@ test("SERVICE mixed with real products validates the products and passes the ser
 
 test("a SERVICE line still cannot smuggle in an invalid Part beside it", async () => {
   const r = await run([
-    { kind: "SERVICE", ref: "install-labor" },
+    { kind: "SERVICE", ref: "install-labor", businessUnitId: "INSTALLATION" },
     { lineId: "line-2", kind: "PART", ref: "asdfgh" },
   ]);
   assert.equal(r.ok, false);

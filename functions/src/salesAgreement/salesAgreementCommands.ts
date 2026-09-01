@@ -7,6 +7,13 @@ import {
   type SalesAgreementLineKind,
   type SalesAgreementState,
 } from "./salesAgreementLifecycle.js";
+import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
+import {
+  AttributionError,
+  deriveLineBusinessUnit,
+  resolveCreditedSalesperson,
+  type BusinessUnitId,
+} from "../finance/financialAttribution";
 
 // THE COMMERCIAL COMMITMENT — build and accept.
 //
@@ -52,6 +59,10 @@ export type SalesAgreementErrorCode =
   | "REFERENCE_NOT_FOUND"
   /** The reference is real, but it belongs to a different kind than the line declares. */
   | "REFERENCE_WRONG_KIND"
+  /** FIN-002: a line's business-unit attribution is missing where required, invalid, or contradicts its kind. */
+  | "BUSINESS_UNIT_INVALID"
+  /** Company-authority correction: ACCEPT attempted while the agreement's operating company is unresolved. */
+  | "COMPANY_REQUIRED"
   | "ILLEGAL_TRANSITION";
 
 export class SalesAgreementCommandError extends Error {
@@ -67,6 +78,12 @@ export interface SalesAgreementLineInput {
   kind: SalesAgreementLineKind;
   /** Model number / partId / service code — PRODUCT level, never a serial. */
   ref: string;
+  /**
+   * FIN-002 reporting attribution. EQUIPMENT_MODEL and PART classify themselves
+   * (EQUIPMENT_SALES / PARTS — an explicit value must match). A SERVICE line MUST declare
+   * SERVICE or INSTALLATION: they are different reporting units and the system will not guess.
+   */
+  businessUnitId?: string;
   quantity: number;
   /** Integer minor units. Optional in DRAFT; REQUIRED to accept. */
   unitPrice?: number;
@@ -80,6 +97,15 @@ export interface SalesAgreementLineInput {
 export interface CreateSalesAgreementInput {
   accountId: string;
   ownerEmployeeId: string;
+  // FIN-002 (Ruling R-14): explicit, else inherited from the source Opportunity by the callable —
+  // copied, not followed. Never inferred from location/warehouse/manufacturer names. null is an
+  // honest "no company attribution", never a value to be guessed later.
+  operatingCompanyId?: string;
+  inheritedOperatingCompanyId?: string | null;
+  // FIN-002 (DECISIONS #154): sales credit, distinct from ownership. Explicit wins; else inherited
+  // from the source Opportunity's credit; else the agreement's commercial owner. Never the actor.
+  creditedSalespersonId?: string;
+  inheritedCreditedSalespersonId?: string | null;
   locationId?: string;
   sourceOpportunityId?: string;
   customerPO?: string;
@@ -108,6 +134,8 @@ export interface BuiltAgreementLine {
   lineId: string;
   kind: SalesAgreementLineKind;
   ref: string;
+  /** FIN-002: governed reporting unit for this line — derived from kind, or explicit for SERVICE. */
+  businessUnitId: BusinessUnitId;
   quantity: number;
   unitPrice: number | null;
   condition: string | null;
@@ -149,11 +177,25 @@ function validateLine(line: unknown, index: number): BuiltAgreementLine {
     throw new SalesAgreementCommandError("LINE_INVALID", `Line ${index} estimatedArrivalMillis must be a number`);
   }
 
+  // FIN-002: attribute the line to its reporting unit at creation. deriveLineBusinessUnit refuses
+  // an ambiguous SERVICE line (BUSINESS_UNIT_REQUIRED) and a contradictory explicit value — an
+  // ordinary new reportable line can no longer enter the system with silent BU ambiguity.
+  let businessUnitId: BusinessUnitId;
+  try {
+    businessUnitId = deriveLineBusinessUnit(l.kind as SalesAgreementLineKind, l.businessUnitId as string | undefined);
+  } catch (err) {
+    if (err instanceof AttributionError) {
+      throw new SalesAgreementCommandError("BUSINESS_UNIT_INVALID", `Line ${index}: ${err.message}`);
+    }
+    throw err;
+  }
+
   const unitPrice = minorUnits(l.unitPrice) ? (l.unitPrice as number) : null;
   return {
     lineId: `line-${index + 1}`,
     kind: l.kind as SalesAgreementLineKind,
     ref: (l.ref as string).trim(),
+    businessUnitId,
     quantity: l.quantity as number,
     unitPrice,
     condition: trimmed(l.condition),
@@ -208,6 +250,10 @@ export function computeAgreementTotals(
 export interface BuiltSalesAgreement {
   accountId: string;
   ownerEmployeeId: string;
+  /** FIN-002 / R-14. Copied from the source Opportunity at creation (or explicit), then historical. */
+  operatingCompanyId: string | null;
+  /** FIN-002: sales credit — distinct from ownerEmployeeId; frozen for history at ACCEPTED. */
+  creditedSalespersonId: string;
   locationId: string | null;
   sourceOpportunityId: string | null;
   customerPO: string | null;
@@ -253,6 +299,13 @@ export function buildCreateSalesAgreement(
   return {
     accountId: input.accountId.trim(),
     ownerEmployeeId: input.ownerEmployeeId.trim(),
+    // R-14: explicit-or-inherited, never inferred, no production default. The callable supplies
+    // the inherited value from the source Opportunity it read inside its own transaction.
+    operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId),
+    // Credit chain: explicit → inherited from the Opportunity → this agreement's commercial owner.
+    // ctx.actorUid deliberately absent: the creator is an actor, never the default credit.
+    creditedSalespersonId: resolveCreditedSalesperson(
+      input.creditedSalespersonId, input.inheritedCreditedSalespersonId, input.ownerEmployeeId) as string,
     locationId: trimmed(input.locationId),
     sourceOpportunityId: trimmed(input.sourceOpportunityId),
     customerPO: trimmed(input.customerPO),
@@ -286,11 +339,26 @@ export function buildCreateSalesAgreement(
  * somebody who cannot fix it.
  */
 export function buildAcceptSalesAgreement(
-  current: { state: SalesAgreementState; lines: BuiltAgreementLine[] },
+  current: { state: SalesAgreementState; lines: BuiltAgreementLine[]; operatingCompanyId?: string | null },
   ctx: { actorUid: string; nowMillis: number }
 ): { state: SalesAgreementState; acceptedAtMillis: number; acceptedByUid: string; updatedAtMillis: number } {
   const check = checkAgreementTransition(current.state, "ACCEPTED");
   if (!check.ok) throw new SalesAgreementCommandError("ILLEGAL_TRANSITION", check.reason ?? "Illegal transition");
+
+  // ACCEPTANCE IS ALSO THE COMPANY GATE (company-authority correction, DECISIONS #154 addendum).
+  // An accepted agreement is a REPORTABLE commercial commitment, and no reportable financial fact
+  // exists without its operating company. A DRAFT may negotiate company-unresolved (R-14 posture);
+  // committing that way is refused HERE, atomically, before anything is stamped — no inference,
+  // no Taylor default, no current-user fallback. Fix it upstream (Opportunity/explicit) and accept
+  // again.
+  if (typeof current.operatingCompanyId !== "string" || current.operatingCompanyId.trim().length === 0) {
+    throw new SalesAgreementCommandError(
+      "COMPANY_REQUIRED",
+      "This agreement has no resolved operating company. An accepted agreement is a reportable " +
+        "commercial commitment and must carry a governed operatingCompanyId (explicit or inherited " +
+        "from its Opportunity) — it is never inferred or defaulted."
+    );
+  }
 
   const unpriced = (current.lines ?? []).filter((l) => l.unitPrice === null || l.unitPrice === undefined);
   if (unpriced.length > 0) {
@@ -323,7 +391,7 @@ export function buildAcceptSalesAgreement(
  */
 export function deriveSalesOrderLinesFromAgreement(
   agreement: { state: SalesAgreementState; lines: BuiltAgreementLine[] }
-): { kind: SalesAgreementLineKind; ref: string; orderedQty: number; unitPrice: number }[] {
+): { kind: SalesAgreementLineKind; ref: string; businessUnitId?: string; orderedQty: number; unitPrice: number }[] {
   if (agreement.state !== "ACCEPTED") {
     throw new SalesAgreementCommandError(
       "ILLEGAL_TRANSITION",
@@ -336,7 +404,16 @@ export function deriveSalesOrderLinesFromAgreement(
       // the Sales Order, and it must never be the place a null slips through.
       throw new SalesAgreementCommandError("UNPRICED_LINE", `Accepted agreement line ${l.lineId} has no committed price.`);
     }
-    return { kind: l.kind, ref: l.ref, orderedQty: l.quantity, unitPrice: l.unitPrice };
+    // FIN-002: the line's reporting attribution travels with its committed price — the order must
+    // not re-classify (or lose) what the accepted agreement already decided. Older accepted
+    // agreements written before businessUnitId existed carry none; the key is then OMITTED (not
+    // set undefined) and the order's own validator re-derives — or refuses an ambiguous SERVICE
+    // line — never silently defaults.
+    return {
+      kind: l.kind, ref: l.ref,
+      ...(l.businessUnitId !== undefined && l.businessUnitId !== null ? { businessUnitId: l.businessUnitId } : {}),
+      orderedQty: l.quantity, unitPrice: l.unitPrice,
+    };
   });
 }
 
@@ -378,6 +455,13 @@ export function deriveSalesOrderLinesFromAgreement(
 /** Exactly the fields a draft may change. Anything not named here cannot be reached. */
 export const SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS = Object.freeze([
   "locationId",
+  // FIN-002: explicit pre-commitment credit reassignment. A DRAFT is still a negotiation, and the
+  // Owner policy allows explicit sales reassignment BEFORE the immutable boundary. At ACCEPTED the
+  // whole document freezes (state !== DRAFT refusal below), so accepted credit is history — a later
+  // change is a FIN-007 attribution adjustment. operatingCompanyId is deliberately NOT here: the
+  // company entered the chain at the Opportunity (R-14) and an agreement that could switch company
+  // mid-negotiation would be a different deal wearing the same number.
+  "creditedSalespersonId",
   "customerPO",
   "isLease",
   "fulfillmentIntent",
@@ -396,6 +480,7 @@ export type SalesAgreementDraftEditableField = (typeof SALES_AGREEMENT_DRAFT_EDI
 
 export interface UpdateSalesAgreementDraftInput {
   locationId?: string | null;
+  creditedSalespersonId?: string;
   customerPO?: string | null;
   isLease?: boolean;
   fulfillmentIntent?: FulfillmentIntent | null;
@@ -443,6 +528,15 @@ export function buildUpdateSalesAgreementDraft(
   const patch: Record<string, unknown> = {};
 
   if ("locationId" in input) patch.locationId = trimmed(input.locationId);
+  // Credit moves only by EXPLICIT reassignment, and never to nothing: a draft may re-credit a
+  // different salesperson, but a commercial record with no credited salesperson at all is not a
+  // state this chain produces.
+  if ("creditedSalespersonId" in input) {
+    if (!nonEmpty(input.creditedSalespersonId)) {
+      throw new SalesAgreementCommandError("INVALID", "creditedSalespersonId cannot be cleared, only reassigned");
+    }
+    patch.creditedSalespersonId = input.creditedSalespersonId.trim();
+  }
   if ("customerPO" in input) patch.customerPO = trimmed(input.customerPO);
   if ("shippingInstructions" in input) patch.shippingInstructions = trimmed(input.shippingInstructions);
   if ("shipVia" in input) patch.shipVia = trimmed(input.shipVia);

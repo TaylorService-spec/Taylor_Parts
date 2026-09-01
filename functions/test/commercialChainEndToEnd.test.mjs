@@ -81,6 +81,7 @@ async function seedOpportunity(over = {}) {
   await db.collection("opportunities").doc(id).set({
     opportunityNumber: `OPP-2026-${String(seq).padStart(6, "0")}`,
     accountId: "acct-chain-1",
+    operatingCompanyId: "ventana",
     ownerEmployeeId: "emp-1",
     salesChannel: "RETAIL",
     stage: "QUOTING",

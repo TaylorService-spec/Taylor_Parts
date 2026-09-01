@@ -64,6 +64,7 @@ function makeOpportunity(overrides = {}) {
   return {
     accountId: "acct-1",
     ownerEmployeeId: "emp-owner",
+    operatingCompanyId: "taylor",
     salesChannel: "RETAIL",
     stage: "DECISION",
     outcome: "WON",
@@ -142,7 +143,8 @@ await check("WON, no prior Sales Order -> Sales Order created with correct sourc
   assert.equal(so.state, "CONFIRMED");
   // unitPrice 4200 is the AGREEMENT's committed price arriving on the persisted order. Before this
   // slice every line here was priceless, and invoicing refuses to bill a priceless line.
-  assert.deepEqual(so.lines, [{ lineId: "line-1", kind: "PART", ref: "PART-1", orderedQty: 3, unitPrice: 4200, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }]);
+  // FIN-002: the line carries its reporting unit (PART classifies itself as PARTS).
+  assert.deepEqual(so.lines, [{ lineId: "line-1", kind: "PART", ref: "PART-1", businessUnitId: "PARTS", orderedQty: 3, unitPrice: 4200, allocatedQty: 0, fulfilledQty: 0, billedQty: 0 }]);
   assert.equal(so.sourceAgreementId, `agr-${oppId}`, "the order names the commitment it fulfils");
 
   const oppSnap = await db.collection("opportunities").doc(oppId).get();

@@ -285,6 +285,14 @@ export async function persistCloseOpportunityAsWon(
         // `opp` was read inside this transaction, so the inherited owner is the one in force at
         // commit -- not one that could have been handed off between the read and the write.
         inheritedOwner: deriveEmployeeRefOwner(opp as unknown as Record<string, unknown>),
+        // FIN-002: attribution flows DELIBERATELY, snapshot semantics (copied, not followed). The
+        // accepted Agreement's frozen values win — that is what the customer committed to; the
+        // Opportunity's are the fallback for chains created before the Agreement carried them.
+        // This call site previously passed NEITHER, which is exactly the FIN-001 finding that a
+        // converted order's company attribution resolved to null.
+        inheritedOperatingCompanyId: (agreementData.operatingCompanyId ?? opp.operatingCompanyId ?? null) as string | null,
+        inheritedCreditedSalespersonId:
+          (agreementData.creditedSalespersonId ?? opp.creditedSalespersonId ?? null) as string | null,
         salesChannel: input.salesChannel,
         // The caller's own values still win where supplied; the Agreement fills what was left out.
         locationId: input.locationId ?? fromAgreement.locationId,
@@ -293,7 +301,10 @@ export async function persistCloseOpportunityAsWon(
         notes: fromAgreement.notes,
         lines: agreementLines,
       },
-      { actorUid, nowMillis: Date.now() },
+      // BOOKED at acceptance: the agreement's server-stamped acceptedAtMillis is when the
+      // commercial terms were committed (DECISIONS #154). Fallback to now only if a pre-FIN-002
+      // accepted agreement carries no stamp.
+      { actorUid, nowMillis: Date.now(), bookedAtMillis: (agreementData.acceptedAtMillis as number | undefined) ?? undefined },
     );
   } catch (err) {
     if (err instanceof SalesOrderCommandError) throw new HttpsError("invalid-argument", err.message);

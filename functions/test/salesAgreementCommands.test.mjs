@@ -21,7 +21,7 @@ import { checkAgreementTransition, SALES_AGREEMENT_STATES } from "../lib/salesAg
 
 const CTX = { actorUid: "uid-1", nowMillis: 1_754_600_000_000 };
 const base = (lines, extra = {}) => ({
-  accountId: "acct-1", ownerEmployeeId: "emp-1", lines, ...extra,
+  accountId: "acct-1", ownerEmployeeId: "emp-1", inheritedOperatingCompanyId: "taylor", lines, ...extra,
 });
 const build = (lines, extra) => buildCreateSalesAgreement(base(lines, extra), CTX);
 const priced = (unitPrice = 12000) => [{ kind: "EQUIPMENT_MODEL", ref: "C713", quantity: 2, unitPrice }];
@@ -95,7 +95,7 @@ test("ACCEPTANCE REQUIRES A PRICE ON EVERY LINE, and names every one missing", (
   const draft = build([
     { kind: "PART", ref: "PRT-A", quantity: 1 },
     { kind: "PART", ref: "PRT-B", quantity: 1, unitPrice: 500 },
-    { kind: "SERVICE", ref: "SVC-C", quantity: 1 },
+    { kind: "SERVICE", ref: "SVC-C", businessUnitId: "SERVICE", quantity: 1 },
   ]);
   try {
     buildAcceptSalesAgreement(draft, CTX);
@@ -144,8 +144,9 @@ test("an accepted agreement yields Sales Order lines WITH their committed prices
   ]);
   const lines = deriveSalesOrderLinesFromAgreement({ ...a, state: "ACCEPTED" });
   assert.deepEqual(lines, [
-    { kind: "EQUIPMENT_MODEL", ref: "C713", orderedQty: 2, unitPrice: 500000 },
-    { kind: "PART", ref: "PRT-1", orderedQty: 4, unitPrice: 2500 },
+    // FIN-002: the reporting unit travels with the committed price.
+    { kind: "EQUIPMENT_MODEL", ref: "C713", businessUnitId: "EQUIPMENT_SALES", orderedQty: 2, unitPrice: 500000 },
+    { kind: "PART", ref: "PRT-1", businessUnitId: "PARTS", orderedQty: 4, unitPrice: 2500 },
   ]);
 });
 

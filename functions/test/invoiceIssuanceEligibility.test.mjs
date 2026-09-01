@@ -24,6 +24,7 @@ async function seedSalesOrder(overrides = {}) {
   const soId = id("so");
   await db.collection("sales_orders").doc(soId).set({
     accountId: "ACCT-1",
+    operatingCompanyId: "taylor",
     currency: "USD",
     state: "IN_FULFILLMENT",
     lines: [

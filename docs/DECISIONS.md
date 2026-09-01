@@ -4166,3 +4166,67 @@ used to cover what they replaced.
     PRODUCTION_EXPOSURE                    UNMEASURED — DEPLOYMENT BLOCKER
     SANDBOX / PRODUCTION / CERTIFICATION   NOT MUTATED
     DEPLOYMENT                             NOT PERFORMED
+## #154 — OWNER RULING: FIN-002 reporting attribution — company, business unit, sales credit, booked basis
+
+**Decision (Owner, 2026-08-31, via the Financials master execution contract; implements FIN-002):**
+
+1. **The reporting spine is canonical and single-sourced.** Every reportable operational financial
+   event must be able to preserve operatingCompanyId, businessUnitId, credited/responsible person,
+   customerId, sourceType/sourceRecordId, event time, and currency — defined ONCE in
+   `functions/src/finance/financialAttribution.ts` and composed by Sales, Finance, and (later)
+   Service. No domain-local copies. Not every dimension is valid for every event: an invalid
+   dimension is an honest null, never a forced or inferred value.
+2. **OWNERSHIP != SALES CREDIT.** `creditedSalespersonId` is a distinct governed fact. It defaults
+   from the governed commercial OWNER at the point a sale enters the commercial chain — never from
+   `createdBy` (an assistant creating for Salesperson A's customer credits A). It may be explicitly
+   reassigned pre-commitment through the existing governed commercial edit commands; after the
+   immutable boundary, changing credit is a FIN-007 governed attribution adjustment. Changing
+   Customer ownership affects future sales, not historical attribution.
+3. **Company attribution is explicit or inherited, never inferred** (reaffirms R-14) — not from
+   warehouse/location names, not from "North", not from salesperson, route, or manufacturer. The
+   FIN-001 defect where BOTH Opportunity→Sales Order conversion paths dropped the company is
+   closed: the conversions now pass the accepted Agreement's frozen company (Opportunity fallback),
+   copied-not-followed.
+4. **Business units are a governed vocabulary** — SERVICE, EQUIPMENT_SALES, PARTS, INSTALLATION
+   (ids are authority; labels are presentation; future units are added to the one vocabulary).
+   Attribution is LINE-level on commercial orders because one order may mix units — an order
+   containing equipment + parts + installation is never flattened to one false order-level unit.
+   EQUIPMENT_MODEL and PART lines classify themselves; a SERVICE line MUST declare SERVICE or
+   INSTALLATION at creation — an ordinary new reportable line cannot enter the system with silent
+   business-unit ambiguity. Work-order activity maps from the existing WorkOrderType authority
+   (INSTALL → INSTALLATION; other current types → SERVICE; unknown → null, fail-closed).
+5. **BOOKED basis: Agreement acceptance commits commercial terms.** A Sales Order derived from an
+   accepted Agreement books at the agreement's server-stamped acceptance time; a direct creation
+   books at server creation time. `bookedAtMillis` is server-context only — never a caller clock.
+   No revenue-recognition or accounting-period semantics are implied (FIN-008 owns periods).
+6. **The immutable snapshot point** is the existing commercial commitment boundary: ACCEPTED
+   freezes the Agreement's attribution with its terms; Sales Order creation freezes the order's
+   copy; the (dormant) issued invoice composes the canonical snapshot from the governed Sales
+   Order at issuance. Later changes to source records rewrite nothing already frozen.
+7. **No mass backfill.** Existing records are classified in the FIN-002 census
+   (docs/financials/FIN-002_REPORTING_ATTRIBUTION_MODEL.md §16); a backfill runs only under its
+   own explicit authorization from governed historical sources — never from current Customer
+   owner, createdBy, location names, or today's salesperson.
+
+**Reason:** FIN-001 measured the attribution spine at one working link of four — no stamped
+company anywhere (0/1,323), no business-unit concept, no credit concept distinct from ownership,
+no booked basis, and a conversion that dropped the one company field that existed. Every
+Financials surface (Sales-to-Goal, Company Performance, Employee Performance, Profitability)
+reports along exactly these dimensions; building them before the spine exists would force the
+prohibited inferences this ruling bans.
+
+**Alternatives rejected:** order-level business unit (rejected — mixed orders are real and would
+be silently mislabeled); deriving credit from current Customer ownership forever (rejected —
+silently rewrites history); auto-defaulting ambiguous SERVICE lines to SERVICE (rejected — a
+guess that poisons installation reporting); a finance-local attribution type (rejected — two
+definitions of one snapshot is how they drift).
+
+**Addendum (2026-09-01, same ruling, company-authority correction):** the snapshot's
+`operatingCompanyId` is REQUIRED — no reportable operational financial event exists without it.
+Pre-commit CRM records (open Opportunity, DRAFT Agreement) may remain company-unresolved where
+R-14 governance permits; the REPORTABLE boundary refuses: Agreement ACCEPT and Sales Order
+creation (both conversion paths and direct) refuse `COMPANY_REQUIRED` atomically, and a
+Sales-Order-derived invoice takes its company from the governed order alone —
+`input.companyId` is assertion-only (`COMPANY_MISMATCH` refused before numbering/write/audit),
+and `invoice.companyId === invoice.attribution.operatingCompanyId` structurally. No inference,
+no default company, no current-user fallback.

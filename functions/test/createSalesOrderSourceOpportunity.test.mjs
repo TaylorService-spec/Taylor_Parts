@@ -28,7 +28,7 @@ const opp = async (fields) => {
 
 const builtFor = (accountId, sourceOpportunityId) =>
   buildCreateSalesOrder(
-    { accountId, ownerEmployeeId: id("owner"), salesChannel: "RETAIL", sourceOpportunityId, lines: [{ kind: "PART", ref: "part-1", orderedQty: 1, unitPrice: 2500 }] },
+    { accountId, ownerEmployeeId: id("owner"), operatingCompanyId: "taylor", salesChannel: "RETAIL", sourceOpportunityId, lines: [{ kind: "PART", ref: "part-1", orderedQty: 1, unitPrice: 2500 }] },
     { actorUid: id("actor"), nowMillis: Date.now() },
   );
 
@@ -95,7 +95,7 @@ test("a second Sales Order against an Opportunity that already has one is reject
 test("createSalesOrder with NO sourceOpportunityId is unaffected -- succeeds without touching opportunities", async () => {
   const accountId = id("account");
   const built = buildCreateSalesOrder(
-    { accountId, ownerEmployeeId: id("owner"), salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-1", orderedQty: 1, unitPrice: 2500 }] },
+    { accountId, ownerEmployeeId: id("owner"), operatingCompanyId: "taylor", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-1", orderedQty: 1, unitPrice: 2500 }] },
     { actorUid: id("actor"), nowMillis: Date.now() },
   );
   const created = await db.runTransaction((tx) => persistCreatedSalesOrder(db, tx, built, id("actor"), id("key")));
@@ -130,7 +130,7 @@ test("source Opportunity cannot lend lineage to divergent Sales Order lines", as
   const accountId = id("account");
   const oppId = await opp({ accountId, outcome: "WON" });
   const divergent = buildCreateSalesOrder(
-    { accountId, ownerEmployeeId: id("owner"), salesChannel: "RETAIL", sourceOpportunityId: oppId, lines: [{ kind: "PART", ref: "unrelated-part", orderedQty: 1, unitPrice: 2500 }] },
+    { accountId, ownerEmployeeId: id("owner"), operatingCompanyId: "taylor", salesChannel: "RETAIL", sourceOpportunityId: oppId, lines: [{ kind: "PART", ref: "unrelated-part", orderedQty: 1, unitPrice: 2500 }] },
     { actorUid: id("actor"), nowMillis: Date.now() },
   );
   await assert.rejects(

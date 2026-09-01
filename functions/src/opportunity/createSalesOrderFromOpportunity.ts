@@ -59,6 +59,9 @@ export interface OpportunityDoc {
   // an untyped property. The cast at the call site remains because a TS interface is not assignable
   // to Record<string, unknown> -- the field being declared here is what makes the read honest.
   ownerEmployeeId?: string | null;
+  // FIN-002: attribution the conversion inherits (copied, not followed).
+  operatingCompanyId?: string | null;
+  creditedSalespersonId?: string | null;
   lines?: OpportunityLineDoc[];
   salesOrderId?: string | null;
   // The commercial commitment this Opportunity produced. Distinct from salesOrderId: one names the
@@ -198,6 +201,11 @@ export async function persistSalesOrderFromOpportunity(
         // Ruling D-4: the Opportunity's own owner is the default for the Sales Order it produces.
         // `opp` was read inside this transaction, so the inherited owner is the one in force at commit.
         inheritedOwner: deriveEmployeeRefOwner(opp as unknown as Record<string, unknown>),
+        // FIN-002: attribution flows deliberately — agreement's frozen snapshot first, Opportunity
+        // fallback; copied, not followed. This path previously passed neither (FIN-001 finding).
+        inheritedOperatingCompanyId: (agreement.operatingCompanyId ?? opp.operatingCompanyId ?? null) as string | null,
+        inheritedCreditedSalespersonId:
+          (agreement.creditedSalespersonId ?? opp.creditedSalespersonId ?? null) as string | null,
         salesChannel: input.salesChannel,
         // The CALLER's value still wins where it supplied one -- this callable's own contract has
         // always accepted a location and a PO. The Agreement fills what the caller left out rather
@@ -208,7 +216,8 @@ export async function persistSalesOrderFromOpportunity(
         notes: fromAgreement.notes,
         lines,
       },
-      { actorUid, nowMillis: Date.now() },
+      // BOOKED at acceptance (DECISIONS #154); fallback to now for pre-FIN-002 agreements.
+      { actorUid, nowMillis: Date.now(), bookedAtMillis: (agreement.acceptedAtMillis as number | undefined) ?? undefined },
     );
   } catch (err) {
     throw mapCommandError(err);

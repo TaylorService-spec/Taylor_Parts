@@ -9,6 +9,7 @@
 
 import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
 import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
+import { resolveCreditedSalesperson } from "../finance/financialAttribution";
 import type { OwnerDerivation } from "../ownership/typedOwner";
 import {
   OPPORTUNITY_LINE_KINDS,
@@ -72,6 +73,12 @@ export interface CreateOpportunityInput {
   // OPTIONAL and never inferred -- one salesperson and one customer may legitimately transact with
   // either company, so nothing about the Account can decide this. A bad value is still rejected.
   operatingCompanyId?: string;
+  // FIN-002 (DECISIONS #154): SALES CREDIT, distinct from ownership. Defaults from the resolved
+  // commercial OWNER at the point the sale enters the chain -- never from the creating actor (an
+  // assistant creating for Salesperson A's customer credits A, not the assistant). Explicitly
+  // reassignable pre-close through the ordinary edit; frozen downstream at the commercial
+  // commitment snapshot.
+  creditedSalespersonId?: string;
   salesChannel: SalesChannel;
   need?: string;
   expectedValue?: number | null;
@@ -128,6 +135,8 @@ export interface BuiltOpportunity {
   expectedCloseAt: number | null;
   /** Ruling R-14. null until supplied -- inert, and never defaulted to Taylor. */
   operatingCompanyId: string | null;
+  /** FIN-002: sales credit. Distinct from ownerEmployeeId (OWNERSHIP != SALES CREDIT). */
+  creditedSalespersonId: string | null;
   lines: OpportunityLineInput[];
   createdByUid: string;
   createdAtMillis: number;
@@ -164,6 +173,9 @@ export function buildCreateOpportunity(
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
     operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId),
+    // Explicit credit wins; otherwise the governed commercial owner at chain entry. Never the
+    // actor: `ctx.actorUid` deliberately does not appear in this expression.
+    creditedSalespersonId: resolveCreditedSalesperson(input.creditedSalespersonId, null, resolvedOwner.ownerEmployeeId),
     stage: "IDENTIFIED",
     outcome: null,
     need: nonEmpty(input.need) ? input.need.trim() : null,
@@ -203,6 +215,8 @@ export interface UpdateOpportunityInput {
   expectedUpdatedAtMillis: number;
   accountId?: string;
   ownerEmployeeId?: string;
+  /** FIN-002: explicit pre-close sales-credit reassignment. Never re-derived from ownership. */
+  creditedSalespersonId?: string;
   salesChannel?: SalesChannel;
   need?: string | null;
   expectedValue?: number | null;
@@ -228,6 +242,10 @@ export interface UpdateOpportunityPatch {
 export const EDITABLE_OPPORTUNITY_FIELDS = Object.freeze([
   "accountId",
   "ownerEmployeeId",
+  // FIN-002: explicit pre-close credit reassignment rides the SAME governed edit authority as
+  // ownership (opportunity.write) -- before the commitment snapshot, credit may move by explicit
+  // governed action; after it, changing credit is a FIN-007 attribution adjustment.
+  "creditedSalespersonId",
   "salesChannel",
   "need",
   "expectedValue",
@@ -297,6 +315,16 @@ export function buildUpdateOpportunity(
     }
     if (input.ownerEmployeeId !== cur.ownerEmployeeId) {
       record("ownerEmployeeId", cur.ownerEmployeeId, input.ownerEmployeeId);
+    }
+  }
+  if (input.creditedSalespersonId !== undefined) {
+    // Explicit reassignment only -- an edit never re-derives credit from ownership, and moving the
+    // OWNER above deliberately does NOT move credit (OWNERSHIP != SALES CREDIT).
+    if (!nonEmpty(input.creditedSalespersonId)) {
+      throw new OpportunityCommandError("INVALID", "creditedSalespersonId cannot be empty");
+    }
+    if (input.creditedSalespersonId !== cur.creditedSalespersonId) {
+      record("creditedSalespersonId", cur.creditedSalespersonId ?? null, input.creditedSalespersonId);
     }
   }
   if (input.salesChannel !== undefined) {

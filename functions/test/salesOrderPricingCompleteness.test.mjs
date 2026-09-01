@@ -29,6 +29,7 @@ const CTX = { actorUid: "uid-1", nowMillis: 1_754_600_000_000 };
 const base = (lines) => ({
   accountId: "ACCT-1",
   ownerEmployeeId: "EMP-9",
+  operatingCompanyId: "taylor",
   salesChannel: "RETAIL",
   lines,
 });
@@ -59,7 +60,7 @@ test("the refusal names EVERY unpriced line, not just the first", () => {
     build([
       { kind: "PART", ref: "PRT-A", orderedQty: 1 },
       { kind: "PART", ref: "PRT-B", orderedQty: 1, unitPrice: 500 },
-      { kind: "SERVICE", ref: "SVC-C", orderedQty: 1 },
+      { kind: "SERVICE", ref: "SVC-C", businessUnitId: "SERVICE", orderedQty: 1 },
     ]);
     assert.fail("expected UNPRICED_LINE");
   } catch (e) {
@@ -72,13 +73,16 @@ test("the refusal names EVERY unpriced line, not just the first", () => {
 
 test("EVERY line kind must be priced — none is exempt", () => {
   for (const kind of ["EQUIPMENT_MODEL", "PART", "SERVICE"]) {
+    // FIN-002: SERVICE also requires a declared reporting unit; supplied here so what this test
+    // measures stays the PRICING gate, not the attribution gate (which has its own tests).
+    const bu = kind === "SERVICE" ? { businessUnitId: "SERVICE" } : {};
     assert.throws(
-      () => build([{ kind, ref: `ref-${kind}`, orderedQty: 1 }]),
+      () => build([{ kind, ref: `ref-${kind}`, orderedQty: 1, ...bu }]),
       (e) => e.code === "UNPRICED_LINE",
       `${kind} must require a price`,
     );
     // And the same kind builds fine once priced.
-    const ok = build([{ kind, ref: `ref-${kind}`, orderedQty: 1, unitPrice: 100 }]);
+    const ok = build([{ kind, ref: `ref-${kind}`, orderedQty: 1, unitPrice: 100, ...bu }]);
     assert.equal(ok.lines[0].unitPrice, 100);
   }
 });
@@ -157,7 +161,7 @@ test("a multi-line order where every line is priced is created whole", () => {
   const built = build([
     { kind: "EQUIPMENT_MODEL", ref: "C713", orderedQty: 1, unitPrice: 500000 },
     { kind: "PART", ref: "PRT-1", orderedQty: 4, unitPrice: 2500 },
-    { kind: "SERVICE", ref: "INSTALL", orderedQty: 1, unitPrice: 75000 },
+    { kind: "SERVICE", ref: "INSTALL", businessUnitId: "INSTALLATION", orderedQty: 1, unitPrice: 75000 },
   ]);
   assert.equal(built.lines.length, 3);
   assert.deepEqual(built.lines.map((l) => l.unitPrice), [500000, 2500, 75000]);
