@@ -84,6 +84,8 @@
     "test:receivingCallablesEmulator": "npm run build && node test/receivingCallablesEmulator.test.mjs",
     "test:warehouseGovernance": "npm run build && node test/governedWarehouseValidation.test.mjs",
     "test:warehouseRootCompany": "npm run build && node --test test/warehousePhysicalRootCompany.test.mjs",
+    "test:warehouseCanonicalIdRepair": "npm run build && node --test test/warehouseCanonicalIdRepair.test.mjs",
+    "test:seedWarehouseShape": "npm run build && node --test test/seedWarehouseCanonicalId.test.mjs",
     "test:warehouseTransfer": "npm run build && node test/warehouseServiceTransfer.test.mjs",
     "test:warehouseStatusWriter": "npm run build && node test/warehouseStatusWriter.test.mjs",
     "test:warehouseMigration": "npm run build && node test/warehouseGovernanceMigration.test.mjs && node test/warehouseGovernanceVerifier.test.mjs",
@@ -145,7 +147,7 @@
     "certify:privateAiFailClosed": "npm run build && node scripts/certificationWorld/verifyPrivateAiFailClosed.mjs --projectId eos-platform-certification",
     "test:aiRepository": "npm run build && node --test test/aiRepositoryProvider.test.mjs",
     "test:aiSalesOrderInterpretation": "npm run build && node --test test/aiSalesOrderModelInterpretation.test.mjs",
-    "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs test/ownershipProductionGuard.test.mjs"
+    "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs test/ownershipProductionGuard.test.mjs test/warehouseRootCompanyAssignment.test.mjs test/warehouseCanonicalIdRepair.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
