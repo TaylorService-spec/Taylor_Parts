@@ -526,3 +526,50 @@ New client financial authority: NONE. New raw financial collection reads: NONE. 
 activations / grants / deploys / backfills / sandbox / production / certification writes:
 NONE. Owner visual acceptance NOT claimed — sandbox deployment + Quick Gate remain a
 separately gated action. STATUS: FINANCIALS_READY_FOR_SANDBOX_UX_GATE.
+
+### SANDBOX RELEASE + QUICK GATE (2026-09-01)
+- START MAIN: d0186da5 · DEPLOY MAIN: c88f1581 (after one in-boundary fix, below).
+- SANDBOX PROJECT: eos-platform-sandbox (environment platform-sandbox, resolved via
+  scripts/deployHosting.mjs — fail-closed target identity; production untouched).
+- DEPLOYED SURFACES: HOSTING ONLY. Functions/Rules/Indexes NOT deployed (rules/indexes
+  unchanged since deployed 0abc2353; functions source has merged-but-undeployed dormant
+  finance/access changes tracked by the Owner-gated refresh queue — the Financials UX
+  genuinely requires none of them; every read renders truthfully with the callable absent,
+  present, or refused).
+- HOSTING RELEASES: d0186da5 (19:07Z) then c88f1581 (19:18Z). The second exists because the
+  first live gate run found a deterministic 375 defect INSIDE the UX boundary — bare-1fr
+  mobile grid track let wide tables force document-level horizontal scroll on
+  /financials/sales-to-goal and /financials/profitability — fixed as minmax(0,1fr)
+  (PR #1700, merged at exact reviewed head, CLEAN coverage), redeployed from fresh main.
+- VERSION.JSON IDENTITY: PASS — served {commit c88f1581, environmentId platform-sandbox,
+  role sandbox}; checkDeployedVersions: no drift.
+- QUICK GATE: PASS — financialsNorthStarQuickGate.mjs (new canonical per-family gate,
+  in-repo via #1700), seeded admin persona: 243/243 checks. 20/20 routes at 1440 AND 375.
+  (A confirmation re-run showed one transient cold-navigation render timeout on
+  /financials at 375, passing in the canonical run and in direct probes; recorded, not a
+  defect.)
+- AUTHORITY LEAK: NONE — zero client reads of deny-all financial collections (measured
+  from the network log); zero uncaught JS/React/console errors; visibility remains
+  inactive ("no financial visibility scope granted" renders on page 15).
+- SPECIMEN LEAK: NONE — zero $-figures anywhere across all 40 page-views (capabilities
+  dormant ⇒ any $-figure would be specimen or fabrication).
+- TRUTHFUL-STATE GATES: FIN-003 no fabricated plans · FIN-004 not activated · FIN-005
+  "Method TBD — FIN-005", no version invented · FIN-006 UNKNOWN margin, no $0 cost ·
+  FIN-007 gated actions DISABLED with policy truth (no silent/self approval) · FIN-008
+  page 20 reads BUILT DORMANT · Policy not configured (no "Authority not implemented"
+  row) · FIN-009 UNELIMINATED_SUM caveat present · FIN-010 page 16 visibly separates
+  internal IN_SYNC/DRIFT from external FUTURE INTEGRATION. Page 05 unapplied cash stays
+  FUTURE AUTHORITY with no fake records.
+- PAGE 07: live governed customer search returned 11 sandbox accounts; selecting one
+  composed the AR read truthfully (honest state, no numbers — finance.read inactive).
+  No new raw read, no duplicated truth store.
+- ACTIONS: Create invoices / New correction / New budget / New goal — DISABLED with their
+  capability-inactive / policy-not-configured one-liners. No other mutating action exists.
+  44px touch target verified at 375.
+- KNOWN TRUTHFUL DORMANT STATES (visual review less representative there): every read
+  body is NOT_ENABLED words (no data renders anywhere by design until Owner activation);
+  pages 03/04/05 bodies are column grammar + honest state only.
+- OWNER REVIEW STATUS: AWAITING_OWNER_VISUAL_ACCEPTANCE at
+  https://eos-platform-sandbox.web.app/financials (all 20 routes; version c88f1581).
+- DEPLOYMENT BOUNDARY: CAPABILITIES ACTIVATED NO · GRANTS NO · BACKFILL NO ·
+  PRODUCTION WRITES NO · CERTIFICATION WRITES NO · policies untouched.
