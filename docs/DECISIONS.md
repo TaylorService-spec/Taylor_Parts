@@ -4230,3 +4230,134 @@ Sales-Order-derived invoice takes its company from the governed order alone —
 `input.companyId` is assertion-only (`COMPANY_MISMATCH` refused before numbering/write/audit),
 and `invoice.companyId === invoice.attribution.operatingCompanyId` structurally. No inference,
 no default company, no current-user fallback.
+
+---
+
+## #154 — WORKSTREAM 2C CLOSED, and the 2B Rules-deployment defect corrected (R-34)
+
+**Date:** 2026-09-01
+**Classification:** DEPLOYMENT-VERIFICATION DEFECT CORRECTION + 2C activation closeout.
+**Status:** 2C **CLOSED**. Sandbox Rules reconciled and deployed; live proof recorded below.
+Production and certification **NOT TOUCHED**.
+
+### The false claim, stated as what it was
+
+The 2B closeout recorded that **`firestore.rules` was not deployed and did not need to be, because
+it was unchanged.** That was wrong, and it was **a deployment-verification defect — not stale
+documentation.** The evidence used was a **repository-to-repository** comparison ("byte-unchanged
+since 2A.1A"), and *repository equality is not deployment equality*.
+
+`firestore.rules` had in fact changed in **#1646** — the very PR that retired the client-direct
+Reorder write authority — and that Rules change was never deployed to `eos-platform-sandbox`. From
+**2026-08-27 to 2026-09-01** the sandbox therefore retained the legacy direct `reorder_requests` and
+`reorder_purchase_orders` create paths, even though the repository **and the deployed application
+client** had both moved to the trusted callable architecture. For that window, 2B's headline
+invariant — ONE COMMAND → ONE GOVERNED WRITE AUTHORITY — was true in the repository and **false in
+the deployed system**.
+
+The drift was found during **2C.4 live authority verification**, by comparing current repository
+Rules to the **active sandbox ruleset** rather than to git history.
+
+### The measured drift
+
+| | |
+|---|---|
+| pre-R-34 live ruleset | `c95a1b90-7e9d-47ed-9b00-5f68ae91b9f7` |
+| createTime | 2026-08-27T19:07:05Z |
+| sha256 | `b94e287a918acb12b000bf717a8cce5c8678b6afd02184eacaa21624bae969d4` |
+
+The live ruleset was **byte-identical to repository commit `24ffbd54`**, immediately before #1646 —
+`diff` reported no difference at all. **The full undeployed delta was therefore exactly #1646's
+Reorder Rules retirement and nothing else.**
+
+### R-34 read-only reconciliation
+
+Current repository Rules sha256 `0ad3ab1d00252692db0e490cc7be25fb78c46baed491a8f0b573814c2a57f70b`.
+
+    EXPECTED_REORDER_RETIREMENT_PRESENT   PASS
+    UNRELATED_UNDEPLOYED_RULES_CHANGES    NONE
+    UNEXPECTED_RULES_DRIFT                NONE
+    SAFE_TO_DEPLOY_RULES                  YES
+
+Five hunks, all inside the two Reorder collections: three retirements (`reorder_requests` create,
+the Record-PO update branch, `reorder_purchase_orders` create), one dormant `hasOnly` addition whose
+only callers were the retired create rule, and comment blocks. A full Rules publish therefore carried
+only the governed #1646 retirement plus non-semantic comments. Safety also depended on a fact outside
+the repository: sandbox Hosting serves `0abc2353`, which **contains** #1646, so the retired paths had
+no live consumer left to break.
+
+### The deployment, and the live proof
+
+| | |
+|---|---|
+| post-R-34 active ruleset | `6bb8a398-e3a3-489f-9708-47d2bda01ef7` |
+| createTime | 2026-09-01T09:05:16Z |
+| active sha256 | `0ad3ab1d…` — **equal to the governed repository file** |
+
+`reorder_requests` create `if false` · `reorder_purchase_orders` create `if false` · retired Record-PO
+client update branch absent.
+
+**BYPASS PROOF — the decisive one.** A direct Firestore write was attempted with an authenticated
+**USER ID TOKEN** (admin principal) over the **Firestore REST surface**, carrying a valid-looking
+35-key READY payload that **satisfied the retired rule** — no Admin SDK anywhere, so Rules were
+actually evaluated. Observed **HTTP 403 PERMISSION_DENIED**, and the document confirmed **absent** by
+a privileged read that a Rules-level read denial could not have masked. The same refusal on
+`reorder_purchase_orders`. The refusal is meaningful precisely because that payload would have
+succeeded an hour earlier.
+
+    DIRECT_CLIENT_REORDER_CREATE      REFUSED_BY_LIVE_RULES
+    REORDER_SINGLE_WRITE_AUTHORITY    LIVE TRUE
+    2B_RULES_DEPLOYMENT_DRIFT         CLOSED
+
+**GOVERNED PATH SURVIVED THE RETIREMENT:** `warehouseManager` options `[wh-main]`, create succeeded,
+stored `operatingCompanyId: taylor`; `partsManager` options `[wh-north]`, create succeeded, stored
+`operatingCompanyId: ventana`. No Functions, Hosting or index change accompanied the Rules publish.
+
+### Workstream 2C final status
+
+    R32_SANDBOX_FUNCTIONS              DEPLOYED
+    WAREHOUSE_MANAGER_LOCATION_SCOPE   LIVE PASS
+    PARTS_MANAGER_LOCATION_SCOPE       LIVE PASS
+    ADMIN_GLOBAL_BEHAVIOR              PASS
+    DISPATCHER_GLOBAL_BEHAVIOR         PASS
+    TECHNICIAN_MANAGER_AUTHORITY       REFUSED_AS_EXPECTED
+    OPTIONS_CREATE_SYMMETRY            PASS
+    OLD_ASSIGNED_WAREHOUSE_AUTHORITY   RETIRED — LIVE PROVEN
+    GLOBAL_SCOPE_MANAGER_BYPASS        CLOSED — LIVE OBSERVED
+    CAPABILITY_HOME_SPLIT_BRAIN        LIVE CLOSED
+    REORDER_SINGLE_WRITE_AUTHORITY     LIVE TRUE
+    WORKSTREAM_2C                      CLOSED
+
+One subcase is **CONTRACT PROVEN, not live-observed**: a principal holding the `technician`
+compatibility Role *and* an active PARTS_MANAGER/WAREHOUSE_MANAGER operational role. No such sandbox
+principal exists, and manufacturing one would mean mutating `operationalRoles` outside tranche scope.
+
+### Still open — do not read this entry as closing them
+
+    READ_QUEUE_RUNTIME_ENFORCEMENT     OPEN — NOT CHANGED
+    ASSIGN_RUNTIME_ENFORCEMENT         OPEN — NOT CHANGED
+    ASSIGNEDWAREHOUSEIDS_PROJECTION    OPEN — NOT CHANGED
+    LEGACY_REORDER_ROWS                OPEN — NOT CHANGED
+    PO_TARGET_RESOLUTION               OPEN — NOT CHANGED
+    PRODUCTION_EXPOSURE                UNMEASURED
+    PRODUCTION_DEPLOYMENT              BLOCKED
+
+### Sandbox evidence, retained deliberately
+
+Eight Reorder requests created during 2C.4 / R-34 live proof; governed grants
+`warehouseManager @ location:wh-main` and `partsManager @ location:wh-north`; and one **disabled**
+probe assignment kept as the audit trail of the global-scope bypass test. **Nothing is to be
+deleted** — the records and their audit events are the evidence. No cleanup is required for closeout.
+
+### THE DEFECT-CLASS LESSON — carry this forward
+
+Same class as RCV-G4, one layer down:
+
+> **Repository equality is not deployment equality.**
+
+For any future authority retirement whose live enforcement depends on a deployed surface — Rules,
+Functions, indexes, Hosting — **compare the governed repository authority to the actual active
+deployed artifact before declaring deployment unnecessary or complete.** Do not infer live state
+from git history, from unchanged local files, from prior deployment assumptions, or from application
+behaviour alone. A retirement that is merged but undeployed leaves the old path open, and the
+document claiming otherwise is what stops anyone from checking.
