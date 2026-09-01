@@ -7285,3 +7285,18 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-receive-confirm dd { overflow-wrap: anywhere; }
 /* The linear journey reads best at a form measure, not the full queue width. */
 .fo-reorder-journey { max-width: 560px; }
+
+/* ═══════════════ Receiving North Star P1 — frame 1c (Add existing unit side sheet) ═══════════════
+   The shared Modal overlay contract (portal, trap, Escape, backdrop, scroll lock) re-composed as a
+   right-docked sheet: the exceptional transaction sits BESIDE the workspace, visually subordinate
+   to it, never a second page. Tokens only. */
+.fo-modal-backdrop--sheet { justify-content: flex-end; align-items: stretch; padding: 0; }
+.fo-modal--sheet {
+  max-width: 480px; height: 100%; max-height: 100%;
+  border-radius: 0; border-left: 1px solid var(--color-border);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.18);
+}
+/* Phone: the sheet is the screen — full width, still one column, still closable from the header. */
+@media (max-width: 640px) { .fo-modal--sheet { max-width: 100%; border-left: none; } }
+/* The subordinate stage heading inside the sheet (Confirm) — below the sheet's one h2 identity. */
+.fo-acquire__stage { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
