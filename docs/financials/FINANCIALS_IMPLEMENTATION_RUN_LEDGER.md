@@ -11,8 +11,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | Phase | Workstream | Status | Base main | Head | PR | Merge |
 |---|---|---|---|---|---|---|
 | F2 | FIN-004 Financial Visibility | COMPLETE_MERGED | cfe9c8fb | c7742232 | #1675 | 4b75fa45 |
-| F3 | Finance Core Activation Readiness | COMPLETE_PR_OPEN | 5a70fa6c | (see PR) | (opened below) | — |
-| F4 | Service Billing Model | NOT_STARTED | — | — | — | — |
+| F3 | Finance Core Activation Readiness | COMPLETE_MERGED | 5a70fa6c | 45392f24 | #1676 | 04126d41 |
+| F4 | Service Billing Model | COMPLETE_PR_OPEN | 04126d41 | (see PR) | (opened below) | — |
 | F5 | FIN-006 Cost & Margin | NOT_STARTED | — | — | — | — |
 | F6 | FIN-003 Plan vs Actual | NOT_STARTED | — | — | — | — |
 | F7 | FIN-005 Forecasting | NOT_STARTED | — | — | — | — |
@@ -65,6 +65,21 @@ Details per phase are appended below as each phase closes.
   80/80 across the finance pure set locally; callable deny-gate suites unaffected.
 - CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE
 
+### F4 — Service Billing Model
+- SCOPE: the governed answer to "which commitments have billable work not yet billed?" —
+  and an explicit ruling on what CANNOT be answered yet.
+- IMPLEMENTED: pure Billing Queue projection (billingQueue.ts, deriveBillingQueueEntry) —
+  composes the fulfillment eligibility seam + the issueInvoice-maintained billedQty
+  projection; unbilled-eligible mirrors issuance's billableQty cap formula exactly; closed
+  status set NOT_READY/READY_TO_BILL/PARTIALLY_READY/HELD/CANCELLED/FULLY_BILLED;
+  over-billed lines surface reconciliation reasons; missing company surfaced (visibility
+  never suppressed, billing refused); NO amounts/prices anywhere (test-asserted).
+- NOT BUILT (deliberate): the service-work→billable bridge — FIN-BLOCK-002 (below).
+  Service work cannot enter the queue at all until the Owner rules; fail-closed by absence.
+- DOC: docs/financials/SERVICE_BILLING_MODEL.md · TESTS: pure 11/11; finance CI lane
+  registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number
+  (composes #145/#154; the undecided parts are recorded as a blocker, not decided).
+
 ## Blockers (running list)
 
 ### FIN-BLOCK-001 — principal-to-company/business-unit scope binding
@@ -82,3 +97,18 @@ Details per phase are appended below as each phase closes.
 - RECOMMENDED OPTIONS: (b) is cheapest if "domain" was reserved for business-domain partitions;
   (a) is cleanest long-term ("company" ScopeType beside "location"); (c) couples visibility to
   employee master data. One ruling unblocks a ~30-line loader change.
+
+### FIN-BLOCK-002 — the service-work→billable bridge (FIN-GAP-014)
+- PHASE: F4 (Service Billing Model); also constrains F5 cost/margin for service work, F12
+  Billing Queue surface completeness, F13 service-revenue reporting.
+- EXACT QUESTIONS: (1) what makes service work billable (agreement-covered / T&M / warranty /
+  no-charge-goodwill) and where that classification is recorded; (2) the price source for
+  service labor + WO-consumed parts (no labor rates exist; hours ≠ billable by ratified
+  design); (3) does service billing flow THROUGH a Sales Order or a new governed
+  billable-work record; (4) who approves billable classification (FIN-007 tie-in).
+- WHY CODE CANNOT ANSWER: this is business pricing/billing policy — inferring it from WO
+  status or labor hours would violate invariant D (explicit attribution, never inferred).
+- CURRENT SAFE BEHAVIOR: service work cannot enter the Billing Queue at all — fail-closed
+  by absence; the SO-anchored queue is complete for Sales-Order-committed work.
+- WHAT REMAINS UNIMPLEMENTED: any WO/service input into billing.
+
