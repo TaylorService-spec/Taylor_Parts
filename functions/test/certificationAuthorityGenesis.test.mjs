@@ -237,7 +237,7 @@ test("GENESIS: a WRONG FINGERPRINT is refused", () => {
   // dataset nobody verified, and the assignment looks identical either way afterwards.
   const p = assessWorld({ ...GOOD, state: { ...GOOD.state, fingerprint: "deadbeef" } });
   assert.equal(p.length, 1);
-  assert.match(p[0], /fingerprint deadbeef != expected fcc38a5f/);
+  assert.equal(p[0], `fingerprint deadbeef != expected ${EXPECTED_FINGERPRINT}`);
 });
 
 test("GENESIS: a wrong datasetVersion or record count is refused", () => {

@@ -34,31 +34,52 @@ function readFileSyncNormalized(rel) {
 
 const { classifyWorld, WORLD_STATE, SEED_POLICY } =
   await import(L("functions/scripts/certificationWorld/verify.mjs"));
+const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
+const { worldFingerprint } = await import(L("functions/scripts/certificationWorld/state.mjs"));
 
-/** The real shape: version 1.7.0, the ten collections, 1092 records, all counts matching. */
-const COUNTS = Object.freeze({
-  accounts: 100, locations: 180, contacts: 337, equipment_models: 48, mobile_locations: 5,
-  employees: 47, equipment: 278, parts: 45, fieldops_technicians: 11, fieldops_jobs: 41,
-});
+/**
+ * The real shape, DERIVED FROM THE BUILDER rather than restated.
+ *
+ * This used to be a hand-written table -- version 1.7.0, ten collections, 1092 records -- guarded by
+ * a test asserting the total was 1092. That guard existed to catch this exact drift and could not:
+ * when the warehouse joined the world at 1.8.0 (CERT-WH-MAIN-01) the table went on describing a
+ * world that no longer exists, and the assertion went on passing because it compared the table to
+ * its own hardcoded sum. A fixture that certifies itself certifies nothing.
+ *
+ * Deriving it means these classification cases are always run against the world that actually
+ * exists, and the next record group to join updates them by construction.
+ */
+const { world: BUILT, records: BUILT_RECORDS } = expectedRecords();
+const COUNTS = Object.freeze(BUILT_RECORDS.reduce((acc, r) => {
+  acc[r.collection] = (acc[r.collection] ?? 0) + 1;
+  return acc;
+}, {}));
 const TOTAL = Object.values(COUNTS).reduce((a, b) => a + b, 0);
+const VERSION = BUILT.version;
+/** The governed resting fingerprint of the CURRENT world, computed, never transcribed. */
+const CURRENT_FINGERPRINT = worldFingerprint(BUILT_RECORDS).hash;
 
 const healthyLinkage = { expectedLinked: 47, linked: 47, reverseLinked: 47, mismatched: [], duplicateUids: [] };
 
 const world = (over = {}) => ({
-  expected: { version: "1.7.0", counts: COUNTS },
+  expected: { version: VERSION, counts: COUNTS },
   actual: { ...COUNTS },
-  versionsFound: ["1.7.0"],
+  versionsFound: [VERSION],
   duplicateIds: [],
   invariantViolations: [],
   identityLinkage: healthyLinkage,
   ...over,
 });
 
-test("the world fixture is the real one -- 1092 records across ten collections", () => {
-  // If this drifts from the actual dataset the rest of the file is testing a world that does not
-  // exist, which is its own kind of silent pass.
-  assert.equal(TOTAL, 1092);
-  assert.equal(Object.keys(COUNTS).length, 10);
+test("the world fixture IS the real one, because it is the builder's own output", () => {
+  // Derived, so it cannot describe a dead world. The pins below are the current authority and are
+  // asserted by value as well, so a silent content change still has to move a number a human reads.
+  assert.equal(TOTAL, BUILT_RECORDS.length);
+  assert.equal(TOTAL, 1093, "v1.8.0: 1092 + the governed warehouse (CERT-WH-MAIN-01)");
+  assert.equal(Object.keys(COUNTS).length, 11, "ten collections, plus warehouses");
+  assert.equal(VERSION, "1.8.0");
+  assert.equal(CURRENT_FINGERPRINT, "1782e853");
+  assert.equal(COUNTS.warehouses, 1, "the world must contain the warehouse its ledger books stock to");
 });
 
 // ── THE EXACT REGRESSION ──────────────────────────────────────────────────────────────────────
@@ -203,7 +224,10 @@ test("OBSERVED is fingerprinted from the FETCHED governed base documents, never 
 // COMPLETE requires EXPECTED == RECORDED AND EXPECTED == OBSERVED. The governed v1.7 resting
 // authority is fcc38a5f over 1092 rows, and these cases pin it by value.
 
-const V17 = "fcc38a5f";
+// The CURRENT resting authority, computed from the builder. Named V_NOW rather than pinned to one
+// version's literal so these cases keep testing the live contract across future bumps; the literal
+// value is asserted once, above, where a human will read it.
+const V17 = CURRENT_FINGERPRINT;
 
 test("recorded matches but the LIVE documents drifted => CONTENT_DRIFT (the deployment record cannot vouch for current content)", () => {
   const r = classifyWorld(world({
@@ -272,7 +296,7 @@ test("any fingerprint mismatch is never treated as already-applied", () => {
 
 // ── OBSERVED USES THE CANONICAL FINGERPRINT SEMANTICS ─────────────────────────────────────────
 
-const { worldFingerprint } = await import(L("functions/scripts/certificationWorld/state.mjs"));
+// worldFingerprint is imported once at the top of this file, beside the derived fixture.
 
 test("worldFingerprint is order-independent -- Firestore read order can never fabricate drift", () => {
   // doVerify feeds `found` in whatever order the per-collection reads returned; the builder feeds

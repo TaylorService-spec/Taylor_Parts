@@ -35,6 +35,7 @@
 // Run:
 //   node scripts/certificationWorld/upgradeWorldAdditive.mjs --projectId eos-platform-sandbox
 //   node scripts/certificationWorld/upgradeWorldAdditive.mjs --projectId eos-platform-sandbox --apply --apply-live-sandbox
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -45,7 +46,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../../..");
 const L = (p) => pathToFileURL(path.resolve(REPO, p)).href;
 
-const { resolveExecutionTarget, describeTarget, ExecutionTargetRefused } =
+const { resolveExecutionTarget, describeTarget, ExecutionTargetRefused, assertBothLiveFlags } =
   await import(L("functions/scripts/certificationWorld/executionTarget.mjs"));
 const { expectedRecords } = await import(L("functions/scripts/certificationWorld.mjs"));
 const { writeRecords } = await import(L("functions/scripts/certificationWorld/seedWrite.mjs"));
@@ -54,6 +55,15 @@ const { STATE_COLLECTION, STATE_DOC_ID, VOLATILE_FIELDS, stableShape, worldFinge
 const { MARKER_FIELD } = await import(L("functions/scripts/certificationWorld/manifest.mjs"));
 
 const OUT_DIR = path.resolve(REPO, "field-ops-app-vite/.certification");
+
+/** The commit this upgrade was run FROM. "unknown" rather than a guess if git cannot answer. */
+function repoCommit() {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO }).toString().trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 /**
  * Compare on the parts that must match.
@@ -84,6 +94,27 @@ try {
 
 if (target) {
   console.log(describeTarget(target));
+  // CERT-UPGRADE-FLAGS-04. This tool rewrites EVERY record in the world -- 1093 of them on the
+  // 1.7.0 -> 1.8.0 upgrade. That is the same weight as a rebuild, and it gets the same rule the
+  // rebuild has: --apply-live-<env> alone implies live intent and would have been sufficient on
+  // its own, which is the right contract for a tool that writes a handful of records and the wrong
+  // one for a tool that writes all of them. Two independent words, neither sufficient alone.
+  //
+  // Applied only when the run would actually write: a dry run must never demand live-write
+  // authorization, or operators learn to type the live flag for commands that read.
+  if (target.apply) {
+    try {
+      assertBothLiveFlags({ target, argv: process.argv, act: "An additive upgrade that writes" });
+    } catch (err) {
+      if (!(err instanceof ExecutionTargetRefused)) throw err;
+      console.error(`REFUSED: ${err.message}`);
+      process.exitCode = 1;
+      target = null;
+    }
+  }
+}
+
+if (target) {
   if (!getApps().length) {
     initializeApp(target.isEmulator ? { projectId: target.projectId }
       : { credential: applicationDefault(), projectId: target.projectId });
@@ -166,6 +197,12 @@ if (target) {
       fingerprint: fp.hash,
       volatileFieldsExcluded: VOLATILE_FIELDS.map((v) => v.field),
       upgradedAdditively: true,
+      // CERT-UPGRADE-PROVENANCE-03. The record is written with merge, and this field was NOT among
+      // the keys it set -- so an additive upgrade advanced datasetVersion and fingerprint while
+      // leaving the PREVIOUS version's commit in place. The record would then assert that 1.8.0 came
+      // from the commit that built 1.7.0: a provenance claim that is precisely, checkably false, in
+      // the one document whose entire job is to say where the installed world came from.
+      repoCommit: repoCommit(),
     }, { merge: true });
     console.log(`deployment record updated to ${world.version} (fingerprint ${fp.hash})`);
     evidence.written = written;

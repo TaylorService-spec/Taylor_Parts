@@ -120,7 +120,37 @@
 // The row count is deliberately NOT padded to make the number look different. The count is a fact
 // about the world, not a signal, and manufacturing a difference in it to signal a difference
 // elsewhere would corrupt the one figure that is supposed to be literal.
-export const CERTIFICATION_WORLD_VERSION = "1.7.0";
+// ============================ v1.8.0 -- CERT-WH-MAIN-01: THE WAREHOUSE JOINS THE WORLD ============================
+//
+// The world contained 571 units of warehouse stock and no warehouse.
+//
+// Every warehouse-side opening balance in data/inventoryPlan.mjs books to `wh-main`. No such record
+// was ever built for a live world -- emulatorBootstrap.mjs wrote one, and nothing else did. So the
+// emulator had a governed warehouse and live certification had none, and nobody found out for four
+// passes because nothing had ever RESOLVED a warehouse. The ledger sums a location reference without
+// asking whether the place exists.
+//
+// readPartBalance does ask. It builds its eligible set from `warehouses where status == "ACTIVE"`
+// and drops every ledger row outside it, so with the collection empty the governed on-hand read
+// returned 0 for all 32 quantity-bearing parts while the ledger said 571. Measured live before this
+// correction: readPartBalance agreed with the warehouse ledger sum on 0 of 32 parts.
+//
+// COMPLETE WAS TRUE AND MEANINGLESS. Completeness was measured over the ten groups the builder
+// emitted, and the missing record was not one of them -- so a world that could not serve its own
+// inventory baseline through its own read path reported COMPLETE, at the right version, at the right
+// fingerprint, with every count exact. That is the failure this file's header describes, arriving in
+// the one dimension the manifest was not yet describing.
+//
+//   v1.7.0   1092 records   fingerprint fcc38a5f   no warehouse anywhere
+//   v1.8.0   1093 records   fingerprint 1782e853   the warehouse joins the world
+//
+// ONE record is added, and the count moves by exactly one. It is not padded to look like a larger
+// change: the count is a fact about the world, never a signal.
+//
+// Receiving also required this. receivingLocationResolver resolves warehouses/{locationId} through
+// validateGovernedWarehouse and refuses anything else with DESTINATION_INVALID, so the receiving
+// ceremony that follows purchasing could not have succeeded either.
+export const CERTIFICATION_WORLD_VERSION = "1.8.0";
 export const MARKER_FIELD = "certificationWorld";
 
 /**

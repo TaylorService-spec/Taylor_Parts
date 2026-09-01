@@ -61,8 +61,8 @@ const { worldFingerprint } = await import(L("functions/scripts/certificationWorl
 // ed95c91d was never a resting state: it is what the world hashed to for as long as content had
 // changed and the version had not. Recording all three keeps that legible.
 const CERT_PROJECT = "eos-platform-certification";
-const EXPECTED_RECORD_COUNT = 1092;
-const EXPECTED_FINGERPRINT = "fcc38a5f";
+const EXPECTED_RECORD_COUNT = 1093;
+const EXPECTED_FINGERPRINT = "1782e853";
 const EXPECTED_EMPLOYEES = 47;
 
 const world = expectedRecords();
