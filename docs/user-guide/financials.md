@@ -86,3 +86,20 @@ The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an ho
 - **Salesperson & Employee Performance** — what you see here follows your granted
   visibility scope. Anything outside your scope is named as withheld — you'll never see a
   misleading zero where a number was hidden.
+
+## Fifth wave: governance and integrity
+
+- **Reconciliation & Exceptions** — two clearly separated halves: EOS's own internal
+  integrity check (records classified IN_SYNC or DRIFT once activated) and reconciliation
+  against an external accounting system, which is a future integration — no provider has
+  been chosen, so it reports "no counts", never zero.
+- **Intercompany** — Taylor↔Ventana activity gets classified, never merged away.
+  Unclassified items are flagged loudly and left out of company splits.
+- **Financial Audit & History** — a financials view over the one audit trail. Read-only.
+- **Reporting & Exports** — the report catalog lists every planned report group and says
+  exactly what each is waiting on. Exports will re-check your access when they run.
+- **Financial Settings & Governance** — the status board: each governance area carries a
+  chip (Configured / Not configured / Built dormant / Future integration) so you can see at
+  a glance what exists, what's switched off, and what's waiting on a business decision.
+
+All twenty Financials pages are now real compositions — none are placeholders.

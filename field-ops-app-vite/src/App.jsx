@@ -129,6 +129,12 @@ const FinancialsGoals = lazy(() => import("./modules/financials/FinancialsGoals.
 const FinancialsProfitability = lazy(() => import("./modules/financials/FinancialsProfitability.jsx"));
 const FinancialsCompanyPerformance = lazy(() => import("./modules/financials/FinancialsCompanyPerformance.jsx"));
 const FinancialsEmployeePerformance = lazy(() => import("./modules/financials/FinancialsEmployeePerformance.jsx"));
+// Wave UX-5 — governance / integrity.
+const FinancialsReconciliation = lazy(() => import("./modules/financials/FinancialsReconciliation.jsx"));
+const FinancialsIntercompany = lazy(() => import("./modules/financials/FinancialsIntercompany.jsx"));
+const FinancialsAudit = lazy(() => import("./modules/financials/FinancialsAudit.jsx"));
+const FinancialsReports = lazy(() => import("./modules/financials/FinancialsReports.jsx"));
+const FinancialsGovernance = lazy(() => import("./modules/financials/FinancialsGovernance.jsx"));
 import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -743,6 +749,21 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "financials" && item.key === "employeePerformance") {
     return <FinancialsEmployeePerformance />;
+  }
+  if (domain.key === "financials" && item.key === "reconciliation") {
+    return <FinancialsReconciliation />;
+  }
+  if (domain.key === "financials" && item.key === "intercompany") {
+    return <FinancialsIntercompany />;
+  }
+  if (domain.key === "financials" && item.key === "audit") {
+    return <FinancialsAudit />;
+  }
+  if (domain.key === "financials" && item.key === "reports") {
+    return <FinancialsReports />;
+  }
+  if (domain.key === "financials" && item.key === "governance") {
+    return <FinancialsGovernance />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];

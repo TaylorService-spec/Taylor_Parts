@@ -493,3 +493,36 @@ STREAM SEPARATION above). Run start 2026-09-01. START MAIN: dfb362d5e863472f0dd5
   green. VISUAL GATE: 1440 (11/14) + 375 (15) verified.
 - DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
 - NEXT: WAVE UX-5 (16 Reconciliation, 17 Intercompany, 18 Audit, 19 Reports, 20 Governance).
+
+#### WAVE UX-5 — Governance / integrity (2026-09-01)
+- PAGES: 16 Reconciliation & Exceptions · 17 Intercompany · 18 Financial Audit & History ·
+  19 Reporting & Exports · 20 Financial Settings & Governance.
+- BASE MAIN: 528b454d (Wave UX-4 merge). HEAD/PR/MERGE: recorded at PR close.
+- DESIGN SOURCES: North Star - Financials {16,17,18,19,20}*.dc.html (16/20 as reconciled
+  in the installed sources) + frames.
+- AUTHORITY: page 16 composes the CURRENT FIN-010 truth — two sections: internal
+  operational integrity (IN_SYNC/DRIFT core merged, BUILT_DORMANT, only actual governed
+  results ever render → honest "none to show") vs external accounting reconciliation
+  (FUTURE INTEGRATION, no provider, no counts not zero counts, dimmed structural specimen,
+  provisional state vocabulary). Page 17: classification never elimination; FIN-009 schema
+  not built (FIN-BLOCK-004); unclassified = loud exception, excluded from splits. Page 18:
+  lens over the ONE auditEvents authority; FIN-AG-AUDIT-LENS not built — no raw log sweep
+  substituted; correlation column reserved (FIN-PQ-CORRELATION-IDS). Page 19: catalog with
+  per-group blocking phases; no export wired (FIN-AG-REPORT-REGISTRY); restricted = named
+  panel, never partial render. Page 20: five-state chips from the reconciliation truth
+  table — period + goal/budget/correction rows BUILT_DORMANT · Policy not configured (the
+  required correction; "AUTHORITY NOT IMPLEMENTED" appears on no row); companies/units/
+  currency from governed vocabulary; visibility summary read-only.
+- TESTS: five composition cases added; component sweep 3,001 · runSuites 269 · typecheck/
+  build/lint green. VISUAL GATE: 1440 (16/20/19) + 375 (20) verified.
+- DEPLOYMENT NONE · CERT_WORLD_IMPACT NONE · CAPABILITIES/GRANTS NONE.
+
+### RUN CLOSEOUT — FINANCIALS NORTH STAR UX IMPLEMENTATION (2026-09-01)
+All 20 pages of the approved Financials North Star P1 composition are implemented in-repo
+across five wave PRs, each merged at its exact reviewed head with CLEAN path-filter
+coverage. Page 16 internal reconciliation: IMPLEMENTED (as truthful composition). Page 20
+period state: CORRECTED. Specimen values in runtime: NONE (source-level test enforced).
+New client financial authority: NONE. New raw financial collection reads: NONE. Capability
+activations / grants / deploys / backfills / sandbox / production / certification writes:
+NONE. Owner visual acceptance NOT claimed — sandbox deployment + Quick Gate remain a
+separately gated action. STATUS: FINANCIALS_READY_FOR_SANDBOX_UX_GATE.

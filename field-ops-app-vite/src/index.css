@@ -7387,3 +7387,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* Financials Wave UX-3: measurement-basis chip (outlined, uppercase, its own slot). */
 .fin-basis { display: inline-block; font: 600 10.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-primary); border: 1px solid var(--color-border-strong, var(--color-border)); padding: 2px 8px; }
+
+/* Financials Wave UX-5: governance state rows + dimmed structural specimen (page 16). */
+.fin-dimmed { opacity: 0.62; }
+.fin-gov-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--color-border); font-size: 13.5px; }
+.fin-gov-row--last { border-bottom: none; }
+.fin-gov-row__label { min-width: 0; }
+.fin-gov-row__value { text-align: right; }
+.fin-gov-row__words { margin-left: 8px; color: var(--color-text-secondary); }
+.fin-gov-chip { display: inline-block; font: 600 10.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; }
+.fin-gov-chip--configured { background: var(--color-text-primary); color: var(--color-surface-page, #fff); }
+.fin-gov-chip--dormant { background: var(--color-warning-surface, #F7EFE4); color: var(--color-warning, #8A6D28); outline: 1px solid var(--color-border); outline-offset: -1px; }
+.fin-gov-chip--future { outline: 1px solid var(--color-border); outline-offset: -1px; color: var(--color-text-secondary); }
