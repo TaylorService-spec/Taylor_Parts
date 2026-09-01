@@ -236,6 +236,81 @@ export function buildFinancialAttributionSnapshot(input: BuildAttributionInput):
 }
 
 /**
+ * The invoice facts an invoice-DOWNSTREAM financial event (payment receipt/application, adjustment,
+ * refund) derives its attribution from. The issued INVOICE is the governed authority for every
+ * attribution fact of money moving against it — company, customer, currency, sales credit. The
+ * caller/actor NEVER chooses these; a caller-supplied companyId/accountId is at most an assertion
+ * the command core checks against the invoice.
+ */
+export interface InvoiceAttributionFacts {
+  companyId?: string | null;
+  accountId?: string | null;
+  currency?: string | null;
+  attribution?: {
+    businessUnitId?: string | null;
+    creditedSalespersonId?: string | null;
+    responsibleEmployeeId?: string | null;
+  } | null;
+}
+
+/**
+ * Derive the governed company + customer for an invoice-downstream event from the INVOICE, treating
+ * any caller-supplied ids as assertions only (mirror of the invoice↔Sales Order company correction).
+ * `err` lets each command core throw its own typed error class with the shared codes
+ * COMPANY_REQUIRED / COMPANY_MISMATCH / ACCOUNT_REQUIRED / ACCOUNT_MISMATCH.
+ */
+export function requireInvoiceParty(
+  input: { companyId?: string | null; accountId?: string | null },
+  invoice: InvoiceAttributionFacts,
+  err: (code: "COMPANY_REQUIRED" | "COMPANY_MISMATCH" | "ACCOUNT_REQUIRED" | "ACCOUNT_MISMATCH", message: string) => Error
+): { companyId: string; accountId: string } {
+  const invCompany = invoice?.companyId;
+  const companyId = nonEmpty(invCompany) ? invCompany.trim() : null;
+  if (!companyId) {
+    throw err("COMPANY_REQUIRED", "the invoice carries no governed companyId; money moving against an invoice is a reportable financial event and cannot be recorded without its company");
+  }
+  const inCompany = input?.companyId;
+  if (nonEmpty(inCompany) && inCompany.trim() !== companyId) {
+    throw err("COMPANY_MISMATCH", `companyId "${inCompany}" does not match the invoice's governed companyId "${companyId}" — the caller does not choose the company`);
+  }
+  const invAccount = invoice?.accountId;
+  const accountId = nonEmpty(invAccount) ? invAccount.trim() : null;
+  if (!accountId) {
+    throw err("ACCOUNT_REQUIRED", "the invoice carries no accountId; the event's customer comes from the governed invoice, never the caller");
+  }
+  const inAccount = input?.accountId;
+  if (nonEmpty(inAccount) && inAccount.trim() !== accountId) {
+    throw err("ACCOUNT_MISMATCH", `accountId "${inAccount}" does not match the invoice's accountId "${accountId}" — the caller does not choose the customer`);
+  }
+  return { companyId, accountId };
+}
+
+/**
+ * Build the canonical snapshot for one invoice-downstream event. sourceType/sourceRecordId name the
+ * governed record the facts came from (the invoice), mirroring how the invoice's own snapshot names
+ * its Sales Order. eventAtMillis is the server record time (ctx-only, like bookedAtMillis).
+ * Fails closed via the canonical builder: no invoice company ⇒ COMPANY_REQUIRED, no accountId ⇒
+ * CUSTOMER_REQUIRED, no currency ⇒ CURRENCY_REQUIRED.
+ */
+export function buildInvoiceEventAttribution(
+  invoiceId: string,
+  invoice: InvoiceAttributionFacts,
+  eventAtMillis: number
+): FinancialAttributionSnapshot {
+  return buildFinancialAttributionSnapshot({
+    operatingCompanyId: invoice?.companyId ?? null,
+    businessUnitId: invoice?.attribution?.businessUnitId ?? null,
+    creditedSalespersonId: invoice?.attribution?.creditedSalespersonId ?? null,
+    responsibleEmployeeId: invoice?.attribution?.responsibleEmployeeId ?? null,
+    customerId: typeof invoice?.accountId === "string" ? invoice.accountId : "",
+    sourceType: "INVOICE",
+    sourceRecordId: invoiceId,
+    eventAtMillis,
+    currency: typeof invoice?.currency === "string" ? invoice.currency : "",
+  });
+}
+
+/**
  * Default sales credit for a NEW commercial record (Owner policy, DECISIONS #154):
  * explicit credit wins; else the credit inherited from the governed upstream commercial record;
  * else the governed commercial OWNER at the point the sale enters the chain. NEVER the creating

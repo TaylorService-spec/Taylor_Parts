@@ -6,7 +6,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildApplyPayment, deriveOutstandingMinor, deriveInvoiceStateFromFacts, PaymentCommandError } from "../lib/finance/paymentCommands.js";
 
-const inv = (over = {}) => ({ currency: "USD", state: "ISSUED", totalMinor: 10000, ...over });
+const inv = (over = {}) => ({
+  currency: "USD",
+  state: "ISSUED",
+  totalMinor: 10000,
+  companyId: "taylor",
+  accountId: "A1",
+  attribution: { businessUnitId: null, creditedSalespersonId: "emp-sales-1", responsibleEmployeeId: null },
+  ...over,
+});
 const input = (over = {}) => ({ companyId: "taylor", accountId: "A1", invoiceId: "INVID", currency: "USD", amountMinor: 4000, receivedAtMillis: 1_700_000_000_000, ...over });
 const DEPS = { nowMillis: 1_700_000_100_000 };
 
@@ -58,7 +66,37 @@ test("fail-closed: currency mismatch / already paid / void / not-open / missing 
   assert.throws(() => buildApplyPayment(input(), inv({ state: "PAID" }), DEPS), (e) => e.code === "ALREADY_PAID");
   assert.throws(() => buildApplyPayment(input(), inv({ state: "VOID" }), DEPS), (e) => e.code === "INVOICE_VOID");
   assert.throws(() => buildApplyPayment(input(), inv({ state: "DRAFT" }), DEPS), (e) => e.code === "NOT_OPEN");
-  assert.throws(() => buildApplyPayment(input({ companyId: "" }), inv(), DEPS), (e) => e.code === "REQUIRED");
+  assert.throws(() => buildApplyPayment(input({ invoiceId: "" }), inv(), DEPS), (e) => e.code === "REQUIRED");
   assert.throws(() => buildApplyPayment(input({ amountMinor: 0 }), inv(), DEPS), (e) => e.code === "AMOUNT_INVALID");
   assert.throws(() => buildApplyPayment(input({ amountMinor: 1.5 }), inv(), DEPS), (e) => e.code === "AMOUNT_INVALID");
+});
+
+test("FIN-002 money-in: company/customer come from the INVOICE; caller ids are assertion-only", () => {
+  // The caller need not send companyId/accountId at all — the invoice supplies them.
+  const r = buildApplyPayment(input({ companyId: undefined, accountId: undefined }), inv(), DEPS);
+  assert.equal(r.receipt.companyId, "taylor");
+  assert.equal(r.receipt.accountId, "A1");
+  assert.equal(r.application.companyId, "taylor");
+  // A supplied assertion that disagrees with the governed invoice is refused.
+  assert.throws(() => buildApplyPayment(input({ companyId: "ventana" }), inv(), DEPS), (e) => e instanceof PaymentCommandError && e.code === "COMPANY_MISMATCH");
+  assert.throws(() => buildApplyPayment(input({ accountId: "A2" }), inv(), DEPS), (e) => e.code === "ACCOUNT_MISMATCH");
+  // An invoice with no governed company cannot take a reportable money event, even if the caller offers one.
+  assert.throws(() => buildApplyPayment(input(), inv({ companyId: undefined }), DEPS), (e) => e.code === "COMPANY_REQUIRED");
+  assert.throws(() => buildApplyPayment(input(), inv({ accountId: undefined }), DEPS), (e) => e.code === "ACCOUNT_REQUIRED");
+});
+
+test("FIN-002 money-in: ONE canonical attribution snapshot, derived from the invoice, on BOTH facts", () => {
+  const r = buildApplyPayment(input(), inv(), DEPS);
+  assert.deepEqual(r.receipt.attribution, {
+    operatingCompanyId: "taylor",
+    businessUnitId: null,
+    creditedSalespersonId: "emp-sales-1", // the invoice's frozen credit — never the paying actor
+    responsibleEmployeeId: null,
+    customerId: "A1",
+    sourceType: "INVOICE",
+    sourceRecordId: "INVID",
+    eventAtMillis: DEPS.nowMillis, // server record time, not the caller's receivedAtMillis
+    currency: "USD",
+  });
+  assert.deepEqual(r.application.attribution, r.receipt.attribution);
 });
