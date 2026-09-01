@@ -19,11 +19,18 @@ import {
 import HonestState from "../../shared/ui/HonestState.jsx";
 import { LIFECYCLE_SCORECARD_SLOTS, READ_STATE_DETAIL } from "../../domain/financialsSurface.js";
 
+// The page frame already renders the standing "Operational financial subledger — not the
+// general ledger" line. This description therefore carries the clause that line does not,
+// rather than repeating it near-verbatim directly above it (the two read as one sentence
+// said twice).
+const OVERVIEW_CUSTODY =
+  "Management view of the operational financial subledger. External accounting authority is not yet selected.";
+
 const CUSTODY_TIP =
   "Custody sentence — permanent contract copy. EOS composes governed operational financial events; statutory accounting, chart of accounts and close belong to a future external authority. Every figure carries its fact class so OPERATIONAL_ACTUAL is never mistaken for ACCOUNTING_RECONCILED_ACTUAL, which appears nowhere — no accounting authority exists.";
 
 const SCORECARD_TIP =
-  "One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so. Each figure activates with its governed read (finance.read and the finance.visibility.* scopes are merged and inactive); until then the slot states its truth instead of a number.";
+  "One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so. This page does not issue the reads behind these figures yet, so each slot states that rather than a number — it never asserts what your governed scope would return.";
 
 // Owning-page drilldowns per slot (hierarchy is navigation, not new data).
 const SLOT_LINKS = Object.freeze({
@@ -41,7 +48,7 @@ export default function FinancialsOverview() {
     <FinancialsPageFrame
       title="Financials"
       crumb="Overview"
-      custody="Operational financial subledger. Not the general ledger — external accounting authority not yet selected."
+      custody={OVERVIEW_CUSTODY}
       custodyTip={CUSTODY_TIP}
     >
       <FinancialsFilterRail
@@ -59,7 +66,7 @@ export default function FinancialsOverview() {
                 label={slot.label}
                 factClass={slot.factClass}
                 derivation={slot.derivation ?? null}
-                absence="Read not activated"
+                absence="No read on this surface"
               />
               {SLOT_LINKS[slot.key] ? (
                 <Link className="fin-figure__link" to={SLOT_LINKS[slot.key].to}>
@@ -85,7 +92,7 @@ export default function FinancialsOverview() {
             <HonestState
               state="NOT_ENABLED"
               subject="Plan comparison"
-              detail="The plan-vs-actual core (FIN-003: GOAL distinct from BUDGET, versioned records, explicit measurement basis) is merged and dormant — no goal records exist yet and no plan read is activated. Unlike bases are never summed or compared silently, so this table carries no total row when it activates."
+              detail="The plan-vs-actual core (FIN-003: GOAL distinct from BUDGET, versioned records, explicit measurement basis) is merged and dormant — no goal records exist yet, and no plan read surface exists to query. Unlike bases are never summed or compared silently, so this table carries no total row when it fills."
             />
             <p className="fin-section-note">
               <Link to="/financials/sales-to-goal">Sales to Goal →</Link> ·{" "}
@@ -129,7 +136,7 @@ export default function FinancialsOverview() {
               </li>
               <li>
                 <span>Invoices 60+ days</span>
-                <span className="fin-inact">No A/R read activated</span>
+                <span className="fin-inact">No A/R read on this page</span>
               </li>
               <li>
                 <span>Reconciliation exceptions</span>

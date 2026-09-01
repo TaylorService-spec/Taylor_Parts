@@ -86,7 +86,7 @@ export default function FinancialsCustomerFinancials() {
                   <FinancialFigure
                     label={slot.label}
                     factClass={slot.factClass}
-                    absence="Read not activated"
+                    absence="No read on this surface"
                   />
                 </div>
               ))}

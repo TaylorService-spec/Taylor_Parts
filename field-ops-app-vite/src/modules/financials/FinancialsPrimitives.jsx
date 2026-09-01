@@ -128,7 +128,10 @@ export function FinancialsPageFrame({ title, crumb, custody = null, custodyTip =
 
 // ─── A section whose body is a single honest state (the truthful composition for a
 // fact family whose read is dormant / unwired / denied). ───
-export function FinancialsHonestSection({ id, title, meta = null, honest, subject, children = null }) {
+// `footer` renders AFTER the honest state. Cross-page links passed as `children` landed
+// between the table's column headers and the empty-state box, which read as though the
+// links belonged to a table that had not started yet.
+export function FinancialsHonestSection({ id, title, meta = null, honest, subject, children = null, footer = null }) {
   return (
     <section id={id} className="ns-section" aria-label={title}>
       <div className="ns-section__head">
@@ -139,6 +142,7 @@ export function FinancialsHonestSection({ id, title, meta = null, honest, subjec
       {honest?.state ? (
         <HonestState state={honest.state} subject={subject} detail={honest.detail ?? null} />
       ) : null}
+      {footer}
     </section>
   );
 }

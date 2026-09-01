@@ -53,8 +53,8 @@ export default function FinancialsCreditsAdjustments() {
             New correction
           </button>
           <span className="fin-inact">
-            Correction commands are not active · approval policy not configured
-            <FinAnnotation tip="The adjustment and refund cores are merged and dormant (finance.adjustment.record / finance.refund.record inactive). FIN-007 approval policy — thresholds, approver roles, dual-control, escalation, expiry — is not configured; the mechanism fails closed rather than inventing a policy. Whether under-threshold corrections auto-approve is an open FIN-007 governance decision." />
+            Corrections aren&rsquo;t wired to this surface · approval policy not configured
+            <FinAnnotation tip="The adjustment and refund cores exist, but this page has no governed command path wired to them, and FIN-007 approval policy — thresholds, approver roles, dual-control, escalation, expiry — is not configured; the mechanism fails closed rather than inventing a policy. Whether under-threshold corrections auto-approve is an open FIN-007 governance decision. This line does not assert any capability's activation state." />
           </span>
         </span>
       }

@@ -44,7 +44,7 @@ export default function FinancialsSalesToGoal() {
           id="fin-sales-to-goal"
           title="Attainment by scope"
           meta="company → unit → person · attainment bars cap at 100% fill, the number carries truth past 100"
-          honest={{ state: "NOT_ENABLED", detail: `${READ_STATE_DETAIL.notActivated} Goals themselves await the FIN-003 plan core's activation — the record model (versioned, explicit basis, APPROVED plans measurable) is merged with no storage yet.` }}
+          honest={{ state: "NOT_ENABLED", detail: `${READ_STATE_DETAIL.noReadOnSurface} Goals themselves have no records yet — the FIN-003 plan core (versioned, explicit basis, APPROVED plans measurable) is merged with no storage.` }}
           subject="Goal and actual reads"
         >
           <div className="ns-table-wrap">

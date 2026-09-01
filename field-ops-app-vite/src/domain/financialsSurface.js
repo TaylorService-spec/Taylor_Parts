@@ -114,12 +114,25 @@ export const FINANCIALS_READ = Object.freeze({
   NOT_WIRED: "NOT_WIRED",
 });
 
-// The sentences are contract copy: they state which authority is missing, in the
-// reconciliation vocabulary (BUILT_DORMANT / NOT ACTIVATED / NOT USER-EXPOSED), and they
-// never claim an error occurred when the truth is an unactivated capability.
+// The sentences are contract copy. They state what is true OF THIS SURFACE, and they
+// deliberately do NOT assert the activation state of any capability.
+//
+// ════════════════ WHY THEY NO LONGER NAME A CAPABILITY'S STATE ════════════════
+//
+// These sentences used to say "finance.read is inactive" / "not activated in this
+// environment". That was a claim the page never checked — and in platform-sandbox it was
+// FALSE: finance.read is activated there by an Owner-authorized environment override, and
+// the governed read answers (`{status:"ready"}`). A page asserting an authority fact it
+// has not resolved is the same defect class as a page inventing a number, even when the
+// error runs conservative (claiming LESS reach than the principal has).
+//
+// The honest sentence for a page that issues no read is about the PAGE, not the
+// capability: this surface does not ask, so it shows nothing. A page that DOES ask
+// renders whatever the server returned — see AccountArSection, which resolves to a real
+// EMPTY ("No invoices on this account.") rather than a guess about activation.
 export const READ_STATE_DETAIL = Object.freeze({
-  notActivated:
-    "Financial reads exist but are not activated in this environment (finance.read is inactive). Nothing failed — this surface composes governed reads only, and renders none until activation.",
+  noReadOnSurface:
+    "This surface does not issue its own governed read yet, so no records are shown. Nothing failed, and nothing here is fabricated — when the read is composed, whatever the server returns for your scope is what renders.",
   notWired:
     "No governed read surface exists for these records yet. The command core is merged and dormant; its read exposure has not been built or activated.",
 });
@@ -129,9 +142,9 @@ export function financialsReadHonestState({ loading, errorStatus, result }) {
   if (errorStatus === "denied") return { state: HONEST_STATE.DENIED };
   if (errorStatus === "unavailable") return { state: HONEST_STATE.UNAVAILABLE };
   if (result == null) {
-    // A settled read chain with nothing returned and no error: with every finance
-    // capability inactive today this is the NOT_ENABLED truth, not an empty collection.
-    return { state: HONEST_STATE.NOT_ENABLED, detail: READ_STATE_DETAIL.notActivated };
+    // A settled chain with no result and no error: the surface never asked. Say that,
+    // rather than diagnosing a capability this code path did not resolve.
+    return { state: HONEST_STATE.NOT_ENABLED, detail: READ_STATE_DETAIL.noReadOnSurface };
   }
   return { state: null, result };
 }

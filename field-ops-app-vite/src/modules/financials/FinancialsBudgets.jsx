@@ -43,8 +43,8 @@ export default function FinancialsBudgets() {
             New budget
           </button>
           <span className="fin-inact">
-            Budget commands are not active · approval policy not configured
-            <FinAnnotation tip="The FIN-003 plan core is merged and dormant — no budget collection or command is activated, and no plan capability exists in the catalog yet. FIN-007 approval policy (thresholds, routing, self-approval rules) is unconfigured and fails closed." />
+            Budget changes aren&rsquo;t wired to this surface · approval policy not configured
+            <FinAnnotation tip="The FIN-003 plan core is merged and dormant: no budget collection, no command path wired to this page, and no plan capability defined in the catalog yet. FIN-007 approval policy (thresholds, routing, self-approval rules) is unconfigured and fails closed." />
           </span>
         </span>
       }

@@ -43,8 +43,8 @@ export default function FinancialsGoals() {
             New goal
           </button>
           <span className="fin-inact">
-            Goal commands are not active · approval policy not configured
-            <FinAnnotation tip="The FIN-003 plan core is merged and dormant — no goal collection or command is activated, no plan capability exists in the catalog. FIN-007 approval policy is unconfigured and fails closed; self-approval is forbidden by current authority." />
+            Goal changes aren&rsquo;t wired to this surface · approval policy not configured
+            <FinAnnotation tip="The FIN-003 plan core is merged and dormant: no goal collection, no command path wired to this page, and no plan capability defined in the catalog. FIN-007 approval policy is unconfigured and fails closed; self-approval is forbidden by current authority." />
           </span>
         </span>
       }
@@ -62,6 +62,22 @@ export default function FinancialsGoals() {
             "No goal records exist yet. The FIN-003 plan core (versioned goals, explicit basis, APPROVED plans measurable) is merged and dormant with no storage and no read surface.",
         }}
         subject="Goal reads"
+        footer={
+          <>
+            <p className="fin-section-note">
+              Basis vocabulary:{" "}
+              {MEASUREMENT_BASES.map((b, i) => (
+                <span key={b.key}>
+                  {i > 0 ? " " : null}
+                  <BasisChip basis={b.label} />
+                </span>
+              ))}
+            </p>
+            <p className="fin-section-note">
+              <Link to="/financials/sales-to-goal">Sales to Goal →</Link>
+            </p>
+          </>
+        }
       >
         <div className="ns-table-wrap">
           <table className="ns-table">
@@ -82,18 +98,6 @@ export default function FinancialsGoals() {
             </thead>
           </table>
         </div>
-        <p className="fin-section-note">
-          Basis vocabulary:{" "}
-          {MEASUREMENT_BASES.map((b, i) => (
-            <span key={b.key}>
-              {i > 0 ? " " : null}
-              <BasisChip basis={b.label} />
-            </span>
-          ))}
-        </p>
-        <p className="fin-section-note">
-          <Link to="/financials/sales-to-goal">Sales to Goal →</Link>
-        </p>
       </FinancialsHonestSection>
     </FinancialsPageFrame>
   );

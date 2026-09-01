@@ -71,9 +71,9 @@ export default function FinancialsCompanyPerformance() {
               {METRIC_ROWS.map((row) => (
                 <tr key={row.key}>
                   <td>{row.label}</td>
-                  <td className="ns-num"><span className="fin-inact">Read not activated</span></td>
-                  <td className="ns-num"><span className="fin-inact">Read not activated</span></td>
-                  <td className="ns-num"><span className="fin-inact">Read not activated</span></td>
+                  <td className="ns-num"><span className="fin-inact">No read on this surface</span></td>
+                  <td className="ns-num"><span className="fin-inact">No read on this surface</span></td>
+                  <td className="ns-num"><span className="fin-inact">No read on this surface</span></td>
                   <td><span className="fin-factclass">Operational actual</span></td>
                 </tr>
               ))}

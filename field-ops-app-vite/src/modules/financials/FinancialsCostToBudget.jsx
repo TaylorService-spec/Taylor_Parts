@@ -53,9 +53,15 @@ export default function FinancialsCostToBudget() {
         honest={{
           state: "NOT_ENABLED",
           detail:
-            "No budget records exist yet: the FIN-003 plan core (versioned budgets, distinct from goals) is merged and dormant with no storage, and no plan read is activated.",
+            "No budget records exist yet: the FIN-003 plan core (versioned budgets, distinct from goals) is merged and dormant with no storage, and no plan read surface exists.",
         }}
         subject="Budget reads"
+        footer={
+          <p className="fin-section-note">
+            <Link to="/financials/budgets">Budget management →</Link> ·{" "}
+            <Link to="/financials/profitability">Profitability →</Link>
+          </p>
+        }
       >
         <div className="ns-table-wrap">
           <table className="ns-table">
@@ -74,10 +80,6 @@ export default function FinancialsCostToBudget() {
             </thead>
           </table>
         </div>
-        <p className="fin-section-note">
-          <Link to="/financials/budgets">Budget management →</Link> ·{" "}
-          <Link to="/financials/profitability">Profitability →</Link>
-        </p>
       </FinancialsHonestSection>
     </FinancialsPageFrame>
   );

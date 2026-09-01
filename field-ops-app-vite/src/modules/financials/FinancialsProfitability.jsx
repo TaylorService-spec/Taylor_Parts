@@ -60,7 +60,7 @@ export default function FinancialsProfitability() {
           honest={{
             state: "NOT_ENABLED",
             detail:
-              "Billed-revenue reads are merged and not activated (finance.read inactive). Cost, gross margin and margin % remain UNKNOWN pending FIN-006 cost supply — each reserved column carries its one quiet phrase, never a zero.",
+              "This page does not issue its own billed-revenue read yet, so no revenue rows are shown. Cost, gross margin and margin % remain UNKNOWN pending FIN-006 cost supply — each reserved column carries its one quiet phrase, never a zero.",
           }}
           subject="Revenue and margin reads"
         >

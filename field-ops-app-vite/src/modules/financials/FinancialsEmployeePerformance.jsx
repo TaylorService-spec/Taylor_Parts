@@ -9,10 +9,18 @@
 // createdBy ≠ responsibleEmployeeId).
 //
 // Current-main truth: FIN-004 visibility is implemented server-side (five scopes, five
-// capabilities, FIN-BLOCK-001's governed company/BU bindings) and NOT ACTIVATED — every
-// scope is inactive, so the honest header scope today is "no financial visibility scope
-// granted" and the table body is the NOT_ENABLED truth. Scope is enforced in the read
-// layer; this page renders whatever slice returns and never widens it client-side.
+// capabilities, FIN-BLOCK-001's governed company/BU bindings). This page does not yet
+// issue a scoped performance read, so it states THAT — it does not assert what reach the
+// principal has.
+//
+// IT USED TO ASSERT ONE, AND THE ASSERTION WAS WRONG. The header said "no financial
+// visibility scope granted" and the body said "finance.visibility.* inactive". In
+// platform-sandbox the governed AR read answers `{status:"ready"}` for the admin persona,
+// which the callable only reaches when the fact-family gate AND at least one visibility
+// scope both resolve ALLOW — so the page was denying reach the principal actually had.
+// The error ran conservative (under-claiming, never leaking), but a page stating an
+// authority fact it never resolved is the same defect class as inventing a number.
+// Scope is enforced in the read layer; this page renders whatever slice returns.
 import { useState } from "react";
 import {
   FinancialsPageFrame,
@@ -37,8 +45,8 @@ export default function FinancialsEmployeePerformance() {
       custodyTip="Visibility scopes SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED are enforced at the read (FIN-004, server-side; scope bindings are governed access facts per DECISIONS #157). A fact outside your scope is refused by the server and named as withheld here — it is never fetched-and-hidden, and never a zero."
     >
       <p className="fin-custody-note">
-        Scope: <strong>no financial visibility scope granted</strong>
-        <FinAnnotation tip="The five finance.visibility.* capabilities are merged and inactive in this environment, so every principal's honest scope is 'none'. When activation lands, this line names your actual reach (e.g. TEAM — your team's credited performance) and the composition below follows it." />
+        Scope: <strong>resolved by the server when this page issues its read</strong>
+        <FinAnnotation tip="Visibility scopes SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED are resolved server-side per principal (FIN-004). This page does not yet issue a scoped performance read, so it does NOT state your reach — asserting a scope it has not resolved would be a claim about your authority that this page cannot make. When the read is wired, this line names the reach the server actually returned." />
       </p>
 
       <FilterBar variant="chips" label="Attribution view" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
@@ -51,7 +59,7 @@ export default function FinancialsEmployeePerformance() {
           honest={{
             state: "NOT_ENABLED",
             detail:
-              "Financial visibility is not activated (finance.visibility.* inactive), so no performance slice can be read. Nothing failed — the read layer refuses at any scope, and this page renders only what the server returns.",
+              "This page does not issue a scoped performance read yet, so no rows are shown. Nothing failed, and nothing is withheld from you by this page — when the read is wired, your governed visibility scope decides which rows return, and anything outside it is named as withheld rather than zeroed.",
           }}
           subject="Performance reads"
         >

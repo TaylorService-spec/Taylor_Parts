@@ -54,7 +54,10 @@ describe("01 Overview — /financials", () => {
     // Absence is words, never numbers: no dollar amount exists anywhere on the page.
     expect(container.textContent).not.toMatch(/\$\d/);
     // Custody sentence and the margin truth band.
-    expect(container.textContent).toMatch(/Not the general ledger/);
+    expect(container.textContent).toMatch(/not the general ledger/i);
+    // F4: the custody sentence is said ONCE — the frame line must not be repeated verbatim
+    // by the page description directly above it.
+    expect(container.textContent.match(/not the general ledger/gi).length).toBe(1);
     expect(container.textContent).toMatch(/Gross margin cannot be reported yet/);
     // Forecast method stays a policy absence.
     expect(container.textContent).toMatch(/Method TBD — FIN-005/);
@@ -96,7 +99,7 @@ describe("04 Accounts Receivable — /financials/accounts-receivable", () => {
     // authority; what must not exist is a rendered figure or column header).
     expect(screen.queryByText(/^DSO$/)).toBeNull();
     expect(screen.queryByRole("columnheader", { name: /risk/i })).toBeNull();
-    expect(container.textContent).toMatch(/not activated/i);
+    expect(container.textContent).toMatch(/does not issue its own governed read/);
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
@@ -137,18 +140,20 @@ describe("07 Customer Financials — /financials/customer-financials", () => {
     expect(container.textContent).toMatch(/Not available to you/);
     expect(container.textContent).not.toMatch(/\$\d/);
     // Summary slots keep their places with honest absences.
-    expect(screen.getAllByText("Read not activated").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("No read on this surface").length).toBeGreaterThanOrEqual(3);
   });
 });
 
 // ─── Wave UX-2 — billing / corrections ───
 
 describe("02 Billing Queue — /financials/billing-queue", () => {
-  test("gated bulk action disabled with the capability-inactive line; honest queue body", () => {
+  test("gated bulk action disabled, with a reason that does not assert capability state", () => {
     const { container } = mount(<FinancialsBillingQueue />);
     const action = screen.getByRole("button", { name: "Create invoices" });
     expect(action.disabled).toBe(true);
-    expect(container.textContent).toMatch(/finance\.invoice\.issue inactive/);
+    expect(container.textContent).toMatch(/wired to this queue/);
+    // F1: the one-liner must not diagnose a capability the page never resolved.
+    expect(container.textContent).not.toMatch(/finance\.[a-z.]+\s*(is\s+)?inactive/i);
     // The approved queue grammar: views with the four states, readiness columns.
     for (const label of ["Eligible", "Blocked", "Partially invoiced", "All"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
@@ -279,7 +284,7 @@ describe("15 Salesperson & Employee Performance — /financials/employee-perform
   test("scope statement in header; withheld panel named; views never merged; margin absence", async () => {
     const { default: FinancialsEmployeePerformance } = await import("../src/modules/financials/FinancialsEmployeePerformance.jsx");
     const { container } = mount(<FinancialsEmployeePerformance />);
-    expect(container.textContent).toMatch(/no financial visibility scope granted/);
+    expect(container.textContent).toMatch(/resolved by the server when this page issues its read/);
     expect(container.textContent).toMatch(/Outside your scope/);
     expect(container.textContent).toMatch(/withheld by the server/);
     for (const label of ["Salesperson credit", "Service responsibility"]) {
