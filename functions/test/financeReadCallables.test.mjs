@@ -30,6 +30,16 @@ async function expectHttps(promise, code) {
 }
 
 const runId = Date.now();
+
+// FIN-004: the core read now REQUIRES a visibility predicate. These cases measure the bounded-read
+// honesty contract, not scoping (financeVisibilityRead.test.mjs owns that), so they read with an
+// explicit CONSOLIDATED authority — the widest reach, granted expressly, exactly as a real
+// consolidated principal would.
+const { buildFinancialVisibilityAuthority } = await import("../lib/finance/financialVisibility.js");
+const CONSOLIDATED_VIEW = buildFinancialVisibilityAuthority({
+  factFamilyAllowed: true,
+  grants: [{ scope: "CONSOLIDATED" }],
+}).isInvoiceVisible;
 const uid = `finance-callable-${runId}`;
 await db.collection("users").doc(uid).set({ accessVersion: 1 });
 await db.collection("roleAssignments").doc(`finance-callable-role-${runId}`).set({
@@ -83,7 +93,7 @@ await check("under the cap: status ready with a full summary over every invoice"
   const accountId = `acct-under-${runId}`;
   await clearInvoices(accountId);
   await seedInvoices(accountId, 3);
-  const result = await reads.readAccountInvoiceAr(db, accountId, 5);
+  const result = await reads.readAccountInvoiceAr(db, accountId, 5, CONSOLIDATED_VIEW);
   assert.equal(result.status, "ready");
   assert.equal(result.invoices.length, 3);
   assert.equal(result.summary.count, 3);
@@ -93,7 +103,7 @@ await check("exactly at the cap: status ready (no false-positive truncation)", a
   const accountId = `acct-atcap-${runId}`;
   await clearInvoices(accountId);
   await seedInvoices(accountId, 5);
-  const result = await reads.readAccountInvoiceAr(db, accountId, 5);
+  const result = await reads.readAccountInvoiceAr(db, accountId, 5, CONSOLIDATED_VIEW);
   assert.equal(result.status, "ready");
   assert.equal(result.invoices.length, 5);
 });
@@ -102,7 +112,7 @@ await check("over the cap: status unavailable -- NEVER a ready partial summary (
   const accountId = `acct-over-${runId}`;
   await clearInvoices(accountId);
   await seedInvoices(accountId, 6);
-  const result = await reads.readAccountInvoiceAr(db, accountId, 5);
+  const result = await reads.readAccountInvoiceAr(db, accountId, 5, CONSOLIDATED_VIEW);
   assert.equal(result.status, "unavailable");
   assert.equal(result.invoices.length, 0);
   assert.equal(result.summary.count, 0);

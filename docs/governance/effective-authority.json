@@ -1,17 +1,48 @@
 {
  "catalog": {
-  "total": 124,
+  "total": 129,
   "active": 72,
-  "inactive": 52
+  "inactive": 57
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 14,
+  "total": 19,
   "byStatus": {
+   "UNCLASSIFIED": 5,
    "RECORDED_GAP": 9,
    "DELIBERATELY_PRIVILEGED_ONLY": 5
   },
   "capabilities": [
+   {
+    "capability": "finance.visibility.self",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "finance.visibility.team",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "finance.visibility.businessUnit",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "finance.visibility.company",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "finance.visibility.consolidated",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
    {
     "capability": "coverage.write",
     "active": false,
@@ -112,9 +143,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 124,
+   "grantedCount": 129,
    "operableCount": 72,
-   "blockedCount": 52,
+   "blockedCount": 57,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -140,6 +171,11 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "finance.visibility.businessUnit",
+    "finance.visibility.company",
+    "finance.visibility.consolidated",
+    "finance.visibility.self",
+    "finance.visibility.team",
     "fulfillment.coordinatedVisit.read",
     "inventory.action.create",
     "inventory.action.read",
@@ -332,6 +368,11 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "finance.visibility.businessUnit",
+    "finance.visibility.company",
+    "finance.visibility.consolidated",
+    "finance.visibility.self",
+    "finance.visibility.team",
     "fulfillment.coordinatedVisit.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
