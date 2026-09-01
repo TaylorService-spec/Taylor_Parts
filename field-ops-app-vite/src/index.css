@@ -7375,7 +7375,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (max-width: 640px) {
   .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer { grid-template-columns: 1fr 1fr; }
   .fin-scorecard__slot { padding: 12px 12px 12px 0; }
-  .fin-overview-grid { grid-template-columns: 1fr; gap: var(--space-4, 16px); }
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track cannot shrink below its content's
+     intrinsic width (min-width:auto), so a wide table forced the WHOLE DOCUMENT to
+     scroll sideways at 375 instead of scrolling inside .ns-table-wrap. */
+  .fin-overview-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-4, 16px); }
   .fin-figure__value { font-size: 22px; }
 }
 
