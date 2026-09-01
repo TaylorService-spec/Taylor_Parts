@@ -89,7 +89,14 @@ async function main() {
   record("ONE page title, and it is 'Receiving'",
     (await page.locator(".fo-page-header__title").count()) === 1
       && (await page.locator(".fo-page-header__title").innerText()).trim() === "Receiving");
-  record("the North Star crumb is present", /Inventory\s*→\s*Receiving/.test(text));
+  // CORRECTED after the first deployed run (0abc2353): the body-innerText heuristic reported the
+  // crumb absent while `.ns-page__context` was rendering it correctly — a gate false negative.
+  // The assertion now reads the actual governed crumb element and requires the full directional
+  // relationship, so it fails if the crumb is absent, duplicated, or loses either side of it.
+  const crumb = page.locator(".ns-page__context");
+  record("the North Star crumb is present",
+    (await crumb.count()) === 1
+      && (await crumb.textContent()).replace(/\s+/g, " ").trim() === "Inventory → Receiving");
 
   // ---------------------------------------------------------------- the queue's truth grammar
   const rows = await page.locator(".fo-receiving-queue tbody tr").count();
@@ -105,16 +112,42 @@ async function main() {
   record("a failure is never presented as empty", !(sawEmpty && (sawDenied || sawUnavailable || sawFailed)));
 
   if (rows > 0) {
-    const orderCells = await page.locator(".fo-receiving-queue tbody td[data-label='Order']").allInnerTexts();
-    const idShaped = orderCells.filter((c) => /^[A-Za-z0-9_-]{18,28}$/.test(c.trim().split("\n")[0]));
-    record("no Order cell promotes an id-shaped token as the reference", idShaped.length === 0,
-      idShaped.slice(0, 2).join(" · ") || `${orderCells.length} order cells inspected`);
-    const journeys = await page.locator(".fo-receiving-queue tbody td[data-label='Journey']").allInnerTexts();
-    record("every row names its journey in the governed words",
-      journeys.every((j) => /Reorder PO · full quantity|Supplier PO · multi-scan/.test(j)),
-      `${journeys.length} rows`);
+    // CORRECTED after the first deployed run: the previous check rejected any "id-shaped" Order
+    // text and thereby FAILED a legitimate governed externalPoNumber (`PO-LIVE-1788220473108`) —
+    // the gate inventing a defect. The live gate does not reverse-engineer field provenance from
+    // string shape. What it CAN prove live is journey-conditional:
+    //   Supplier PO rows have NO governed business number (RCV-G5) → the primary reference MUST be
+    //   the stated absence. Reorder rows may carry their governed external PO reference, or state
+    //   its own absence. WHICH field supplied a visible reference is the source contract's job
+    //   (receivingWorkspaceQueue.test.mjs: orderReference ← externalPoNumber only; ids only
+    //   inside `open`).
+    const rowLocs = page.locator(".fo-receiving-queue tbody tr");
+    const violations = [];
+    let suppliers = 0;
+    let reorders = 0;
+    for (let i = 0; i < rows; i += 1) {
+      const row = rowLocs.nth(i);
+      const journey = (await row.locator("td[data-label='Journey']").innerText()).trim();
+      const orderPrimary = (await row.locator("td[data-label='Order']").innerText()).trim().split("\n")[0].trim();
+      if (journey === "Supplier PO · multi-scan") {
+        suppliers += 1;
+        if (orderPrimary !== "No order number recorded") {
+          violations.push(`supplier row shows '${orderPrimary}' instead of the stated absence`);
+        }
+      } else if (journey === "Reorder PO · full quantity") {
+        reorders += 1;
+        if (orderPrimary.length === 0) violations.push("reorder row has an empty Order reference");
+      } else {
+        violations.push(`unknown journey words '${journey}'`);
+      }
+    }
+    record("supplier rows state the RCV-G5 absence; reorder rows carry a reference or state theirs",
+      violations.length === 0,
+      violations.slice(0, 2).join(" · ") || `${suppliers} supplier, ${reorders} reorder rows inspected`);
+    record("every row names its journey in the governed words", suppliers + reorders === rows,
+      `${rows} rows`);
   } else {
-    skip("no Order cell promotes an id-shaped token as the reference", "no queue rows in this dataset");
+    skip("supplier rows state the RCV-G5 absence; reorder rows carry a reference or state theirs", "no queue rows in this dataset");
     skip("every row names its journey in the governed words", "no queue rows in this dataset");
   }
 
