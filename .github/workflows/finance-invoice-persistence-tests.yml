@@ -28,6 +28,7 @@ on:
       - "functions/test/financialAttribution.test.mjs"
       - "functions/test/billingQueue.test.mjs"
       - "functions/test/costMargin.test.mjs"
+      - "functions/test/planVsActual.test.mjs"
       - "functions/test/financialVisibility.test.mjs"
       - "functions/test/financeVisibilityRead.test.mjs"
       - "functions/test/invoiceCommands.test.mjs"
@@ -57,6 +58,7 @@ on:
       - "functions/test/financialAttribution.test.mjs"
       - "functions/test/billingQueue.test.mjs"
       - "functions/test/costMargin.test.mjs"
+      - "functions/test/planVsActual.test.mjs"
       - "functions/test/financialVisibility.test.mjs"
       - "functions/test/financeVisibilityRead.test.mjs"
       - "functions/test/invoiceCommands.test.mjs"
@@ -111,7 +113,7 @@ jobs:
         working-directory: functions
 
       - name: Invoice command core + numbering (node:test)
-        run: node --test test/financialAttribution.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/refundCommands.test.mjs
+        run: node --test test/financialAttribution.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/planVsActual.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/refundCommands.test.mjs
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)
