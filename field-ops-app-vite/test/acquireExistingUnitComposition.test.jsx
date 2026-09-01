@@ -448,4 +448,16 @@ describe("Frame 1c — sheet identity, truth pins, and close behaviour", () => {
     expect(container.querySelector("table")).toBeNull();
     expect(container.querySelector(".fo-acquire__form")).toBeTruthy();
   });
+
+  it("each reason's touch target is its WHOLE labelled row, not the 13px radio glyph (frame 1f)", () => {
+    // The measured pass found the radio inputs themselves at 13×13px; that is acceptable only
+    // because each input sits inside its <label> with the meaning text, so the full row toggles
+    // it. This pins that structure — an input moved outside its label shrinks the target back.
+    const { container } = mount();
+    for (const row of container.querySelectorAll("[data-acquire-reason]")) {
+      expect(row.tagName).toBe("LABEL");
+      expect(row.querySelector("input[type='radio']")).toBeTruthy();
+      expect(row.querySelector(".fo-acquire__reason-hint")).toBeTruthy();
+    }
+  });
 });

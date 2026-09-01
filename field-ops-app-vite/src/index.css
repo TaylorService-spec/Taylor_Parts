@@ -7300,3 +7300,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (max-width: 640px) { .fo-modal--sheet { max-width: 100%; border-left: none; } }
 /* The subordinate stage heading inside the sheet (Confirm) — below the sheet's one h2 identity. */
 .fo-acquire__stage { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+
+/* ═══════════════ Receiving North Star P1 — frame 1f (family handheld sweep) ═══════════════
+   Measured findings (real browser, 375/320): zero horizontal overflow on every family state; the
+   one touch-floor failure was inline .fo-link-btn controls (queue Refresh; the session's scan
+   correction links) at ~15px tall. Scoped to the Receiving workspace at handheld widths so the
+   shared inline-link primitive is untouched everywhere else. The 1c reason radios measure 13px but
+   their WHOLE labelled row (~73px) is the interactive target — recorded, not a violation. */
+@media (max-width: 640px) {
+  .fo-receiving-workspace .fo-link-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
