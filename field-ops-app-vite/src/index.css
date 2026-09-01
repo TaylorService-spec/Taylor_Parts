@@ -1535,7 +1535,8 @@ button:hover {
 .fo-fieldmode-tool .scan-workspace { max-width: none; }
 .fo-fieldmode-tool .scan-hero { margin-left: 0; margin-right: 0; border-radius: 10px; }
 /* Governed Receive-against-Purchase-Order workflow (A1). */
-.fo-receive-po { border: 1px solid var(--color-border); border-radius: 10px; padding: 14px 16px; margin-top: 8px; }
+/* .fo-receive-po (the bordered card root) retired in North Star frame 1d — the reorder journey now
+   composes .fo-receiving-session (ruled, unboxed) like the supplier session. */
 .fo-receive-header { display: flex; justify-content: space-between; align-items: baseline; }
 .fo-receive-header h3 { margin: 0; }
 .fo-receive-back { background: none; border: none; color: #2563eb; cursor: pointer; font-size: 13px; }
@@ -7273,3 +7274,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fo-receiving-session__table td::before { content: attr(data-label); color: var(--color-text-muted);
     font-size: 11px; text-transform: uppercase; letter-spacing: .03em; flex: none; text-align: left; }
 }
+
+/* ═══════════════ Receiving North Star P1 — frame 1d (reorder linear journey) ═══════════════ */
+/* The step line labels the existing RECEIVE_STEP stage — presentation only, quiet uppercase. */
+.fo-receiving-session__step { margin: 0; font: 600 11px var(--font-interface, inherit);
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); }
+.fo-receive-stepnote { font-size: 12px; max-width: 64ch; }
+/* 375px safety for the review read-back: label/value rows already stack as flex pairs; keep long
+   values (serial lists) wrapping instead of widening the page. */
+.fo-receive-confirm dd { overflow-wrap: anywhere; }
+/* The linear journey reads best at a form measure, not the full queue width. */
+.fo-reorder-journey { max-width: 560px; }

@@ -188,3 +188,113 @@ describe("ReceiveAgainstPurchaseOrder — Part read failure fails CLOSED", () =>
     expect(submitReceipt).not.toHaveBeenCalled();
   });
 });
+
+// ────────────────────────────────────────────── North Star frame 1d — linear journey truth rules
+
+describe("Frame 1d — journey identity, numbering truth, and the linear stages", () => {
+  async function reachConfirm({ row = candidateRow({ partId: "P-1", orderedQuantity: 2 }) } = {}) {
+    candidateRows = [row];
+    readyLocation();
+    fetchParts.mockResolvedValue({ ok: true, parts: [{ partId: row.partId, controlType: "STANDARD" }], invalid: [] });
+    render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
+    await chooseAndSelectLocation(new RegExp(row.partId, "i"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("button", { name: "Confirm receipt" });
+  }
+
+  it("renders ONE subordinate journey heading (h2), and never a page H1", async () => {
+    await reachConfirm();
+    const session = document.querySelector(".fo-reorder-journey");
+    expect(session.querySelectorAll("h2")).toHaveLength(1);
+    expect(document.querySelector("h1")).toBeNull();
+    expect(screen.getByText("Reorder purchase order · full-quantity receipt")).toBeTruthy();
+  });
+
+  it("MUTATION PROOF: the opaque reorderRequestId never becomes the journey identity or any visible text", async () => {
+    await reachConfirm();
+    // "rr-1" is the command's argument, not a fact an operator is shown — anywhere.
+    expect(document.body.textContent).not.toContain("rr-1");
+  });
+
+  it("MUTATION PROOF: no RR-number is synthesized while the lane is unwired (RCV-G4)", async () => {
+    await reachConfirm();
+    expect(document.body.textContent).not.toMatch(/RR-\d/);
+  });
+
+  it("the governed external PO number is the journey title when present, with the supplier beside it", async () => {
+    await reachConfirm({
+      row: { ...candidateRow({ partId: "P-1", orderedQuantity: 2 }), externalPoNumber: "TP-88112", supplierName: "Taylor Distribution" },
+    });
+    const title = document.querySelector(".fo-receiving-session__title");
+    expect(title.textContent).toBe("TP-88112");
+    expect(screen.getAllByText(/Taylor Distribution/).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain("No PO number recorded");
+  });
+
+  it("its absence is STATED — on the facts line and in the review — never substituted", async () => {
+    await reachConfirm();
+    expect(screen.getAllByText(/No PO number recorded/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("MUTATION PROOF: no editable quantity control exists — this lane is full-quantity by contract", async () => {
+    await reachConfirm();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(document.querySelector('input[type="number"]')).toBeNull();
+    expect(screen.getAllByText(/2 \(full order\)/).length).toBeGreaterThanOrEqual(2);
+    // And no supplier-journey partial vocabulary is imported.
+    expect(document.body.textContent).not.toMatch(/partial receipt|partially received|scanned now|remaining after/i);
+  });
+
+  it("MUTATION PROOF: Review performs no write — only Confirm reaches the governed submit", async () => {
+    submitReceipt.mockResolvedValue({ status: "applied" });
+    await reachConfirm();
+    expect(submitReceipt).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm receipt" }));
+    await waitFor(() => expect(submitReceipt).toHaveBeenCalledOnce());
+  });
+
+  it("MUTATION PROOF: the result never prints a receiving id or a manufactured RO number", async () => {
+    submitReceipt.mockResolvedValue({ status: "applied" });
+    await reachConfirm();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm receipt" }));
+    await screen.findByText("Receipt recorded");
+    expect(screen.getByText("The receiving order number is not yet readable here.")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/RO-\d/);
+  });
+
+  it("a denied location read blocks with its own words and renders NO picker and NO stale selection", async () => {
+    candidateRows = [candidateRow({ partId: "P-7", orderedQuantity: 1 })];
+    fetchLocations.mockResolvedValue({ status: "denied", options: [] });
+    fetchParts.mockResolvedValue({ ok: true, parts: [{ partId: "P-7", controlType: "STANDARD" }], invalid: [] });
+    render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /P-7/i }));
+    await screen.findByText(/not permitted/i);
+    expect(screen.queryByLabelText(/receiving location/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm receipt" })).toBeNull();
+  });
+
+  it("the hosted journey itself offers no queue-back control — the workspace owns the single one", async () => {
+    await reachConfirm();
+    expect(screen.queryByText(/Back to the receipt queue/)).toBeNull();
+    // The internal step-back is exactly one control and is a step-back, not a second queue exit.
+    expect(screen.getAllByRole("button", { name: "← Back" })).toHaveLength(1);
+  });
+
+  it("the step line labels the existing stages without inventing one (2→Destination, 3→Confirm for a NONE part)", async () => {
+    candidateRows = [candidateRow({ partId: "P-1", orderedQuantity: 2 })];
+    readyLocation();
+    fetchParts.mockResolvedValue({ ok: true, parts: [{ partId: "P-1", controlType: "STANDARD" }], invalid: [] });
+    render(<ReceiveAgainstPurchaseOrder onDone={vi.fn()} />);
+    expect(await screen.findByText(/Step 1 · Choose the purchase order/)).toBeTruthy();
+    await chooseAndSelectLocation(/P-1/i);
+    expect(screen.getByText(/Step 2 of 3 · Destination/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText(/Step 3 of 3 · Confirm/)).toBeTruthy();
+  });
+
+  it("responsive structural contract: the review is label/value rows, and the journey contains no wide table", async () => {
+    await reachConfirm();
+    expect(document.querySelector(".fo-receive-confirm")).toBeTruthy();
+    expect(document.querySelector(".fo-reorder-journey table")).toBeNull();
+  });
+});
