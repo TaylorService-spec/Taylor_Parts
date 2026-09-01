@@ -7448,7 +7448,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
   .fin-figure__link,
   .fin-section-note a,
-  .fin-identity-line a {
+  .fin-identity-line a,
+  .fin-gov-row__value a,
+  .fin-truth-band a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;

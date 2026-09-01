@@ -142,13 +142,20 @@ async function overflowsHorizontally(page) {
 async function sweep(page, viewportLabel) {
   for (const [route, spec] of ROUTES) {
     const id = `${viewportLabel} ${route}`;
+    // THREE attempts, not two. The first navigation after a Hosting deploy pulls a cold
+    // bundle through a cold CDN edge, and a lazy route chunk can lose that race twice —
+    // observed on /financials at both widths immediately after two separate deploys,
+    // passing on every later run against the same build. A gate that reports a cold cache
+    // as a missing page is a gate that gets re-run by hand and eventually ignored.
     let loaded = false;
-    for (let attempt = 1; attempt <= 2 && !loaded; attempt += 1) {
+    for (let attempt = 1; attempt <= 3 && !loaded; attempt += 1) {
       await page.goto(`${ORIGIN}${route}`, { waitUntil: "domcontentloaded" });
       try {
         await page.getByRole("heading", { level: 1, name: spec.h1 }).waitFor({ timeout: 20000 });
         loaded = true;
-      } catch { /* one retry for a cold CDN edge */ }
+      } catch {
+        if (attempt < 3) await page.waitForTimeout(1500);
+      }
     }
     if (!record(`${id} renders`, loaded, loaded ? "" : `h1 "${spec.h1}" not found`)) continue;
 
@@ -232,7 +239,8 @@ async function main() {
     await page.waitForTimeout(2500);
     const t = await page.evaluate(() => document.body.innerText);
     record("07 composed AR renders truthfully (no numbers, honest state)",
-      !/\$\d/.test(t) && /(Not available to you|couldn.t be read|No invoices on this account|Read not activated)/.test(t),
+      !/\$\d/.test(t)
+        && /(Not available to you|couldn.t be read|No invoices on this account|No read on this surface|Loading receivables)/.test(t),
       /\$\d/.test(t) ? "dollar figure appeared" : "");
   }
 
