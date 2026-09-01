@@ -265,9 +265,16 @@ test("GENESIS: problems accumulate rather than short-circuiting", () => {
   assert.ok(p.length >= 4, `expected several problems, got ${p.length}`);
 });
 
-test("GENESIS: the outcome vocabulary includes ALREADY_BOOTSTRAPPED", () => {
-  assert.equal(OUTCOME.ALREADY_BOOTSTRAPPED, "ALREADY_BOOTSTRAPPED");
-  assert.equal(OUTCOME.WOULD_BOOTSTRAP, "WOULD_BOOTSTRAP");
+test("GENESIS: the outcome vocabulary distinguishes both halves", () => {
+  // The old vocabulary had ONE word for "done", so a world holding only the business half
+  // satisfied it -- which is exactly how a genesis that could not administer roles reported
+  // success. COMPLETE now requires both halves, and the words say so.
+  assert.equal(OUTCOME.WOULD_BOOTSTRAP, "WOULD_BOOTSTRAP");   // neither half present
+  assert.equal(OUTCOME.WOULD_COMPLETE, "WOULD_COMPLETE");     // business half only
+  assert.equal(OUTCOME.COMPLETE, "COMPLETE");
+  assert.equal(OUTCOME.ALREADY_COMPLETE, "ALREADY_COMPLETE");
+  assert.equal(Object.hasOwn(OUTCOME, "ALREADY_BOOTSTRAPPED"), false,
+    "a single done-word cannot survive: it could not express a half-complete genesis");
 });
 
 // ── THE GENESIS WRITE TELLS THE TRUTH ─────────────────────────────────────────────────────────

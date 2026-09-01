@@ -211,6 +211,15 @@ export type AuditAction =
   // (keep this comment free of the statement-terminator character -- mirror checks parse the union
   //  up to the first one)
   | "bootstrapCertificationAuthority"
+  // GENESIS COMPLETION -- the runtime administration half. Certification genesis establishes TWO
+  // authority facts: the business Role the fixture declares, and the COMPATIBILITY Role that
+  // actually qualifies admin.roleAssignment.write when grantRole asks. The first implementation
+  // established only the business half, so the genesis holder was refused noQualifyingGrant on its
+  // own first grant. Its own action rather than a second bootstrapCertificationAuthority event,
+  // because the original event is immutable and did not record this
+  // (keep this comment free of the statement-terminator character -- mirror checks parse the union
+  //  up to the first one)
+  | "completeCertificationAuthorityGenesis"
   | "breakGlassRestore"
   | "createReportDefinition"
   | "renameReportDefinition"

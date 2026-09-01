@@ -118,6 +118,7 @@ export default function Receiving({ deps }) {
 
   return (
     <WorkspaceShell
+      className="fo-receiving-workspace"
       crumb={
         <>
           <div className="ns-page__utility">
@@ -288,10 +289,11 @@ function AwaitingReceiptQueue({ queue, onOpen }) {
                   {queue.rows.map((row) => (
                     <tr key={row.key}>
                       <td data-label="Order">
-                        {/* A stated absence, never a document id (RCV-G5; RR numbering unwired). */}
+                        {/* A stated absence, never a document id (RCV-G5; RR numbering unwired) —
+                            in the row's own journey words, matching the journey it opens. */}
                         {row.orderReference
                           ? <strong>{row.orderReference}</strong>
-                          : <span className="fo-muted">No order number recorded</span>}
+                          : <span className="fo-muted">{row.orderReferenceAbsence}</span>}
                         {row.partId && (
                           <span className="fo-receiving-queue__part">
                             {row.partId}

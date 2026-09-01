@@ -1723,3 +1723,106 @@ inventory facts still reach a surface only through `getPartBalance`, which remai
 **Open and not blockers:** ND-28-F; P-G1; the `firestore.rules` orphaned `allow create` on
 `inventory_actions` (Tier-2, tracked separately); the shared 80px North Star record padding, which
 belongs to a family-wide decision rather than to Parts.
+
+### Family 9 — frames 1a and 1b merged (2026-08-31)
+
+Appended per the ledger's rule; the opening row above is not rewritten. **Merged is not accepted,
+and neither frame is live until a Hosting refresh** — no Functions, Rules, capability, Role,
+schema, command or numbering change in either.
+
+| | |
+|---|---|
+| **Frame 1a** | #1650, squash-merged `543303ae` — workspace shell + ONE Awaiting-receipt queue (RCV-D1) over the two existing candidate reads; truthful LOADING/READY/EMPTY/DENIED/UNAVAILABLE/FAILED/PARTIAL ladder; ND-33 path set apart; RCV-G1 slot held honestly |
+| **Frame 1a correction** | The drawn scan-first order entry was NOT built. **RCV-G7** recorded: no governed scan-identifier/barcode contract exists for purchase orders, and canonical POs carry no business number (RCV-G5) — a "scan a purchase order" field would claim identifier authority that does not exist. Queue-row navigation is the entry path; pinned by regression tests in both suites |
+| **Frame 1b** | #1654, squash-merged `69bf5981` — supplier multi-scan session recomposed: journey identity is the governed supplier name (the opaque order id never renders), "No order number recorded" stated, receipt result states the missing RO number instead of `receivingId`, ruled sections replace the panel farm, labelled-cell handheld recomposition, no duplicate back affordance from the workspace, legacy standalone picker reworded as internal-id entry with no scan-label claim |
+| **New named gaps** | **RCV-G5** (canonical `purchase_orders` carry no business order number anywhere; doc ids are opaque and never promoted), **RCV-G6** (the list read carries no per-row receipt progress; none fabricated), **RCV-G7** (no PO scan-identifier contract) — all recorded in `DESIGN-HANDOFF-RECEIVING-P1.md` |
+| **A test moved with the truth** | `multiScanReceiving.test.jsx` asserted `heading { name: "PO-1" }` — the document id AS the journey title. Corrected to assert the supplier-name identity and the id's absence, with the correction recorded in the test (the RCV-G4 discipline: a test that requires a false claim is that claim restated) |
+| **Remaining** | 1d reorder journey · 1c Add existing unit side sheet · 1e states · 1f handheld · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` (nothing in this entry is an acceptance) |
+
+### Family 9 — frames 1d and 1c merged (2026-08-31)
+
+Appended per the ledger's rule. **Merged is not accepted, and none of frames 1a–1d/1c is live
+until a Hosting refresh.** No Functions, Rules, capability, Role, schema, command, provenance,
+reason-enum or numbering change in either.
+
+| | |
+|---|---|
+| **Frame 1d** | #1656, squash-merged `10e06190` — reorder PO linear journey recomposed: one subordinate identity (external PO number → supplier → truthful generic), the `?? reorderRequestId` raw-id fallback removed from the candidate list and the review read-back (absence STATED, pattern source-pinned unrepresentable), step line labelling the existing RECEIVE_STEP stages, full-quantity contract explicit, RO-number absence stated on terminal results, bordered card root retired |
+| **Frame 1c** | #1657, squash-merged `6e27d5a0` — Add existing unit re-hosted in the shared Modal primitive as a right-docked side sheet (additive `variant="sheet"`; same trap/Escape/backdrop/restore contract). Post-success truth corrected: the sheet stops looking armed — consequence lede replaced by the recorded post-state, stale stage heading removed. Close discards only local draft before Confirm and is inert mid-write. ND-33 authority untouched; no replay-proof claim made |
+| **Guards that caught real things** | css-class coverage refused an unstyled journey class (1d); the acquire suite's portal re-point carries a non-null guard so zero-length assertions cannot pass vacuously (1c) |
+| **Remaining** | 1e truth states · 1f handheld sweep · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` |
+
+### Family 9 — frame 1e merged: the family truth sweep found two real defects (2026-08-31)
+
+Appended per the ledger's rule. **Merged is not accepted; nothing in frames 1a–1e is live until a
+Hosting refresh.** No authority change.
+
+| | |
+|---|---|
+| **Frame 1e** | #1659, squash-merged `3adcc15d` — family-level truth/state sweep across 1a/1b/1d/1c |
+| **Defect 1** | 1b's destination picker discarded the location read's STATUS — a denied/unavailable/failed read rendered as an innocently empty select. Now five mutually exclusive states with their own sentences, picker rendered only from READY, and the protected submit repeats the state instead of advising "choose one" when none can be chosen. Pattern source-pinned unrepresentable |
+| **Defect 2** | 1b's option label fell back to the raw `locationId` — a storage key as a place name. Dropped (the governed adapter guarantees READY labels); pattern source-pinned |
+| **Alignment** | queue rows state each journey's OWN reference absence: supplier "No order number recorded" (RCV-G5 — no authority), reorder "No PO number recorded" (a governed field, absent on the record — frame 1d's words) |
+| **Stale claims corrected** | "legacy reorder-PO workflow is untouched" (recomposed in 1d) · "when the dialog opens" (a sheet since 1c) · a submit reason advising the impossible under a failed read. Historical defect narrations deliberately kept |
+| **Family pins added** | no synthesized RR/PO/RO numbers · no PO scan-identity wording outside a gap-recording comment (RCV-G4 quoting discipline) · no raw err.message/stack rendering · no new firebase/callable/readiness surface |
+| **Remaining** | 1f handheld sweep · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` |
+
+### Family 9 — frame 1f merged: REPO-COMPLETE, and the gate now exists (2026-08-31)
+
+All six frames are merged (1a `543303ae` · 1b `69bf5981` · 1d `10e06190` · 1c `6e27d5a0` ·
+1e `3adcc15d` · 1f `33b72707`). **Repo-complete is not deployed, not gated, not accepted.**
+
+| | |
+|---|---|
+| **Frame 1f** | #1661 — family handheld sweep, measured in a real browser over rendered family states (1440/768/375/320): ZERO horizontal overflow on every representative state; one genuine touch-floor failure (inline link-buttons at ~15px) fixed, scoped to the Receiving workspace; the 13px reason radios recorded as label-row targets and the structure pinned; CI holds the stylesheet contracts the measurement relied on |
+| **Quick Gate** | `receivingNorthStarQuickGate.mjs` now exists (this entry's commit) — sandbox-only, read-only, data-adaptive with honest SKIPs; asserts the deployed commit, the queue's mutually exclusive truth states, stated reference absences, RCV-G1/G7 held, ND-33 sheet composition with a measured no-command-left-the-page close, deny-all discipline, and a live 375px overflow measurement |
+| **Next** | Hosting refresh (platform-sandbox build via `buildForEnvironment.mjs`, deploy `--only hosting`) → verify `/version.json` → run the gate against that exact SHA → Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` |
+
+### Family 9 — deployed, and the first Quick Gate run failed its own gate, not the product (2026-08-31)
+
+**Hosting refresh ran (Owner-executed): deployed commit `0abc2353`, `platform-sandbox`, verified
+from the environment (`/version.json`). Functions and Rules NOT deployed — none were needed.**
+
+**First Quick Gate run vs `0abc2353`: 18 PASS · 2 FAIL · 0 SKIP. Both failures were GATE defects;
+no product defect surfaced; the deployed artifact was not changed.** Recorded as run, not
+rewritten as green:
+
+| | |
+|---|---|
+| **False negative (crumb)** | the gate searched `document.body.innerText` for `Inventory → Receiving` while `.ns-page__context` was rendering the crumb correctly. Corrected: the gate now reads the actual crumb element and requires exactly one, with the full directional relationship |
+| **False positive (order reference)** | an id-shape heuristic (`/^[A-Za-z0-9_-]{18,28}$/`) rejected `PO-LIVE-1788220473108` — a legitimate governed `externalPoNumber` value. The parts gate's own lesson, relearned: a gate must not reverse-engineer field provenance from string shape. Corrected: the live gate asserts journey-conditional truth (supplier rows MUST state the RCV-G5 absence; reorder rows carry a reference or state theirs), and WHICH field supplied a visible reference is pinned by the source contract (`orderReference ← externalPoNumber` only; ids only inside `open`) |
+| **Gate-contract pins** | the corrected assertions are themselves source-pinned (crumb element + strict equality; no shape heuristic; journey-conditional check), with new domain proofs: a long machine-shaped external PO number is ACCEPTED; rewiring either builder's reference to a document id fails |
+| **Second run, corrected gate, same artifact** | **20 PASS · 0 FAIL · 0 SKIP** vs deployed `0abc2353` — identity, truth grammar (3 reorder rows live), held gaps, ND-33 sheet with measured no-command close, deny-all discipline, live 375px overflow 0 |
+| **Acceptance** | unchanged — `AWAITING_OWNER_VISUAL_ACCEPTANCE`. A green gate is not acceptance |
+
+### Family 9 — CLOSED, Owner accepted 2026-08-31
+
+**The Owner gave visual acceptance on the deployed `0abc2353` (`platform-sandbox`).** Family 9 —
+Receiving — is closed: six frames merged, Hosting refreshed, the Quick Gate green against the
+exact deployed SHA (20 PASS · 0 FAIL · 0 SKIP, second run after the gate corrected its own two
+defects), and the acceptance itself given by the Owner, not inferred from a gate.
+
+| | |
+|---|---|
+| **Deployed release** | `0abc2353` — `platform-sandbox` / `sandbox`, verified from `/version.json` |
+| **Quick Gate** | `receivingNorthStarQuickGate.mjs` — **20/20** vs that live release |
+| **Functions / Rules** | NOT deployed — the whole family was presentation/composition; no authority changed at any point |
+| **Acceptance** | **CLOSED — Owner visual acceptance given 2026-08-31** |
+
+### What stays open, deliberately, and is NOT Family 9 debt
+
+The named gaps are recorded seams awaiting their own rulings, each rendered honestly by the
+shipped surfaces in the meantime:
+
+| | |
+|---|---|
+| **RCV-G1** | governed receipt-history read (`receiving_orders` deny-all is deliberate; the slot renders "Not connected yet") |
+| **RCV-G2** | receiving-order number readable client-side (allocated server-side since #1259; absence stated, never `receivingId`) |
+| **RCV-G5** | canonical supplier PO business number (none exists; absence stated) |
+| **RCV-G6** | per-row receipt progress on the list read (progress renders per opened order) |
+| **RCV-G7** | purchase-order scan-identifier contract (no scan-entry field until ruled and built) |
+| **RR numbering** | declared, allocator built, UNWIRED (RCV-G4 record governs the metadata truth) |
