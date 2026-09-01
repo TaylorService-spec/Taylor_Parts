@@ -16,8 +16,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F5 | FIN-006 Cost & Margin | COMPLETE_MERGED | bda2c5b2 | 1cf358b1 | #1678 | 12ee21bc |
 | F6 | FIN-003 Plan vs Actual | COMPLETE_MERGED | 12ee21bc | c5c55812 | #1679 | 73ba30cd |
 | F7 | FIN-005 Forecasting | COMPLETE_MERGED | 73ba30cd | 85cd4c97 | #1680 | 208c7aea |
-| F8 | FIN-007 Adjustments/Approvals | COMPLETE_PR_OPEN | 208c7aea | (see PR) | (opened below) | — |
-| F9 | FIN-008 Period & Close | NOT_STARTED | — | — | — | — |
+| F8 | FIN-007 Adjustments/Approvals | COMPLETE_MERGED | 208c7aea | 96dd3e8d | #1681 | fff6bef6 |
+| F9 | FIN-008 Period & Close | COMPLETE_PR_OPEN | fff6bef6 | (see PR) | (opened below) | — |
 | F10 | FIN-009 Allocation & Intercompany | NOT_STARTED | — | — | — | — |
 | F11 | FIN-010 Reconciliation/Traceability | NOT_STARTED | — | — | — | — |
 | F12 | Financials Product Surfaces | NOT_STARTED | — | — | — | — |
@@ -136,6 +136,19 @@ Details per phase are appended below as each phase closes.
   composed actions fail closed to required.
 - DOC: docs/financials/FIN-007_APPROVAL_GOVERNANCE_MODEL.md · TESTS: pure 8/8; finance CI
   lane registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
+### F9 — FIN-008 Period & Close
+- SCOPE: the OPERATIONAL reporting close (DECISIONS #145 — NOT an accounting close).
+- IMPLEMENTED: financialPeriods.ts — per-company frozen period records (OPEN|CLOSED; a
+  close carries who/why/when; REOPEN deliberately unmodeled); assertEventDateOpen refuses
+  events dated inside a CLOSED period (closed history is not writable — late facts go
+  through FIN-007 + an open-period adjustment); an UNCOVERED date is allowed (closing is
+  an explicit act — absence of a period closes nothing); overlapping periods thrown as a
+  configuration defect; one company's close never blocks the other company.
+- NOT DECIDED (deliberate): cadence/calendar, who closes, late-event policy detail, which
+  event date each fact class is judged by — policy values at F14 activation.
+- DOC: docs/financials/FIN-008_PERIOD_CLOSE_MODEL.md · TESTS: pure 8/8; finance CI lane
+  registered · CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
 
