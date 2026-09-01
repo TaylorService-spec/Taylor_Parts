@@ -216,6 +216,13 @@ export function buildSalesOrderDoc(f, actorUid, nowMs) {
 
 export function issueInvoiceRequest(f) {
   return {
+    // companyId is an ASSERTION, and it is sent deliberately. Under current authority the
+    // invoice's company comes from the governed order and a mismatched assertion is refused;
+    // the build deployed to sandbox predates that correction and still reads the caller's
+    // value to key invoice numbering, so omitting it left that build with no company at all.
+    // Sending the order's own governed id is correct under both: it matches the order under
+    // the new rule, and it is the same value the old rule would have needed.
+    companyId: f.operatingCompanyId,
     accountId: f.accountId,
     salesOrderId: f.id,
     currency: "USD",
@@ -237,6 +244,10 @@ export function issueInvoiceRequest(f) {
 
 export function applyPaymentRequest(f, invoiceId) {
   return {
+    // Assertion-only under current authority (cross-checked against the governed invoice), but
+    // REQUIRED by the build deployed to sandbox — same situation as issueInvoice above.
+    companyId: f.operatingCompanyId,
+    accountId: f.accountId,
     invoiceId,
     currency: "USD",
     amountMinor: f.payMinor,
