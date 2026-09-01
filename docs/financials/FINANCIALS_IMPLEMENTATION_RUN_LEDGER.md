@@ -7,6 +7,7 @@ origin/main. Boundary preserved throughout: EOS = governed operational financial
 authority and are composed, never re-decided.
 
 Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable).
+Run end: 2026-09-01, origin/main = `8fd76a62` — ALL PHASES F2–F15 COMPLETE_MERGED (14 PRs #1675–#1688, every one exact-head squash-merged with all matching CI lanes green and trigger coverage CLEAN). The last 14 commits on main are exactly this run — no foreign commits intervened. Open blockers: FIN-BLOCK-001..005 (Owner decisions). Nothing deployed, activated, granted, or written outside the repository.
 
 | Phase | Workstream | Status | Base main | Head | PR | Merge |
 |---|---|---|---|---|---|---|
@@ -23,7 +24,7 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F12 | Financials Product Surfaces | COMPLETE_MERGED (map only — surfaces design-gated) | 7b4a021f | 80c051b4 | #1685 | b742d56b |
 | F13 | Reporting Matrix | COMPLETE_MERGED | b742d56b | c95d3a0d | #1686 | 4dc9fd82 |
 | F14 | Sandbox Activation Readiness | COMPLETE_MERGED (package only — zero execution) | 4dc9fd82 | be802ba5 | #1687 | 610d5b3c |
-| F15 | E2E Financial Certification Readiness | COMPLETE_PR_OPEN (scenario definition only) | 610d5b3c | (see PR) | (opened below) | — |
+| F15 | E2E Financial Certification Readiness | COMPLETE_MERGED (scenario definition only) | 610d5b3c | d5a0c635 | #1688 | 8fd76a62 |
 
 Details per phase are appended below as each phase closes.
 
