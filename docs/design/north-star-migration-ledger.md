@@ -1739,3 +1739,17 @@ schema, command or numbering change in either.
 | **A test moved with the truth** | `multiScanReceiving.test.jsx` asserted `heading { name: "PO-1" }` — the document id AS the journey title. Corrected to assert the supplier-name identity and the id's absence, with the correction recorded in the test (the RCV-G4 discipline: a test that requires a false claim is that claim restated) |
 | **Remaining** | 1d reorder journey · 1c Add existing unit side sheet · 1e states · 1f handheld · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
 | **Acceptance** | unchanged — `AWAITING` (nothing in this entry is an acceptance) |
+
+### Family 9 — frames 1d and 1c merged (2026-08-31)
+
+Appended per the ledger's rule. **Merged is not accepted, and none of frames 1a–1d/1c is live
+until a Hosting refresh.** No Functions, Rules, capability, Role, schema, command, provenance,
+reason-enum or numbering change in either.
+
+| | |
+|---|---|
+| **Frame 1d** | #1656, squash-merged `10e06190` — reorder PO linear journey recomposed: one subordinate identity (external PO number → supplier → truthful generic), the `?? reorderRequestId` raw-id fallback removed from the candidate list and the review read-back (absence STATED, pattern source-pinned unrepresentable), step line labelling the existing RECEIVE_STEP stages, full-quantity contract explicit, RO-number absence stated on terminal results, bordered card root retired |
+| **Frame 1c** | #1657, squash-merged `6e27d5a0` — Add existing unit re-hosted in the shared Modal primitive as a right-docked side sheet (additive `variant="sheet"`; same trap/Escape/backdrop/restore contract). Post-success truth corrected: the sheet stops looking armed — consequence lede replaced by the recorded post-state, stale stage heading removed. Close discards only local draft before Confirm and is inert mid-write. ND-33 authority untouched; no replay-proof claim made |
+| **Guards that caught real things** | css-class coverage refused an unstyled journey class (1d); the acquire suite's portal re-point carries a non-null guard so zero-length assertions cannot pass vacuously (1c) |
+| **Remaining** | 1e truth states · 1f handheld sweep · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` |
