@@ -237,8 +237,14 @@ if (!__target) {
     const wh = warehouse.get(p.partId) ?? 0;
     const total = company.get(p.partId) ?? 0;
     const onOrder = inbound.get(p.partId) ?? 0;
+    // ABSENCE IS NOT ZERO -- CERT-PURCH-UNKNOWN-07. Checked before every threshold, because a
+    // part with no ledger row has no map entry and `?? 0` would otherwise report it as measured at
+    // zero and then as CRITICAL -- the fixture asserting a physical balance the ledger has never
+    // observed, which is precisely what readPartBalance contradicts by answering UNKNOWN.
+    if (!warehouse.has(p.partId) && !company.has(p.partId)) return "UNOBSERVED";
     if (total > rp && wh < rp) return "FALSE_COMFORT";  // owned, just not where it can be picked
     if (wh < rp && onOrder > 0) return "ON_ORDER";      // short, but supply is already committed
+    // Reached only WITH evidence: a governed KNOWN ZERO, a different fact from UNOBSERVED.
     if (wh === 0) return "CRITICAL";
     if (wh < rp) return "REORDER";
     if (wh <= rp + 2) return "WATCH";
@@ -248,9 +254,15 @@ if (!__target) {
   for (const p of quantityParts) { const c = condition(p); tally[c] = (tally[c] || 0) + 1; }
   console.log(`   ${JSON.stringify(tally)}`);
 
-  for (const c of ["HEALTHY", "WATCH", "REORDER", "ON_ORDER", "CRITICAL", "FALSE_COMFORT"]) {
+  // CRITICAL IS DELIBERATELY ABSENT HERE, and its absence is asserted separately below. A governed
+  // KNOWN ZERO needs ledger evidence that nets to zero, and this world contains no such part --
+  // measured live, 0 of 34 quantity parts have a KNOWN on-hand of 0. Demanding an instance would
+  // force the fixture to manufacture evidence, which is the prohibited remedy.
+  for (const c of ["HEALTHY", "WATCH", "REORDER", "ON_ORDER", "UNOBSERVED", "FALSE_COMFORT"]) {
     check(`${c} exists in actual state`, (tally[c] ?? 0) > 0, `${tally[c] ?? 0}`);
   }
+  check("CRITICAL (governed KNOWN ZERO) has no instance, and is not faked to create one",
+    (tally.CRITICAL ?? 0) === 0, `${tally.CRITICAL ?? 0}`);
 
   // ── FALSE_COMFORT, with the actual numbers.
   console.log("\n-- FALSE_COMFORT proof (actual figures)");
@@ -266,11 +278,20 @@ if (!__target) {
     check(`${p.partId} ${p.name}`, wh > rp + 2, `warehouse ${wh} vs reorder ${rp}, company ${co}`);
   }
 
-  console.log("\n-- CRITICAL proof (actual figures)");
-  for (const p of quantityParts.filter((x) => condition(x) === "CRITICAL")) {
-    const rp = reorderPointFor(p), co = company.get(p.partId) ?? 0;
-    check(`${p.partId} ${p.name}`, (warehouse.get(p.partId) ?? 0) === 0 && co <= rp,
-      `warehouse 0, company ${co}, reorder ${rp} -- nothing anywhere to draw on`);
+  // UNOBSERVED proof, asserted through the PRODUCT reader rather than the fixture maps.
+  //
+  // The claim is NOT "this part has zero units". It is "no governed observation of this part
+  // exists", and the only authority that can confirm that is readPartBalance answering UNKNOWN.
+  // Asserting it from `warehouse.get(...) === 0` would be the fixture agreeing with itself, which
+  // is exactly how the CRITICAL claim survived while the product disagreed with it.
+  console.log("\n-- UNOBSERVED proof (governed read, not fixture arithmetic)");
+  for (const p of quantityParts.filter((x) => condition(x) === "UNOBSERVED")) {
+    const b = await readPartBalance(db, p.partId, false);
+    const seen = warehouse.has(p.partId) || mobile.has(p.partId) || company.has(p.partId);
+    check(`${p.partId} ${p.name}`,
+      !seen && b.onHand?.state === "UNKNOWN" && b.available?.state === "UNKNOWN",
+      `ledger evidence ${seen ? "PRESENT" : "none"}, governed onHand ${b.onHand?.state}, `
+      + `available ${b.available?.state} -- never observed, which is not observed at zero`);
   }
 
   // ── Truck diversity, derived from raw allocations rather than the profile labels.

@@ -95,14 +95,31 @@ export function buildPurchasingPlan() {
     });
   }
 
-  // ── The Golden inbound-recovery order: shortage -> PO -> partial -> complete -> fulfillable.
+  // ── The Golden inbound-recovery order: UNOBSERVED -> PO -> partial -> complete -> fulfillable.
   //
-  // Placed against a CRITICAL part, because a recovery that starts from "some stock" cannot show
-  // the transition from unfulfillable to fulfillable.
-  const critical = CERT_PARTS.filter((p) => stateForIndex(p.index) === INVENTORY_STATE.CRITICAL
+  // ============================ WHY UNOBSERVED, NOT CRITICAL ============================
+  //
+  // Owner ruling CERT-PURCH-UNKNOWN-07. This order used to be placed against a part the fixture
+  // called CRITICAL, on the reasoning that "a recovery that starts from some stock cannot show the
+  // transition from unfulfillable to fulfillable". That reasoning still holds; the LABEL was wrong.
+  //
+  // The chosen part has no governed ledger observation at all, so readPartBalance answers UNKNOWN
+  // rather than KNOWN 0 -- and the fixture was asserting a physical balance the ledger had never
+  // recorded. Calling it CRITICAL claimed "we measured this shelf and it is empty". The truth is
+  // "this part has never been observed anywhere."
+  //
+  // THE GOLDEN CASE IS UNCHANGED IN PURPOSE and arguably sharper: first-ever stocking converts an
+  // item that cannot be fulfilled from known stock -- because no known stock exists -- into a known,
+  // fulfillable one. The transition proven is UNKNOWN -> first governed receipt -> KNOWN, which is
+  // exactly what a part entering the catalog for the first time does.
+  //
+  // NOT repaired by manufacturing evidence. A COUNTED 0 validates and is ignored by every balance
+  // aggregation; a zero-variance cycle count stages no ledger movement; an ADJUSTED 0 is refused
+  // outright (SIGNED must be non-zero). All three were considered and all three are prohibited.
+  const unobserved = CERT_PARTS.filter((p) => stateForIndex(p.index) === INVENTORY_STATE.UNOBSERVED
     && p.ledgerTrackingMode !== "SERIAL");
-  if (critical.length) {
-    const part = critical[0];
+  if (unobserved.length) {
+    const part = unobserved[0];
     orders.push({
       intent: "GOLDEN_INBOUND_RECOVERY",
       supplierId: CERT_SUPPLIER_ID,

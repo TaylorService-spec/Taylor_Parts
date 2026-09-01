@@ -85,20 +85,27 @@ if (!__target) {
   const conditions = {};
   for (const p of quantityParts) {
     const b = await readPartBalance(db, p.partId, false);
-    const warehouseAvailable = b.available?.state === "KNOWN" ? b.available.value : 0;
+    // OBSERVED vs NOT OBSERVED, kept distinct -- CERT-PURCH-UNKNOWN-07. `available` is UNKNOWN when
+    // the part has no governed physical observation, and collapsing that to 0 below would report an
+    // unmeasured part as an empty shelf. The numeric fallback is retained for the arithmetic that
+    // follows, but the STATE decides the condition.
+    const availableKnown = b.available?.state === "KNOWN";
+    const warehouseAvailable = availableKnown ? b.available.value : 0;
     const mobileInventory = mob.get(p.partId) ?? 0;
     const inboundKnown = b.onOrder?.state === "KNOWN";
     const outstandingInbound = inboundKnown ? b.onOrder.value : null;   // null means UNKNOWN, never 0
     const companyOwned = warehouseAvailable + mobileInventory;
     const reorderPoint = reorderPointFor(p);
-    const condition = companyOwned > reorderPoint && warehouseAvailable < reorderPoint ? "FALSE_COMFORT"
-      : warehouseAvailable < reorderPoint && (outstandingInbound ?? 0) > 0 ? "ON_ORDER"
-        : warehouseAvailable === 0 ? "CRITICAL"
-          : warehouseAvailable < reorderPoint ? "REORDER"
-            : warehouseAvailable <= reorderPoint + 2 ? "WATCH" : "HEALTHY";
+    const condition = !availableKnown && mobileInventory === 0 ? "UNOBSERVED"
+      : companyOwned > reorderPoint && warehouseAvailable < reorderPoint ? "FALSE_COMFORT"
+        : warehouseAvailable < reorderPoint && (outstandingInbound ?? 0) > 0 ? "ON_ORDER"
+          : warehouseAvailable === 0 ? "CRITICAL"
+            : warehouseAvailable < reorderPoint ? "REORDER"
+              : warehouseAvailable <= reorderPoint + 2 ? "WATCH" : "HEALTHY";
     conditions[condition] = (conditions[condition] ?? 0) + 1;
     perPart.push({ partId: p.partId, warehouseAvailable, mobileInventory, companyOwned,
       outstandingInbound, outstandingInboundState: inboundKnown ? "KNOWN" : "UNKNOWN",
+      warehouseAvailableState: availableKnown ? "KNOWN" : "UNKNOWN",
       reorderPoint, condition });
   }
 
