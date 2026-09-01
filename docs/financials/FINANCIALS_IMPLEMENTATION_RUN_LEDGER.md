@@ -21,8 +21,8 @@ Run start: origin/main = `cfe9c8fb` (FIN-002 merge `d2085c01` verified reachable
 | F10 | FIN-009 Allocation & Intercompany | COMPLETE_MERGED | 5303706d | 385e7ca3 | #1683 | 92066be6 |
 | F11 | FIN-010 Reconciliation/Traceability | COMPLETE_MERGED | 92066be6 | dcca36b4 | #1684 | 7b4a021f |
 | F12 | Financials Product Surfaces | COMPLETE_MERGED (map only — surfaces design-gated) | 7b4a021f | 80c051b4 | #1685 | b742d56b |
-| F13 | Reporting Matrix | COMPLETE_PR_OPEN | b742d56b | (see PR) | (opened below) | — |
-| F14 | Sandbox Activation Readiness | NOT_STARTED | — | — | — | — |
+| F13 | Reporting Matrix | COMPLETE_MERGED | b742d56b | c95d3a0d | #1686 | 4dc9fd82 |
+| F14 | Sandbox Activation Readiness | COMPLETE_PR_OPEN (package only — zero execution) | 4dc9fd82 | (see PR) | (opened below) | — |
 | F15 | E2E Financial Certification Readiness | NOT_STARTED | — | — | — | — |
 
 Details per phase are appended below as each phase closes.
@@ -198,6 +198,17 @@ Details per phase are appended below as each phase closes.
   cross-basis via the comparison cores only; UNKNOWN renders as unknown; invariant E on
   every export; reports compose cores/trusted reads, never raw collections).
 - CERT_WORLD_IMPACT: NONE · DEPLOYMENT: NONE · No new DECISIONS number.
+
+### F14 — Sandbox Activation Readiness (package only)
+- DELIVERED: docs/financials/F14_SANDBOX_ACTIVATION_READINESS.md — READY_FOR_OWNER_DEPLOY:
+  staged capability activation order (read spine → company/BU reach [needs FIN-BLOCK-001]
+  → money-in → corrections → issuance), the Owner policy values everything fails closed
+  without (FIN-007 thresholds/approvers, FIN-008 cadence/closer, FIN-004 grants), exact
+  deploy steps (small named function batches; no Rules change needed; index-deploy hazard
+  flagged; environment-truth verification), and the explicit out-of-scope list (production,
+  backfill, genesis, cert writes, external accounting).
+- EXECUTION: NONE — no deploy, no activation, no grant, no data write occurred.
+- CERT_WORLD_IMPACT: NONE · No new DECISIONS number.
 
 ## Blockers (running list)
 
