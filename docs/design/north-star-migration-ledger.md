@@ -1723,3 +1723,19 @@ inventory facts still reach a surface only through `getPartBalance`, which remai
 **Open and not blockers:** ND-28-F; P-G1; the `firestore.rules` orphaned `allow create` on
 `inventory_actions` (Tier-2, tracked separately); the shared 80px North Star record padding, which
 belongs to a family-wide decision rather than to Parts.
+
+### Family 9 — frames 1a and 1b merged (2026-08-31)
+
+Appended per the ledger's rule; the opening row above is not rewritten. **Merged is not accepted,
+and neither frame is live until a Hosting refresh** — no Functions, Rules, capability, Role,
+schema, command or numbering change in either.
+
+| | |
+|---|---|
+| **Frame 1a** | #1650, squash-merged `543303ae` — workspace shell + ONE Awaiting-receipt queue (RCV-D1) over the two existing candidate reads; truthful LOADING/READY/EMPTY/DENIED/UNAVAILABLE/FAILED/PARTIAL ladder; ND-33 path set apart; RCV-G1 slot held honestly |
+| **Frame 1a correction** | The drawn scan-first order entry was NOT built. **RCV-G7** recorded: no governed scan-identifier/barcode contract exists for purchase orders, and canonical POs carry no business number (RCV-G5) — a "scan a purchase order" field would claim identifier authority that does not exist. Queue-row navigation is the entry path; pinned by regression tests in both suites |
+| **Frame 1b** | #1654, squash-merged `69bf5981` — supplier multi-scan session recomposed: journey identity is the governed supplier name (the opaque order id never renders), "No order number recorded" stated, receipt result states the missing RO number instead of `receivingId`, ruled sections replace the panel farm, labelled-cell handheld recomposition, no duplicate back affordance from the workspace, legacy standalone picker reworded as internal-id entry with no scan-label claim |
+| **New named gaps** | **RCV-G5** (canonical `purchase_orders` carry no business order number anywhere; doc ids are opaque and never promoted), **RCV-G6** (the list read carries no per-row receipt progress; none fabricated), **RCV-G7** (no PO scan-identifier contract) — all recorded in `DESIGN-HANDOFF-RECEIVING-P1.md` |
+| **A test moved with the truth** | `multiScanReceiving.test.jsx` asserted `heading { name: "PO-1" }` — the document id AS the journey title. Corrected to assert the supplier-name identity and the id's absence, with the correction recorded in the test (the RCV-G4 discipline: a test that requires a false claim is that claim restated) |
+| **Remaining** | 1d reorder journey · 1c Add existing unit side sheet · 1e states · 1f handheld · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` (nothing in this entry is an acceptance) |
