@@ -122,6 +122,9 @@ const COLLECTION_SURFACES = [
   // in the shared frame, so only the frame appears in COLLECTION_PAGES above.
   "modules/financials/FinancialsInvoices.jsx",
   "modules/financials/FinancialsPayments.jsx",
+  // Wave UX-2 — same shape: the Billing Queue and Corrections registries own their views rows.
+  "modules/financials/FinancialsBillingQueue.jsx",
+  "modules/financials/FinancialsCreditsAdjustments.jsx",
 ];
 
 const RELATED_DEFS = [

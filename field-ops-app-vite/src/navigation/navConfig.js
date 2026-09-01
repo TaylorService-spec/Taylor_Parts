@@ -473,23 +473,11 @@ export const NAV_DOMAINS = [
       // placeholderExplanation. Access posture unchanged: PLACEHOLDER_DEFAULT_ROLES for nav
       // visibility; financial DATA authorization stays server-side (FIN-004), fail-closed.
       { key: "overview", label: "Overview", path: "" },
-      {
-        key: "billingQueue",
-        label: "Billing Queue",
-        path: "billing-queue",
-        placeholderExplanation:
-          "Billing Queue will identify operational records that are eligible, blocked, or awaiting action before invoicing. Billing authority is not implemented by this placeholder.",
-      },
+      { key: "billingQueue", label: "Billing Queue", path: "billing-queue" },
       { key: "invoices", label: "Invoices", path: "invoices" },
       { key: "accountsReceivable", label: "Accounts Receivable", path: "accounts-receivable" },
       { key: "payments", label: "Payments", path: "payments" },
-      {
-        key: "creditsAdjustments",
-        label: "Credits & Adjustments",
-        path: "credits-adjustments",
-        placeholderExplanation:
-          "Credits and Adjustments will record governed corrections without rewriting historical issued financial events.",
-      },
+      { key: "creditsAdjustments", label: "Credits & Adjustments", path: "credits-adjustments" },
       { key: "customerFinancials", label: "Customer Financials", path: "customer-financials" },
       {
         key: "salesToGoal",

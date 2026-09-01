@@ -116,6 +116,9 @@ const FinancialsInvoices = lazy(() => import("./modules/financials/FinancialsInv
 const FinancialsAccountsReceivable = lazy(() => import("./modules/financials/FinancialsAccountsReceivable.jsx"));
 const FinancialsPayments = lazy(() => import("./modules/financials/FinancialsPayments.jsx"));
 const FinancialsCustomerFinancials = lazy(() => import("./modules/financials/FinancialsCustomerFinancials.jsx"));
+// Wave UX-2 — billing / corrections.
+const FinancialsBillingQueue = lazy(() => import("./modules/financials/FinancialsBillingQueue.jsx"));
+const FinancialsCreditsAdjustments = lazy(() => import("./modules/financials/FinancialsCreditsAdjustments.jsx"));
 import FailureState from "./shared/ui/FailureState";
 
 const previewHasPermission = createPermissionPreviewer(
@@ -700,6 +703,12 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "financials" && item.key === "customerFinancials") {
     return <FinancialsCustomerFinancials />;
+  }
+  if (domain.key === "financials" && item.key === "billingQueue") {
+    return <FinancialsBillingQueue />;
+  }
+  if (domain.key === "financials" && item.key === "creditsAdjustments") {
+    return <FinancialsCreditsAdjustments />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
