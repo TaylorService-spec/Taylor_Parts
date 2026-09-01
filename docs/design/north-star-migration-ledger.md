@@ -1769,3 +1769,15 @@ Hosting refresh.** No authority change.
 | **Family pins added** | no synthesized RR/PO/RO numbers · no PO scan-identity wording outside a gap-recording comment (RCV-G4 quoting discipline) · no raw err.message/stack rendering · no new firebase/callable/readiness surface |
 | **Remaining** | 1f handheld sweep · Hosting refresh · Quick Gate vs the deployed SHA · Owner visual acceptance |
 | **Acceptance** | unchanged — `AWAITING` |
+
+### Family 9 — frame 1f merged: REPO-COMPLETE, and the gate now exists (2026-08-31)
+
+All six frames are merged (1a `543303ae` · 1b `69bf5981` · 1d `10e06190` · 1c `6e27d5a0` ·
+1e `3adcc15d` · 1f `33b72707`). **Repo-complete is not deployed, not gated, not accepted.**
+
+| | |
+|---|---|
+| **Frame 1f** | #1661 — family handheld sweep, measured in a real browser over rendered family states (1440/768/375/320): ZERO horizontal overflow on every representative state; one genuine touch-floor failure (inline link-buttons at ~15px) fixed, scoped to the Receiving workspace; the 13px reason radios recorded as label-row targets and the structure pinned; CI holds the stylesheet contracts the measurement relied on |
+| **Quick Gate** | `receivingNorthStarQuickGate.mjs` now exists (this entry's commit) — sandbox-only, read-only, data-adaptive with honest SKIPs; asserts the deployed commit, the queue's mutually exclusive truth states, stated reference absences, RCV-G1/G7 held, ND-33 sheet composition with a measured no-command-left-the-page close, deny-all discipline, and a live 375px overflow measurement |
+| **Next** | Hosting refresh (platform-sandbox build via `buildForEnvironment.mjs`, deploy `--only hosting`) → verify `/version.json` → run the gate against that exact SHA → Owner visual acceptance |
+| **Acceptance** | unchanged — `AWAITING` |
