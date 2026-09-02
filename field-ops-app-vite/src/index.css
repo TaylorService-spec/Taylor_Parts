@@ -7439,6 +7439,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    cannot push the page wider than the viewport. */
 .fin-nowrap { white-space: nowrap; }
 
+/* RECORD-FACT TABLE — a two-column label/value list, not a data grid.
+   With auto table layout the slack is shared between columns, so a record whose VALUES are short
+   pushes most of the width into the LABEL column: invoice detail sized its row headers to 595px
+   (55%) while payment detail — same kind of table, longer values — sized them to 160px (15%). Two
+   sibling record views then read as different components.
+   Sizing the label column to its own content gives every record the same shape: labels as wide as
+   they need, values starting immediately after, slack to the value column where it is useful. */
+.fin-facts th[scope="row"] { width: 1%; white-space: nowrap; padding-right: var(--space-4, 16px); }
+@media (max-width: 640px) {
+  /* At 375 a nowrap label column would force the table wider than the viewport; the wrap is worth
+     more than the alignment there. .ns-table-wrap still owns the horizontal boundary either way. */
+  .fin-facts th[scope="row"] { width: auto; white-space: normal; }
+}
+
 /* Three-slot scorecard (invoice record amounts), matching the existing --pair/--five grammar. */
 .fin-scorecard--three { grid-template-columns: repeat(3, minmax(0, 18rem)); width: max-content; max-width: 100%; }
 @media (max-width: 640px) { .fin-scorecard--three, .fin-scorecard--pair { grid-template-columns: minmax(0, 1fr); width: auto; } }
