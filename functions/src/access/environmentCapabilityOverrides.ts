@@ -154,6 +154,15 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   // regardless of data, no production entry carries an override key, and a test asserts both.
   // Certification declares no overrides and is untouched.
   "finance.visibility.consolidated",
+  // PERFORMANCE GOAL AUTHORITY. Eligible for environment activation; eligibility is not
+  // activation and activation is not a grant. Present here so a registry entry for these ids is
+  // POSSIBLE at all -- the intersection below is what stops a careless registry edit sweeping in
+  // an unrelated capability.
+  "performance.goal.read",
+  "performance.goal.create",
+  "performance.goal.approve",
+  "performance.goal.supersede",
+  "performance.goal.retire",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -335,6 +344,19 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         // hold it in their Role definitions, and lifting the inactive-permission denial is the only
         // effect. A Role that does not hold it still resolves DENY noQualifyingGrant.
         "finance.visibility.consolidated",
+        // PERFORMANCE GOAL AUTHORITY, sandbox only. Mirrors config/environments.json, which is
+        // canonical; the drift guard compares them.
+        //
+        // ACTIVATION IS NOT A GRANT. All five stay active:false in the catalog. Lifting the
+        // inactive-permission denial is the ONLY effect: a principal whose Role does not carry the
+        // verb still resolves DENY noQualifyingGrant, and the goal authority then asks three more
+        // questions after that one -- the target's own scope, authority over the metric's actual,
+        // and hierarchical visibility for an EMPLOYEE target. Activating these widens none of them.
+        "performance.goal.read",
+        "performance.goal.create",
+        "performance.goal.approve",
+        "performance.goal.supersede",
+        "performance.goal.retire",
       ]),
     }),
     // DEPLOYABLE SYNTHETIC CERTIFICATION RUNTIME. Provisioned 2026-08-30.

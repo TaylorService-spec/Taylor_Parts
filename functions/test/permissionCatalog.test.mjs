@@ -248,12 +248,34 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
     assert.equal("active" in permission, false, `"${permission.id}" must not declare active -- would be a behavior change`);
   }
+});
+// Performance Goal Authority. Paired with the prefix above, exactly as this file's own convention
+// requires: a prefix that permits `active` to be DECLARED must come with an assertion pinning what
+// it is declared AS. All five verbs are registered-but-inactive -- REGISTER != GRANT != ACTIVATE --
+// and the count is asserted too, so a sixth verb cannot appear inside the prefix unnoticed.
+check("all five performance.goal.* entries are registered-but-inactive (active: false, never true)", () => {
+  const goalIds = ["performance.goal.read", "performance.goal.create", "performance.goal.approve", "performance.goal.supersede", "performance.goal.retire"];
+  const found = PERMISSION_CATALOG.filter((p) => p.id.startsWith("performance.goal."));
+  assert.deepEqual(found.map((p) => p.id).sort(), [...goalIds].sort(), "the performance.goal.* prefix covers exactly the five governed verbs");
+  for (const permission of found) {
+    assert.equal(permission.active, false, `${permission.id} must be registered active:false`);
+    assert.equal(permission.resource, "performance.goal", `${permission.id} resource must match its id`);
+    assert.equal(permission.action, permission.id.split(".")[2], `${permission.id} action must match its id`);
+  }
+});
+check("goal AUTHORING and goal APPROVAL stay separate capabilities", () => {
+  // The one collapse this authority must never permit: if one id covered both, a single person could
+  // set and bless their own team's numbers in one act. FIN-007's self-approval prohibition is the
+  // runtime guard; this is the structural one.
+  assert.notEqual("performance.goal.create", "performance.goal.approve");
+  assert.ok(PERMISSION_CATALOG.some((p) => p.id === "performance.goal.create"));
+  assert.ok(PERMISSION_CATALOG.some((p) => p.id === "performance.goal.approve"));
 });
 check("both workOrder.labor.* entries are registered-but-inactive (active: false, never true)", () => {
   // Labor Domain V1. Paired with the prefix above, exactly as this file's own comment requires: a

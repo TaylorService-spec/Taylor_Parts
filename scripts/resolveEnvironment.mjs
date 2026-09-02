@@ -111,6 +111,15 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   // on the backend but not here would mean the UI hides a surface the governed read would answer,
   // which is a disagreement rather than a safeguard.
   'finance.visibility.consolidated',
+  // PERFORMANCE GOAL AUTHORITY -- mirrors environmentCapabilityOverrides.ts, whose comment carries
+  // the full reasoning. Present here for the same reason as the ids above: the frontend bakes THIS
+  // list into the bundle, so a verb eligible on the backend but absent here would hide a management
+  // action the command would have allowed -- a disagreement rather than a safeguard.
+  'performance.goal.read',
+  'performance.goal.create',
+  'performance.goal.approve',
+  'performance.goal.supersede',
+  'performance.goal.retire',
 ]);
 
 /**

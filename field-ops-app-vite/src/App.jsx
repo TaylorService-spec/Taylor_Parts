@@ -153,7 +153,7 @@ const previewHasPermission = createPermissionPreviewer(
 // separate deployment + Owner authorization.
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
-import LandingPage from "./navigation/LandingPage";
+import MyDashboard from "./modules/dashboard/MyDashboard.jsx";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
 import EmptyState from "./shared/ui/EmptyState.jsx";
 import { Button } from "./shared/ui/primitives";
@@ -205,10 +205,19 @@ const LEGACY_COMPONENTS = {
 // the destination set from isDomainVisible/isNavItemVisible -- the SAME functions the
 // rail and the route table use for this exact principal -- so it can neither show a
 // destination this person cannot open nor omit one they can.
+// SUPERSEDED BY MyDashboard (2026-09-02). The destination grid is not lost -- it is MyDashboard's
+// GO TO section, rendered by the SAME ReachableDestinations component this file used to mount whole,
+// so a destination is still either genuinely reachable right now or not listed.
+//
+// THE TECHNICIAN BRANCH STAYS. TechnicianDashboard is a real, governed, data-backed screen with a
+// technician-scoped read (PT-002) that MyDashboard deliberately does not duplicate; it gains the
+// performance section rather than being replaced by a generic composition. Composition resolves from
+// governed context, not from this branch -- the branch chooses which SURFACE renders, and neither
+// surface decides what anyone may see.
 function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
   if (role === "technician") return <TechnicianDashboard />;
   return (
-    <LandingPage
+    <MyDashboard
       role={role}
       allowedLegacyKeys={allowedLegacyKeys}
       operationalContext={operationalContext}

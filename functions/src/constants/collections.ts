@@ -83,3 +83,14 @@ export const SERIALIZED_ASSETS_COLLECTION = "serialized_assets";
 // next-action is a SEPARATE, NOT-YET-authorized roadmap capability (Exception Ownership / Operational
 // Accountability, PART 1.5); this is a deliberate SEAM, not an oversight.
 export const CRM_ACTIVITIES_COLLECTION = "crm_activities";
+
+// Performance Goal Authority -- versioned, effective-dated, approved TARGETS. Admin-SDK-only, the
+// same fail-closed posture as CRM_ACTIVITIES_COLLECTION above and for the same reason: firestore.rules
+// has NO match block for this collection, and a collection no rule matches is DENIED to every client.
+// The only write paths are the trusted commands in performance/performanceGoalCommands.ts.
+//
+// A document here holds a TARGET and never an ACTUAL. Nothing in this collection is computed from
+// business records, nothing caches a measurement, and a goal is never updated in place -- a changed
+// target is a NEW VERSION beside the old one, so a September target stays September's target after
+// October's changes.
+export const PERFORMANCE_GOALS_COLLECTION = "performance_goals";

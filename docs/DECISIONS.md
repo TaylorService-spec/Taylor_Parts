@@ -4637,3 +4637,157 @@ medium; part-to-bin rules; whether irregular/deep/oversized positions need recor
 **Evidence:** `docs/architecture/ADR-014-warehouse-and-bin-inventory-custody-model.md`;
 `docs/implementation-plans/bin-location-authority-and-scanning.md`;
 `docs/assessments/inventory-location-registry-2026-08-20.md` §4 (the three options as originally framed).
+## #161 — OWNER RULING: EOS dashboards compose authority, and derived information may appear on one (2026-09-02)
+
+**Context:** the dashboard reporting authority census (#1740) classified 132 dashboard fact families
+and closed with four formalization items and four Owner decisions still open. Three of those
+formalization items and one of the decisions were about the same subject — what a dashboard is
+allowed to be — and none could be answered by reading more code. The Owner answered them as one
+ruling while directing the dashboard + performance-management program.
+
+**Ruling, in two parts.**
+
+1. **"EOS dashboards compose existing domain authority. A dashboard is never a second permission
+   layer."** A tile reads through the SAME read authority, at the SAME scope, that the domain's own
+   workspace uses. It holds no capability of its own, widens none, and narrows none — a fact a
+   person's authority would refuse is ABSENT, not empty and not zero. No `dashboard.*` capability
+   exists and none is to be minted. Personalization may compose only governed context that already
+   exists (principal, Roles, capabilities, employee identity, governed position, ownership,
+   assignment, technician binding, location scope, business-unit / operating-company scope, and each
+   domain's own read authority) — and never a persona NAME, following `deriveScanWorkflows`, which is
+   capability-derived and cannot receive a persona.
+
+2. **Clearly identified derived informational projections MAY appear on a dashboard** where the
+   derivation already exists and is already governed. This extends ND-28, which ruled for a RECORD
+   PAGE and expressly did not address a dashboard tile. Conditions, all required: the derivation
+   already exists; it is unmistakably labelled `DERIVED` / `FORECAST` / `PREDICTION` / `INSIGHT`; it
+   does not replace, rename or visually impersonate authoritative operational truth; and it does not
+   carry the visual weight of a governed principal quantity. Refused by name: calling a forecast "On
+   hand", calling a prediction "Available", treating derived inventory as ATP, and presenting UNKNOWN
+   as zero. `NEEDS_PLANNING` means "the engine had nothing to compute", never "risk is low".
+   **UNKNOWN remains UNKNOWN.**
+
+**The product model recorded alongside it.** Every primary persona dashboard provides, WHERE GOVERNED
+FACTS EXIST: CURRENT WORK · PERFORMANCE AGAINST GOAL · BUSINESS IMPACT · GO TO. Management dashboards
+may add TEAM PERFORMANCE and DRIVERS / EXCEPTIONS at the manager's existing governed scope. "Where
+governed facts exist" is load-bearing: a section with no governed fact behind it renders an honest
+unavailable state naming what is missing, and is never filled with something adjacent.
+
+**Closes:** census §7 F-01 (dashboard read/scope rule), F-02 (the attention taxonomy ACTION_ITEM /
+NOTIFICATION as the platform-wide dashboard vocabulary, including the no-ALERT and no-re-badging
+rules), F-11 (truncation/completeness honesty), and §9 Owner decision 4.
+
+**Does NOT close:** census §9 decisions 2 (reporting-period authority) and 3 (the cost supply). Both
+remain open, and every fact family behind them stays honestly unavailable.
+
+Decision 1 (FIN-004 has no carrying Role) was **WITHDRAWN by #1743** as a measurement error, and
+closed for admin/owner in sandbox by #1744 — after this ruling was drafted. The dashboard modules
+and metric registry entries that cited it were corrected to name their REAL blockers, which for the
+period-based financial figures is the reporting-period authority rather than reach.
+
+**Enforced by:** `docs/governance/eos-dashboard-composition-authority.md` (canonical text).
+
+## #162 — OWNER DIRECTION: a governed Performance Goal Authority, reconciling FIN-003 (2026-09-02)
+
+**Context:** EOS could state what happened and never what should have happened. FIN-003
+(`finance/planVsActual.ts`) already defined a versioned GOAL/BUDGET plan with a
+DRAFT to APPROVED to SUPERSEDED lifecycle, an explicit measurement basis and a never-blend comparison
+core — merged, tested, and dormant since it landed for want of storage and an approval authority (its
+own §2 names both as deliberately undecided). The Owner directed a general performance-goal authority
+and named the constraint: "reconcile FIN-003 rather than creating two competing goal systems."
+
+**Decision — the invariant.** DOMAIN AUTHORITY OWNS THE ACTUAL. PERFORMANCE GOAL AUTHORITY OWNS THE
+TARGET. THE DASHBOARD COMPARES THEM. No goal record carries, caches or recomputes an actual, and no
+dashboard recomputes either half.
+
+**The reconciliation runs in ONE direction.** `functions/src/performance/` is the GENERAL authority
+(a target may be a count, a percentage, a duration or an amount). A goal whose metric declares a
+`financialBasis` **IS** a FIN-003 plan: `planRecordForGoal()` projects it through `buildPlanRecord`,
+and its comparison runs through `comparePlanToActual`. There is no second money path, no second
+never-blend rule, and no second definition of what BOOKED means. Approval composes FIN-007, whose
+`APPROVABLE_ACTION_TYPES` already reserved `PLAN_APPROVAL` with a nullable amount expressly "for
+non-monetary actions (e.g. plan approval)" — FIN-007 supplies the mechanical invariants
+(self-approval forbidden under any policy, a reason mandatory), and WHO may approve is the one thing
+FIN-007 leaves to its composer. **FIN-003 did not change to receive its missing halves.**
+
+**A metric registry, not free-form ids.** A goal may reference only a registered metric.
+THIRTY-SEVEN are registered; TEN are active. The other twenty-one are registered WITH THEIR BLOCKER NAMED, because
+what the platform would measure and exactly what stops it is more useful than silence. Every WINDOWED
+metric is inactive — G-05, no reporting-period authority — which is the single rule keeping the
+registry honest.
+
+**Management authority is four factors, none of them a title.** The Owner's rule was "holding a
+manager title alone must not widen scope", so nothing reads a Role name: (1) the goal capability
+resolved AT THE TARGET'S OWN SCOPE; (2) authority over the metric's own actual — *you may not set a
+target on a number you are not authorized to see*, which keeps a Sales Manager out of warehouse goals
+without a rule about sales managers and warehouses; (3) governed hierarchical visibility for an
+EMPLOYEE target; (4) FIN-007's self-approval refusal. Plus: an employee does not author their own
+target — necessary because `visibleEmployeeIdsFor` deliberately includes the viewer's own employeeId,
+so factor 3 alone would permit it.
+
+**Scopes are activated only where the binding can be PROVEN.** EMPLOYEE, LOCATION, BUSINESS_UNIT,
+OPERATING_COMPANY and FIRM bind to existing governed authorities. **TEAM is registered and
+deliberately NOT bindable**: no `teams` collection and no `reportsTo` edge exist, and
+`roleHierarchy.ts` records its own limit — every salesManager sees every salesperson, so "the team
+beneath manager X" is not distinguishable from manager Y's. A manager may still VIEW a rollup across
+the employees hierarchy grants them; that is a per-viewer visibility set, not a team, and it cannot be
+the durable target of a stored goal.
+
+**Rollups are declared, never assumed.** A rate rolls up as sum(numerator) / sum(denominator), never
+average(percentages) — which would weight a technician who closed two jobs equally with one who closed
+forty. A metric whose rollup rule is not declared does not roll up at all.
+
+**Capabilities:** five, all registered `active:false` — `performance.goal.read` / `.create` /
+`.approve` / `.supersede` / `.retire`. Authoring and approval are separate ids so one person cannot
+set and bless their own team's numbers in a single act; supersede is separate because it is the only
+operation that closes an existing version's window. Granted per the Owner's §E policy table to owner,
+generalManager, operationsManager, salesManager, fieldManager, partsManager, warehouseManager and
+purchasingManager (all five verbs), and read-only to salesperson, partsAssociate and
+warehouseAssociate.
+
+**CORRECTION, same day — admin and owner ALSO hold all five, and not by any grant written here.**
+The first version of this entry claimed "admin is deliberately NOT granted", reasoning that
+administering access is a different job from setting targets. That claim was false about this
+codebase. `ADMIN_ROLE.permissions` is DERIVED as `ADMIN_CURATED_PERMISSIONS` plus the ENTIRE
+`PERMISSION_CATALOG` (Owner ruling 2026-08-19: "Admin and Owner have full access to all possible
+features and permissions"), so **registering a capability grants it to admin — and to owner, which
+composes admin's set — the moment it is registered.** Measured by resolver, not by reading: admin
+resolves all five goal verbs.
+
+This is the SAME derivation that defeated the dashboard census's grep-based FIN-004 measurement
+(#1743, withdrawn), met twice in one week. The lesson is recorded rather than the symptom patched:
+**a claim about who holds a capability is measured by the resolver, never by searching Role
+sources** — admin's grants appear as literals nowhere. An explicit owner grant added on the false
+premise has been removed, because a duplicate that reads as a deliberate distinction encodes one
+that does not exist.
+
+The practical consequence is small and acceptable: admin can author and approve goals. FIN-007's
+self-approval prohibition still applies to them unconditionally, and every act is audited.
+
+**One new Role: `performanceGoalSubject`**, carrying exactly `performance.goal.read`. It exists
+because `technician` and `dispatcher` are COMPATIBILITY Roles whose contract is to reproduce today's
+matrix EXACTLY — they are the parity oracle the shadow harness scores against, and adding a capability
+to one in order to ship a feature would corrupt the measuring instrument.
+
+**`salesManager` and `salesperson` are no longer identical**, for the first time. The manager holds the
+four write verbs; the salesperson holds only read. The asymmetry is load-bearing rather than drift:
+without it a salesperson could author their own quota.
+
+**History is not rewritten.** Superseding does not edit a goal — it closes the predecessor's window and
+writes a new version beside it, in the SAME transaction as the approval that makes the successor
+authoritative, so no instant exists in which two approved versions cover one date (which
+`currentGoalFor` refuses rather than resolving by array order). The close may SHORTEN a window and
+never LENGTHEN one.
+
+**No Rules change.** `performance_goals` has no `firestore.rules` match block and is denied to every
+client by rule absence — the posture `crm_activities` already relies on. The explicit deny-all block is
+prepared for the Owner rather than merged, since a Rules edit is Tier-2 and would force a deploy cycle
+for a change with no behavioural effect.
+
+**Activation:** the five ids are declared for `platform-sandbox` in all three registries that must
+agree (`config/environments.json`, the Functions snapshot, and `scripts/resolveEnvironment.mjs`, which
+the frontend bakes into its bundle). Production is untouched and resolves EMPTY unconditionally.
+**Deploy remains Owner-executed.**
+
+**Enforced by:** `functions/src/performance/*`; suite `functions/test/performanceGoal.test.mjs`
+(37 cases); workflow `.github/workflows/performance-goal-tests.yml`.

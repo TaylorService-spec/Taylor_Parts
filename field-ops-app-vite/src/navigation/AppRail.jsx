@@ -23,6 +23,8 @@ import {
 } from "./navConfig";
 import VerenwardMark from "../shared/brand/VerenwardMark";
 import Icon from "../shared/ui/Icon";
+import { useAuth } from "../auth/AuthContext";
+import { Button } from "../shared/ui/primitives/index.js";
 
 // One glyph per operational domain, so the rail reads by shape as well as by
 // label -- a keyboard/mouse-agnostic scan aid, not a substitute for the text.
@@ -317,6 +319,51 @@ export default function AppRail({
         })}
       </ul>
     </nav>
+  );
+}
+
+/**
+ * The identity block at the FOOT of the rail: who is signed in, the role their access actually
+ * resolves to, and the existing sign-out.
+ *
+ * IT REFLECTS, IT DOES NOT SELECT. There is no role switcher here and there must not be one: a
+ * control that changed the displayed role would either be a lie (the label changing while authority
+ * did not) or a privilege escalation (authority changing because a label did). The role shown is the
+ * one `resolveEmployeeSession` already resolved for this principal, read through the same
+ * `useAuth()` the header has always used.
+ *
+ * IT WIDENS NOTHING. No new read, no new capability, no new prop -- `useAuth()` is already the
+ * source of `role` and `logout` for AppHeader, and this is a second consumer of the same context.
+ * Sign-out behaviour is the existing one, unchanged.
+ *
+ * A principal whose session carries no role renders the ROLE LINE ABSENT rather than a guess or a
+ * placeholder: "no role resolved" is a real state (an unlinked or inactive employee), and inventing
+ * a label for it would hide exactly the condition an administrator needs to see.
+ */
+const ROLE_LABEL = Object.freeze({
+  admin: "Administrator",
+  dispatcher: "Dispatcher",
+  technician: "Technician",
+});
+
+export function RailIdentity() {
+  // Read DEFENSIVELY rather than by destructuring. AppShell is rendered in tests (and could be
+  // rendered in an error boundary) with no AuthContext above it, where useAuth() returns undefined
+  // and a destructure throws -- taking the whole navigation shell down to render an identity strip.
+  // Identity is the least important thing on this rail; it fails closed to nothing and the rail
+  // keeps working.
+  const auth = useAuth() ?? {};
+  const { user, role, displayName, logout } = auth;
+  if (!user) return null;
+  const name = displayName || user.email || "Signed in";
+  return (
+    <div className="fo-rail-identity">
+      <span className="fo-rail-identity__name" title={name}>{name}</span>
+      {role ? <span className="fo-rail-identity__role">{ROLE_LABEL[role] ?? role}</span> : null}
+      <Button variant="tertiary" onClick={logout} className="fo-rail-identity__signout">
+        Sign out
+      </Button>
+    </div>
   );
 }
 

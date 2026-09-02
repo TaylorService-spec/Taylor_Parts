@@ -249,6 +249,10 @@ export const ROLE_HIERARCHY: Readonly<Record<string, RoleHierarchyNode>> = Objec
  * the evidence changed.
  */
 export const NON_HIERARCHICAL_ROLES: ReadonlySet<string> = new Set([
+  // A read grant, not a rung. Holding it lets a person see the goals their POSITION already reaches;
+  // it must never itself confer visibility, or granting someone the right to see their own target
+  // would quietly place them in the tree.
+  "performanceGoalSubject",
   "inventoryCreateExecutor",
   "inventoryCatalogAdministrator",
   "workOrderPartsPlanner",

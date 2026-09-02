@@ -147,6 +147,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "reactivateTruck",
   "deleteTruckCreatedInError",
   // EI Phase-2 Receiving (Phase C): runtime mirror of the receiveInventoryStock AuditAction union member.
+  // Performance Goal Authority -- runtime mirror of the four goal AuditAction union members.
+  "createPerformanceGoalDraft",
+  "approvePerformanceGoal",
+  "supersedePerformanceGoal",
+  "retirePerformanceGoal",
   "receiveInventoryStock",
   // Finance (Billing/AR): runtime mirror of the issueInvoice AuditAction union member (invoice issuance).
   "issueInvoice",

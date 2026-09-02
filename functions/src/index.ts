@@ -494,3 +494,24 @@ export {
 // default deny); these two trusted callables are the only read/write path.
 export { createCrmActivity } from "./crmActivity/crmActivityCallables";
 export { getCrmActivities } from "./crmActivity/crmActivityReadService";
+
+// PERFORMANCE GOAL AUTHORITY (docs/governance/eos-dashboard-composition-authority.md, Rule 3). The
+// governed TARGET authority: versioned, effective-dated, approved goals a dashboard compares against
+// domain-owned actuals. Reconciles FIN-003 rather than competing with it -- a goal whose metric
+// declares a financialBasis IS a FIN-003 plan and is compared by that core, and approval composes
+// FIN-007's PLAN_APPROVAL invariants.
+//
+// EXPORT != DEPLOY, REGISTER != GRANT != ACTIVATE. All five `performance.goal.*` capabilities are
+// registered active:false, and production resolves its activation override set to EMPTY
+// unconditionally, so a deployed callable still denies for every principal there. `performance_goals`
+// is Admin-SDK-only (no firestore.rules match block, default deny) -- these callables are the only
+// read/write path. Firebase deploys each callable under its exported index property name, so the
+// suffixed impl consts are aliased to frozen public names here.
+export {
+  createPerformanceGoalDraftCallable as createPerformanceGoalDraft,
+  approvePerformanceGoalCallable as approvePerformanceGoal,
+  retirePerformanceGoalCallable as retirePerformanceGoal,
+  listCurrentPerformanceGoalsCallable as listCurrentPerformanceGoals,
+  listPerformanceGoalVersionsCallable as listPerformanceGoalVersions,
+  listGoalSubjectsCallable as listGoalSubjects,
+} from "./performance/performanceGoalCallables";

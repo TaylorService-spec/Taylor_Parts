@@ -1346,6 +1346,78 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+
+  // PERFORMANCE GOAL AUTHORITY (performance/performanceGoalAuthority.ts) -- the five verbs of the
+  // governed TARGET authority. A goal is a versioned, effective-dated, approved TARGET; the ACTUAL
+  // stays with the domain that owns it, and these ids confer no reach over any actual whatsoever.
+  //
+  // WRITE AND APPROVAL ARE SEPARATE IDS, DELIBERATELY. This repository separates authoring from
+  // approving wherever a governance event exists (FIN-007's unconditional self-approval prohibition,
+  // the privileged two-person role-approval path), and collapsing them here would let one person set
+  // and bless their own team's numbers in a single act.
+  //
+  // SUPERSEDE IS ITS OWN ID, not a synonym for create. Superseding has an effect create does not: it
+  // CLOSES a predecessor version's effective window. That is the operation that could rewrite
+  // history if done wrongly, so it is separately grantable and separately auditable.
+  //
+  // HOLDING ONE OF THESE IS NOT REACH. Every act additionally resolves the capability AT THE GOAL'S
+  // OWN TARGET SCOPE, requires authority over the metric's own actual where an enumerated capability
+  // exists for it, and -- for an EMPLOYEE-scoped goal -- requires the subject to be inside the
+  // actor's governed hierarchical visibility. Holding a manager title alone widens nothing.
+  //
+  // All five registered active:false.
+  //
+  // "REGISTER != GRANT" HOLDS FOR EVERY ROLE EXCEPT ONE, and the exception is worth knowing before
+  // reading the grant table as the whole story: by Owner ruling (2026-08-19) admin's permission set
+  // is DERIVED as ADMIN_CURATED_PERMISSIONS plus the entire PERMISSION_CATALOG, so a capability
+  // becomes admin's -- and owner's, which composes admin's set -- THE MOMENT IT IS REGISTERED HERE.
+  // Registering these five therefore granted them to admin and owner as a side effect, without
+  // appearing as a literal in any Role source. That derivation is exactly what defeated the
+  // dashboard census's grep-based FIN-004 measurement (#1743), so it is stated here rather than
+  // left to be rediscovered the same way.
+  //
+  // REGISTER != ACTIVATE still holds without exception: an id registered active:false resolves DENY
+  // inactivePermission for admin too, in every environment, until an environment activates it.
+  Object.freeze({
+    id: "performance.goal.read",
+    description:
+      "Read governed performance goals (targets) at the caller's authorized scope. Reads targets only -- it confers no reach over any metric's ACTUAL, which stays governed by that metric's own domain authority.",
+    resource: "performance.goal",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "performance.goal.create",
+    description:
+      "Author a DRAFT performance goal version. Authoring is not approving: a DRAFT is never a measurement authority and is never compared against. An employee may not author their own target.",
+    resource: "performance.goal",
+    action: "create",
+    active: false,
+  }),
+  Object.freeze({
+    id: "performance.goal.approve",
+    description:
+      "Approve a DRAFT performance goal version, making it the target in force for its effective window. Self-approval is forbidden unconditionally (FIN-007) -- the author of a version may never be its approver, under any policy.",
+    resource: "performance.goal",
+    action: "approve",
+    active: false,
+  }),
+  Object.freeze({
+    id: "performance.goal.supersede",
+    description:
+      "Replace an APPROVED goal version with a later one, closing the predecessor's effective window. Separate from create because this is the only operation that alters an existing version's window -- a September target must remain September's target after October's target changes.",
+    resource: "performance.goal",
+    action: "supersede",
+    active: false,
+  }),
+  Object.freeze({
+    id: "performance.goal.retire",
+    description:
+      "Withdraw an APPROVED goal with no successor. Distinct from supersede: 'we changed the number' and 'we stopped measuring this' are different facts, and a retired goal must not appear to have a successor nobody can find.",
+    resource: "performance.goal",
+    action: "retire",
+    active: false,
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {

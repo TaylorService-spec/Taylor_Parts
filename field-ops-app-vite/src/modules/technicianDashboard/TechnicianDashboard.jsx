@@ -6,6 +6,7 @@ import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import TechnicianWorkOrderCard from "./TechnicianWorkOrderCard";
 import TechnicianWorkOrderDetail from "./TechnicianWorkOrderDetail";
 import PerformanceSnapshot from "./PerformanceSnapshot";
+import TechnicianPerformance from "./TechnicianPerformance.jsx";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
@@ -63,7 +64,7 @@ function Section({ title, workOrders, selectedId, onSelect, emptyMessage }) {
 }
 
 export default function TechnicianDashboard() {
-  const { operationalRoles } = useAuth();
+  const { operationalRoles, employeeId } = useAuth();
   const {
     technician,
     loading: technicianLoading,
@@ -195,6 +196,12 @@ export default function TechnicianDashboard() {
             onSelect={setSelectedId}
             emptyMessage="Nothing completed yet today."
           />
+          {/* PERFORMANCE COMES AFTER THE WORK, at every width, and that ordering is the product
+              decision rather than a layout convenience. A technician opening this screen is usually
+              standing in front of a machine; what they need to DO must not be below what they are
+              measured on. The all-time snapshot above stays where it was -- it is a compact strip
+              about identity, not a scorecard -- and this is the section that carries targets. */}
+          <TechnicianPerformance employeeId={employeeId ?? null} />
         </>
       )}
     </WorkspaceShell>
