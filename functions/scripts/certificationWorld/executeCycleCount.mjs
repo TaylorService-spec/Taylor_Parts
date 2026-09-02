@@ -85,7 +85,7 @@ const ACTIONS = {
   cancel: { run: cancelCycleCountProduction, capability: "inventory.cycleCount.cancel" },
 };
 
-export async function cycleCountAs(db, employeeId, action, request) {
+export async function cycleCountAs(db, employeeId, action, request, { now = () => FIXED_NOW } = {}) {
   const spec = ACTIONS[action];
   if (!spec) throw new Error(`unknown cycle count action ${action}`);
   const principalIndex = await loadPrincipalIndex(db);
@@ -98,7 +98,10 @@ export async function cycleCountAs(db, employeeId, action, request) {
       authorize: (txn, actorId) => makeCertResolver(db, spec.capability)(txn, actorId),
       resolvePart: (txn, partId) => resolveCycleCountPartThroughTxn(txn, db, partId),
       stageAudit: (txn, audit) => stageCycleCountAuditEvent(txn, audit),
-      now: () => FIXED_NOW,
+      // FIXED_NOW by default so the emulator G07 lifecycle stays byte-reproducible. A LIVE
+      // ceremony passes the real clock -- stamping a real count with a pinned 2026-08-22 would
+      // record a time the count did not happen at. Same correction Receiving needed.
+      now,
     });
     return { ok: true, action, actorEmployeeId: employeeId, actorUid: uid, outcome };
   } catch (err) {
