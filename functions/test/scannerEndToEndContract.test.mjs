@@ -46,8 +46,9 @@ const { createPartAlias } = await import("../lib/partMaster/partAliasCommands.js
 const { resolveScannedPartIdentifier } = await import("../lib/partMaster/partAliasScanResolver.js");
 const { readPartBalance } = await import("../lib/inventory/partBalanceReadService.js");
 const { receiveInventoryStock, UnauthorizedReceivingError } = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
-const { createBin, BINS_COLLECTION } = await import("../lib/inventoryLocation/binCommands.js");
-const { deriveBinDocId } = await import("../lib/inventoryLocation/binRegistry.js");
+const { createBin, renameBin, setBinStatus, resolveBinCode, resolveBinToken, BINS_COLLECTION, BIN_CODE_CLAIMS_COLLECTION } =
+  await import("../lib/inventoryLocation/binCommands.js");
+const { deriveBinId, deriveBinClaimId } = await import("../lib/inventoryLocation/binRegistry.js");
 const { recordPutAway, PlacementUnauthorizedError, PlacementBinError, BIN_PLACEMENTS_COLLECTION } = await import("../lib/inventoryLocation/putAwayCommand.js");
 const {
   createTransferOrder, dispatchTransferOrder, receiveTransferOrder,
@@ -205,8 +206,8 @@ await check("THE CHAIN: identify → lookup → receive → put away → pick/st
   assert.equal(afterReceive.available.value, 10, "nothing is reserved by receiving");
 
   // ─────────────────────────────────────────── 4. PUT AWAY — the load-bearing invariant
-  const binCode = "A-14";
-  await createBin({ warehouseId, code: binCode, idempotencyKey: uid("idem") }, deps);
+  const binCode = "A01-014";
+  await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "A", bay: 1, position: 14, idempotencyKey: uid("idem") }, deps);
   const placed = await recordPutAway({ warehouseId, binCode, partId, quantity: 10, idempotencyKey: uid("idem") }, deps);
   assert.equal(placed.outcome, "recorded");
 
@@ -228,9 +229,9 @@ await check("THE CHAIN: identify → lookup → receive → put away → pick/st
   // reserveParts), never an operator-invokable scanner command.
   // A staging area is a bin like any other: it must be registered before stock can be staged into
   // it. There is no implicit "staging" location, which is what keeps "where is it" answerable.
-  await createBin({ warehouseId, code: "STAGE-1", idempotencyKey: uid("idem") }, deps);
+  await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "S", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
   const staged = await recordPutAway({
-    warehouseId, binCode: "STAGE-1", partId, quantity: 4,
+    warehouseId, binCode: "S01-001", partId, quantity: 4,
     pickedForWorkOrderId: uid("WO"), idempotencyKey: uid("idem"),
   }, deps);
   assert.equal(staged.outcome, "recorded");
@@ -370,11 +371,11 @@ await check("NEGATIVE 4 — put-away without inventory.placement.record is refus
   const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
   const grants = ALL_SCANNER_GRANTS(); grants.delete("inventory.placement.record");
   const { deps } = makeDeps(uid("a"), grants);
-  await createBin({ warehouseId, code: "B-01", idempotencyKey: uid("idem") }, deps);
+  await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "B", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
   // Still holds inventory.stock.receive. Stowing all day must never confer the authority to accept
   // stock, and accepting stock must never confer the authority to stow it.
   await assert.rejects(
-    recordPutAway({ warehouseId, binCode: "B-01", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    recordPutAway({ warehouseId, binCode: "B01-001", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
     PlacementUnauthorizedError,
   );
 });
@@ -384,7 +385,7 @@ await check("NEGATIVE 5 — put-away into a bin that does not exist is refused, 
   const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
   const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
   await assert.rejects(
-    recordPutAway({ warehouseId, binCode: "NEVER-LABELLED", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    recordPutAway({ warehouseId, binCode: "Z01-999", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
     (e) => e instanceof PlacementBinError && e.message === "NOT_FOUND",
     "an unknown bin is a refusal that SAYS it was not found — creating racking by scanning it would make the registry meaningless",
   );
@@ -395,29 +396,43 @@ await check("NEGATIVE 6 — a bin code from ANOTHER warehouse is refused, and a 
   const whA = uid("wh"); const whB = uid("wh");
   await seedWarehouse(whA); await seedWarehouse(whB);
   const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
-  await createBin({ warehouseId: whA, code: "C-09", idempotencyKey: uid("idem") }, deps);
+  await createBin({ warehouseId: whA, area: "PARTS_ROOM", aisle: "C", bay: 1, position: 9, idempotencyKey: uid("idem") }, deps);
 
   // A bin id is DERIVED per warehouse (bin_<warehouse>__<code>), so the same code at another site
   // is not a different answer to the same question — it is a different bin entirely, and the
   // lookup never even reaches WH-A's record. NOT_FOUND is the correct, and the safe, answer.
   await assert.rejects(
-    recordPutAway({ warehouseId: whB, binCode: "C-09", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    recordPutAway({ warehouseId: whB, binCode: "C01-009", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
     (e) => e instanceof PlacementBinError && e.message === "NOT_FOUND",
     "a bin code is only meaningful inside its own warehouse",
   );
 
-  // WRONG_WAREHOUSE is therefore reachable ONLY from a record whose stored warehouseId disagrees
-  // with its own derived id — corruption, a bad migration, a hand-edited document. The command must
-  // refuse it rather than trust either half, so this seeds exactly that and proves it fails closed.
-  const corruptedId = deriveBinDocId(whB, "E-07");
-  await db.collection(BINS_COLLECTION).doc(corruptedId).set({
-    warehouseId: whA, code: "E-07", status: "ACTIVE",
+  // BIN-P1 moved WRONG_WAREHOUSE to the MACHINE-TOKEN path, where it is genuinely determinable: a
+  // token identifies one bin globally, so the resolver really can compare its warehouse against the
+  // operator's. A scanned Warehouse-A bin, presented while standing in Warehouse B, says so plainly.
+  const binAId = deriveBinId(uid("crosswh"));
+  await db.collection(BINS_COLLECTION).doc(binAId).set({
+    warehouseId: whA, area: "PARTS_ROOM", aisle: "E", bay: 1, position: 7, code: "E01-007",
+    name: null, status: "ACTIVE", version: 1, schemaVersion: 2,
+    idempotencyKey: "seed-crosswh", fingerprint: "0".repeat(16),
     createdAt: Timestamp.fromDate(NOW), createdBy: "seed", updatedAt: Timestamp.fromDate(NOW), updatedBy: "seed",
   });
   await assert.rejects(
-    recordPutAway({ warehouseId: whB, binCode: "E-07", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    recordPutAway({ warehouseId: whB, binId: binAId, partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
     (e) => e instanceof PlacementBinError && e.message === "WRONG_WAREHOUSE",
-    "a bin record that contradicts its own id must be refused, never half-trusted",
+    "a scanned bin from another building must say so, not merely fail to be found",
+  );
+
+  // And a reservation that contradicts the bin it points at — corruption, a hand-edited document —
+  // fails CLOSED on the manual path rather than being half-trusted either way.
+  await db.collection(BIN_CODE_CLAIMS_COLLECTION).doc(deriveBinClaimId(whB, "E01-007")).set({
+    binId: binAId, warehouseId: whB, code: "E01-007", claimState: "HELD",
+    claimedAt: Timestamp.fromDate(NOW), claimedBy: "seed", schemaVersion: 1,
+  });
+  await assert.rejects(
+    recordPutAway({ warehouseId: whB, binCode: "E01-007", partId, quantity: 1, idempotencyKey: uid("idem") }, deps),
+    (e) => e instanceof PlacementBinError && e.message === "MALFORMED",
+    "a reservation and a bin that disagree about the warehouse must be refused, never half-trusted",
   );
 });
 
@@ -499,12 +514,139 @@ await check("NEGATIVE 10 — replaying any stage is idempotent, not doubled", as
   assert.equal((await balance(partId)).onHand.value, 6, "REPLAY MUST NOT DOUBLE STOCK");
 
   const { deps } = makeDeps(actor, grants);
-  await createBin({ warehouseId, code: "D-02", idempotencyKey: uid("idem") }, deps);
+  await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "D", bay: 1, position: 2, idempotencyKey: uid("idem") }, deps);
   const placementKey = uid("idem");
-  await recordPutAway({ warehouseId, binCode: "D-02", partId, quantity: 6, idempotencyKey: placementKey }, deps);
-  await recordPutAway({ warehouseId, binCode: "D-02", partId, quantity: 6, idempotencyKey: placementKey }, deps);
+  await recordPutAway({ warehouseId, binCode: "D01-002", partId, quantity: 6, idempotencyKey: placementKey }, deps);
+  await recordPutAway({ warehouseId, binCode: "D01-002", partId, quantity: 6, idempotencyKey: placementKey }, deps);
   const placements = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
   assert.equal(placements.size, 1, "a replayed put-away records one placement, not two");
+});
+
+// ═══════════════════════════════ BIN-P1 — stable identity, against the real store ═══════════════
+
+await check("BIN-P1 — a legitimate rename keeps the binId, so placement history survives it", async () => {
+  const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
+  const partId = uid("PRT");
+  const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
+
+  const made = await createBin(
+    { warehouseId, area: "PARTS_ROOM", aisle: "R", bay: 1, position: 3, idempotencyKey: uid("idem") }, deps);
+  assert.equal(made.outcome, "created");
+  assert.equal(made.code, "R01-003");
+
+  await recordPutAway({ warehouseId, binCode: "R01-003", partId, quantity: 2, idempotencyKey: uid("idem") }, deps);
+  const before = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
+  assert.equal(before.size, 1);
+  assert.equal(before.docs[0].data().binId, made.binId, "the placement records the STABLE id");
+  assert.equal(before.docs[0].data().binCode, "R01-003");
+
+  // The rack was mislabelled. Correcting it must not create a second bin.
+  const renamed = await renameBin(
+    { binId: made.binId, area: "PARTS_ROOM", aisle: "R", bay: 1, position: 5 }, deps);
+  assert.equal(renamed.outcome, "updated");
+  assert.equal(renamed.binId, made.binId, "THE IDENTITY DID NOT MOVE");
+  assert.equal(renamed.code, "R01-005");
+
+  const after = await db.collection(BIN_PLACEMENTS_COLLECTION).where("partId", "==", partId).get();
+  assert.equal(after.size, 1, "no placement was orphaned or duplicated");
+  assert.equal(after.docs[0].data().binId, made.binId);
+  assert.equal(after.docs[0].data().binCode, "R01-003", "the historical code is a point-in-time fact, never rewritten");
+
+  // The old label still reaches the right shelf, and says what it should now read.
+  const stale = await resolveBinCode(db, "R01-003", warehouseId);
+  assert.equal(stale.result, "FOUND_SUPERSEDED_CODE");
+  assert.equal(stale.binId, made.binId);
+  assert.equal(stale.code, "R01-005");
+
+  // And the barcode never changed, because the token IS the binId.
+  const scanned = await resolveBinToken(db, made.binId, warehouseId);
+  assert.equal(scanned.result, "FOUND");
+  assert.deepEqual(scanned.location, { type: "BIN", locationId: made.binId });
+});
+
+await check("BIN-P1 — the same idempotencyKey with different intent CONFLICTS, and changes nothing", async () => {
+  const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
+  const otherWarehouse = uid("wh"); await seedWarehouse(otherWarehouse);
+  const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
+  const key = uid("idem");
+
+  const made = await createBin(
+    { warehouseId, area: "PARTS_ROOM", aisle: "K", bay: 1, position: 1, idempotencyKey: key }, deps);
+
+  const replay = await createBin(
+    { warehouseId, area: "PARTS_ROOM", aisle: "K", bay: 1, position: 1, idempotencyKey: key }, deps);
+  assert.equal(replay.outcome, "unchanged", "same key, same intent is a replay");
+  assert.equal(replay.binId, made.binId);
+
+  for (const different of [
+    { warehouseId: otherWarehouse, area: "PARTS_ROOM", aisle: "K", bay: 1, position: 1 },
+    { warehouseId, area: "PARTS_ROOM", aisle: "K", bay: 2, position: 1 },
+    { warehouseId, area: "WAREHOUSE_STORAGE", aisle: "K", bay: 1, position: 1 },
+  ]) {
+    await assert.rejects(
+      createBin({ ...different, idempotencyKey: key }, deps),
+      (e) => e.constructor.name === "BinIdempotencyConflictError",
+      `a different create intent under the same key must conflict: ${JSON.stringify(different)}`,
+    );
+  }
+
+  const stored = await db.collection(BINS_COLLECTION).doc(made.binId).get();
+  assert.equal(stored.data().code, "K01-001", "the existing bin was not modified by any refused attempt");
+  assert.equal(stored.data().version, 1);
+});
+
+await check("BIN-P1 — a code is reserved to ONE bin per warehouse, and never released", async () => {
+  const whA = uid("wh"); await seedWarehouse(whA);
+  const whB = uid("wh"); await seedWarehouse(whB);
+  const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
+
+  const a = await createBin({ warehouseId: whA, area: "PARTS_ROOM", aisle: "M", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
+
+  // The same human code in ANOTHER warehouse is a different bin. That is how racking is labelled.
+  const b = await createBin({ warehouseId: whB, area: "PARTS_ROOM", aisle: "M", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
+  assert.equal(a.code, b.code, "the humans read the same code");
+  assert.notEqual(a.binId, b.binId, "the machines do not");
+
+  // A second bin in the SAME warehouse cannot take it.
+  await assert.rejects(
+    createBin({ warehouseId: whA, area: "PARTS_ROOM", aisle: "M", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps),
+    (e) => e.constructor.name === "BinCodeReservedError",
+  );
+
+  // After a rename, the OLD code is still reserved to the original bin — that is what stops a stale
+  // label from ever pointing at a different shelf.
+  await renameBin({ binId: a.binId, area: "PARTS_ROOM", aisle: "M", bay: 1, position: 9 }, deps);
+  await assert.rejects(
+    createBin({ warehouseId: whA, area: "PARTS_ROOM", aisle: "M", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps),
+    (e) => e.constructor.name === "BinCodeReservedError",
+    "a superseded code is permanently reserved",
+  );
+});
+
+await check("BIN-P1 — retiring a bin frees no code, and a broken reservation is never repaired", async () => {
+  const warehouseId = uid("wh"); await seedWarehouse(warehouseId);
+  const { deps } = makeDeps(uid("a"), ALL_SCANNER_GRANTS());
+
+  const made = await createBin({ warehouseId, area: "PARTS_ROOM", aisle: "T", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps);
+  await setBinStatus({ binId: made.binId }, "INACTIVE", deps);
+
+  await assert.rejects(
+    createBin({ warehouseId, area: "PARTS_ROOM", aisle: "T", bay: 1, position: 1, idempotencyKey: uid("idem") }, deps),
+    (e) => e.constructor.name === "BinCodeReservedError",
+    "deactivation must not hand the code to a different physical rack",
+  );
+
+  const revived = await setBinStatus({ binId: made.binId }, "ACTIVE", deps);
+  assert.equal(revived.binId, made.binId, "reactivation reuses the same identity");
+  assert.equal(revived.code, made.code);
+
+  // Delete the reservation out from under it: a rename must refuse rather than silently re-create it.
+  await db.collection(BIN_CODE_CLAIMS_COLLECTION).doc(deriveBinClaimId(warehouseId, made.code)).delete();
+  await assert.rejects(
+    renameBin({ binId: made.binId, area: "PARTS_ROOM", aisle: "T", bay: 1, position: 4 }, deps),
+    (e) => e.constructor.name === "BinClaimIntegrityError",
+    "a missing reservation is evidence of a fault, not something to fix in passing",
+  );
 });
 
 // =================================================================================================
