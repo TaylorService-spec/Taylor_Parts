@@ -65,6 +65,24 @@ regardless of your current directory. If the preflight fails (missing config,
 missing Rules, or a root/Vite Rules mismatch) it aborts before starting anything
 (exit 2) -- fix the worktree, do not bypass it.
 
+**If port 8080 is unavailable on your machine.** It is on at least one (bind fails on every
+interface with no visible listener, and it is not in the Windows excluded-port ranges), which makes
+the whole `?emulator=1` path unreachable there. Concurrent worktrees cannot share the port either.
+Move it **locally, uncommitted** — `firebase.json`'s port is the repository default and CI's, so do
+not commit a change to it:
+
+```bash
+# 1. edit firebase.json: "firestore": { "port": 8085 }   <- DO NOT COMMIT
+# 2. tell the seeder and the app where it went
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 node .claude/skills/run-field-ops-app-vite/seed.mjs
+VITE_EMULATOR_FIRESTORE_PORT=8085 npm run dev -- --port 5173 --strictPort
+# 3. git checkout -- firebase.json when you are done
+```
+
+`seed.mjs` and `src/firebase/firebase.js` both treat their ports as DEFAULTS, so an already-set
+`FIRESTORE_EMULATOR_HOST` / `VITE_EMULATOR_*_PORT` wins. Neither can reach a live project: the
+admin variables are emulator-only, and the client branch is `import.meta.env.DEV` + `?emulator=1`.
+
 **2. Seed test accounts** (from `field-ops-app-vite/`):
 ```bash
 node .claude/skills/run-field-ops-app-vite/seed.mjs
@@ -110,6 +128,7 @@ Commands (full reference in `driver.mjs`'s header comment):
 | `needs-planning <accountKey> [outPng]` | Login, navigate to Inventory, switch to the "Needs Planning" filter, screenshot. |
 | `submit-manual-qty <accountKey> <qty> [outPng]` | Login, switch to "Needs Planning", enter `<qty>`, click "Request Reorder", screenshot the result. |
 | `submit-ready <accountKey> [outPng]` | Login, "Show All" filter, one-click "Request Reorder" on a `READY` part, screenshot. |
+| `visual-sweep [accountKey] [routePrefix]` | Walk every routed family (derived from `navConfig.js`, never a hand-written list) at 1440 and 375, reporting horizontal overflow, clipped text, sub-44px controls, sticky overlap and console errors. Reports; does not assert. `SWEEP_VIEWPORTS=handheld-375` runs one width — which is what makes a before/after diff against the pre-change code practical. |
 
 `accountKey` is one of `admin` / `eligiblePartsManager` /
 `ineligibleDispatcher` (from `seed.mjs`). Screenshots land in
