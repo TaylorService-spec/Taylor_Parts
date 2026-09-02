@@ -27,6 +27,8 @@ import { useState } from "react";
 import { FinancialsPageFrame, FinancialsHonestSection, FinAnnotation } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
   FACTS_STATE,
   FACTS_DETAIL,
@@ -50,6 +52,11 @@ export default function FinancialsEmployeePerformance() {
   const read = useFinancialFacts({ factTypes: ["INVOICE"] });
   const { state, result } = financialFactsState(read);
   const ready = state === FACTS_STATE.READY;
+
+  // A PERSON'S NAME, NOT THEIR KEY. The rollup is keyed by creditedSalespersonId because that is
+  // the frozen financial fact; the directory only supplies the label a human reads. The grouping
+  // never uses the name — a display name is mutable, and money must not regroup when someone marries.
+  const { byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
   const rows = ready && view === "credit" ? (result.byCreditedSalesperson ?? []).map(rollupRow) : [];
   const unattributed = ready && view === "credit" ? unattributedNote(result, "creditedSalesperson") : null;
@@ -115,7 +122,12 @@ export default function FinancialsEmployeePerformance() {
                   {rows.map((row) => (
                     <tr key={row.key}>
                       <td>
-                        {row.key}
+                        {resolveEmployeeIdentity(row.key, {
+                          byEmployeeId,
+                          loading: directoryLoading,
+                          error: directoryError,
+                          noun: "salesperson",
+                        }).name ?? "Resolving…"}
                         <span className="fin-attr-label"> · credited salesperson</span>
                       </td>
                       <td>Billed</td>

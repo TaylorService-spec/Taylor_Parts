@@ -41,6 +41,10 @@ test("the expected fixture ids exist, and nothing else", () => {
       "fr-p1-so-mixed-a",
       "fr-p1-so-mixed-b",
       "fr-p1-so-mixed-c",
+      // Post-attribution generation: additive, new ids, new idempotency keys.
+      "fr-p2-so-lucian-paid",
+      "fr-p2-so-petra-partial",
+      "fr-p2-so-credit-split",
     ],
   );
 });
