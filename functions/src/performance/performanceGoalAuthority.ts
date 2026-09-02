@@ -8,11 +8,18 @@
 // factor below resolves through authority the repository already has. This module composes; it
 // grants nothing and it is not a second permission layer.
 //
-// ============================ THE FOUR FACTORS ============================
+// ============================ THE FACTORS ============================
 //
-// A management act must satisfy ALL FOUR. Any one failing is a denial, and the denial names which
-// one -- a person told "denied" learns nothing, and a person told "you may set goals, but not for
-// this employee" learns exactly what to ask for.
+// A management act must satisfy EVERY factor below. Any one failing is a denial, and the denial
+// names which one -- a person told "denied" learns nothing, and a person told "you may set goals,
+// but not for this employee" learns exactly what to ask for.
+//
+//   0. IS THIS SCOPE USABLE FOR THIS METRIC AT ALL.
+//      Asked first, and deliberately ahead of any capability, because an unusable scope is not a
+//      permission question and must not become answerable by holding more authority. Without it an
+//      unbindable scope (TEAM) falls through to a global access target and is ALLOWED for anyone
+//      holding a global grant -- the record builder would still refuse, but a screen that asked
+//      only "may I?" would already have been told yes.
 //
 //   1. CAPABILITY AT THE TARGET'S OWN SCOPE.
 //      `performance.goal.<verb>` resolved by resolveEffectivePermission against the goal's target
@@ -52,7 +59,7 @@
 import { resolveEffectivePermission } from "../access/resolveEffectivePermission";
 import type { PermissionId, Role, RoleAssignment, Scope } from "../types/access";
 import { visibleEmployeeIdsFor, type PrincipalPosition } from "../access/hierarchicalVisibility";
-import { findMetric, type GoalScopeType } from "./performanceMetricRegistry";
+import { findMetric, isScopeBindable, type GoalScopeType } from "./performanceMetricRegistry";
 
 export const CAP_GOAL_READ = "performance.goal.read";
 export const CAP_GOAL_CREATE = "performance.goal.create";
@@ -106,6 +113,7 @@ export const METRIC_MANAGEMENT_CAPABILITY: Readonly<Record<string, PermissionId 
 export type DenialFactor =
   | "unknownMetric"
   | "metricNotActiveForGoals"
+  | "scopeNotUsable"
   | "noGoalCapabilityAtScope"
   | "noAuthorityOverMetric"
   | "employeeOutsideVisibility"
@@ -194,6 +202,27 @@ export function resolveGoalAuthority(input: GoalAuthorityInput): GoalAuthorityDe
     return deny(
       "metricNotActiveForGoals",
       `"${metric.metricId}" is registered but not active for goals: ${metric.blockedBy}`,
+    );
+  }
+
+  // --- FACTOR 0: is this scope usable for this metric at all --------------
+  // Asked BEFORE any capability, because an unusable scope is not a permission question and must not
+  // be answerable by holding more authority. Without this check an unbindable scope (TEAM) would fall
+  // through accessScopeForTarget's default to { type: "global" } and be ALLOWED for anyone holding a
+  // global grant -- the record builder would then refuse it, but a caller that asked authority alone
+  // would already have been told yes. buildPerformanceGoal enforces the same two rules; they are
+  // repeated here rather than shared because the two questions have different callers and a screen
+  // that only asks "may I?" must get the same answer as the command that only asks "is this valid?".
+  if (!metric.supportedScopes.includes(input.targetScopeType as GoalScopeType)) {
+    return deny(
+      "scopeNotUsable",
+      `"${metric.metricId}" supports scope ${metric.supportedScopes.join("/")} -- not ${String(input.targetScopeType)}`,
+    );
+  }
+  if (!isScopeBindable(input.targetScopeType)) {
+    return deny(
+      "scopeNotUsable",
+      `scope ${String(input.targetScopeType)} has no governed binding in this repository, so no principal can hold authority over it`,
     );
   }
 
