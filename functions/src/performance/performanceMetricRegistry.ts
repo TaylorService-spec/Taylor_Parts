@@ -28,7 +28,7 @@
 // metric: a target whose actual cannot be computed is a promise the dashboard cannot keep, and
 // "the goal exists" must never be mistaken for "the measurement exists".
 //
-// TWENTY-SEVEN of the thirty-seven entries below are inactive. That ratio is the honest current
+// TWENTY-FIVE of the thirty-seven entries below are inactive. That ratio is the honest current
 // state of the platform, not a gap in this file -- see the census (docs/assessments/
 // eos-dashboard-reporting-authority-census.md) for each blocker's evidence. Both counts are PINNED
 // by performanceGoal.test.mjs rather than only stated here, because a number in a comment is a
@@ -184,9 +184,17 @@ const DOWN: readonly ("AT_LEAST" | "AT_MOST" | "EXACT")[] = Object.freeze(["AT_M
 const ACTIVE = Object.freeze({ activeForGoals: true, blockedBy: null } as const);
 const blocked = (blockedBy: string) => Object.freeze({ activeForGoals: false, blockedBy } as const);
 
-// The reporting-period blocker, quoted identically wherever it applies so a grep finds every one.
-const G05 =
-  "G-05 reporting-period authority -- no fiscal calendar, reporting timezone, MTD/QTD/YTD, partial-period rule or prior-period comparison exists. A windowed actual cannot be computed without inventing all five.";
+// G-05 IS CLOSED (Decision #163). This constant used to say that no fiscal calendar, reporting
+// timezone, MTD/QTD/YTD, partial-period rule or prior-period comparison existed, and that a windowed
+// actual could not be computed without inventing all five. All five now exist in
+// reportingPeriod/reportingPeriod.ts.
+//
+// It is KEPT, re-pointed, rather than deleted: several metrics below were blocked by G-05 AND by
+// something else, and deleting the constant would have quietly promoted "also blocked by the
+// calendar" to "unblocked". Each remaining use now records that the window is available and names
+// the blocker that actually survives.
+const G05_CLOSED =
+  "The reporting period itself is no longer a blocker -- G-05 closed it (Decision #163): MTD/QTD/YTD/T12M, the America/Phoenix reporting timezone, half-open boundaries and the prior-comparable rule are all governed now. What remains below is this metric's OWN missing authority.";
 
 export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
   // ======================= SERVICE / DISPATCH =======================
@@ -263,7 +271,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "SV-12",
     ...blocked(
       "G-14 service metrics -- 'on time' has no governed definition. scheduledStart is the only date authority and a Work Order records no promise, commitment or SLA; obligationAttention.js states by name that it does not invent SLA, risk score, customer promise, severity or ETA. Both the predicate and the eligible population are undecided. Additionally " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -280,7 +288,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "SV-12",
     ...blocked(
       "G-14 service metrics -- adherence requires a committed plan to adhere TO. A Work Order stores a scheduled window, not a commitment, and no re-schedule history is retained to measure drift against. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -359,7 +367,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "T-5 / SV-8",
     ...blocked(
       "Two blockers, either sufficient. (1) The DENOMINATOR is undecided: 'workday' would have to be derived from technician_working_availability, whose governing rule is ABSENT IS NOT EMPTY -- a technician with no recorded working schedule renders 'no working schedule recorded', never zero days and never a default. (2) " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -392,7 +400,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "SV-9 / T-5",
     ...blocked(
       "F-03 Work Order aging is unformalized: which timestamp starts the clock is undecided, and no governed aging threshold exists, so the comparison POPULATION is undefined as well as the window. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -409,7 +417,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "T-9",
     ...blocked(
       "No documentation-completeness authority exists: nothing defines which fields make a Work Order 'documented', and the offline submission queue that would supply the timing is CLIENT-LOCAL per device -- it is not a server-side fact and cannot be measured for anyone but the person holding the device. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
 
@@ -443,7 +451,17 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("EMPLOYEE", "BUSINESS_UNIT", "OPERATING_COMPANY", "FIRM"),
     rollup: rollsUp("SUM", true),
     censusRef: "S-10",
-    ...blocked("G-05 reporting-period authority -- billed is a WINDOWED figure and no fiscal calendar, reporting timezone or period rule exists to sum it over. FIN-004 reach EXISTS today and the blocker is elsewhere. Corrected 2026-09-02: the census claim that no Role carried a finance.visibility.* scope was WITHDRAWN (#1743) -- it was measured by grepping Role sources, which cannot see admin's DERIVED grants. Measured by resolver: admin and owner carry all five scopes, salesManager carries TEAM, salesperson carries SELF (#1744). Only finance.visibility.consolidated is activated for platform-sandbox, so admin/owner resolve CONSOLIDATED reach there while the SELF/TEAM holders resolve nothing anywhere -- an ACTIVATION gap, not a missing grant."),
+    // ACTIVATED by G-05 (Decision #163). Each leg was checked individually rather than assumed:
+    //   READ        listFinancialFacts, which serves persisted INVOICE facts.
+    //   EVENT TIME  the governed eventAtMillis -- not a creation timestamp.
+    //   REACH       exists since #1744: admin/owner hold all five scopes, salesManager TEAM,
+    //               salesperson SELF. The census's "no Role carries one" was withdrawn (#1743).
+    //   WINDOW      now governed.
+    // ACTIVATION IS STILL PER-ENVIRONMENT and still enforced at RUNTIME by the goal authority's
+    // factor 2: a principal whose finance capabilities are inactive in their environment resolves
+    // DENY. That is the correct answer, and it is not this flag's business -- this flag says the
+    // metric is measurable in principle, not that any given person may see it.
+    ...ACTIVE,
   }),
   Object.freeze({
     metricId: "sales.collected.amount",
@@ -457,7 +475,10 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("EMPLOYEE", "BUSINESS_UNIT", "OPERATING_COMPANY", "FIRM"),
     rollup: rollsUp("SUM", true),
     censusRef: "S-11",
-    ...blocked("G-05 reporting-period authority -- collected is a WINDOWED figure and no period rule exists to sum it over. FIN-004 reach EXISTS today and the blocker is elsewhere. Corrected 2026-09-02: the census claim that no Role carried a finance.visibility.* scope was WITHDRAWN (#1743) -- it was measured by grepping Role sources, which cannot see admin's DERIVED grants. Measured by resolver: admin and owner carry all five scopes, salesManager carries TEAM, salesperson carries SELF (#1744). Only finance.visibility.consolidated is activated for platform-sandbox, so admin/owner resolve CONSOLIDATED reach there while the SELF/TEAM holders resolve nothing anywhere -- an ACTIVATION gap, not a missing grant."),
+    // ACTIVATED by G-05 (Decision #163), on the same evidence as sales.billed.amount: a real read
+    // (payment applications through listFinancialFacts), a governed event time (recordedAtMillis),
+    // existing reach, and now a governed window.
+    ...ACTIVE,
   }),
   Object.freeze({
     metricId: "sales.consolidatedBilled.amount",
@@ -521,7 +542,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "S-12",
     ...blocked(
       "G-08 -- no AOV definition exists, and FIN-003 invariant A forbids blending bases, so WHICH basis forms the numerator (booked, billed, collected) is a required decision before the metric has meaning. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
 
@@ -617,7 +638,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "I-8",
     ...blocked(
       "G-10 -- no stockout definition authority exists: the threshold and the quantity basis are both undecided. Note the ordering trap this entry exists to prevent: I-7's StockoutPrediction is DERIVED INFORMATION and its NEEDS_PLANNING value means 'the engine had nothing to compute', not 'risk is low' -- it may never be counted as a governed stockout state. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -634,7 +655,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "I-14",
     ...blocked(
       "AB-4 activation (inventory.cycleCount.* is catalog-inactive, sandbox-overridden) AND an undefined rate: whether accuracy is counted by line, by part, by unit or by value is a decision, and the value option additionally requires FIN-BLOCK-003. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -652,7 +673,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "P-6",
     ...blocked(
       "The numerator exists; the DENOMINATOR does not. Whether the rate is per receipt, per PO, per line or per unit is undecided, and " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -683,7 +704,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("LOCATION", "FIRM"),
     rollup: noRollup("Turns is a ratio of a flow to a level; neither term is defined, so no rollup rule can be stated."),
     censusRef: "I-16",
-    ...blocked("FIN-BLOCK-003 (no value basis) AND " + G05),
+    ...blocked("FIN-BLOCK-003 (no value basis) AND " + G05_CLOSED),
   }),
   Object.freeze({
     metricId: "inventory.carryingCost.amount",
@@ -697,7 +718,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("LOCATION", "FIRM"),
     rollup: rollsUp("SUM", true),
     censusRef: "I-17",
-    ...blocked("FIN-BLOCK-003 (no value basis) AND " + G05),
+    ...blocked("FIN-BLOCK-003 (no value basis) AND " + G05_CLOSED),
   }),
   Object.freeze({
     metricId: "inventory.wasteAvoided.amount",
@@ -747,7 +768,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "P-3 / P-4",
     ...blocked(
       "No 'emergency' classification exists on a purchase. A reorder request carries an urgency, but urgency is a requester's assertion at creation time, not a governed property of the resulting purchase -- reading one as the other would relabel a field to mean something nobody entered. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -764,7 +785,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "P-3 / P-4",
     ...blocked(
       "G-12 -- procurementService.ts's create/approve/send remain UNEXPORTED: no capability, actor, audit or idempotency, and no approval policy. There are no governed stage timestamps between which a cycle time could be measured. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
   Object.freeze({
@@ -781,7 +802,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     censusRef: "P-3",
     ...blocked(
       "G-12 -- no expected receipt date, promise date or supplier SLA exists on a purchase order, so 'on time' has nothing to be on time AGAINST. Inventing an expected date is expressly refused. " +
-        G05,
+        G05_CLOSED,
     ),
   }),
 ]);

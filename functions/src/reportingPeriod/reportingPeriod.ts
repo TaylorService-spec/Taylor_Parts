@@ -219,6 +219,18 @@ export interface ReportingWindow {
 
 export interface ReportingPeriodResolution {
   readonly current: ReportingWindow;
+  /**
+   * The WHOLE calendar period the as-of instant falls in -- 1 to 30 September, not 1 to 22.
+   *
+   * Exists so a surface that legitimately wants a full month or quarter does not have to do month
+   * arithmetic of its own to get one. That is not hypothetical: the Financials family's "this month"
+   * preset means the whole month, and before this field the only way to honour it was a second
+   * implementation of month boundaries in the client -- which is exactly the duplication G-05 exists
+   * to remove.
+   *
+   * Null for T12M, which is a rolling window and has no calendar whole.
+   */
+  readonly fullPeriod: ReportingWindow | null;
   /** Null when no comparison was requested, or when none is honestly possible. */
   readonly comparison: ReportingWindow | null;
   readonly metadata: {
@@ -342,6 +354,23 @@ export function resolveReportingPeriod(input: ResolveReportingPeriodInput): Repo
   }
 
   const current = windowFrom(periodStart, endExclusive, tz);
+  // The whole period, derived from the SAME start and the SAME day count the current window used --
+  // so a full-period window and a to-date window can never disagree about where the period begins.
+  const fullPeriod =
+    totalDays === null
+      ? null
+      : windowFrom(
+          periodStart,
+          startOfLocalDayMillis(
+            ...(((): [number, number, number] => {
+              const d = new Date(periodStart + (totalDays as number) * MS_PER_DAY + 12 * 3_600_000);
+              const p = zonedParts(d.getTime(), tz);
+              return [p.year, p.month, p.day];
+            })()),
+            tz,
+          ),
+          tz,
+        );
   const elapsedDays = localDayNumber(asOf, tz) - localDayNumber(periodStart, tz) + 1;
   const isPartial = totalDays === null ? false : elapsedDays < totalDays;
 
@@ -363,6 +392,7 @@ export function resolveReportingPeriod(input: ResolveReportingPeriodInput): Repo
 
   return Object.freeze({
     current,
+    fullPeriod,
     comparison,
     metadata: Object.freeze({
       periodType: input.periodType,

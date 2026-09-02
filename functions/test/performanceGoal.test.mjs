@@ -144,17 +144,52 @@ test("the registered and active counts are PINNED, because a number in a comment
   // A failure is not a defect: it means a metric was added or activated, and the two places that
   // quote these counts need updating in the same change. That is the point.
   assert.equal(PERFORMANCE_METRICS.length, 37, "registered metrics");
-  assert.equal(metricsActiveForGoals().length, 10, "metrics a goal may be created against today");
+  assert.equal(metricsActiveForGoals().length, 12, "metrics a goal may be created against today");
 });
 
-test("no WINDOWED metric is active for goals -- there is no reporting-period authority", () => {
-  // G-05. This is the single rule that keeps the registry honest: every windowed actual would need a
-  // fiscal calendar, a reporting timezone, MTD/QTD/YTD, a partial-period rule and a prior-period
-  // comparison, and the repository defines none of the five.
-  for (const m of PERFORMANCE_METRICS) {
-    if (m.measurementKind === "WINDOWED") {
-      assert.equal(m.activeForGoals, false, `${m.metricId} is windowed and cannot have a governed actual yet`);
-    }
+test("a WINDOWED metric may now be active -- but only with a governed event time behind it", () => {
+  // REWRITTEN when G-05 closed (Decision #163). This test used to assert that NO windowed metric
+  // could be active, because no reporting-period authority existed. That was the right rule while it
+  // was true and would now be a lie: MTD/QTD/YTD/T12M, the reporting timezone, half-open boundaries
+  // and the prior-comparable rule are all governed.
+  //
+  // What replaces it is the rule that still bites. G-05 defines WHEN, never WHAT -- so a windowed
+  // metric became eligible, not automatically active. Every windowed metric that IS active must name
+  // a real business event timestamp in its actualAuthority, because attributing a fact to a period
+  // requires knowing when the fact happened, and createdAt is not that.
+  const windowedActive = PERFORMANCE_METRICS.filter((m) => m.measurementKind === "WINDOWED" && m.activeForGoals);
+  assert.ok(windowedActive.length > 0, "if this is zero, G-05 unblocked nothing and something is wrong");
+  for (const m of windowedActive) {
+    assert.match(
+      m.actualAuthority,
+      /eventAtMillis|recordedAtMillis|bookedAtMillis|completedAt|listFinancialFacts/,
+      `${m.metricId} is windowed and active, so it must name the governed event time it is attributed by`,
+    );
+    assert.ok(!/createdAt|updatedAt/.test(m.actualAuthority), `${m.metricId} must not attribute by a creation timestamp`);
+  }
+});
+
+test("the metrics G-05 unblocked are EXACTLY the ones whose only blocker was the period", () => {
+  // Pinned by name rather than by count, so an accidental activation is visible as a name a reader
+  // can argue with. Both were blocked solely by the missing window: each already had a real read
+  // (listFinancialFacts), a governed event time, and reach.
+  const nowActive = new Set(metricsActiveForGoals().map((m) => m.metricId));
+  assert.ok(nowActive.has("sales.billed.amount"));
+  assert.ok(nowActive.has("sales.collected.amount"));
+
+  // And the ones that merely ALSO mentioned the period stay blocked, because their own authority is
+  // still missing. This is the guard against "unblock everything windowed".
+  for (const stillBlocked of [
+    "sales.booked.amount",              // AB-2: no bounded booked read exists at all
+    "sales.averageOrderValue.amount",   // G-08: no AOV definition
+    "service.onTimeCompletion.rate",    // G-14: nothing defines "on time"
+    "technician.workOrder.completedPerWorkday.ratio", // the workday denominator is undecided
+    "inventory.turns.ratio",            // FIN-BLOCK-003: no cost fact
+    "inventory.wasteAvoided.amount",    // no prevention event, no cost, no counterfactual
+    "purchasing.poCycleTime.days",      // G-12: no governed stage timestamps
+    "receiving.discrepancy.rate",       // the denominator population is undefined
+  ]) {
+    assert.ok(!nowActive.has(stillBlocked), `${stillBlocked} has another blocker and must stay blocked`);
   }
 });
 

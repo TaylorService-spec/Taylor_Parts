@@ -162,6 +162,39 @@ test("no period boundary is ever 23:59:59.999 arithmetic -- it is derived, once"
   }
 });
 
+test("fullPeriod is the WHOLE period, and shares the to-date window's start exactly", () => {
+  // Exists so a surface wanting a full month does not re-derive month boundaries. Sharing the start
+  // is the property that matters: a full-period window and a to-date window that disagreed about
+  // where September begins would be two calendars wearing one name.
+  const mtd = resolve({ periodType: "MTD" });
+  assert.equal(mtd.fullPeriod.firstDayIso, "2026-09-01");
+  assert.equal(mtd.fullPeriod.lastDayInclusiveIso, "2026-09-30");
+  assert.equal(mtd.fullPeriod.startMillis, mtd.current.startMillis);
+  assert.ok(mtd.fullPeriod.endExclusiveMillis > mtd.current.endExclusiveMillis, "the month outruns the as-of day");
+
+  const qtd = resolve({ periodType: "QTD" });
+  assert.equal(qtd.fullPeriod.firstDayIso, "2026-07-01");
+  assert.equal(qtd.fullPeriod.lastDayInclusiveIso, "2026-09-30");
+
+  const ytd = resolve({ periodType: "YTD" });
+  assert.equal(ytd.fullPeriod.firstDayIso, "2026-01-01");
+  assert.equal(ytd.fullPeriod.lastDayInclusiveIso, "2026-12-31");
+
+  assert.equal(resolve({ periodType: "T12M" }).fullPeriod, null, "a rolling window has no calendar whole");
+});
+
+test("on the last day of a period, the to-date window and the full period coincide", () => {
+  const r = resolveReportingPeriod({ calendar: PHX, periodType: "MTD", asOfMillis: phx("2026-09-30T23:00:00") });
+  assert.deepEqual(r.current, r.fullPeriod);
+  assert.equal(r.metadata.isPartial, false);
+});
+
+test("fullPeriod respects a non-January reporting year", () => {
+  const r = resolveReportingPeriod({ calendar: JULY, periodType: "YTD", asOfMillis: phx("2026-09-22T12:00:00") });
+  assert.equal(r.fullPeriod.firstDayIso, "2026-07-01");
+  assert.equal(r.fullPeriod.lastDayInclusiveIso, "2027-06-30");
+});
+
 // ===========================================================================
 // COMPARISON — the partial-period rule
 // ===========================================================================
