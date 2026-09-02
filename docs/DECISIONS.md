@@ -4438,3 +4438,31 @@ location names, UI filters, or caller-supplied ids.
 contract), `trustedWriterCommands`/`auditEventWriter` scope validation,
 `finance/financeReadCallables.ts` loader; suites `financialScopeBinding.test.mjs`,
 `trustedWriterCommands.test.mjs` (FIN-BLOCK-001 section), `financeVisibilityRead.test.mjs`.
+
+## #158 — OWNER RULING: ASSIGN_RUNTIME_ENFORCEMENT — CLOSED_SANDBOX (2026-09-02)
+
+**Context:** the R-32-era standing classification `ASSIGN_RUNTIME_ENFORCEMENT` (recorded
+"OPEN — DECLARATION ONLY") awaited a measured live submission of the Parts Manager Assign
+write — a client-side, firestore.rules-governed update — rather than component-test
+evidence alone. PR #1731 (merge `c01843ba`) repaired the Assign panel presentation and was
+deployed to sandbox hosting; the measurement was then performed through the SHIPPED UI.
+
+**Measured evidence (sandbox, deployed `c01843ba`):** the partsManager persona submitted
+one real assignment through the shipped UI. Request `ywq7UpdczU1KZ6Z86ejS` transitioned
+`READY_FOR_PARTS_MANAGER → ASSIGNED_TO_PARTS_ASSOCIATE`; `assignedToUserId`
+(`9jhm9a0C1SSyxrxqNGFfalsUiyi1`, employee `cw-emp-026`), `assignedBy` (the manager's uid),
+`assignedAt`, `status`, and `currentOwner` all persisted correctly under the existing
+Rules branch. No Rules, Functions, grants, capabilities, or authority surface changed.
+
+**Ruling:** `ASSIGN_RUNTIME_ENFORCEMENT` is **CLOSED_SANDBOX**.
+
+**This closure explicitly does NOT close:**
+- `PRODUCTION_EXPOSURE` (still UNMEASURED — deployment blocker stands)
+- assignee first-person visibility measurement (the eligible fixture assignees have no
+  loginable persona; visibility is Rules-deterministic but unmeasured first-person)
+- loginable Parts Associate fixture eligibility (`sbx-partsassoc` carries
+  `securityRole=technician` and is excluded by the governed eligibility filter)
+- `LEGACY_UNSCOPED_REORDER` rows / repeated `CW-P-0000` titles / `Approved —` metadata
+
+The historic classification lines in the R-32-era entries above are history and are not
+rewritten; this entry is the closure record.
