@@ -6,25 +6,13 @@
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 19,
+  "total": 16,
   "byStatus": {
-   "UNCLASSIFIED": 5,
+   "UNCLASSIFIED": 2,
    "RECORDED_GAP": 9,
    "DELIBERATELY_PRIVILEGED_ONLY": 5
   },
   "capabilities": [
-   {
-    "capability": "finance.visibility.self",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
-   },
-   {
-    "capability": "finance.visibility.team",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
-   },
    {
     "capability": "finance.visibility.businessUnit",
     "active": false,
@@ -33,12 +21,6 @@
    },
    {
     "capability": "finance.visibility.company",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
-   },
-   {
-    "capability": "finance.visibility.consolidated",
     "active": false,
     "status": "UNCLASSIFIED",
     "why": "no recorded decision either way -- surface before PASS"
@@ -415,9 +397,9 @@
    "roleId": "generalManager",
    "label": "General Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 30,
+   "grantedCount": 31,
    "operableCount": 13,
-   "blockedCount": 17,
+   "blockedCount": 18,
    "granted": [
     "audit.event.read",
     "customer.record.create",
@@ -428,6 +410,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "finance.visibility.consolidated",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
@@ -471,6 +454,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "finance.visibility.consolidated",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -558,9 +542,9 @@
    "composedFunctionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 19,
+   "grantedCount": 20,
    "operableCount": 5,
-   "blockedCount": 14,
+   "blockedCount": 15,
    "granted": [
     "audit.event.read",
     "crm.activity.create",
@@ -569,6 +553,7 @@
     "customer.record.read",
     "customer.record.update",
     "finance.read",
+    "finance.visibility.team",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.transaction.read",
@@ -593,6 +578,7 @@
     "crm.activity.create",
     "crm.activity.read",
     "finance.read",
+    "finance.visibility.team",
     "inventory.balance.read",
     "inventory.catalog.read",
     "opportunity.createSalesOrder",
@@ -612,9 +598,9 @@
    "composedFunctionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 18,
+   "grantedCount": 19,
    "operableCount": 4,
-   "blockedCount": 14,
+   "blockedCount": 15,
    "granted": [
     "crm.activity.create",
     "crm.activity.read",
@@ -622,6 +608,7 @@
     "customer.record.read",
     "customer.record.update",
     "finance.read",
+    "finance.visibility.self",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.transaction.read",
@@ -645,6 +632,7 @@
     "crm.activity.create",
     "crm.activity.read",
     "finance.read",
+    "finance.visibility.self",
     "inventory.balance.read",
     "inventory.catalog.read",
     "opportunity.createSalesOrder",
@@ -714,9 +702,9 @@
    "roleId": "accountingManager",
    "label": "Accounting Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 17,
+   "grantedCount": 18,
    "operableCount": 7,
-   "blockedCount": 10,
+   "blockedCount": 11,
    "granted": [
     "audit.event.read",
     "customer.governedField.write",
@@ -726,6 +714,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "finance.visibility.consolidated",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -751,6 +740,57 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "finance.visibility.consolidated",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "opportunity.read",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "financeManager",
+   "label": "Finance Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 18,
+   "operableCount": 7,
+   "blockedCount": 11,
+   "granted": [
+    "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.read",
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "finance.visibility.consolidated",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "opportunity.read",
+    "reorder.purchaseOrder.read",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "audit.event.read",
+    "customer.governedField.write",
+    "customer.record.read",
+    "inventory.action.read",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "finance.adjustment.record",
+    "finance.invoice.issue",
+    "finance.payment.apply",
+    "finance.read",
+    "finance.refund.record",
+    "finance.visibility.consolidated",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -1149,30 +1189,6 @@
     "crm.activity.create",
     "crm.activity.read",
     "opportunity.read",
-    "salesOrder.read"
-   ]
-  },
-  {
-   "roleId": "financeManager",
-   "label": "Finance Manager",
-   "composedFunctionalRoles": [],
-   "grantedCount": 5,
-   "operableCount": 4,
-   "blockedCount": 1,
-   "granted": [
-    "audit.event.read",
-    "customer.governedField.write",
-    "customer.record.read",
-    "reorder.purchaseOrder.read",
-    "salesOrder.read"
-   ],
-   "operableNow": [
-    "audit.event.read",
-    "customer.governedField.write",
-    "customer.record.read",
-    "reorder.purchaseOrder.read"
-   ],
-   "grantedButInactive": [
     "salesOrder.read"
    ]
   },

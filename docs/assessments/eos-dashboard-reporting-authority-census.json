@@ -185,7 +185,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice due date",
       "dependencies": [
@@ -267,7 +267,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice due date",
       "dependencies": [
@@ -474,7 +474,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`bookedAtMillis`",
       "dependencies": [
@@ -495,7 +495,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice event time",
       "dependencies": [
@@ -516,7 +516,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`recordedAtMillis`",
       "dependencies": [
@@ -554,7 +554,7 @@
         "FIN-004 SELF/TEAM"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
@@ -613,7 +613,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
@@ -634,7 +634,7 @@
         "OPERATING_COMPANY / CONSOLIDATED"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
@@ -2051,7 +2051,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`eventAtMillis`",
       "dependencies": [
@@ -2072,7 +2072,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice due date",
       "dependencies": [
@@ -2093,7 +2093,7 @@
         "FIN-004 reach (payments inherit their invoice's visibility)"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`recordedAtMillis`",
       "dependencies": [
@@ -2114,7 +2114,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
@@ -2135,7 +2135,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
@@ -2156,7 +2156,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
@@ -2177,7 +2177,7 @@
         "OPERATING_COMPANY / CONSOLIDATED"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
@@ -2198,7 +2198,7 @@
         "FIN-004 SELF/TEAM"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
@@ -2253,7 +2253,7 @@
         "FIN-004 reach for display"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
@@ -2274,7 +2274,7 @@
         "per operating company"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "period bounds",
       "dependencies": [
@@ -2295,7 +2295,7 @@
         "approver role"
       ],
       "roles": [
-        "admin, owner (CONSOLIDATED, sandbox only)"
+        "admin, owner, generalManager, financeManager, accountingManager (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
