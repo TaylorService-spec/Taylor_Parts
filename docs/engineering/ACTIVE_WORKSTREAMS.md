@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Financials visual-system pilot — true-white canvas, stronger contrast, one-step-larger semantic type
+- Agent/session:       Codex `/root` (ChatGPT Work, 2026-09-02) · Role: builder
+- Branch / worktree:   `codex/financials-visual-system-pilot` · `/workspace/scratch/b6b28a6cd7f9/Taylor_Parts`
+- Base commit:         `b1ff470bb596843561883444ab7904bcbcab9a20`
+- Owned paths:         Financials route-class seam in `field-ops-app-vite/src/navigation/AppShell.jsx` · Financials-scoped visual-system rules in `field-ops-app-vite/src/index.css` · focused Financials presentation tests · Financials CI path coverage
+- Shared paths req'd:  this registry only
+- Dependencies:        merged Financials P1 composition and current populated reporting-read closeout through PR #1723
+- Expected outcome:    Financials alone pilots the approved true-white, high-contrast, one-semantic-step-larger presentation system at 1440 and 375 without changing facts, actions, routes, or authorities
+- Protected boundaries:no Hosting/Functions/Rules deploy, capability/grant/policy change, production write, or site-wide inheritance before Owner visual acceptance
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Overnight Tier-1 program — Opportunity write paths, Sales Order fulfillment view, Part identifiers, roadmap reconciliation
 - Agent/session:       Claude (overnight autonomous program, 2026-08-20) · Role: builder
 - Branch / worktree:   sequential single-writer lanes off `origin/main`; one isolated worktree used only for the #1061 trial merge, removed afterwards
