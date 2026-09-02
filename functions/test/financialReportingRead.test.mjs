@@ -217,6 +217,9 @@ test("15. currencies are never summed together", async () => {
   const taylor = r.byCompany.find((d) => d.key === "taylor");
   assert.deepEqual(Object.keys(taylor.billedByCurrency).sort(), ["CAD", "USD"]);
   assert.equal(taylor.billedByCurrency.CAD, 100_000);
+  // Collected is the persisted appliedMinor, rolled up beside billed — not re-derived from payments.
+  assert.equal(taylor.collectedByCurrency.USD, 100_000, "only inv-c has cash applied");
+  assert.equal(taylor.collectedByCurrency.CAD, 0);
 });
 
 test("16. the read serves ONLY persisted fact types — no goal, budget, forecast, cost or margin", () => {

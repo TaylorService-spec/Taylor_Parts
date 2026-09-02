@@ -31,6 +31,10 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/financialsNavStructure.test.mjs"
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
+      - "field-ops-app-vite/test/financialFactsView.test.mjs"
+      - "field-ops-app-vite/src/domain/financialFactsView.js"
+      - "field-ops-app-vite/src/hooks/useFinancialFacts.js"
+      - "field-ops-app-vite/src/services/financeReadCallableClient.js"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
       - "functions/scripts/financialReviewFixtures.mjs"
       - "functions/test/financialReviewFixtures.test.mjs"
@@ -45,6 +49,10 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/test/financialsNavStructure.test.mjs"
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
+      - "field-ops-app-vite/test/financialFactsView.test.mjs"
+      - "field-ops-app-vite/src/domain/financialFactsView.js"
+      - "field-ops-app-vite/src/hooks/useFinancialFacts.js"
+      - "field-ops-app-vite/src/services/financeReadCallableClient.js"
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
       - "functions/scripts/financialReviewFixtures.mjs"
       - "functions/test/financialReviewFixtures.test.mjs"
@@ -80,6 +88,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Surface vocabulary + page-level source contracts (node:test)
         run: node --test test/financialsSurface.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Reporting read view model — no client money arithmetic (node:test)
+        run: node --test test/financialFactsView.test.mjs
         working-directory: field-ops-app-vite
       - name: Wave compositions render honestly (vitest + jsdom)
         run: npx vitest run test/financialsUxLifecycle.test.jsx

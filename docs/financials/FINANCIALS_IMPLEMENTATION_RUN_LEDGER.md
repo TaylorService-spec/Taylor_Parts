@@ -691,3 +691,73 @@ separately gated action. STATUS: FINANCIALS_READY_FOR_SANDBOX_UX_GATE.
     review): a company/BU/salesperson-scoped financial read. Only the account-scoped
     listAccountInvoiceAr exists today, which is why page 07 alone populates.
 - OWNER VISUAL ACCEPTANCE: PENDING (unchanged by this run).
+
+## 2026-09-01 — GOVERNED REPORTING READ SEAM (PR #1709 read + tests, PR #1710 surface bindings)
+
+Closes the MISSING READ SEAM named in the entry above: the family had exactly one governed
+read and it was account-scoped, which is why page 07 alone populated after the fixture seed.
+
+- AUTHORITY AUDIT FIRST (no API designed before it). Reusable and reused unchanged:
+  `loadFinancialVisibilityAuthority(db, uid)` (the ONE canonical FIN-004 resolver, admin
+  included, no bypass), `authority.isInvoiceVisible`, `invoiceVisibilityFacts(doc)`, and the
+  pure derivations `projectInvoiceAr` / `summarizeAccountAr` / `deriveOutstandingMinor` /
+  `deriveArPosition`. NO second visibility predicate and NO second outstanding formula exist.
+- THE READ: one trusted callable `listFinancialFacts({companyId?, businessUnitId?,
+  creditedSalespersonId?, accountId?, periodStartMillis?, periodEndMillis?, factTypes?,
+  limit?})`. Fact types are only what is PERSISTED — INVOICE, PAYMENT_RECEIPT,
+  PAYMENT_APPLICATION. No goal, budget, forecast, cost or margin type exists, and a test
+  fails if the source ever names one.
+- FILTERS ARE NOT AUTHORIZATION, structurally. The visible set is computed from the authority
+  predicate BEFORE any caller filter is consulted; filters then narrow that already-authorized
+  set. Widening is not expressible. Proved: asking for another salesperson's credit under SELF
+  reach returns an honest EMPTY, not their facts; no filter combination yields a record the
+  unfiltered read did not.
+- ATTRIBUTION PRESERVED, NEVER RE-DERIVED. `creditedSalespersonId` is exposed verbatim from the
+  invoice's frozen attribution. Credit is never sourced from customer owner, createdBy,
+  assignment, technician or warehouse, and the read deliberately does NOT join invoice → Sales
+  Order to recover it: that would re-derive historical credit from a mutable record.
+- FAIL-CLOSED TWICE: `permission-denied` at the callable when reach is absent, and the core
+  read returns `unavailable` rather than a `ready` empty page. Truncation honesty follows the
+  existing precedent and is judged on the UNFILTERED page, so a narrow scope cannot mask an
+  incomplete one.
+- TESTS: 24 offline contract cases (injected authority + fake Firestore — the scope rules are
+  provable without a live grant) + 3 callable-boundary cases on the existing emulator suite +
+  10 client view-model cases including a guard that the client performs NO money arithmetic.
+  Emulator run on port 8123; port 8080 (private AI gateway) untouched.
+- SURFACES BOUND (PR #1710): 03 Invoices, 04 Accounts Receivable (exposure table), 05 Payments,
+  14 Company Performance, 15 Salesperson & Employee Performance. Page 07 unchanged.
+- DELIBERATELY LEFT HONEST, with the reason on the page: the 04 AGING SCORECARD (bucketing is
+  money arithmetic the client must not do, and the read returns no aged rollup); COMPANY
+  PERFORMANCE "Booked" (a Sales Order fact, not an invoice fact — Billed is NOT substituted);
+  the CONSOLIDATED column (the server returns per-company rollups and no consolidated row; the
+  page will not add the columns together); PAYMENTS "Unapplied" (no governed record can carry
+  an unapplied balance, so the column is dashed rather than subtracted).
+
+### KNOWN PARTIAL — salesperson and business-unit dimensions
+
+The 7 invoices in eos-platform-sandbox carry `companyId` but `attribution: null` and no line
+`businessUnitId`: the DEPLOYED `issueInvoice` (last updated 2026-08-26) predates current main's
+attribution stamping. Company / account / period / lifecycle dimensions are therefore reportable
+today; SALESPERSON AND BU DIMENSIONS ARE NOT PRESENT IN THE PERSISTED FACTS. The read reports
+this truthfully as `unattributed`, and page 15 states the count beside its table rather than
+showing anyone a zero row. Closing it requires the broader Functions refresh below.
+
+### DEPLOYMENT PACKAGE — NOT EXECUTED
+
+Per the mission's own instruction ("if deployment scope becomes materially broader than this
+mission, STOP and return the deployment package instead of executing"):
+
+1. `firebase deploy --only functions:listFinancialFacts --project eos-platform-sandbox` —
+   the bounded deploy this seam needs. It leaves every other function's revision untouched.
+   NOT EXECUTED in this session (the deploy command was refused at the tool boundary).
+2. BROADER REFRESH, NOT RECOMMENDED AS PART OF THIS MISSION: 36 commits touch `functions/src`
+   since the sandbox Functions build of 2026-08-26, spanning `access/` (permissionCatalog,
+   resolveEffectivePermission, compatibilityRoles, governedBusinessRoles, bindingScopePolicy,
+   trustedWriterCommands, environmentCapabilityOverrides), `finance/`, `ownership/`,
+   `opportunity/`, `ai/`, `constants/` and `index.ts`. Only this refresh would make
+   `issueInvoice` stamp attribution — and the FINANCIAL_REVIEW_P1 invoices would then need
+   re-issuing to carry it, since issued invoices are immutable. That is an access-surface
+   change and an Owner decision, not a side effect of a reporting read.
+3. Hosting deploy for the surface bindings, after PR #1710 merges.
+
+- OWNER VISUAL ACCEPTANCE: PENDING (unchanged by this run).

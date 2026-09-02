@@ -5,10 +5,10 @@
 // invoice issuance is Billing Queue-owned. Issued records are immutable; a mixed-BU invoice
 // says "Mixed" at collection level because line-level BU is the only unit truth.
 //
-// Current-main truth: the invoice command core and the account-scoped AR read are merged and
-// dormant; no invoice-collection read callable exists, and the `invoices` collection is
-// deny-all to clients. The approved composition therefore renders with its one honest body
-// state — never a raw collection read, never specimen rows.
+// WIRED to the governed reporting read (`listFinancialFacts`). The company chip and the view tab
+// travel as REQUESTED FILTERS: the server intersects them with the principal's governed reach and
+// may only narrow the result. Nothing on this page is authorization, and no figure below is
+// computed here — every amount is the server's own derivation.
 import { useState } from "react";
 import {
   FinancialsPageFrame,
@@ -17,7 +17,13 @@ import {
   FinAnnotation,
 } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
-import { unwiredReadHonestState } from "../../domain/financialsSurface.js";
+import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import {
+  FACTS_STATE,
+  FACTS_DETAIL,
+  financialFactsState,
+  invoiceRow,
+} from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
   { key: "all", label: "All" },
@@ -26,10 +32,50 @@ const VIEW_OPTIONS = [
   { key: "corrected", label: "Corrected" },
 ];
 
+// The view tab selects among facts the server already returned — it is a display narrowing over an
+// authorized set, never a second authorization. "Corrected" has no persisted marker on an invoice
+// (corrections are separate governed adjustment events), so it selects nothing and says so.
+function applyView(rows, view) {
+  if (view === "open") return rows.filter((r) => r.raw.outstandingMinor > 0);
+  if (view === "paid") return rows.filter((r) => r.raw.outstandingMinor <= 0 && r.raw.state !== "VOID");
+  if (view === "corrected") return [];
+  return rows;
+}
+
+const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
+
 export default function FinancialsInvoices() {
   const [company, setCompany] = useState("consolidated");
   const [view, setView] = useState("all");
-  const honest = unwiredReadHonestState();
+
+  const read = useFinancialFacts({
+    companyId: company === "consolidated" ? null : company,
+    factTypes: ["INVOICE"],
+  });
+  const { state, result } = financialFactsState(read);
+
+  const rows =
+    state === FACTS_STATE.READY
+      ? applyView(
+          result.invoices.map((i) => ({ ...invoiceRow(i), raw: i })),
+          view,
+        )
+      : [];
+
+  // A view that legitimately selects nothing from a ready read is EMPTY — a fact about the filter,
+  // not about authorization or availability, so it must not borrow either of those sentences.
+  const honest =
+    state === FACTS_STATE.READY && rows.length === 0
+      ? {
+          state: "EMPTY",
+          detail:
+            view === "corrected"
+              ? "Corrections are governed adjustment events recorded separately, not a state stamped on an invoice. No invoice can be selected by this view, and none is invented to fill it."
+              : "The governed read answered, and no invoice in your visibility scope matches this view.",
+        }
+      : state === FACTS_STATE.READY
+        ? { state: null }
+        : { state, detail: FACTS_DETAIL[state] ?? null };
 
   return (
     <FinancialsPageFrame
@@ -67,6 +113,25 @@ export default function FinancialsInvoices() {
                 <th scope="col">Status</th>
               </tr>
             </thead>
+            {rows.length > 0 ? (
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.invoiceId}>
+                    <td>{row.invoiceNumber}</td>
+                    <td>{row.accountId ?? "—"}</td>
+                    <td>
+                      {row.companyId ?? "Not attributed"} · {row.businessUnit}
+                    </td>
+                    <td>{dateWords(row.issuedAtMillis)}</td>
+                    <td>{dateWords(row.dueDate)}</td>
+                    <td className="ns-num">{row.total}</td>
+                    <td className="ns-num">{row.applied}</td>
+                    <td className="ns-num">{row.outstanding}</td>
+                    <td>{row.position}</td>
+                  </tr>
+                ))}
+              </tbody>
+            ) : null}
           </table>
         </div>
       </FinancialsHonestSection>

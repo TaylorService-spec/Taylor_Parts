@@ -5,10 +5,12 @@
 // starts from the governed dueDate (established by current invoice authority); no DSO or
 // risk score exists because no authority computes one.
 //
-// Current-main truth: A/R derives from issued invoices minus applications/credits inside
-// the dormant finance cores. The only wired read is per-account (listAccountInvoiceAr,
-// inactive capability); the cross-customer exposure read this page composes is not
-// activated. Structure ships whole; the body states its truth.
+// PARTIALLY WIRED, and the split is deliberate. The exposure table below reads the governed
+// reporting seam: every row is one invoice with the server's own outstanding figure. The AGING
+// SCORECARD above it stays in its honest state, because bucketing outstanding balances into
+// Current / 1–30 / 31–60 / 61+ is money arithmetic, and this client does not do money arithmetic
+// over authoritative facts — a bucket total computed here from a page of rows would silently
+// become a claim about the whole book. When the read supplies aged rollups, the slots fill.
 import { useState } from "react";
 import {
   FinancialsPageFrame,
@@ -16,10 +18,31 @@ import {
   FinancialsHonestSection,
   FinAnnotation,
 } from "./FinancialsPrimitives.jsx";
-import { AR_AGING_BUCKETS, READ_STATE_DETAIL } from "../../domain/financialsSurface.js";
+import { AR_AGING_BUCKETS } from "../../domain/financialsSurface.js";
+import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows } from "../../domain/financialFactsView.js";
+
+const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
 
 export default function FinancialsAccountsReceivable() {
   const [company, setCompany] = useState("consolidated");
+
+  const read = useFinancialFacts({
+    companyId: company === "consolidated" ? null : company,
+    factTypes: ["INVOICE"],
+  });
+  const { state, result } = financialFactsState(read);
+  const rows = state === FACTS_STATE.READY ? outstandingRows(result) : [];
+
+  const honest =
+    state === FACTS_STATE.READY && rows.length === 0
+      ? {
+          state: "EMPTY",
+          detail: "The governed read answered, and no invoice in your visibility scope carries an outstanding balance.",
+        }
+      : state === FACTS_STATE.READY
+        ? { state: null }
+        : { state, detail: FACTS_DETAIL[state] ?? null };
 
   return (
     <FinancialsPageFrame
@@ -36,7 +59,7 @@ export default function FinancialsAccountsReceivable() {
             <div key={bucket.key} className="fin-scorecard__slot">
               <div className="fin-figure">
                 <div className="fin-figure__label">{bucket.label}</div>
-                <div className="fin-figure__absence">No read on this surface</div>
+                <div className="fin-figure__absence">Not supplied by this read</div>
                 <span className="fin-factclass">Operational actual</span>
               </div>
             </div>
@@ -44,7 +67,7 @@ export default function FinancialsAccountsReceivable() {
         </div>
         <p className="fin-section-note">
           One aging grammar, everywhere
-          <FinAnnotation tip="One canonical bucket vocabulary — Current / 1–30 / 31–60 / 61+ — used on every surface that ages receivables. No repository authority distinguishes finer buckets yet; this display choice is UI-only and recorded in the reconciliation doc. Current invoices show no day count. No DSO and no risk score: neither has authority." />
+          <FinAnnotation tip="One canonical bucket vocabulary — Current / 1–30 / 31–60 / 61+ — used on every surface that ages receivables. The governed read returns per-invoice facts, not aged bucket totals, and this page will not total them itself: a bucket summed from one page of rows would read as a claim about the whole book. Per-invoice age is shown in the table below, where it is factual. No DSO and no risk score: neither has authority." />
         </p>
       </section>
 
@@ -52,7 +75,7 @@ export default function FinancialsAccountsReceivable() {
         id="fin-ar-by-customer"
         title="Exposure by customer"
         meta="largest exposure first · drills to invoice records and Customer Financials"
-        honest={{ state: "NOT_ENABLED", detail: READ_STATE_DETAIL.noReadOnSurface }}
+        honest={honest}
         subject="A/R reads"
       >
         <div className="ns-table-wrap">
@@ -69,6 +92,27 @@ export default function FinancialsAccountsReceivable() {
                 <th scope="col" className="ns-num">Outstanding</th>
               </tr>
             </thead>
+            {rows.length > 0 ? (
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.invoiceId}>
+                    <td>{row.accountId ?? "—"}</td>
+                    <td>{row.invoiceNumber}</td>
+                    <td>{dateWords(row.dueDate)}</td>
+                    <td>
+                      {row.daysOverdue === null
+                        ? row.position
+                        : row.daysOverdue > 0
+                          ? `${row.daysOverdue} days overdue`
+                          : "Current"}
+                    </td>
+                    <td className="ns-num">{row.total}</td>
+                    <td className="ns-num">{row.applied}</td>
+                    <td className="ns-num">{row.outstanding}</td>
+                  </tr>
+                ))}
+              </tbody>
+            ) : null}
           </table>
         </div>
       </FinancialsHonestSection>
