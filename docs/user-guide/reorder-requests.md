@@ -29,6 +29,20 @@ You'll also see requests waiting for your review in the **Notification Panel** (
 
 **As a Parts Manager**, once a request is approved you'll see a **"Reorder Request — Ready for Parts Manager"** card on the part's detail page. Click **Assign to Parts Associate** and pick who should handle the purchase from the list.
 
+You can also assign straight from your queue:
+
+1. Open the **Parts Manager Queue** (your Parts Manager home, or the Parts → WORK section).
+2. Click **Assign** on the request's card. The assignment form opens **directly beneath that card** and the search box is focused for you — on a phone, the page brings it into view automatically.
+3. Search for an eligible Parts Associate by name.
+4. Select the employee from the list.
+5. Click **Assign** to confirm. The card leaves your queue and appears in that associate's work.
+
+What the form may truthfully tell you instead:
+
+- **"No eligible employees found."** — no active, app-linked Parts Associate is currently eligible for assignment. This is real data, not an error; talk to your administrator about employee setup.
+- A **security-role warning** — some candidates were excluded because their security role is missing or field-only; they won't appear in the list until that's corrected.
+- An **error message under the form title** — the assignment was refused (for example, the request changed state while you had the form open). The message appears right beside the card you were assigning; nothing was changed.
+
 ### 4. Starting the purchase
 
 **As the assigned Parts Associate**, open the part — you'll see **"Reorder Request — Assigned to Parts Associate"**. Click **Start Purchasing** when you begin working the order. This moves it into your **Parts Associate Queue** ("In Progress").
