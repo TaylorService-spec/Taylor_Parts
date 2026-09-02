@@ -4,7 +4,7 @@ gate: Implementation Plan
 status: Draft
 date: 2026-09-02
 owner: Claude Code
-related_adrs: []
+related_adrs: ["ADR-014"]
 depends_on: []
 implements: []
 supersedes: []
@@ -15,9 +15,13 @@ target_release:
 
 # Implementation Plan: BIN-001 — governed Bin / Location authority and scanning
 
-**Reconciled against:** `origin/main` @ `c54cd21800b424c75a74a85fa38dd2d7788e9a5c`, read directly on 2026-09-02. Every claim below is sourced; nothing is recalled.
+**Reconciled against:** `origin/main` @ `c54cd21800b424c75a74a85fa38dd2d7788e9a5c`, read directly on 2026-09-02. Every claim in *Verified current state* is sourced; nothing is recalled.
 
-**Status of this document:** analysis and planning only. No application code, Firestore Rules, capability, grant, or deployment change was made.
+**Amended by BIN-P0, 2026-09-02:** Owner rulings O-1 through O-7 are final and recorded in **Decision #160** and **ADR-014 — Warehouse and Bin Inventory Custody Model**. No Owner architectural decision remains open.
+
+**Reading this document:** §3 is the **VERIFIED CURRENT STATE** — what the repository does today, where a bin is still descriptive and no `BIN` movement exists. §6a onward is the **APPROVED TARGET STATE**. Nothing in §3 changes until BIN-P6 ships.
+
+**Status of this document:** planning and governance only. No application code, Firestore Rules, capability, grant, or deployment change was made.
 
 ---
 
@@ -37,7 +41,7 @@ governed physical Location -> stable locationId -> human-readable aisle/bay/bin 
 
 `functions/src/inventoryLocation/` already contains a governed bin registry, bin lifecycle commands, mounted callables, a put-away command, two declared least-privilege Roles, and a scanning UI. What it deliberately does **not** do is make a bin a custody location — because **Decision #116** ruled that it must not.
 
-The last two links of the client's chain therefore cannot be planned as engineering work. They require revisiting #116, which is an Owner decision about warehouse operations, not an implementation detail. This plan records that contradiction rather than forcing the premise, and sequences everything that can proceed without it.
+The last two links of the client's chain therefore required revisiting #116 — an Owner decision about warehouse operations, not an implementation detail. **That decision has now been made: Decision #160 adopts Model A, warehouse roll-up** (§6a). The warehouse remains the custody parent; a bin becomes an authoritative physical position beneath it, and a warehouse's total is the roll-up of its direct balance and its child bins.
 
 ## 2. Client convention (as supplied, not as decided)
 
@@ -162,239 +166,274 @@ Reuse these unchanged. Do not rebuild any of them.
 10. The inert-and-ungranted capability posture, and the two declared bin Roles.
 11. `getLocationDisplay` as the id → label resolver.
 
-## 5. Gaps
+## 5. Gaps against the approved target
 
-| # | Gap | Severity |
+Gaps are measured against the **approved target state** (§6a), not against what #116 required.
+
+| # | Gap | Severity | Closed by |
+|---|---|---|---|
+| G1 | **Bin identity is derived from the human code.** `deriveBinDocId(warehouseId, code)` = `bin_{warehouseId}__{code}`. Correcting a mislabelled code creates a *different document* and orphans its placement history. Ruled unacceptable by O-3 | **High** | BIN-P1 |
+| G2 | No structured Area / Aisle / Bay attributes. A bin code is one flat string | Medium | BIN-P1 |
+| G3 | No Administration surface to configure warehouses, bins or racking | High | BIN-P3 |
+| G4 | No bin generator (odd-numbering, per-aisle bay counts, per-bay bin counts, individually configurable irregular positions) | Medium | BIN-P3 |
+| G5 | No location label generation, printing or export | Medium | BIN-P5 |
+| G6 | **No bin-level quantity authority.** Deliberate under #116; now the central gap the approved target closes | **Blocking for BIN counting** | BIN-P6 |
+| G7 | `stock_locations` and the Epic 4 legacy bin/transfer model remain readable and are still described as bin-level quantity | High | BIN-P2 |
+| G8 | Every bin capability is inert and ungranted; no operator can use what exists | High | BIN-P4 |
+| G9 | No location code history; a corrected code leaves no trail, and a stale printed label could resolve to the wrong place | Medium | BIN-P1 |
+| G10 | Warehouse creation has no callable at all (`warehouseStatusWriter` is unexported and inert) | Medium | BIN-P3 |
+| G11 | Every quantity consumer filters on `type === "WAREHOUSE"` as if it were the warehouse total. Under roll-up it becomes the direct/unbinned term | **High** | BIN-P6 |
+
+## 6. Decision #116 — revisited and amended
+
+**Decision #116 (Owner, 2026-08-20)** ruled the warehouse the custody authority and a bin a descriptive sub-location, protecting the invariant that *putting stock into a bin must not remove it from warehouse on-hand or available*. It stated its own cost: *"a bin-to-bin move is not an inventory movement under this model, and 'how many are in rack 14' is only as good as the last placement recorded."*
+
+The client requirement is that cost. **#116 has been revisited and amended by Decision #160 / ADR-014 — deliberately, and only for the forward posture.** #116's ruling on the phase it governed stands as recorded, and the put-away implementation built under it remains correct for that phase.
+
+### 6a. Approved target state — Model A, warehouse roll-up
+
+> **The warehouse remains the custody parent. A BIN becomes an authoritative physical inventory position beneath it.**
+
+```
+Phoenix Warehouse (aggregate)
+├── direct WAREHOUSE balance      stock in the warehouse, not assigned to a governed bin
+├── BIN A01-001 balance
+├── BIN A01-003 balance
+├── BIN AA04-011 balance
+└── …
+
+aggregate = direct + Σ(child bin balances)
+```
+
+Model **B** (descriptive) was rejected: it cannot support an authoritative expected quantity for a scanned bin. Model **C** (bin replaces warehouse custody) was rejected: unnecessary, it reinterprets all existing ledger history, and its claim that binned stock is not warehouse stock is exactly what #116 prevents.
+
+**The substantive shift:** today `type === "WAREHOUSE" && locationId === X` *is* the warehouse total, because nothing is in bins. Under the target it becomes the **direct/unbinned** term of the total. Parentage is authoritative in the `bins` registry — never parsed from a display code.
+
+**This is a target, not current behaviour.** §3 remains the verified current state: bins are descriptive today, put-away writes placement events only, and no `BIN` movement exists. Nothing in §3 changes until BIN-P6 ships.
+
+## 7. Owner rulings (final) and remaining client decisions
+
+### Owner decisions — all resolved (Decision #160, ADR-014)
+
+| Ref | Decision | Ruling |
 |---|---|---|
-| G1 | **Bin identity is derived from the human code.** `deriveBinDocId(warehouseId, code)` = `bin_{warehouseId}__{code}`. Correcting a mislabelled code creates a *different document* and orphans its placement history. This directly contradicts Non-negotiable 5 | **High** |
-| G2 | No aisle / bay / area / site structure anywhere. A bin code is one flat string | Medium |
-| G3 | No Administration surface to configure warehouses, bins or racking | High |
-| G4 | No bin generator (odd-numbering, per-aisle bay counts, per-bay bin counts, individually configurable irregular positions) | Medium |
-| G5 | No location label generation, printing or export | Medium |
-| G6 | No bin-level quantity authority — **deliberate, see §6** | Blocking for BIN counting |
-| G7 | `stock_locations` and the Epic 4 legacy bin/transfer model remain readable and are still described as bin-level quantity | High |
-| G8 | Every bin capability is inert and ungranted; no operator can use what exists | High |
-| G9 | No location alias or rename history; a code correction leaves no trail | Medium |
-| G10 | Warehouse creation has no callable at all (`warehouseStatusWriter` is unexported and inert) | Medium |
+| **O-1** | Revisit #116 — B, A or C? | **Model A — warehouse roll-up.** §6a |
+| **O-2** | Interpretation of existing WAREHOUSE-level ledger history | **Never rewritten.** Historical rows stay authoritative exactly as recorded; they become the direct/unbinned term, which keeps them truthful without reinterpretation. Later bin assignment is new governed evidence with no aggregate change. **Ledger vocabulary is not invented here** — `TRANSFER_OUT`/`TRANSFER_IN` already expresses the semantics; BIN-P6 confirms whether put-away may use it given Transfer's exclusive movement authority, or whether a distinct type is required |
+| **O-3** | Bin identity | **Stable surrogate identity.** The human code is not the database id. Changing a legitimate code must not change the stable identity; placements, ledger evidence, cycle counts and audit keep pointing at the same bin. Code history must be traceable and a stale label must not silently resolve to the wrong place — smallest correct mechanism is a BIN-P1 decision, and **must not be a second Location authority** |
+| **O-4** | Countable-location-type policy | **Governed integrity policy**, not ordinary Administration configuration. Racking configuration may be Admin data; admitting a type to Cycle Count changes stock-integrity authority. May later be stored as data, but ordinary Admin preference editing is not sufficient authority. Consistent with Cycle Count ruling D0(ii) |
+| **O-5** | Capability activation | **Deferred.** `inventory.location.bin.*` and `inventory.placement.record` stay inactive and ungranted until the model is operationally coherent. Activation moves **after** BIN-P6 in the execution order |
+| **O-6** | Legacy competing authority | **Retire, in sequence, deleting nothing now:** census readers/writers → replace required readers with the ledger derivation → prove no required production path depends on it → then remove or deprecate. **Not retired merely because nothing writes it** |
+| **O-7** | Bin code uniqueness | **Scoped to the warehouse.** `Phoenix / A01-001` and `Seattle / A01-001` are both valid and different. Within one warehouse, two ACTIVE bins must not share a canonical code |
 
-## 6. The conflict this plan cannot resolve
+**Also ruled:** Site/Area posture is Operating Company → Warehouse → Area → Aisle → Bay → Bin, with the warehouse as the physical and custody parent and Area an attribute beneath it — **no generic facility or real-estate model**. Warehouse and floor-map **visualization is deferred**. Decision **#117** (no quarantine as a side effect of put-away) is unchanged.
 
-**Decision #116 (Owner, 2026-08-20)** — recorded in `docs/DECISIONS.md`, resolving `docs/assessments/inventory-location-registry-2026-08-20.md`:
+### Client decisions — still open, none blocking BIN-P1
 
-> **Warehouse = inventory custody authority. Bin = descriptive physical sub-location.** A bin does not become a separate inventory custody location in this phase.
-> The load-bearing invariant: putting stock into a bin must not remove it from warehouse on-hand or available.
-> … this phase adds **no** hierarchical inventory roll-up, **no** bin-level reservations, **no** second inventory balance authority… `BIN` does not become eligible for warehouse custody calculations.
-
-The decision states its own cost: *"a bin-to-bin move is not an inventory movement under this model, and 'how many are in rack 14' is only as good as the last placement recorded."*
-
-The client requirement — *authoritative `(partId, locationId)` quantity at a bin, so Cycle Count may admit BIN* — **is that cost, and it is now being asked for.** #116 must be revisited before links 5–7 of the client chain can be built.
-
-The assessment already frames the three coherent answers, and they remain the right frame:
-
-| Option | Meaning | Consequence |
+| Ref | Decision | Blocks |
 |---|---|---|
-| **A — roll-up** | A BIN belongs to a warehouse; availability sums the warehouse *and* its bins | Existing math learns a parent-child rule. Stock stays sellable once put away. Registry must be authoritative about parentage |
-| **B — descriptive** (ratified as #116) | Placement is recorded separately; `location` stays `WAREHOUSE` | Nothing existing changes. Bin counting and bin-to-bin moves are weaker |
-| **C — full custody** | A BIN is a first-class location like a truck | Cleanest model, largest change. Every authority must be taught bins, and all existing ledger history — written at WAREHOUSE level — means something different from new history |
-
-**Claude Code recommendation: Option A.** It is the only option that satisfies the client's chain while preserving the #116 load-bearing invariant — binned stock stays sellable, because availability sums the parent warehouse *and* its bins. Option C satisfies the chain but reinterprets every ledger row ever written, and C's "stock at a bin is not warehouse stock" is exactly what #116 was decided to prevent. Option B is the status quo and cannot deliver bin-level counting at all.
-
-**This is an Owner decision. It is not made here, and nothing downstream of it is planned as though it were.**
-
-## 7. Decisions required
-
-### Owner decisions
-
-| Ref | Decision | Recommendation |
-|---|---|---|
-| **O-1** | Revisit #116: keep **B**, or adopt **A** or **C**? | **A** — see §6. Blocks G6, BIN-P5/P6/P7 |
-| **O-2** | Under A: how is pre-existing WAREHOUSE-level ledger history interpreted once bins carry stock? | Treat all existing rows as "at the warehouse, bin unknown"; never backfill a bin onto historical evidence |
-| **O-3** | Bin identity: introduce a **stable surrogate `binId`** with `code` as a mutable attribute, or keep the code-derived id and declare codes immutable? | **Surrogate id.** Non-negotiable 5 and G1 require it; immutable codes make a mislabel permanent |
-| **O-4** | Is the countable-location-type policy Administration data or governed? | **Governed**, consistent with Cycle Count ruling D0(ii). Configuring racking is operating data; deciding a type may hold custody is integrity policy |
-| **O-5** | Activate and grant `inventory.location.bin.*` and `inventory.placement.record`, and to which Roles? | Two Roles are already declared for exactly this split; activation is the separate rollout step #119 anticipates |
-| **O-6** | Retire `stock_locations` and the Epic 4 legacy model, or leave them? | **Retire.** G7 is a live trap; leaving a second "bin-level quantity" readable while building a real one invites exactly the divergence already measured |
-| **O-7** | Is bin identity unique per warehouse (today) or per operating company? | Per warehouse — current derived id already assumes it, and racking is labelled per building |
-
-### Client decisions (cannot be resolved from the repository)
-
-| Ref | Decision |
-|---|---|
-| **C-1** | Warehouse bay width — one digit or two? The warehouse document says one; the floor-walk document shows aisles exceeding 9 bays. **Recommendation: two digits**, which the existing code pattern already accepts and which removes the contradiction permanently |
-| **C-2** | Final Phoenix Parts Room and Warehouse area codes |
-| **C-3** | Whether Site and Area are recorded as data, or Site is simply the warehouse and Area is a bin attribute. **Recommendation: warehouse = Site; Area/Aisle/Bay as structured attributes on the bin record** — nothing rolls up through them, so separate registries would be unused structure |
-| **C-4** | Barcode symbology default (informs a default; does not define the data model) |
-| **C-5** | Physical label medium — thermal/ZPL, which needs a print bridge, or laser plus label sheets, which needs nothing beyond an HTML print view |
-| **C-6** | Part-to-bin business rules where not already governed — e.g. may one part occupy several bins, may one bin hold several parts |
-| **C-7** | Whether irregular / deep / oversized positions need a recorded attribute (capacity, depth, oversize flag) or only individual creation |
+| **C-1** | Warehouse bay width — one digit or two? The warehouse document says one; the floor-walk document shows aisles exceeding 9 bays. Recommendation: **two**. **Must close before mass label printing.** Does not block the data model — BIN-P1 stores structured bay identity so the display formatter produces the final convention without another identity migration. **One-digit bay width must not be hard-coded into the schema** | Gate A |
+| **C-2** | Final Phoenix Parts Room and Warehouse area codes | Gate A |
+| **C-3** | Recorded as ruled: warehouse = Site, Area an attribute. Remaining client input is which Areas exist (e.g. Parts Room, Warehouse Storage) | Gate A |
+| **C-4** | Default barcode symbology — informs a default, does not define the data model | Gate A |
+| **C-5** | Label medium — thermal/ZPL (needs a print bridge) or laser plus sheets (needs nothing beyond an HTML print view) | Gate A |
+| **C-6** | Part-to-bin rules: may one part occupy several bins; may one bin hold several parts | BIN-P6 |
+| **C-7** | Do irregular / deep / oversized positions need recorded attributes (capacity, depth, oversize flag), or only individual creation | BIN-P3 |
 
 ## 8. Target authority model
 
-Classified against what exists:
-
 | Target concept | Status | Note |
 |---|---|---|
-| stable `locationId` | **EXISTS — extend minimally** | Warehouse and mobile ids are stable. Bin id is code-derived (G1) and needs O-3 |
+| stable `locationId` | **EXISTS — extend minimally** | Warehouse and mobile ids are stable. Bin id is code-derived (G1); O-3 requires a surrogate |
 | company / tenant scope | **EXISTS — reuse unchanged** | `operatingCompanyId` on the warehouse; bins derive from `warehouseId` |
-| site | **EXISTS — reuse unchanged** | The warehouse is the site (pending C-3) |
-| area | **MISSING — optional** | Recommend a bin attribute, not a registry |
+| site | **EXISTS — reuse unchanged** | The warehouse is the site |
+| area | **MISSING — required** | A bin attribute, not a registry |
 | aisle | **MISSING — required** | Structured attribute on the bin record |
-| bay | **MISSING — required** | Structured attribute on the bin record |
-| bin | **EXISTS — reuse unchanged** | `bins` registry; `A01-001` already matches the code pattern |
-| `displayCode` | **EXISTS — reuse unchanged** | `code` (normalized) plus `originalCode` (as typed, for reprinting) |
+| bay | **MISSING — required** | Structured attribute; width is a formatter concern, never schema |
+| bin | **EXISTS — reuse unchanged** | `bins` registry; `A01-001` and `AA01-001` already match the existing code pattern |
+| `displayCode` | **EXISTS — extend minimally** | `code` (normalized) plus `originalCode` (as typed); becomes a mutable attribute under O-3 |
+| code history | **MISSING — required** | BIN-P1; not a second authority |
 | status | **EXISTS — reuse unchanged** | `ACTIVE`/`INACTIVE`, retire-never-delete |
-| barcode / scan identity | **EXISTS — extend minimally** | `INVENTORY_LOCATION` is already scannable; `resolveBin` already resolves a scanned code. No separate bin barcode table is required |
+| barcode / scan identity | **EXISTS — extend minimally** | `INVENTORY_LOCATION` already scannable; `resolveBin` already resolves a scanned code. **No separate bin barcode table** |
 | audit / provenance | **EXISTS — reuse unchanged** | Governed command + audit event pattern |
-| bin-level quantity | **CONFLICT — requires O-1** | See §6 |
-| rename / alias history | **MISSING — required if O-3 chooses a surrogate id** | |
+| bin-level quantity | **MISSING — required** | BIN-P6, under roll-up. Derived from ledger evidence; **never a stored field** |
+| warehouse aggregate = direct + children | **MISSING — required** | BIN-P6. G11 |
 
 ## 9. Barcode and scanning relationship
 
-The required invariant is already achievable with what exists:
+The required invariant is achievable with what exists:
 
 ```
 printed location identity (A01-001)
   -> barcode representation
   -> shared scan identity boundary (scannedIdentity.js, INVENTORY_LOCATION)
   -> resolveBin(code, expectedWarehouseId, stored)
-  -> exactly one governed bin document
+  -> exactly one governed bin, by stable identity
 ```
 
-**No separate bin barcode table is recommended, and current authority does not require one.** Duplicate prevention is structural: the bin document id derives from `(warehouseId, code)`, so two identical codes in one warehouse are one document. That is the same discipline `part_aliases` uses.
+**No separate bin barcode table is recommended, and current authority does not require one.**
 
 Two consequences to hold:
 
-- **A scan resolves identity and context. It never moves inventory.** `PutAwayScan.jsx` already obeys this — the scan resolves a bin, and a separate governed command records the placement.
-- If O-3 adopts a surrogate `binId`, the printed code becomes a *lookup key* rather than the identity, and the resolver gains one indirection. That is the change that makes a label survive a code correction.
+- **A scan resolves identity and context. It never moves inventory.** `PutAwayScan.jsx` already obeys this — the scan resolves a bin, a separate governed command records the effect.
+- Under O-3 the printed code becomes a **lookup key rather than the identity**, so the resolver gains one indirection and a label survives a code correction. A stale label must fail visibly, never resolve to the wrong physical location.
+
+**A label must not be required to expose a raw database id.** The human code is what is printed; the stable identity is what it resolves to.
 
 ## 10. Inventory movement relationship
 
-Under **B** (today): put-away writes `bin_placements`; the ledger is untouched; `(partId, warehouseId)` remains the finest authoritative granularity.
+**Current (verified):** put-away writes `bin_placements`; the ledger is untouched; `(partId, WAREHOUSE locationId)` and `(partId, MOBILE locationId)` are the finest authoritative granularity.
 
-Under **A** (if O-1 adopts it): a movement may carry `location.type === "BIN"`, which the ledger schema already permits. Every derivation — `cycleCountExpectedQuantity.ts`, `fulfillmentAvailability.ts`, transfer sufficiency — must learn that a bin rolls up to its parent warehouse, and the bin registry becomes authoritative about parentage. Put-away becomes a real movement (`TRANSFER_OUT` at the warehouse, `TRANSFER_IN` at the bin, or a dedicated pair), and `bin_placements` is either retired or demoted to history.
+**Target (approved, BIN-P6):**
 
-**Non-negotiable in either case: no `binQuantity` field, ever.** Bin-level quantity is derived from ledger evidence or it does not exist. G7 is the cautionary example already in the repository.
+| Movement | Warehouse aggregate |
+|---|---|
+| `WAREHOUSE → BIN` (put-away) | **unchanged** — direct decreases, child bin increases |
+| `BIN → WAREHOUSE` | **unchanged** |
+| `BIN → BIN` (same warehouse) | **unchanged** |
+| `WAREHOUSE → MOBILE` | **decreases** |
+| `BIN → MOBILE` | **decreases** |
+| `MOBILE → WAREHOUSE` | **increases** — lands in direct/unbinned |
+| `MOBILE → BIN` | **increases** — lands in the named child bin |
+
+**Cross-warehouse bin movement remains a governed Transfer**, never a bin shortcut: crossing a warehouse boundary crosses a custody boundary.
+
+Every derivation must learn parentage — `cycleCountExpectedQuantity.ts`, `fulfillmentAvailability.ts`, transfer sufficiency (G11). **No `binQuantity` field, ever.** G7 is the measured example of what a second balance does.
 
 ## 11. Cycle Count dependency
 
-The approved Cycle Count plan and A1 specification are compatible with this program **without migration**:
+> **Where those documents live:** the Cycle Count implementation plan and the A1 specification are on branch `claude/cycle-count-a1-spec` (commits `7e457d7f`, `f585125d`) and are **not yet on `main`**. The rulings referenced here — D0(ii) and the A1 record shape — come from that reviewed and approved pair.
 
-- The A1 sheet stores a **governed location reference only**, and A1 explicitly moves the `WAREHOUSE`/`MOBILE` fence out of shape validation into command-time eligibility policy (ruling D0(ii)).
-- Admitting `BIN` is therefore a policy and validation change plus a capability decision — **not a Cycle Count schema migration.** Confirmed against `docs/specifications/cycle-count-multi-part-sheet.md` §"D0 — Location authority and eligibility policy".
-- Cycle Count's expected quantity must continue to come from the ledger and the serialized asset registry. **Cycle Count must never create a bin quantity.** If the ledger cannot answer `(partId, binLocationId)`, BIN is not countable — Cycle Count does not solve location authority.
+Compatible **without migration**: the A1 sheet stores a governed location reference, and A1 moves the `WAREHOUSE`/`MOBILE` fence out of shape validation into command-time eligibility policy (ruling D0(ii)). Admitting BIN is a policy and validation change.
 
-**BIN eligibility must not be recommended until O-1 is ruled and bin-level ledger truth exists.**
+**Cycle Count eligibility is NOT widened here.** BIN becomes eligible only when all three hold:
+
+1. **BIN-P6** has established authoritative bin-level quantity;
+2. the target warehouse's **initial inventory conversion is complete enough** that expected quantity at a bin is truthful;
+3. Cycle Count's own **activation and durable-read dependencies** are satisfied.
+
+**A partially converted warehouse must not pretend BIN-level expected quantity is complete.** Cycle Count consumes location authority; it does not solve it.
 
 ## 12. Initial inventory conversion dependency
 
-Bins are useless until stock is actually located in them, and that is an operational programme, not a PR:
+Bins are useless until stock is actually located in them, and that is an operational programme, not a PR.
 
-- Under **B**, conversion means recording a placement for existing stock — no ledger effect, and a partially converted warehouse is harmless.
-- Under **A**, conversion means moving warehouse-level balances into bins as governed movements. A partially converted warehouse is then **half-binned**, and any bin-level count during that window is meaningless. Conversion completion is therefore a hard gate on BIN counting (see §14, gate D).
+Under the approved target, conversion records **new governed evidence** moving stock from the direct/unbinned balance into named bins, **with no change to warehouse aggregate quantity**. History is never rewritten and no bin placement is claimed for a period when none was known (O-2).
 
-Either way, existing ledger history stays at WAREHOUSE level and must never be backfilled with a bin (O-2).
+A partially converted warehouse therefore has a **correct aggregate and an incomplete bin picture**. The system must say so rather than imply completeness. Conversion completion for a given warehouse is a hard gate on BIN counting *at that warehouse* (gate E).
 
 ## 13. PR sequence
 
-Fewer, larger PRs where a split would leave a non-working or unsafe intermediate state. No unrelated authority changes are combined.
+Identifiers are preserved from the reviewed BIN-001 reconciliation; **BIN-P4 now executes after BIN-P6** per ruling O-5. The identifiers are not renumbered, because they are already referenced in Decision #160 and in review.
 
-| # | PR | Surfaces | Authority | Tier | Depends on | Deploy | Tests | Owner decision |
-|---|---|---|---|---|---|---|---|---|
-| **BIN-P0** | Custody-model ruling — record #116 revisit as a Decision + ADR | `docs/DECISIONS.md`, ADR | None (governance) | Tier 2 | — | none | none | **O-1, O-2 — required** |
-| **BIN-P1** | Bin identity stability: surrogate `binId`, `code` as mutable attribute, rename history; structured `area`/`aisle`/`bay` attributes | `inventoryLocation/binRegistry.ts`, `binCommands.ts`, `binCallables.ts` | Bin registry | Tier 1 | O-3, C-3 | none | focused | **O-3, C-1, C-3** |
-| **BIN-P2** | Retire the legacy on-hand and Epic 4 bin model | `types/warehouse.ts`, `warehouseService.ts`, `warehouseReconciliationService.ts`, `inventoryAnalyticsCallables.ts`, `permissionCatalog.ts` description | Removes a competing on-hand shape | Tier 2 (touches a permission description and an analytics read) | — | none | regression on analytics | **O-6** |
-| **BIN-P3** | Administration racking configuration: list/create/deactivate/reactivate over existing callables, plus the odd-numbering generator with per-aisle bay and per-bay bin counts and individually configurable irregular positions | `modules/administration/*`, `services/binCommandClient.js` | UI over existing commands; **no new write authority** | Tier 1 | BIN-P1 | none | focused + UI | C-2, C-7 |
-| **BIN-P4** | Activation and grants for `inventory.location.bin.manage` / `.read` / `inventory.placement.record` | `permissionCatalog.ts`, role grants | **Capability activation** | **Tier 2** | BIN-P3 verified | env activation | grant tests | **O-5 — required** |
-| **BIN-P5** | Location label generation and export: `bwip-js`, HTML print view, Administration symbology configuration | new `modules/administration/*` | None new | Tier 1 | BIN-P1 | none | round-trip through `resolveBin` | C-4, C-5 |
-| **BIN-P6** | Bin-level custody: ledger writers emit `BIN`; availability, transfer sufficiency and cycle-count expected quantity learn parentage | `inventoryLedger/*`, `fulfillment/*`, `inventoryTransfer/*`, `cycleCount/cycleCountExpectedQuantity.ts`, `putAwayCommand.ts` | **Changes what every existing quantity means** | **Tier 2** | **BIN-P0 = A or C** | none | heavy | **O-1, O-2** |
-| **BIN-P7** | Cycle Count BIN eligibility — countable-type policy widened | `cycleCount/cycleCountCommandComposition.ts` policy seam | Eligibility policy | **Tier 2** | BIN-P6 + conversion complete + Cycle Count A5 | none | focused | **O-4** |
-| **BIN-P8** | Multi-scan bin cycle count UX | `modules/inventory/CycleCounts.jsx`, scan session | UI | Tier 1 | BIN-P7 + Cycle Count A2 | none | UI | — |
+**Execution order:** `P0 → P1 → P2 → P3 → P5 → P6 → P4 → P7 → P8`
 
-**BIN-P1, P2, P3 and P5 do not depend on O-1** and can proceed while the custody decision is open. **BIN-P6, P7 and P8 are entirely gated on it.**
+| # | PR | Surfaces | Authority | Tier | Depends on | Owner decision |
+|---|---|---|---|---|---|---|
+| **BIN-P0** | Custody-model ruling — Decision #160 + ADR-014 + this amendment | `docs/DECISIONS.md`, `docs/architecture/ADR-014-*`, this plan | None (governance) | Tier 2 | — | **Complete** |
+| **BIN-P1** | Stable surrogate bin identity; structured Area/Aisle/Bay/Bin; canonical-code uniqueness within warehouse; code-history posture | `inventoryLocation/binRegistry.ts`, `binCommands.ts`, `binCallables.ts` | Bin registry identity | Tier 1 | BIN-P0 | — |
+| **BIN-P2** | Retire/neutralize `stock_locations` + Epic 4 competing authority; replace required readers with ledger derivation first | `types/warehouse.ts`, `warehouseService.ts`, `warehouseReconciliationService.ts`, `inventoryAnalyticsCallables.ts`, `permissionCatalog.ts` description | Removes a competing on-hand shape | Tier 2 | BIN-P0 | — |
+| **BIN-P3** | Administration racking configuration + odd-numbering generator, per-aisle bay and per-bay bin counts, individually configurable irregular positions | `modules/administration/*`, `services/binCommandClient.js` | UI over existing commands; **no new write authority** | Tier 1 | BIN-P1 | C-2, C-7 |
+| **BIN-P5** | Location label generation and export; symbology as Administration configuration | new `modules/administration/*` | None new | Tier 1 | BIN-P1, C-1 | C-1, C-4, C-5 |
+| **BIN-P6** | **Bin-level custody:** ledger emits `BIN`; availability, transfer sufficiency and cycle-count expected quantity learn parentage; WAREHOUSE↔BIN and BIN↔BIN semantics | `inventoryLedger/*`, `fulfillment/*`, `inventoryTransfer/*`, `cycleCount/cycleCountExpectedQuantity.ts`, `putAwayCommand.ts` | **Changes what every existing quantity means** | **Tier 2** | BIN-P1, BIN-P2 | C-6 |
+| **BIN-P4** | Capability activation + grants for `inventory.location.bin.*` and `inventory.placement.record` | `permissionCatalog.ts`, role grants | **Capability activation** | **Tier 2** | **BIN-P3 and BIN-P6 verified** | **O-5 timing satisfied; grant approval still Owner-only** |
+| **BIN-P7** | Cycle Count admits BIN — countable-type policy widened | `cycleCount/cycleCountCommandComposition.ts` policy seam | Governed eligibility policy | **Tier 2** | BIN-P6 + conversion + Cycle Count A5 | O-4 governed change |
+| **BIN-P8** | Scan bin → multi-part Cycle Count workflow | `modules/inventory/CycleCounts.jsx`, scan session | UI | Tier 1 | BIN-P7 + Cycle Count A2 | — |
+
+**BIN-P1, P2, P3 and P5 deliver the entire visible half of the requirement — operator-configurable racking and printed labels — before any custody change.**
 
 ## 14. Hard gates
 
 | Gate | Requires |
 |---|---|
-| **A — labels can be mass printed** | BIN-P1 (a label must survive a code correction — G1), C-1 bay width, C-2 area codes, C-4/C-5. **Printing before O-3 means reprinting every label after the first mislabel** |
-| **B — locations can be imported/configured** | BIN-P1, BIN-P3, and BIN-P4 activation. Without P4 no operator can create a bin at all |
-| **C — stock can be put away to bins** | Gate B, plus `inventory.placement.record` granted. Available under B today once activated |
-| **D — bin-level expected quantity is authoritative** | **O-1 ruled A or C**, BIN-P6 merged, **and initial inventory conversion complete for that warehouse**. A half-binned warehouse cannot answer bin-level expected quantity |
-| **E — Cycle Count may admit BIN** | Gate D, plus BIN-P7 and Cycle Count A5 activation |
+| **A — labels can be mass printed** | BIN-P1 (a label must survive a code correction — G1), **C-1 bay width closed**, C-2 area codes, C-4, C-5. Printing before BIN-P1 means reprinting the wall after the first mislabel |
+| **B — locations can be imported/configured** | BIN-P1, BIN-P3, and BIN-P4 activation. Without P4 no operator can create a bin |
+| **C — stock can be put away to bins** | Gate B, plus `inventory.placement.record` granted |
+| **D — bin-level expected quantity is authoritative** | BIN-P6 merged (roll-up implemented, parentage taught to every consumer) |
+| **E — Cycle Count may admit BIN** | Gate D, **plus initial inventory conversion complete for that warehouse**, plus BIN-P7 and Cycle Count A5 |
 | **F — multi-part bin scan/count activated** | Gate E, plus Cycle Count A1/A2 |
 
-Not gates, deliberately: symbology (a default, changeable later), area codes for anything but printing, and RFID (out of scope).
+Not gates, deliberately: symbology (a default, changeable later), visualization (deferred), and RFID (out of scope).
 
 ## 15. Tests and verification
 
-- `resolveBin` round-trip: every generated label resolves through the shared scan boundary to exactly one governed bin. This is the acceptance criterion for BIN-P5, not a nicety.
-- Odd-numbering generator: N positions produce `2i-1`; activating `002` later leaves `001`/`003` untouched, with unchanged identities.
-- Code correction under BIN-P1: changing a display code preserves `binId` and all placement history.
+- `resolveBin` round-trip: every generated label resolves through the shared scan boundary to exactly one governed bin, by stable identity. Acceptance criterion for BIN-P5.
+- Odd-numbering generator: N positions produce `2i-1`; activating `002` later leaves `001`/`003` untouched with unchanged identities.
+- BIN-P1 code correction: changing a display code preserves the stable id and all placement history; the previous code remains traceable; a stale label does not silently resolve elsewhere.
+- Canonical-code uniqueness within a warehouse; the same code in two warehouses is two bins.
 - `WRONG_WAREHOUSE` remains distinct from `NOT_FOUND`.
-- BIN-P2 regression: no surface loses data when `stock_locations` is retired; analytics still computes.
-- BIN-P6 (if reached): put-away no longer removes stock from availability; parent roll-up is asserted on availability, transfer sufficiency **and** cycle-count expected quantity — the three authorities #116 named.
+- BIN-P2 regression: no surface loses data when `stock_locations` is retired; analytics still computes from the ledger.
+- BIN-P6: put-away does **not** reduce availability; `WAREHOUSE↔BIN` and `BIN↔BIN` leave the warehouse aggregate unchanged; parentage is asserted on availability, transfer sufficiency **and** cycle-count expected quantity — the three authorities #116 named.
 - A test asserting no `binQuantity`-shaped field exists on any record.
 
 ## 16. Explicit non-goals
 
 - MFID/RFID.
-- A second Location registry. The `bins` registry is extended, never replaced.
-- A separate bin barcode table.
+- A second Location registry, and no separate bin barcode table. The `bins` registry is extended, never replaced.
+- A generic Site / facility / real-estate hierarchy.
 - Any stored bin balance or `binQuantity` field.
-- Quarantine and inspection — excluded by **Decision #117** and unchanged here.
-- Widening client-direct Firestore read or write authority for configuration. `bins` and `bin_placements` stay deny-all; configuration goes through callables.
-- BIN Cycle Count implementation in this program's early phases.
-- Re-deciding #116 inside a PR. It is decided by the Owner or it is not decided.
+- **Warehouse and floor-map visualization** — no map schema, x/y coordinates, CAD layout, visual editor or floor-plan implementation. Deferred until real photos and layout information exist; structured Area/Aisle/Bay/Bin data from BIN-P1 is sufficient for the authority work.
+- Quarantine and inspection — Decision **#117** unchanged.
+- Widening client-direct Firestore read or write authority for configuration. `bins` and `bin_placements` stay deny-all.
+- Deleting legacy collections in BIN-P0.
+- BIN Cycle Count implementation before gate E.
 
 ## 17. Non-negotiables
 
-1. **One Location authority.** Extend `bins`, `warehouses` and `mobile_locations`. Never a parallel registry.
-2. **One on-hand authority.** Bin-level quantity is derived from ledger evidence or it does not exist. No `binQuantity`, ever — G7 is the measured example of what a second balance does.
-3. **Barcode is identification, not inventory mutation.** A scan resolves identity and context; a governed command moves stock.
-4. **Movement establishes custody.** Bin-level quantity becomes authoritative through governed movement evidence, never through UI assignment or a placement record promoted to a balance.
-5. **Human code is not the database id.** `A01-003` identifies and displays; stable internal identity must survive a legitimate display correction. **The current implementation violates this (G1) and BIN-P1 exists to fix it.**
-6. **Reserved even numbers are not invalid.** Initial generation uses odds; a governed later activation may use an even value.
-7. **No silent renumbering.** Occupied and historical locations retain traceability; a code correction leaves a trail.
-8. **No client-direct authority expansion** to satisfy a configuration UI.
-9. **Cycle Count does not solve location authority.** BIN becomes countable only after bin-level inventory truth exists.
-10. **No MFID/RFID.**
+1. **One governed Location/Bin authority.** No second inventory-location system.
+2. **One quantity authority.** `inventory_transactions` and the existing serialized authority remain authoritative.
+3. **WAREHOUSE remains the custody parent.**
+4. **BIN is an authoritative physical position under that warehouse.**
+5. **Warehouse aggregate = direct WAREHOUSE balance + child BIN balances.**
+6. **`WAREHOUSE ↔ BIN` and `BIN ↔ BIN` inside one warehouse must not change the warehouse aggregate.**
+7. **Human-readable bin code is not the stable database identity.**
+8. **Historical WAREHOUSE evidence is never rewritten** to fake bin precision that was never known.
+9. **Barcode resolves identity; scanning alone never mutates inventory.**
+10. **Reserved even bin numbers are not invalid.** Initial generation uses odds; governed future insertion may activate an even value.
+11. **No silent renumbering.** Occupied and historical locations retain traceability.
+12. **No second bin on-hand field, and no `stock_locations` resurrection.**
+13. **Countable location-type policy remains governed**, never an ordinary Admin preference.
+14. **BIN Cycle Count cannot activate before BIN quantity is authoritative** — and before the warehouse is converted.
+15. **Existing bin capabilities remain inactive** until their operational model is ready.
+16. **Visualization is deferred.**
 
-## 18. Questions requiring Owner or client input
+## 18. Open questions
 
-Consolidated from §7. **O-1 and O-3 block the most work.**
+**No Owner architectural decision remains open.** O-1 through O-7 are ruled in Decision #160 and ADR-014.
+
+Remaining questions are client and operational, and **none blocks BIN-P1**:
 
 ```
-OWNER
-  O-1  Revisit Decision #116 — keep B (descriptive), or adopt A (roll-up) or C (full custody)?
-       Recommendation: A.  Blocks BIN-P6/P7/P8 and gates D/E/F.
-  O-2  Under A or C, how is existing WAREHOUSE-level ledger history interpreted?
-       Recommendation: "at the warehouse, bin unknown"; never backfilled.
-  O-3  Stable surrogate binId with mutable code, or immutable codes?
-       Recommendation: surrogate.  Blocks BIN-P1, and gate A (label printing).
-  O-4  Countable-location-type policy — governed, or Administration data?
-       Recommendation: governed, consistent with Cycle Count D0(ii).
-  O-5  Activate and grant inventory.location.bin.* and inventory.placement.record — to which Roles?
-       Two Roles are already declared for the split.  Blocks gate B.
-  O-6  Retire stock_locations and the Epic 4 legacy bin/transfer model?
-       Recommendation: retire.
-  O-7  Bin identity unique per warehouse, or per operating company?
-       Recommendation: per warehouse (current derived id already assumes it).
-
 CLIENT
-  C-1  Warehouse bay width: one digit or two?  Recommendation: two — the existing code
-       pattern already accepts it and it removes the document contradiction permanently.
+  C-1  Warehouse bay width — one digit or two?  Recommendation: two.
+       MUST close before mass label printing (gate A). Does not block the data model:
+       BIN-P1 stores structured bay identity so the formatter produces the final
+       convention without a second identity migration. Do not hard-code one digit.
   C-2  Final Phoenix Parts Room and Warehouse area codes.
-  C-3  Are Site and Area recorded as data, or is Site the warehouse and Area a bin attribute?
-       Recommendation: warehouse = Site; Area/Aisle/Bay as bin attributes.
+  C-3  Which Areas exist (e.g. Parts Room, Warehouse Storage).
   C-4  Default barcode symbology.
-  C-5  Label medium — thermal/ZPL (needs a print bridge) or laser + sheets (needs nothing).
+  C-5  Label medium — thermal/ZPL (needs a print bridge) or laser + sheets.
   C-6  Part-to-bin rules: may one part occupy several bins; may one bin hold several parts?
-  C-7  Do irregular/deep/oversized positions need recorded attributes, or only individual creation?
+  C-7  Do irregular/deep/oversized positions need recorded attributes?
+
+FUTURE-STAGE GOVERNANCE (not blocking BIN-P1)
+  - BIN-P6 ledger vocabulary: may put-away emit TRANSFER_OUT/TRANSFER_IN given
+    Transfer's exclusive movement authority, or is a distinct governed type required?
+    Specified in BIN-P6 from existing ledger conventions; deliberately not invented in P0.
+  - BIN-P4 grant approval: which Roles hold bin.manage, bin.read and placement.record.
+    Two least-privilege Roles are already declared for the split.
+  - BIN-P7: the governed mechanism by which the countable-type policy is amended.
 ```
 
 ## 19. What blocks implementation
 
-**Nothing blocks BIN-P1, BIN-P2, BIN-P3 or BIN-P5** once O-3, O-6 and C-1/C-3 are answered. These deliver operator-configurable racking, retire the legacy trap, and produce labels — the whole visible half of the client's requirement — under Option B, without touching custody.
+**BIN-P1 is unblocked.** Its scope — stable surrogate bin identity, structured Area/Aisle/Bay/Bin attributes, canonical-code uniqueness within a warehouse, and the code-history posture — is fully determined by rulings O-3, O-7 and the Site/Area posture. No client answer is required: bay width (C-1) is a formatter concern that BIN-P1 must not hard-code.
 
-**BIN-P4 is blocked on O-5** (capability activation and grants — Tier 2, and per Decision #119 a separate rollout action).
+**BIN-P2, P3 and P5 are unblocked** on architecture. P5 additionally waits on C-1/C-4/C-5 before labels are actually printed (gate A).
 
-**BIN-P6, BIN-P7 and BIN-P8 are blocked on O-1.** They cannot be specified, let alone implemented, while #116 stands as ratified. That is the single decision that determines whether the client's full chain is buildable, and it belongs to the Owner.
+**BIN-P6 is unblocked on architecture** and sequenced after P1 and P2; C-6 shapes its rules.
+
+**BIN-P4 waits on P3 and P6** per ruling O-5, and its grants remain an Owner-only approval.
+
+**BIN-P7 and P8 wait on gate E** — bin quantity authoritative *and* the warehouse converted.
+
+**BIN-P1 implementation is not authorized by this pass.** BIN-P1 specification and review is the next gate.
