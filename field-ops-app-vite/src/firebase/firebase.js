@@ -53,12 +53,18 @@ export const functions = getFunctions(app, firebaseConfig.functionsRegion);
 // authenticating against production.
 if (import.meta.env.DEV && typeof window !== "undefined"
   && new URLSearchParams(window.location.search).get("emulator") === "1") {
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  // Ports are overridable so a session can move off a port the host has taken. The defaults are
+  // firebase.json's, so nothing changes unless an override is set. This exists because 8080 is
+  // permanently unavailable on at least one development machine (bind fails on every interface
+  // with no visible listener), which otherwise makes the whole ?emulator=1 path unreachable there
+  // -- and because concurrent worktrees cannot share one emulator port anyway.
+  const emulatorPort = (name, fallback) => Number(import.meta.env[`VITE_EMULATOR_${name}_PORT`]) || fallback;
+  connectFirestoreEmulator(db, "127.0.0.1", emulatorPort("FIRESTORE", 8080));
+  connectAuthEmulator(auth, `http://127.0.0.1:${emulatorPort("AUTH", 9099)}`, { disableWarnings: true });
   // Functions emulator (firebase.json: functions port 5001) so the Work Order
   // callables (createWorkOrder/transitionWorkOrder/updateWorkOrderExecutionData)
   // resolve against the local emulator in ?emulator=1 dev instead of production
   // -- same DEV-only, opt-in gate as Firestore/Auth above. Never active in a
   // production build or without the param.
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  connectFunctionsEmulator(functions, "127.0.0.1", emulatorPort("FUNCTIONS", 5001));
 }

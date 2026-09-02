@@ -24,8 +24,12 @@
 // Only ever writes to 127.0.0.1:8080/9099 (FIRESTORE_EMULATOR_HOST/
 // FIREBASE_AUTH_EMULATOR_HOST below) -- never touches the live
 // "taylor-parts" project.
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+// Defaults, not overrides: an already-set value wins so a session whose host has taken 8080 can
+// point the whole stack elsewhere. Both still resolve to 127.0.0.1 emulator ports — there is no
+// value of these variables that reaches the live project, because firebase-admin only honours them
+// for emulator traffic and this script never initialises with production credentials.
+process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST ??= "127.0.0.1:9099";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";

@@ -7394,6 +7394,19 @@ async function main() {
       const [accountKey = "technicianPartsAssociate"] = args;
       const ok = await verifyHandheld(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
+    } else if (command === "visual-sweep") {
+      // Site-wide presentation check: every routed family at 1440 and 375, measuring overflow,
+      // clipping, touch targets, sticky overlap and console errors. Reports; does not assert.
+      //   node driver.mjs visual-sweep [accountKey] [routePrefix]
+      const [accountKey = "admin", only = null] = args;
+      const { visualSweep } = await import("./visualSweep.mjs");
+      const findings = await visualSweep(browser, page, accountKey, {
+        login,
+        appRoot: APP_ROOT,
+        screenshotDir: join(__dirname, "screenshots"),
+        only,
+      });
+      if (findings.length) process.exitCode = 0; // findings are a report, not a build failure
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
       process.exitCode = 1;
