@@ -8,16 +8,32 @@
 // -- those aren't part of system truth (see STATE_TRIGGERS below).
 //
 // Truth boundary (load-bearing, don't blur this):
-// - data/partsCatalog.ts is METADATA ONLY -- name/category/cost/unit,
-//   plus a static warehouseQty baseline. It has NO stock authority and
-//   is never written to.
-// - inventory_transactions (this file's ledger) is the ONLY source of
-//   truth for stock movement. No mutable "current stock" document
-//   exists anywhere -- availability is always computed by summing this
-//   append-only ledger against partsCatalog.ts's warehouseQty baseline
-//   (see getAvailableQuantity() below), consistent with this project's
-//   existing "derive aggregates on read, never cache a second mutable
-//   total" default (see docs/architecture/ADR-001-retired-operational-core-branch.md).
+// - data/partsCatalog.ts is METADATA ONLY -- name/category/unit. It has NO stock authority, is
+//   never written to, and as of DECISIONS #162 its static `warehouseQty` NO LONGER PARTICIPATES IN
+//   ANY OPERATIONAL AVAILABILITY DECISION. It used to be the baseline this file's
+//   getAvailableQuantity() added the ledger to, which meant a fixture number decided whether a real
+//   Work Order dispatch succeeded -- against the same catalogue whose own header says
+//   "NO STOCK AUTHORITY", and against the figure ND-25 ruled non-authoritative for display.
+// - inventory_transactions (this file's ledger) is the ONLY source of truth for stock movement AND
+//   for commitment. No mutable "current stock" document exists anywhere -- availability is always
+//   computed by summing this append-only ledger (see getAvailableQuantity() below), consistent with
+//   this project's "derive aggregates on read, never cache a second mutable total" default
+//   (docs/architecture/ADR-001-retired-operational-core-branch.md).
+//
+// ONE ON-HAND, AND ONE COMMITMENT POOL IT CAN SEE (DECISIONS #162, PARTIAL).
+//
+// LANDED: this file and the Sales Order path now derive physical on-hand from the SAME function
+// (sumLedgerEligibleOnHand) over the same eligible warehouses, so they can no longer disagree about
+// how much stock exists. Availability here nets EVERY commitment in this ledger regardless of which
+// demand family wrote it -- so the moment Sales Order commitments become ledger events, a Work
+// Order dispatch sees them with no further change to this file.
+//
+// NOT LANDED, AND DELIBERATELY SO: Sales Order commitments are still sales_orders.lines[].
+// allocatedQty rather than ledger events, so the pool is not yet literally shared. Completing that
+// is blocked on a defect this unification surfaced -- NOTHING REMOVES CONSUMED STOCK FROM PHYSICAL
+// ON-HAND (see openCommitment() below), which must be ruled before a second demand family starts
+// writing commitments here. Until then salesOrder.fulfill stays inactive, which is what keeps the
+// over-commit path latent rather than live.
 //
 // This file NEVER writes to fieldops_wos and NEVER touches Work Order
 // state -- it is called strictly AFTER a Work Order transition has
@@ -30,8 +46,11 @@ import {
   WORK_ORDERS_COLLECTION,
   INVENTORY_TRANSACTIONS_COLLECTION,
   INVENTORY_SYNC_STATUS_COLLECTION,
+  WAREHOUSES_COLLECTION,
 } from "./constants/collections";
-import { getCatalogItem } from "./data/partsCatalog";
+// The ONE on-hand and ONE commitment derivation, shared with the Sales Order path so the two
+// families cannot drift into disagreeing about the same physical stock (DECISIONS #162).
+import { sumLedgerEligibleOnHand } from "./fulfillment/fulfillmentAvailability";
 import type { WorkOrder, WorkOrderStatus } from "./types/workOrder";
 import type { InventoryTransaction, InventorySyncStatus } from "./types/inventoryTransaction";
 
@@ -45,90 +64,96 @@ const RESERVATION_LOCKS_COLLECTION = "inventory_reservation_locks";
 // transaction's ledger query result and forces Firestore to retry it.
 const reservationLockRef = (partId: string) => db().collection(RESERVATION_LOCKS_COLLECTION).doc(partId);
 
-// Pure summation of the GOVERNED (physical, quantity-summed) portion of the ledger for one part,
-// across ALL locations -- exported and unit-tested WITHOUT the Firestore emulator (see
-// test/inventoryServiceGovernedLedger.test.mjs), mirroring how sumLedgerEligibleOnHand
-// (fulfillment/fulfillmentAvailability.ts) is tested offline from the same shape of rows.
+// sumGovernedLedger() WAS HERE, and is deleted (DECISIONS #162).
 //
-// H7 FIX -- SERIAL-tracked ADJUSTED entries must NEVER move this sum. A SERIAL-tracked Part's unit
-// count is not aggregable quantity math: each serial is exactly one unit, tracked individually by the
-// serialized_assets registry (currentLocationId/inventoryState), never by summing ledger quantities.
-// When a Cycle Count on a SERIAL-tracked part reconciles a MISSING unit, it writes an ADJUSTED entry
-// with quantity forced to 1 (SERIAL-mode quantity is always exactly 1, and CANNOT carry a negative
-// sign -- there is no "quantity -1 of one specific serial", only "this serial is present or it isn't").
-// Before this fix, that "ADJUSTED, quantity: 1" record was summed into `governed` exactly like a
-// NONE-mode receipt: DISCOVERING A UNIT MISSING INCREASED ITS RESERVABLE AVAILABILITY -- the exact
-// inverse of what a cycle count finding a shortage means.
+// It was a second on-hand derivation: quantity-summed across ALL locations, with no notion of
+// warehouse eligibility, feeding a formula that also added the static catalogue baseline. Its whole
+// job is now done by sumLedgerEligibleOnHand(), which additionally distinguishes warehouse from
+// truck stock and returns UNKNOWN instead of a confident zero. Two functions answering "how much is
+// there" is exactly the duplication this unification exists to remove, so the redundant one goes
+// rather than lingering for a future caller to pick up.
 //
-// The correct pattern already exists in inventoryLedger/mobileLocationPresenceProbe.ts's
-// probeNoneStockPresentAtLocation (`if (v.trackingMode !== "NONE") continue;`, with the comment "SERIAL
-// custody is authoritative via serialized_assets, not via quantity math"). This function follows that
-// precedent: only trackingMode "NONE" rows are quantity-summed here; SERIAL (and any future LOT) rows
-// are excluded, exactly as transferOrderCommand.ts's computeNoneOnHandThroughTxn and
-// cycleCount/cycleCountExpectedQuantity.ts's computeExpectedQuantityThroughTxn are ALREADY gated to
-// NONE-mode Parts by their callers before they ever sum a row.
-//
-// LEGACY-SCHEMA DEFAULT (documented, not silently resolved): a row with NO trackingMode field at all
-// is treated as NONE (included), not excluded. This is safe, not merely convenient: `trackingMode` is
-// a REQUIRED, validated field on every governed operational-movement write (see
-// operationalMovementValidation.ts's isTrackingMode check and operationalMovementRepository.ts, which
-// always stores it) -- a document with a governed type (RECEIVED/TRANSFER_IN/TRANSFER_OUT/ADJUSTED/
-// RETURNED/SCRAPPED) can therefore never legitimately lack trackingMode; only the DISJOINT legacy WO
-// types (RESERVED/RELEASED/CONSUMED, which never reach this branch) lack the field. So this default
-// is never actually exercised by a real SERIAL entry -- it exists only so pre-existing rows/fixtures
-// that predate the trackingMode field are not silently zeroed out.
-//
-// RETURNED/SCRAPPED are added here too (H7 secondary finding): schema-legal operational movement
-// types that transferOrderCommand.ts / cycleCountExpectedQuantity.ts / mobileLocationPresenceProbe.ts
-// already sum, but that this consumer previously omitted entirely.
-export function sumGovernedLedger(rows: Array<{ type: string; quantity: number; trackingMode?: string }>): number {
-  let governed = 0;
-  for (const t of rows) {
-    if (t.trackingMode !== undefined && t.trackingMode !== "NONE") continue; // SERIAL/LOT: not aggregable quantity math
-    if (t.type === "RECEIVED" || t.type === "TRANSFER_IN" || t.type === "RETURNED") governed += t.quantity;
-    else if (t.type === "TRANSFER_OUT" || t.type === "SCRAPPED") governed -= t.quantity;
-    else if (t.type === "ADJUSTED") governed += t.quantity; // ADJUSTED already carries its own sign
-  }
-  return governed;
-}
+// Its H7/H7b coverage (SERIAL rows excluded from quantity math; RETURNED/SCRAPPED counted) was not
+// lost: test/woAvailabilityGovernedLedger.test.mjs was RETARGETED onto sumLedgerEligibleOnHand,
+// which had no direct coverage of those cases before.
 
-// available = warehouseQty - (grossReserved - released). CONSUMED is
-// deliberately NOT subtracted again here: consuming a part converts an
-// existing reservation into a permanent removal without changing
-// total availability -- that quantity was already excluded from
-// availability the moment it was reserved. Only RESERVED (removes
-// availability) and RELEASED (restores it) move the number; CONSUMED
-// just finalizes what RESERVED already accounted for.
-async function getAvailableQuantity(tx: Transaction, partId: string): Promise<number> {
-  const catalogItem = getCatalogItem(partId);
-  const warehouseQty = catalogItem?.warehouseQty ?? 0;
+/**
+ * THE ONE OPERATIONAL AVAILABILITY ANSWER — `null` means UNKNOWN, and UNKNOWN is not zero.
+ *
+ * available = eligible physical on-hand − every open commitment
+ *
+ * BOTH HALVES ARE THE CANONICAL SHARED DERIVATIONS, not a second opinion:
+ *   `sumLedgerEligibleOnHand`  physical stock at status==ACTIVE warehouses (Owner-ratified
+ *                              2026-08-07, ledger amendment 2026-08-17). MOBILE/truck stock is
+ *                              deliberately excluded — it is real inventory, but it is not
+ *                              sellable/committable warehouse stock, and conflating the two is
+ *                              how a van's contents get promised to a second job.
+ *   `openCommitment` (below)   RESERVED − RELEASED over the SAME rows. Source-agnostic: it nets
+ *                              EVERY claim in the ledger regardless of which demand family raised
+ *                              it. No exclusion set is applied — a Work Order must respect every
+ *                              claim on the stock, including ones raised by the Sales Order it
+ *                              belongs to.
+ *
+ * WHAT CHANGED AND WHY (DECISIONS #162). This used to be
+ * `staticCatalogWarehouseQty + governedLedgerAcrossAllLocations − netReserved`. Two defects in one
+ * line: a fixture quantity decided real dispatches, and "all locations" counted truck stock as
+ * committable. Both are gone. CONSUMED is still not subtracted twice — it converts an existing
+ * reservation into a permanent removal, and that quantity left availability when it was RESERVED;
+ * `openCommitment` below encodes exactly that, and its docblock explains why it cannot simply be
+ * `openWorkOrderReserved`.
+ *
+ * UNKNOWN IS RETURNED, NEVER COERCED. `sumLedgerEligibleOnHand` returns null when a part has no
+ * physical movement evidence at all — a data gap, which is a different fact from an empty shelf
+ * (evidence that nets to 0). Callers must fail closed on null rather than read it as "none
+ * available" or "plenty available"; both are claims the evidence does not support.
+ */
+async function getAvailableQuantity(tx: Transaction, partId: string): Promise<number | null> {
+  const whSnap = await tx.get(db().collection(WAREHOUSES_COLLECTION).where("status", "==", "ACTIVE"));
+  const eligibleWarehouseIds = new Set(whSnap.docs.map((d) => d.id));
 
   const snap = await tx.get(db().collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
-  let grossReserved = 0;
-  let released = 0;
-  // GOVERNED MOVEMENT. Receiving, Transfer and reconciled Cycle Counts write to this SAME
-  // append-only ledger, and this function used to ignore all of them -- it read only the legacy
-  // Work-Order reservation types on top of the STATIC catalog baseline. A governed Part has no
-  // static row, so its baseline is 0 and its real stock was invisible: PRT-1001 held 3 units across
-  // two warehouses and a truck and reserveParts() saw 0, refusing the reservation as
-  // "Insufficient stock". Governed stock could be received but never planned against.
-  //
-  // Summed across ALL locations, matching this function's warehouse-wide contract (a transfer
-  // between two locations nets to zero here, which is correct -- it moved stock, it did not
-  // create or destroy it). ADJUSTED already carries its sign. SERIAL-tracked rows are excluded from
-  // this quantity sum -- see sumGovernedLedger() above for why (H7 fix).
-  const rows: Array<{ type: string; quantity: number; trackingMode?: string }> = [];
-  snap.forEach((doc) => {
-    const t = doc.data() as InventoryTransaction;
-    if (t.type === "RESERVED") grossReserved += t.quantity;
-    else if (t.type === "RELEASED") released += t.quantity;
-    else rows.push({ type: t.type, quantity: t.quantity, trackingMode: t.trackingMode });
-  });
-  const governed = sumGovernedLedger(rows);
+  const rows = snap.docs.map((doc) => doc.data() as InventoryTransaction);
 
-  // CONSUMED remains deliberately absent, exactly as before: consuming converts an existing
-  // reservation into a permanent removal, and that quantity left availability when it was RESERVED.
-  return warehouseQty + governed - (grossReserved - released);
+  const onHand = sumLedgerEligibleOnHand(rows, eligibleWarehouseIds);
+  if (onHand === null) return null; // UNKNOWN — no physical evidence for this part anywhere.
+  return Math.max(0, onHand - openCommitment(rows));
+}
+
+/**
+ * Open commitment against a part: RESERVED − RELEASED. Source-agnostic, floored at 0.
+ *
+ * WHY THIS IS NOT `openWorkOrderReserved`, WHICH ALSO SUBTRACTS CONSUMED.
+ *
+ * Nothing in this platform removes consumed stock from physical on-hand. `sumLedgerEligibleOnHand`
+ * counts RECEIVED / TRANSFER_IN / TRANSFER_OUT / ADJUSTED / RETURNED / SCRAPPED; CONSUMED is not a
+ * physical movement type and legacy commitment rows carry no `location`, so a consumption is
+ * invisible to it. On-hand therefore never drops when parts are fitted to a machine.
+ *
+ * This file has always compensated, which is what its long-standing "CONSUMED is deliberately NOT
+ * subtracted" invariant is for: the consumed quantity stays counted as committed, so it stays out
+ * of availability. Wrong reason, right number.
+ *
+ * `openWorkOrderReserved` does subtract CONSUMED, and does not compensate — so the Sales Order
+ * path currently reports 5 available after 5 were received and 2 consumed, when 3 physically
+ * remain. That is a REAL PRE-EXISTING OVER-AVAILABILITY DEFECT in a ratified derivation, proven in
+ * `inventoryConsumptionOnHandGap.test.mjs`, and it is NOT fixed here: the fix is either a physical
+ * removal movement at consumption or a change to that ratified derivation, both of which are
+ * inventory-semantics decisions this package is not authorised to make (DECISIONS #162 records it
+ * as the blocking open question).
+ *
+ * Adopting `openWorkOrderReserved` here would have imported that defect into the live Work Order
+ * dispatch path — conjuring consumed stock back into availability. So the unification takes the
+ * ONE on-hand source (the real convergence) and keeps this file's correct commitment arithmetic
+ * until consumption is ruled.
+ */
+function openCommitment(rows: Array<{ type: string; quantity: number }>): number {
+  let committed = 0;
+  for (const r of rows) {
+    const q = typeof r.quantity === "number" && Number.isFinite(r.quantity) && r.quantity > 0 ? r.quantity : 0;
+    if (r.type === "RESERVED") committed += q;
+    else if (r.type === "RELEASED") committed -= q;
+  }
+  return Math.max(0, committed);
 }
 
 // Outstanding (still-active) reservation for one Work Order + part --
@@ -202,7 +227,7 @@ export async function reserveParts(workOrderId: string): Promise<void> {
       plannedBySku.set(item.sku, (plannedBySku.get(item.sku) ?? 0) + item.qtyPlanned);
     }
 
-    const availabilityByPart = new Map<string, number>();
+    const availabilityByPart = new Map<string, number | null>();
     for (const sku of plannedBySku.keys()) {
       availabilityByPart.set(sku, await getAvailableQuantity(tx, sku));
     }
@@ -211,12 +236,26 @@ export async function reserveParts(workOrderId: string): Promise<void> {
     await Promise.all(locks.map((ref) => tx.get(ref)));
     for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
 
+    // UNKNOWN AND INSUFFICIENT ARE DIFFERENT REFUSALS, and they are reported separately.
+    // "no evidence this part exists anywhere" is a data gap an operator fixes by receiving or
+    // counting stock; "3 available, 5 needed" is a real shortage. Collapsing them into one message
+    // would send someone hunting for stock that was never recorded. Both still fail closed, and
+    // both still abort the WHOLE transaction — no partial reservation may land.
+    const unknown: string[] = [];
     const insufficient: string[] = [];
     for (const [sku, totalPlanned] of plannedBySku) {
-      const available = availabilityByPart.get(sku) ?? 0;
-      if (totalPlanned > available) {
+      const available = availabilityByPart.get(sku);
+      if (available === null || available === undefined) {
+        unknown.push(sku);
+      } else if (totalPlanned > available) {
         insufficient.push(`${sku} (need ${totalPlanned}, ${available} available)`);
       }
+    }
+    if (unknown.length > 0) {
+      throw new Error(
+        `Unknown stock: no governed inventory evidence for ${unknown.join(", ")} — ` +
+          `availability is UNKNOWN, which is not zero and not permission to commit`,
+      );
     }
     if (insufficient.length > 0) {
       throw new Error(`Insufficient stock: ${insufficient.join("; ")}`);
@@ -228,21 +267,128 @@ export async function reserveParts(workOrderId: string): Promise<void> {
   });
 }
 
-// CANCELLED trigger. Releases whatever's still outstanding for this WO
-// (per part) -- safe to call even if nothing was ever reserved (e.g. a
-// WO cancelled before ever reaching DISPATCHED), since
-// getOutstandingReservation() simply returns 0 in that case and no
-// ledger entry is written.
+/**
+ * Every still-outstanding reservation this Work Order holds, keyed by part: RESERVED − RELEASED −
+ * CONSUMED, per part, scoped to this WO.
+ *
+ * READ FROM THE LEDGER, NOT FROM THE PLAN. This is the difference that closes the orphan gap: a
+ * requirement deleted from `inventorySnapshot` still has ledger entries, so a plan-driven loop
+ * cannot see the reservation it left behind. The ledger can.
+ */
+async function outstandingByPart(tx: Transaction, workOrderId: string): Promise<Map<string, number>> {
+  const snap = await tx.get(
+    db().collection(INVENTORY_TRANSACTIONS_COLLECTION).where("workOrderId", "==", workOrderId),
+  );
+  const byPart = new Map<string, number>();
+  snap.forEach((doc) => {
+    const t = doc.data() as InventoryTransaction;
+    const current = byPart.get(t.partId) ?? 0;
+    if (t.type === "RESERVED") byPart.set(t.partId, current + t.quantity);
+    else if (t.type === "RELEASED" || t.type === "CONSUMED") byPart.set(t.partId, current - t.quantity);
+  });
+  return byPart;
+}
+
+// CANCELLED trigger. Releases whatever is still outstanding for this WO, per part.
+//
+// ORPHAN FIX (DECISIONS #162): this used to iterate the CURRENT inventorySnapshot, so a requirement
+// REMOVED from the plan after dispatch kept its reservation forever — the loop had nothing to
+// iterate for it. It now iterates the LEDGER's outstanding-by-part instead, which is the record of
+// what was actually committed rather than what is currently planned. Still safe to call when
+// nothing was ever reserved: the map is empty and no entry is written.
 export async function releaseParts(workOrderId: string): Promise<void> {
   await db().runTransaction(async (tx) => {
-    const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
-    for (const item of items) {
-      const outstanding = await getOutstandingReservation(tx, workOrderId, item.sku);
-      if (outstanding > 0) {
-        writeLedgerEntry(tx, { workOrderId, partId: item.sku, type: "RELEASED", quantity: outstanding });
+    const outstanding = await outstandingByPart(tx, workOrderId);
+    for (const [partId, quantity] of outstanding) {
+      if (quantity > 0) {
+        writeLedgerEntry(tx, { workOrderId, partId, type: "RELEASED", quantity });
       }
     }
   });
+}
+
+/**
+ * RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #162, ruling 3).
+ *
+ * A reservation made at DISPATCH used to be frozen at that moment's `qtyPlanned`. Change the plan
+ * afterwards and the commitment stayed stale until a terminal state repaired it: a decrease left
+ * stock over-committed and invisible to everyone else, an increase left it under-committed, and a
+ * removed requirement orphaned its reservation entirely.
+ *
+ * This reconciles the ledger to the CURRENT plan, per part, in ONE transaction:
+ *   target > outstanding → reserve only the positive DELTA (never re-reserve the whole line)
+ *   target < outstanding → release exactly the excess
+ *   part no longer planned → release everything outstanding for it
+ *
+ * ALL-OR-NOTHING IS PRESERVED for the newly-requested part: if any delta cannot be covered, the
+ * whole transaction aborts and NO adjustment lands — the same rule reserveParts() already applies,
+ * for the same reason. Releases are not gated on availability (giving stock back always succeeds).
+ *
+ * CALLED ONLY WHEN A COMMITMENT ALREADY EXISTS. Before dispatch there is nothing to reconcile and
+ * planning must stay free of inventory side effects — PLAN PARTS != RESERVE PARTS. The caller
+ * decides that; this function does not reserve for an un-dispatched Work Order because such a WO
+ * has no outstanding reservation and no target above zero to chase... which is exactly why the
+ * caller must gate it, and does.
+ */
+export async function reconcileReservation(workOrderId: string): Promise<void> {
+  await db().runTransaction(async (tx) => {
+    const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
+    const target = new Map<string, number>();
+    for (const item of items) target.set(item.sku, (target.get(item.sku) ?? 0) + item.qtyPlanned);
+
+    const outstanding = await outstandingByPart(tx, workOrderId);
+    // The union: parts currently planned, plus parts that hold a reservation and no longer are.
+    const parts = new Set<string>([...target.keys(), ...outstanding.keys()]);
+
+    const increases = new Map<string, number>();
+    const decreases = new Map<string, number>();
+    for (const partId of parts) {
+      const delta = (target.get(partId) ?? 0) - Math.max(0, outstanding.get(partId) ?? 0);
+      if (delta > 0) increases.set(partId, delta);
+      else if (delta < 0) decreases.set(partId, -delta);
+    }
+    if (increases.size === 0 && decreases.size === 0) return;
+
+    // Reads before writes, and availability only for parts we intend to commit more of.
+    const availability = new Map<string, number | null>();
+    for (const partId of increases.keys()) availability.set(partId, await getAvailableQuantity(tx, partId));
+
+    const locks = [...new Set([...increases.keys(), ...decreases.keys()])].map(reservationLockRef);
+    await Promise.all(locks.map((ref) => tx.get(ref)));
+
+    const unknown: string[] = [];
+    const insufficient: string[] = [];
+    for (const [partId, delta] of increases) {
+      const available = availability.get(partId);
+      if (available === null || available === undefined) unknown.push(partId);
+      else if (delta > available) insufficient.push(`${partId} (need ${delta} more, ${available} available)`);
+    }
+    if (unknown.length > 0) {
+      throw new Error(
+        `Unknown stock: no governed inventory evidence for ${unknown.join(", ")} — ` +
+          `availability is UNKNOWN, which is not zero and not permission to commit`,
+      );
+    }
+    if (insufficient.length > 0) {
+      throw new Error(`Insufficient stock: ${insufficient.join("; ")}`);
+    }
+
+    for (const ref of locks) tx.set(ref, { partId: ref.id, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+    for (const [partId, delta] of increases) {
+      writeLedgerEntry(tx, { workOrderId, partId, type: "RESERVED", quantity: delta });
+    }
+    for (const [partId, delta] of decreases) {
+      writeLedgerEntry(tx, { workOrderId, partId, type: "RELEASED", quantity: delta });
+    }
+  });
+}
+
+/** True once this Work Order's DISPATCHED commitment has actually been applied. */
+export async function hasAppliedReservation(workOrderId: string): Promise<boolean> {
+  const snap = await db().collection(INVENTORY_SYNC_STATUS_COLLECTION).doc(workOrderId).get();
+  if (!snap.exists) return false;
+  const status = snap.data() as InventorySyncStatus | undefined;
+  return status?.processedStates?.DISPATCHED === true;
 }
 
 // COMPLETED trigger. Consumes the governed ACTUAL usage (qtyUsed --
@@ -270,18 +416,26 @@ export async function consumeParts(workOrderId: string): Promise<void> {
     for (const item of items) {
       outstandingByPart.set(item.sku, await getOutstandingReservation(tx, workOrderId, item.sku));
     }
-    const availableByPart = new Map<string, number>();
+    const availableByPart = new Map<string, number | null>();
     for (const item of items) {
       availableByPart.set(item.sku, await getAvailableQuantity(tx, item.sku));
     }
     const locks = [...new Set(items.map((item) => item.sku))].map(reservationLockRef);
     await Promise.all(locks.map((ref) => tx.get(ref)));
 
+    // A top-up only needs availability when there IS a top-up to make. A WO whose reservation
+    // already covers qtyPlanned consumes what it holds and never consults availability — so an
+    // UNKNOWN part that was legitimately reserved earlier can still be completed. UNKNOWN blocks
+    // only the part of consumption that would COMMIT MORE STOCK.
     const shortfalls: string[] = [];
     for (const item of items) {
       const missing = item.qtyPlanned - (outstandingByPart.get(item.sku) ?? 0);
-      if (missing > (availableByPart.get(item.sku) ?? 0)) {
-        shortfalls.push(`${item.sku} (need ${missing} additional, ${availableByPart.get(item.sku) ?? 0} available)`);
+      if (missing <= 0) continue;
+      const available = availableByPart.get(item.sku);
+      if (available === null || available === undefined) {
+        shortfalls.push(`${item.sku} (need ${missing} additional, availability UNKNOWN)`);
+      } else if (missing > available) {
+        shortfalls.push(`${item.sku} (need ${missing} additional, ${available} available)`);
       }
     }
     if (shortfalls.length > 0) throw new Error(`Cannot consume, reservation shortfall: ${shortfalls.join("; ")}`);

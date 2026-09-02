@@ -6,6 +6,27 @@ one code change in this pass is a new test file.
 
 **Starting SHA:** `2c7c343d` (`origin/main` at start; unchanged during the run).
 
+> ## ⚠ SUPERSEDED IN PART — Owner ruling DECISIONS #162, 2026-09-02
+>
+> This reconciliation was accepted and acted on. What changed:
+>
+> | Finding here | Now |
+> |---|---|
+> | **Conflict 2** — two on-hand definitions; static catalogue baseline gating dispatch | **CLOSED.** One derivation (`sumLedgerEligibleOnHand`) for both families; static baseline removed; the duplicate `sumGovernedLedger` deleted; UNKNOWN returned, never coerced; MOBILE excluded and tested |
+> | **§7 release gaps** — plan decrease, plan increase, requirement removal | **CLOSED.** `reconcileReservation()` re-derives commitment from the current plan; `releaseParts` now iterates the ledger, closing the orphan leak |
+> | **Conflict 1** — WO blind to SO allocations | **PARTIALLY closed.** Availability now nets every ledger commitment whatever wrote it, so SO commitments are seen the moment they become ledger events. They are not yet, because of the blocker below |
+> | **Company / location scope on reservations** | **STILL OPEN**, and now understood to be blocked: a Work Order carries no `operatingCompanyId` and *neither* family selects a warehouse. Requiring both would fail every dispatch closed; inventing either is forbidden |
+> | ATP · stockout · dashboard Committed/Available | **UNCHANGED — still gated** |
+>
+> **A new blocker was found while implementing:** nothing removes consumed stock from physical
+> on-hand, and the two paths compensate differently — so the ratified Sales Order derivation reports
+> 5 available after 5 were received and 2 consumed. Proven in
+> `functions/test/inventoryConsumptionOnHandGap.test.mjs`. This must be ruled before Sales Order
+> commitments may join the ledger. Details: DECISIONS #162.
+>
+> Everything below is the measurement as it stood at `2c7c343d`, kept because the ruling is only
+> legible against it.
+
 **Classification: CASE C — PARTIAL_OR_CONFLICTING_MODEL.**
 
 A real, transactional, lock-protected commitment authority exists for **Work Orders** and is live.

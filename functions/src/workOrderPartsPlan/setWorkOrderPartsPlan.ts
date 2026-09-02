@@ -25,6 +25,9 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { WORK_ORDERS_COLLECTION } from "../constants/collections";
+// The canonical commitment authority — this command does not reserve, it asks the one authority
+// that does to re-derive the commitment from the current plan (DECISIONS #162).
+import { reconcileReservation, hasAppliedReservation } from "../inventoryService";
 import { PARTS_COLLECTION } from "../partMaster/partMasterRepository";
 import { TERMINAL_STATUSES } from "../transitionEngine";
 import type { WorkOrder, InventorySnapshotItem, WorkOrderStatus } from "../types/workOrder";
@@ -241,6 +244,38 @@ export const setWorkOrderPartsPlan = onCall({ region: "us-central1" }, async (re
       tx.update(woRef, { inventorySnapshot: nextSnapshot, partsPlanUpdatedAt: FieldValue.serverTimestamp() });
       return nextSnapshot.length;
     });
+
+    // RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #162, ruling 3).
+    //
+    // PLAN PARTS != RESERVE PARTS still holds, and this does not weaken it: planning a part on a
+    // Work Order that has not yet dispatched commits nothing, exactly as before. What changed is
+    // the case AFTER commitment — a plan edit on a dispatched WO used to leave the reservation
+    // frozen at dispatch-time quantities, so a decrease over-committed stock nobody could use, an
+    // increase under-committed, and a deleted requirement orphaned its reservation until a
+    // terminal state repaired it. The commitment must represent the CURRENT obligation.
+    //
+    // GATED ON THE GOVERNED "commitment has happened" FACT (inventory_sync_status.processedStates
+    // .DISPATCHED), not on the WO's current status — a Work Order can move past DISPATCHED, and a
+    // dispatch whose reservation FAILED and is pending retry must not be reconciled as though it
+    // had succeeded.
+    //
+    // OUTSIDE THE PLAN TRANSACTION, DELIBERATELY. The plan write is the business action and must
+    // not be rolled back by an inventory shortfall — the same failure model transitionWorkOrder
+    // already uses for triggerInventoryEffects: the demand change is real and committed, and an
+    // inventory-side failure is recorded rather than allowed to undo it. Reconciliation is
+    // idempotent (it re-derives deltas from the ledger), so a failure here is safely retryable by
+    // calling it again.
+    if (await hasAppliedReservation(input.workOrderId)) {
+      try {
+        await reconcileReservation(input.workOrderId);
+      } catch (reconcileErr) {
+        console.error(
+          `[setWorkOrderPartsPlan] reservation reconciliation failed for ${input.workOrderId}; ` +
+            `the plan change stands and the commitment is now stale — retry reconcileReservation()`,
+          reconcileErr,
+        );
+      }
+    }
 
     return { success: true as const, workOrderId: input.workOrderId, plannedCount };
   } catch (err) {
