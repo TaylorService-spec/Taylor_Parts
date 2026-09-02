@@ -144,6 +144,70 @@ export function unattributedNote(result, dimension) {
   return `${count} visible ${noun} ${what}, so ${count === 1 ? "it is" : "they are"} not placed on this axis. They are counted here rather than dropped, and never shown as a zero against anyone.`;
 }
 
+/**
+ * THE LIFECYCLE SCORECARD (page 01), resolved slot by slot from what the read ACTUALLY returns.
+ *
+ * ════════ THE SEAM THIS FUNCTION IS HONEST ABOUT ════════
+ *
+ * The reporting read returns a server-computed CONSOLIDATED total for exactly one lifecycle
+ * position — outstanding, in `summary.outstandingByCurrency`. Billed and collected come back only
+ * as PER-COMPANY rollups. So:
+ *
+ *   · A/R outstanding populates in every scope, straight from the server's own total;
+ *   · billed and collected populate when the requested filters resolve to exactly ONE company
+ *     rollup, because then the figure is that row's value — a read, not a sum;
+ *   · under a consolidated view spanning several companies they stay ABSENT and say why. Adding
+ *     the company rows together here is the one thing this module must never do: a total assembled
+ *     client-side from a scoped slice reads as a statement about the whole book.
+ *
+ * Booked, billable-now and unbilled are absent in every scope. Booked is a Sales Order fact and
+ * this read exposes invoices; billable-now needs a governed billable projection that FIN-BLOCK-002
+ * leaves unresolved; unbilled is booked − billed and cannot be truer than the facts under it.
+ * None of the three is approximated from what IS here.
+ */
+export const LIFECYCLE_ABSENCE = Object.freeze({
+  booked:
+    "Booked value is established on the Sales Order, and this read exposes invoice facts. Billed is deliberately not substituted for it — that would rename the metric rather than supply it.",
+  billable:
+    "Billable-now needs a governed billable projection. Service-origin billing is unresolved (FIN-BLOCK-002), and inferring billable from order state would invent the very authority that is missing.",
+  unbilled:
+    "Unbilled is booked minus billed. Booked is not supplied by this read, so the difference cannot be truer than the facts beneath it — and it is not computed here from what happens to be available.",
+  multiCompany:
+    "The governed read returns this figure per operating company and no consolidated total. This page will not add the companies together: a total assembled here from a scoped slice would read as a statement about the whole book. Select a single company to see it, or use Company & Business Unit Performance.",
+});
+
+export function lifecycleScorecard(state, result) {
+  const absent = (detail) => ({ valueText: null, absence: "Not supplied by this read", detail });
+  const value = (byCurrency) => ({ valueText: formatByCurrency(byCurrency), absence: null, detail: null });
+
+  // Nothing is a figure until the read is READY. A denied or failed read must never show a
+  // number — least of all $0.00, which would assert a balance nobody reported.
+  if (state !== FACTS_STATE.READY && state !== FACTS_STATE.EMPTY) {
+    const detail = FACTS_DETAIL[state] ?? null;
+    const stateAbsence = state === FACTS_STATE.LOADING ? "Reading…" : state === FACTS_STATE.DENIED ? "Withheld" : "Unavailable";
+    return Object.fromEntries(
+      ["booked", "billable", "billed", "collected", "arOutstanding", "unbilled"].map((k) => [
+        k,
+        { valueText: null, absence: stateAbsence, detail },
+      ]),
+    );
+  }
+
+  const companies = result?.byCompany ?? [];
+  const single = companies.length === 1 ? companies[0] : null;
+
+  return {
+    booked: absent(LIFECYCLE_ABSENCE.booked),
+    billable: absent(LIFECYCLE_ABSENCE.billable),
+    // Read from the ONE company's own server-computed rollup, or say why it is absent.
+    billed: single ? value(single.billedByCurrency) : absent(LIFECYCLE_ABSENCE.multiCompany),
+    collected: single ? value(single.collectedByCurrency) : absent(LIFECYCLE_ABSENCE.multiCompany),
+    // The server's own consolidated total — the only lifecycle figure it computes across companies.
+    arOutstanding: value(result?.summary?.outstandingByCurrency),
+    unbilled: absent(LIFECYCLE_ABSENCE.unbilled),
+  };
+}
+
 /** What the server said the principal's reach actually was — never what the page guessed. */
 export function scopeSentence(result) {
   const scopes = result?.grantedScopes ?? [];
