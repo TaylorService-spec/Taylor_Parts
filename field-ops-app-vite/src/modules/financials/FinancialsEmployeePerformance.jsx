@@ -24,9 +24,10 @@
 // earlier revision of this page asserted "no financial visibility scope granted" without ever
 // resolving it, and in sandbox that assertion was false.
 import { useState } from "react";
-import { FinancialsPageFrame, FinancialsHonestSection, FinAnnotation } from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsHonestSection, FinancialsPeriodControl, FinAnnotation } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
@@ -49,7 +50,13 @@ const RESPONSIBILITY_DETAIL =
 export default function FinancialsEmployeePerformance() {
   const [view, setView] = useState("credit");
 
-  const read = useFinancialFacts({ factTypes: ["INVOICE"] });
+  // Performance is measured over a window, so period is a first-class control here. It scopes by
+  // the invoice issued date — the canonical event date this read carries — and narrows on the server.
+  const period = useFinancialsPeriod();
+  const read = useFinancialFacts(
+    { factTypes: ["INVOICE"], ...period.requestFields },
+    { enabled: !period.blocked },
+  );
   const { state, result } = financialFactsState(read);
   const ready = state === FACTS_STATE.READY;
 
@@ -87,7 +94,10 @@ export default function FinancialsEmployeePerformance() {
         <FinAnnotation tip="This line reports the reach the SERVER returned for your principal, not a scope this page inferred. Visibility scopes are resolved per principal at the read (FIN-004); a page asserting an authority fact it has not resolved is the same defect class as a page inventing a number." />
       </p>
 
-      <FilterBar variant="chips" label="Attribution view" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <div className="fin-filter-rail">
+        <FilterBar variant="chips" label="Attribution view" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+        <FinancialsPeriodControl {...period.controlProps} />
+      </div>
 
       <div className="fin-overview-grid">
         <FinancialsHonestSection

@@ -17,6 +17,7 @@ import {
   COMPANY_FILTER_OPTIONS,
   BUSINESS_UNIT_FILTER_OPTIONS,
 } from "../../domain/financialsSurface.js";
+import { PERIOD_PRESETS } from "../../domain/financialsPeriod.js";
 
 // ─── Hover-ⓘ annotation (the design's binding convention: .hlp/.tip) ───
 // Only contract copy stays visible; the explanation sits behind a focusable ⓘ. Rendered
@@ -84,6 +85,7 @@ export function FinancialsFilterRail({
   businessUnit = null,
   onBusinessUnitChange = null,
   periodLabel = "Period — all activity",
+  period = null,
 }) {
   return (
     <div className="fin-filter-rail">
@@ -103,10 +105,73 @@ export function FinancialsFilterRail({
           onChange={onBusinessUnitChange}
         />
       ) : null}
-      <span className="fin-period">
-        {periodLabel}
-        <FinAnnotation tip="The shared Financials filter grammar: Company (Consolidated / Taylor / Ventana), Business Unit, Period. Company is a governed dimension — never inferred from location, warehouse, manufacturer, route or free text. Period selection activates with the first activated period-scoped read (FIN-008 period model is merged and dormant; cadence policy not configured)." />
-      </span>
+      {period ? (
+        <FinancialsPeriodControl {...period} />
+      ) : (
+        <span className="fin-period">
+          {periodLabel}
+          <FinAnnotation tip="The shared Financials filter grammar: Company (Consolidated / Taylor / Ventana), Business Unit, Period. Company is a governed dimension — never inferred from location, warehouse, manufacturer, route or free text. This surface does not filter by period: its read exposes no period contract, so a control here would be a promise it could not keep." />
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── The period control. A REAL filter, not a footnote. ───
+//
+// It narrows on the SERVER: the selection becomes periodStartMillis/periodEndMillis on the
+// governed read, so records outside the window are never sent. Nothing here filters a broader
+// result in the browser, which would leave the client holding facts the user did not ask for.
+//
+// An invalid custom range is NOT issued as a request. Sending a backwards window would return a
+// correct empty result that reads to the user as "no records" when the truth is "that range is
+// backwards" — so the validation message stands in its place until it is fixed.
+export function FinancialsPeriodControl({ presetKey, onPresetChange, custom, onCustomChange, invalidReason = null }) {
+  return (
+    <div className="fin-period-control">
+      <label className="fin-period__label" htmlFor="fin-period-select">
+        Period
+        <FinAnnotation tip="Period narrows the governed read on the server — it is applied to the records your visibility scope already reaches, and can only ever remove rows. Invoices filter on the invoice's own issued date; the window is inclusive of both days you choose." />
+      </label>
+      <select
+        id="fin-period-select"
+        className="fin-period__select"
+        value={presetKey}
+        onChange={(e) => onPresetChange(e.target.value)}
+      >
+        {PERIOD_PRESETS.map((p) => (
+          <option key={p.key} value={p.key}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+      {presetKey === "custom" ? (
+        <div className="fin-period__range">
+          <label className="fin-period__field">
+            <span>From</span>
+            <input
+              type="date"
+              className="fin-period__date"
+              value={custom.from ?? ""}
+              onChange={(e) => onCustomChange({ ...custom, from: e.target.value })}
+            />
+          </label>
+          <label className="fin-period__field">
+            <span>To</span>
+            <input
+              type="date"
+              className="fin-period__date"
+              value={custom.to ?? ""}
+              onChange={(e) => onCustomChange({ ...custom, to: e.target.value })}
+            />
+          </label>
+        </div>
+      ) : null}
+      {invalidReason ? (
+        <p className="fin-period__invalid" role="alert">
+          {invalidReason} No read was issued.
+        </p>
+      ) : null}
     </div>
   );
 }

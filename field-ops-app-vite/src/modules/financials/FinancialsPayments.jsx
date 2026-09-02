@@ -20,6 +20,7 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
@@ -34,11 +35,20 @@ const amount = (minor, currency) => formatByCurrency(currency ? { [currency]: mi
 export default function FinancialsPayments() {
   const [company, setCompany] = useState("consolidated");
   const [view, setView] = useState("all");
+  const period = useFinancialsPeriod();
 
-  const read = useFinancialFacts({
-    companyId: company === "consolidated" ? null : company,
-    factTypes: ["PAYMENT_RECEIPT", "PAYMENT_APPLICATION"],
-  });
+  // NOTE ON DATE SEMANTICS: the reporting read scopes a period by the INVOICE issued date, which is
+  // the one canonical event date it carries. Payments here are therefore the applications against
+  // invoices issued in the window — not receipts banked in it. The control says so rather than
+  // implying a payment-date filter this read does not offer.
+  const read = useFinancialFacts(
+    {
+      companyId: company === "consolidated" ? null : company,
+      factTypes: ["PAYMENT_RECEIPT", "PAYMENT_APPLICATION"],
+      ...period.requestFields,
+    },
+    { enabled: !period.blocked },
+  );
   const { state, result } = financialFactsState(read);
 
   const payments = state === FACTS_STATE.READY ? (result.payments ?? []) : [];
@@ -59,7 +69,9 @@ export default function FinancialsPayments() {
           detail:
             view === "unapplied"
               ? "No governed payment carries an unapplied balance. Current payment authority refuses over-application, so this view is empty as a matter of what the system permits — not because a read failed."
-              : "The governed read answered, and no payment settles an invoice within your visibility scope.",
+              : period.presetKey === "all"
+                ? "The governed read answered, and no payment settles an invoice within your visibility scope."
+                : `No payments against invoices issued in this period (${period.label}). Choose All activity to see the full set.`,
         }
       : state === FACTS_STATE.READY
         ? { state: null }
@@ -72,7 +84,7 @@ export default function FinancialsPayments() {
       custody="Governed operational payment workspace. Received, applied, unapplied and reconciled are four different facts and are never blended."
       custodyTip="The payment core records cash receipt and application to an invoice, derives outstanding balance, and refuses over-application. Applied-in-full is an operational state, not reconciliation — no banking or settlement authority is drawn, deliberately."
     >
-      <FinancialsFilterRail company={company} onCompanyChange={setCompany} />
+      <FinancialsFilterRail company={company} onCompanyChange={setCompany} period={period.controlProps} />
       <FilterBar variant="views" label="Payment views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <div className="fin-truth-band fin-truth-band--future" role="note">

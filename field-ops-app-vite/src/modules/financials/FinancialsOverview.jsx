@@ -19,6 +19,7 @@ import {
 import HonestState from "../../shared/ui/HonestState.jsx";
 import { LIFECYCLE_SCORECARD_SLOTS, READ_STATE_DETAIL } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { financialFactsState, lifecycleScorecard } from "../../domain/financialFactsView.js";
 
 // The page frame already renders the standing "Operational financial subledger — not the
@@ -45,6 +46,7 @@ const SLOT_LINKS = Object.freeze({
 export default function FinancialsOverview() {
   const [company, setCompany] = useState("consolidated");
   const [businessUnit, setBusinessUnit] = useState("all");
+  const period = useFinancialsPeriod();
 
   // The company and unit chips travel as REQUESTED FILTERS. The server intersects them with this
   // principal's governed FIN-004 reach and may only narrow — selecting a company you cannot see
@@ -53,7 +55,8 @@ export default function FinancialsOverview() {
     companyId: company === "consolidated" ? null : company,
     businessUnitId: businessUnit === "all" ? null : businessUnit,
     factTypes: ["INVOICE"],
-  });
+    ...period.requestFields,
+  }, { enabled: !period.blocked });
   const { state, result } = financialFactsState(read);
   const slots = lifecycleScorecard(state, result);
 
@@ -69,6 +72,7 @@ export default function FinancialsOverview() {
         onCompanyChange={setCompany}
         businessUnit={businessUnit}
         onBusinessUnitChange={setBusinessUnit}
+        period={period.controlProps}
       />
 
       <section className="fin-scorecard-section" aria-label="Lifecycle scorecard">

@@ -18,6 +18,7 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import {
   FACTS_STATE,
   FACTS_DETAIL,
@@ -47,11 +48,19 @@ const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateStr
 export default function FinancialsInvoices() {
   const [company, setCompany] = useState("consolidated");
   const [view, setView] = useState("all");
+  const period = useFinancialsPeriod();
 
-  const read = useFinancialFacts({
-    companyId: company === "consolidated" ? null : company,
-    factTypes: ["INVOICE"],
-  });
+  // Company, period and the view tab COMPOSE: each narrows independently and none resets another.
+  // Company and period narrow on the SERVER; the view tab selects among what it returned.
+  const read = useFinancialFacts(
+    {
+      companyId: company === "consolidated" ? null : company,
+      factTypes: ["INVOICE"],
+      ...period.requestFields,
+    },
+    // An invalid custom range issues NO read at all — see useFinancialsPeriod.
+    { enabled: !period.blocked },
+  );
   const { state, result } = financialFactsState(read);
 
   const rows =
@@ -71,7 +80,9 @@ export default function FinancialsInvoices() {
           detail:
             view === "corrected"
               ? "Corrections are governed adjustment events recorded separately, not a state stamped on an invoice. No invoice can be selected by this view, and none is invented to fill it."
-              : "The governed read answered, and no invoice in your visibility scope matches this view.",
+              : period.presetKey === "all"
+                ? "The governed read answered, and no invoice in your visibility scope matches this view."
+                : `No invoices in this period (${period.label}). Records outside it are not shown — this is not a statement that no invoices exist. Choose All activity to see the full set.`,
         }
       : state === FACTS_STATE.READY
         ? { state: null }
@@ -84,7 +95,7 @@ export default function FinancialsInvoices() {
       custody="Governed invoice collection. Issued invoices are immutable history — corrections are governed events in Credits & Adjustments, never edits here."
       custodyTip="Invoice issuance is Billing Queue-owned: there is deliberately no New Invoice action on this collection. Company authority comes from the Sales Order's operatingCompanyId (FIN-002); business unit is line-level, so a mixed invoice reads 'Mixed' at collection level rather than forcing one unit onto it."
     >
-      <FinancialsFilterRail company={company} onCompanyChange={setCompany} />
+      <FinancialsFilterRail company={company} onCompanyChange={setCompany} period={period.controlProps} />
       <FilterBar variant="views" label="Invoice views" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
 
       <FinancialsHonestSection
