@@ -1,0 +1,2627 @@
+{
+  "$comment": [
+    "DERIVED ARTIFACT — generated from docs/assessments/eos-dashboard-reporting-authority-census.md",
+    "by scripts/generateDashboardCensusJson.mjs. Do not hand-edit: edit the markdown and regenerate.",
+    "scripts/dashboardCensus.test.mjs asserts this file equals what the markdown parses to.",
+    "This file establishes no authority. It records where authority already lives."
+  ],
+  "schema": 1,
+  "source": "docs/assessments/eos-dashboard-reporting-authority-census.md",
+  "recordedAt": "2026-09-02",
+  "repositoryCommit": "d65bbf01",
+  "classifications": [
+    "REPORTABLE_NOW",
+    "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+    "FORMALIZATION_REQUIRED",
+    "DEFINITION_GAP",
+    "AUTHORITY_GAP",
+    "BLOCKED_BY_DEPENDENCY",
+    "NOT_REPORTABLE",
+    "UNKNOWN_EVIDENCE_INSUFFICIENT"
+  ],
+  "totals": {
+    "REPORTABLE_NOW": 45,
+    "REPORTABLE_EXISTING_ACTIVATION_REQUIRED": 27,
+    "FORMALIZATION_REQUIRED": 9,
+    "DEFINITION_GAP": 8,
+    "AUTHORITY_GAP": 14,
+    "BLOCKED_BY_DEPENDENCY": 19,
+    "NOT_REPORTABLE": 10,
+    "UNKNOWN_EVIDENCE_INSUFFICIENT": 0
+  },
+  "knownSeventeen": [
+    {
+      "id": "K-1",
+      "authority": "Inventory Commitment / Reservation",
+      "classification": "**CLOSED — ACTIVATION ONLY**"
+    },
+    {
+      "id": "K-2",
+      "authority": "Available-to-Promise (ATP)",
+      "classification": "**CLOSED — ACTIVATION ONLY**"
+    },
+    {
+      "id": "K-3",
+      "authority": "FIN-003 Sales Goal",
+      "classification": "**PARTIALLY ESTABLISHED — genuinely open**"
+    },
+    {
+      "id": "K-4",
+      "authority": "Billing Reporting / Read Activation",
+      "classification": "**ACTIVATION + BLOCKED**"
+    },
+    {
+      "id": "K-5",
+      "authority": "FIN-005 Forecast / Projection",
+      "classification": "**PARTIALLY ESTABLISHED — genuinely open**"
+    },
+    {
+      "id": "K-6",
+      "authority": "Reorder Point",
+      "classification": "**CLOSED — NOT ESTABLISHED (a decided negative)**"
+    },
+    {
+      "id": "K-7",
+      "authority": "FIN-006 Inventory Cost / Valuation",
+      "classification": "**GENUINELY OPEN (FIN-BLOCK-003)**"
+    },
+    {
+      "id": "K-8",
+      "authority": "Inventory Aging",
+      "classification": "**AUTHORITY GAP**"
+    },
+    {
+      "id": "K-9",
+      "authority": "Sales Booking",
+      "classification": "**CLOSED — ACTIVATION (read wiring) ONLY**"
+    },
+    {
+      "id": "K-10",
+      "authority": "Average Order Value",
+      "classification": "**DEFINITION GAP**"
+    },
+    {
+      "id": "K-11",
+      "authority": "Reporting Period / Time",
+      "classification": "**PARTIALLY ESTABLISHED — DEFINITION GAP for period-relative figures**"
+    },
+    {
+      "id": "K-12",
+      "authority": "Company / Business-Unit Attribution",
+      "classification": "**CLOSED for financial events; AUTHORITY GAP for operational records**"
+    },
+    {
+      "id": "K-13",
+      "authority": "Inventory Location",
+      "classification": "**CLOSED**"
+    },
+    {
+      "id": "K-14",
+      "authority": "Stockout Definition",
+      "classification": "**NOT ESTABLISHED — derived information only**"
+    },
+    {
+      "id": "K-15",
+      "authority": "Inventory Turns",
+      "classification": "**AUTHORITY GAP, DEPENDENCY-BLOCKED**"
+    },
+    {
+      "id": "K-16",
+      "authority": "Pipeline Reporting",
+      "classification": "**PARTIALLY ESTABLISHED**"
+    },
+    {
+      "id": "K-17",
+      "authority": "Dashboard Read / Scope",
+      "classification": "**FORMALIZATION REQUIRED — and the precedent already exists**"
+    }
+  ],
+  "entries": [
+    {
+      "id": "C-1",
+      "domain": "CUSTOMER_CRM",
+      "label": "Account portfolio counts (total / active / prospect / inactive / archived / unclassified)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`accounts`",
+      "readAuthority": "`getAccountPortfolioSummary`",
+      "scopes": [
+        "`customer.record.read`, global"
+      ],
+      "roles": [
+        "Roles carrying `customer.record.read`"
+      ],
+      "timeBasis": "none (point-in-time)",
+      "dependencies": [],
+      "evidence": "`functions/src/account/accountPortfolioSummary.ts:1-60`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Complete server-side `count()` over the authorized scope; never a page, never a sample; unknown status values surface as `unclassified` rather than vanishing"
+    },
+    {
+      "id": "C-2",
+      "domain": "CUSTOMER_CRM",
+      "label": "Account record identity + status",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`accounts`",
+      "readAuthority": "`customer.record.read`",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "as C-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`accountPortfolioSummary.ts` `ACCOUNT_STATUS_VALUES`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Canonical uppercase status enum ACTIVE/PROSPECT/INACTIVE/ARCHIVED"
+    },
+    {
+      "id": "C-3",
+      "domain": "CUSTOMER_CRM",
+      "label": "Account attention — WO past due",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`fieldops_wos`",
+      "readAuthority": "account-scoped WO fetch",
+      "scopes": [
+        "own account records"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "`scheduledStart` vs now",
+      "dependencies": [],
+      "evidence": "`field-ops-app-vite/src/domain/accountAttentionProjection.js:1-20`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Composes `workOrderPastDueItem()` over this account's SCHEDULED work orders; never re-implements the predicate"
+    },
+    {
+      "id": "C-4",
+      "domain": "CUSTOMER_CRM",
+      "label": "Account attention — AR overdue",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`invoices` + `invoice_adjustments`",
+      "readAuthority": "`listAccountInvoiceAr`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "invoice due date",
+      "dependencies": [
+        "**FIN-004: no Role carries a visibility scope**"
+      ],
+      "evidence": "`accountAttentionProjection.js:11-15`; `functions/src/finance/financialVisibility.ts`",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Reads `accountArView().rows[i].position === \"OVERDUE\"`; never recomputes an AR position or outstanding balance"
+    },
+    {
+      "id": "C-5",
+      "domain": "CUSTOMER_CRM",
+      "label": "Contacts / locations per account",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "`contacts`, `locations`",
+      "readAuthority": "Account Detail client reads",
+      "scopes": [
+        "own account"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`navConfig.js` (global Contacts/Locations subnav retired — they belong to an Account); no aggregate read authority exists for a dashboard-scale count",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Sub-records of an Account"
+    },
+    {
+      "id": "C-6",
+      "domain": "CUSTOMER_CRM",
+      "label": "CRM activity feed (notes / activities)",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`crm_activities`",
+      "readAuthority": "`getCrmActivities` (`crm.activity.read`)",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "admin, owner, dispatcher (via `crmActivityContributor`)"
+      ],
+      "timeBasis": "record timestamp",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "`permissionCatalog.ts`; `environments.json` overrides; `compatibilityRoles.ts:187-188`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Governed CRM activity records"
+    },
+    {
+      "id": "C-7",
+      "domain": "CUSTOMER_CRM",
+      "label": "Customer ownership (account owner)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`accounts`",
+      "readAuthority": "`customer.record.read`",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "as C-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "typed-owner model is inert (D-1)"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"EOS Ownership Model v1 — typed owner\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`accountOwner` / `ownerEmployeeId` are the authoritative STORAGE; `typedOwner.ts` is a derived read projection with **no setter**"
+    },
+    {
+      "id": "C-8",
+      "domain": "CUSTOMER_CRM",
+      "label": "Customer financial position (AR balance, aging)",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`invoices`",
+      "readAuthority": "`listAccountInvoiceAr`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "invoice due date",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — trusted AR read\"; F12 `customer-financials`",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Outstanding = total − applied − credits + charges − write-offs; a transactionally-maintained projection, NOT an independent accounting authority"
+    },
+    {
+      "id": "C-9",
+      "domain": "CUSTOMER_CRM",
+      "label": "This account's equipment",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "equipment register",
+      "readAuthority": "Account Detail equipment reads",
+      "scopes": [
+        "own account"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`modules/equipment/CustomerEquipment.jsx`; the client-side-filter shape is noted in `accountAttentionProjection.js`'s audited omissions",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "The account-scoped view of the register (distinct from E-1, the whole register). `CustomerEquipment.jsx` filters client-side over already-loaded docs"
+    },
+    {
+      "id": "C-10",
+      "domain": "CUSTOMER_CRM",
+      "label": "Customer since / account lifecycle stage",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "**ND-11: \"An Account has no lifecycle to make visible\"** — the page says so out loud rather than inventing one",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-1",
+      "domain": "SALES",
+      "label": "Opportunity list / stage counts",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`opportunities` (deny-all to clients)",
+      "readAuthority": "`listOpportunityContext` (`opportunity.read`)",
+      "scopes": [
+        "caller's whole authorized scope — **no accountId parameter exists**"
+      ],
+      "roles": [
+        "admin, dispatcher, roles carrying `opportunity.read`"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "`functions/src/opportunity/opportunityReadService.ts`; SYSTEM_AUTHORITIES \"Sales Opportunity lifecycle\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Governed stage state machine"
+    },
+    {
+      "id": "S-2",
+      "domain": "SALES",
+      "label": "\"My opportunities\"",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "as S-1",
+      "readAuthority": "as S-1, filtered on the viewer's employee id",
+      "scopes": [
+        "viewer's own opportunities"
+      ],
+      "roles": [
+        "as S-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "as S-1"
+      ],
+      "evidence": "`docs/design/north-star-migration-ledger.md:784-793`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Viewer-scoped by the viewer's linked employee id; renders **no count** rather than `0` when the link is missing"
+    },
+    {
+      "id": "S-3",
+      "domain": "SALES",
+      "label": "Opportunity attention",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`opportunities`",
+      "readAuthority": "`deriveAttention` in `domain/opportunityLifecycle.js`",
+      "scopes": [
+        "as S-1"
+      ],
+      "roles": [
+        "as S-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "as S-1"
+      ],
+      "evidence": "`field-ops-app-vite/src/domain/obligationAttention.js:5-7` (names it as the pre-commitment counterpart)",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Pre-commitment attention derivation"
+    },
+    {
+      "id": "S-4",
+      "domain": "SALES",
+      "label": "Pipeline VALUE / weighted pipeline",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-5"
+      ],
+      "evidence": "FIN-001 §1.6 / FIN-005 §2: `expectedValue` is a **currency-less** forecast-flavoured number that **flows nowhere**; no probability or weighting model exists",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-5",
+      "domain": "SALES",
+      "label": "Stale opportunities / missing next step",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "No next-step, follow-up, or last-touched record exists. ND-12 was WITHDRAWN — the design did not ask for stage times; an Opportunity records **no stage times except the close**",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-6",
+      "domain": "SALES",
+      "label": "Sales Agreements awaiting acceptance",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`sales_agreements` (deny-all)",
+      "readAuthority": "`getSalesAgreementContext` (`salesAgreement.read`)",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying `salesAgreement.read`"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Commercial commitment — Sales Agreement\". **ND-14: `DECLINED` is modelled but nothing can produce it** — a \"declined\" tile would always read 0",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "DRAFT agreements; both terminal states irreversible"
+    },
+    {
+      "id": "S-7",
+      "domain": "SALES",
+      "label": "Sales Orders index / open orders",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`sales_orders` (deny-all)",
+      "readAuthority": "`listSalesOrderIndex` (`salesOrder.read`)",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying `salesOrder.read`"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Sales Order lifecycle\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Committed commercial order following a WON Opportunity"
+    },
+    {
+      "id": "S-8",
+      "domain": "SALES",
+      "label": "Sales Order lifecycle stage times",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "**ND-8: \"A Sales Order records no lifecycle stage times\"**",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-9",
+      "domain": "SALES",
+      "label": "Booked sales ($)",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "agreement acceptance snapshot",
+      "readAuthority": "**none — read wiring missing**",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "`bookedAtMillis`",
+      "dependencies": [
+        "FIN-004 grant; K-11 for any period figure"
+      ],
+      "evidence": "F13 \"Booked · SUPPORTED (dormant)\"; `financialReportingRead.ts` serves persisted fact types only, booked excluded by construction (test-guarded)",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "BOOKED basis = FIN-002 `bookedAtMillis`, stamped at agreement acceptance, ctx-supplied only, frozen"
+    },
+    {
+      "id": "S-10",
+      "domain": "SALES",
+      "label": "Billed sales ($)",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`invoices`",
+      "readAuthority": "`listFinancialFacts`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "invoice event time",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — governed reporting read\"; F13",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Issued invoices, server-recomputed amounts"
+    },
+    {
+      "id": "S-11",
+      "domain": "SALES",
+      "label": "Collected ($)",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`payments`, `payment_applications`",
+      "readAuthority": "`listFinancialFacts`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "`recordedAtMillis`",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "F13",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Payment applications, F3-attributed"
+    },
+    {
+      "id": "S-12",
+      "domain": "SALES",
+      "label": "Average Order Value",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-9/K-4, K-11"
+      ],
+      "evidence": "No AOV definition exists. Invariant A forbids blending bases, so the numerator basis is a required decision",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-13",
+      "domain": "SALES",
+      "label": "Salesperson attribution / sales credit",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "FIN-002 snapshot on the financial event",
+      "readAuthority": "`listFinancialFacts`",
+      "scopes": [
+        "FIN-004 SELF/TEAM"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — reporting attribution\" (DECISIONS #154)",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "`creditedSalespersonId` frozen at event time; **never the acting user**; OWNERSHIP ≠ SALES CREDIT; exposed verbatim, never re-derived"
+    },
+    {
+      "id": "S-14",
+      "domain": "SALES",
+      "label": "Sales goal % / pace / target progress",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`planVsActual.ts` core exists; plan RECORDS have no storage",
+      "readAuthority": null,
+      "scopes": [
+        "FIN-002 dimensions"
+      ],
+      "roles": [],
+      "timeBasis": "plan period (inclusive ISO)",
+      "dependencies": [
+        "**plan storage + FIN-007 approval authority**"
+      ],
+      "evidence": "FIN-003 §2",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-15",
+      "domain": "SALES",
+      "label": "Forecast / projection",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`forecasting.ts` core exists; forecast records have no storage",
+      "readAuthority": null,
+      "scopes": [
+        "FIN-002 dimensions"
+      ],
+      "roles": [],
+      "timeBasis": "`asOfMillis`",
+      "dependencies": [
+        "**forecast storage + methodology (Owner policy)**"
+      ],
+      "evidence": "FIN-005 §2",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-16",
+      "domain": "SALES",
+      "label": "Top customers by revenue",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`invoices`",
+      "readAuthority": "`listFinancialFacts` (customerId grain)",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "FIN-004 grant; K-11 for a window"
+      ],
+      "evidence": "F12 `customer-financials`",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "S-17",
+      "domain": "SALES",
+      "label": "Company / business-unit revenue mix",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "FIN-002 dimensions",
+      "readAuthority": "`summarizeByCompany`",
+      "scopes": [
+        "OPERATING_COMPANY / CONSOLIDATED"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "FIN-004 grant; FIN-BLOCK-004 for elimination"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — allocation & consolidation (FIN-009)\"; F13",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Per-company rollups are exact; **Consolidated is typed `UNELIMINATED_SUM`** and must render with that caveat"
+    },
+    {
+      "id": "S-18",
+      "domain": "SALES",
+      "label": "Orders requiring action (fulfillment exceptions)",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`sales_orders` + coordinated visit projection",
+      "readAuthority": "`listCoordinatedOperations` (`fulfillment.coordinatedVisit.read`)",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying the capability"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "`field-ops-app-vite/src/domain/obligationAttention.js:1-19`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "BLOCKED / WAITING_ON_MATERIAL / PARTIAL / REMAINING_WORK / UNKNOWN — **does not invent SLA, risk score, customer promise, severity, or ETA**"
+    },
+    {
+      "id": "SV-1",
+      "domain": "SERVICE",
+      "label": "Open Work Order counts by status",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`fieldops_wos.status`",
+      "readAuthority": "`subscribeToWorkOrders` / `operationsQueries.ts`",
+      "scopes": [
+        "`firestore.rules` admin/dispatcher"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Work Order reads\"; `domain/constants.js:380-395`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "The real 11-value `WorkOrderStatus`; never the legacy derived `WORK_ORDER_STATE` enum"
+    },
+    {
+      "id": "SV-2",
+      "domain": "SERVICE",
+      "label": "Unassigned / ready-to-dispatch queue",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`fieldops_wos`",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`domain/workOrderAttentionProjection.js:10-11`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`SCHEDULABLE_STATUS` — the one status from which Schedule is a valid transition, derived from the transition table"
+    },
+    {
+      "id": "SV-3",
+      "domain": "SERVICE",
+      "label": "Scheduled work (today / week)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "scheduling projection on `fieldops_wos`",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "`scheduledStart`",
+      "dependencies": [],
+      "evidence": "`workOrderAttentionProjection.js:18-22`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`scheduledStart` is the ONLY date authority and exists only once scheduled — **a due date for unscheduled work would be a fabrication and is explicitly refused**"
+    },
+    {
+      "id": "SV-4",
+      "domain": "SERVICE",
+      "label": "Past due scheduled work",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "as SV-3",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "`scheduledStart` vs now",
+      "dependencies": [],
+      "evidence": "`workOrderAttentionProjection.js:12-14`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`workOrderPastDueItem()`, applied globally (not week-bound)"
+    },
+    {
+      "id": "SV-5",
+      "domain": "SERVICE",
+      "label": "Scheduling conflicts / overlaps",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "as SV-3",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "scheduled window",
+      "dependencies": [],
+      "evidence": "`workOrderAttentionProjection.js:12-14`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`detectDayOverlaps()` — the same primitives the scheduling workspace uses"
+    },
+    {
+      "id": "SV-6",
+      "domain": "SERVICE",
+      "label": "Blocked work — parts",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`fieldops_wos` + parts readiness",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`workOrderAttentionProjection.js:15-18`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`buildWorkOrderPartsReadiness()` OUTPUT, composed not re-derived"
+    },
+    {
+      "id": "SV-7",
+      "domain": "SERVICE",
+      "label": "Technician recorded working hours + blocked time",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`technician_working_availability`, `technician_blocked_time` (both Admin-SDK-only, all client access denied)",
+      "readAuthority": "`readTechnicianAvailability`",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "IANA zone on the record",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Technician availability authority (ND-22)\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Recurring weekly wall-clock hours + IANA zone; dated one-off exceptions. **ABSENT IS NOT EMPTY** — no record renders \"no working schedule recorded\", never 0% booked"
+    },
+    {
+      "id": "SV-8",
+      "domain": "SERVICE",
+      "label": "Technician utilisation / % booked",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "`estimatedDurationMinutes` is OPTIONAL and **absent is the normal case and must never be read as zero**",
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "SV-7's ABSENT-IS-NOT-EMPTY rule"
+      ],
+      "evidence": "ND-21. A utilisation percentage over optional estimates against possibly-unrecorded hours has no governed definition",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "SV-9",
+      "domain": "SERVICE",
+      "label": "Work Order aging (open, unscheduled)",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "`fieldops_wos` timestamps exist; an \"age\" display precedent exists",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "creation timestamp",
+      "dependencies": [],
+      "evidence": "`WorkOrderQueue.jsx` age display, cited in `workOrderAttentionProjection.js` as an existing display-only category. **No governed aging threshold exists** — buckets would be invented",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "SV-10",
+      "domain": "SERVICE",
+      "label": "Completed today / completion counts",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`fieldops_wos`",
+      "readAuthority": "as SV-1",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "`completedAt` (calendar day)",
+      "dependencies": [
+        "K-11 for any period beyond \"today\""
+      ],
+      "evidence": "`TechnicianDashboard.jsx:28-33`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Real persisted `completedAt`, used purely for display grouping of an already-terminal status — **not** to infer lifecycle state"
+    },
+    {
+      "id": "SV-11",
+      "domain": "SERVICE",
+      "label": "First-time fix rate",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "No revisit, callback, or repeat-visit linkage exists in the model",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "SV-12",
+      "domain": "SERVICE",
+      "label": "Service response / SLA metrics",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "`obligationAttention.js:17`: \"It does NOT invent SLA, risk score, customer promise, severity, or ETA\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "SV-13",
+      "domain": "SERVICE",
+      "label": "Callbacks",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "No callback concept exists",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "SV-14",
+      "domain": "SERVICE",
+      "label": "Parts-delay impact on service",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-7"
+      ],
+      "evidence": "Requires a delay clock and a cost/impact basis; neither exists",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "SV-15",
+      "domain": "SERVICE",
+      "label": "Coordinated visits",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`fieldops_wos` sharing a `salesOrderId`",
+      "readAuthority": "`listCoordinatedOperations`",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying `fulfillment.coordinatedVisit.read`"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Fulfillment — coordinated operations projections\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Read projection exposing a Sales Order's fulfillment as one coordinated visit — **projection-only, assigns no work, holds no authority over WO or schedule state**"
+    },
+    {
+      "id": "SV-16",
+      "domain": "SERVICE",
+      "label": "Unschedule / reschedule / reassign actions requiring a dispatcher",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`transitionEngine.ts` + `ACTION_ALLOWED_FROM`",
+      "readAuthority": "`getAllowedActions()`",
+      "scopes": [
+        "role-based admin/dispatcher"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Scheduling authority (ND-18 – ND-22)\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`Unschedule` IS a lifecycle transition (ND-18, `SCHEDULED` only, reason required); re-timing and reassignment are NOT and live in `schedulingCommands.ts`"
+    },
+    {
+      "id": "SV-17",
+      "domain": "SERVICE",
+      "label": "Stalled-job risk / dispatch ranking",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`jobRiskScoring.js` / `dispatchScoring.js`",
+      "readAuthority": "client panels",
+      "scopes": [
+        "as SV-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`workOrderAttentionProjection.js:22-27` — deliberately NOT re-projected into the attention taxonomy, to avoid \"same badge vocabulary, different meaning\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Existing 4-tier severity panels"
+    },
+    {
+      "id": "T-1",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "My assigned work orders",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`fieldops_wos`",
+      "readAuthority": "`subscribeAssignedWorkOrders()`",
+      "scopes": [
+        "`users/{uid}.technicianId` → `fieldops_technicians/{id}`"
+      ],
+      "roles": [
+        "technician"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Technician-scoped Work Order reads\" (PT-002)",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "A separate, additional query (`where(\"assignedTechId\",\"==\",technicianId)`) — never a modification of the dispatcher-side read"
+    },
+    {
+      "id": "T-2",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "My work buckets (ready to start / waiting / in progress / completed today)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "as T-1",
+      "readAuthority": "as T-1",
+      "scopes": [
+        "own assignment"
+      ],
+      "roles": [
+        "technician"
+      ],
+      "timeBasis": "`completedAt` for the \"today\" bucket only",
+      "dependencies": [],
+      "evidence": "`TechnicianDashboard.jsx:26-42`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Pure client-side grouping of the real 11-value status enum; no new backend concept"
+    },
+    {
+      "id": "T-3",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "Next job",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "`scheduledStart` exists",
+      "readAuthority": "as T-1",
+      "scopes": [
+        "own assignment"
+      ],
+      "roles": [
+        "technician"
+      ],
+      "timeBasis": "`scheduledStart`",
+      "dependencies": [],
+      "evidence": "No governed \"next\" ordering rule exists: which statuses qualify, and what a DISPATCHED job with no scheduled window ranks as, are undecided",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "T-4",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "My performance snapshot (all-time)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "technician execution data",
+      "readAuthority": "`getTechnicianExecutionStats`",
+      "scopes": [
+        "own technician id"
+      ],
+      "roles": [
+        "technician"
+      ],
+      "timeBasis": "**all-time only**",
+      "dependencies": [
+        "K-11 for any window"
+      ],
+      "evidence": "`PerformanceSnapshot.jsx:11-18` — \"Shows the real, honest all-time total instead of fabricating a weekly figure this data can't actually support\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Honest all-time totals"
+    },
+    {
+      "id": "T-5",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "My performance, period-windowed (this week / month)",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-11"
+      ],
+      "evidence": "Same evidence as T-4: no per-transaction date breakdown is available to this read",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "T-6",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "Actions I must take on a job",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`workOrderWorkflow.js`",
+      "readAuthority": "as T-1",
+      "scopes": [
+        "own assignment"
+      ],
+      "roles": [
+        "technician"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Technician-facing Work Order actions\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`getAllowedActions()` with `isOwnAssignment` hardcoded true (every WO reaching it already came from a technician-scoped query)"
+    },
+    {
+      "id": "T-7",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "Which scanning workflows I may use, and why not",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`access/scanWorkflows.js`",
+      "readAuthority": "capability feed",
+      "scopes": [
+        "per-capability"
+      ],
+      "roles": [
+        "all, per capability"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Which scanning workflows a person may use\"; matrix pinned by `test/personaOperability.test.mjs`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`deriveScanWorkflows` is the single authority and is **CAPABILITY-derived — it never receives a persona and cannot branch on one**; the REASON for every unavailability comes from here"
+    },
+    {
+      "id": "T-8",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "My scans / put-aways / returns",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`bin_placements`, `inventory_returns`",
+      "readAuthority": "placement/returns reads",
+      "scopes": [
+        "`inventory.placement.record` / `inventory.returns.intake`"
+      ],
+      "roles": [
+        "`inventoryPutAwayOperator`, `inventoryReturnsIntakeClerk`"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Placement\", \"Returns intake\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "A put-away writes NO ledger event, changes NO quantity, touches NO balance (Decision #116)"
+    },
+    {
+      "id": "T-9",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "Unverified / queued offline submissions",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`domain/offlineSubmissionQueue.js` (client-local)",
+      "readAuthority": "`hooks/useSubmissionQueue.js`",
+      "scopes": [
+        "own device"
+      ],
+      "roles": [
+        "technician, warehouse handheld users"
+      ],
+      "timeBasis": "queue time",
+      "dependencies": [
+        "adopted by put-away ONLY, by design"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Offline submission queue\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "UNVERIFIED is a first-class state, **never a spinner**; the queue stores a callable name + opaque payload and cannot merge, reorder or combine"
+    },
+    {
+      "id": "T-10",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "My truck / van stock",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`inventory_transactions` at MOBILE locations",
+      "readAuthority": "`mobileLocationPresenceProbe`",
+      "scopes": [
+        "truck / mobile location"
+      ],
+      "roles": [
+        "warehouse + technician roles"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "probe is a presence answer, not a quantity"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Part balance projection\"; `inventoryLedger/mobileLocationPresenceProbe.ts`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Van stock is **deliberately invisible** to `partBalance` (WAREHOUSE movements only); the mobile-location presence probe is its authority"
+    },
+    {
+      "id": "T-11",
+      "domain": "TECHNICIAN_FIELD",
+      "label": "Returns awaiting disposition",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`inventory_returns`",
+      "readAuthority": "returns read",
+      "scopes": [
+        "`inventory.returns.intake`"
+      ],
+      "roles": [
+        "`inventoryReturnsIntakeClerk`"
+      ],
+      "timeBasis": "intake time",
+      "dependencies": [
+        "catalog `active:false`"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES: **\"Disposition is a separate authority that does not exist\"** (Decision #118) — a disposition ACTION queue is AUTH, see W-8",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Single state `AWAITING_DISPOSITION`"
+    },
+    {
+      "id": "I-1",
+      "domain": "INVENTORY",
+      "label": "On hand (governed)",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`inventory_transactions`",
+      "readAuthority": "`getPartBalance` / `getPartBalances` (`inventory.balance.read`)",
+      "scopes": [
+        "global read; per-location breakdown from one eligible set"
+      ],
+      "roles": [
+        "~10 roles carry `inventory.balance.read`"
+      ],
+      "timeBasis": "none (point-in-time)",
+      "dependencies": [
+        "catalog `active:false` — **sandbox-active**; client transport flag `INVENTORY_BALANCE_READ_READY: false`"
+      ],
+      "evidence": "`functions/src/inventory/partBalanceReadService.ts:1-34`; `config/environments.json`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "`sumLedgerEligibleOnHand` — physical on-hand at ACTIVE warehouses from the append-only ledger. **UNKNOWN is a value and is never coerced to 0**; SERIAL-tracked parts report `NOT_COUNTED_BY_QUANTITY`"
+    },
+    {
+      "id": "I-2",
+      "domain": "INVENTORY",
+      "label": "Reserved / committed",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "as I-1",
+      "readAuthority": "as I-1",
+      "scopes": [
+        "as I-1"
+      ],
+      "roles": [
+        "as I-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "as I-1"
+      ],
+      "evidence": "`fulfillmentAvailability.ts`; Decision #116",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "`openWorkOrderReserved` = RESERVED − RELEASED − CONSUMED. Commitment is the WO lifecycle effect; **a pick reserves nothing**"
+    },
+    {
+      "id": "I-3",
+      "domain": "INVENTORY",
+      "label": "Available / ATP",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "as I-1",
+      "readAuthority": "as I-1",
+      "scopes": [
+        "as I-1"
+      ],
+      "roles": [
+        "as I-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "as I-1"
+      ],
+      "evidence": "`fulfillmentAvailability.ts:11-14`; `partBalanceReadService.ts`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "eligible ON_HAND − open WO reservations − other active Sales Order allocations; never below 0; **UNKNOWN is infectious** — an unknown on-hand yields an unknown available, never a confident subtraction"
+    },
+    {
+      "id": "I-4",
+      "domain": "INVENTORY",
+      "label": "Per-location on-hand breakdown",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "as I-1",
+      "readAuthority": "as I-1",
+      "scopes": [
+        "per-warehouse"
+      ],
+      "roles": [
+        "as I-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "as I-1"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Part balance projection\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Derived from the SAME eligible set as the total, so a breakdown can never disagree with its own total"
+    },
+    {
+      "id": "I-5",
+      "domain": "INVENTORY",
+      "label": "Ledger-derived stock forecast (avg daily usage, days remaining)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`inventory_transactions`",
+      "readAuthority": "`inventoryAnalyticsEngine` (client mirror of `inventoryAnalyticsService.ts`)",
+      "scopes": [
+        "admin/dispatcher Rules scope"
+      ],
+      "roles": [
+        "admin, dispatcher, parts roles on their surfaces"
+      ],
+      "timeBasis": "rolling consumption window",
+      "dependencies": [],
+      "evidence": "ND-28 Owner ruling 2026-08-30. **Refused: calling it On hand, calling it Available, promoting it into a record header or a workspace principal quantity column**",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "**Derived INFORMATION, explicitly not a governed stock position.** Owner ruling ND-28: \"Stock forecast may compose clearly identified derived information\""
+    },
+    {
+      "id": "I-6",
+      "domain": "INVENTORY",
+      "label": "Reorder point",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": "derived only — **there is no stored reorder point anywhere**",
+      "readAuthority": "`partReorderPointDisplay`",
+      "scopes": [
+        "as I-5"
+      ],
+      "roles": [
+        "as I-5"
+      ],
+      "timeBasis": "usage window",
+      "dependencies": [],
+      "evidence": "ND-29 Owner ruling; `PART_REORDER_POINT_IS_DERIVED`; proof `test/partsReorderPointSemantics.test.jsx`",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "May render only as the derived figure with its derivation named, or as \"Not established\""
+    },
+    {
+      "id": "I-7",
+      "domain": "INVENTORY",
+      "label": "Stockout risk / prediction",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`inventoryAnalyticsService.ts` `StockoutPrediction`",
+      "readAuthority": "as I-5",
+      "scopes": [
+        "as I-5"
+      ],
+      "roles": [
+        "as I-5"
+      ],
+      "timeBasis": "usage window",
+      "dependencies": [],
+      "evidence": "`functions/src/inventoryAnalyticsService.ts:1-10, 45-60`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Deterministic forecast over ledger history; `NEEDS_PLANNING` means \"the engine had nothing to compute\", **not** \"risk is low\""
+    },
+    {
+      "id": "I-8",
+      "domain": "INVENTORY",
+      "label": "Governed stockout STATE / count",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-1/K-2"
+      ],
+      "evidence": "No stockout definition authority exists — threshold and quantity basis are both undecided",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-9",
+      "domain": "INVENTORY",
+      "label": "Movement counts (receipts, issues, transfers, adjustments)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`inventory_transactions`",
+      "readAuthority": "`operationsQueries.ts` (one-shot reads)",
+      "scopes": [
+        "`firestore.rules` admin/dispatcher"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "event timestamp",
+      "dependencies": [],
+      "evidence": "`field-ops-app-vite/src/services/operationsQueries.ts:1-6`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Append-only ledger; the seven operations collections are all Cloud-Function-write-only"
+    },
+    {
+      "id": "I-10",
+      "domain": "INVENTORY",
+      "label": "Open demand",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "No demand record exists distinct from WO reservations and SO allocations; \"open demand\" would need a definition choosing between them",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-11",
+      "domain": "INVENTORY",
+      "label": "Inventory aging / no-movement",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-7 for value-weighted aging"
+      ],
+      "evidence": "Repo-wide search finds no aging implementation. Thresholds and the clock-start event are undecided",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-12",
+      "domain": "INVENTORY",
+      "label": "Fastest / slowest movers",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "per-part `UsageStats` exist (`totalConsumed`, `avgDailyUsage`, volatility)",
+      "readAuthority": "as I-5",
+      "scopes": [
+        "as I-5"
+      ],
+      "roles": [
+        "as I-5"
+      ],
+      "timeBasis": "ranking window undefined",
+      "dependencies": [
+        "K-11"
+      ],
+      "evidence": "`inventoryAnalyticsService.ts` `UsageStats`. The statistics exist; the ranking window and population do not",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-13",
+      "domain": "INVENTORY",
+      "label": "Transfer orders in flight",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`transfer_orders`",
+      "readAuthority": "transfer reads",
+      "scopes": [
+        "`inventory.transfer.*`"
+      ],
+      "roles": [
+        "`inventoryTransferOperator`"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "`environments.json` overrides; SYSTEM_AUTHORITIES warehouse rows",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Governed transfer lifecycle"
+    },
+    {
+      "id": "I-14",
+      "domain": "INVENTORY",
+      "label": "Cycle counts and variances",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "cycle count records",
+      "readAuthority": "cycle count reads",
+      "scopes": [
+        "`inventory.cycleCount.*`"
+      ],
+      "roles": [
+        "`inventoryCycleCountCounter`, `inventoryCycleCountReconciler`"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "`environments.json` overrides",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Governed count → submit → reconcile"
+    },
+    {
+      "id": "I-15",
+      "domain": "INVENTORY",
+      "label": "Inventory value ($)",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-7 (FIN-BLOCK-003), ND-27"
+      ],
+      "evidence": "No governed cost fact exists anywhere. `part_supplier_items.cost` is a quote/term and FIN-001 rules it non-authoritative for margin. `unitCost` is blocked `displayable`/`reportable`/`exportable` together",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-16",
+      "domain": "INVENTORY",
+      "label": "Inventory turns",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-7, K-11"
+      ],
+      "evidence": "No implementation; requires both a value basis and a reporting period",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-17",
+      "domain": "INVENTORY",
+      "label": "Carrying cost",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-7"
+      ],
+      "evidence": "Same",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-18",
+      "domain": "INVENTORY",
+      "label": "Demand projection / replenishment plan",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-6, K-14"
+      ],
+      "evidence": "The analytics engine is explicitly \"NOT an inventory control system, warehouse system, automation engine, or workflow system\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "I-19",
+      "domain": "INVENTORY",
+      "label": "Location eligibility (which warehouses count)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`warehouses` (all client writes denied)",
+      "readAuthority": "governed warehouse validator",
+      "scopes": [
+        "`{type:\"location\", value:<warehouseId>}` where a capability is location-scoped"
+      ],
+      "roles": [
+        "admin, dispatcher global; `partsManager`/`warehouseManager` via governed location-scoped assignments"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES R-18 / R-29 / R-32 rows",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "`warehouses.status === ACTIVE`; MOBILE/truck stock excluded from sellable warehouse stock by design"
+    },
+    {
+      "id": "I-20",
+      "domain": "INVENTORY",
+      "label": "Bin / placement location of stock",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`bin_placements`, `bins`",
+      "readAuthority": "`listBins` (`inventory.location.bin.read`)",
+      "scopes": [
+        "per-warehouse"
+      ],
+      "roles": [
+        "`inventoryBinAdministrator`, put-away operators"
+      ],
+      "timeBasis": "placement event time",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Bin registry\", \"Placement\" (Decision #116)",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "**A bin is DESCRIPTIVE, not a custody authority** — the warehouse still owns the stock"
+    },
+    {
+      "id": "W-1",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Receiving queue (receivable purchase orders)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`purchase_orders`, `reorder_purchase_orders`",
+      "readAuthority": "`listReceivablePurchaseOrders`",
+      "scopes": [
+        "`inventory.stock.receive` (active — needs no override)"
+      ],
+      "roles": [
+        "admin, dispatcher, owner"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "receiving DEPLOYED live 2026-08-06"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Inventory receiving\" (Decision #63; Phase C / Decision #115)",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Receipts apply only against an ORDERED source; two source authorities discriminated by an explicit closed-set `source.type` with **no fallback lookup**"
+    },
+    {
+      "id": "W-2",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "PO receipt progress / partial receipts",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "committed receipts",
+      "readAuthority": "`getPurchaseOrderReceivingProgress`",
+      "scopes": [
+        "as W-1"
+      ],
+      "roles": [
+        "as W-1"
+      ],
+      "timeBasis": "receipt event time",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES Phase C row",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Received and remaining are **DERIVED from committed receipts, never stored on the PO**; derived progress is a separate concept from stored `purchase_orders.status`, which stays SENT while partial"
+    },
+    {
+      "id": "W-3",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Receiving location options",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`warehouses`",
+      "readAuthority": "`listReceivingLocationOptions`",
+      "scopes": [
+        "as W-1"
+      ],
+      "roles": [
+        "as W-1"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES; I-LA C2",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Eligibility = `warehouses.status` ACTIVE"
+    },
+    {
+      "id": "W-4",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Put-away queue",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`bin_placements`",
+      "readAuthority": "placement reads",
+      "scopes": [
+        "`inventory.placement.record`"
+      ],
+      "roles": [
+        "`inventoryPutAwayOperator`"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Placement\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": null
+    },
+    {
+      "id": "W-5",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Picks",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`bin_placements`",
+      "readAuthority": "as W-4",
+      "scopes": [
+        "as W-4"
+      ],
+      "roles": [
+        "as W-4"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "as W-4"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Placement\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "A pick is a placement carrying `pickedForWorkOrderId`"
+    },
+    {
+      "id": "W-5b",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Picks presented as reservations",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "Decision #116, load-bearing invariant asserted on the source: a pick **reserves nothing**; commitment stays the WO lifecycle effect. Presenting picks as reservations would double-count demand",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "W-6",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Reorder request queue + assignment oversight",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`reorder_requests`, `reorder_purchase_orders`",
+      "readAuthority": "`useReorderRequestsByStatus(es)`, `useReviewedRequestsHistory`",
+      "scopes": [
+        "`reorder.request.create.manual` resolved against `{type:\"location\", value:warehouseId}`; the picker filters by the same authority the create enforces (*offered == accepted*)"
+      ],
+      "roles": [
+        "`partsManager`, `warehouseManager`, `partsAssociate`, admin, dispatcher"
+      ],
+      "timeBasis": "request timestamps",
+      "dependencies": [
+        "ACTIVATED IN SANDBOX 2026-08-31, live-verified"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Reorder trusted command authority\" (R-13/R-15/R-16, R-32); `PartsManagerHome.jsx`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Live governed workflow: create → assign → purchasing in progress → received / cancelled / voided / rejected"
+    },
+    {
+      "id": "W-7",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Shortages",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-1/K-2, I-10"
+      ],
+      "evidence": "No shortage definition exists; it would require choosing a demand basis (WO reservation vs SO allocation vs reorder request)",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "W-8",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Returns awaiting DISPOSITION action",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "Decision #118: \"Disposition is a separate authority that does not exist\" — which is why `RETURNED`, a schema-legal movement type, still has no writer anywhere. Package: `docs/product/returns-disposition-decision-package.md`",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "W-9",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Truck replenishment",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "T-10"
+      ],
+      "evidence": "No replenishment model, par level, or min/max for mobile locations exists",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "W-10",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Custody / location exceptions",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "`warehouses`, `mobile_locations`, `serialized_assets`",
+      "readAuthority": "per-domain reads",
+      "scopes": [
+        "per-domain"
+      ],
+      "roles": [],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "The facts exist across three roots; no exception definition composes them. Note the recorded hazard: `mobile_locations`' writer is a full-document replace that would erase a stored company (SYSTEM_AUTHORITIES R-18 CORRECTED note)",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "W-11",
+      "domain": "PARTS_WAREHOUSE_RECEIVING",
+      "label": "Warehouse handheld operability (what this person may do here)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`access/scanWorkflows.js`",
+      "readAuthority": "capability feed",
+      "scopes": [
+        "per-capability"
+      ],
+      "roles": [
+        "all, per capability"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "Same authority as T-7: `deriveScanWorkflows` is the single, capability-derived answer and cannot branch on a persona; the resulting matrix is pinned by `field-ops-app-vite/test/personaOperability.test.mjs`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Capability-derived, with the reason for every unavailability"
+    },
+    {
+      "id": "P-1",
+      "domain": "PURCHASING",
+      "label": "Open purchase orders",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`purchase_orders`",
+      "readAuthority": "`fetchProcurementPurchaseOrders` / `operationsQueries.ts`",
+      "scopes": [
+        "`firestore.rules` admin/dispatcher"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`operationsQueries.ts:245`; `modules/purchasing/PurchaseOrders.jsx`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Canonical multi-line `purchase_orders`"
+    },
+    {
+      "id": "P-2",
+      "domain": "PURCHASING",
+      "label": "Supplier list / supplier catalog",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`suppliers`, `supplier_catalog`",
+      "readAuthority": "`fetchSuppliers`, `fetchSupplierCatalog`",
+      "scopes": [
+        "as P-1"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`operationsQueries.ts:184-185`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": null
+    },
+    {
+      "id": "P-3",
+      "domain": "PURCHASING",
+      "label": "Overdue POs / expected receipts",
+      "classification": "DEFINITION_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-11"
+      ],
+      "evidence": "No governed promise/expected date or overdue threshold exists on a PO. An \"overdue PO\" tile would invent both",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "P-4",
+      "domain": "PURCHASING",
+      "label": "PO approval queue / approval thresholds",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "`procurementService.ts` create/approve/send remain **UNEXPORTED** — no capability, actor, audit or idempotency. The only canonical-PO write today is made inside the receiving transaction. No approval policy exists",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "P-5",
+      "domain": "PURCHASING",
+      "label": "Reorder requests awaiting my action",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`reorder_requests`",
+      "readAuthority": "`useReorderRequestsByStatus(es)`",
+      "scopes": [
+        "`reorder.request.create.manual` at `{type:\"location\", value:warehouseId}`"
+      ],
+      "roles": [
+        "`partsManager`, `warehouseManager`, `partsAssociate`, admin, dispatcher"
+      ],
+      "timeBasis": "request timestamps",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES \"Reorder trusted command authority\" (R-13/R-15/R-16, R-32); activated in sandbox 2026-08-31 and live-verified against the deployed callables",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "The same live governed workflow as W-6, read from the purchasing side"
+    },
+    {
+      "id": "P-6",
+      "domain": "PURCHASING",
+      "label": "PO receipt discrepancies",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "committed receipts vs PO lines",
+      "readAuthority": "`getPurchaseOrderReceivingProgress`",
+      "scopes": [
+        "`inventory.stock.receive`"
+      ],
+      "roles": [
+        "admin, dispatcher, owner"
+      ],
+      "timeBasis": "receipt time",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES receiving Phase C row (Decision #115): received and remaining are DERIVED from committed receipts, never stored on the PO",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Over-received lines surface reconciliation reasons"
+    },
+    {
+      "id": "E-1",
+      "domain": "EQUIPMENT",
+      "label": "Equipment register (installed base)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "equipment register",
+      "readAuthority": "register reads",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "admin, dispatcher"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "ADR-006; `modules/equipment/EquipmentRegister.jsx`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Register spans customers"
+    },
+    {
+      "id": "E-2",
+      "domain": "EQUIPMENT",
+      "label": "Available serialized equipment",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`serialized_assets`",
+      "readAuthority": "`getAvailableEquipment` (`inventory.serializedAsset.read`)",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying the capability"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "`functions/src/serializedAsset/serializedAssetReadService.ts:39`; `functions/src/index.ts:78`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Company-controlled, at an eligible location, operationally available, not selected by another active Sales Order, no active temporary-placement conflict"
+    },
+    {
+      "id": "E-3",
+      "domain": "EQUIPMENT",
+      "label": "Equipment availability as a confident figure",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "Ratified design: **equipment availability fails closed = UNKNOWN, never fabricated** (missing/contradictory evidence ⇒ UNKNOWN). A count that silently treats UNKNOWN as unavailable is a fabricated claim",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "E-4",
+      "domain": "EQUIPMENT",
+      "label": "Inventory-control lifecycle state (Ventana ice machines)",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`inventoryControlLifecycle.ts` (server) mirrored client-side",
+      "readAuthority": "projection",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying the composing reads"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "governed-inert: no Rules/schema/deploy"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Inventory-control lifecycle — two-condition exit\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Taylor inventory control ENDS only when BOTH installation complete (asset `INSTALLED`) AND sale closed (SO `CLOSED`) — allocation, delivery and invoicing end none of it"
+    },
+    {
+      "id": "E-5",
+      "domain": "EQUIPMENT",
+      "label": "Installations recorded",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "installed-asset records",
+      "readAuthority": "install reads",
+      "scopes": [
+        "`equipment.install`"
+      ],
+      "roles": [
+        "`equipmentInstaller`"
+      ],
+      "timeBasis": "install event",
+      "dependencies": [
+        "catalog `active:false` — sandbox-active"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES; `environments.json`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": null
+    },
+    {
+      "id": "E-6",
+      "domain": "EQUIPMENT",
+      "label": "Equipment ownership / title / custody",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": "`explicitTitleHolder` and the custody authorities are distinct and non-collapsing",
+      "readAuthority": "per-axis reads",
+      "scopes": [
+        "per-axis"
+      ],
+      "roles": [],
+      "timeBasis": "none",
+      "dependencies": [
+        "ownership model is INERT — no Rules enforce it, no writer stamps it, no backfill has run"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"EOS Ownership Model v1 — typed owner + handoff\" (NON-COLLAPSE, ratified)",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Ownership/title, custody and availability are **SEPARATE axes and never inferred from control state**. A CUSTOMER may hold title without owning the internal record (D-3)"
+    },
+    {
+      "id": "E-7",
+      "domain": "EQUIPMENT",
+      "label": "Equipment compatibility",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "compatibility records",
+      "readAuthority": "`equipment.compatibility.view`",
+      "scopes": [
+        "global"
+      ],
+      "roles": [
+        "roles carrying the capability"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "catalog state"
+      ],
+      "evidence": "`functions/src/equipmentCompatibility/readService.ts:41`",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": null
+    },
+    {
+      "id": "F-1",
+      "domain": "FINANCIALS",
+      "label": "Invoices (list, detail)",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`invoices` (Admin-SDK-only, deny-all both Rules mirrors)",
+      "readAuthority": "`listFinancialFacts` / `listAccountInvoiceAr`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "**none today**"
+      ],
+      "timeBasis": "`eventAtMillis`",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — invoice issuance\"; F12",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Issued invoice history is immutable"
+    },
+    {
+      "id": "F-2",
+      "domain": "FINANCIALS",
+      "label": "A/R outstanding + position",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "as F-1",
+      "readAuthority": "`listAccountInvoiceAr`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "invoice due date",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — trusted AR read\". **Truncation honesty: a page that would truncate renders \"unavailable\", never a partial \"ready\"**",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "`outstanding = total − applied − credits + charges − writeoffs`; a transactionally-maintained projection, **not** an independent accounting authority. Positions CURRENT/OVERDUE/SETTLED/VOID/UNKNOWN"
+    },
+    {
+      "id": "F-3",
+      "domain": "FINANCIALS",
+      "label": "Payments / receipts",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`payments`, `payment_applications`",
+      "readAuthority": "`listFinancialFacts`",
+      "scopes": [
+        "FIN-004 reach (payments inherit their invoice's visibility)"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "`recordedAtMillis`",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — payment / AR\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Cash receipt and payment application are separate facts; over-application rejected"
+    },
+    {
+      "id": "F-4",
+      "domain": "FINANCIALS",
+      "label": "Credits, adjustments, refunds",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`invoice_adjustments`, `refunds`",
+      "readAuthority": "trusted reads",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "FIN-004 grant; FIN-007 policy values for the approval half"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — adjustments\", \"Finance — refund\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "CREDIT_MEMO / DEBIT_CHARGE / WRITE_OFF; credit and write-off ≤ outstanding; an issued invoice is never rewritten"
+    },
+    {
+      "id": "F-5",
+      "domain": "FINANCIALS",
+      "label": "Billing queue (unbilled eligible)",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`sales_orders` + `billedQty` projection",
+      "readAuthority": "`billingQueue.ts`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "FIN-004 grant; **service work structurally cannot enter — FIN-BLOCK-002**"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — Billing Queue (F4)\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "unbilled-eligible = `max(0, min(ordered, fulfilled) − billed)` per line — identical to issuance's cap, so the queue never shows what issuance would refuse. **No amounts, test-asserted**"
+    },
+    {
+      "id": "F-6",
+      "domain": "FINANCIALS",
+      "label": "Gross margin / profitability",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": "`costMargin.ts`",
+      "readAuthority": "`deriveGrossMargin`",
+      "scopes": [
+        "FIN-004 reach"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "**FIN-BLOCK-003 — no governed cost fact exists anywhere**"
+      ],
+      "evidence": "FIN-006 §1: \"every real invocation returns UNKNOWN — which is the truthful current answer to every margin question\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Margin is COMPUTED only when EVERY revenue line carries a governed cost fact; otherwise **UNKNOWN with no number at all** — never revenue − 0, never a partial margin"
+    },
+    {
+      "id": "F-7",
+      "domain": "FINANCIALS",
+      "label": "Company / BU performance",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "FIN-002 dimensions",
+      "readAuthority": "`summarizeByCompany`",
+      "scopes": [
+        "OPERATING_COMPANY / CONSOLIDATED"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "FIN-004 grant; FIN-BLOCK-004"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES FIN-009; F13",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Per-company rollups exact; **Consolidated typed `UNELIMINATED_SUM`** and must render with that caveat"
+    },
+    {
+      "id": "F-8",
+      "domain": "FINANCIALS",
+      "label": "Salesperson / employee performance",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "FIN-002 snapshots",
+      "readAuthority": "`listFinancialFacts`",
+      "scopes": [
+        "FIN-004 SELF/TEAM"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "event time",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — governed reporting read\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "`creditedSalespersonId` frozen at event time, exposed verbatim, never re-derived from customer owner, createdBy, assignment, technician or warehouse"
+    },
+    {
+      "id": "F-9",
+      "domain": "FINANCIALS",
+      "label": "Intercompany position",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "FIN-BLOCK-004"
+      ],
+      "evidence": "F12: \"none — deliberately. No intercompany record type may exist until the Owner rules treatment\". D-3: Ventana is the upstream supplier",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "F-10",
+      "domain": "FINANCIALS",
+      "label": "Reconciled accounting fact",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "DECISIONS #145"
+      ],
+      "evidence": "F13: \"ABSENT BY DECISION — authority not yet selected; **nothing may masquerade as reconciled**\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "F-11",
+      "domain": "FINANCIALS",
+      "label": "Internal AR reconciliation / drift",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`financialReconciliation.ts`",
+      "readAuthority": "internal",
+      "scopes": [
+        "FIN-004 reach for display"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "FIN-004 grant"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — internal reconciliation (FIN-010)\"",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Recomputes applied/credits/charges/write-offs/outstanding/state from durable facts and diffs vs the stored cache: IN_SYNC or DRIFT with per-field values. Foreign or malformed facts are THROWN — **an unreconcilable set never reports sync**; nothing is auto-fixed"
+    },
+    {
+      "id": "F-12",
+      "domain": "FINANCIALS",
+      "label": "Period open / closed",
+      "classification": "REPORTABLE_EXISTING_ACTIVATION_REQUIRED",
+      "sourceAuthority": "`financialPeriods.ts`",
+      "readAuthority": "internal",
+      "scopes": [
+        "per operating company"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "period bounds",
+      "dependencies": [
+        "no periods declared today = nothing closed (safe)"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — period & close (FIN-008)\". This is an OPERATIONAL reporting close, not an accounting close",
+      "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
+      "definition": "Per-company frozen periods (OPEN|CLOSED); a close names who/why/when; REOPEN deliberately unmodelled; **an uncovered date is allowed — closing is explicit, absence closes nothing**"
+    },
+    {
+      "id": "F-13",
+      "domain": "FINANCIALS",
+      "label": "Financial approvals awaiting me",
+      "classification": "BLOCKED_BY_DEPENDENCY",
+      "sourceAuthority": "`financialApprovals.ts`",
+      "readAuthority": "internal",
+      "scopes": [
+        "approver role"
+      ],
+      "roles": [
+        "none today"
+      ],
+      "timeBasis": "none",
+      "dependencies": [
+        "**FIN-007 policy VALUES are Owner-undecided** — composed actions fail closed until then"
+      ],
+      "evidence": "SYSTEM_AUTHORITIES \"Finance — approval governance (FIN-007)\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Fail-closed requirement engine: **no policy line ⇒ approval required**; unconditional self-approval prohibition; approving 100 is not approving 150"
+    },
+    {
+      "id": "A-1",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Privileged role requests awaiting decision",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "privileged request records",
+      "readAuthority": "`listPrivilegedRoleRequests`",
+      "scopes": [
+        "global admin"
+      ],
+      "roles": [
+        "admin, owner"
+      ],
+      "timeBasis": "request time",
+      "dependencies": [],
+      "evidence": "`functions/src/index.ts`; `docs/governance/privileged-approval-classification.md`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Two-person approval applies to capabilities that can materially administer security/access policy"
+    },
+    {
+      "id": "A-2",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Access requests to decide",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "access request records",
+      "readAuthority": "`admin.accessRequest.decide`",
+      "scopes": [
+        "global admin"
+      ],
+      "roles": [
+        "admin, owner"
+      ],
+      "timeBasis": "request time",
+      "dependencies": [],
+      "evidence": "`compatibilityRoles.ts` ADMIN_CURATED_PERMISSIONS",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": null
+    },
+    {
+      "id": "A-3",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Password-reset-eligible users",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`users` + Auth",
+      "readAuthority": "`listResetEligibleUsers`",
+      "scopes": [
+        "global admin"
+      ],
+      "roles": [
+        "admin, owner"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`functions/src/index.ts`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": null
+    },
+    {
+      "id": "A-4",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Effective access for a principal (what this person can actually do)",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`resolveEffectivePermission`",
+      "readAuthority": "`effectiveAccessFeed` / `resolveEffectiveAccessCallable`",
+      "scopes": [
+        "per principal"
+      ],
+      "roles": [
+        "all (for self); admin for others"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "SYSTEM_AUTHORITIES access rows; `LandingPage.jsx` is the shipped consumer precedent",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "The resolver is the authority; UI hiding is never authority"
+    },
+    {
+      "id": "A-5",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Audit event history",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "`audit_events`",
+      "readAuthority": "no enumerated governed READ capability or list callable",
+      "scopes": [],
+      "roles": [],
+      "timeBasis": "event time",
+      "dependencies": [],
+      "evidence": "`functions/src/access/auditEventWriter.ts`. `FinancialsAudit.jsx` is a surface without an enumerated read seam — a read authority must be named before an audit feed can be surfaced",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": "Append-only; the existing writer was EXTENDED, never forked into a parallel system"
+    },
+    {
+      "id": "A-6",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Capability activation state per environment",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`config/environments.json` + `environmentCapabilityOverrides.ts` (drift-guard-tested pair)",
+      "readAuthority": "build-time / server-side",
+      "scopes": [
+        "per environment"
+      ],
+      "roles": [
+        "admin, owner"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`config/environments.json` header",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Read-only declaration; adding an entry does not create anything"
+    },
+    {
+      "id": "A-7",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Deployment / release signoff status",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "EOS has no governed in-app source for release state; it lives in the repository and CI. Surfacing it would mean inventing a record type",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "A-8",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Governance decisions awaiting the Owner",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "The decision register is `docs/DECISIONS.md` and the ND register — repository documents, not governed EOS records. A dashboard may link to them; it may not claim a count",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "A-9",
+      "domain": "ADMIN_GOVERNANCE",
+      "label": "Employee directory / assignable employees",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`employees`",
+      "readAuthority": "`useAssignableEmployees` (scoped) / `useEmployeeDirectory` (admin audience)",
+      "scopes": [
+        "scoped vs unscoped are deliberately different audiences"
+      ],
+      "roles": [
+        "per audience"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`PartsManagerHome.jsx:35-38` — an assignee not in the scoped lookup renders \"Unknown assignee\", never a raw uid",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": null
+    },
+    {
+      "id": "X-1",
+      "domain": "CROSS_DOMAIN",
+      "label": "\"What needs your attention\" — ACTION_ITEM",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "per-domain authorities, composed",
+      "readAuthority": "the three attention projections",
+      "scopes": [
+        "per-domain scope"
+      ],
+      "roles": [
+        "per-domain roles"
+      ],
+      "timeBasis": "per-domain",
+      "dependencies": [],
+      "evidence": "`partsAttentionProjection.js`, `workOrderAttentionProjection.js`, `accountAttentionProjection.js`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Owner's taxonomy: ACTION_ITEM = \"you need to do something\". **No ALERT category** — no repository evidence justifies inventing severity independent of workflow status"
+    },
+    {
+      "id": "X-2",
+      "domain": "CROSS_DOMAIN",
+      "label": "\"Waiting / not on you\" — NOTIFICATION",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "per-domain authorities, composed",
+      "readAuthority": "the three attention projections",
+      "scopes": [
+        "per-domain scope"
+      ],
+      "roles": [
+        "per-domain roles"
+      ],
+      "timeBasis": "per-domain",
+      "dependencies": [],
+      "evidence": "The other half of the same Owner-ratified taxonomy as X-1, from the same three modules: `partsAttentionProjection.js`, `workOrderAttentionProjection.js`, `accountAttentionProjection.js`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "NOTIFICATION = \"something happened / is in motion, no action required right now\""
+    },
+    {
+      "id": "X-3",
+      "domain": "CROSS_DOMAIN",
+      "label": "Attention projections re-badging existing severity models",
+      "classification": "NOT_REPORTABLE",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "`workOrderAttentionProjection.js:22-27`: re-projecting `jobRiskScoring`/`dispatchScoring` into the 2-value taxonomy would create the exact \"same badge vocabulary, different meaning\" confusion the pattern's own consumer warns against",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "X-4",
+      "domain": "CROSS_DOMAIN",
+      "label": "Recent meaningful activity (cross-domain roll-up)",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": "four existing surfaces at four grains over three data sources",
+      "readAuthority": "per-surface",
+      "scopes": [
+        "per-surface"
+      ],
+      "roles": [
+        "per-surface"
+      ],
+      "timeBasis": "per-surface",
+      "dependencies": [],
+      "evidence": "**Owner decision 2026-08-09 RETIRED the standalone Activity destination.** \"Do NOT restore it without an explicit product decision. Reinstating it means choosing what it IS ('my activity' or a cross-domain roll-up), and each is a new product with its own authority and projection — not a nav entry.\" `navConfig.js`; `docs/reviews/ux3-activity-destination-scope.md`",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "X-5",
+      "domain": "CROSS_DOMAIN",
+      "label": "Notification history",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [],
+      "evidence": "`navConfig.js`: the Notifications destination is `navHidden` with the explanation \"the full notification history, which is not built yet\"",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "X-6",
+      "domain": "CROSS_DOMAIN",
+      "label": "Reachable destinations for this principal (\"go to\")",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`navConfig.js` + capability feed",
+      "readAuthority": "`LandingPage.jsx`",
+      "scopes": [
+        "per principal"
+      ],
+      "roles": [
+        "all"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`field-ops-app-vite/src/navigation/LandingPage.jsx:1-25`",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "Computed with the SAME `isDomainVisible`/`isNavItemVisible` functions the nav rail and the route table use — \"a destination is either genuinely reachable right now, or it is not listed\""
+    },
+    {
+      "id": "X-7",
+      "domain": "CROSS_DOMAIN",
+      "label": "Operating-company scope on OPERATIONAL records",
+      "classification": "AUTHORITY_GAP",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-12"
+      ],
+      "evidence": "DECISIONS #143: the 30 unresolved sandbox Work Orders are `NO_GOVERNED_COMPANY_SOURCE` — a company-provenance gap. The ownership model is INERT: no Rules enforce it, no writer stamps it, no backfill has run. A Taylor/Ventana split on operational dashboards would be fabricated",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "X-8",
+      "domain": "CROSS_DOMAIN",
+      "label": "Dashboard read / scope layer",
+      "classification": "FORMALIZATION_REQUIRED",
+      "sourceAuthority": null,
+      "readAuthority": null,
+      "scopes": [],
+      "roles": [],
+      "timeBasis": null,
+      "dependencies": [
+        "K-17"
+      ],
+      "evidence": "No dashboard-specific read authority exists and none should be created. The rule to record: a dashboard composes each domain's own read authority at that domain's own scope, and **dashboard personalisation is never a new permission layer**",
+      "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
+      "definition": null
+    },
+    {
+      "id": "X-9",
+      "domain": "CROSS_DOMAIN",
+      "label": "Truncation / completeness honesty on any dashboard count",
+      "classification": "REPORTABLE_NOW",
+      "sourceAuthority": "`accountPortfolioSummary.ts` (aggregate contract) + `financialVisibility.ts` (unfiltered-set rule)",
+      "readAuthority": "the rule binds every read; it has none of its own",
+      "scopes": [
+        "all"
+      ],
+      "roles": [
+        "all"
+      ],
+      "timeBasis": "none",
+      "dependencies": [],
+      "evidence": "`accountPortfolioSummary.ts:7-15` — \"THIS IS AN AGGREGATE CONTRACT, NOT A LIST CONTRACT … no cursor, no pageSize, no limit\". FIN-004: truncation honesty is judged on the UNFILTERED set, and an A/R page that would truncate renders \"unavailable\", never a partial \"ready\"",
+      "dashboardEligibility": "SAFE_NOW",
+      "definition": "A bounded read may return a page and say so; **a TOTAL may not** — bounding an aggregate produces a number smaller than the truth while still labelled \"Total\", which is worse than the slow unbounded read it replaced"
+    }
+  ]
+}

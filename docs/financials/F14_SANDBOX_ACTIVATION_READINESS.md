@@ -33,11 +33,19 @@ Registered ids (both catalog mirrors), all `active:false` today:
 - FIN-008 period cadence/calendar + closer authority (no periods declared = nothing closed — safe).
 - FIN-004 scope grants per principal (reach = union; no grant = no reach).
 - FIN-BLOCK-002/003/004 rulings unlock service billing / cost & margin / intercompany respectively — activation without them is safe (those paths stay structurally absent/UNKNOWN).
-- **Activation registry:** the `finance.visibility.*` ids are deliberately in NO environment
-  activation registry today. Sandbox activation of Stage A/B requires the Owner-authorized PR
-  adding them to the sandbox entry of `config/environments.json` + the embedded snapshot in
-  `functions/src/access/environmentCapabilityOverrides.ts` (drift-guard-tested pair), followed
-  by a Functions deploy.
+- **Activation registry — CORRECTED 2026-09-02.** This entry previously said the
+  `finance.visibility.*` ids were "deliberately in NO environment activation registry today."
+  That stopped being true on 2026-09-01: `finance.visibility.consolidated` was added to the
+  platform-sandbox entry of `config/environments.json` and to the embedded snapshot in
+  `functions/src/access/environmentCapabilityOverrides.ts` (drift-guard-tested pair) by
+  commit `cc261540` / PR #1711, for sandbox Owner review only. The other four ids
+  (`self`/`team`/`businessUnit`/`company`) remain in no registry, and a wider environment
+  remains an Owner-authorized PR plus a Functions deploy.
+  **The point this bullet was making is unchanged, and is now sharper: ELIGIBILITY IS NOT
+  CARRIAGE.** No repository Role carries any `finance.visibility.*` capability, so reach is
+  still zero for every principal — see §2's "carrying role TBD", which remains the open
+  decision. Evidence and consequences: `docs/assessments/eos-dashboard-reporting-authority-census.md`
+  §9 decision 1.
 
 ### Grant examples (persona → capability grant + scope binding; ILLUSTRATIVE — nothing granted)
 
