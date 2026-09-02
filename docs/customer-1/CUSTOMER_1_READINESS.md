@@ -22,7 +22,7 @@ This page is the human-readable view of `CUSTOMER_1_LEDGER.json`. The JSON file 
 | C1-SUPPORT-01 — Support and escalation | OPEN | Yes | Operationalize support intake, severity, escalation, and bug-vs-enhancement boundaries. |
 | C1-TRAINING-01 — Day-1 training | OPEN | Yes | Current role/workflow training exists and designated admins are trained. |
 | C1-CUTOVER-01 — Cutover rehearsal | OPEN | Yes | Rehearse source freeze, final migration, reconciliation, activation, smoke test, and fallback. |
-| C1-COST-01 — CI cost containment | IN PROGRESS | No | Ledger/docs updates stop triggering broad CI/Pages; no Windows-hosted ledger Actions. |
+| C1-COST-01 — CI cost containment | READY | No | Pages path filter merged; ledger automation forbids Windows-hosted Actions. |
 | C1-OWNER-01 — Final production authorization | NOT AUTHORIZED | Yes | All critical gates READY plus explicit Owner authorization. |
 
 ## What is already materially advanced

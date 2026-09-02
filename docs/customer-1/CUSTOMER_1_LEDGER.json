@@ -174,12 +174,14 @@
       "id": "C1-COST-01",
       "name": "Customer 1 CI cost containment",
       "category": "operations",
-      "status": "IN_PROGRESS",
+      "status": "READY",
       "launchCritical": false,
       "authority": "Verenward",
       "closeWhen": "Ledger/documentation-only updates do not trigger broad application CI or GitHub Pages rebuilds, and no Windows-hosted Actions are used for ledger automation.",
       "evidence": [
-        ".github/workflows/deploy-field-ops.yml uses ubuntu-latest; path filtering is being narrowed in the ledger establishment change."
+        "PR #1726 merged as 606278d2fcaf2aa26290d97d5c7f0f455c03dc9e.",
+        ".github/workflows/deploy-field-ops.yml remains ubuntu-latest and now runs only for index.html, field-ops-app-vite/**, or its own workflow file.",
+        "PR #1726 checks ran only on ubuntu-latest; zero Windows Actions were used."
       ]
     },
     {
