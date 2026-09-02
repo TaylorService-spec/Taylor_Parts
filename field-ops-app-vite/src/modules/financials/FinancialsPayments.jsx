@@ -3,12 +3,14 @@
 // Design authority: docs/north-star/financials/North Star - Financials 05 Payments.dc.html —
 // APPROVED AS DRAWN. RECEIVED ≠ APPLIED ≠ UNAPPLIED ≠ RECONCILED.
 //
-// Current-main truth: the payment command core is merged and dormant — it supports cash
-// receipt, application to an invoice and derived outstanding balance, and REFUSES
-// over-application. A real unapplied-cash balance workflow is FUTURE AUTHORITY
-// (FIN-AG-PAYMENT-UNAPPLIED, Owner policy question open) and is NOT operationalized here:
-// the North Star target stays visible, clearly labelled future/unavailable, with no fake
-// records behind it. No payments read callable exists yet (NOT USER-EXPOSED).
+// WIRED to the governed reporting read. Payments reach this page only through the invoices the
+// principal can see: a payment is visible exactly when the invoice it settles is, which is why
+// there is no separate payments authorization to reason about here.
+//
+// The UNAPPLIED column is not computed. Current payment authority refuses over-application, so no
+// governed record can truthfully carry an unapplied balance, and a subtraction printed in that
+// column would be arithmetic asserting a fact the system forbids. It stays named as FUTURE
+// AUTHORITY (FIN-AG-PAYMENT-UNAPPLIED) in the band above and dashed in the table.
 import { useState } from "react";
 import {
   FinancialsPageFrame,
@@ -17,7 +19,8 @@ import {
   FinAnnotation,
 } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
-import { unwiredReadHonestState } from "../../domain/financialsSurface.js";
+import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
   { key: "all", label: "All" },
@@ -25,9 +28,42 @@ const VIEW_OPTIONS = [
   { key: "applied", label: "Fully applied" },
 ];
 
+const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
+const amount = (minor, currency) => formatByCurrency(currency ? { [currency]: minor } : {});
+
 export default function FinancialsPayments() {
   const [company, setCompany] = useState("consolidated");
   const [view, setView] = useState("all");
+
+  const read = useFinancialFacts({
+    companyId: company === "consolidated" ? null : company,
+    factTypes: ["PAYMENT_RECEIPT", "PAYMENT_APPLICATION"],
+  });
+  const { state, result } = financialFactsState(read);
+
+  const payments = state === FACTS_STATE.READY ? (result.payments ?? []) : [];
+  // "Unapplied" selects records whose received amount exceeds what was applied. Under current
+  // authority that set is always empty — which is the truth the band above states, shown rather
+  // than asserted.
+  const rows =
+    view === "unapplied"
+      ? payments.filter((p) => p.amountMinor > p.appliedMinor)
+      : view === "applied"
+        ? payments.filter((p) => p.amountMinor === p.appliedMinor)
+        : payments;
+
+  const honest =
+    state === FACTS_STATE.READY && rows.length === 0
+      ? {
+          state: "EMPTY",
+          detail:
+            view === "unapplied"
+              ? "No governed payment carries an unapplied balance. Current payment authority refuses over-application, so this view is empty as a matter of what the system permits — not because a read failed."
+              : "The governed read answered, and no payment settles an invoice within your visibility scope.",
+        }
+      : state === FACTS_STATE.READY
+        ? { state: null }
+        : { state, detail: FACTS_DETAIL[state] ?? null };
 
   return (
     <FinancialsPageFrame
@@ -47,7 +83,7 @@ export default function FinancialsPayments() {
           Whether such a workflow should exist at all is an open Owner policy question
           (FIN-PQ-UNAPPLIED-POLICY). This composition keeps the North Star target visible without
           enabling the behavior or seeding fake records.
-          <FinAnnotation tip="Design page 05 is approved as drawn with the unapplied-cash content labelled FUTURE AUTHORITY (FIN-AG-PAYMENT-UNAPPLIED). The Unapplied view above stays part of the approved grammar; when the read activates it can only ever show what governed records truthfully contain." />
+          <FinAnnotation tip="Design page 05 is approved as drawn with the unapplied-cash content labelled FUTURE AUTHORITY (FIN-AG-PAYMENT-UNAPPLIED). The Unapplied view above stays part of the approved grammar; it selects over governed records only, so it shows what they truthfully contain — today, nothing." />
         </p>
       </div>
 
@@ -55,7 +91,7 @@ export default function FinancialsPayments() {
         id="fin-payments-collection"
         title="Payment collection"
         meta="applications drill to invoice records · reconciliation absence stated, never implied"
-        honest={unwiredReadHonestState()}
+        honest={honest}
         subject="Payment reads"
       >
         <div className="ns-table-wrap">
@@ -69,9 +105,27 @@ export default function FinancialsPayments() {
                 <th scope="col">Method · Reference</th>
                 <th scope="col" className="ns-num">Amount</th>
                 <th scope="col" className="ns-num">Applied</th>
-                <th scope="col" className="ns-num">Unapplied</th>
+                <th scope="col" className="ns-num">
+                  Unapplied
+                  <FinAnnotation tip="Never computed on this page. Unapplied cash has no governed record under current authority, and printing amount minus applied here would assert a balance the payment core forbids." />
+                </th>
               </tr>
             </thead>
+            {rows.length > 0 ? (
+              <tbody>
+                {rows.map((p) => (
+                  <tr key={p.paymentId}>
+                    <td>{p.paymentId}</td>
+                    <td>{p.accountId ?? "—"}</td>
+                    <td>{dateWords(p.receivedAtMillis)}</td>
+                    <td>{p.method ?? "Not recorded"}</td>
+                    <td className="ns-num">{amount(p.amountMinor, p.currency)}</td>
+                    <td className="ns-num">{amount(p.appliedMinor, p.currency)}</td>
+                    <td className="ns-num">—</td>
+                  </tr>
+                ))}
+              </tbody>
+            ) : null}
           </table>
         </div>
       </FinancialsHonestSection>

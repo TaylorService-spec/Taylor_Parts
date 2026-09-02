@@ -103,3 +103,29 @@ The remaining pages (Forecasting, Budgets, Reconciliation, …) still show an ho
   a glance what exists, what's switched off, and what's waiting on a business decision.
 
 All twenty Financials pages are now real compositions — none are placeholders.
+
+## Where the numbers come from
+
+Five pages now show real, governed figures — Invoices, Accounts Receivable, Payments,
+Company & Business Unit Performance, and Salesperson & Employee Performance — alongside
+Customer Financials, which already did.
+
+A few things worth knowing about what you see there:
+
+- **Your filters ask; the server decides.** The company chip and the view tabs narrow what
+  comes back. They cannot widen it. If you pick a company or a person outside your granted
+  visibility, you get an empty result, not their numbers — and not an error, because asking
+  is allowed.
+- **Every amount was calculated by the server.** The pages format money; they never add it
+  up. That is why a few slots still say what they are missing instead of showing a figure:
+  the A/R aging buckets, the "Booked" row on Company Performance, and the Consolidated
+  column all need totals this app deliberately will not compute for itself. A number
+  assembled from one page of records would look like a statement about your whole book.
+- **"Not attributed" is not zero.** Some invoices were issued before the system began
+  recording which salesperson gets credit. Those invoices are real and you can see them,
+  but they cannot be placed against a person. Salesperson & Employee Performance counts
+  them in a note beneath the table rather than showing anyone a zero for work the record
+  cannot attribute to them.
+- **Nothing shown is truncated.** If a result would be incomplete, the page says the read
+  was unavailable rather than showing you a partial total. An incomplete financial figure
+  is worse than none.

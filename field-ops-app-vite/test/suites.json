@@ -1078,6 +1078,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/financialFactsView.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/impeccableIgnoreScope.test.mjs",
       "runner": "node --test"
     }

@@ -107,6 +107,8 @@ export interface DimensionRollup {
   invoiceCount: number;
   /** Per currency — never summed across currencies. */
   billedByCurrency: Record<string, number>;
+  /** Cash APPLIED to these invoices — a persisted fact, not a payments-side re-derivation. */
+  collectedByCurrency: Record<string, number>;
   outstandingByCurrency: Record<string, number>;
 }
 
@@ -159,10 +161,11 @@ export function rollup(reads: InvoiceReportRead[], keyOf: (r: InvoiceReportRead)
   const byKey = new Map<string, DimensionRollup>();
   for (const r of reads) {
     for (const key of keyOf(r)) {
-      const row = byKey.get(key) ?? { key, invoiceCount: 0, billedByCurrency: {}, outstandingByCurrency: {} };
+      const row = byKey.get(key) ?? { key, invoiceCount: 0, billedByCurrency: {}, collectedByCurrency: {}, outstandingByCurrency: {} };
       row.invoiceCount += 1;
       const currency = r.currency ?? "UNSPECIFIED";
       row.billedByCurrency[currency] = (row.billedByCurrency[currency] ?? 0) + r.totalMinor;
+      row.collectedByCurrency[currency] = (row.collectedByCurrency[currency] ?? 0) + r.appliedMinor;
       if (r.outstandingMinor > 0) {
         row.outstandingByCurrency[currency] = (row.outstandingByCurrency[currency] ?? 0) + r.outstandingMinor;
       }

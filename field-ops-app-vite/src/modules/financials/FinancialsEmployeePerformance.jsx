@@ -1,41 +1,72 @@
 // SALESPERSON & EMPLOYEE PERFORMANCE — /financials/employee-performance (North Star P1, page 15).
 //
 // Design authority: docs/north-star/financials/North Star - Financials 15 Employee Performance.dc.html.
-// Individual and team financial performance where VISIBILITY IS THE COMPOSITION: the
-// viewer's governed scope decides what renders, the scope statement sits in the header,
-// and out-of-scope facts render as a NAMED withheld panel — never zeros, never silent
-// absence. Salesperson credit and Service responsibility are two views that are never
-// merged; attribution is labelled per row (creditedSalespersonId ≠ ownerEmployeeId ≠
-// createdBy ≠ responsibleEmployeeId).
+// Individual and team financial performance where VISIBILITY IS THE COMPOSITION: the viewer's
+// governed scope decides what renders, the scope statement sits in the header, and out-of-scope
+// facts are named rather than zeroed. Salesperson credit and Service responsibility are two views
+// that are never merged.
 //
-// Current-main truth: FIN-004 visibility is implemented server-side (five scopes, five
-// capabilities, FIN-BLOCK-001's governed company/BU bindings). This page does not yet
-// issue a scoped performance read, so it states THAT — it does not assert what reach the
-// principal has.
+// ════════════════ WIRED — AND HONESTLY PARTIAL ════════════════
 //
-// IT USED TO ASSERT ONE, AND THE ASSERTION WAS WRONG. The header said "no financial
-// visibility scope granted" and the body said "finance.visibility.* inactive". In
-// platform-sandbox the governed AR read answers `{status:"ready"}` for the admin persona,
-// which the callable only reaches when the fact-family gate AND at least one visibility
-// scope both resolve ALLOW — so the page was denying reach the principal actually had.
-// The error ran conservative (under-claiming, never leaking), but a page stating an
-// authority fact it never resolved is the same defect class as inventing a number.
-// Scope is enforced in the read layer; this page renders whatever slice returns.
+// The credit view reads the governed reporting seam's per-salesperson rollup, which the SERVER
+// computes from each invoice's frozen `attribution.creditedSalespersonId`. Credit is never
+// re-derived here from customer owner, createdBy, assignment or territory, and this page does not
+// join back to the Sales Order to recover it — historical credit is frozen at issuance, and
+// recomputing it from a mutable record would replace history with a guess.
+//
+// That fidelity has a visible cost, and it is the correct cost. Invoices issued by a command build
+// that predates attribution stamping carry no credited salesperson at all. They are real, they are
+// visible, and they are NOT placed on this axis — the note beneath the table says how many, so the
+// table reconciles against the invoice collection instead of quietly disagreeing with it. No
+// person gets a zero row for work the record cannot attribute to them.
+//
+// The scope line states what the SERVER returned as the principal's reach. It is not a guess: an
+// earlier revision of this page asserted "no financial visibility scope granted" without ever
+// resolving it, and in sandbox that assertion was false.
 import { useState } from "react";
-import {
-  FinancialsPageFrame,
-  FinancialsHonestSection,
-  FinAnnotation,
-} from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsHonestSection, FinAnnotation } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
+import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import {
+  FACTS_STATE,
+  FACTS_DETAIL,
+  financialFactsState,
+  rollupRow,
+  unattributedNote,
+  scopeSentence,
+} from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
   { key: "credit", label: "Salesperson credit" },
   { key: "responsibility", label: "Service responsibility" },
 ];
 
+const RESPONSIBILITY_DETAIL =
+  "Service responsibility is a different attribution from salesperson credit and is never merged with it. No governed financial read exposes a responsible-employee dimension, so this view has no rows to show — and credit rows are not relabelled to fill it.";
+
 export default function FinancialsEmployeePerformance() {
   const [view, setView] = useState("credit");
+
+  const read = useFinancialFacts({ factTypes: ["INVOICE"] });
+  const { state, result } = financialFactsState(read);
+  const ready = state === FACTS_STATE.READY;
+
+  const rows = ready && view === "credit" ? (result.byCreditedSalesperson ?? []).map(rollupRow) : [];
+  const unattributed = ready && view === "credit" ? unattributedNote(result, "creditedSalesperson") : null;
+  const scope = ready ? scopeSentence(result) : null;
+
+  const honest =
+    view === "responsibility"
+      ? { state: "NOT_ENABLED", detail: RESPONSIBILITY_DETAIL }
+      : ready && rows.length === 0
+        ? {
+            state: "EMPTY",
+            detail:
+              "The governed read answered, and no invoice in your visibility scope carries a credited salesperson. This is a fact about the records, not about your reach — the note below states how many facts could not be attributed.",
+          }
+        : ready
+          ? { state: null }
+          : { state, detail: FACTS_DETAIL[state] ?? null };
 
   return (
     <FinancialsPageFrame
@@ -45,8 +76,8 @@ export default function FinancialsEmployeePerformance() {
       custodyTip="Visibility scopes SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED are enforced at the read (FIN-004, server-side; scope bindings are governed access facts per DECISIONS #157). A fact outside your scope is refused by the server and named as withheld here — it is never fetched-and-hidden, and never a zero."
     >
       <p className="fin-custody-note">
-        Scope: <strong>resolved by the server when this page issues its read</strong>
-        <FinAnnotation tip="Visibility scopes SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY / CONSOLIDATED are resolved server-side per principal (FIN-004). This page does not yet issue a scoped performance read, so it does NOT state your reach — asserting a scope it has not resolved would be a claim about your authority that this page cannot make. When the read is wired, this line names the reach the server actually returned." />
+        Scope: <strong>{scope ?? "resolved by the server when this read answers"}</strong>
+        <FinAnnotation tip="This line reports the reach the SERVER returned for your principal, not a scope this page inferred. Visibility scopes are resolved per principal at the read (FIN-004); a page asserting an authority fact it has not resolved is the same defect class as a page inventing a number." />
       </p>
 
       <FilterBar variant="chips" label="Attribution view" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
@@ -56,12 +87,9 @@ export default function FinancialsEmployeePerformance() {
           id="fin-employee-performance"
           title={view === "credit" ? "Salesperson credit" : "Service responsibility"}
           meta="two attributions, never merged · per-row attribution label when rows render"
-          honest={{
-            state: "NOT_ENABLED",
-            detail:
-              "This page does not issue a scoped performance read yet, so no rows are shown. Nothing failed, and nothing is withheld from you by this page — when the read is wired, your governed visibility scope decides which rows return, and anything outside it is named as withheld rather than zeroed.",
-          }}
+          honest={honest}
           subject="Performance reads"
+          footer={unattributed ? <p className="fin-section-note">{unattributed}</p> : null}
         >
           <div className="ns-table-wrap">
             <table className="ns-table">
@@ -70,14 +98,37 @@ export default function FinancialsEmployeePerformance() {
                 <tr>
                   <th scope="col">
                     Person
-                    <FinAnnotation tip="Attribution is labelled per row: creditedSalespersonId ≠ ownerEmployeeId ≠ createdBy ≠ responsibleEmployeeId. The credit view attributes strictly by creditedSalespersonId (a FIN-002-complete fact)." />
+                    <FinAnnotation tip="Attribution is labelled per row: creditedSalespersonId ≠ ownerEmployeeId ≠ createdBy ≠ responsibleEmployeeId. The credit view attributes strictly by the invoice's frozen creditedSalespersonId (a FIN-002 fact), never by who owns the customer or who created the record." />
                   </th>
                   <th scope="col">Basis</th>
-                  <th scope="col" className="ns-num">Actual</th>
-                  <th scope="col" className="ns-num">Goal</th>
-                  <th scope="col">Attainment</th>
+                  <th scope="col" className="ns-num">Billed</th>
+                  <th scope="col" className="ns-num">Collected</th>
+                  <th scope="col" className="ns-num">Outstanding</th>
+                  <th scope="col" className="ns-num">
+                    Goal
+                    <FinAnnotation tip="No goal records exist: FIN-005 goal authority is merged and dormant with no persisted goals, so attainment cannot be computed truthfully and is never estimated." />
+                  </th>
                 </tr>
               </thead>
+              {rows.length > 0 ? (
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.key}>
+                      <td>
+                        {row.key}
+                        <span className="fin-attr-label"> · credited salesperson</span>
+                      </td>
+                      <td>Billed</td>
+                      <td className="ns-num">{row.billed}</td>
+                      <td className="ns-num">{row.collected}</td>
+                      <td className="ns-num">{row.outstanding}</td>
+                      <td className="ns-num">
+                        <span className="fin-inact">No goal records</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              ) : null}
             </table>
           </div>
         </FinancialsHonestSection>

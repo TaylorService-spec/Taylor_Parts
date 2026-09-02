@@ -84,7 +84,9 @@ describe("03 Invoices — /financials/invoices", () => {
     for (const col of ["Invoice", "Customer", "Issued", "Due", "Total", "Applied", "Outstanding", "Status"]) {
       expect(screen.getAllByText(col, { exact: false }).length).toBeGreaterThanOrEqual(1);
     }
-    expect(container.textContent).toMatch(/No governed read surface/);
+    // WIRED to listFinancialFacts: on mount the governed read is in flight, so the honest body is
+    // LOADING — not a claim that no read exists. Nothing renders as money until the server answers.
+    expect(container.textContent).toMatch(/Loading Invoice reads/);
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
@@ -99,7 +101,10 @@ describe("04 Accounts Receivable — /financials/accounts-receivable", () => {
     // authority; what must not exist is a rendered figure or column header).
     expect(screen.queryByText(/^DSO$/)).toBeNull();
     expect(screen.queryByRole("columnheader", { name: /risk/i })).toBeNull();
-    expect(container.textContent).toMatch(/does not issue its own governed read/);
+    // The aging scorecard stays absent BY DESIGN: bucketing outstanding balances is money
+    // arithmetic, and this client does none over authoritative facts. The exposure table reads the seam.
+    expect(container.textContent).toMatch(/Not supplied by this read/);
+    expect(container.textContent).toMatch(/Loading A\/R reads/);
     expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
@@ -284,7 +289,10 @@ describe("15 Salesperson & Employee Performance — /financials/employee-perform
   test("scope statement in header; withheld panel named; views never merged; margin absence", async () => {
     const { default: FinancialsEmployeePerformance } = await import("../src/modules/financials/FinancialsEmployeePerformance.jsx");
     const { container } = mount(<FinancialsEmployeePerformance />);
-    expect(container.textContent).toMatch(/resolved by the server when this page issues its read/);
+    // The scope line reports what the SERVER returned; until it answers it says exactly that, and
+    // it never asserts a reach this page did not resolve.
+    expect(container.textContent).toMatch(/resolved by the server when this read answers/);
+    expect(container.textContent).not.toMatch(/no financial visibility scope granted/i);
     expect(container.textContent).toMatch(/Outside your scope/);
     expect(container.textContent).toMatch(/withheld by the server/);
     for (const label of ["Salesperson credit", "Service responsibility"]) {

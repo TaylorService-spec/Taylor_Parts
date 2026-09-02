@@ -11,12 +11,12 @@
 // services/equipmentCompatibilitySource.js).
 import { mapAccountArErrorToStatus } from "../domain/accountArView.js";
 
-async function invoke(payload) {
+async function invoke(name, payload) {
   const [{ httpsCallable }, { functions }] = await Promise.all([
     import("firebase/functions"),
     import("../firebase/firebase.js"),
   ]);
-  const res = await httpsCallable(functions, "listAccountInvoiceAr")(payload);
+  const res = await httpsCallable(functions, name)(payload);
   return res?.data;
 }
 
@@ -25,7 +25,19 @@ async function invoke(payload) {
 // to interpret) or { errorStatus } on failure ("denied" | "unavailable") -- never throws.
 export async function fetchAccountInvoiceAr(accountId, limit = 100) {
   try {
-    const result = await invoke({ accountId, limit });
+    const result = await invoke("listAccountInvoiceAr", { accountId, limit });
+    return { result };
+  } catch (err) {
+    return { errorStatus: mapAccountArErrorToStatus(err) };
+  }
+}
+
+// The governed REPORTING read (functions/src/finance/financialReportingRead.ts). Same transport,
+// same error mapping — the caller-supplied filters travel as a REQUEST; the server intersects them
+// with the principal's governed reach and may only narrow. Nothing here is authorization.
+export async function fetchFinancialFacts(filters = {}, limit = 200) {
+  try {
+    const result = await invoke("listFinancialFacts", { ...filters, limit });
     return { result };
   } catch (err) {
     return { errorStatus: mapAccountArErrorToStatus(err) };
