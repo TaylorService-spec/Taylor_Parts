@@ -70,16 +70,40 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * Every module wears its own label.
+ *
+ * Measured on the real screen at 1440 and 375: without this, a section became a run of
+ * unattributed sentences and a reader could not tell which module each one described. HonestState's
+ * NOT_ENABLED branch substitutes `detail` FOR its subject sentence -- correctly, that is its
+ * "one sentence, once" contract -- so the subject has to live outside it.
+ */
+function ModuleFrame({ label, children, blocked = false }) {
+  return (
+    <div className={blocked ? "fo-dashboard-module fo-dashboard-module--blocked" : "fo-dashboard-module"}>
+      <span className="fo-dashboard-module__label">{label}</span>
+      {children}
+    </div>
+  );
+}
+
 /** The one module with a governed actual wired today. */
 function AccountPortfolioModule() {
   const { summary, state } = useAccountPortfolioSummary();
-  if (state === "LOADING") return <HonestState state={HONEST_STATE.LOADING} subject="Account portfolio" />;
+  if (state === "LOADING") {
+    return <ModuleFrame label="Account portfolio"><HonestState state={HONEST_STATE.LOADING} subject="Account portfolio" /></ModuleFrame>;
+  }
   if (state !== "READY" || !summary) {
-    return <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Account portfolio" detail="The portfolio count could not be read." />;
+    return (
+      <ModuleFrame label="Account portfolio" blocked>
+        <HonestState state={HONEST_STATE.UNAVAILABLE} detail="The portfolio count could not be read." />
+      </ModuleFrame>
+    );
   }
   // A complete server-side count over the authorized scope -- never a page, never a sample. Unknown
   // status values surface as `unclassified` rather than vanishing from the total.
   return (
+    <ModuleFrame label="Account portfolio">
     <div className="fo-stat-grid">
       <CompactMetric value={summary.total ?? "—"} label="Total accounts" />
       <CompactMetric value={summary.active ?? "—"} label="Active" />
@@ -89,6 +113,7 @@ function AccountPortfolioModule() {
         <CompactMetric value={summary.unclassified} label="Unclassified" />
       )}
     </div>
+    </ModuleFrame>
   );
 }
 
@@ -151,14 +176,25 @@ function ServiceAttentionModule() {
  *   NOT_WIRED  nobody must decide anything; this surface has not composed the read -> NOT_ENABLED
  *              with a sentence that says where the live surface is, so the reader is not stranded.
  */
-function BlockedModule({ label, blocker, state }) {
+function BlockedModule({ label, blocker }) {
   return (
     <div className="fo-dashboard-module fo-dashboard-module--blocked">
-      <HonestState
-        state={state === MODULE_STATE.UNAVAILABLE ? HONEST_STATE.UNAVAILABLE : HONEST_STATE.NOT_ENABLED}
-        subject={label}
-        detail={blocker}
-      />
+      <span className="fo-dashboard-module__label">{label}</span>
+      {/* ALL THREE non-ready module states render as NOT_ENABLED, and that is a correction made
+          after looking at the real screen rather than a shortcut.
+
+          UNAVAILABLE was mapped to HonestState's UNAVAILABLE branch first, which draws a red warning
+          glyph and centred alert copy. On the page that made "no governed cost fact exists anywhere
+          in the platform" read as a FAULT -- something broken, something to retry -- when it is a
+          designed, permanent, Owner-level absence that the platform is stating deliberately. The red
+          treatment is right for a read that FAILED and wrong for a figure that was never offered.
+
+          So the alert styling stays where it belongs -- on genuine read failures, which is where the
+          portfolio and goal modules still use it -- and every "the platform does not offer this,
+          here is why" case gets NOT_ENABLED's quiet single sentence. The DISTINCTION between the
+          three states is not lost: it lives in the blocker sentence, which names whether someone
+          must decide something, define something, or wire something. */}
+      <HonestState state={HONEST_STATE.NOT_ENABLED} detail={blocker} />
     </div>
   );
 }
@@ -221,16 +257,26 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
           ) : (
             modules.map((m) => {
               if (m.state !== MODULE_STATE.READY) {
-                return <BlockedModule key={m.key} label={m.label} blocker={m.blocker} state={m.state} />;
+                return <BlockedModule key={m.key} label={m.label} blocker={m.blocker} />;
               }
-              if (m.key === "serviceAttention") return <ServiceAttentionModule key={m.key} />;
+              if (m.key === "serviceAttention") {
+                return (
+                  <ModuleFrame key={m.key} label={m.label}>
+                    <ServiceAttentionModule />
+                  </ModuleFrame>
+                );
+              }
               if (m.key === "accountPortfolio") return <AccountPortfolioModule key={m.key} />;
               if (m.key === "myGoals" || m.key === "teamGoals") {
                 const scoped = targets.filter((t) =>
                   m.key === "myGoals" ? t.targetScopeType === "EMPLOYEE" : t.targetScopeType !== "EMPLOYEE",
                 );
                 if (scoped.length === 0) return null;
-                return <GoalGrid key={m.key} targets={scoped} feed={goalFeed} actualsByKey={null} />;
+                return (
+                  <ModuleFrame key={m.key} label={m.label}>
+                    <GoalGrid targets={scoped} feed={goalFeed} actualsByKey={null} />
+                  </ModuleFrame>
+                );
               }
               // Unreachable: every READY module is wired above. Kept as a loud failure rather than a
               // silent blank, so adding a module to the table without composing it is caught on the
@@ -239,7 +285,6 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                 <BlockedModule
                   key={m.key}
                   label={m.label}
-                  state={MODULE_STATE.UNAVAILABLE}
                   blocker="This module is declared but not composed. That is a defect, not a governance limit."
                 />
               );
