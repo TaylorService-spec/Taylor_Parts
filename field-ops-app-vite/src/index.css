@@ -7535,3 +7535,112 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (max-width: 640px) {
   .fin-scorecard--five { grid-template-columns: 1fr 1fr; }
 }
+
+/* ══════ Financials — high-contrast visual-system pilot (2026-09-02) ══════
+   Owner direction: true-white canvas, stronger contrast and borders, and one
+   semantic type step larger for operational text. The class is applied by the
+   shell only while the active domain is /financials, so this is a real family
+   pilot rather than a premature site-wide token migration. No page composition,
+   fact, action, route or authority changes here.
+
+   The tokens intentionally reuse the existing semantic names. Financials pages
+   and shared North Star primitives therefore inherit one grammar; there is no
+   parallel component system and no per-page restyling. After Owner acceptance,
+   these values can move to :root and the scoped type rules can be reconciled
+   across the remaining families. */
+.fo-main--financials-pilot {
+  --verenward-stone-page: #FFFFFF;
+  --verenward-stone-card: #FFFFFF;
+  --verenward-stone-sunken: #F2F5F3;
+  --color-surface-page: #FFFFFF;
+  --color-surface-card: #FFFFFF;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-sunken: #F2F5F3;
+  --color-text-primary: #111111;
+  --color-text-secondary: #3F4542;
+  --color-text-muted: #626A66;
+  --color-brand-secondary: #005A3C;
+  --color-border: #87938D;
+  --color-border-strong: #5F6C66;
+  --color-focus: #005A3C;
+  background: var(--color-surface-page);
+  color: var(--color-text-primary);
+}
+
+/* One semantic step, not a mechanical +1px sweep. Display headings remain at
+   their established North Star scale; the operational tiers that were hardest
+   to read move into the handoff's 12–16px working range. */
+.fo-main--financials-pilot .ns-workspace { font-size: 16px; }
+.fo-main--financials-pilot .ns-page__crumb { font-size: 12px; }
+.fo-main--financials-pilot .ns-workspace__description { font-size: 15px; line-height: 1.5; }
+.fo-main--financials-pilot .ns-workspace__summary,
+.fo-main--financials-pilot .ns-workspace__count { font-size: 15px; }
+.fo-main--financials-pilot .ns-section__meta { font-size: 14px; }
+.fo-main--financials-pilot .ns-state { font-size: 16px; line-height: 1.5; }
+.fo-main--financials-pilot .ns-table { font-size: 15px; }
+.fo-main--financials-pilot .ns-table th,
+.fo-main--financials-pilot .ns-workspace table th { font-size: 12px; line-height: 1.4; }
+.fo-main--financials-pilot .ns-table td,
+.fo-main--financials-pilot .ns-workspace table td { font-size: 15px; line-height: 1.45; padding-block: 11px; }
+.fo-main--financials-pilot .ns-table__note,
+.fo-main--financials-pilot .ns-collection__result { font-size: 14px; line-height: 1.5; }
+.fo-main--financials-pilot .ns-view { font-size: 15px; }
+.fo-main--financials-pilot .ns-view__count { font-size: 13px; }
+.fo-main--financials-pilot .fo-filter-btn { font-size: 15px; border-color: var(--color-border-strong); }
+
+.fo-main--financials-pilot .fin-custody-note,
+.fo-main--financials-pilot .fin-period,
+.fo-main--financials-pilot .fin-period__field,
+.fo-main--financials-pilot .fin-period__invalid,
+.fo-main--financials-pilot .fin-figure__absence,
+.fo-main--financials-pilot .fin-figure__link,
+.fo-main--financials-pilot .fin-section-note,
+.fo-main--financials-pilot .fin-inact { font-size: 14px; line-height: 1.5; }
+.fo-main--financials-pilot .fin-period__label,
+.fo-main--financials-pilot .fin-figure__label,
+.fo-main--financials-pilot .fin-search-label,
+.fo-main--financials-pilot .fin-factclass,
+.fo-main--financials-pilot .fin-basis,
+.fo-main--financials-pilot .fin-gov-chip { font-size: 12px; }
+.fo-main--financials-pilot .fin-period__select,
+.fo-main--financials-pilot .fin-period__date,
+.fo-main--financials-pilot .fin-search-input,
+.fo-main--financials-pilot .fin-search-result,
+.fo-main--financials-pilot .fin-primary-action { font-size: 15px; border-color: var(--color-border-strong); }
+.fo-main--financials-pilot .fin-truth-band,
+.fo-main--financials-pilot .fin-exception-list,
+.fo-main--financials-pilot .fin-gov-row,
+.fo-main--financials-pilot .fin-identity-line { font-size: 15px; line-height: 1.5; }
+.fo-main--financials-pilot .fin-attr-label { font-size: 13px; }
+.fo-main--financials-pilot .fin-tip { font-size: 14px; line-height: 1.5; }
+
+/* KPI hierarchy: white bounded cells, a deliberate evergreen top edge, and a
+   value that is visibly primary without turning every surrounding label green. */
+.fo-main--financials-pilot .fin-scorecard {
+  border: 1px solid var(--color-border);
+  border-top: 3px solid var(--color-brand-secondary);
+  background: var(--color-surface-card);
+}
+.fo-main--financials-pilot .fin-scorecard__slot { padding-block: 16px; }
+.fo-main--financials-pilot .fin-figure__value {
+  color: var(--color-brand-secondary);
+  font-size: 32px;
+  line-height: 1.15;
+}
+
+/* Controls must read as controls on white. Selected states still carry weight
+   and a rule in addition to colour, preserving the existing non-colour cue. */
+.fo-main--financials-pilot .fin-period__select,
+.fo-main--financials-pilot .fin-period__date,
+.fo-main--financials-pilot .fin-search-input,
+.fo-main--financials-pilot .fin-search-results { border-color: var(--color-border-strong); }
+.fo-main--financials-pilot .ns-view.is-active {
+  color: var(--color-brand-secondary);
+  border-bottom-color: var(--color-brand-secondary);
+}
+
+@media (max-width: 640px) {
+  .fo-main--financials-pilot .fin-scorecard__slot { padding: 14px 10px; }
+  .fo-main--financials-pilot .fin-scorecard__slot + .fin-scorecard__slot { padding-left: 10px; }
+  .fo-main--financials-pilot .fin-figure__value { font-size: 24px; }
+}

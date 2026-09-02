@@ -26,6 +26,7 @@ on:
     paths:
       - "field-ops-app-vite/src/domain/financialsSurface.js"
       - "field-ops-app-vite/src/modules/financials/**"
+      - "field-ops-app-vite/src/navigation/AppShell.jsx"
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/src/App.jsx"
@@ -47,6 +48,7 @@ on:
     paths:
       - "field-ops-app-vite/src/domain/financialsSurface.js"
       - "field-ops-app-vite/src/modules/financials/**"
+      - "field-ops-app-vite/src/navigation/AppShell.jsx"
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/src/App.jsx"
