@@ -27,6 +27,19 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          EOS dashboard personalization + performance management — the Performance Goal Authority, the persona dashboard framework, and the sandbox operating story behind them
+- Agent/session:       Claude (Claude Code, 2026-09-02) · Role: builder
+- Branch / worktree:   `claude/eos-dashboard-personalization-d77a66` · `D:/Taylor_Parts/.claude/worktrees/eos-dashboard-personalization-d77a66`
+- Base commit:         `fd40ff5d89321ca72b4a65ddd3f4df0480eebe7f` (origin/main at start, unmoved when taken)
+- Owned paths:         `functions/src/performance/**` · `functions/test/performanceGoal.test.mjs` · `functions/scripts/seedSandboxPerformanceStory.mjs` · `functions/test/sandboxPerformanceStory.test.mjs` · `docs/governance/eos-dashboard-composition-authority.md` · `docs/north-star/my-dashboard/**` · `field-ops-app-vite/src/modules/dashboard/**` · `.github/workflows/performance-goal-tests.yml`
+- Shared paths req'd:  `functions/src/access/permissionCatalog.ts` + `governedBusinessRoles.ts` + `compatibilityRoles.ts` + `roleHierarchy.ts` + `trustedWriterCommands.ts` (additive grants only; regenerated client mirrors via syncAccessContracts) · `functions/src/types/access.ts` (AuditAction union) + `auditEventWriter.ts` (runtime mirror) · `config/environments.json` + `environmentCapabilityOverrides.ts` + `scripts/resolveEnvironment.mjs` (sandbox activation, all three must agree) · `functions/src/constants/collections.ts` · `functions/src/index.ts` · `docs/DECISIONS.md` (appended #159, #160) · `docs/architecture/SYSTEM_AUTHORITIES.md` (appended) · this registry
+- Known collision:     PR #1724 (`codex/financials-visual-system-pilot`) is OPEN and its content has ALREADY LANDED on main through #1739/#1741/#1742 — it is a duplicate, not a live parallel writer. This workstream still avoids every path it owns (`index.css`, `visualSystem.test.mjs`, `buttonForegroundContrast.test.mjs`, `financialsSurface.test.mjs`, `VISUAL-SYSTEM.md`) and does not redesign the visual system, per the Owner's direction §K.
+- Dependencies:        the dashboard reporting authority census (#1740, merged `203848a1`) — every metric's classification and blocker traces to it; FIN-003 `planVsActual.ts` and FIN-007 `financialApprovals.ts`, both composed rather than modified
+- Expected outcome:    dashboards that answer what do I need to do / how am I performing against goal / what impact am I having, composed from existing domain authority at existing scope, with every ungoverned figure rendering an honest unavailable state that names its blocker
+- Protected boundaries:reached and NOT crossed — NO firestore.rules edit (the deny-all block for `performance_goals` is PREPARED for the Owner; the collection is already denied by rule absence). NO deploy, NO production activation, NO capability grant executed against a live environment, NO production data touched. All five `performance.goal.*` capabilities registered `active:false`; sandbox activation declared in the repo only, and its deploy is Owner-executed.
+- Lifecycle stage:     SANDBOX BUILD
+
+
 - Capability:          EOS site-wide visual-system rollout — promote the accepted Financials pilot to the whole authenticated application
 - Agent/session:       Claude (Claude Code, 2026-09-02) · Role: builder — HANDED OVER FROM Codex `/root` (ChatGPT Work, 2026-09-02), which built the pilot as commit `ba4ce623`
 - Handover:            The Owner accepted the pilot as the presentation standard and directed the site-wide rollout in this session. Codex's pilot scope is SUPERSEDED, not abandoned: `ba4ce623` remains the first commit on the branch and this session continues on the same branch and the same PR (#1724) rather than opening a parallel visual-system PR. No concurrent writer: `origin/main` was unmoved at `b1ff470b` and the pilot branch was one commit ahead of it when this session took ownership
