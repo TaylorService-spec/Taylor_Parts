@@ -18,6 +18,9 @@ on:
       - "functions/test/coordinatedVisit.test.mjs"
       - "functions/test/coordinatedFieldMission.test.mjs"
       - "functions/test/billingEligibility.test.mjs"
+      - "functions/test/inventoryCommitmentAuthority.test.mjs"
+      - "functions/src/inventoryService.ts"
+      - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/fulfillment-allocation-tests.yml"
@@ -34,6 +37,9 @@ on:
       - "functions/test/coordinatedVisit.test.mjs"
       - "functions/test/coordinatedFieldMission.test.mjs"
       - "functions/test/billingEligibility.test.mjs"
+      - "functions/test/inventoryCommitmentAuthority.test.mjs"
+      - "functions/src/inventoryService.ts"
+      - "functions/src/inventoryLocation/putAwayCommand.ts"
       - ".github/workflows/fulfillment-allocation-tests.yml"
   workflow_dispatch:
 
