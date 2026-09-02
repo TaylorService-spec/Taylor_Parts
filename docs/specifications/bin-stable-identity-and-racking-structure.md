@@ -21,6 +21,8 @@ target_release:
 
 **Correction pass, 2026-09-02.** Five contracts were incomplete in the first draft and are corrected here: create-idempotency conflict detection, claim integrity on rename, the separation of human code from machine scan identity, the untruthful `originalCode` field, and an implied Administration configuration authority that P1 does not have.
 
+**Final scan-contract correction, 2026-09-02.** An earlier draft described the barcode path as `barcode → resolveScannedIdentity → discover binId → fetch bin`. **`resolveScannedIdentity` is pure and discovers nothing** — it matches against candidates the caller already read. The governed lookup is now specified as a separate trusted read, `resolveBinToken`, and `FOUND_SUPERSEDED_LABEL` is removed from P1's machine contract because a `binId`-only token cannot reveal what text is printed on the label. See §9.
+
 ## Executive summary
 
 A bin's document identity is currently `deriveBinDocId(warehouseId, code)` = `bin_{warehouseId}__{code}`. The human code **is** the database id, so correcting a mislabelled rack produces a *different document* and orphans that bin's placement history. Decision #160 (O-3) ruled that unacceptable.
@@ -49,9 +51,9 @@ Give a bin an identity that survives a legitimate code correction, a structure t
 **Frontend — contract only**
 
 - `field-ops-app-vite/src/services/binCommandClient.js`
-- `field-ops-app-vite/src/domain/putAwaySession.js` — the superseded-label outcome and its operator text.
+- `field-ops-app-vite/src/domain/putAwaySession.js` — the superseded-**code** outcome and its operator text.
 
-**Unchanged, deliberately:** `field-ops-app-vite/src/domain/scannedIdentity.js` and `inventoryLocation.js`. §Machine scan identity explains why the barcode path needs no change to the shared boundary.
+**Unchanged, deliberately:** `field-ops-app-vite/src/domain/scannedIdentity.js` and `inventoryLocation.js`. Both stay **pure**: the governed bin lookup belongs to the trusted BIN read service, never to the scanner domain. §9 explains the separation and why no change to the shared boundary is needed or permitted.
 
 **Tests** — `functions/test/binRegistry.test.mjs`, `putAwayCommand.test.mjs`, `scannerEndToEndContract.test.mjs`, `scannerReleaseReadiness.test.mjs`.
 
@@ -105,7 +107,7 @@ There is **no structured hierarchy**: no `area`, `aisle`, `bay` or `position` fi
 
 - **Governed uniqueness claim.** The Truck Registry (ADR-010, Decision #59) enforces a cross-document invariant Rules cannot express by writing `location_truck_claims/{locationId}` **inside the same transaction**. P1 reuses that shape.
 - **Idempotency fingerprint.** Cycle Count, Receiving and Transfer share one convention: a deterministic document id derived from a caller `idempotencyKey`, plus a stored fingerprint over the **request-derived identity only**, deliberately excluding every server-computed value so a later state change cannot turn a legitimate replay into a conflict. Replay iff the fingerprint matches, conflict if not (`cycleCountRepository.ts` `fingerprintCycleCount` / `toIdentity`). P1 reuses that shape.
-- **Shared scan boundary.** `scannedIdentity.js` matches an `INVENTORY_LOCATION` candidate when the normalized token equals the candidate's `locationId` and the candidate's `type` is in `INVENTORY_LOCATION_TYPES` — which **already includes `BIN`** (`domain/inventoryLocation.js`). `normalizeScanToken` already unwraps JSON payloads, http(s) URLs, and `(TAYLOR|EOS)[-_:](PART|ASSET|WO|LOC|EQUIP)?[-_:]?` vendor prefixes. P1 needs **no change** to either module.
+- **Shared scan boundary — and what it is not.** `normalizeScanToken` already unwraps JSON payloads, http(s) URLs, and `(TAYLOR|EOS)[-_:](PART|ASSET|WO|LOC|EQUIP)?[-_:]?` vendor prefixes. `resolveScannedIdentity` is **PURE**: it performs no I/O and discovers nothing. It matches a normalized token against **candidate records the caller has already read under its own authority**, and an `INVENTORY_LOCATION` matches only when the caller has already supplied `{ type, locationId }` with `type` in `INVENTORY_LOCATION_TYPES` — which does already include `BIN` (`domain/inventoryLocation.js`). The module's own header states the principle: *"Scanning resolves IDENTITY. Scanning does NOT determine AUTHORITY."* P1 needs **no change** to either module, and must not ask either to do a governed lookup.
 
 ### Capabilities and Rules
 
@@ -343,39 +345,62 @@ Because Decision #160 permits the same human code in different warehouses, **a b
 
 **The machine scan token is the `binId`.** It is already globally unique (a `sha256` derivation), opaque, immutable, and independent of every business attribute — which is exactly what a scan token must be.
 
+**Three modules, three jobs, and the boundary between them is the point:**
+
+| Module | Job | Does it read Firestore? |
+|---|---|---|
+| `normalizeScanToken` (existing, unchanged) | **Parses machine input.** Unwraps JSON payloads, http(s) URLs, and `(TAYLOR\|EOS)[-_:](…LOC…)` prefixes into a bare token | No — pure |
+| `resolveBinToken` (**new**, trusted) | **Performs the governed record lookup** and the warehouse-context comparison | Yes — server-side, Admin SDK, under `inventory.location.bin.read` |
+| `resolveScannedIdentity` (existing, unchanged) | **Matches a token against candidates the caller already read.** Generic identity matcher | No — pure, and must stay so |
+
 ```
-barcode token   e.g. "EOS-LOC:bin_9f3c…"  or bare "bin_9f3c…"
-  -> normalizeScanToken            strips the (TAYLOR|EOS)[-_:](…LOC…) prefix
-  -> resolveScannedIdentity        matches locations candidate on locationId
-  -> INVENTORY_LOCATION { type: "BIN", locationId: binId }
-  -> bins/{binId}
-  -> compare bin.warehouseId against the active warehouse context
-  -> FOUND | WRONG_WAREHOUSE
+raw barcode
+  -> normalizeScanToken(raw)                      pure parse
+  -> stable binId token
+  -> resolveBinToken(binId, activeWarehouseContext)   TRUSTED lookup
+       read bins/{binId}
+       fail-closed bin validation
+       compare bin.warehouseId with the active warehouse context
+  -> FOUND | WRONG_WAREHOUSE | INACTIVE | NOT_FOUND | MALFORMED
+  -> on FOUND, a canonical governed reference: { type: "BIN", locationId: binId }
 ```
 
-**No change to the shared boundary is required, and none is made.** Verified on current source: `resolveScannedIdentity` matches an `INVENTORY_LOCATION` candidate when the normalized token equals the candidate's `locationId` and its `type` is in `INVENTORY_LOCATION_TYPES`, and the client mirror in `domain/inventoryLocation.js` **already includes `BIN`**. `normalizeScanToken` already unwraps JSON payloads, http(s) URLs, and the `(TAYLOR|EOS)[-_:](PART|ASSET|WO|LOC|EQUIP)?[-_:]?` prefix family, so `EOS-LOC:bin_9f3c…` reduces to `bin_9f3c…` with no new parsing. **There is no bin-specific scanner stack and no parallel Location authority.**
+**`resolveScannedIdentity` does not discover a bin, and this specification does not ask it to.** It is pure by design — it performs no I/O and matches only against `candidates.locations` that the caller has already read under its own authority. An earlier draft of this specification implied a `barcode → resolveScannedIdentity → discover binId → fetch bin` sequence. **That is not what the source does**, and it is corrected here.
+
+The trusted resolver's `FOUND` result *produces* the canonical `{ type: "BIN", locationId: binId }` reference, which a caller may then hand to `resolveScannedIdentity` as a candidate wherever generic multi-entity scan composition is useful — a workflow screen that accepts a part, a work order or a bin from one input field, for example. That is the correct direction: **the trusted lookup supplies the candidate; the pure matcher never fetches it.**
+
+**Prohibited, explicitly:**
+
+- making `scannedIdentity.js` perform Firestore I/O;
+- adding any direct client read of `bins`;
+- preloading every bin across every warehouse into the candidate set so the pure matcher could "discover" a wrong-warehouse token — this would be both an unbounded read and a client-side authority leak;
+- a second scan resolver, a second Location registry, or a bin-specific scanner stack.
+
+`resolveBinToken` is part of the **existing trusted BIN read authority** (`inventory.location.bin.read`), alongside `resolveBinCode` and `listBinsForWarehouse`. It is a new command shape, not a new capability.
 
 **Properties this gives, by construction:**
 
 - **globally unambiguous** — two warehouses' `A01-001` bins have different `binId`s, therefore different barcodes;
 - **stable across a legitimate rename** — renaming changes `code`, never `binId`, so **the barcode keeps working**;
-- **stable across a format-width change** — `AA1-003` → `AA01-003` changes visible text only. A replacement label may be operationally required so the printed text matches the wall, but the **machine identity is unchanged**;
-- **resolves to the governed bin record**, never to a claim or a token registry.
-
-**The printed label carries both**, and P1 fixes only the contract, not the layout: the human-readable code (`A01-001`) prominently for people, and the machine token in the barcode for scanners. **BIN-P5 designs and prints it.**
+- **stable across a format-width change** — `AA1-003` → `AA01-003` changes visible text only; the machine identity is unchanged.
 
 **Barcode-path resolution outcomes:**
 
 | Outcome | Meaning |
 |---|---|
 | `FOUND` | `binId` resolved, bin `ACTIVE`, `bin.warehouseId` matches the active warehouse context |
-| `FOUND_SUPERSEDED_LABEL` | `binId` resolved and correct, but the label's **printed human code** no longer matches the bin's current canonical code — the label should be reprinted |
-| `WRONG_WAREHOUSE` | `binId` resolved to a real bin **in another warehouse** — the operator is in the wrong building. This is where `WRONG_WAREHOUSE` genuinely belongs, and it is determinable here because the token identifies the bin globally |
+| `WRONG_WAREHOUSE` | `binId` resolved to a real bin **in another warehouse** — the operator is in the wrong building. This is where `WRONG_WAREHOUSE` genuinely belongs, and it is determinable here **because the token identifies the bin globally** |
 | `INACTIVE` | Resolved to a retired bin |
 | `NOT_FOUND` | Well-formed token, no such bin |
 | `MALFORMED` | Not a usable token |
 
-`FOUND_SUPERSEDED_LABEL` requires the label to carry its printed human code alongside the token; where a label carries the token alone, the outcome is simply `FOUND`. P1 specifies the outcome; **BIN-P5 decides what the label encodes.**
+**There is no `FOUND_SUPERSEDED_LABEL` in P1's machine contract.** A token carrying only `binId` tells the system nothing about what human-readable text is printed beside the barcode, so P1 cannot honestly detect a stale printed code from a scan. Claiming otherwise would be a promise the payload cannot keep.
+
+**The honest consequence, stated plainly:** after a rename, a physical label's **printed text can be stale while its barcode still resolves correctly**. That is acceptable and truthful — the operator reaches the right bin; the sign on it reads the old code until it is reprinted.
+
+Whether the system can *also* detect a stale printed code is a **BIN-P5 question**, to be answered once the label payload is actually designed. P5 may choose to encode `locationId` plus `printedCode`, or a `labelVersion`, or another governed payload. **That is not a P1 decision, and P1 invents no label-version parsing.**
+
+**What the label carries is BIN-P5's design.** P1 fixes only the identity contract: the human-readable code for people, and a token that resolves to the stable `binId` for scanners.
 
 ### 10. Put-away compatibility
 
@@ -495,34 +520,41 @@ Pure-unit tests in `binRegistry.test.mjs`; emulator tests following the existing
 32. `MALFORMED` preserved
 33. the warehouse-scoped path **never** returns `WRONG_WAREHOUSE`
 
-**Machine scan identity**
-34. Phoenix and Seattle bins sharing the human code `A01-001` receive **distinct** machine scan identities
-35. a Phoenix barcode scanned while the Seattle warehouse context is active returns `WRONG_WAREHOUSE`
-36. a barcode resolves to the same `binId` after a legitimate human-code rename
-37. a format-width change (`AA1-003` → `AA01-003`) does not alter the machine identity
-38. `EOS-LOC:bin_…`, bare `bin_…`, a JSON payload and an http(s) URL all normalize to the same token through the **existing** boundary
-39. `scannedIdentity.js` and `inventoryLocation.js` are unmodified by this PR
+**Machine scan identity** — these prove the three-module separation, not a candidate-discovery flow
+34. `normalizeScanToken("EOS-LOC:bin_x")` → `bin_x`; bare `bin_x`, a JSON payload and an http(s) URL all normalize to the same token through the **existing** boundary
+35. `resolveBinToken(bin_x, correct warehouse context)` → `FOUND`
+36. `resolveBinToken(bin_x, wrong warehouse context)` → `WRONG_WAREHOUSE`
+37. `resolveBinToken` on an unknown token → `NOT_FOUND`; on a retired bin → `INACTIVE`; on an unusable token → `MALFORMED`
+38. a `FOUND` result yields the canonical reference `{ type: "BIN", locationId: bin_x }`
+39. when that canonical reference is supplied as a `candidates.locations` entry, `resolveScannedIdentity` resolves the same `binId` — the trusted lookup supplies the candidate, the pure matcher never fetches it
+40. **no global or cross-warehouse client-side bin preload is introduced** — nothing reads more than one bin to resolve one token
+41. `scannedIdentity.js` is unmodified by this PR and performs no Firestore I/O
+42. `inventoryLocation.js` is unmodified by this PR
+43. Phoenix and Seattle bins sharing the human code `A01-001` receive **distinct** machine scan identities
+44. a barcode resolves to the same `binId` after a legitimate human-code rename
+45. a format-width change (`AA1-003` → `AA01-003`) does not alter the machine identity
+46. **no `FOUND_SUPERSEDED_LABEL` outcome exists** in P1's machine-token contract
 
 **Put-away**
-40. a placement records the stable `binId`
-41. renaming a bin does not orphan placement history — earlier placements still resolve to the same bin
-42. `binCode` on an existing placement is **not** rewritten by a later rename
-43. both input paths (typed code, scanned token) produce the same persisted `binId`
+47. a placement records the stable `binId`
+48. renaming a bin does not orphan placement history — earlier placements still resolve to the same bin
+49. `binCode` on an existing placement is **not** rewritten by a later rename
+50. both input paths (typed code, scanned token) produce the same persisted `binId`
 
 **Schema**
-44. `schemaVersion: 2` contains **no** `originalCode` field
-45. `area`, `aisle`, `bay`, `position` validate independently of display width — bay `1` is valid whether rendered `1` or `01`
-46. the canonical code derives deterministically from the injected formatter policy
-47. the formatter policy is server-owned and injected; **no configuration collection, Administration surface or capability is introduced**
-48. `area` is validated as shape only — no fixed Taylor vocabulary is enforced
+51. `schemaVersion: 2` contains **no** `originalCode` field
+52. `area`, `aisle`, `bay`, `position` validate independently of display width — bay `1` is valid whether rendered `1` or `01`
+53. the canonical code derives deterministically from the injected formatter policy
+54. the formatter policy is server-owned and injected; **no configuration collection, Administration surface or capability is introduced**
+55. `area` is validated as shape only — no fixed Taylor vocabulary is enforced
 
 **Non-authority guards**
-49. **no ledger write** from create, rename, retire, resolve or put-away — the modules still import no ledger, movement type or balance function
-50. **no `stock_locations`** read or write authority is introduced
-51. all bin capabilities remain `active: false` and granted to no Role
-52. `bins`, `bin_placements` **and `bin_code_claims`** have no `firestore.rules` match block
-53. no Cycle Count eligibility change — the countable-type policy still resolves to `WAREHOUSE`/`MOBILE`
-54. no coordinate, map, floor-plan or image field exists on any bin record
+56. **no ledger write** from create, rename, retire, resolve or put-away — the modules still import no ledger, movement type or balance function
+57. **no `stock_locations`** read or write authority is introduced
+58. all bin capabilities remain `active: false` and granted to no Role
+59. `bins`, `bin_placements` **and `bin_code_claims`** have no `firestore.rules` match block
+60. no Cycle Count eligibility change — the countable-type policy still resolves to `WAREHOUSE`/`MOBILE`
+61. no coordinate, map, floor-plan or image field exists on any bin record
 
 Migration tests are added **only if** the census proves records must be transformed.
 
@@ -539,11 +571,14 @@ Migration tests are added **only if** the census proves records must be transfor
 - [ ] Rename preserves `binId` and leaves every existing `bin_placement` resolving to the same bin, with its historical `binCode` unrewritten.
 - [ ] The raw human code is **not** the machine barcode identity; the machine identity is globally unambiguous and stable across rename and across a format-width change.
 - [ ] `WRONG_WAREHOUSE` is returned only on the machine-identity path; the warehouse-scoped code path never returns it.
+- [ ] The governed bin lookup lives in the **trusted** `resolveBinToken`, not in the scanner domain: `scannedIdentity.js` and `inventoryLocation.js` are unmodified and perform no I/O, and no direct client read of `bins` is added.
+- [ ] Resolving one scanned token reads **one** bin — no global or cross-warehouse candidate preload exists.
+- [ ] P1's machine-token contract has **no `FOUND_SUPERSEDED_LABEL` outcome**, and the specification makes no claim that a `binId`-only token can reveal a stale printed code.
 - [ ] The shared scan boundary is used unmodified — no bin-specific scanner stack, no parallel Location authority.
 - [ ] `originalCode` is absent from `schemaVersion: 2`.
 - [ ] **No Administration formatter or Area configuration authority is created in P1** — the policy is server-owned and injected, and `area` is validated as shape only.
 - [ ] `git diff` touches no `firestore.rules` copy, no capability file, and no role or grant definition.
-- [ ] All 54 tests pass.
+- [ ] All 61 tests pass.
 - [ ] **The sandbox and production environment census is recorded before implementation begins.**
 
 ## Rollback strategy
@@ -561,6 +596,8 @@ P1 is repo-only. Every bin capability remains `active: false` and granted to no 
 - **The claim collection is a new surface.** If anything ever resolves a *location* from `bin_code_claims` rather than from `bins`, it has become a second Location registry. Its schema carries no name, hierarchy or display data so there is nothing to resolve from, and test 47's sibling constraint keeps `listBins` off it.
 - **Reservations accumulate monotonically.** Every rename leaves a permanent claim. That is the point — releasing them is what would let a stale label point somewhere new — but the collection only grows, and no listing path may read it.
 - **Format-change ripple.** Changing a warehouse's bay width renames every bin under it. Identities, history and barcodes survive; printed visible text does not. This is why C-1 must close before BIN-P5 prints, and why BIN-P3 must present a format change as a bulk rename.
+- **A stale printed code is invisible to P1, by design.** After a rename the barcode keeps resolving correctly while the printed text still reads the old code. P1 cannot detect that from a `binId`-only token and does not pretend to. The operational cost is a wall that reads one thing and scans as another until relabelled; the alternative — inventing a label payload now — would guess at BIN-P5's design.
+- **The purity boundary is easy to erode.** The tempting shortcut is to let the scanner domain fetch a bin, or to preload every warehouse's bins so the pure matcher can spot a wrong-warehouse token. Either would turn an identity matcher into an authority and an unbounded read. Tests 40–42 exist to make that regression fail loudly.
 - **The census is outside this repository.** The migration posture rests on "nothing can have written `bins`", proven from source but not from the environments.
 
 ## Open questions
