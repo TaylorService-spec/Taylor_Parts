@@ -690,10 +690,38 @@ export const SERVICE_NAV_GROUPS = [
 // actually reach, never a hidden route). Empty groups are omitted. Items that
 // belong to no group are returned as `ungrouped`, in their original order. Pure.
 export function buildServiceNavGroups(visibleItems = []) {
+  return buildNavGroups(SERVICE_NAV_GROUPS, visibleItems);
+}
+
+// FINANCIALS is grouped for the same reason Service is, and the measurement is specific: at
+// 1440x800 -- an ordinary laptop -- "Salesperson & Employee Performance" sat at y=875 in a flat
+// twenty-item rail whose scrollHeight was 1189. It was reachable only by scrolling a list that
+// gave no sign there was more below it, which is exactly why the Owner could not find a page that
+// was working the whole time.
+//
+// PRESENTATION-ONLY, like SERVICE_NAV_GROUPS: the financials subnav array, every path, every
+// legacyKey and App.jsx's route generator are untouched. Overview is deliberately ungrouped -- it
+// is the domain index, not a member of a section.
+export const FINANCIALS_NAV_GROUPS = [
+  { key: "billing", label: "Billing & Receivables", itemKeys: ["billingQueue", "invoices", "accountsReceivable", "payments", "creditsAdjustments"] },
+  { key: "customers", label: "Customers", itemKeys: ["customerFinancials"] },
+  { key: "planning", label: "Planning & Targets", itemKeys: ["salesToGoal", "costToBudget", "forecasting", "budgets", "goals"] },
+  { key: "performance", label: "Performance", itemKeys: ["profitability", "companyPerformance", "employeePerformance"] },
+  { key: "integrity", label: "Integrity & Governance", itemKeys: ["reconciliation", "intercompany", "audit", "reports", "governance"] },
+];
+
+export function buildFinancialsNavGroups(visibleItems = []) {
+  return buildNavGroups(FINANCIALS_NAV_GROUPS, visibleItems);
+}
+
+// The shared two-level builder both domains use. Extracted rather than copied: two hand-maintained
+// copies of this logic would drift, and the grouping rules (hide empty groups, land on the first
+// VISIBLE child, keep ungrouped items in their original order) are exactly the rules that must not.
+export function buildNavGroups(groupsDef = [], visibleItems = []) {
   const byKey = new Map(visibleItems.map((it) => [it.key, it]));
   const groupedKeys = new Set();
   const groups = [];
-  for (const g of SERVICE_NAV_GROUPS) {
+  for (const g of groupsDef) {
     const items = g.itemKeys.map((k) => byKey.get(k)).filter(Boolean);
     for (const it of items) groupedKeys.add(it.key);
     if (items.length === 0) continue; // hide empty group

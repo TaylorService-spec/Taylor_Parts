@@ -144,8 +144,17 @@ describe("07 Customer Financials — /financials/customer-financials", () => {
     // The composed AR section renders its own denied sentence — a permission fact, no zeros.
     expect(container.textContent).toMatch(/Not available to you/);
     expect(container.textContent).not.toMatch(/\$\d/);
-    // Summary slots keep their places with honest absences.
-    expect(screen.getAllByText("No read on this surface").length).toBeGreaterThanOrEqual(3);
+    // Summary slots keep their places with honest absences — but the WORDS changed when the page
+    // gained its own governed read. "No read on this surface" was true before that; it is now a
+    // stale claim, and each slot names its own reason instead:
+    //   Booked  — not an invoice fact at all
+    //   Credits — no governed corrections read exists
+    //   Billed / Collected / Outstanding — the read is in flight or did not answer
+    expect(screen.getByText("Not an invoice fact")).toBeTruthy();
+    expect(screen.getByText("No corrections read")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/No read on this surface/);
+    // Still no fabricated figure anywhere while the read has not answered.
+    expect(container.textContent).not.toMatch(/\$\d/);
   });
 });
 

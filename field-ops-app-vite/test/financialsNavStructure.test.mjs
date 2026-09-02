@@ -247,3 +247,47 @@ test("no duplicate keys or routes across the entire nav tree", () => {
   const dupes = routes.filter((r, i) => routes.indexOf(r) !== i);
   assert.deepEqual(dupes, [], `duplicate routes: ${dupes.join(", ")}`);
 });
+
+// ─── Financials nav discoverability (F6) ───
+//
+// Measured cause, not a guess: at 1440x800 — an ordinary laptop — the Salesperson & Employee
+// Performance link sat at y=875 in a flat twenty-item rail whose scrollHeight was 1189. It was
+// reachable only by scrolling a list that gave no sign there was more below it. Grouping is the
+// fix, reusing the Service two-level model rather than inventing a second nav system.
+test("every financials subnav item is grouped or deliberately standalone — none can go missing", async () => {
+  const { NAV_DOMAINS, FINANCIALS_NAV_GROUPS, buildFinancialsNavGroups } = await import("../src/navigation/navConfig.js");
+  const financials = NAV_DOMAINS.find((d) => d.key === "financials");
+  const all = financials.subnav;
+  const { groups, ungrouped } = buildFinancialsNavGroups(all);
+
+  const placed = new Set([...groups.flatMap((g) => g.items.map((i) => i.key)), ...ungrouped.map((i) => i.key)]);
+  assert.equal(placed.size, all.length, "grouping must not lose or duplicate an item");
+  for (const item of all) assert.ok(placed.has(item.key), `${item.key} must still be reachable`);
+
+  // Overview is the domain index and stays standalone; everything else lives in a named section.
+  assert.deepEqual(ungrouped.map((i) => i.key), ["overview"]);
+
+  // The page the Owner could not find must be inside a section whose label leads there.
+  const perf = groups.find((g) => g.items.some((i) => i.key === "employeePerformance"));
+  assert.ok(perf, "employeePerformance must belong to a group");
+  assert.equal(perf.label, "Performance");
+
+  // No group may reference an item that does not exist — a typo would silently hide a page.
+  const known = new Set(all.map((i) => i.key));
+  for (const g of FINANCIALS_NAV_GROUPS) {
+    for (const k of g.itemKeys) assert.ok(known.has(k), `group ${g.key} references unknown item ${k}`);
+  }
+});
+
+test("grouping is PRESENTATION ONLY — paths and access are untouched", async () => {
+  const { NAV_DOMAINS, buildFinancialsNavGroups } = await import("../src/navigation/navConfig.js");
+  const all = NAV_DOMAINS.find((d) => d.key === "financials").subnav;
+  const { groups, ungrouped } = buildFinancialsNavGroups(all);
+  const byKey = new Map(all.map((i) => [i.key, i]));
+  for (const item of [...groups.flatMap((g) => g.items), ...ungrouped]) {
+    // The grouped item is the SAME object the route generator reads.
+    assert.equal(item.path, byKey.get(item.key).path, `${item.key} path must be unchanged`);
+  }
+  // An empty group is omitted rather than rendered as a dead heading.
+  assert.deepEqual(buildFinancialsNavGroups([]).groups, []);
+});
