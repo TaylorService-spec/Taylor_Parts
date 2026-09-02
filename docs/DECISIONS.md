@@ -4711,7 +4711,7 @@ non-monetary actions (e.g. plan approval)" — FIN-007 supplies the mechanical i
 FIN-007 leaves to its composer. **FIN-003 did not change to receive its missing halves.**
 
 **A metric registry, not free-form ids.** A goal may reference only a registered metric.
-THIRTY-SEVEN are registered; TEN are active. The other twenty-one are registered WITH THEIR BLOCKER NAMED, because
+THIRTY-SEVEN are registered; TEN were active when this was recorded, and TWELVE are active after G-05 closed (#163). The other twenty-one are registered WITH THEIR BLOCKER NAMED, because
 what the platform would measure and exactly what stops it is more useful than silence. Every WINDOWED
 metric is inactive — G-05, no reporting-period authority — which is the single rule keeping the
 registry honest.
@@ -4791,3 +4791,131 @@ the frontend bakes into its bundle). Production is untouched and resolves EMPTY 
 
 **Enforced by:** `functions/src/performance/*`; suite `functions/test/performanceGoal.test.mjs`
 (37 cases); workflow `.github/workflows/performance-goal-tests.yml`.
+## #163 — OWNER RULING (G-05 CLOSED): the EOS reporting-period authority (2026-09-02)
+
+**Context.** Twenty-seven of the thirty-seven registered performance metrics were blocked on one
+missing answer: what MTD, QTD, YTD and T12M mean, in which timezone, and what an incomplete period is
+fairly measured against. The dashboard census recorded it as G-05 and as the single highest-leverage
+open decision. This ruling closes it.
+
+**It is a SHARED DOMAIN AUTHORITY.** Dashboards, performance goals and reports all compose the same
+resolver. It is not dashboard helper logic, not goal-only logic and not financial logic — had it been
+any of those, the other two would have grown their own copy, which is the state it replaces.
+
+### What was measured first, because it decided whether this was a ruling or a conflict
+
+**Nothing in the repository asserted a reporting calendar.** `finance/financialPeriods.ts` (FIN-008)
+is a CLOSE authority — per-company OPEN/CLOSED windows someone declares — and its own header defers
+cadence to the Owner; it carries no year start, no quarter structure and no timezone. The only IANA
+timezone authority is per-technician scheduling. `America/Phoenix` appeared exactly once, as an
+example string in a doc comment. **No fiscal year other than January was asserted anywhere**, so this
+ruling contradicts nothing and there is no authority conflict to report.
+
+**One thing WAS already shipped, ungoverned.** `field-ops-app-vite/src/domain/financialsPeriod.js`
+was a real MTD/QTD/YTD/T12M implementation wired into six live Financials screens, computing
+boundaries in whatever timezone the browser happened to be in. G-05 is therefore not a greenfield
+authority; it is an incumbent being replaced.
+
+### The ruling
+
+**1. REPORTING TIMEZONE IS EXPLICIT.** Every reporting scope resolves an IANA reporting timezone. For
+Taylor and Ventana it is **America/Phoenix**. Never the browser's zone, never the developer machine's,
+never UTC calendar boundaries. Storage stays UTC; only the BOUNDARY is evaluated in the reporting
+zone, using `Intl` rather than a stored offset — a stored offset is right for half the year and
+silently wrong for the other half.
+
+**2. REPORTING CALENDAR IS EXPLICIT.** Taylor/Ventana reporting year begins **January 1**; quarters
+are Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec. This is a REPORTING calendar, not an accounting one. It lives
+as configuration on the governed operating-company authority, keyed per company and measured FROM the
+declared start month, so a future company with a July start needs no metric rewritten.
+
+**3. BOUNDARIES ARE HALF-OPEN:** `start <= eventTime < end`. No 23:59:59.999 arithmetic.
+
+*Two existing contracts compare INCLUSIVELY and neither is wrong* — FIN-003 compares ISO date strings,
+`financialReportingRead` compares millis with a strict greater-than. Rather than rewrite two shipped
+authorities in service of a convention, the resolver owns ONE exclusive boundary and DERIVES what they
+need from it: `endInclusiveMillis` and `lastDayInclusiveIso`. One calculation, three shapes, no way for
+two consumers to disagree.
+
+**4. MTD / 5. QTD / 6. YTD** run from the start of the current reporting month / quarter / year through
+the end of the as-of DAY. The window ends at the start of the day after as-of, not at the as-of instant,
+so two reads minutes apart cannot return different totals for "today".
+
+**7. T12M is ROLLING** — the twelve calendar months ending at as-of. It is NOT fiscal YTD, and there is
+ONE canonical definition repo-wide. *This changed a shipped behaviour:* the Financials "last 12 months"
+preset previously started at the first of the month eleven months back, which was a second rolling-year
+interpretation of exactly the kind this rule forbids.
+
+**8. PRIOR FULL PERIOD** — for a complete current period, the immediately preceding complete period.
+
+**9. PRIOR COMPARABLE PERIOD** — for an INCOMPLETE current period, only the equivalent elapsed portion
+of the preceding one. Sep 1–22 against Aug 1–22, never against all of August. Comparing 22 days of
+activity against 31 would report a collapse every month, in every business, forever.
+
+**10. A COMPARISON THAT CANNOT BE MADE IS SAID, NOT ZEROED.** Where the preceding period supplies no
+genuinely comparable interval the comparison is UNAVAILABLE with a stated reason. Never 0%, never
+"flat", never "unchanged".
+
+**11. CALENDAR EDGE CASES belong to the resolver, not to metrics.** Month-length differences need no
+special rule — day N is N days from the first on both sides. The one judgement is clamping: day 31
+against a 28-day February stops at 28 February rather than spilling into March. Leap years fall out of
+the platform's own calendar rather than a rule anyone wrote.
+
+**12. A REPORTING DAY** begins at 00:00 local reporting time and ends at the next local reporting
+midnight, via timezone-aware conversion. A day is never approximated as 86,400,000 ms: a
+spring-forward day is 23 hours and is still one day.
+
+**13. GOAL PACING USES ELAPSED CALENDAR DAYS.** "Day 22 of 31" is permitted. A metric may not silently
+switch to weekdays, working days or scheduled employee days — each is a different denominator needing
+its own governed authority, and none exists.
+
+**14. DOMAIN EVENT TIME WINS.** Period attribution uses the canonical business event timestamp for the
+fact being measured — `bookedAtMillis`, `eventAtMillis`, `recordedAtMillis`, `completedAt`. **Never
+`createdAt` or `updatedAt` because they happen to exist.** A metric with no governed event time stays
+blocked; G-05 does not manufacture one. The resolver refuses rather than falling back, and a test
+asserts the fallback is absent from the code rather than merely unused.
+
+**15. AS-OF IS ALWAYS EXPLICIT.** Every resolution takes an `asOfMillis`. `Date.now()` is never buried
+in metric arithmetic, so tests, certification fixtures and historical reporting are reproducible.
+
+**16. MULTI-COMPANY SCOPES REQUIRE A SHARED CALENDAR.** A consolidated period-relative figure resolves
+only when its operating companies share a compatible reporting calendar; otherwise it REFUSES rather
+than picking one. Two companies whose years start in different months produce a "Q3" covering different
+months, and summing those is two questions added together. Taylor + Ventana share the basis.
+**This creates no accounting elimination** — a Taylor + Ventana figure remains the already-governed
+`UNELIMINATED_SUM` wherever it was one. G-05 makes the WINDOW legitimate; it does not make the SUM
+clean.
+
+**17. CALENDAR CHANGES ARE PROSPECTIVE.** Changing a timezone, year start or quarter structure must not
+retroactively redefine historical reports. The configuration declares only the CURRENT calendar and must
+not grow a history by mutation; the governed precedent for change-over-time is the effective-dated,
+versioned, transactionally-superseded pattern the Performance Goal Authority already uses. That
+precedent is NAMED rather than built — an effective-dated calendar subsystem for a value that has never
+changed, across two companies sharing one calendar, would be speculative architecture. The seam is
+recorded so the day it changes is known work.
+
+**18. G-05 DEFINES *WHEN*, NEVER *WHAT*.** It closes no metric-definition gap. AOV, pipeline value,
+stockout, inventory aging, on-time service, repeat visits, the utilisation denominator, receiving
+discrepancy population, emergency purchase, cost, margin, inventory value, turns, carrying cost and
+waste avoided all remain blocked by their own authorities.
+
+### Measured result
+
+**Metric registry: 37 registered, 10 active → 12 active, 25 blocked.** Exactly TWO metrics were
+unblocked, and they are the two whose ONLY remaining blocker was the period: `sales.billed.amount` and
+`sales.collected.amount`. Each already had a real read (`listFinancialFacts`), a governed event time,
+and reach. Every other windowed metric mentioned G-05 alongside a second blocker that survives it, and
+each blocker label was rewritten to name what actually remains rather than a calendar that now exists.
+
+The count is pinned by test, and the two unblocked metrics are pinned BY NAME, so an accidental
+activation shows up as a name a reader can argue with rather than as a number.
+
+**Enforced by:** `functions/src/reportingPeriod/reportingCalendar.ts`,
+`functions/src/reportingPeriod/reportingPeriod.ts`,
+`functions/src/performance/goalReportingPeriod.ts`,
+`field-ops-app-vite/src/domain/reportingPeriod.js` (client mirror, held to identical observable results
+by a 720-case parity corpus); suites `functions/test/reportingPeriod.test.mjs`,
+`functions/test/reportingPeriodParity.test.mjs`, `field-ops-app-vite/test/financialsPeriod.test.mjs`;
+workflow `.github/workflows/performance-goal-tests.yml`, which runs the reporting suites under
+**TZ=UTC** deliberately — a reporting-period test that only passes on a machine already set to the
+reporting timezone proves the host agreed, not that the authority is right.

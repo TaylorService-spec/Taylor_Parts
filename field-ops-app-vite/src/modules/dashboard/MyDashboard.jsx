@@ -35,6 +35,7 @@ import { composeDashboard, goalTargetsFor, MODULE_STATE, SECTION } from "../../d
 import { usePerformanceGoals } from "../../hooks/usePerformanceGoals.js";
 import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary.js";
 import { fetchReorderWarehouseOptions } from "../../services/reorderCallableClient.js";
+import { reportingDayIso } from "../../domain/reportingPeriod.js";
 import { useWorkOrders } from "../../hooks/useWorkOrders.js";
 import {
   workOrderAttentionItems,
@@ -64,10 +65,19 @@ function useGovernedWarehouseIds() {
   return ids;
 }
 
-/** The date targets are resolved as of. The caller owns the clock; the goal authority owns none. */
-function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/**
+ * The date targets are resolved as of.
+ *
+ * REPLACED BY G-05 (Decision #163). This used to read the BROWSER's calendar date, which made the
+ * business day a property of where the viewer was sitting: a manager in Auckland asking for "today's"
+ * goals would have got tomorrow's window, and nothing anywhere would have said so. The reporting day
+ * is now the governed one -- America/Phoenix for Taylor and Ventana -- resolved by the same authority
+ * the server uses.
+ *
+ * The clock itself still belongs to the caller; only its INTERPRETATION moved.
+ */
+function reportingToday() {
+  return reportingDayIso(Date.now());
 }
 
 /**
@@ -226,7 +236,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
 
   const sections = useMemo(() => composeDashboard(ctx), [ctx]);
   const targets = useMemo(() => goalTargetsFor(ctx), [ctx]);
-  const onDate = useMemo(() => todayIso(), []);
+  const onDate = useMemo(() => reportingToday(), []);
   const goalFeed = usePerformanceGoals(targets, onDate);
 
   const destinationGroups = useMemo(

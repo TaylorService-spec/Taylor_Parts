@@ -1,4 +1,4 @@
-name: Performance Goal Authority Unit Tests
+name: Performance Goal + Reporting Period Authority Unit Tests
 
 # The governed TARGET authority (functions/src/performance/**) -- metric registry, goal record,
 # scoped management authority, and the FIN-003 reconciliation.
@@ -24,6 +24,17 @@ on:
     paths:
       - "functions/src/performance/**"
       - "functions/test/performanceGoal.test.mjs"
+      # G-05 reporting period authority. Same lane as goals rather than a new one: goal pacing and
+      # every windowed metric compose it, so a change to either side can break the other, and two
+      # lanes would each report green on the change that broke the pair.
+      - "functions/src/reportingPeriod/**"
+      - "functions/test/reportingPeriod.test.mjs"
+      - "functions/test/reportingPeriodParity.test.mjs"
+      # The CLIENT MIRROR is watched here deliberately. The parity suite imports it directly, so a
+      # change to the mirror alone -- with no server file touched -- is exactly the edit that can
+      # make the two ports disagree, and it must not be able to skip the suite that would catch it.
+      - "field-ops-app-vite/src/domain/reportingPeriod.js"
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
       - "functions/src/finance/planVsActual.ts"
       - "functions/src/finance/financialApprovals.ts"
       - "functions/src/access/resolveEffectivePermission.ts"
@@ -41,6 +52,17 @@ on:
     paths:
       - "functions/src/performance/**"
       - "functions/test/performanceGoal.test.mjs"
+      # G-05 reporting period authority. Same lane as goals rather than a new one: goal pacing and
+      # every windowed metric compose it, so a change to either side can break the other, and two
+      # lanes would each report green on the change that broke the pair.
+      - "functions/src/reportingPeriod/**"
+      - "functions/test/reportingPeriod.test.mjs"
+      - "functions/test/reportingPeriodParity.test.mjs"
+      # The CLIENT MIRROR is watched here deliberately. The parity suite imports it directly, so a
+      # change to the mirror alone -- with no server file touched -- is exactly the edit that can
+      # make the two ports disagree, and it must not be able to skip the suite that would catch it.
+      - "field-ops-app-vite/src/domain/reportingPeriod.js"
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
       - "functions/src/finance/planVsActual.ts"
       - "functions/src/finance/financialApprovals.ts"
       - "functions/src/access/resolveEffectivePermission.ts"
@@ -65,7 +87,7 @@ permissions:
 
 jobs:
   performance-goal-tests:
-    name: Performance goal authority unit tests
+    name: Performance goal + reporting period unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -89,3 +111,14 @@ jobs:
       - name: Performance goal authority unit tests
         run: node --test test/performanceGoal.test.mjs
         working-directory: functions
+
+      # Run in UTC, deliberately, and NOT in the reporting timezone. A reporting-period suite that
+      # only passes on a machine already set to America/Phoenix proves nothing about the authority --
+      # it proves the host agreed. This is the exact failure that hid in financialsPeriod's own suite
+      # until G-05 moved its boundaries: eleven of seventeen tests passed locally and would have
+      # failed here.
+      - name: Reporting period authority unit tests (UTC runner)
+        run: node --test test/reportingPeriod.test.mjs test/reportingPeriodParity.test.mjs
+        working-directory: functions
+        env:
+          TZ: UTC

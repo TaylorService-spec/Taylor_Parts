@@ -26,10 +26,12 @@ import RuledSection from "../../shared/ui/RuledSection.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import GoalGrid from "../dashboard/GoalGrid.jsx";
 import { usePerformanceGoals } from "../../hooks/usePerformanceGoals.js";
+import { reportingDayIso } from "../../domain/reportingPeriod.js";
 
-function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// The governed reporting day (G-05, Decision #163), not the browser's. A technician's targets must
+// not roll over at a different moment than the dispatcher's view of the same work.
+function reportingToday() {
+  return reportingDayIso(Date.now());
 }
 
 export default function TechnicianPerformance({ employeeId }) {
@@ -42,7 +44,7 @@ export default function TechnicianPerformance({ employeeId }) {
         { metricId: "technician.workOrder.open.count", targetScopeType: "EMPLOYEE", targetScopeId: employeeId },
       ]
     : [];
-  const feed = usePerformanceGoals(targets, todayIso());
+  const feed = usePerformanceGoals(targets, reportingToday());
 
   return (
     <RuledSection title="Performance against goal" id="technician-performance">

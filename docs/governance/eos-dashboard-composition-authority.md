@@ -103,6 +103,13 @@ metric registry is what makes that checkable, and a mismatch is refused rather t
 Never compare a BOOKED actual to a BILLED goal, and never label either "Revenue" when the basis is
 known (census S-9/S-10, FIN-002 Invariant A).
 
+**And never compare across a period a dashboard decided for itself.** WHEN is a third authority
+(Decision #163): a tile computing month boundaries from the browser's timezone is inventing reach in
+exactly the way Rule 1 forbids, because it makes the business month a property of where the reader is
+sitting. Windows come from `reportingPeriod`, and an incomplete period compares only against the
+equivalent elapsed portion of the preceding one — never against a whole prior month, which would
+report a collapse every month in every business forever.
+
 ---
 
 ## Rule 4 — Derived information on a dashboard (Owner ruling, 2026-09-02)
@@ -253,8 +260,12 @@ filled by inference:
   additionally gave salesManager TEAM and salesperson SELF, both still awaiting activation
 - every margin, inventory value, turns and carrying-cost figure — FIN-BLOCK-003, no governed cost
   fact exists
-- every period-relative KPI, pacing figure and prior-period delta — no reporting-period authority
-  exists (census G-05)
+- ~~every period-relative KPI, pacing figure and prior-period delta — no reporting-period authority
+  exists (census G-05)~~ **CLOSED by Decision #163.** MTD/QTD/YTD/T12M, the America/Phoenix reporting
+  timezone, half-open boundaries, the prior-comparable rule and calendar-day pacing are all governed
+  now (`functions/src/reportingPeriod/`). A dashboard module may state a period-relative figure
+  where the metric's OWN authority exists — and no metric became measurable merely because the
+  calendar did: G-05 defines WHEN, never WHAT
 - first-time fix, SLA/response, callbacks, utilisation, inventory aging, shortages, AOV, pipeline
   value — each a named authority or definition gap in census §8
 
