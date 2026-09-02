@@ -37,10 +37,10 @@ export default function FinancialsPayments() {
   const [view, setView] = useState("all");
   const period = useFinancialsPeriod();
 
-  // NOTE ON DATE SEMANTICS: the reporting read scopes a period by the INVOICE issued date, which is
-  // the one canonical event date it carries. Payments here are therefore the applications against
-  // invoices issued in the window — not receipts banked in it. The control says so rather than
-  // implying a payment-date filter this read does not offer.
+  // Period follows the PAYMENT's own canonical event date — receivedAtMillis for a receipt,
+  // appliedAtMillis for an application. It is no longer the issue date of the invoice a payment
+  // settles: that answered "cash against invoices raised in March" in place of the question the
+  // control actually asks, "cash received in March".
   const read = useFinancialFacts(
     {
       companyId: company === "consolidated" ? null : company,
@@ -73,7 +73,7 @@ export default function FinancialsPayments() {
               ? "No governed payment carries an unapplied balance. Current payment authority refuses over-application, so this view is empty as a matter of what the system permits — not because a read failed."
               : period.presetKey === "all"
                 ? "The governed read answered, and no payment settles an invoice within your visibility scope."
-                : `No payments against invoices issued in this period (${period.label}). Choose All activity to see the full set.`,
+                : `No payments received in this period (${period.label}). Choose All activity to see the full set.`,
         }
       : answered
         ? { state: null }

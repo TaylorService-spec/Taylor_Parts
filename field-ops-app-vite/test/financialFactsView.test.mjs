@@ -163,7 +163,14 @@ const SCORECARD_READY = {
   invoices: [{ invoiceId: "i1" }],
   payments: [],
   applications: [],
-  summary: { count: 10, openCount: 7, overdueCount: 1, outstandingByCurrency: { USD: 5_855_500 } },
+  summary: {
+    count: 10,
+    openCount: 7,
+    overdueCount: 1,
+    billedByCurrency: { USD: 7_945_000 },
+    collectedByCurrency: { USD: 2_094_500 },
+    outstandingByCurrency: { USD: 5_855_500 },
+  },
   byCompany: [
     { key: "taylor", invoiceCount: 8, billedByCurrency: { USD: 7_014_500 }, collectedByCurrency: { USD: 1_844_500 }, outstandingByCurrency: { USD: 5_170_000 } },
     { key: "ventana", invoiceCount: 2, billedByCurrency: { USD: 930_500 }, collectedByCurrency: { USD: 250_000 }, outstandingByCurrency: { USD: 680_500 } },
@@ -177,20 +184,43 @@ test("A/R outstanding uses the server's own consolidated total in every scope", 
   assert.equal(s.arOutstanding.absence, null);
 });
 
-test("billed and collected populate from a SINGLE company rollup — a read, not a sum", () => {
-  const s = lifecycleScorecard(FACTS_STATE.READY, SINGLE_COMPANY);
+test("billed and collected come from the SERVER summary, including across companies", () => {
+  // These used to be absent in a multi-company view, because the read returned them per company
+  // only and adding the rows here would have presented a scoped slice as a book-wide figure. The
+  // total moved to the server; this reads it.
+  const s = lifecycleScorecard(FACTS_STATE.READY, SCORECARD_READY);
+  assert.match(s.billed.valueText, /79,450\.00/);
+  assert.match(s.collected.valueText, /20,945\.00/);
+  assert.equal(s.billed.absence, null);
+});
+
+test("the figures are READ from the summary, never assembled from the company rows", () => {
+  // A summary that DISAGREES with the company rows proves which one is being read. If this ever
+  // renders the sum of the rows instead, the client has started doing the arithmetic again.
+  const disagreeing = {
+    ...SCORECARD_READY,
+    summary: { ...SCORECARD_READY.summary, billedByCurrency: { USD: 111 } },
+  };
+  assert.match(lifecycleScorecard(FACTS_STATE.READY, disagreeing).billed.valueText, /1\.11/);
+});
+
+test("a single-company view reads the same summary field", () => {
+  const s = lifecycleScorecard(FACTS_STATE.READY, {
+    ...SINGLE_COMPANY,
+    summary: { ...SINGLE_COMPANY.summary, billedByCurrency: { USD: 7_014_500 }, collectedByCurrency: { USD: 1_844_500 } },
+  });
   assert.match(s.billed.valueText, /70,145\.00/);
   assert.match(s.collected.valueText, /18,445\.00/);
 });
 
-test("across several companies billed and collected stay ABSENT — the page never adds them up", () => {
-  const s = lifecycleScorecard(FACTS_STATE.READY, SCORECARD_READY);
-  assert.equal(s.billed.valueText, null);
-  assert.equal(s.collected.valueText, null);
-  assert.match(s.billed.detail, /will not add the companies together/);
-  // 7,014,500 + 930,500 = 7,945,000. That number must appear nowhere.
-  const rendered = JSON.stringify(s);
-  assert.ok(!/79,450\.00|7945000/.test(rendered), "a client-side consolidated total must never appear");
+test("MULTI-CURRENCY consolidated totals are listed separately, never blended", () => {
+  const multi = {
+    ...SCORECARD_READY,
+    summary: { ...SCORECARD_READY.summary, billedByCurrency: { USD: 100_000, CAD: 50_000 } },
+  };
+  const out = lifecycleScorecard(FACTS_STATE.READY, multi).billed.valueText;
+  assert.ok(out.includes("·"), "two currencies render as two amounts");
+  assert.ok(!/1,500\.00/.test(out), "the currencies must never be added together");
 });
 
 test("booked, billable-now and unbilled are never invented", () => {

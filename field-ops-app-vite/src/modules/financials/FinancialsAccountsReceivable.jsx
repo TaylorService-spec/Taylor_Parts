@@ -29,8 +29,11 @@ export default function FinancialsAccountsReceivable() {
   const [company, setCompany] = useState("consolidated");
   const period = useFinancialsPeriod();
 
-  // Period scopes by the invoice ISSUED date — the canonical event date this read carries. Aging
-  // itself still derives from each invoice's own governed dueDate, which the period never touches.
+  // WHAT PERIOD MEANS HERE, stated because the two readings differ materially: it selects
+  // RECEIVABLES ARISING FROM INVOICES ISSUED IN THE WINDOW. It is NOT "A/R as of a date" — no
+  // historical balance snapshot exists in this system, and outstanding is always derived as of NOW
+  // from current facts. Aging still derives from each invoice's own governed dueDate, untouched by
+  // the period.
   const read = useFinancialFacts(
     {
       companyId: company === "consolidated" ? null : company,
@@ -51,7 +54,7 @@ export default function FinancialsAccountsReceivable() {
           detail:
             period.presetKey === "all"
               ? "The governed read answered, and no invoice in your visibility scope carries an outstanding balance."
-              : `No open receivables from invoices issued in this period (${period.label}). Choose All activity to see the full set.`,
+              : `No open receivables from invoices issued in this period (${period.label}). This is not an as-of-date balance. Choose All activity to see the full set.`,
         }
       : answered
         ? { state: null }
