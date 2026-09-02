@@ -112,6 +112,7 @@ const SavedReports = lazy(() => import("./modules/reporting/SavedReports"));
 // (finance.read + finance.visibility.*, all inactive today); these pages compose governed
 // reads and honest states only.
 const FinancialsOverview = lazy(() => import("./modules/financials/FinancialsOverview.jsx"));
+const FinancialsInvoiceDetail = lazy(() => import("./modules/financials/FinancialsInvoiceDetail.jsx"));
 const FinancialsInvoices = lazy(() => import("./modules/financials/FinancialsInvoices.jsx"));
 const FinancialsAccountsReceivable = lazy(() => import("./modules/financials/FinancialsAccountsReceivable.jsx"));
 const FinancialsPayments = lazy(() => import("./modules/financials/FinancialsPayments.jsx"));
@@ -874,6 +875,17 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               directly navigating to /customers/:accountId would mount
               AccountDetail and its Firestore listeners regardless of
               nav visibility, hitting permission-denied. */}
+          {/* THE INVOICE GETS A URL. Same one-extra-route shape the customers block below uses:
+              navConfig's subnav items are static paths, and a per-record page needs a :param the
+              generic loop cannot emit. The static "invoices" index route outranks this dynamic
+              child in React Router's ranking, so the collection still wins its own path.
+              Keyed by DOCUMENT ID, not invoice number: numbers are per-company sequences and
+              collide across companies (INV-000001 exists three times), so a number in the URL
+              would be ambiguous. Gated by isDomainVisible so a role without Financials never
+              mounts the record view at all. */}
+          {domain.key === "financials" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+            <Route path="invoices/:invoiceId" element={<FinancialsInvoiceDetail />} />
+          )}
           {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <>
               {/* Customer hierarchy nav cleanup: the Contacts / Locations /
