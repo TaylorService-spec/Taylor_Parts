@@ -101,9 +101,10 @@ describe("04 Accounts Receivable — /financials/accounts-receivable", () => {
     // authority; what must not exist is a rendered figure or column header).
     expect(screen.queryByText(/^DSO$/)).toBeNull();
     expect(screen.queryByRole("columnheader", { name: /risk/i })).toBeNull();
-    // The aging scorecard stays absent BY DESIGN: bucketing outstanding balances is money
-    // arithmetic, and this client does none over authoritative facts. The exposure table reads the seam.
-    expect(container.textContent).toMatch(/Not supplied by this read/);
+    // The aging buckets are now SERVER-DERIVED (summarizeArAging). While the read is in flight
+    // each slot says so; it never shows a zero bucket standing in for an unanswered read.
+    expect(container.textContent).toMatch(/Reading…/);
+    expect(container.textContent).toMatch(/buckets are derived on the SERVER/);
     expect(container.textContent).toMatch(/Loading A\/R reads/);
     expect(container.textContent).not.toMatch(/\$\d/);
   });

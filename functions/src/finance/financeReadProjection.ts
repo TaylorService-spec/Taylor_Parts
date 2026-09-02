@@ -80,6 +80,59 @@ export function projectInvoiceAr(invoiceId: string, inv: StoredInvoiceLike, nowM
   };
 }
 
+// A/R AGING, derived on the SERVER from the same governed facts as everything else.
+//
+// The client must never compute this. A bucket summed in the browser from one page of rows reads
+// as a claim about the whole book, and the browser cannot know whether it holds the whole book.
+//
+// THE BUCKETS ARE THE APPROVED COMPOSITION — Current / 1–30 / 31–60 / 61+ — and are deliberately
+// NOT split further. No repository authority distinguishes a 61–90 from a 91+ treatment, so
+// inventing that split here would be a policy this system has not made.
+//
+// Aging is measured from each invoice's own governed dueDate against `nowMillis`, reusing
+// deriveArPosition rather than re-deciding what "overdue" means. Only invoices that still OWE
+// something are aged: a settled invoice has no exposure to age.
+//
+// AN INVOICE WITH NO DUE DATE IS NOT "CURRENT". It cannot be placed on the aging axis at all, so
+// it is counted in `unagedMinor` beside the buckets rather than folded into the nearest one —
+// the same rule the reporting read applies to unattributed facts. The buckets plus unaged
+// therefore reconcile exactly to the total, which is what makes the row trustworthy.
+export interface ArAgingBucket {
+  totalOutstandingMinor: number;
+  currentMinor: number;
+  days1to30Minor: number;
+  days31to60Minor: number;
+  days61PlusMinor: number;
+  unagedMinor: number;
+}
+
+export function summarizeArAging(reads: InvoiceArRead[], nowMillis: number): Record<string, ArAgingBucket> {
+  const out: Record<string, ArAgingBucket> = {};
+  for (const r of Array.isArray(reads) ? reads : []) {
+    if (!(r.outstandingMinor > 0)) continue; // nothing owed, nothing to age
+    const currency = r.currency ?? "UNSPECIFIED";
+    const b = (out[currency] ??= {
+      totalOutstandingMinor: 0, currentMinor: 0, days1to30Minor: 0,
+      days31to60Minor: 0, days61PlusMinor: 0, unagedMinor: 0,
+    });
+    b.totalOutstandingMinor += r.outstandingMinor;
+    // Recomputed from the invoice's own facts, not read off the projection, so the bucket and the
+    // row can never disagree about the same invoice.
+    const { position, daysOverdue } = deriveArPosition(
+      { state: r.state ?? undefined, totalMinor: r.totalMinor, appliedMinor: r.appliedMinor,
+        creditsMinor: r.creditsMinor, chargesMinor: r.chargesMinor, writeOffMinor: r.writeOffMinor,
+        dueDate: r.dueDate ?? undefined },
+      nowMillis,
+    );
+    if (position === "UNKNOWN") b.unagedMinor += r.outstandingMinor;
+    else if (position === "CURRENT" || daysOverdue === null || daysOverdue <= 0) b.currentMinor += r.outstandingMinor;
+    else if (daysOverdue <= 30) b.days1to30Minor += r.outstandingMinor;
+    else if (daysOverdue <= 60) b.days31to60Minor += r.outstandingMinor;
+    else b.days61PlusMinor += r.outstandingMinor;
+  }
+  return out;
+}
+
 // Summarize a set of AR reads — honest counts plus the lifecycle totals, EACH PER CURRENCY.
 //
 // THE CONSOLIDATED TOTALS LIVE HERE, in the one canonical summary, for a specific reason: a client

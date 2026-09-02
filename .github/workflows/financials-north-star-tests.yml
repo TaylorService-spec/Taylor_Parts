@@ -42,6 +42,8 @@ on:
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
       - "functions/scripts/financialReviewFixtures.mjs"
       - "functions/test/financialReviewFixtures.test.mjs"
+      - "functions/src/finance/financeReadProjection.ts"
+      - "functions/src/finance/financialReportingRead.ts"
       - ".github/workflows/financials-north-star-tests.yml"
   push:
     branches: [main]
@@ -64,6 +66,8 @@ on:
       - "field-ops-app-vite/test/financialsUxLifecycle.test.jsx"
       - "functions/scripts/financialReviewFixtures.mjs"
       - "functions/test/financialReviewFixtures.test.mjs"
+      - "functions/src/finance/financeReadProjection.ts"
+      - "functions/src/finance/financialReportingRead.ts"
       - ".github/workflows/financials-north-star-tests.yml"
   workflow_dispatch:
 

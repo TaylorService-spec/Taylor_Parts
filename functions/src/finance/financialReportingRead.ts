@@ -35,7 +35,7 @@ import {
   PAYMENTS_COLLECTION,
   PAYMENT_APPLICATIONS_COLLECTION,
 } from "../constants/collections";
-import { projectInvoiceAr, summarizeAccountAr, type InvoiceArRead } from "./financeReadProjection";
+import { projectInvoiceAr, summarizeAccountAr, summarizeArAging, type InvoiceArRead, type ArAgingBucket } from "./financeReadProjection";
 import { invoiceVisibilityFacts, type FinancialVisibilityAuthority } from "./financialVisibility";
 import { loadFinancialVisibilityAuthority } from "./financeReadCallables";
 
@@ -92,6 +92,8 @@ export interface FinancialFactsResult {
   payments: PaymentReportRead[];
   applications: PaymentApplicationReportRead[];
   summary: ReturnType<typeof summarizeAccountAr>;
+  /** Server-derived A/R aging, per currency. The client never buckets outstanding balances. */
+  agingByCurrency: Record<string, ArAgingBucket>;
   /** Per-dimension rollups, derived HERE (server-side) so React never totals authoritative money. */
   byCompany: DimensionRollup[];
   byBusinessUnit: DimensionRollup[];
@@ -217,6 +219,7 @@ export async function readFinancialFacts(
     payments: [],
     applications: [],
     summary: summarizeAccountAr([]),
+    agingByCurrency: {},
     byCompany: [],
     byBusinessUnit: [],
     byCreditedSalesperson: [],
@@ -332,6 +335,7 @@ export async function readFinancialFacts(
       payments,
       applications: wants("PAYMENT_APPLICATION") ? applications : [],
       summary: summarizeAccountAr(invoices),
+      agingByCurrency: summarizeArAging(invoices, now),
       byCompany: rollup(invoices, (r) => (nonEmpty(r.companyId) ? [r.companyId] : [])),
       byBusinessUnit: rollup(invoices, (r) => r.businessUnitIds),
       byCreditedSalesperson: rollup(invoices, (r) => (nonEmpty(r.creditedSalespersonId) ? [r.creditedSalespersonId] : [])),
