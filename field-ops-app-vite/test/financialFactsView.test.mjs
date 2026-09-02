@@ -437,3 +437,15 @@ test("SOURCE GUARD: no Financials surface renders a raw record id as its primary
     assert.ok(!/<select[^>]*status/i.test(src), "no direct payment status control may exist");
   }
 });
+
+test("an externalRef the deployed function did not send is UNSUPPLIED, not 'none recorded'", () => {
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsPaymentDetail.jsx", import.meta.url), "utf8");
+  // undefined (field absent from an older response) and null (genuinely no reference) are
+  // different facts. Collapsing them would assert a receipt carries no reference when it may.
+  assert.ok(/Object\.hasOwn\(payment, "externalRef"\)/.test(src), "the page must distinguish absent from null");
+  assert.ok(/Not supplied by this read/.test(src));
+  // The identity itself never depends on externalRef, so an older response cannot break it.
+  const { paymentId, ...noRef } = { paymentId: "x", accountId: "a", currency: "USD", amountMinor: 100, receivedAtMillis: 0 };
+  assert.ok(paymentIdentity({ paymentId, ...noRef }, "Churn").length > 0);
+  assert.equal(paymentContext({ paymentId, ...noRef }, []), null);
+});
