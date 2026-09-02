@@ -174,8 +174,14 @@
         "MANUFACTURER_WRITE_READY": false,
         "TRUSTED_COMPLETION_ENABLED": false
       },
+      "capabilityActivationOverrides": [
+        "inventory.cycleCount.create",
+        "inventory.cycleCount.submit",
+        "inventory.cycleCount.reconcile"
+      ],
+      "$capabilityActivationOverrides_comment": "Owner ruling CERT-CYCLE-11 (2026-09-02). The G07 cycle-count ceremony and NOTHING else. inventory.cycleCount.cancel is deliberately EXCLUDED -- the ceremony never cancels a count, and certification authority is widened only as far as the scenario requires. inventory.transfer.* and inventory.returns.intake remain separate future decisions. permissionCatalog keeps these ids active:false; this per-environment override is the governed activation seam, and a Role grant is still required on top of it.",
       "surfaces": [],
-      "notes": "Provisioned 2026-08-30: Firestore (Standard, production mode, deny-by-default rules) and a Web app registration for the governed identity above. NOTHING IS DEPLOYED HERE YET -- no Functions, no Hosting, no data -- which is why every readiness flag is false and why the private-AI classification stays false until the certification dataset is actually installed and proven synthetic. The Web app exists to give the registry a complete governed identity; this environment serves no browser."
+      "notes": "Provisioned 2026-08-30: Firestore (Standard, production mode, deny-by-default rules) and a Web app registration for the governed identity above. NO Functions, Hosting or browser surface is deployed here and this environment serves no browser -- which is why every readiness flag stays false. It DOES hold a governed synthetic Firestore world (certification-world fixture authority), exercised by bounded repository-owned Certification operator tools rather than by a client. Capabilities remain inactive unless explicitly Owner-authorized per environment; see capabilityActivationOverrides."
     },
     {
       "id": "platform-integration",

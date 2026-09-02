@@ -78,9 +78,21 @@ test("production stays role-keyed: EMPTY even if registry data wrongly declared 
   assert.equal(resolveCapabilityOverrides(poisoned, "taylor-parts").size, 0);
 });
 
-test("CERTIFICATION is unchanged — it declares no overrides at all", () => {
+test("CERTIFICATION activates nothing financial — only the ruled cycle-count ids", () => {
+  // This asserted size === 0, which was true until Owner ruling CERT-CYCLE-11 activated three
+  // cycle-count capabilities there. Size zero was never what this suite cared about: its subject is
+  // FINANCIAL visibility, and the claim worth keeping is that certification does not hold it.
+  //
+  // So the assertion is retargeted rather than relaxed -- it now names what certification may hold,
+  // which fails if anything else is ever added, instead of forbidding a number that a legitimate
+  // unrelated ruling can move.
   const cert = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-certification");
-  assert.equal(cert.size, 0);
+  assert.ok(!cert.has(CONSOLIDATED), "certification must not hold consolidated financial visibility");
+  assert.deepEqual([...cert].sort(), [
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.submit",
+  ], "certification holds the G07 ceremony ids and nothing else");
 });
 
 test("no environment other than the sandbox activates this capability", () => {

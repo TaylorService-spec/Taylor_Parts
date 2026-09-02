@@ -257,11 +257,21 @@ test("CERTIFICATION obeys every refusal the sandbox obeys", () => {
   assert.match(none.message, /--projectId is required/);
 });
 
-test("CERTIFICATION activates no capabilities", () => {
-  // Nothing is deployed there, so an override set would be permissions for code that does not
-  // exist. The sandbox's list is not inherited -- the lookup is per-project, never by role.
+test("CERTIFICATION activates EXACTLY the three ruled cycle-count capabilities", () => {
+  // This test used to assert ZERO, on the reasoning that "nothing is deployed there, so an override
+  // set would be permissions for code that does not exist". That was true of an empty project and
+  // became stale: certification now holds a governed synthetic world that has run Purchasing and
+  // Receiving through the real commands, and Owner ruling CERT-CYCLE-11 activated the three
+  // capabilities the G07 ceremony needs -- and only those three.
+  //
+  // The sandbox's much wider list is still NOT inherited: the lookup is per-project, never by role.
   const t = gate(["--projectId", CERTIFICATION_PROJECT, "--apply", CERTIFICATION_LIVE_FLAG]);
-  assert.equal(t.activationOverrides.size ?? t.activationOverrides.length, 0);
+  const ids = [...t.activationOverrides].sort();
+  assert.deepEqual(ids, [
+    "inventory.cycleCount.create",
+    "inventory.cycleCount.reconcile",
+    "inventory.cycleCount.submit",
+  ], "exactly three -- cancel, transfer and returns.intake are separate decisions and must not appear");
 });
 
 // =================================================================================================

@@ -255,3 +255,110 @@ test("the transfer role carries transfers and nothing adjacent", () => {
   assert.equal(decide("inventory.stock.receive", ["inventoryTransferOperator"], o).decision, "DENY");
   assert.equal(decide("inventory.cycleCount.reconcile", ["inventoryTransferOperator"], o).decision, "DENY");
 });
+
+// ============================================================================================
+// CERT-CYCLE-11 — THE CYCLE-COUNT ACTIVATION, AND ITS DELIBERATE NARROWNESS.
+//
+// The G07 ceremony was blocked because inventory.cycleCount.* is registered active:false and the
+// live certification environment activated nothing — the resolver answered "inactivePermission"
+// ahead of any Role grant, so correctly-granted Counter and Reconciler principals were both DENIED.
+//
+// Owner ruling: activate THREE ids, not the family. The ceremony opens, submits and reconciles a
+// count; it never cancels one. These tests pin the narrowness, because an activation list that
+// quietly grows is how an environment ends up holding authority nobody approved.
+// ============================================================================================
+const CERT_LIVE_PROJECT = "eos-platform-certification";  // the LIVE project, not demo-certworld above
+const CYCLE = {
+  create: "inventory.cycleCount.create",
+  submit: "inventory.cycleCount.submit",
+  reconcile: "inventory.cycleCount.reconcile",
+  cancel: "inventory.cycleCount.cancel",
+};
+
+test("CERT-CYCLE-11: certification activates EXACTLY the three ceremony capabilities", () => {
+  const active = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_LIVE_PROJECT);
+  const ids = [...active].sort();
+  assert.deepEqual(ids, [CYCLE.create, CYCLE.reconcile, CYCLE.submit].sort(),
+    "exactly three — an activation list is not a wish list");
+});
+
+test("CERT-CYCLE-11: cancel stays INACTIVE in certification", () => {
+  const active = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_LIVE_PROJECT);
+  assert.ok(!active.has(CYCLE.cancel),
+    "the ceremony never cancels a count, so the authority to cancel one was not granted");
+});
+
+test("CERT-CYCLE-11: transfer and returns stay INACTIVE in certification", () => {
+  const active = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_LIVE_PROJECT);
+  for (const id of ["inventory.transfer.create", "inventory.transfer.dispatch",
+    "inventory.transfer.receive", "inventory.transfer.cancel", "inventory.returns.intake"]) {
+    assert.ok(!active.has(id), `${id} is a separate future decision and must not ride along`);
+  }
+  // The emulator DOES activate all three families; certification deliberately does not.
+  const emulator = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "demo-certworld");
+  assert.ok(emulator.has("inventory.transfer.create"),
+    "the emulator entry is the contrast that makes certification's narrowness a choice");
+});
+
+test("CERT-CYCLE-11: production resolves EMPTY regardless of registry contents", () => {
+  const prod = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts");
+  assert.equal(prod.size, 0, "no environment override may ever reach the customer project");
+});
+
+test("CERT-CYCLE-11: canonical config and embedded snapshot stay exact-parity", () => {
+  const canonical = JSON.parse(readFileSync(path.resolve(REPO, "config/environments.json"), "utf8"));
+  const list = canonical.environments ?? canonical;
+  const cert = list.find((e) => e?.firebase?.projectId === CERT_LIVE_PROJECT);
+  assert.ok(cert, "certification must exist in the canonical registry");
+  assert.deepEqual([...(cert.capabilityActivationOverrides ?? [])].sort(),
+    [...resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_LIVE_PROJECT)].sort(),
+    "the JSON and the embedded TS registry must agree id for id");
+});
+
+test("CERT-CYCLE-11: the catalog posture is UNCHANGED — activation is the seam, not a catalog edit", () => {
+  // permissionCatalog must still register every cycle-count id inactive. The override opens it for
+  // ONE environment; flipping the catalog would open it everywhere at once.
+  const byId = new Map(PERMISSION_CATALOG.map((p) => [p.id, p]));
+  for (const id of Object.values(CYCLE)) {
+    assert.equal(byId.get(id)?.active, false, `${id} must remain active:false in the catalog`);
+  }
+});
+
+test("CERT-CYCLE-11: activation opens the family; ROLE still decides who may act", () => {
+  // The load-bearing distinction. With the environment activating submit, a principal holding NO
+  // qualifying Role is still DENIED — and the reason is no longer inactivePermission.
+  const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  const active = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, CERT_LIVE_PROJECT);
+  const target = { scope: { type: "global" }, condition: {} };
+
+  const noRole = resolveEffectivePermission({
+    permissionId: CYCLE.submit, assignments: [], roles,
+    currentAccessVersion: 1, target, activationOverrides: active,
+  });
+  assert.equal(noRole.decision, "DENY", "activation is not authorization");
+  assert.notEqual(noRole.reason, "inactivePermission",
+    "the denial must now come from the absence of a grant, not from the catalog");
+
+  // And WITHOUT the activation the same holder of a correct Role is denied for the other reason.
+  const counter = [{ id: "a1", principalUid: "u1", roleId: "inventoryCycleCountCounter",
+    status: "active", accessVersion: 1 }];
+  const unactivated = resolveEffectivePermission({
+    permissionId: CYCLE.submit, assignments: counter, roles,
+    currentAccessVersion: 1, target, activationOverrides: new Set(),
+  });
+  assert.equal(unactivated.decision, "DENY");
+  assert.equal(unactivated.reason, "inactivePermission",
+    "this is exactly the state that blocked the ceremony before this activation");
+});
+
+test("CERT-CYCLE-11: the Counter / Reconciler split is untouched by the activation", () => {
+  const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  const counter = roles.inventoryCycleCountCounter;
+  const reconciler = roles.inventoryCycleCountReconciler;
+  assert.ok(counter && reconciler);
+  // The person who reports a variance may not be the person who approves the adjustment.
+  assert.ok(counter.permissions.includes(CYCLE.create) && counter.permissions.includes(CYCLE.submit));
+  assert.ok(!counter.permissions.includes(CYCLE.reconcile), "a counter may not settle its own count");
+  assert.deepEqual([...reconciler.permissions], [CYCLE.reconcile],
+    "a reconciler may only reconcile — it cannot open or submit a count of its own");
+});
