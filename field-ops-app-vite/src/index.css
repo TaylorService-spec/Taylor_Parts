@@ -7372,8 +7372,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-scorecard { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 2px solid var(--color-text-primary); }
 .fin-scorecard--aging { grid-template-columns: repeat(5, 1fr); }
 .fin-scorecard--customer { grid-template-columns: repeat(4, 1fr); }
-.fin-scorecard__slot { padding: 12px 18px 12px 0; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
-.fin-scorecard__slot + .fin-scorecard__slot { padding-left: 18px; }
+.fin-scorecard__slot { padding: 12px 18px; border-right: 1px solid var(--color-border); }
+
 .fin-scorecard__slot:last-child { border-right: none; }
 
 .fin-figure { min-width: 0; }
@@ -7440,8 +7440,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-nowrap { white-space: nowrap; }
 
 /* Three-slot scorecard (invoice record amounts), matching the existing --pair/--five grammar. */
-.fin-scorecard--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 640px) { .fin-scorecard--three { grid-template-columns: minmax(0, 1fr); } }
+.fin-scorecard--three { grid-template-columns: repeat(3, minmax(0, 18rem)); width: max-content; max-width: 100%; }
+@media (max-width: 640px) { .fin-scorecard--three, .fin-scorecard--pair { grid-template-columns: minmax(0, 1fr); width: auto; } }
 
 /* Hover-ⓘ annotation: contract copy visible, explanation behind a focusable ⓘ. */
 .fin-hlp-wrap { position: relative; display: inline-block; }
@@ -7462,7 +7462,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* 375 recomposition: scorecards become 2-up grids; the rail stacks under the work column. */
 @media (max-width: 640px) {
   .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer { grid-template-columns: 1fr 1fr; }
-  .fin-scorecard__slot { padding: 12px 12px 12px 0; }
+  .fin-scorecard__slot { padding: 12px; }
   /* minmax(0, 1fr), not 1fr: a bare 1fr track cannot shrink below its content's
      intrinsic width (min-width:auto), so a wide table forced the WHOLE DOCUMENT to
      scroll sideways at 375 instead of scrolling inside .ns-table-wrap. */
@@ -7495,7 +7495,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* F6. Billing Queue's totals band carries two slots; the four-column variant left half a
    full-width ruled row empty. */
-.fin-scorecard--pair { grid-template-columns: repeat(2, 1fr); }
+.fin-scorecard--pair { grid-template-columns: repeat(2, minmax(0, 22rem)); width: max-content; max-width: 100%; }
 
 /* F5. Governance rows: keep each chip whole and keep its trailing words with it, so
    "Policy not configured" no longer breaks mid-phrase and strands the ⓘ on its own line. */
