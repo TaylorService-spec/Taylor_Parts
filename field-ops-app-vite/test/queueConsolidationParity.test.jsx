@@ -50,7 +50,21 @@ vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" 
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({ useEmployeeDirectory: () => ({ byUserId: new Map(), loading: false, error: null }), resolveActorDisplayName: (id) => id }));
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({ hasUsageHistory: () => false }));
 vi.mock("../src/shared/search/GlobalSearch", () => ({ default: () => null }));
-vi.mock("../src/shared/assignment/EmployeeAssignmentPicker", () => ({ default: () => null }));
+// Functional stub (upgraded from `() => null` for the in-card Assign repair tests below): a
+// combobox the mount-focus effect can find, a deterministic select action, and the real
+// picker's empty-state copy — placement beside the selected card is what these tests prove;
+// the picker's own eligibility behavior stays covered by its own suite.
+vi.mock("../src/shared/assignment/EmployeeAssignmentPicker", () => ({
+  default: ({ label, onSelect, disabled }) => (
+    <div>
+      <input role="combobox" aria-label={label ?? "Assign"} disabled={disabled} readOnly />
+      <button type="button" onClick={() => onSelect({ employeeId: "emp-77", userId: "user-77" })}>
+        pick-emp-77
+      </button>
+      <p>No eligible employees found.</p>
+    </div>
+  ),
+}));
 vi.mock("../src/hooks/useManufacturerCatalog", () => ({ useManufacturerCatalog: () => ({ loading: true, errorStatus: null, result: null }) }));
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig();
@@ -59,6 +73,7 @@ vi.mock("react-router-dom", async (orig) => {
 
 import { fetchPartMasterList } from "../src/services/partMasterQueries";
 import PartsList from "../src/modules/inventory/PartsList.jsx";
+import ManagerQueuePanel from "../src/shared/reorder/ManagerQueuePanel.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -88,5 +103,94 @@ describe("Parts -> WORK (PartsList.jsx) is actionable via the shared queue compo
     const names = await screen.findAllByText("CANONICAL-NAME-A");
     // At least the catalog row + manager-queue card + my-work card each render the name.
     expect(names.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Assign stays with the selected card (mobile-queue repair). Root cause: the shared
+// AssignPanel used to render AFTER the whole OperationalCardGrid, so on a long mobile queue
+// clicking Assign opened the form far below the viewport with no scroll/focus — it looked
+// inert, and its errors/empty states were off-screen. The panel now renders inside the
+// selected request's <li>, scrolls into view, and focuses the picker combobox. Authority is
+// untouched: same assignReorderRequest(), same PARTS_ASSOCIATE eligibility scoping.
+// ---------------------------------------------------------------------------------------
+describe("ManagerQueuePanel: the Assign panel opens beside the selected card", () => {
+  const queue = [
+    { id: "req-top", partId: "TST-9001", urgency: "HIGH", reviewedAt: 1 },
+    { id: "req-second", partId: "TST-9001", urgency: "MEDIUM", reviewedAt: 2 },
+  ];
+  const resolveName = () => "CANONICAL-NAME-A";
+
+  function renderQueue() {
+    const utils = render(
+      <ManagerQueuePanel queue={queue} resolveName={resolveName} loading={false} error={null} />,
+    );
+    const items = utils.container.querySelectorAll("ul.fo-op-card-grid > li");
+    expect(items.length).toBe(2);
+    return { ...utils, items };
+  }
+  const assignButtons = () => screen.getAllByRole("button", { name: /^assign canonical-name-a$/i });
+
+  it("1+2+3: no panel initially; opening the SECOND card renders the panel inside that card's <li>, not after the grid", () => {
+    const { container, items } = renderQueue();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    fireEvent.click(assignButtons()[1]);
+    const combobox = screen.getByRole("combobox");
+    expect(items[1].contains(combobox)).toBe(true);
+    expect(items[0].contains(combobox)).toBe(false);
+    // Nothing panel-shaped renders outside the grid anymore.
+    const grid = container.querySelector("ul.fo-op-card-grid");
+    expect(grid.contains(combobox)).toBe(true);
+  });
+
+  it("4: the combobox receives focus when the panel opens", () => {
+    renderQueue();
+    fireEvent.click(assignButtons()[0]);
+    expect(document.activeElement).toBe(screen.getByRole("combobox"));
+  });
+
+  it("5+6: only one panel exists, and Assign on another card MOVES it there", () => {
+    const { items } = renderQueue();
+    fireEvent.click(assignButtons()[1]);
+    fireEvent.click(assignButtons()[0]);
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes.length).toBe(1);
+    expect(items[0].contains(comboboxes[0])).toBe(true);
+    expect(items[1].contains(comboboxes[0])).toBe(false);
+  });
+
+  it("7: Close removes the panel and restores focus to the trigger that opened it", () => {
+    renderQueue();
+    const trigger = assignButtons()[1];
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("8+9: submits the selected request id and the selected employee's linked userId, unchanged", async () => {
+    renderQueue();
+    fireEvent.click(assignButtons()[1]);
+    fireEvent.click(screen.getByRole("button", { name: "pick-emp-77" }));
+    fireEvent.click(screen.getByRole("button", { name: /^assign$/i }));
+    await waitFor(() => expect(assignReorderRequest).toHaveBeenCalledTimes(1));
+    expect(assignReorderRequest).toHaveBeenCalledWith("req-second", { assignedToUserId: "user-77" });
+  });
+
+  it("10: a rejected assignment shows its error INSIDE the selected queue item", async () => {
+    assignReorderRequest.mockRejectedValueOnce(new Error("refused-by-governed-command"));
+    const { items } = renderQueue();
+    fireEvent.click(assignButtons()[0]);
+    fireEvent.click(screen.getByRole("button", { name: "pick-emp-77" }));
+    fireEvent.click(screen.getByRole("button", { name: /^assign$/i }));
+    const errorNode = await screen.findByText("refused-by-governed-command");
+    expect(items[0].contains(errorNode)).toBe(true);
+  });
+
+  it("11: the eligibility empty state is visible inside the selected item", () => {
+    const { items } = renderQueue();
+    fireEvent.click(assignButtons()[0]);
+    const empty = screen.getByText("No eligible employees found.");
+    expect(items[0].contains(empty)).toBe(true);
   });
 });

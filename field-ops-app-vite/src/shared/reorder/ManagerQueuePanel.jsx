@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { assignReorderRequest, getDisplayQty } from "../../domain/inventoryReorderRequests.js";
 import { OPERATIONAL_ROLE } from "../../domain/constants.js";
 import EmployeeAssignmentPicker from "../assignment/EmployeeAssignmentPicker.jsx";
@@ -26,6 +26,17 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const partName = resolveName(request.partId);
+  // Mobile-queue repair: the panel now mounts inline beneath the selected card, which on a
+  // long queue can still sit below the fold of wherever the user tapped. Bring it into view
+  // and put focus in the picker so the tap visibly did something. Guarded: jsdom implements
+  // neither scrollIntoView nor a layout to scroll.
+  const panelRef = useRef(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    panel.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    panel.querySelector('[role="combobox"]')?.focus();
+  }, []);
 
   function handleEmployeeSelect(employee) {
     setSelectedEmployeeId(employee.employeeId);
@@ -46,7 +57,7 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
   }
 
   return (
-    <div className="fo-card">
+    <div className="fo-card" ref={panelRef}>
       <div className="fo-workspace-header">
         <h3 className="fo-workspace-header-title">Assign -- {partName}</h3>
         <Button type="button" variant="tertiary" onClick={onClose}>
@@ -86,7 +97,6 @@ export default function ManagerQueuePanel({
   const [assigningRequestId, setAssigningRequestId] = useState(null);
   // Focus restoration: the triggering "Assign" button that opened the inline Assign panel.
   const lastTriggerRef = useRef(null);
-  const assigningRequest = queue.find((r) => r.id === assigningRequestId) ?? null;
 
   function handleCloseAssignPanel() {
     setAssigningRequestId(null);
@@ -133,19 +143,23 @@ export default function ManagerQueuePanel({
                   </Button>
                 }
               />
+              {/* Mobile-queue repair: the panel renders INSIDE the selected request's list
+                  item, directly beneath its card — on a long queue the old after-the-grid
+                  placement opened it far below the viewport, so tapping Assign appeared to
+                  do nothing. One panel at a time by construction (single assigningRequestId);
+                  errors/empty states now appear beside the card they belong to. */}
+              {assigningRequestId === request.id && (
+                <AssignPanel
+                  request={request}
+                  resolveName={resolveName}
+                  onAssigned={handleCloseAssignPanel}
+                  onClose={handleCloseAssignPanel}
+                />
+              )}
             </li>
           ))}
         </OperationalCardGrid>
       </LoadingEmptyState>
-
-      {assigningRequest && (
-        <AssignPanel
-          request={assigningRequest}
-          resolveName={resolveName}
-          onAssigned={handleCloseAssignPanel}
-          onClose={handleCloseAssignPanel}
-        />
-      )}
     </>
   );
 }
