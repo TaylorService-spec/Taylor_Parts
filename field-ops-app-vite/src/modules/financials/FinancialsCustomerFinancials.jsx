@@ -17,6 +17,8 @@ import { useAccountSearch } from "../../hooks/useAccountSearch";
 import AccountArSection from "../accounts/AccountArSection.jsx";
 import { FinancialsPageFrame, FinAnnotation, FinancialFigure } from "./FinancialsPrimitives.jsx";
 import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
+import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 
 // THE FIVE SUMMARY FIGURES the approved handoff specifies: Booked / Billed / Collected /
 // Outstanding / Credits.
@@ -37,6 +39,31 @@ export default function FinancialsCustomerFinancials() {
   const [term, setTerm] = useState("");
   const [selected, setSelected] = useState(null);
   const search = useAccountSearch(term);
+
+  // ACCOUNT-SCOPED governed read. The account id is a REQUESTED FILTER, not authorization: the
+  // server intersects it with this principal's FIN-004 reach, so choosing a customer you cannot see
+  // returns nothing rather than their figures. The read is issued only once a customer is chosen —
+  // an unfiltered account read on an empty search would be a whole-book query nobody asked for.
+  const facts = useFinancialFacts({ accountId: selected?.id ?? null }, { enabled: Boolean(selected) });
+  const { state: factsState, result: factsResult } = financialFactsState(facts);
+  const factsAnswered = factsState === FACTS_STATE.READY || factsState === FACTS_STATE.EMPTY;
+  const summary = factsAnswered ? (factsResult?.summary ?? {}) : {};
+
+  // Each slot reads ONE server-computed per-currency total, or names its own absence. Booked is not
+  // an invoice fact and Credits has no governed read — neither is approximated from what is here.
+  const slotFigure = (key) => {
+    const field = { billed: "billedByCurrency", collected: "collectedByCurrency", outstanding: "outstandingByCurrency" }[key];
+    if (!field) return null;
+    if (!factsAnswered) return null;
+    const byCurrency = summary[field];
+    return byCurrency && typeof byCurrency === "object" ? formatByCurrency(byCurrency) : null;
+  };
+  const slotAbsence = (slot) => {
+    if (slot.key === "booked") return "Not an invoice fact";
+    if (slot.key === "credits") return slot.absence ?? "No corrections read";
+    if (!factsAnswered) return factsState === FACTS_STATE.LOADING ? "Reading…" : factsState === FACTS_STATE.DENIED ? "Withheld" : "Unavailable";
+    return "Not supplied by this read";
+  };
 
   return (
     <FinancialsPageFrame
@@ -94,14 +121,17 @@ export default function FinancialsCustomerFinancials() {
                   <FinancialFigure
                     label={slot.label}
                     factClass={slot.factClass}
-                    absence={slot.absence ?? "No read on this surface"}
+                    valueText={slotFigure(slot.key)}
+                    absence={slotAbsence(slot)}
+                    detail={slot.key === "booked" ? "Booked value is established on the Sales Order, not the invoice. This read exposes invoice facts, so Billed is never substituted for it." : slot.key === "credits" ? "No governed read exposes correction events for a customer yet. The adjustment commands are merged; their read surface is not built, and a figure is not inferred from invoice credits." : FACTS_DETAIL[factsState] ?? null}
                   />
                 </div>
               ))}
             </div>
             <p className="fin-section-note">
-              The per-invoice receivables below are the one governed finance read this page
-              composes; the figures above keep their places until their own reads are composed.
+              Billed, Collected and Outstanding are server-computed totals for this customer,
+              scoped by your governed visibility and listed per currency — never summed across
+              currencies here. Booked and Credits keep their places and state why they are absent.
             </p>
           </section>
 
