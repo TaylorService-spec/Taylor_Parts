@@ -92,13 +92,22 @@ const SPINE_11 = [
   // BUSINESS_UNIT / OPERATING_COMPANY stay INELIGIBLE: making one eligible is a separate decision,
   // and listing them together would let an environment activate one by activating another.
   "finance.visibility.consolidated",
+  // PERFORMANCE GOAL AUTHORITY, Owner-directed 2026-09-02, sandbox ONLY. Five ids listed
+  // individually for the same reason the two equipment ids are: an eligibility entry covering the
+  // verbs as one unit would let an environment activate APPROVAL by activating authoring, which is
+  // exactly the separation the split into five capabilities exists to keep.
+  "performance.goal.read",
+  "performance.goal.create",
+  "performance.goal.approve",
+  "performance.goal.supersede",
+  "performance.goal.retire",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 40 eligible capability ids", () => {
+test("eligible allow-list is exactly the 45 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 40);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 45);
 });
 
 test("sandbox project resolves the full spine override set", () => {

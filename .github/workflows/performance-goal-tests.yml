@@ -1,0 +1,91 @@
+name: Performance Goal Authority Unit Tests
+
+# The governed TARGET authority (functions/src/performance/**) -- metric registry, goal record,
+# scoped management authority, and the FIN-003 reconciliation.
+#
+# WHY THIS FILE EXISTS AT ALL. Every functions workflow in this repository is scoped to specific
+# `functions/src/<domain>/**` paths and names its test files explicitly; nothing globs
+# `functions/src/**`. A NEW subsystem therefore matches no existing filter and is CI-UNCOVERED until
+# it has a lane of its own -- which is the "REGISTERED != SELECTED != GOVERNED" finding this
+# repository already recorded once (release-tooling-validation.yml). This is that lane.
+#
+# Pure-logic only: no emulator, no deployment, no production access, no repository secrets. The suite
+# runs against the compiled functions/lib output, so `npm run build` is the prerequisite the test
+# command already carries.
+#
+# The FIN-003 and access paths are watched too, deliberately. This subsystem COMPOSES both --
+# planVsActual.ts supplies the money comparison, financialApprovals.ts the self-approval invariant,
+# resolveEffectivePermission/hierarchicalVisibility the reach. A change to any of them can break a
+# goal guarantee without touching a file under performance/, and a filter that could not see that
+# would report green on the change that broke it.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/performance/**"
+      - "functions/test/performanceGoal.test.mjs"
+      - "functions/src/finance/planVsActual.ts"
+      - "functions/src/finance/financialApprovals.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/src/access/hierarchicalVisibility.ts"
+      - "functions/src/access/roleHierarchy.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/constants/collections.ts"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/performance-goal-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/performance/**"
+      - "functions/test/performanceGoal.test.mjs"
+      - "functions/src/finance/planVsActual.ts"
+      - "functions/src/finance/financialApprovals.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/src/access/hierarchicalVisibility.ts"
+      - "functions/src/access/roleHierarchy.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/constants/collections.ts"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/performance-goal-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  performance-goal-tests:
+    name: Performance goal authority unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (the suite runs against functions/lib)
+        run: npm run build
+        working-directory: functions
+
+      - name: Performance goal authority unit tests
+        run: node --test test/performanceGoal.test.mjs
+        working-directory: functions

@@ -330,6 +330,17 @@ export type AuditAction =
   | "revokeUserSessions"
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's Audit Event action.
   // Distinct from the client audit-only `RECEIVE_STOCK` inventory_action (domain/constants.js).
+  // Performance Goal Authority -- the governed TARGET lifecycle. FOUR actions, not three: an
+  // approval that CLOSES a predecessor version is recorded as supersedePerformanceGoal, because
+  // "a target was blessed" and "a target replaced the one people were being measured against" are
+  // different facts and the second is the one an auditor comes looking for. Same immutable Audit
+  // Event path, same verb+Noun convention -- no parallel audit system
+  // (keep this comment free of the statement-terminator character -- mirror checks parse the union
+  //  up to the first one)
+  | "createPerformanceGoalDraft"
+  | "approvePerformanceGoal"
+  | "supersedePerformanceGoal"
+  | "retirePerformanceGoal"
   | "receiveInventoryStock"
   // Finance (Billing/AR) -- the trusted issueInvoice command's Audit Event action (invoice issuance)
   | "issueInvoice"
