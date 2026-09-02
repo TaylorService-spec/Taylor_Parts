@@ -274,3 +274,17 @@ test("a summary field the deployed function does not send is ABSENT, not a dash 
   assert.ok(s.billed.absence && s.billed.detail, "an unsent total must name itself as absent");
   assert.match(s.arOutstanding.valueText, /58,555\.00/, "fields the older function DOES send still render");
 });
+
+test("A/R states its period contract VISIBLY, not only in an empty state or a tooltip", () => {
+  // Two readings of "Period" are possible on A/R and they mean different things: "invoices issued
+  // in the window" versus "the balance as it stood at the end of it". Only the first is supported.
+  // Stating that solely in the filtered empty state left it invisible in the very case where it
+  // misleads — a populated table under a selected period.
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsAccountsReceivable.jsx", import.meta.url), "utf8");
+  // The sentence must live in rendered body copy, OUTSIDE the honest-state detail and the tooltip.
+  const beforeSection = src.slice(0, src.indexOf("<FinancialsHonestSection"));
+  assert.ok(/Period filters by invoice issue date/.test(beforeSection), "the period basis must be visible with rows on screen");
+  assert.ok(/not an as-of-period balance/.test(beforeSection), "the as-of disclaimer must be visible too");
+  // It must not be a FinAnnotation-only claim.
+  assert.ok(!/FinAnnotation[^>]*Period filters by invoice issue date/.test(src), "the statement must not be tooltip-only");
+});
