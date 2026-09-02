@@ -917,3 +917,72 @@ Every slot said "No read on this surface" — true before the reporting read exi
   financial reads, zero console errors, zero horizontal overflow. Every $0.00 on screen was
   verified to be a governed zero (Applied on unpaid invoices, Outstanding on settled ones).
 - OWNER VISUAL ACCEPTANCE: PENDING.
+
+## 2026-09-02 — REPORTING READ SEMANTICS CLOSEOUT (PRs #1720, #1721)
+
+Two read-model gaps from populated Owner review, both closed in the read rather than in React.
+
+### Consolidated lifecycle totals
+
+`summarizeAccountAr` — the ONE canonical summary — now carries `billedByCurrency` and
+`collectedByCurrency` beside the outstanding total it already computed, over the same governed
+visible fact set. BILLED = invoice total. COLLECTED = the maintained `appliedMinor` projection of
+the payment applications, the SAME meaning the per-company and per-salesperson rollups use, so one
+word cannot mean two things on two pages. The totals live on the server because the server is what
+knows which facts the caller may see; a test feeds a summary that DISAGREES with the company rows
+to prove the client reads the total rather than reassembling it.
+
+### CANONICAL EVENT DATES — audited, one per fact type
+
+  INVOICE              `issuedAtMillis`    stamped at issuance
+  PAYMENT_RECEIPT      `receivedAtMillis`  the caller-asserted, command-validated date the CASH was
+                                           received — a business fact, not a write timestamp
+  PAYMENT_APPLICATION  `appliedAtMillis`   when the application was recorded
+
+All three are persisted by the governed commands; none is invented and no invoice date is copied
+onto a payment. Period previously ran every fact through the invoice issue date, so Payments
+answered "cash against invoices raised in March" instead of "cash received in March". An UNDATED
+fact is now excluded when a period is requested — it cannot be shown to fall inside the window.
+
+AUTHORIZATION AND NARROWING ARE NOW TRACKED SEPARATELY: payments inherit their invoice's
+authorization, which caller filters must not shrink. A March payment against a February invoice is
+still a March payment. Tests pin exactly that case, which is the only way to tell the two questions
+apart.
+
+### Named semantics (stated on the surfaces, not implied)
+
+- INVOICES period = invoice issued date.
+- PAYMENTS period = the payment's own event date.
+- A/R period = RECEIVABLES ARISING FROM INVOICES ISSUED IN THE WINDOW. It is NOT "A/R as of a
+  date": no historical balance snapshot exists in this system and outstanding is always derived as
+  of now. The page says so.
+- OVERVIEW with a period selected: the three figures are INVOICE-ANCHORED — the invoices issued in
+  that window and the cash applied to them. Collected there is not "cash received in the period",
+  and the scorecard copy states this rather than letting the label imply otherwise.
+
+### Legacy uppercase TAYLOR
+
+Keeps its own company key and gets no lowercase row, while its amount counts in the CONSOLIDATED
+currency total. Summing already-authorized atomic facts is not normalizing attribution — tested
+explicitly, with both keys asserted distinct.
+
+### Version resilience (PR #1721)
+
+The bundle and the function ship separately. A summary field the deployed function does not send
+now falls back to the NAMED ABSENCE rather than rendering "—", which would report a balance the
+page has no basis for. The Overview is truthful under either version and the deploy order stops
+mattering.
+
+### Deploy state
+
+- DELTA IS EXACTLY THIS SEAM: `functions/src` had ZERO other changes since the tree the deployed
+  `listFinancialFacts` was built from (cc261540), so the bounded deploy carries nothing else.
+- `functions:listFinancialFacts` — NOT DEPLOYED. The deploy command was refused at the tool
+  boundary (as in the earlier run); it is returned for the Owner to execute.
+- HOSTING: 4c254559 (2026-09-02T05:05:13.809Z). No function moved with it.
+- GATE at 1440 and 375: 34/38. The four findings are the SAME two facts at both widths —
+  consolidated BILLED and COLLECTED render their named absence because the deployed function
+  predates the summary fields. Everything else passes: A/R outstanding $58,555.00, the three
+  unsupported lifecycle slots honest, no fabricated zero or dash, no raw client financial reads,
+  no console errors, no overflow, period control ≥44px on all six surfaces.
+- OWNER VISUAL ACCEPTANCE: PENDING.
