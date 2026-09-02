@@ -51,7 +51,9 @@ export default function FinancialsPayments() {
   );
   const { state, result } = financialFactsState(read);
 
-  const payments = state === FACTS_STATE.READY ? (result.payments ?? []) : [];
+  // READY and EMPTY both mean the server answered; only the record count differs.
+  const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
+  const payments = answered ? (result?.payments ?? []) : [];
   // "Unapplied" selects records whose received amount exceeds what was applied. Under current
   // authority that set is always empty — which is the truth the band above states, shown rather
   // than asserted.
@@ -63,7 +65,7 @@ export default function FinancialsPayments() {
         : payments;
 
   const honest =
-    state === FACTS_STATE.READY && rows.length === 0
+    answered && rows.length === 0
       ? {
           state: "EMPTY",
           detail:
@@ -73,7 +75,7 @@ export default function FinancialsPayments() {
                 ? "The governed read answered, and no payment settles an invoice within your visibility scope."
                 : `No payments against invoices issued in this period (${period.label}). Choose All activity to see the full set.`,
         }
-      : state === FACTS_STATE.READY
+      : answered
         ? { state: null }
         : { state, detail: FACTS_DETAIL[state] ?? null };
 

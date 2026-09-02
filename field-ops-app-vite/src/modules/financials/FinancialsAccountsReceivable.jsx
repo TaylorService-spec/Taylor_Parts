@@ -40,10 +40,12 @@ export default function FinancialsAccountsReceivable() {
     { enabled: !period.blocked },
   );
   const { state, result } = financialFactsState(read);
-  const rows = state === FACTS_STATE.READY ? outstandingRows(result) : [];
+  // READY and EMPTY both mean the server answered; only the record count differs.
+  const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
+  const rows = answered ? outstandingRows(result) : [];
 
   const honest =
-    state === FACTS_STATE.READY && rows.length === 0
+    answered && rows.length === 0
       ? {
           state: "EMPTY",
           detail:
@@ -51,7 +53,7 @@ export default function FinancialsAccountsReceivable() {
               ? "The governed read answered, and no invoice in your visibility scope carries an outstanding balance."
               : `No open receivables from invoices issued in this period (${period.label}). Choose All activity to see the full set.`,
         }
-      : state === FACTS_STATE.READY
+      : answered
         ? { state: null }
         : { state, detail: FACTS_DETAIL[state] ?? null };
 
