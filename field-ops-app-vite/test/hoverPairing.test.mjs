@@ -69,3 +69,70 @@ test("the filter chip's hover pair is legible — evergreen fill with inverse te
   assert.match(body, /background:\s*var\(--color-brand-secondary\)/);
   assert.match(body, /color:\s*var\(--color-text-inverse\)/);
 });
+
+// ════════ THE MIRROR DIRECTION, WHICH THE CASES ABOVE COULD NOT SEE ════════
+//
+// Everything above asks: does a hover that changes the FILL also carry a foreground? The live sweep
+// found the same bug running the other way. `.fin-hlp:hover` named only a colour, so `button:hover`
+// at 0-1-1 lost the colour to it and KEPT its background — supplying an evergreen fill under
+// near-black text at 2.27:1 on every Financials route. `.eos-auth__reveal`, `.eos-auth__secondary`
+// and `.ns-info__close` had it too, at 1.81:1, on the sign-in screen an authenticated sweep can
+// never reach. Owning half a pair is the bug; which half you own is a detail.
+//
+// This is a whole-stylesheet sweep rather than a list, because a list only ever pins the rules
+// somebody already thought about. It is not regex-only: the button set is read out of the JSX, so a
+// class that never lands on a <button> is never accused, and `button:hover` cannot reach it.
+import { readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+/** Class names that actually appear on a <button> somewhere in the app. */
+function buttonClasses() {
+  const found = new Set();
+  const root = fileURLToPath(new URL("../src", import.meta.url));
+  const walk = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.jsx?$/.test(name)) {
+        const src = readFileSync(p, "utf8");
+        for (const tag of src.matchAll(/<button\b[\s\S]{0,400}?>/g))
+          for (const lit of tag[0].matchAll(/["'`]([a-zA-Z0-9 _-]+)["'`]/g))
+            for (const cls of lit[1].split(/\s+/))
+              if (/^[a-z]/.test(cls) && cls.includes("-")) found.add(cls);
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
+// A DESCENDANT restating the foreground over a fill its ANCESTOR owns is the correct shape, not a
+// violation: `.ns-view.is-active:hover` sets the evergreen fill and this keeps the count legible
+// on it. The exception is the selector, so a new offender cannot hide behind it.
+const FOREGROUND_ONLY_ALLOWED = new Set([".ns-view.is-active:hover .ns-view__count"]);
+
+test("no button hover names a foreground and lets button:hover supply the fill", () => {
+  const buttons = buttonClasses();
+  assert.ok(buttons.size > 20, "the JSX scan must actually find buttons, or this test proves nothing");
+
+  const offenders = [];
+  for (const chunk of css.replace(/\/\*[\s\S]*?\*\//g, "").split("}")) {
+    const i = chunk.lastIndexOf("{");
+    if (i === -1) continue;
+    const selector = chunk.slice(0, i).split(";").pop().trim().replace(/\s+/g, " ");
+    const body = chunk.slice(i + 1);
+    if (!selector.includes(":hover") || !setsColor(body) || setsBackground(body)) continue;
+    for (const part of selector.split(",").map((s) => s.trim())) {
+      if (!part.includes(":hover") || FOREGROUND_ONLY_ALLOWED.has(part)) continue;
+      // The class the :hover actually hangs off — not one further up a descendant chain.
+      const hooked = (part.match(/\.([a-zA-Z0-9_-]+)(?=[^ ]*:hover)/g) ?? []).map((c) => c.slice(1));
+      if (hooked.some((c) => buttons.has(c))) offenders.push(`${part} → {${body.trim()}}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these hover rules change a button's text and leave button:hover to choose the fill underneath it:\n  ${offenders.join("\n  ")}`,
+  );
+});

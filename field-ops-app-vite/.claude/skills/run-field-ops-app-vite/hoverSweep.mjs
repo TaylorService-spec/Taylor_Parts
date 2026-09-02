@@ -31,7 +31,15 @@ const ORIGIN = originArg !== -1 ? process.argv[originArg + 1] : "https://eos-pla
 // One representative route per family the Owner named. Breadth over depth: the contract is
 // site-wide, so a defect anywhere is the finding.
 const FAMILIES = [
+  // Financials gets several routes on purpose. Overview is the LEAST interactive page in the
+  // family — mostly figures and prose — so sweeping only it produced "0 distinct controls" and
+  // would have yielded a green report that never touched .fo-filter-btn, the control the
+  // reported defect actually lived on.
   ["Financials", "/financials"],
+  ["Financials", "/financials/invoices"],
+  ["Financials", "/financials/billing-queue"],
+  ["Financials", "/financials/accounts-receivable"],
+  ["Financials", "/financials/payments"],
   ["Inventory", "/inventory"],
   ["Parts", "/inventory/parts"],
   ["Receiving", "/inventory/receiving"],
@@ -114,19 +122,33 @@ async function main() {
   await seedAuthenticatedSession(page, ORIGIN, session);
 
   const findings = [];
+  const unmeasured = [];
   let reachable = 0, unreachable = 0, lowest = { ratio: Infinity, where: null };
 
   for (const [family, route] of FAMILIES) {
-    let loaded = false;
-    for (let i = 0; i < 2 && !loaded; i += 1) {
-      await page.goto(ORIGIN + route, { waitUntil: "domcontentloaded" });
-      try { await page.waitForTimeout(4500); loaded = true; } catch { /* retried */ }
-    }
+    await page.goto(ORIGIN + route, { waitUntil: "domcontentloaded" });
+    // WAIT FOR CONTENT, NOT FOR A CLOCK. A fixed 4.5s timeout reported "0 distinct controls" on
+    // Financials Overview because a governed read had not resolved yet. A page still loading is an
+    // UNMEASURED page, and reporting it as clean is the same error class as judging a control
+    // inside a collapsed <details>: absence of a verdict is not a passing verdict.
+    try {
+      await page.waitForFunction(
+        () => {
+          const m = document.querySelector("main");
+          if (!m || m.innerText.trim().length < 40) return false;
+          return !/^(Loading|Checking|Reading|Signing)/i.test(m.innerText.trim());
+        },
+        { timeout: 25000 },
+      );
+    } catch { unmeasured.push(family + " " + route + ": still loading after 25s"); }
+    await page.waitForTimeout(700);
     // Open disclosures so controls that are only reachable when expanded can be judged fairly.
     await page.evaluate(() => document.querySelectorAll("details").forEach((d) => { d.open = true; }));
     await page.waitForTimeout(500);
 
     const candidates = await page.evaluate(CANDIDATES);
+    // Zero controls is NOT a pass — it means the sweep saw nothing it could judge.
+    if (candidates.length === 0) unmeasured.push(family + " " + route + ": no interactive control found");
     console.log(`=== ${family} (${route}) — ${candidates.length} distinct controls ===`);
     for (const c of candidates) {
       const before = await page.evaluate(readState(c.key));
@@ -158,8 +180,10 @@ async function main() {
   console.log(`  unreachable (no verdict)    : ${unreachable}`);
   console.log(`  lowest hover contrast       : ${lowest.ratio === Infinity ? "n/a" : `${lowest.ratio}:1  (${lowest.where})`}`);
   console.log(`  console errors              : ${[...new Set(errors)].filter((e) => !/403/.test(e)).length}`);
+  console.log(`  routes yielding no verdict   : ${unmeasured.length}`);
+  if (unmeasured.length) console.log(["", "UNMEASURED (not a pass):"].concat(unmeasured.map((u) => "  " + u)).join(String.fromCharCode(10)));
   console.log(findings.length ? `\nFINDINGS:\n  ${findings.join("\n  ")}` : "\nFINDINGS: NONE");
-  process.exit(findings.length ? 1 : 0);
+  process.exit(findings.length || unmeasured.length ? 1 : 0);
 }
 
 main().catch((e) => { console.error(e); process.exit(2); });
