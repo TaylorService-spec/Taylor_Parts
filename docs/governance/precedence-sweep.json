@@ -6,7 +6,7 @@
   "stale or generated summaries"
  ],
  "totals": {
-  "EXPLICIT_OWNER_DECISION": 72,
+  "EXPLICIT_OWNER_DECISION": 100,
   "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2,
@@ -415,6 +415,69 @@
    ]
   },
   {
+   "roleId": "generalManager",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "partsAssociate",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "performance.goal.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "performance.goal.approve",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "performance.goal.supersede",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "performance.goal.retire",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
    "roleId": "salesManager",
    "capability": "customer.record.create",
    "classification": "EXPLICIT_OWNER_DECISION",
@@ -660,6 +723,69 @@
    ]
   },
   {
+   "roleId": "salesManager",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "partsAssociate",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "performance.goal.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "performance.goal.approve",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "performance.goal.supersede",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "salesManager",
+   "capability": "performance.goal.retire",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "fieldManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
    "roleId": "salesperson",
    "capability": "customer.record.create",
    "classification": "EXPLICIT_OWNER_DECISION",
@@ -887,6 +1013,21 @@
    "alsoHeldBy": [
     "generalManager",
     "salesManager"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "partsAssociate",
+    "partsManager"
    ]
   },
   {
@@ -1149,6 +1290,69 @@
    ]
   },
   {
+   "roleId": "fieldManager",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "warehouseManager",
+    "warehouseAssociate",
+    "partsAssociate",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "performance.goal.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "performance.goal.approve",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "performance.goal.supersede",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "fieldManager",
+   "capability": "performance.goal.retire",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "warehouseManager",
+    "partsManager"
+   ]
+  },
+  {
    "roleId": "dispatcher",
    "capability": null,
    "classification": "LEGACY_COMPATIBILITY_ONLY",
@@ -1355,6 +1559,69 @@
    ]
   },
   {
+   "roleId": "warehouseManager",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseAssociate",
+    "partsAssociate",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "performance.goal.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "performance.goal.approve",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "performance.goal.supersede",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "partsManager"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "capability": "performance.goal.retire",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "partsManager"
+   ]
+  },
+  {
    "roleId": "warehouseAssociate",
    "capability": "inventory.action.read",
    "classification": "CANONICAL_MATRIX",
@@ -1490,6 +1757,21 @@
     "purchasingManager",
     "controller",
     "accountingManager"
+   ]
+  },
+  {
+   "roleId": "warehouseAssociate",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "partsAssociate",
+    "partsManager"
    ]
   },
   {
@@ -2406,6 +2688,21 @@
    ]
   },
   {
+   "roleId": "partsAssociate",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "partsManager"
+   ]
+  },
+  {
    "roleId": "partsManager",
    "capability": "audit.event.read",
    "classification": "CANONICAL_MATRIX",
@@ -2640,6 +2937,69 @@
     "partsAssociate",
     "shopManager",
     "shopAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "performance.goal.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "salesperson",
+    "fieldManager",
+    "warehouseManager",
+    "warehouseAssociate",
+    "partsAssociate"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "performance.goal.create",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "performance.goal.approve",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "performance.goal.supersede",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager"
+   ]
+  },
+  {
+   "roleId": "partsManager",
+   "capability": "performance.goal.retire",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #161",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager"
    ]
   },
   {
@@ -2989,5 +3349,5 @@
  "reverseSweep": {
   "missingDecidedMappings": []
  },
- "decisionsFileSha": "sha256:355c33e4759ad7f7a776d8c718cd52a65ed0303b2cbe79bcbc9cb680ab894c29"
+ "decisionsFileSha": "sha256:657ef0cfc4f670b7b4923ef70ec302901dba120996df79be957b11c0abc1afe5"
 }

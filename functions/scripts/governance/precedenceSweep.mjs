@@ -77,6 +77,19 @@ const DECIDED = {
   "finance.visibility.consolidated": "#159",
   "finance.visibility.team": "#159",
   "finance.visibility.self": "#159",
+  // Performance Goal Authority. No CRUD row exists because the matrix models OBJECTS and a goal is
+  // a TARGET on a metric -- the same shape of gap the FIN-004 reach entries above describe. The
+  // Owner's direction fixed the carrier of each verb by Role (#161), which is exactly what this map
+  // is for. Keyed by capability, like every entry above.
+  //
+  // NOTE the sweep will also list admin and owner as holders, and that is not an ungoverned grant:
+  // admin's set is DERIVED as ADMIN_CURATED_PERMISSIONS plus the entire PERMISSION_CATALOG by Owner
+  // ruling (2026-08-19), so every registered capability is admin's by construction.
+  "performance.goal.read": "#161",
+  "performance.goal.create": "#161",
+  "performance.goal.approve": "#161",
+  "performance.goal.supersede": "#161",
+  "performance.goal.retire": "#161",
 };
 // WORKFLOW GRANTS. A capability with no matrix row and no composition, held because a recorded
 // Owner direction describes the SEQUENCE the Role performs. A workflow is not one write, and the
