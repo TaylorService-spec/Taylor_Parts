@@ -1,0 +1,252 @@
+// MY DASHBOARD -- the personalized surface, composed from governed authority.
+//
+// Replaces the role-aware launcher (`LandingPage`) as the dashboard index for every non-technician
+// principal. The launcher's behaviour is NOT lost: it becomes the GO TO section, computed by the
+// same `isDomainVisible`/`isNavItemVisible` functions the rail and route table use, so a destination
+// is still either genuinely reachable right now or not listed.
+//
+// ============================ WHAT THIS COMPONENT DECIDES ============================
+//
+// Nothing, about authority. `composeDashboard()` resolves which modules this principal's governed
+// context supplies a scope for, and every module then reads through its OWN domain's authority at
+// that domain's own scope. This file arranges; it does not permit.
+//
+// ============================ WHY CURRENT WORK IS COMPOSED, NOT REBUILT ============================
+//
+// The work surfaces already exist and are already governed -- the technician's assigned work, the
+// parts manager's queues. Rebuilding their data layer here would create a SECOND implementation of
+// each domain's read, which is the failure this platform has been bitten by in both directions. So
+// the technician keeps `TechnicianDashboard` (which gains the performance section rather than being
+// replaced), and this surface links into the existing queues rather than re-querying them.
+//
+// A section with no modules is OMITTED. An empty "Team performance" heading on a screen with no team
+// would imply one.
+import { useEffect, useMemo, useState } from "react";
+import { Compass } from "lucide-react";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import RuledSection from "../../shared/ui/RuledSection.jsx";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import StatusIndicator from "../../shared/ui/primitives/StatusIndicator.jsx";
+import CompactMetric from "../../shared/ui/primitives/CompactMetric.jsx";
+import EmptyState from "../../shared/ui/EmptyState.jsx";
+import { ReachableDestinations, buildReachableGroups } from "../../navigation/LandingPage.jsx";
+import { composeDashboard, goalTargetsFor, MODULE_STATE, SECTION } from "../../domain/dashboardComposition.js";
+import { usePerformanceGoals } from "../../hooks/usePerformanceGoals.js";
+import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary.js";
+import { fetchReorderWarehouseOptions } from "../../services/reorderCallableClient.js";
+import { useWorkOrders } from "../../hooks/useWorkOrders.js";
+import {
+  workOrderAttentionItems,
+  groupWorkOrderAttentionItemsBySection,
+} from "../../domain/workOrderAttentionProjection.js";
+import GoalGrid from "./GoalGrid.jsx";
+
+/**
+ * The warehouses this principal is governed to.
+ *
+ * Deliberately the SAME list the reorder create authority offers -- "the picker filters by the same
+ * authority the create enforces". Reusing it means a location goal can only ever be asked about a
+ * warehouse this person genuinely holds authority at, with no new read and no second scope model.
+ * An empty list is a real answer: a principal may legitimately be governed to no warehouse.
+ */
+function useGovernedWarehouseIds() {
+  const [ids, setIds] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchReorderWarehouseOptions()
+      .then(({ options }) => { if (!cancelled) setIds(options.map((o) => o.value)); })
+      // A failure here narrows the dashboard (no location goals) rather than widening it or
+      // breaking the screen. Fail closed, quietly: the person still sees everything else.
+      .catch(() => { if (!cancelled) setIds([]); });
+    return () => { cancelled = true; };
+  }, []);
+  return ids;
+}
+
+/** The date targets are resolved as of. The caller owns the clock; the goal authority owns none. */
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The one module with a governed actual wired today. */
+function AccountPortfolioModule() {
+  const { summary, state } = useAccountPortfolioSummary();
+  if (state === "LOADING") return <HonestState state={HONEST_STATE.LOADING} subject="Account portfolio" />;
+  if (state !== "READY" || !summary) {
+    return <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Account portfolio" detail="The portfolio count could not be read." />;
+  }
+  // A complete server-side count over the authorized scope -- never a page, never a sample. Unknown
+  // status values surface as `unclassified` rather than vanishing from the total.
+  return (
+    <div className="fo-stat-grid">
+      <CompactMetric value={summary.total ?? "—"} label="Total accounts" />
+      <CompactMetric value={summary.active ?? "—"} label="Active" />
+      <CompactMetric value={summary.prospect ?? "—"} label="Prospect" />
+      <CompactMetric value={summary.inactive ?? "—"} label="Inactive" />
+      {typeof summary.unclassified === "number" && summary.unclassified > 0 && (
+        <CompactMetric value={summary.unclassified} label="Unclassified" />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Service attention -- the ONE current-work module this surface composes itself.
+ *
+ * It re-derives nothing. `workOrderAttentionItems` composes the existing scheduling primitives
+ * (SCHEDULABLE_STATUS, the past-due predicate, detectDayOverlaps) and refuses to emit what it cannot
+ * support, so the sections that appear are exactly the ones the projection can stand behind.
+ *
+ * PARTS-BLOCKED IS ABSENT HERE, and deliberately rather than accidentally: that signal composes a
+ * caller-supplied `buildWorkOrderPartsReadiness()` output, which this dashboard does not hold. The
+ * projection's own rule is that a job with nothing planned is not "blocked" and an UNKNOWN readiness
+ * is never escalated -- passing it nothing would be indistinguishable from "no work is blocked",
+ * which is a claim. So the module says what it covers instead of implying it covers everything.
+ *
+ * The four counts are INDEPENDENT, never stacked or summed. One work order can be past due AND in
+ * conflict; a total would double-count it, and a stacked bar would assert a mutual exclusivity
+ * nobody has proven.
+ */
+function ServiceAttentionModule() {
+  const { data: workOrders, loading, error } = useWorkOrders();
+
+  if (loading) return <HonestState state={HONEST_STATE.LOADING} subject="Service attention" />;
+  if (error) {
+    return <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Service attention" detail="Work orders could not be read just now." />;
+  }
+
+  const items = workOrderAttentionItems({ workOrders: workOrders ?? [] });
+  const grouped = groupWorkOrderAttentionItemsBySection(items);
+
+  if (grouped.length === 0) {
+    // A CONFIRMED clean state, not an unknown one: the read succeeded and the projection found
+    // nothing. Absence IS the signal here, and saying so is different from saying nothing.
+    return <StatusIndicator tone="positive" label="Nothing needs scheduling attention right now" />;
+  }
+
+  return (
+    <>
+      <div className="fo-stat-grid">
+        {grouped.map((g) => (
+          <CompactMetric key={g.sectionLabel} value={g.items.length} label={g.sectionLabel} />
+        ))}
+      </div>
+      <p className="fo-muted">
+        Counted independently — one work order can appear in more than one of these, so they are not a total.
+        Past due is measured across all scheduled work, not only this week&apos;s.
+      </p>
+    </>
+  );
+}
+
+/**
+ * A module that is not showing a number, and the reason it is not.
+ *
+ * THREE DIFFERENT SENTENCES, because the three imply different next actions and a reader deserves
+ * to know which one they are looking at:
+ *   GATED      someone must decide something (a grant, an activation)   -> NOT_ENABLED
+ *   UNAVAILABLE someone must define something (an authority that does not exist) -> UNAVAILABLE
+ *   NOT_WIRED  nobody must decide anything; this surface has not composed the read -> NOT_ENABLED
+ *              with a sentence that says where the live surface is, so the reader is not stranded.
+ */
+function BlockedModule({ label, blocker, state }) {
+  return (
+    <div className="fo-dashboard-module fo-dashboard-module--blocked">
+      <HonestState
+        state={state === MODULE_STATE.UNAVAILABLE ? HONEST_STATE.UNAVAILABLE : HONEST_STATE.NOT_ENABLED}
+        subject={label}
+        detail={blocker}
+      />
+    </div>
+  );
+}
+
+export default function MyDashboard({ role, allowedLegacyKeys = [], operationalContext = {} }) {
+  const { employeeId, displayName, operationalRoles } = useAuth();
+  const warehouseIds = useGovernedWarehouseIds();
+
+  const ctx = useMemo(
+    () => ({
+      role,
+      employeeId: employeeId ?? null,
+      // A technician reaching THIS surface is already out of the technician branch in App.jsx, so
+      // the binding is deliberately absent here rather than re-resolved.
+      technicianId: null,
+      operationalRoles: operationalRoles ?? [],
+      warehouseIds,
+      hasCapability: operationalContext?.hasCapability,
+    }),
+    [role, employeeId, operationalRoles, warehouseIds, operationalContext],
+  );
+
+  const sections = useMemo(() => composeDashboard(ctx), [ctx]);
+  const targets = useMemo(() => goalTargetsFor(ctx), [ctx]);
+  const onDate = useMemo(() => todayIso(), []);
+  const goalFeed = usePerformanceGoals(targets, onDate);
+
+  const destinationGroups = useMemo(
+    () => buildReachableGroups(role, allowedLegacyKeys, operationalContext),
+    [role, allowedLegacyKeys, operationalContext],
+  );
+
+  if (sections.length === 0) {
+    return (
+      <WorkspaceShell title="My dashboard">
+        <EmptyState
+          icon={Compass}
+          variant="database"
+          title="Nothing to show yet"
+          message="Your account doesn't currently resolve access to any business area. If this looks wrong, ask an administrator to check your role and employment status in Administration > Employees."
+        />
+      </WorkspaceShell>
+    );
+  }
+
+  return (
+    <WorkspaceShell
+      title={displayName ? `Hi, ${displayName}` : "My dashboard"}
+      context={
+        <StatusIndicator
+          tone="info"
+          label="Every figure here comes from the same authority that governs its own workspace"
+        />
+      }
+    >
+      {sections.map(({ section, label, modules }) => (
+        <RuledSection key={section} title={label} id={`dashboard-${section.toLowerCase()}`}>
+          {section === SECTION.GO_TO ? (
+            <ReachableDestinations groups={destinationGroups} operationalContext={operationalContext} />
+          ) : (
+            modules.map((m) => {
+              if (m.state !== MODULE_STATE.READY) {
+                return <BlockedModule key={m.key} label={m.label} blocker={m.blocker} state={m.state} />;
+              }
+              if (m.key === "serviceAttention") return <ServiceAttentionModule key={m.key} />;
+              if (m.key === "accountPortfolio") return <AccountPortfolioModule key={m.key} />;
+              if (m.key === "myGoals" || m.key === "teamGoals") {
+                const scoped = targets.filter((t) =>
+                  m.key === "myGoals" ? t.targetScopeType === "EMPLOYEE" : t.targetScopeType !== "EMPLOYEE",
+                );
+                if (scoped.length === 0) return null;
+                return <GoalGrid key={m.key} targets={scoped} feed={goalFeed} actualsByKey={null} />;
+              }
+              // Unreachable: every READY module is wired above. Kept as a loud failure rather than a
+              // silent blank, so adding a module to the table without composing it is caught on the
+              // screen instead of shipping as an empty card that looks intentional.
+              return (
+                <BlockedModule
+                  key={m.key}
+                  label={m.label}
+                  state={MODULE_STATE.UNAVAILABLE}
+                  blocker="This module is declared but not composed. That is a defect, not a governance limit."
+                />
+              );
+            })
+          )}
+        </RuledSection>
+      ))}
+    </WorkspaceShell>
+  );
+}

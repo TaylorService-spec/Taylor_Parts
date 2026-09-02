@@ -1088,6 +1088,10 @@
     {
       "file": "test/visualSystem.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/dashboardComposition.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
