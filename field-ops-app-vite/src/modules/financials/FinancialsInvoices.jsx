@@ -19,6 +19,7 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import {
   FACTS_STATE,
@@ -75,6 +76,10 @@ export default function FinancialsInvoices() {
           view,
         )
       : [];
+
+  // An accountId is a database key, not a customer. Resolved through the SAME directory every
+  // other surface uses, so an unresolved id is named as unresolved rather than shown as a name.
+  const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
   // A view that legitimately selects nothing from a ready read is EMPTY — a fact about the filter,
   // not about authorization or availability, so it must not borrow either of those sentences.
@@ -138,7 +143,15 @@ export default function FinancialsInvoices() {
                     <td className="fin-nowrap">
                       <Link to={`/financials/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link>
                     </td>
-                    <td>{row.accountId ?? "—"}</td>
+                    <td>
+                      {row.accountId ? (
+                        <Link to={`/customers/${row.accountId}`}>
+                          {names.get(row.accountId) ?? "Customer name not resolved"}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>
                       {row.companyId ?? "Not attributed"} · {row.businessUnit}
                     </td>

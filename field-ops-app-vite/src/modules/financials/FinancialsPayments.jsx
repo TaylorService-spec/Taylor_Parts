@@ -11,7 +11,8 @@
 // governed record can truthfully carry an unapplied balance, and a subtraction printed in that
 // column would be arithmetic asserting a fact the system forbids. It stays named as FUTURE
 // AUTHORITY (FIN-AG-PAYMENT-UNAPPLIED) in the band above and dashed in the table.
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   FinancialsPageFrame,
   FinancialsFilterRail,
@@ -21,7 +22,8 @@ import {
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
-import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
+import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency, paymentIdentity, paymentContext } from "../../domain/financialFactsView.js";
+import { useAccountNames } from "../../hooks/useAccountNames.js";
 
 const VIEW_OPTIONS = [
   { key: "all", label: "All" },
@@ -63,6 +65,14 @@ export default function FinancialsPayments() {
       : view === "applied"
         ? payments.filter((p) => p.amountMinor === p.appliedMinor)
         : payments;
+
+  // Applications carry invoiceId; the invoice list carries the NUMBER. Joining them is
+  // presentation over one governed response, not a second derivation.
+  const applications = useMemo(() => {
+    const byId = new Map((result?.invoices ?? []).map((i) => [i.invoiceId, i]));
+    return (result?.applications ?? []).map((a) => ({ ...a, invoiceNumber: byId.get(a.invoiceId)?.invoiceNumber ?? null }));
+  }, [result]);
+  const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
   const honest =
     answered && rows.length === 0
@@ -117,6 +127,7 @@ export default function FinancialsPayments() {
                 <th scope="col">Customer</th>
                 <th scope="col">Received</th>
                 <th scope="col">Method · Reference</th>
+                <th scope="col">Applied to</th>
                 <th scope="col" className="ns-num">Amount</th>
                 <th scope="col" className="ns-num">Applied</th>
                 <th scope="col" className="ns-num">
@@ -129,10 +140,19 @@ export default function FinancialsPayments() {
               <tbody>
                 {rows.map((p) => (
                   <tr key={p.paymentId}>
-                    <td>{p.paymentId}</td>
-                    <td>{p.accountId ?? "—"}</td>
+                    {/* THE RAW DOCUMENT ID IS NOT THE LABEL. It is a database key and told the
+                        operator nothing; the identity is composed from the receipt's own facts. */}
+                    <td>
+                      <Link to={`/financials/payments/${p.paymentId}`}>
+                        {paymentIdentity(p, p.accountId ? (names.get(p.accountId) ?? null) : null)}
+                      </Link>
+                    </td>
+                    <td>
+                      {p.accountId ? (names.get(p.accountId) ?? "Customer name not resolved") : "—"}
+                    </td>
                     <td>{dateWords(p.receivedAtMillis)}</td>
-                    <td>{p.method ?? "Not recorded"}</td>
+                    <td>{(p.method ?? "Not recorded") + (p.externalRef ? " · " + p.externalRef : "")}</td>
+                    <td className="fin-nowrap">{paymentContext(p, applications) ?? "—"}</td>
                     <td className="ns-num">{amount(p.amountMinor, p.currency)}</td>
                     <td className="ns-num">{amount(p.appliedMinor, p.currency)}</td>
                     <td className="ns-num">—</td>

@@ -74,6 +74,8 @@ export interface PaymentReportRead {
   appliedMinor: number;
   receivedAtMillis: number | null;
   method: string | null;
+  /** The operator's own reference for this receipt (cheque number, ACH id). Persisted, often null. */
+  externalRef: string | null;
 }
 
 export interface PaymentApplicationReportRead {
@@ -319,6 +321,7 @@ export async function readFinancialFacts(
                 appliedMinor: nn(x.appliedMinor),
                 receivedAtMillis: typeof x.receivedAtMillis === "number" ? x.receivedAtMillis : null,
                 method: nonEmpty(x.method) ? x.method : null,
+                externalRef: nonEmpty(x.externalRef) ? x.externalRef : null,
               };
             })
             // The receipt's OWN canonical event date — when the cash was received — plus the same

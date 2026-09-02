@@ -262,6 +262,45 @@ export function unagedNote(result) {
   return `${formatByCurrency(byCurrency)} is owed on invoices with no governed due date. It cannot be placed on the aging axis, so it is counted here rather than added to Current — the buckets above plus this figure reconcile to Total A/R.`;
 }
 
+/**
+ * ════════ A PAYMENT'S HUMAN IDENTITY ════════
+ *
+ * A cash receipt has NO governed number. CashReceiptRecord carries company, account, currency,
+ * amount, method, receivedAtMillis, externalRef, applied/unapplied and attribution — and no
+ * sequence. So the operator-facing identity is COMPOSED from facts the record actually holds:
+ *
+ *     Aug 30, 2026 · Churn · $2,500.00
+ *
+ * This deliberately invents nothing. It is not a number, it does not persist, and it is not a
+ * client-side sequence — inventing any of those would create a second identity the server has
+ * never heard of, which would then have to be reconciled with a real one later.
+ *
+ * The document id stays available as TECHNICAL detail. It is a database key: showing it where a
+ * person's reference belongs tells the reader nothing they can act on.
+ */
+export function paymentIdentity(payment, customerName = null) {
+  const when = typeof payment?.receivedAtMillis === "number"
+    ? new Date(payment.receivedAtMillis).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : "Date not recorded";
+  const who = customerName ?? "Customer not resolved";
+  const amount = payment?.currency ? money(payment.amountMinor, payment.currency) : "Amount not recorded";
+  return `${when} · ${who} · ${amount}`;
+}
+
+/** The supporting line: which invoices this receipt was applied to, and the operator's own ref. */
+export function paymentContext(payment, applications = []) {
+  const invoices = applications
+    .filter((a) => a.paymentId === payment.paymentId)
+    .map((a) => a.invoiceNumber)
+    .filter(Boolean);
+  const parts = [];
+  if (invoices.length > 0) parts.push(`Applied to ${invoices.join(", ")}`);
+  // An absent externalRef is ordinary — most receipts have none — so it is simply omitted rather
+  // than rendered as a gap or a placeholder.
+  if (payment?.externalRef) parts.push(`External ref ${payment.externalRef}`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 /** What the server said the principal's reach actually was — never what the page guessed. */
 export function scopeSentence(result) {
   const scopes = result?.grantedScopes ?? [];

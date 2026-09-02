@@ -113,6 +113,7 @@ const SavedReports = lazy(() => import("./modules/reporting/SavedReports"));
 // reads and honest states only.
 const FinancialsOverview = lazy(() => import("./modules/financials/FinancialsOverview.jsx"));
 const FinancialsInvoiceDetail = lazy(() => import("./modules/financials/FinancialsInvoiceDetail.jsx"));
+const FinancialsPaymentDetail = lazy(() => import("./modules/financials/FinancialsPaymentDetail.jsx"));
 const FinancialsInvoices = lazy(() => import("./modules/financials/FinancialsInvoices.jsx"));
 const FinancialsAccountsReceivable = lazy(() => import("./modules/financials/FinancialsAccountsReceivable.jsx"));
 const FinancialsPayments = lazy(() => import("./modules/financials/FinancialsPayments.jsx"));
@@ -884,7 +885,12 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               would be ambiguous. Gated by isDomainVisible so a role without Financials never
               mounts the record view at all. */}
           {domain.key === "financials" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
-            <Route path="invoices/:invoiceId" element={<FinancialsInvoiceDetail />} />
+            <>
+              <Route path="invoices/:invoiceId" element={<FinancialsInvoiceDetail />} />
+              {/* The URL carries the document id because a URL is technical identity; the page
+                  header composes a human one from the receipt's own facts. */}
+              <Route path="payments/:paymentId" element={<FinancialsPaymentDetail />} />
+            </>
           )}
           {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <>
