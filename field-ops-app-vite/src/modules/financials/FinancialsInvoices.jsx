@@ -63,8 +63,12 @@ export default function FinancialsInvoices() {
   );
   const { state, result } = financialFactsState(read);
 
+  // READY and EMPTY both mean the server ANSWERED; EMPTY simply means the answer held no
+  // records. Keying the filtered-empty wording on READY alone let a period-filtered zero fall
+  // through to the generic sentence, which reads as "no invoices exist".
+  const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
   const rows =
-    state === FACTS_STATE.READY
+    answered
       ? applyView(
           result.invoices.map((i) => ({ ...invoiceRow(i), raw: i })),
           view,
@@ -74,7 +78,7 @@ export default function FinancialsInvoices() {
   // A view that legitimately selects nothing from a ready read is EMPTY — a fact about the filter,
   // not about authorization or availability, so it must not borrow either of those sentences.
   const honest =
-    state === FACTS_STATE.READY && rows.length === 0
+    answered && rows.length === 0
       ? {
           state: "EMPTY",
           detail:
@@ -84,7 +88,7 @@ export default function FinancialsInvoices() {
                 ? "The governed read answered, and no invoice in your visibility scope matches this view."
                 : `No invoices in this period (${period.label}). Records outside it are not shown — this is not a statement that no invoices exist. Choose All activity to see the full set.`,
         }
-      : state === FACTS_STATE.READY
+      : answered
         ? { state: null }
         : { state, detail: FACTS_DETAIL[state] ?? null };
 

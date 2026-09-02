@@ -148,3 +148,15 @@ test("SOURCE GUARD: period boundary logic lives in ONE module, and no page filte
     assert.ok(!/receivedAtMillis\s*[<>]/.test(code), `${name} must not client-filter by received date`);
   }
 });
+
+test("SOURCE GUARD: a filtered-empty result must reach the period-aware wording", () => {
+  // The defect this pins: when the server returns zero records the state is EMPTY, not READY, so
+  // a branch keyed on READY alone fell through to the generic sentence — which reads as "no
+  // invoices exist" when the truth is "none in this period".
+  for (const name of ["FinancialsInvoices", "FinancialsAccountsReceivable", "FinancialsPayments"]) {
+    const src = readFileSync(new URL(`../src/modules/financials/${name}.jsx`, import.meta.url), "utf8");
+    assert.ok(/const answered =[\s\S]{0,120}FACTS_STATE\.EMPTY/.test(src), `${name} must treat EMPTY as answered`);
+    assert.ok(!/state === FACTS_STATE\.READY && rows\.length === 0/.test(src), `${name} must not gate the empty message on READY alone`);
+    assert.ok(/in this period/.test(src), `${name} must carry period-aware empty wording`);
+  }
+});
