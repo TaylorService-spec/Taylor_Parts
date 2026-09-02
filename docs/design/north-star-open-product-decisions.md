@@ -1387,5 +1387,25 @@ choosing where a machine lives.
 
 The correction derives one state from the transport's own enum and empties the options in every
 non-READY state, so a chosen location beside a failure message is unrepresentable rather than merely
-avoided. **Merged is not live.** This reaches an operator at the next Hosting refresh and not before;
-until that runs, the sandbox still shows the contradiction.
+avoided.
+
+**It is LIVE, and was verified on the deployed sandbox rather than inferred from a merge.** The
+Hosting refresh authorized for this had already been performed by another session: the served build
+`1b93b344` contains `7d221497`, the corrected copy is in the served `Receiving` chunk, and the
+sentence "The company locations could not be read" is gone from it. Driven through the deployed app
+as an authenticated admin at 1440 and 375: fields stacked (three distinct rows, equal full widths),
+no horizontal overflow, no console error, and the location state truthful with nothing selected
+beside it. No further deploy was required, and none was made.
+
+**One finding the verification turned up, outside ND-33 and not caused by it.** The deployed
+`listReceivingLocationOptions` callable answers admin with `{"options":[]}` — HTTP 200, a successful
+read of an empty set. So the live picker sits in EMPTY: *"No eligible company locations are
+available."* That is the honest thing to say and the new state model says it correctly, but it means
+**Add existing unit cannot currently be completed through the UI**, because no location can be
+chosen. The acquisition proven for this closure went through the live gate, which passes a
+`locationId` to the command directly and never reads this list — so the picker was never on the
+proven path.
+
+This is a Receiving location-eligibility question (`warehouses.status`, the authority recorded under
+I-LA C2), not an acquisition one. It belongs to the **Receiving page stream** alongside the rest of
+that workspace.
