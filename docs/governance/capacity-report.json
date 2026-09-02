@@ -12,8 +12,7 @@
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
-  "OPERABLE": 85,
-  "UNDER_PRIVILEGED": 1
+  "OPERABLE": 86
  },
  "workstreamResults": {
   "ADEQUATE": 17,
@@ -49,10 +48,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2073,
-  "fromCompatibilityRoleOnly": 1262,
-  "fromGovernedRoleOnly": 403,
-  "fromBoth": 408,
+  "operableHoldingsTotal": 2085,
+  "fromCompatibilityRoleOnly": 1257,
+  "fromGovernedRoleOnly": 415,
+  "fromBoth": 413,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -67,8 +66,8 @@
    "assignedWorkers": 7,
    "grantedEligible": 36,
    "operableEligible": 36,
-   "operableGovernedOnly": 9,
-   "grantedGovernedOnly": 9,
+   "operableGovernedOnly": 10,
+   "grantedGovernedOnly": 10,
    "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
    "available": 34,
@@ -118,13 +117,13 @@
    ],
    "forbids": [],
    "assignedWorkers": 10,
-   "grantedEligible": 27,
-   "operableEligible": 27,
-   "operableGovernedOnly": 26,
-   "grantedGovernedOnly": 26,
+   "grantedEligible": 28,
+   "operableEligible": 28,
+   "operableGovernedOnly": 27,
+   "grantedGovernedOnly": 27,
    "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 25,
+   "available": 26,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -153,13 +152,13 @@
    ],
    "forbids": [],
    "assignedWorkers": 3,
-   "grantedEligible": 27,
-   "operableEligible": 27,
-   "operableGovernedOnly": 26,
-   "grantedGovernedOnly": 26,
+   "grantedEligible": 28,
+   "operableEligible": 28,
+   "operableGovernedOnly": 27,
+   "grantedGovernedOnly": 27,
    "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 25,
+   "available": 26,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -279,13 +278,13 @@
    ],
    "forbids": [],
    "assignedWorkers": 4,
-   "grantedEligible": 20,
-   "operableEligible": 20,
-   "operableGovernedOnly": 19,
-   "grantedGovernedOnly": 19,
+   "grantedEligible": 21,
+   "operableEligible": 21,
+   "operableGovernedOnly": 20,
+   "grantedGovernedOnly": 20,
    "governedResult": "ADEQUATE",
    "borrowsLegacyAuthority": false,
-   "available": 18,
+   "available": 19,
    "blockedReason": "",
    "result": "ADEQUATE"
   },
@@ -477,8 +476,8 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 81,
-   "operableCount": 81,
+   "grantedCount": 82,
+   "operableCount": 82,
    "assignments": [
     {
      "workstream": "BUSINESS_ADMINISTRATION",
@@ -519,8 +518,8 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 81,
-   "operableCount": 81,
+   "grantedCount": 82,
+   "operableCount": 82,
    "assignments": [
     {
      "workstream": "BUSINESS_ADMINISTRATION",
@@ -1516,7 +1515,7 @@
     "salesManager"
    ],
    "functionalRoles": [],
-   "grantedCount": 45,
+   "grantedCount": 46,
    "operableCount": 45,
    "assignments": [
     {
@@ -1549,7 +1548,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 46,
+   "grantedCount": 47,
    "operableCount": 46,
    "assignments": [
     {
@@ -1581,7 +1580,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 46,
+   "grantedCount": 47,
    "operableCount": 46,
    "assignments": [
     {
@@ -1613,7 +1612,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 46,
+   "grantedCount": 47,
    "operableCount": 46,
    "assignments": [
     {
@@ -1645,7 +1644,7 @@
    "functionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 46,
+   "grantedCount": 47,
    "operableCount": 46,
    "assignments": [
     {
@@ -1707,8 +1706,8 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 83,
-   "operableCount": 83,
+   "grantedCount": 84,
+   "operableCount": 84,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1745,8 +1744,8 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 83,
-   "operableCount": 83,
+   "grantedCount": 84,
+   "operableCount": 84,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1783,13 +1782,13 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 76,
-   "operableCount": 76,
+   "grantedCount": 84,
+   "operableCount": 84,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
-     "classification": "UNDER_PRIVILEGED",
-     "detail": "missing finance.read"
+     "classification": "OPERABLE",
+     "detail": ""
     },
     {
      "workstream": "REPORTING",
@@ -1806,6 +1805,8 @@
     "CRM_SALES",
     "DISPATCH",
     "SERVICE",
+    "PARTS_LOOKUP",
+    "PICK_STAGE",
     "RECEIVING",
     "PROCUREMENT",
     "BUSINESS_ADMINISTRATION"

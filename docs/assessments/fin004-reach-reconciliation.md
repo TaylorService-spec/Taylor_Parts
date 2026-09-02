@@ -1,8 +1,11 @@
 # FIN-004 Reach Reconciliation
 
-**Status:** MEASURED AND CLOSED, except for one Owner decision recorded in §6. Analysis and tests
-only — no Role was granted, no capability activated, no scope widened, no comment rewritten to
-claim a grant that does not exist. Measured against `fd40ff5d` on 2026-09-02.
+**Status:** CLOSED. The measurement (§1–§5) is closed. The Role contradiction it surfaced is closed
+by **Owner ruling 2026-09-02** and implemented in §6–§8. Two non-closures remain, named in §9: TEAM
+and SELF are granted but activated nowhere, so their carriers resolve zero reach. No production
+change, no deploy.
+
+Measured against `fd40ff5d` (§1–§5) and re-measured against `c54cd218` for the ruling (§6–§9).
 
 **Why this document exists.** The dashboard reporting census
 (`eos-dashboard-reporting-authority-census.md`, PR #1740) reported as its headline finding that
@@ -81,6 +84,12 @@ running it.
 Measured by resolver on `fd40ff5d`. 43 Roles total; only those holding any `finance.*` reach
 capability are listed.
 
+> **This table is the BEFORE state — it is history, not current.** The Owner ruling of 2026-09-02
+> changed it: `generalManager`, `financeManager` and `accountingManager` now carry CONSOLIDATED,
+> `salesManager` carries TEAM, `salesperson` carries SELF, and `financeManager` holds
+> `finance.read` at all. **§7 is the current matrix.** This one is kept because §4's withdrawal of
+> the census finding is only legible against the state that was actually measured.
+
 | Role | `finance.read` | `visibility.self` | `.team` | `.businessUnit` | `.company` | `.consolidated` | Reach in SANDBOX | Reach in PRODUCTION |
 |---|---|---|---|---|---|---|---|---|
 | `admin` (compatibility) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **CONSOLIDATED** | none |
@@ -128,8 +137,11 @@ The census document carries this correction inline; this file is its evidence.
 
 ## 5. Deterministic proof
 
-`functions/test/fin004ReachComposition.test.mjs` — 10 checks, all passing, run with
-`node --test test/fin004ReachComposition.test.mjs` after `npm run build`.
+`functions/test/fin004ReachComposition.test.mjs` — **18 checks**, all passing, run with
+`node --test test/fin004ReachComposition.test.mjs` after `npm run build` (it is also in the
+CI-covered `test:access` chain). It began as 10 checks proving the invariant; the 2026-09-02
+ruling added the approved-matrix, activation-state and TEAM/SELF binding blocks, and turned the
+CONTRADICTION check into the PARITY CLOSED check.
 
 It exists because the two pre-existing suites each test one layer:
 `financialVisibility.test.mjs` proves the authority layer (given grants, what is visible);
@@ -162,65 +174,132 @@ watching them fail, then restoring:
 | resolver ignores per-environment activation | PROOF 2 and PROOF 5 |
 
 ---
+## 6. The Finance Manager contradiction — CLOSED by Owner ruling 2026-09-02
 
-## 6. The one unresolved Owner decision
+**What was measured** (2026-09-02, `c54cd218`): `financeManager` held **5** permissions and
+**zero** `finance.*` ids, so the Role named Finance Manager could not read a single financial fact
+anywhere. `accountingManager` held **17**, including all five `finance.*` ids. Both descriptions
+said *"Intentionally identical (Owner ruling 2026-08-18)"*, and the source comment added *"a future
+divergence has to be a decision, not a drift."*
 
-**Finance Manager holds no finance capability at all, while both Roles' descriptions claim they
-are intentionally identical.**
+**Why nothing caught it.** The pinning test was **directional** — `accounting ⊇ finance` and
+`accounting.length >= finance.length`. Both hold at 17 vs 5. It passed while its own comment ("the
+two are identical again") was false.
 
-Measured on `fd40ff5d`:
+**The Owner ruled** (2026-09-02): the two Roles remain intentionally identical; restore parity.
+This is a restoration of already-recorded Role policy, not a new expansion of business authority.
 
-- `financeManager` — **5** permissions: `audit.event.read`, `customer.governedField.write`,
-  `customer.record.read`, `reorder.purchaseOrder.read`, `salesOrder.read`.
-  **Zero `finance.*` ids.** It fails the fact-family gate outright, so it cannot read a single
-  financial fact in any environment.
-- `accountingManager` — **17** permissions, including all five `finance.*` ids
-  (`read`, `invoice.issue`, `payment.apply`, `adjustment.record`, `refund.record`).
-- The difference is twelve permissions, entirely one-directional: `financeManager ⊂
-  accountingManager`.
+**Implemented.** Both Roles are now built from **one shared constant**,
+`MONEY_MANAGER_PERMISSIONS` in `functions/src/access/governedBusinessRoles.ts`. Two arrays that
+must be equal are two chances to be wrong; one array is zero. This is not an abstraction — it is a
+single shared literal with no factory, no indirection and no new type. If the Owner ever rules the
+two Roles apart, the constant splits in that same change, and the equality test requires it.
 
-**Yet both descriptions say so in as many words:**
+The pinning test is now **exact set equality** (`governedBusinessRoles.test.mjs`), which rejects a
+missing permission, an extra permission, and same-length-different-membership. All three rejections
+are demonstrated against the real permission set rather than asserted in prose, because "at least"
+is precisely what let the drift through.
 
-> `accountingManager`: "…Intentionally identical to Finance Manager (Owner ruling 2026-08-18)."
-> `financeManager`: "…Intentionally identical to Accounting Manager (Owner ruling 2026-08-18)."
+**Result:** `financeManager` 5 → **18**; `accountingManager` 17 → **18**; the two sets are exactly
+equal. The twelve ids Finance Manager regained are the five `finance.*` authorities, five
+`inventory.*` / `warehouse.*` reads and `opportunity.read` — plus `finance.visibility.consolidated`,
+which both Roles gain under §7.
 
-And the source comment above `ACCOUNTING_MANAGER_ROLE` adds: *"The two sets are now intentionally
-identical, and the pinning test was inverted to assert exactly that — so a future divergence has
-to be a decision, not a drift."*
-
-**Why nothing caught it.** The pinning test
-(`governedBusinessRoles.test.mjs`, "Accounting Manager retains everything Finance Manager holds")
-is **directional**: it asserts `accounting ⊇ finance` and
-`accounting.length >= finance.length`. Both hold at 17 vs 5. The test passes while its own
-comment — *"the two are identical again"* — is false. It permits the divergence it was written to
-detect, because "at least" was chosen over "equal" to allow a future Accounting-only grant.
-
-**The decision required.** Which Role is the financial-oversight Role, and what does it hold?
-Three coherent answers, none of which a build may pick:
-
-1. **Restore parity** — grant `financeManager` the twelve ids, making the descriptions true.
-2. **Retire the parity claim** — Accounting is the operational financial Role, Finance is
-   policy-only; correct both descriptions and the pinning test's comment to say so.
-3. **Re-specify Finance Manager** — it is the natural holder of a `finance.visibility.*` scope
-   (§3 shows only admin/owner hold any), which would make it the first non-admin financial
-   reader. That is a reach grant and is squarely an Owner decision.
-
-**Not fixed here, deliberately.** Granting a finance capability to a Role by inference is the
-exact move the addendum's step 6 forbids, and step 4 conditions implementation on the carrying
-Roles being resolved first. The current state is pinned by the CONTRADICTION test so that the day
-this is ruled, that test fails and forces this record to be updated rather than silently
-outgrown.
-
-**Related, and also open:** the F14 §2 grant table still marks "carrying role TBD" for the
-Financial-company-manager, BU-manager, self-view-salesperson, team-manager and
-consolidated-executive personas. §3 shows the concrete gap: eleven Roles hold the fact-family
-gate and no scope, so none of those personas can read anything until a scope is granted to a
-carrying Role. That remains exactly the decision F14 recorded; nothing in this reconciliation
-closes it.
+**One consequential side effect, recorded rather than absorbed.** Parity carries
+`warehouse.transferOrder.read` to `financeManager`, taking the canonical transfer-order-read roster
+from eight Roles to nine. That follows necessarily from the parity ruling (accountingManager's
+canonical row declares the id), and the expectation list in `governedBusinessRoles.test.mjs` was
+updated with that reasoning attached rather than silently widened.
 
 ---
 
-## 7. Preserved, and verified preserved
+## 7. Financial visibility matrix — Owner ruling 2026-09-02
+
+Financial visibility is granted by explicit business need. Holding `finance.read` alone does not
+imply reach; the FIN-004 invariant in §1 is unchanged.
+
+| Role | Ruled scope | Carried after this change | Note |
+|---|---|---|---|
+| `owner` | CONSOLIDATED | SELF, TEAM, BUSINESS_UNIT, OPERATING_COMPANY, CONSOLIDATED | **Untouched** — pre-existing derived grants left exactly as they were |
+| `admin` | CONSOLIDATED | SELF, TEAM, BUSINESS_UNIT, OPERATING_COMPANY, CONSOLIDATED | **Untouched**, same reason (derived from the whole catalog, Owner ruling 2026-08-19) |
+| `generalManager` | CONSOLIDATED | CONSOLIDATED | granted |
+| `financeManager` | CONSOLIDATED | CONSOLIDATED | granted via `MONEY_MANAGER_PERMISSIONS` |
+| `accountingManager` | CONSOLIDATED | CONSOLIDATED | granted via `MONEY_MANAGER_PERMISSIONS` |
+| `salesManager` | TEAM | TEAM | granted; resolves zero until TEAM is activated (§9) |
+| `salesperson` | SELF | SELF | granted; resolves zero until SELF is activated (§9) |
+
+**Explicitly granted no scope by this ruling**, and verified to have gained none:
+`operationsManager`, `fieldManager` (Service Manager), `purchasingManager`, `officeManager`,
+`marketingManager`, `shopManager`, `shopAssociate`, `partsManager`, `partsAssociate`,
+`warehouseManager`, `warehouseAssociate`, `dispatcher`, `technician`, `generalEmployee`,
+`controller`, and every execution/special-purpose Role. A test asserts that **no** Role outside the
+approved matrix carries any `finance.visibility.*`.
+
+**Seven Roles now hold `finance.read` with no scope** — `controller`, `fieldManager`,
+`partsAssociate`, `partsManager`, `purchasingManager`, `shopAssociate`, `shopManager`. This is an
+**allowed, intentional, fail-closed state**, and each is measured to resolve zero reach rather than
+merely being unlisted.
+
+**BUSINESS_UNIT and OPERATING_COMPANY gained no new carrier.** Both remain valid FIN-004
+architecture for future explicit use; `admin` and `owner` carried them before and still do, and a
+test pins that the carrier set for each is exactly those two.
+
+---
+
+## 8. Activation state — measured, and deliberately not completed
+
+| Capability | Catalog | Sandbox-eligible | Sandbox active | Production active |
+|---|---|---|---|---|
+| `finance.read` | `active:false` | yes | **yes** | no |
+| `finance.visibility.consolidated` | `active:false` | yes | **yes** | no |
+| `finance.visibility.team` | `active:false` | **no** | no | no |
+| `finance.visibility.self` | `active:false` | **no** | no | no |
+| `finance.visibility.businessUnit` | `active:false` | no | no | no |
+| `finance.visibility.company` | `active:false` | no | no | no |
+
+Production carries **zero** capability activation overrides, and the block is role-keyed as well as
+data-driven — a production entry declaring one would still resolve EMPTY.
+
+### Resolved reach after this change
+
+| Role | Sandbox | Production | Why |
+|---|---|---|---|
+| `owner` | **CONSOLIDATED** | none | carries five scopes; only CONSOLIDATED is active |
+| `admin` | **CONSOLIDATED** | none | same |
+| `generalManager` | **CONSOLIDATED** | none | new grant, active scope |
+| `financeManager` | **CONSOLIDATED** | none | new grant, active scope |
+| `accountingManager` | **CONSOLIDATED** | none | new grant, active scope |
+| `salesManager` | **ZERO** | none | TEAM granted, TEAM inactive — GRANT ≠ ACTIVATION |
+| `salesperson` | **ZERO** | none | SELF granted, SELF inactive — same |
+| every other Role | **ZERO** | none | carries no scope |
+
+TEAM and SELF were **not** activated here. The ruling forbids completing the matrix by activation
+in this change, and they are not in the eligible-id allow-list — so even declaring them in an
+environment registry would not activate them. That intersection is asserted by test.
+
+---
+
+## 9. Non-closures
+
+1. **TEAM activation.** `finance.visibility.team` is granted to `salesManager` and is neither
+   eligible nor active in any environment. Sales Manager financial reach is **zero** until an Owner
+   activation ruling adds it to `SPINE_OVERRIDE_ELIGIBLE_IDS` *and* to the sandbox registry.
+2. **SELF activation.** Identical position for `finance.visibility.self` on `salesperson`.
+3. **Binding prerequisites — not measured against live data, deliberately.** Even once activated,
+   TEAM requires `loadPrincipalPositions` / `visibleEmployeeIdsFor` to resolve a non-empty set, and
+   SELF requires `users/{uid}.employeeId` to be linked. Both fail closed today, asserted at the
+   authority layer (§5). Whether sandbox personas actually carry the required position rows and
+   employee links is a **live-data question a repository change cannot answer**, and it was not
+   assumed. Measure it as part of any TEAM/SELF activation package — a granted, activated scope
+   that binds to nothing still reaches nothing, which is correct but would look like a bug.
+4. **Production unchanged.** No override, no deploy, no reachable grant.
+5. **FIN-BLOCK-003 unaffected.** Cost and margin remain structurally UNKNOWN. Reach is not cost:
+   a CONSOLIDATED carrier can see every governed financial fact and still gets UNKNOWN for margin.
+
+---
+---
+
+## 10. Preserved, and verified preserved
 
 | Property | State | Where proven |
 |---|---|---|

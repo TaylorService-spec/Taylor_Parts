@@ -4466,3 +4466,80 @@ Rules branch. No Rules, Functions, grants, capabilities, or authority surface ch
 
 The historic classification lines in the R-32-era entries above are history and are not
 rewritten; this entry is the closure record.
+
+---
+
+## #159 — OWNER RULING: Finance Manager parity restored + the FIN-004 financial visibility matrix (2026-09-02)
+
+**Context.** The dashboard reporting census (#1740) reported that no Role carried any
+`finance.visibility.*` capability. That finding was WRONG — it was measured by grepping the Role
+source files, which cannot see `admin`'s derived grants (`ADMIN_CURATED_PERMISSIONS` + the whole
+`PERMISSION_CATALOG`, ruling 2026-08-19). The correction is #1743 and
+`docs/assessments/fin004-reach-reconciliation.md`.
+
+Re-measuring by resolver DID surface a real defect. `financeManager` held **5** permissions and
+**zero** `finance.*` ids — the Role named Finance Manager could not read a single financial fact
+anywhere — while `accountingManager` held **17**, and both Role descriptions said *"intentionally
+identical (Owner ruling 2026-08-18)"*. Nothing caught it because the pinning test was
+**directional** (`accounting ⊇ finance`, `length >=`), which passes at 17 vs 5 while its own
+comment ("the two are identical again") was false.
+
+**Ruling 1 — parity.** Finance Manager and Accounting Manager **remain intentionally identical**.
+Parity is RESTORED. This is a restoration of already-recorded Role policy (#114 as amended
+2026-08-18), not a new expansion of business authority.
+
+This supersedes the ORDERING left by the 2026-08-19 "Purchasing falls under accounting" ruling:
+purchasing moved to `purchasingManager` on 2026-08-20, so nothing remains that Accounting should
+hold and Finance should not. The relationship is **equality**, and the pinning test is now exact
+set equality — it must reject a missing permission, an extra permission, and
+same-length-different-membership. Both Roles are built from ONE shared constant
+(`MONEY_MANAGER_PERMISSIONS`); if they are ever ruled apart, that constant splits in the same change.
+
+**Ruling 2 — the financial visibility matrix.** Financial visibility is granted by explicit
+business need. Holding `finance.read` alone does NOT imply reach; the FIN-004 invariant stands —
+FINANCIAL REACH = fact-family gate + active explicit visibility scope, and either alone reaches
+nothing.
+
+| Role | Scope |
+|---|---|
+| `owner` | CONSOLIDATED (existing grants untouched) |
+| `admin` | CONSOLIDATED (existing grants untouched) |
+| `generalManager` | CONSOLIDATED |
+| `financeManager` | CONSOLIDATED |
+| `accountingManager` | CONSOLIDATED |
+| `salesManager` | TEAM |
+| `salesperson` | SELF |
+
+**No new financial visibility for** `operationsManager`, `fieldManager`, `purchasingManager`,
+`officeManager`, `marketingManager`, `shopManager`, `shopAssociate`, `partsManager`,
+`partsAssociate`, `warehouseManager`, `warehouseAssociate`, `controller`, `dispatcher`,
+`technician`, `generalEmployee`, or any execution/special-purpose Role. A Role carrying
+`finance.read` and no scope is an **allowed, intentional, fail-closed state**.
+
+**No new BUSINESS_UNIT or OPERATING_COMPANY carrier.** Those scope types remain valid FIN-004
+architecture for future explicit use; this ruling establishes no carrier for either.
+
+**Ruling 3 — GRANT ≠ ACTIVATION; the matrix is deliberately NOT completed.** Only
+`finance.visibility.consolidated` is sandbox-eligible and sandbox-active. So `salesManager` (TEAM)
+and `salesperson` (SELF) hold real ruled grants and resolve **ZERO** reach until a separate Owner
+activation ruling makes those scopes eligible and active. That is the correct outcome, not an
+incomplete one. Production activates nothing for any principal, `admin` and `owner` included.
+
+**Scope binding is fail-closed and unchanged.** TEAM resolves through the governed hierarchical
+visibility authority; SELF binds through `users/{uid}.employeeId`. An unresolved team or an
+unlinked employee reaches zero and is surfaced as a BLOCKED scope — never widened, never inferred
+from Customer ownership, creator, or Opportunity owner.
+
+**Consequential side effect, recorded rather than absorbed:** parity carries
+`warehouse.transferOrder.read` to `financeManager`, taking that roster from eight Roles to nine.
+Required by the parity ruling, since Accounting Manager's canonical row declares the id.
+
+**Not changed by this ruling:** financial calculations, invoice/payment/AR semantics, FIN-002
+attribution, FIN-004 visibility semantics, Firestore Rules, scope types, production. FIN-BLOCK-003
+is untouched — reach is not cost, and margin remains structurally UNKNOWN for every carrier.
+
+**Evidence:** `functions/test/fin004ReachComposition.test.mjs` (18 checks: the five invariant
+proofs, the approved matrix, the no-unintended-carrier guard, activation state, per-environment
+resolved reach, and TEAM/SELF binding) and the exact-equality parity proof in
+`functions/test/governedBusinessRoles.test.mjs`. Record:
+`docs/assessments/fin004-reach-reconciliation.md` §6–§9.
