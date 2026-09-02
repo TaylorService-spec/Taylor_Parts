@@ -39,9 +39,15 @@ export function financialFactsState({ loading, errorStatus, result }) {
   if (errorStatus === "denied") return { state: FACTS_STATE.DENIED };
   if (errorStatus === "unavailable" || result == null) return { state: FACTS_STATE.UNAVAILABLE };
   if (result.status !== "ready") return { state: FACTS_STATE.UNAVAILABLE };
-  if (!Array.isArray(result.invoices) || result.invoices.length === 0) {
-    return { state: FACTS_STATE.EMPTY, result };
-  }
+  // EMPTINESS IS ABOUT THE WHOLE ANSWER, NOT ABOUT INVOICES.
+  //
+  // This used to test `result.invoices` alone, which quietly broke Payments: that page requests
+  // factTypes ["PAYMENT_RECEIPT","PAYMENT_APPLICATION"], so the server correctly returns an EMPTY
+  // invoices array alongside four real payments — and the page declared itself empty while holding
+  // the records it was asked to show. A read that returned facts must never render as "no records".
+  const returned =
+    (result.invoices?.length ?? 0) + (result.payments?.length ?? 0) + (result.applications?.length ?? 0);
+  if (returned === 0) return { state: FACTS_STATE.EMPTY, result };
   return { state: FACTS_STATE.READY, result };
 }
 
