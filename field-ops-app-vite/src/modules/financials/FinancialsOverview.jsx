@@ -17,10 +17,10 @@ import {
   FinAnnotation,
 } from "./FinancialsPrimitives.jsx";
 import HonestState from "../../shared/ui/HonestState.jsx";
-import { LIFECYCLE_SCORECARD_SLOTS, READ_STATE_DETAIL } from "../../domain/financialsSurface.js";
+import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
-import { financialFactsState, lifecycleScorecard } from "../../domain/financialFactsView.js";
+import { financialFactsState, lifecycleScorecard, agingSlots } from "../../domain/financialFactsView.js";
 
 // The page frame already renders the standing "Operational financial subledger — not the
 // general ledger" line. This description therefore carries the clause that line does not,
@@ -59,6 +59,9 @@ export default function FinancialsOverview() {
   }, { enabled: !period.blocked });
   const { state, result } = financialFactsState(read);
   const slots = lifecycleScorecard(state, result);
+  // The 61+ exception is now a real governed figure — the server ages it. The other three lines
+  // have no read behind them and say which one is missing, rather than sharing one vague sentence.
+  const aging = agingSlots(state, result);
 
   return (
     <FinancialsPageFrame
@@ -154,11 +157,19 @@ export default function FinancialsOverview() {
               </li>
               <li>
                 <span>Unapplied payments</span>
-                <span className="fin-inact">No payments read</span>
+                {/* Not a missing read — a missing RECORD TYPE. The payment core refuses
+                    over-application, so no governed receipt can carry an unapplied balance. */}
+                <span className="fin-inact">No governed record can carry one</span>
               </li>
               <li>
-                <span>Invoices 60+ days</span>
-                <span className="fin-inact">No A/R read on this page</span>
+                <span>Invoices 61+ days overdue</span>
+                {aging.b61_plus ? (
+                  <span>{aging.b61_plus}</span>
+                ) : (
+                  <span className="fin-inact">
+                    {aging.supplied ? "Nothing 61+ days overdue" : "Not supplied by this read"}
+                  </span>
+                )}
               </li>
               <li>
                 <span>Reconciliation exceptions</span>
@@ -166,8 +177,8 @@ export default function FinancialsOverview() {
               </li>
             </ul>
             <p className="fin-section-note">
-              Attention before totals
-              <FinAnnotation tip={`Each exception line is a governed read with a drilldown, never a computed guess. ${READ_STATE_DETAIL.notWired} Reconciliation reports its own missing authority (FIN-010 external: no accounting authority selected) rather than a zero — a zero would claim a reconciliation read that does not exist.`} />
+              Attention before totals — only what is governed
+              <FinAnnotation tip={`Each line states its OWN authority rather than sharing one vague sentence. Invoices 61+ days is a real server-derived figure (the aging is computed beside the outstanding total it reconciles with). Billing blocked has no readiness read. Unapplied payments is not a missing read but a missing record type — the payment core refuses over-application, so no governed receipt can carry an unapplied balance. Reconciliation reports its missing authority (FIN-010: no accounting provider selected) rather than a zero, because a zero would claim a reconciliation read that does not exist.`} />
             </p>
           </section>
 

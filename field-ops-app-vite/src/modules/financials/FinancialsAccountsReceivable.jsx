@@ -23,6 +23,7 @@ import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows, agingSlots, unagedNote } from "../../domain/financialFactsView.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import { Link } from "react-router-dom";
 
@@ -53,6 +54,7 @@ export default function FinancialsAccountsReceivable() {
   const aging = agingSlots(state, result);
   const unaged = answered ? unagedNote(result) : null;
   const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
+  const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
   const honest =
     answered && rows.length === 0
@@ -148,7 +150,15 @@ export default function FinancialsAccountsReceivable() {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.invoiceId}>
-                    <td>{row.accountId ? <Link to={`/customers/${row.accountId}`}>{row.accountId}</Link> : "—"}</td>
+                    <td>
+                      {row.accountId ? (
+                        <Link to={`/customers/${row.accountId}`}>
+                          {names.get(row.accountId) ?? "Customer name not resolved"}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="fin-nowrap">
                       <Link to={`/financials/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link>
                     </td>

@@ -7382,6 +7382,38 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-figure__value { font-family: var(--font-record-title, "Source Serif 4", serif); font-size: 28px; font-weight: 700; margin-top: 2px; }
 .fin-figure__absence { font-size: 13px; font-style: italic; color: var(--color-text-secondary); margin-top: 6px; }
 .fin-figure__link { display: inline-block; font-size: 12px; margin-top: 4px; }
+
+/* ══════ SHARED SCORECARD ALIGNMENT (F5) ══════
+   Owner finding: cells across the Financials scorecards did not line up. The cause is structural,
+   not cosmetic — every cell stacks label / value-or-absence / classification / link, but a value
+   (28px serif) and an absence (13px italic) are different heights, and only some cells carry a
+   link. Each cell was therefore laying itself out independently, and neighbours drifted.
+
+   SUBGRID makes the ROWS shared instead of per-cell, so row 3 of one cell sits on row 3 of the
+   one beside it whatever each contains. This is the alignment being declared once, in the band
+   that owns it, rather than per-page margins tuned until a screenshot looks right.
+
+   A cell renders only the rows it has — an absent link leaves its row empty rather than forcing
+   a placeholder — and the grammar stays: label, marker, value OR absence, classification, link. */
+.fin-scorecard { grid-auto-flow: row; grid-template-rows: auto auto auto auto; }
+.fin-scorecard__slot { display: grid; grid-template-rows: subgrid; grid-row: span 4; align-content: start; row-gap: 0; }
+.fin-figure { display: grid; grid-template-rows: subgrid; grid-row: span 3; align-content: start; }
+
+/* Browsers without subgrid keep the same grammar via shared minimum row heights. Not a margin
+   hack: the minimums are the row heights the grammar implies, applied to every cell equally. */
+@supports not (grid-template-rows: subgrid) {
+  .fin-scorecard__slot, .fin-figure { display: block; }
+  .fin-figure__label { min-height: 16px; }
+  .fin-figure__value, .fin-figure__absence { min-height: 34px; display: flex; align-items: flex-end; }
+  .fin-factclass { min-height: 15px; }
+}
+
+@media (max-width: 640px) {
+  /* Stacked at 375 each cell is its own row, so shared rows would fight the recomposition. */
+  .fin-scorecard { grid-template-rows: none; }
+  .fin-scorecard__slot { grid-row: auto; grid-template-rows: none; display: block; }
+  .fin-figure { grid-row: auto; grid-template-rows: none; display: block; }
+}
 .fin-factclass { display: block; font: 600 9.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); margin-top: 3px; }
 
 .fin-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-6, 32px); margin-top: var(--space-4, 16px); }

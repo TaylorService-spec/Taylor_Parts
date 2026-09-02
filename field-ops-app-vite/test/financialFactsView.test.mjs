@@ -12,6 +12,8 @@ import {
   lifecycleScorecard,
   agingSlots,
   unagedNote,
+  paymentIdentity,
+  paymentContext,
   formatByCurrency,
   invoiceRow,
   outstandingRows,
@@ -365,4 +367,73 @@ test("SOURCE GUARD: page 04 never says 'Nothing owed' for a read that supplied n
   const src = readFileSync(new URL("../src/modules/financials/FinancialsAccountsReceivable.jsx", import.meta.url), "utf8");
   assert.ok(/aging\.supplied/.test(src), "the page must branch on whether aging was supplied");
   assert.ok(/Not supplied by this read/.test(src), "an unsupplied read must say so");
+});
+
+// ─── Payment identity (F3) ───
+//
+// A cash receipt has NO governed number: CashReceiptRecord carries company, account, currency,
+// amount, method, receivedAtMillis, externalRef and the applied projection — and no sequence. The
+// identity is therefore COMPOSED from facts the record holds, and must never become a number.
+const RECEIPT = {
+  paymentId: "94tpLflR0v43mdvbwfRD",
+  accountId: "cw-acct-0002",
+  companyId: "taylor",
+  currency: "USD",
+  amountMinor: 250_000,
+  appliedMinor: 250_000,
+  receivedAtMillis: Date.UTC(2026, 7, 30, 12),
+  method: "ACH",
+  externalRef: "ACH-83921",
+};
+
+test("a payment's identity is composed from its own facts — never the document id", () => {
+  const id = paymentIdentity(RECEIPT, "Churn");
+  assert.match(id, /Churn/);
+  assert.match(id, /\$2,500\.00/);
+  assert.match(id, /2026/);
+  assert.ok(!id.includes(RECEIPT.paymentId), "the raw record id must never appear in the identity");
+});
+
+test("a missing customer name or date degrades truthfully, and never breaks the identity", () => {
+  assert.match(paymentIdentity(RECEIPT, null), /Customer not resolved/);
+  assert.match(paymentIdentity({ ...RECEIPT, receivedAtMillis: null }, "Churn"), /Date not recorded/);
+  assert.match(paymentIdentity({ ...RECEIPT, currency: null }, "Churn"), /Amount not recorded/);
+  // Still no document id in any degraded form.
+  for (const variant of [null, undefined]) {
+    assert.ok(!paymentIdentity({ ...RECEIPT, receivedAtMillis: variant }, null).includes(RECEIPT.paymentId));
+  }
+});
+
+test("context names the invoices a receipt settled, and omits an absent external ref", () => {
+  const apps = [
+    { paymentId: RECEIPT.paymentId, invoiceNumber: "INV-000003" },
+    { paymentId: RECEIPT.paymentId, invoiceNumber: "INV-000004" },
+    { paymentId: "other", invoiceNumber: "INV-999999" },
+  ];
+  const ctx = paymentContext(RECEIPT, apps);
+  assert.match(ctx, /Applied to INV-000003, INV-000004/);
+  assert.ok(!ctx.includes("INV-999999"), "another receipt's applications must not appear");
+  assert.match(ctx, /External ref ACH-83921/);
+  // An absent externalRef is ORDINARY — omitted, not rendered as a gap or a placeholder.
+  const noRef = paymentContext({ ...RECEIPT, externalRef: null }, apps);
+  assert.ok(!/External ref/.test(noRef));
+  assert.match(noRef, /Applied to/);
+  // A receipt with neither yields null rather than an empty fragment.
+  assert.equal(paymentContext({ ...RECEIPT, externalRef: null }, []), null);
+});
+
+test("SOURCE GUARD: no Financials surface renders a raw record id as its primary label", () => {
+  for (const name of ["FinancialsPayments", "FinancialsInvoices", "FinancialsAccountsReceivable"]) {
+    const src = readFileSync(new URL(`../src/modules/financials/${name}.jsx`, import.meta.url), "utf8");
+    // The first cell of a row must not print a bare id. These were the exact regressions:
+    assert.ok(!/<td>\{p\.paymentId\}<\/td>/.test(src), `${name} must not label a row with paymentId`);
+    assert.ok(!/<td>\{row\.accountId \?\? "—"\}<\/td>/.test(src), `${name} must not label a customer with accountId`);
+  }
+  const detail = readFileSync(new URL("../src/modules/financials/FinancialsPaymentDetail.jsx", import.meta.url), "utf8");
+  assert.ok(/paymentIdentity\(/.test(detail), "payment detail must title itself with the composed identity");
+  assert.ok(/Technical details/.test(detail), "the raw id must live in a technical block");
+  // And no direct status control anywhere on the payment surfaces.
+  for (const src of [detail, readFileSync(new URL("../src/modules/financials/FinancialsPayments.jsx", import.meta.url), "utf8")]) {
+    assert.ok(!/<select[^>]*status/i.test(src), "no direct payment status control may exist");
+  }
 });

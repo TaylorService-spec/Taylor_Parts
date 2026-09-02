@@ -28,6 +28,7 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
   FACTS_STATE,
@@ -64,6 +65,9 @@ export default function FinancialsInvoiceDetail() {
     const ids = new Set(applications.map((a) => a.paymentId));
     return (result?.payments ?? []).filter((p) => ids.has(p.paymentId));
   }, [applications, result]);
+
+  const names = useAccountNames(found?.accountId ? [found.accountId] : []);
+  const customerName = found?.accountId ? (names.get(found.accountId) ?? null) : null;
 
   const row = found ? invoiceRow(found) : null;
   const credited = found
@@ -157,7 +161,9 @@ export default function FinancialsInvoiceDetail() {
                     <th scope="row">Customer</th>
                     <td>
                       {found.accountId ? (
-                        <Link to={`/customers/${found.accountId}`}>{found.accountId}</Link>
+                        <Link to={`/customers/${found.accountId}`}>
+                          {customerName ?? "Customer name not resolved"}
+                        </Link>
                       ) : (
                         "Not recorded"
                       )}
