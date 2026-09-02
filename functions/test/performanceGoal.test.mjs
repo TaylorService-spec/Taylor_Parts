@@ -136,6 +136,17 @@ test("every inactive metric names a blocker, and every active one names none", (
   );
 });
 
+test("the registered and active counts are PINNED, because a number in a comment drifts", () => {
+  // These two numbers appear in the registry's header comment and in DECISIONS #161. Both were
+  // wrong by the time this branch was pushed -- written as 30/9 early and left behind as entries
+  // were added -- which is exactly why they are asserted here rather than only stated in prose.
+  //
+  // A failure is not a defect: it means a metric was added or activated, and the two places that
+  // quote these counts need updating in the same change. That is the point.
+  assert.equal(PERFORMANCE_METRICS.length, 37, "registered metrics");
+  assert.equal(metricsActiveForGoals().length, 10, "metrics a goal may be created against today");
+});
+
 test("no WINDOWED metric is active for goals -- there is no reporting-period authority", () => {
   // G-05. This is the single rule that keeps the registry honest: every windowed actual would need a
   // fiscal calendar, a reporting timezone, MTD/QTD/YTD, a partial-period rule and a prior-period

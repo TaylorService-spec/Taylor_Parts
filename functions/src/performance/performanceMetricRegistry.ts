@@ -28,9 +28,12 @@
 // metric: a target whose actual cannot be computed is a promise the dashboard cannot keep, and
 // "the goal exists" must never be mistaken for "the measurement exists".
 //
-// Twenty-one of the thirty entries below are inactive. That ratio is the honest current state of
-// the platform, not a gap in this file -- see the census (docs/assessments/
-// eos-dashboard-reporting-authority-census.md) for each blocker's evidence.
+// TWENTY-SEVEN of the thirty-seven entries below are inactive. That ratio is the honest current
+// state of the platform, not a gap in this file -- see the census (docs/assessments/
+// eos-dashboard-reporting-authority-census.md) for each blocker's evidence. Both counts are PINNED
+// by performanceGoal.test.mjs rather than only stated here, because a number in a comment is a
+// number that drifts: these two already did, between the first draft of this file and its last
+// entry.
 //
 // PURE. No Firestore, no clock, no throwing on lookup -- an unknown id resolves to undefined.
 import type { MeasurementBasis } from "../finance/planVsActual";

@@ -4616,8 +4616,8 @@ non-monetary actions (e.g. plan approval)" — FIN-007 supplies the mechanical i
 (self-approval forbidden under any policy, a reason mandatory), and WHO may approve is the one thing
 FIN-007 leaves to its composer. **FIN-003 did not change to receive its missing halves.**
 
-**A metric registry, not free-form ids.** A goal may reference only a registered metric. Thirty are
-registered; NINE are active. The other twenty-one are registered WITH THEIR BLOCKER NAMED, because
+**A metric registry, not free-form ids.** A goal may reference only a registered metric.
+THIRTY-SEVEN are registered; TEN are active. The other twenty-one are registered WITH THEIR BLOCKER NAMED, because
 what the platform would measure and exactly what stops it is more useful than silence. Every WINDOWED
 metric is inactive — G-05, no reporting-period authority — which is the single rule keeping the
 registry honest.
