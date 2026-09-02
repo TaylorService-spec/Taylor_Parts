@@ -76,6 +76,26 @@ test("denial, failure, emptiness and readiness are four distinct states", () => 
   assert.equal(financialFactsState({ loading: false, result: READY }).state, FACTS_STATE.READY);
 });
 
+test("a payments-only read is READY — emptiness is about the whole answer, not about invoices", () => {
+  // Page 05 asks for factTypes ["PAYMENT_RECEIPT","PAYMENT_APPLICATION"], so the server correctly
+  // returns an EMPTY invoices array beside real payments. Testing invoices alone declared the page
+  // empty while it held the very records it was asked to show.
+  const paymentsOnly = {
+    status: "ready",
+    invoices: [],
+    payments: [{ paymentId: "pay-1", amountMinor: 100000, appliedMinor: 100000, currency: "USD" }],
+    applications: [{ applicationId: "app-1", appliedAmountMinor: 100000, currency: "USD" }],
+  };
+  assert.equal(financialFactsState({ loading: false, result: paymentsOnly }).state, FACTS_STATE.READY);
+  const applicationsOnly = { status: "ready", invoices: [], payments: [], applications: paymentsOnly.applications };
+  assert.equal(financialFactsState({ loading: false, result: applicationsOnly }).state, FACTS_STATE.READY);
+  // A genuinely empty answer is still EMPTY.
+  assert.equal(
+    financialFactsState({ loading: false, result: { status: "ready", invoices: [], payments: [], applications: [] } }).state,
+    FACTS_STATE.EMPTY,
+  );
+});
+
 test("an absent per-currency figure is a dash, never a fabricated zero", () => {
   assert.equal(formatByCurrency({}), "—");
   assert.equal(formatByCurrency(undefined), "—");
