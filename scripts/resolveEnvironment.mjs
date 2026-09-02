@@ -106,6 +106,11 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   // would have allowed, which is a disagreement rather than a safeguard.
   'inventory.serializedAsset.acquire',
   'equipment.install',
+  // FIN-004 CONSOLIDATED REACH -- mirrors environmentCapabilityOverrides.ts, whose comment carries
+  // the full reasoning. Present here because the frontend bakes THIS list into the bundle: eligible
+  // on the backend but not here would mean the UI hides a surface the governed read would answer,
+  // which is a disagreement rather than a safeguard.
+  'finance.visibility.consolidated',
 ]);
 
 /**

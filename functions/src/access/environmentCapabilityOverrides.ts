@@ -134,6 +134,26 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   // dissolve the segregation at the environment layer after the Role layer had preserved it.
   "inventory.serializedAsset.acquire",
   "equipment.install",
+  // FIN-004 CONSOLIDATED REACH. Owner-authorized 2026-09-01, for sandbox Owner review only.
+  //
+  // WHY ONLY THIS ONE. `finance.read` is the fact-family gate and is already activated here, but
+  // FIN-004 requires a reach scope IN ADDITION — either alone reads nothing. Without a scope every
+  // Financials surface in sandbox denies, which is correct and unreviewable. Consolidated is the
+  // deliberate choice because the review covers the complete seeded Taylor + Ventana composition;
+  // SELF / TEAM / BUSINESS_UNIT / OPERATING_COMPANY are NOT made eligible merely because they
+  // exist, and making one eligible later remains a separate decision.
+  //
+  // THIS IS NOT AN ADMIN BYPASS AND CREATES NO SHORTCUT. `admin` and `owner` already hold this
+  // capability in their Role definitions; the only thing standing between them and reach was the
+  // catalog's active:false, which is exactly what this list lifts and nothing else. Every principal
+  // — admin included — still resolves through the one canonical FIN-004 resolver, and a Role that
+  // does not hold the capability still resolves DENY noQualifyingGrant. No Role definition was
+  // changed, and no grant was written.
+  //
+  // Production stays triple-blocked, unchanged: role-keyed resolution returns EMPTY for production
+  // regardless of data, no production entry carries an override key, and a test asserts both.
+  // Certification declares no overrides and is untouched.
+  "finance.visibility.consolidated",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -307,6 +327,14 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         // asserted rather than assumed.
         "inventory.serializedAsset.acquire",
         "equipment.install",
+        // FIN-004 CONSOLIDATED REACH for Owner review. Owner-authorized 2026-09-01, sandbox only.
+        // Mirrors config/environments.json, which is canonical; the drift guard compares them.
+        //
+        // ACTIVATION IS NOT A GRANT, and here that distinction is load-bearing rather than
+        // ceremonial: the capability stays active:false in the catalog, `admin` and `owner` already
+        // hold it in their Role definitions, and lifting the inactive-permission denial is the only
+        // effect. A Role that does not hold it still resolves DENY noQualifyingGrant.
+        "finance.visibility.consolidated",
       ]),
     }),
     // DEPLOYABLE SYNTHETIC CERTIFICATION RUNTIME. Provisioned 2026-08-30.
