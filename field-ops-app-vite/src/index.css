@@ -2316,7 +2316,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-receipt { border-left: 3px solid var(--color-success, var(--color-accent)); }
 .fo-chip { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer;
   background: var(--color-surface-sunken); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
-.fo-chip:hover { border-color: var(--color-brand-secondary); color: var(--color-brand-primary); }
+/* The scan-source chip is a <button>, so a hover that names only a foreground hands the FILL to the global
+   `button:hover` — evergreen under this near-black text, 1.81:1. Pinning the background is what
+   keeps this reading as a text control instead of a filled button. See .fin-hlp:hover for the
+   full account of this failure mode. */
+.fo-chip:hover { background: transparent; border-color: var(--color-brand-secondary); color: var(--color-brand-primary); }
+/* Every sibling control in this file states its own ring; this one was left on the UA default. The
+   hover contract's floor is that a state is never carried by hover alone, so the keyboard path
+   needs a ring that matches the rest of the system rather than whichever one the browser picks. */
+.fo-chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .fo-chip[aria-pressed="true"] { background: var(--color-brand-secondary); color: var(--color-text-inverse); border-color: var(--color-brand-secondary); }
 
 /* Fix the previously-undefined detail layout classes (EquipmentDetail et al. silently degraded to a card
@@ -3275,7 +3283,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   cursor: pointer;
 }
 
-.eos-auth__reveal:hover { color: var(--color-brand-primary); }
+/* The password reveal is a <button>, so a hover that names only a foreground hands the FILL to the global
+   `button:hover` — evergreen under this near-black text, 1.81:1. Pinning the background is what
+   keeps this reading as a text control instead of a filled button. See .fin-hlp:hover for the
+   full account of this failure mode. */
+.eos-auth__reveal:hover { background: transparent; color: var(--color-brand-primary); }
 .eos-auth__reveal:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 
 /* --- actions ------------------------------------------------------------- */
@@ -3320,7 +3332,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   text-decoration-color: var(--color-border-strong);
 }
 
-.eos-auth__secondary:hover:not(:disabled) { color: var(--color-brand-primary); }
+/* This sign-in link button is a <button>, so a hover that names only a foreground hands the FILL to the global
+   `button:hover` — evergreen under this near-black text, 1.81:1. Pinning the background is what
+   keeps this reading as a text control instead of a filled button. See .fin-hlp:hover for the
+   full account of this failure mode. */
+.eos-auth__secondary:hover:not(:disabled) { background: transparent; color: var(--color-brand-primary); }
 .eos-auth__secondary:disabled { color: var(--color-text-muted); cursor: not-allowed; text-decoration: none; }
 
 /* --- error --------------------------------------------------------------- */
@@ -7216,7 +7232,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-info__close { display: block; margin-top: 8px; padding: 0; background: none; border: 0;
   font: 600 11.5px var(--font-interface); letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--color-text-secondary); cursor: pointer; min-height: 44px; }
-.ns-info__close:hover { color: var(--color-text-primary); }
+/* The disclosure close is a <button>, so a hover that names only a foreground hands the FILL to the global
+   `button:hover` — evergreen under this near-black text, 2.27:1. Pinning the background is what
+   keeps this reading as a text control instead of a filled button. See .fin-hlp:hover for the
+   full account of this failure mode. */
+.ns-info__close:hover { background: none; color: var(--color-text-primary); }
 .ns-info__close:focus-visible { outline: 2px solid var(--color-text-primary); outline-offset: 2px; }
 @media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
   .ns-info__close { min-height: 0; }
@@ -7504,7 +7524,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Hover-ⓘ annotation: contract copy visible, explanation behind a focusable ⓘ. */
 .fin-hlp-wrap { position: relative; display: inline-block; }
 .fin-hlp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--color-text-secondary); border-radius: 50%; background: transparent; color: var(--color-text-secondary); font: 700 10px var(--font-interface); cursor: help; vertical-align: middle; margin-left: 6px; }
-.fin-hlp:hover, .fin-hlp:focus-visible { border-color: var(--color-text-primary); color: var(--color-text-primary); }
+/* THE PAIR RULE RUNS IN BOTH DIRECTIONS, AND THIS RULE BROKE IT THE OTHER WAY.
+   `.fin-hlp:hover` at 0-2-0 set only the FOREGROUND. The global `button:hover` at 0-1-1 lost the
+   colour and kept the background, so it supplied an evergreen fill under near-black text: 2.27:1,
+   measured live on every Financials route. Same disease as the reported `.fo-filter-btn` defect,
+   mirrored — there a class owned the fill and inherited the text, here it owned the text and
+   inherited the fill. Owning half a pair is the bug, whichever half you own.
+   `background: transparent` is therefore load-bearing, not redundant: it is what keeps the glyph
+   reading as a quiet outlined circle instead of a filled button. */
+.fin-hlp:hover, .fin-hlp:focus-visible { background: transparent; border-color: var(--color-text-primary); color: var(--color-text-primary); }
 .fin-tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: min(340px, 78vw); background: var(--color-text-primary); color: var(--color-surface-page); padding: 12px 14px; font: 400 12px/1.6 var(--font-interface); text-align: left; z-index: 40; box-shadow: var(--shadow-overlay, 0 6px 20px rgba(0,0,0,0.35)); }
 .fin-hlp:hover + .fin-tip, .fin-hlp:focus-visible + .fin-tip, .fin-hlp-wrap:hover .fin-tip { display: block; }
 
