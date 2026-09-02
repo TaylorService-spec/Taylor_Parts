@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-09-02
 owner: Claude Code
 related_adrs: ["ADR-014"]
@@ -193,7 +193,7 @@ idempotencyKey
 
 **Why `code` is excluded, and why this is the load-bearing exclusion.** The canonical code is a *function of* `(area, aisle, bay, position)` and the formatter policy. Including it would make the fingerprint depend on formatter configuration, so a later width change (`AA1-003` → `AA01-003`) would turn a legitimate create replay into an `IDEMPOTENCY_CONFLICT`. **The structured attributes are the identity; the code is a rendering of it.** A formatter change can never invalidate a replay.
 
-**Why `name` is excluded.** `name` is an optional human label explicitly "never used for matching" in the current registry. Making it part of create identity would mean correcting a typo in a rack's description turns a retry into a conflict. It is stored, it is updatable, and it is not identity.
+**Why `name` is excluded.** `name` is an optional human label explicitly "never used for matching" in the current registry. Making it part of create identity would mean correcting a typo in a rack's description turns a retry into a conflict. `name` is **non-identity descriptive metadata and is excluded from create idempotency identity. P1 does not add a separately governed name-update verb** — nothing is expanded merely to make that sentence true.
 
 **Replay comparison sequence** inside `createBin`'s single transaction:
 
