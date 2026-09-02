@@ -185,11 +185,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice due date",
       "dependencies": [
-        "**FIN-004: no Role carries a visibility scope**"
+        "FIN-004 reach — admin/owner only; see fin004-reach-reconciliation.md"
       ],
       "evidence": "`accountAttentionProjection.js:11-15`; `functions/src/finance/financialVisibility.ts`",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -267,11 +267,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice due date",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — trusted AR read\"; F12 `customer-financials`",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -474,11 +474,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`bookedAtMillis`",
       "dependencies": [
-        "FIN-004 grant; K-11 for any period figure"
+        "FIN-004 scope grant for any non-admin Role; K-11 for any period figure"
       ],
       "evidence": "F13 \"Booked · SUPPORTED (dormant)\"; `financialReportingRead.ts` serves persisted fact types only, booked excluded by construction (test-guarded)",
       "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
@@ -495,11 +495,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice event time",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — governed reporting read\"; F13",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -516,11 +516,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`recordedAtMillis`",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "F13",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -554,11 +554,11 @@
         "FIN-004 SELF/TEAM"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — reporting attribution\" (DECISIONS #154)",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -613,11 +613,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
-        "FIN-004 grant; K-11 for a window"
+        "FIN-004 scope grant for any non-admin Role; K-11 for a window"
       ],
       "evidence": "F12 `customer-financials`",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -634,11 +634,11 @@
         "OPERATING_COMPANY / CONSOLIDATED"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
-        "FIN-004 grant; FIN-BLOCK-004 for elimination"
+        "FIN-004 scope grant for any non-admin Role; FIN-BLOCK-004 for elimination"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — allocation & consolidation (FIN-009)\"; F13",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2051,11 +2051,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "**none today**"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`eventAtMillis`",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — invoice issuance\"; F12",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2072,11 +2072,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "invoice due date",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — trusted AR read\". **Truncation honesty: a page that would truncate renders \"unavailable\", never a partial \"ready\"**",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2093,11 +2093,11 @@
         "FIN-004 reach (payments inherit their invoice's visibility)"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "`recordedAtMillis`",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — payment / AR\"",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2114,11 +2114,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
-        "FIN-004 grant; FIN-007 policy values for the approval half"
+        "FIN-004 scope grant for any non-admin Role; FIN-007 policy values for the approval half"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — adjustments\", \"Finance — refund\"",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2135,11 +2135,11 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
-        "FIN-004 grant; **service work structurally cannot enter — FIN-BLOCK-002**"
+        "FIN-004 scope grant for any non-admin Role; **service work structurally cannot enter — FIN-BLOCK-002**"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — Billing Queue (F4)\"",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2156,7 +2156,7 @@
         "FIN-004 reach"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
@@ -2177,11 +2177,11 @@
         "OPERATING_COMPANY / CONSOLIDATED"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
-        "FIN-004 grant; FIN-BLOCK-004"
+        "FIN-004 scope grant for any non-admin Role; FIN-BLOCK-004"
       ],
       "evidence": "SYSTEM_AUTHORITIES FIN-009; F13",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2198,11 +2198,11 @@
         "FIN-004 SELF/TEAM"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "event time",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — governed reporting read\"",
       "dashboardEligibility": "DO_NOT_IMPLEMENT_YET",
@@ -2253,11 +2253,11 @@
         "FIN-004 reach for display"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
-        "FIN-004 grant"
+        "FIN-004 scope grant for any non-admin Role"
       ],
       "evidence": "SYSTEM_AUTHORITIES \"Finance — internal reconciliation (FIN-010)\"",
       "dashboardEligibility": "SAFE_AFTER_EXISTING_ACTIVATION",
@@ -2274,7 +2274,7 @@
         "per operating company"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "period bounds",
       "dependencies": [
@@ -2295,7 +2295,7 @@
         "approver role"
       ],
       "roles": [
-        "none today"
+        "admin, owner (CONSOLIDATED, sandbox only)"
       ],
       "timeBasis": "none",
       "dependencies": [
