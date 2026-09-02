@@ -7401,6 +7401,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    be mistaken for ownership or service responsibility at a glance. */
 .fin-attr-label { font-size: 11.5px; color: var(--color-text-secondary); }
 
+/* A record identifier is one token, not a phrase: INV-000003 broken across two lines stops being
+   scannable and reads as two things. Applied to the cell so the column sizes around the whole
+   identifier; the table's own overflow-x container still owns the horizontal boundary, so this
+   cannot push the page wider than the viewport. */
+.fin-nowrap { white-space: nowrap; }
+
+/* Three-slot scorecard (invoice record amounts), matching the existing --pair/--five grammar. */
+.fin-scorecard--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .fin-scorecard--three { grid-template-columns: minmax(0, 1fr); } }
+
 /* Hover-ⓘ annotation: contract copy visible, explanation behind a focusable ⓘ. */
 .fin-hlp-wrap { position: relative; display: inline-block; }
 .fin-hlp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--color-text-secondary); border-radius: 50%; background: transparent; color: var(--color-text-secondary); font: 700 10px var(--font-interface, Inter, sans-serif); cursor: help; vertical-align: middle; margin-left: 6px; }

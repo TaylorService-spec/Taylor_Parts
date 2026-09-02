@@ -10,6 +10,7 @@
 // may only narrow the result. Nothing on this page is authorization, and no figure below is
 // computed here — every amount is the server's own derivation.
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   FinancialsPageFrame,
   FinancialsFilterRail,
@@ -132,7 +133,11 @@ export default function FinancialsInvoices() {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.invoiceId}>
-                    <td>{row.invoiceNumber}</td>
+                    {/* The number is the human identity; the URL carries the document id, because
+                        numbers repeat across operating companies. */}
+                    <td className="fin-nowrap">
+                      <Link to={`/financials/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link>
+                    </td>
                     <td>{row.accountId ?? "—"}</td>
                     <td>
                       {row.companyId ?? "Not attributed"} · {row.businessUnit}
