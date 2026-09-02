@@ -808,3 +808,57 @@ The Financials family renders real governed data for the first time.
   remaining visible on page 03. Truthful, and left for an Owner decision.
 - FIXTURES: UNCHANGED. Nothing deleted, mutated, reissued, backfilled or normalized.
 - OWNER VISUAL ACCEPTANCE: PENDING.
+
+## 2026-09-02 — SALESPERSON ATTRIBUTION REVIEW ENABLEMENT
+
+Page 15 shows named salespeople with real governed figures, beside an honest statement of the
+facts it cannot attribute. Both generations coexist, which was the point.
+
+- DEPLOY SCOPE, computed from the IMPORT CLOSURE rather than guessed. Firebase bundles a function
+  with everything it transitively imports, so the closure IS the deploy surface. `issueInvoice`'s
+  closure is 19 files, of which 14 changed since its deployed generation (+1,267/−61) — far
+  narrower than the 39-commit / 72-file broader delta, which was NOT deployed.
+- THE ACCESS CORE MOVED IN THAT BUNDLE, AND IT WAS PROVED UNREACHABLE. R-32 (#1668, breaking)
+  ships inside issueInvoice's bundle. Its constraint set was enumerated: `scopesByPermission` is
+  declared by exactly two roles (warehouseManager, partsManager) over exactly two permissions
+  (inventory.transaction.read, reorder.request.create.manual). `finance.invoice.issue` — the ONE
+  capability issueInvoice evaluates — is unconstrained, and admin/owner still resolve ALLOW
+  qualifyingGrant. Bundles are per-function, so no other deployed function's resolver changed.
+- DEPLOYED: `functions:issueInvoice` ONLY (7a8dbd08 → ceb8e533, srcGen 1788317210074627).
+  applyPayment, listAccountInvoiceAr and listFinancialFacts retained their source generations;
+  132 functions before and after. No Rules, no indexes, no grants, no role changes.
+- PAYMENT COMMAND: NOT refreshed. The deployed applyPayment worked unchanged against newly issued
+  invoices — proved by installing, not assumed.
+- PAGE 15 NAME RESOLUTION (PR #1714): the rollup key is creditedSalespersonId, and the page was
+  rendering it raw ("cw-emp-034" where a name belongs) — the defect class actorDisplayName.js
+  exists to prevent. Reuses resolveEmployeeIdentity against the existing useEmployeeDirectory
+  byEmployeeId map: no new read, no server join, no new authority. resolveEmployeeIdentity gained
+  an optional `noun` (default "owner", so every existing caller is untouched); Financials passes
+  "salesperson", because calling an unresolved credit "Unknown owner" would assert the conflation
+  FIN-002 forbids. GROUPING IS UNCHANGED and tested: rollupRow receives only the server row, the
+  label is resolved FROM row.key, and money cannot regroup when someone is renamed. The guard is
+  mutation-proved — swapping in row.ownerEmployeeId makes it fail.
+- THREE ATTRIBUTED FIXTURES (fr-p2-*), additive. The six existing orders replayed as no-ops on the
+  same idempotency keys; only the three new ones executed.
+    NEW A  INV-000006 · taylor · EQUIPMENT_SALES · PAID     · 512,500 · credited cw-emp-034
+    NEW B  INV-000002 · ventana · PARTS          · PARTIAL  · 743,000 (250,000 applied) · cw-emp-035
+    NEW C  INV-000007 · taylor · EQUIPMENT_SALES · OPEN     · 1,050,000 · credited cw-emp-034,
+           owned by cw-emp-035 — owner != credited, and createdByUid (the operator) is neither.
+  A fixture-contract test caught a real mistake while writing these: NEW B first took Petra's own
+  customer for Lucian, collapsing the "each salesperson holds an account the other does not"
+  property. Corrected in the fixture, not relaxed in the test.
+- ATTRIBUTION VERIFIED ON THE PERSISTED RECORDS: 3 invoices carry a frozen
+  attribution.creditedSalespersonId and a line businessUnitId; company is derived from the
+  governed Sales Order on all three; createdByUid never became credit; customer owner never
+  overrode it. The 7 historical invoices remain UNATTRIBUTED and unmutated — no backfill.
+- BU AXIS EXERCISABLE FOR THE FIRST TIME: page 14's "By unit" view now resolves EQUIPMENT_SALES
+  and PARTS from the new invoices. Old invoices were not retrofitted.
+- LEGACY UPPERCASE `TAYLOR`: unchanged — LEGACY_UNNORMALIZED_BY_DESIGN.
+- HOSTING: 16087a74 (2026-09-02T02:57:27.318Z). No function moved with it.
+- GATE: 66/66 across six routes × two widths. Zero raw employee ids rendered anywhere, zero raw
+  client financial reads, zero 403s, zero console errors, zero horizontal overflow.
+    Page 15 · Lucian Brightwater — Billed $15,625.00 · Collected $5,125.00 · Outstanding $10,500.00
+              Petra Lindqvist   — Billed  $7,430.00 · Collected $2,500.00 · Outstanding  $4,930.00
+              plus "7 visible invoices carry no credited salesperson…" — the unattributed count is
+              NOT merged into either person.
+- OWNER VISUAL ACCEPTANCE: PENDING.
