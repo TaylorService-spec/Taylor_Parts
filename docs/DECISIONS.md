@@ -4543,7 +4543,101 @@ proofs, the approved matrix, the no-unintended-carrier guard, activation state, 
 resolved reach, and TEAM/SELF binding) and the exact-equality parity proof in
 `functions/test/governedBusinessRoles.test.mjs`. Record:
 `docs/assessments/fin004-reach-reconciliation.md` §6–§9.
-## #160 — OWNER RULING: EOS dashboards compose authority, and derived information may appear on one (2026-09-02)
+
+## #160 — OWNER RULING: warehouse/bin inventory custody — Model A (roll-up), amending #116 (2026-09-02)
+
+**Context.** The client requires an aisle/bay/bin process with labels, scanning, and the ability to
+cycle count a scanned physical bin. The BIN-001 reconciliation
+(`docs/implementation-plans/bin-location-authority-and-scanning.md`, measured against `c54cd218`)
+found that most of that chain already exists — `functions/src/inventoryLocation/` holds a governed
+bin registry, lifecycle commands, mounted callables and an append-only `bin_placements` put-away —
+and that the one missing link was excluded on purpose. **Decision #116** (2026-08-20) ruled the
+warehouse the custody authority and the bin descriptive, to protect the invariant that stowing stock
+must not remove it from warehouse on-hand. #116 stated its own cost: *"'how many are in rack 14' is
+only as good as the last placement recorded."* That cost is now being asked for.
+
+**Ruling O-1 — Model A, warehouse roll-up.** The warehouse **remains the custody parent**. A BIN
+becomes an **authoritative physical inventory position beneath it**. A warehouse's inventory is
+`direct/unbinned WAREHOUSE balance + Σ(child BIN balances)`. Model B (descriptive) is rejected —
+it cannot support an authoritative expected quantity for a scanned bin. Model C (bin replaces
+warehouse custody) is rejected — unnecessary, and its claim that binned stock is not warehouse stock
+is exactly what #116 exists to prevent. Moving stock `WAREHOUSE↔BIN` or `BIN↔BIN` inside one
+warehouse **does not change the warehouse aggregate**; crossing a warehouse boundary remains a
+governed Transfer, never a bin shortcut. The substantive shift consumers must absorb: the
+`type === "WAREHOUSE"` term stops being the warehouse total and becomes its **direct/unbinned**
+component. Recorded in **ADR-014**.
+
+**#116 is amended, not erased.** Its ruling on the phase it governed stands as recorded, and the
+put-away implementation built under it remains correct for that phase. This entry supersedes only
+the forward posture: `BIN` may now become eligible for warehouse custody calculations, under
+roll-up, once BIN-P6 delivers it.
+
+**Ruling O-2 — history is never rewritten.** Existing WAREHOUSE-level ledger evidence remains
+authoritative exactly as recorded; no historical bin precision is manufactured. This is coherent
+under Model A precisely because the WAREHOUSE component becomes the direct/unbinned balance — stock
+recorded at a warehouse and never binned *is* unbinned stock, so every historical row stays truthful
+without reinterpretation. Later bin assignment is **new governed evidence** with no change to
+warehouse aggregate quantity. The ledger event vocabulary is deliberately **not** invented here; the
+existing `TRANSFER_OUT`/`TRANSFER_IN` pair already expresses the required semantics, and BIN-P6 must
+confirm whether put-away may use it given Transfer's exclusive movement authority, or whether a
+distinct governed type is required.
+
+**Ruling O-3 — stable surrogate bin identity.** The human code must not remain the database identity.
+`deriveBinDocId(warehouseId, code)` means correcting a mislabelled rack creates a different document
+and orphans its placement history. Required invariant: **changing a legitimate physical or business
+code must not change the stable location identity** — placements, ledger evidence, cycle counts and
+audit keep pointing at the same bin. A renamed code stays traceable and a stale printed label must
+not silently resolve to the wrong place; the smallest correct mechanism is a BIN-P1 decision and
+**must not be a second Location authority**. Structured Area/Aisle/Bay/Bin attributes are stored so
+the display formatter, not the schema, produces the code convention — bay width is therefore a
+display and policy question, never a schema migration.
+
+**Ruling O-4 — countable location-type policy is GOVERNED.** Location records and physical racking
+configuration may be Administration data. Changing Cycle Count eligibility from `WAREHOUSE`/`MOBILE`
+to include `BIN` changes stock-integrity authority and remains governed and audited. A future
+implementation may store that policy as data, but ordinary Admin preference editing is not
+sufficient authority. Consistent with Cycle Count ruling D0(ii).
+
+**Ruling O-5 — activation deferred.** `inventory.location.bin.*`, `inventory.placement.record` and
+related bin authority stay `active: false` and ungranted until the identity, configuration and
+custody model is operationally coherent. Activation moves **after** BIN-P6 in the execution order,
+not before bin custody is usable. Consistent with #119: rollout is separate from repository work.
+
+**Ruling O-6 — retire the legacy competing authority, in sequence.** `stock_locations` and the Epic 4
+`StockLocation`/bin-transfer model are retired as quantity authority: census every remaining reader
+and writer, replace required readers with the ledger derivation, prove no required production path
+depends on the old model, then remove or deprecate. **Nothing is retired merely because nothing
+writes it** — `inventoryAnalyticsCallables.ts` still reads `stock_locations`, and
+`permissionCatalog.ts` still describes it as "bin-level quantity within a warehouse". Nothing is
+deleted in this step.
+
+**Ruling O-7 — bin code uniqueness is scoped to the warehouse**, not the operating company.
+`Phoenix / A01-001` and `Seattle / A01-001` are both valid and are different bins. Within one
+warehouse, two ACTIVE governed bins must not share the same canonical code.
+
+**Also ruled.** Site/Area posture: no generic facility or real-estate hierarchy — Operating Company →
+Warehouse → Area → Aisle → Bay → Bin, with the warehouse as the physical and custody parent and Area
+an attribute beneath it. Warehouse/floor-map **visualization is deferred** — no map schema,
+coordinates, CAD layout, visual editor or floor plan until a later reviewed requirement establishes
+one. Decision **#117** (no quarantine as a side effect of put-away) is unchanged.
+
+**Still blocked.** BIN Cycle Count eligibility requires all three: BIN-P6 delivering authoritative
+bin-level quantity; the target warehouse's initial inventory conversion complete enough that expected
+quantity at a bin is truthful; and Cycle Count's own activation and durable-read dependencies
+satisfied. A partially converted warehouse must not pretend BIN-level expected quantity is complete.
+
+**Scope of this step.** Documentation and governance only — this decision, ADR-014, and the amended
+implementation plan. No application, backend, Rules or capability change; no activation, no grants,
+no deploy, no legacy deletion, no BIN-P1 implementation.
+
+**Client questions still open** (none block BIN-P1): Warehouse bay width — one digit or two, which
+must close before mass label printing; final Phoenix area codes; default barcode symbology; label
+medium; part-to-bin rules; whether irregular/deep/oversized positions need recorded attributes.
+
+**Evidence:** `docs/architecture/ADR-014-warehouse-and-bin-inventory-custody-model.md`;
+`docs/implementation-plans/bin-location-authority-and-scanning.md`;
+`docs/assessments/inventory-location-registry-2026-08-20.md` §4 (the three options as originally framed).
+## #161 — OWNER RULING: EOS dashboards compose authority, and derived information may appear on one (2026-09-02)
 
 **Context:** the dashboard reporting authority census (#1740) classified 132 dashboard fact families
 and closed with four formalization items and four Owner decisions still open. Three of those
@@ -4593,7 +4687,7 @@ period-based financial figures is the reporting-period authority rather than rea
 
 **Enforced by:** `docs/governance/eos-dashboard-composition-authority.md` (canonical text).
 
-## #161 — OWNER DIRECTION: a governed Performance Goal Authority, reconciling FIN-003 (2026-09-02)
+## #162 — OWNER DIRECTION: a governed Performance Goal Authority, reconciling FIN-003 (2026-09-02)
 
 **Context:** EOS could state what happened and never what should have happened. FIN-003
 (`finance/planVsActual.ts`) already defined a versioned GOAL/BUDGET plan with a

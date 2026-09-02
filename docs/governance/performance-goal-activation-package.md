@@ -1,7 +1,7 @@
 # Performance Goal Authority — activation package
 
 **Status:** PREPARED, NOT EXECUTED. Every command below is written out so it can be run without
-re-deriving it, and **none of them has been run**. Recorded 2026-09-02 alongside Decision #161.
+re-deriving it, and **none of them has been run**. Recorded 2026-09-02 alongside Decision #162.
 
 **Why it stops here.** Each step crosses a boundary this session does not cross on its own
 authority: a `firestore.rules` edit is Tier-2, and a Functions/Rules deploy is executed by the human
@@ -19,7 +19,7 @@ been asked for.
 ## What is already true, with no action
 
 - The five capabilities are **registered** and `active:false`.
-- Role grants are in the repository (Decision #161's table). **A grant is not a runtime assignment**
+- Role grants are in the repository (Decision #162's table). **A grant is not a runtime assignment**
   — no `roleAssignment` document has been written for anyone.
 - `performance_goals` is **already denied to every client**, in every environment, with no Rules
   change: `firestore.rules` has no match block for it, and a collection no rule matches is denied.
@@ -49,7 +49,7 @@ to start on a mismatch:
 Insert beside the other Admin-SDK-only blocks, before the closing braces:
 
 ```
-    // Performance Goal Authority (Decision #161) -- versioned, effective-dated, approved TARGETS.
+    // Performance Goal Authority (Decision #162) -- versioned, effective-dated, approved TARGETS.
     // Admin-SDK-only, same fail-closed posture as the collections above. ALL direct client
     // read/write denied; the only paths are the trusted commands in
     // functions/src/performance/performanceGoalCommands.ts and the bounded read in
@@ -106,7 +106,7 @@ the evidence.
 ## Step 4 — grant the Roles (Owner decision, then execution)
 
 No principal holds any goal capability until a `roleAssignment` is written. The Roles carrying them
-are in Decision #161. Two grants are needed for the sandbox story to be exercisable end to end,
+are in Decision #162. Two grants are needed for the sandbox story to be exercisable end to end,
 because **the author of a goal may never approve it**:
 
 | Persona | Role to assign | Scope |

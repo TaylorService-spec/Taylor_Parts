@@ -193,7 +193,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     key: "myGoals",
     section: SECTION.PERFORMANCE,
     label: "My goals",
-    census: "Decision #161",
+    census: "Decision #162",
     // Everyone with an employee identity has a place for a target, whether or not one is set. The
     // module's own NO_GOAL state is what says "nobody has set one" -- and that absence is worth
     // showing, because it is a management gap rather than a system limitation.
@@ -250,7 +250,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     key: "teamGoals",
     section: SECTION.TEAM_PERFORMANCE,
     label: "Goals for your area",
-    census: "Decision #161",
+    census: "Decision #162",
     // FIRM and LOCATION goals. A viewer with neither operations scope nor a location assignment has
     // no area, so the module is absent rather than empty.
     needs: (ctx) => isOperationsViewer(ctx) || hasLocationScope(ctx),
@@ -273,7 +273,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.DRIVERS,
     label: "Stock forecast",
     census: "I-5 / I-7",
-    // DERIVED INFORMATION, permitted on a dashboard by Decision #160 and labelled as such by the
+    // DERIVED INFORMATION, permitted on a dashboard by Decision #161 and labelled as such by the
     // component. It may never be called On hand or Available.
     needs: (ctx) => isOperationsViewer(ctx) || hasLocationScope(ctx),
     state: () => MODULE_STATE.NOT_WIRED,

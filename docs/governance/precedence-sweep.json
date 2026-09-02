@@ -418,7 +418,7 @@
    "roleId": "generalManager",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "salesManager",
     "salesperson",
@@ -433,7 +433,7 @@
    "roleId": "generalManager",
    "capability": "performance.goal.create",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "salesManager",
     "fieldManager",
@@ -445,7 +445,7 @@
    "roleId": "generalManager",
    "capability": "performance.goal.approve",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "salesManager",
     "fieldManager",
@@ -457,7 +457,7 @@
    "roleId": "generalManager",
    "capability": "performance.goal.supersede",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "salesManager",
     "fieldManager",
@@ -469,7 +469,7 @@
    "roleId": "generalManager",
    "capability": "performance.goal.retire",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "salesManager",
     "fieldManager",
@@ -726,7 +726,7 @@
    "roleId": "salesManager",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesperson",
@@ -741,7 +741,7 @@
    "roleId": "salesManager",
    "capability": "performance.goal.create",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "fieldManager",
@@ -753,7 +753,7 @@
    "roleId": "salesManager",
    "capability": "performance.goal.approve",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "fieldManager",
@@ -765,7 +765,7 @@
    "roleId": "salesManager",
    "capability": "performance.goal.supersede",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "fieldManager",
@@ -777,7 +777,7 @@
    "roleId": "salesManager",
    "capability": "performance.goal.retire",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "fieldManager",
@@ -1019,7 +1019,7 @@
    "roleId": "salesperson",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1293,7 +1293,7 @@
    "roleId": "fieldManager",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1308,7 +1308,7 @@
    "roleId": "fieldManager",
    "capability": "performance.goal.create",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1320,7 +1320,7 @@
    "roleId": "fieldManager",
    "capability": "performance.goal.approve",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1332,7 +1332,7 @@
    "roleId": "fieldManager",
    "capability": "performance.goal.supersede",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1344,7 +1344,7 @@
    "roleId": "fieldManager",
    "capability": "performance.goal.retire",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1562,7 +1562,7 @@
    "roleId": "warehouseManager",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1577,7 +1577,7 @@
    "roleId": "warehouseManager",
    "capability": "performance.goal.create",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1589,7 +1589,7 @@
    "roleId": "warehouseManager",
    "capability": "performance.goal.approve",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1601,7 +1601,7 @@
    "roleId": "warehouseManager",
    "capability": "performance.goal.supersede",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1613,7 +1613,7 @@
    "roleId": "warehouseManager",
    "capability": "performance.goal.retire",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -1763,7 +1763,7 @@
    "roleId": "warehouseAssociate",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -2691,7 +2691,7 @@
    "roleId": "partsAssociate",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -2943,7 +2943,7 @@
    "roleId": "partsManager",
    "capability": "performance.goal.read",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -2958,7 +2958,7 @@
    "roleId": "partsManager",
    "capability": "performance.goal.create",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -2970,7 +2970,7 @@
    "roleId": "partsManager",
    "capability": "performance.goal.approve",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -2982,7 +2982,7 @@
    "roleId": "partsManager",
    "capability": "performance.goal.supersede",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -2994,7 +2994,7 @@
    "roleId": "partsManager",
    "capability": "performance.goal.retire",
    "classification": "EXPLICIT_OWNER_DECISION",
-   "basis": "DECISIONS #161",
+   "basis": "DECISIONS #162",
    "alsoHeldBy": [
     "generalManager",
     "salesManager",
@@ -3349,5 +3349,5 @@
  "reverseSweep": {
   "missingDecidedMappings": []
  },
- "decisionsFileSha": "sha256:0ab9540a780a1e352672dbdf53bf332bbf98088b35760174f86759466a1b4bdb"
+ "decisionsFileSha": "sha256:81c1ab899923445f8ec3574adc96e7745aea739135330478b9c2e9aa9dfe2b2c"
 }
