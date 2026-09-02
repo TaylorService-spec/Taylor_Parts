@@ -87,6 +87,17 @@ export default function FinancialsAccountsReceivable() {
         </p>
       </section>
 
+      {/* CONTRACT COPY, VISIBLE WITH ROWS ON SCREEN. Two readings of "Period" are possible here and
+          they mean materially different things — "invoices issued in the window" versus "the
+          balance as it stood at the end of that window". The system supports only the first, and
+          stating that only in a filtered empty state left the distinction invisible in exactly the
+          case where it misleads: a populated table under a selected period. */}
+      <p className="fin-truth-band" role="note">
+        <strong>Period filters by invoice issue date.</strong> Outstanding reflects the current
+        balance, not an as-of-period balance.
+        <FinAnnotation tip="Selecting a period narrows this table to receivables arising from invoices ISSUED in that window. It does not reconstruct what was owed at the end of it: no historical balance snapshot exists in this system, and outstanding is always derived from current governed facts. Aging derives from each invoice's own governed dueDate, which the period never touches." />
+      </p>
+
       <FinancialsHonestSection
         id="fin-ar-by-customer"
         title="Exposure by customer"
