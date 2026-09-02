@@ -227,16 +227,24 @@ export function lifecycleScorecard(state, result) {
  * reconcile to the total beside them.
  */
 export function agingSlots(state, result) {
-  const aging = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY ? (result?.agingByCurrency ?? null) : null;
+  const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
+  // THE DEPLOYED FUNCTION CAN BE OLDER THAN THIS BUNDLE — they ship separately. A response with no
+  // agingByCurrency at all is "this read does not supply aging", which is NOT the same as "nothing
+  // is owed in that bucket". Conflating them would print a reassuring absence over real money.
+  const aging = answered ? (result?.agingByCurrency ?? null) : null;
+  const supplied = answered && aging !== null;
   const pick = (field) => {
     if (!aging) return null;
     const byCurrency = {};
     for (const [currency, bucket] of Object.entries(aging)) {
+      // A bucket the server DID compute and reported as zero is a real answer for that band, and
+      // is kept — dropping it would turn "nothing is 61+ overdue" into "unknown".
       if (typeof bucket?.[field] === "number") byCurrency[currency] = bucket[field];
     }
     return Object.keys(byCurrency).length > 0 ? formatByCurrency(byCurrency) : null;
   };
   return {
+    supplied,
     total: pick("totalOutstandingMinor"),
     current: pick("currentMinor"),
     b1_30: pick("days1to30Minor"),

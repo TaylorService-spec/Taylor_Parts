@@ -86,7 +86,15 @@ export default function FinancialsAccountsReceivable() {
                   <div className="fin-figure__value">{aging[bucket.key]}</div>
                 ) : (
                   <div className="fin-figure__absence">
-                    {state === FACTS_STATE.LOADING ? "Reading…" : state === FACTS_STATE.DENIED ? "Withheld" : answered ? "Nothing owed" : "Unavailable"}
+                    {state === FACTS_STATE.LOADING
+                      ? "Reading…"
+                      : state === FACTS_STATE.DENIED
+                        ? "Withheld"
+                        : aging.supplied
+                          ? "Nothing owed"
+                          : answered
+                            ? "Not supplied by this read"
+                            : "Unavailable"}
                   </div>
                 )}
                 <span className="fin-factclass">Operational actual</span>

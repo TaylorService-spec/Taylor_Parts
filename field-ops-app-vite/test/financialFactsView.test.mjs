@@ -326,7 +326,11 @@ test("unaged money is NAMED, never folded into Current", () => {
 test("a non-answered read shows NO aging figure — never a zero bucket", () => {
   for (const st of [FACTS_STATE.DENIED, FACTS_STATE.UNAVAILABLE, FACTS_STATE.LOADING]) {
     const s = agingSlots(st, null);
-    for (const k of Object.keys(s)) assert.equal(s[k], null, `${k} must be absent in ${st}`);
+    // `supplied` is a flag about the RESPONSE, not a figure. The FIGURES are what must be absent.
+    assert.equal(s.supplied, false, `supplied must be false in ${st}`);
+    for (const k of ["total", "current", "b1_30", "b31_60", "b61_plus"]) {
+      assert.equal(s[k], null, `${k} must be absent in ${st}`);
+    }
   }
 });
 
@@ -340,4 +344,25 @@ test("SOURCE GUARD: page 04 does not bucket, age or total anything itself", () =
   // is what a bucket is. The guard therefore targets aggregation, not comparison.
   assert.ok(!/(days1to30|days31to60|days61Plus|currentMinor)\s*\+?=/.test(code), "page 04 must not accumulate its own buckets");
   assert.ok(/agingSlots\(/.test(code), "buckets must come from the server via the view model");
+});
+
+test("an aging response the deployed function did not send is UNSUPPLIED, never 'nothing owed'", () => {
+  // The bundle and the function ship separately. A response with no agingByCurrency means the read
+  // does not supply aging — which is emphatically NOT "no money is owed". Printing a reassuring
+  // absence over real outstanding balances is the worst failure this page could have.
+  const older = { ...AGING_READY, agingByCurrency: undefined };
+  const s = agingSlots(FACTS_STATE.READY, older);
+  assert.equal(s.supplied, false);
+  for (const k of ["total", "current", "b1_30", "b31_60", "b61_plus"]) assert.equal(s[k], null);
+  // And when the server DOES answer, supplied is true even where a band is legitimately zero.
+  const zeroed = { ...AGING_READY, agingByCurrency: { USD: { totalOutstandingMinor: 0, currentMinor: 0, days1to30Minor: 0, days31to60Minor: 0, days61PlusMinor: 0, unagedMinor: 0 } } };
+  const z = agingSlots(FACTS_STATE.READY, zeroed);
+  assert.equal(z.supplied, true);
+  assert.match(z.b61_plus, /\$0\.00/, "a computed zero band is a real answer and is shown");
+});
+
+test("SOURCE GUARD: page 04 never says 'Nothing owed' for a read that supplied no aging", () => {
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsAccountsReceivable.jsx", import.meta.url), "utf8");
+  assert.ok(/aging\.supplied/.test(src), "the page must branch on whether aging was supplied");
+  assert.ok(/Not supplied by this read/.test(src), "an unsupplied read must say so");
 });
