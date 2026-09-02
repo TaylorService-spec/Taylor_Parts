@@ -33,7 +33,7 @@ const CUSTODY_TIP =
   "Custody sentence — permanent contract copy. EOS composes governed operational financial events; statutory accounting, chart of accounts and close belong to a future external authority. Every figure carries its fact class so OPERATIONAL_ACTUAL is never mistaken for ACCOUNTING_RECONCILED_ACTUAL, which appears nowhere — no accounting authority exists.";
 
 const SCORECARD_TIP =
-  "One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so. This page now issues the governed reporting read, and every figure below is one the SERVER computed within your FIN-004 scope — no amount is totalled here. A slot with no figure names the reason in its own words rather than showing a zero.";
+  "One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so. This page now issues the governed reporting read, and every figure below is one the SERVER computed within your FIN-004 scope — no amount is totalled here. A slot with no figure names the reason in its own words rather than showing a zero. WITH A PERIOD SELECTED these three figures are INVOICE-ANCHORED: they describe the invoices issued in that window and the cash applied to them — Collected is not \"cash received in the period\", and A/R outstanding is a balance derived as of now, not as of the period end. No historical as-of-date balance exists in this system, and none is implied here.";
 
 // Owning-page drilldowns per slot (hierarchy is navigation, not new data).
 const SLOT_LINKS = Object.freeze({

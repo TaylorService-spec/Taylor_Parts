@@ -147,12 +147,37 @@ export function matchesRequestedFilters(
   if (nonEmpty(f.accountId) && read.accountId !== f.accountId) return false;
   if (nonEmpty(f.creditedSalespersonId) && read.creditedSalespersonId !== f.creditedSalespersonId) return false;
   if (nonEmpty(f.businessUnitId) && !read.businessUnitIds.includes(f.businessUnitId)) return false;
-  if (typeof f.periodStartMillis === "number") {
-    if (read.issuedAtMillis === null || read.issuedAtMillis < f.periodStartMillis) return false;
-  }
-  if (typeof f.periodEndMillis === "number") {
-    if (read.issuedAtMillis === null || read.issuedAtMillis > f.periodEndMillis) return false;
-  }
+  // The invoice's own canonical event date. Period is applied through withinPeriod so every fact
+  // type is judged by ITS OWN persisted date — see CANONICAL EVENT DATES above.
+  if (!withinPeriod(read.issuedAtMillis, f)) return false;
+  return true;
+}
+
+/**
+ * ════════ CANONICAL EVENT DATES, one per fact type ════════
+ *
+ * A period means "when did this happen", and each fact type records that differently:
+ *
+ *   INVOICE             issuedAtMillis   — stamped when the invoice was issued
+ *   PAYMENT_RECEIPT     receivedAtMillis — the caller-asserted, command-validated date the CASH
+ *                                          was received. A business fact, not a write timestamp.
+ *   PAYMENT_APPLICATION appliedAtMillis  — when the application was recorded against the invoice
+ *
+ * All three are PERSISTED by the governed commands. None is invented, and an invoice date is never
+ * copied onto a payment: filtering receipts by the issue date of the invoice they settle answers a
+ * question nobody asked ("cash against invoices raised in March") in place of the one they did
+ * ("cash received in March").
+ *
+ * A fact with no date is EXCLUDED whenever a period is requested. It cannot be shown to fall inside
+ * the window, and assuming it does would put an undated record into a dated answer.
+ */
+export function withinPeriod(eventMillis: number | null, f: FinancialFactsFilters): boolean {
+  const hasStart = typeof f.periodStartMillis === "number";
+  const hasEnd = typeof f.periodEndMillis === "number";
+  if (!hasStart && !hasEnd) return true;
+  if (eventMillis === null) return false;
+  if (hasStart && eventMillis < (f.periodStartMillis as number)) return false;
+  if (hasEnd && eventMillis > (f.periodEndMillis as number)) return false;
   return true;
 }
 
@@ -222,15 +247,21 @@ export async function readFinancialFacts(
 
     // ── Then the caller's narrowing, over the already-authorized set. ──
     const invoices: InvoiceReportRead[] = [];
+    // AUTHORIZATION and NARROWING are tracked separately for a reason. Payments inherit their
+    // invoice's AUTHORIZATION, which the caller's filters must not shrink: a payment received in
+    // March against an invoice issued in February is still a March payment, and narrowing the
+    // authorizing set by the invoice period would hide it from a March payments view.
+    const authorizedInvoiceIds = new Set<string>();
     for (const d of visibleDocs) {
       const raw = d.data() ?? {};
       const dims = invoiceReportDimensions(raw);
       const read: InvoiceReportRead = { ...projectInvoiceAr(d.id, raw, now), ...dims };
+      authorizedInvoiceIds.add(read.invoiceId);
       if (!matchesRequestedFilters(read, filters)) continue;
       invoices.push(read);
     }
 
-    const visibleInvoiceIds = new Set(invoices.map((i) => i.invoiceId));
+    const visibleInvoiceIds = authorizedInvoiceIds;
 
     // Payments and applications inherit their invoice's authorization — a payment is visible
     // exactly when the invoice it settles is. That composes the existing predicate rather than
@@ -241,6 +272,11 @@ export async function readFinancialFacts(
       const appSnap = await db.collection(PAYMENT_APPLICATIONS_COLLECTION).limit(MAX_REPORTING_LIMIT + 1).get();
       if (appSnap.size > MAX_REPORTING_LIMIT) return empty;
       const visibleApps = appSnap.docs.filter((d) => visibleInvoiceIds.has(String((d.data() ?? {}).invoiceId ?? "")));
+      // Every application the caller may see, before any period narrowing — this is what authorizes
+      // a receipt, so a receipt stays judged on its own received date.
+      const allVisibleApplicationPaymentIds = visibleApps
+        .map((d) => String((d.data() ?? {}).paymentId ?? ""))
+        .filter((x) => x.length > 0);
       applications = visibleApps.map((d) => {
         const x = d.data() ?? {};
         return {
@@ -252,10 +288,17 @@ export async function readFinancialFacts(
           appliedAmountMinor: nn(x.appliedAmountMinor),
           appliedAtMillis: typeof x.appliedAtMillis === "number" ? x.appliedAtMillis : null,
         };
-      });
+      })
+      // An application is judged by ITS OWN recorded date, and by the same company narrowing the
+      // caller requested. Both can only remove rows.
+      .filter((a) => withinPeriod(a.appliedAtMillis, filters))
+      .filter((a) => !nonEmpty(filters.companyId) || a.companyId === filters.companyId);
 
       if (wants("PAYMENT_RECEIPT")) {
-        const paymentIds = new Set(applications.map((a) => a.paymentId).filter(nonEmpty));
+        // Receipt visibility follows the applications over ALL authorized invoices — not the
+        // period-filtered applications above, or a receipt would be hidden by the application
+        // date rather than judged on its own received date.
+        const paymentIds = new Set(allVisibleApplicationPaymentIds);
         if (paymentIds.size > 0) {
           const paySnap = await db.collection(PAYMENTS_COLLECTION).limit(MAX_REPORTING_LIMIT + 1).get();
           if (paySnap.size > MAX_REPORTING_LIMIT) return empty;
@@ -274,7 +317,11 @@ export async function readFinancialFacts(
                 receivedAtMillis: typeof x.receivedAtMillis === "number" ? x.receivedAtMillis : null,
                 method: nonEmpty(x.method) ? x.method : null,
               };
-            });
+            })
+            // The receipt's OWN canonical event date — when the cash was received — plus the same
+            // company narrowing. Never the issue date of the invoice it settles.
+            .filter((r) => withinPeriod(r.receivedAtMillis, filters))
+            .filter((r) => !nonEmpty(filters.companyId) || r.companyId === filters.companyId);
         }
       }
     }

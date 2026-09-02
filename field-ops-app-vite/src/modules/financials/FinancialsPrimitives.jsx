@@ -131,7 +131,7 @@ export function FinancialsPeriodControl({ presetKey, onPresetChange, custom, onC
     <div className="fin-period-control">
       <label className="fin-period__label" htmlFor="fin-period-select">
         Period
-        <FinAnnotation tip="Period narrows the governed read on the server — it is applied to the records your visibility scope already reaches, and can only ever remove rows. Invoices filter on the invoice's own issued date; the window is inclusive of both days you choose." />
+        <FinAnnotation tip="Period narrows the governed read on the server — applied to the records your visibility scope already reaches, and it can only ever remove rows. EACH FACT IS JUDGED BY ITS OWN EVENT DATE: an invoice by the date it was issued, a payment by the date the cash was received, an application by the date it was recorded. The window includes both days you choose." />
       </label>
       <select
         id="fin-period-select"

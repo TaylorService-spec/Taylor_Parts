@@ -172,6 +172,9 @@ export const LIFECYCLE_ABSENCE = Object.freeze({
     "Billable-now needs a governed billable projection. Service-origin billing is unresolved (FIN-BLOCK-002), and inferring billable from order state would invent the very authority that is missing.",
   unbilled:
     "Unbilled is booked minus billed. Booked is not supplied by this read, so the difference cannot be truer than the facts beneath it — and it is not computed here from what happens to be available.",
+  // Retained as the honest sentence for a scope the server does not total. It is unused while the
+  // summary supplies all three lifecycle figures, and it is the copy to restore rather than
+  // reinvent if a future figure is ever returned per company only.
   multiCompany:
     "The governed read returns this figure per operating company and no consolidated total. This page will not add the companies together: a total assembled here from a scoped slice would read as a statement about the whole book. Select a single company to see it, or use Company & Business Unit Performance.",
 });
@@ -193,17 +196,18 @@ export function lifecycleScorecard(state, result) {
     );
   }
 
-  const companies = result?.byCompany ?? [];
-  const single = companies.length === 1 ? companies[0] : null;
+  // ALL THREE now come from the server's own consolidated summary, in every scope. The read used
+  // to return billed and collected per company only, so a multi-company view had to leave them
+  // absent rather than add the rows here. The totals moved to where they belong — the server, which
+  // is what knows which facts the caller may see — and this function simply reads them.
+  const summary = result?.summary ?? {};
 
   return {
     booked: absent(LIFECYCLE_ABSENCE.booked),
     billable: absent(LIFECYCLE_ABSENCE.billable),
-    // Read from the ONE company's own server-computed rollup, or say why it is absent.
-    billed: single ? value(single.billedByCurrency) : absent(LIFECYCLE_ABSENCE.multiCompany),
-    collected: single ? value(single.collectedByCurrency) : absent(LIFECYCLE_ABSENCE.multiCompany),
-    // The server's own consolidated total — the only lifecycle figure it computes across companies.
-    arOutstanding: value(result?.summary?.outstandingByCurrency),
+    billed: value(summary.billedByCurrency),
+    collected: value(summary.collectedByCurrency),
+    arOutstanding: value(summary.outstandingByCurrency),
     unbilled: absent(LIFECYCLE_ABSENCE.unbilled),
   };
 }

@@ -80,20 +80,43 @@ export function projectInvoiceAr(invoiceId: string, inv: StoredInvoiceLike, nowM
   };
 }
 
-// Summarize a set of AR reads for an account view — honest counts + the total open balance (all same currency;
-// mixed currencies are surfaced, never summed blindly).
-export function summarizeAccountAr(reads: InvoiceArRead[]): { count: number; openCount: number; overdueCount: number; outstandingByCurrency: Record<string, number> } {
+// Summarize a set of AR reads — honest counts plus the lifecycle totals, EACH PER CURRENCY.
+//
+// THE CONSOLIDATED TOTALS LIVE HERE, in the one canonical summary, for a specific reason: a client
+// given only per-company rollups must either add them up itself — presenting a scoped slice as a
+// book-wide figure — or refuse to show the number at all. Summing the already-authorized atomic
+// facts is the server's job, because the server is what knows which facts the caller may see.
+//
+// BILLED is the invoice total; COLLECTED is the maintained appliedMinor projection of the payment
+// applications — the SAME meaning the per-company/per-salesperson rollups use, so one word cannot
+// mean two things on two pages. OUTSTANDING counts only invoices that still owe something, which is
+// why it is not simply billed − collected.
+//
+// Currencies are never blended: each is its own key, and a caller that wants one number must first
+// decide an FX policy this system does not have.
+export function summarizeAccountAr(reads: InvoiceArRead[]): {
+  count: number;
+  openCount: number;
+  overdueCount: number;
+  billedByCurrency: Record<string, number>;
+  collectedByCurrency: Record<string, number>;
+  outstandingByCurrency: Record<string, number>;
+} {
   const list = Array.isArray(reads) ? reads : [];
+  const billedByCurrency: Record<string, number> = {};
+  const collectedByCurrency: Record<string, number> = {};
   const outstandingByCurrency: Record<string, number> = {};
   let openCount = 0;
   let overdueCount = 0;
   for (const r of list) {
-    if (r.outstandingMinor > 0) openCount += 1;
-    if (r.arPosition === "OVERDUE") overdueCount += 1;
+    const currency = r.currency ?? "UNSPECIFIED";
+    billedByCurrency[currency] = (billedByCurrency[currency] ?? 0) + nn(r.totalMinor);
+    collectedByCurrency[currency] = (collectedByCurrency[currency] ?? 0) + nn(r.appliedMinor);
     if (r.outstandingMinor > 0) {
-      const currency = r.currency ?? "UNSPECIFIED";
+      openCount += 1;
       outstandingByCurrency[currency] = (outstandingByCurrency[currency] ?? 0) + r.outstandingMinor;
     }
+    if (r.arPosition === "OVERDUE") overdueCount += 1;
   }
-  return { count: list.length, openCount, overdueCount, outstandingByCurrency };
+  return { count: list.length, openCount, overdueCount, billedByCurrency, collectedByCurrency, outstandingByCurrency };
 }

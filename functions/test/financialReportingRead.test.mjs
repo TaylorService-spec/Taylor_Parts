@@ -292,3 +292,109 @@ test("24. the granted scopes are reported, so a surface can state what it is sho
   const r = await readFinancialFacts(db, TAYLOR_ONLY, {}, 50);
   assert.deepEqual([...r.grantedScopes], ["OPERATING_COMPANY"]);
 });
+
+// ═══════════════ 7. Canonical event dates, one per fact type ═══════════════
+//
+// The defect these pin: filtering receipts by the ISSUE DATE of the invoice they settle answers
+// "cash against invoices raised in March" in place of "cash received in March". The fixture below
+// is built so the two questions have DIFFERENT answers — an invoice issued in January paid in
+// March — because a fixture where they coincide cannot tell the two apart.
+const JAN = Date.UTC(2026, 0, 15);
+const MAR = Date.UTC(2026, 2, 15);
+const CROSS_DB = fakeDb({
+  invoices: [
+    invoice("inv-jan", { issuedAtMillis: JAN, appliedMinor: 40_000, dueDate: JAN + 30 * DAY }),
+  ],
+  payment_applications: [
+    { id: "app-mar", data: { invoiceId: "inv-jan", paymentId: "pay-mar", companyId: "taylor", currency: "USD", appliedAmountMinor: 40_000, appliedAtMillis: MAR } },
+  ],
+  payments: [
+    { id: "pay-mar", data: { accountId: "acct-1", companyId: "taylor", currency: "USD", amountMinor: 40_000, appliedMinor: 40_000, receivedAtMillis: MAR, method: "ACH" } },
+  ],
+});
+const marchWindow = { periodStartMillis: Date.UTC(2026, 2, 1), periodEndMillis: Date.UTC(2026, 2, 31, 23, 59, 59, 999) };
+const januaryWindow = { periodStartMillis: Date.UTC(2026, 0, 1), periodEndMillis: Date.UTC(2026, 0, 31, 23, 59, 59, 999) };
+
+test("25. a MARCH period returns the March payment even though its invoice was issued in January", async () => {
+  const r = await readFinancialFacts(CROSS_DB, CONSOLIDATED, marchWindow, 50);
+  assert.deepEqual(r.payments.map((p) => p.paymentId), ["pay-mar"], "the receipt is judged on receivedAtMillis");
+  assert.deepEqual(r.applications.map((a) => a.applicationId), ["app-mar"]);
+  // ...and the invoice itself is NOT in a March window, because it was not issued in March.
+  assert.deepEqual(r.invoices, [], "the invoice is judged on issuedAtMillis");
+});
+
+test("26. a JANUARY period returns the invoice but NOT the March payment", async () => {
+  const r = await readFinancialFacts(CROSS_DB, CONSOLIDATED, januaryWindow, 50);
+  assert.deepEqual(r.invoices.map((i) => i.invoiceId), ["inv-jan"]);
+  assert.deepEqual(r.payments, [], "a March receipt must not appear in a January window");
+  assert.deepEqual(r.applications, [], "a March application must not appear in a January window");
+});
+
+test("27. payment authorization is NOT narrowed by the invoice period", async () => {
+  // The regression this prevents: authorizing receipts from the period-filtered invoice set would
+  // make the March payment invisible, because its invoice falls outside a March window.
+  const r = await readFinancialFacts(CROSS_DB, CONSOLIDATED, marchWindow, 50);
+  assert.equal(r.payments.length, 1, "the payment survives even though its invoice is filtered out");
+});
+
+test("28. an undated fact is EXCLUDED when a period is requested, never assumed inside it", async () => {
+  const undated = fakeDb({
+    invoices: [invoice("inv-undated", { issuedAtMillis: null })],
+    payment_applications: [],
+    payments: [],
+  });
+  assert.deepEqual((await readFinancialFacts(undated, CONSOLIDATED, marchWindow, 50)).invoices, []);
+  // With NO period requested it is returned normally — absence of a date is not absence of a fact.
+  assert.equal((await readFinancialFacts(undated, CONSOLIDATED, {}, 50)).invoices.length, 1);
+});
+
+// ═══════════════ 8. Consolidated lifecycle totals ═══════════════
+
+test("29. the summary carries SERVER-COMPUTED consolidated billed, collected and outstanding", async () => {
+  const r = await readFinancialFacts(db, CONSOLIDATED, {}, 50);
+  // 100000*4 + 100000 (inv-legacy) across USD/CAD — asserted per currency, never as one number.
+  assert.equal(r.summary.billedByCurrency.USD, 400_000);
+  assert.equal(r.summary.billedByCurrency.CAD, 100_000);
+  assert.equal(r.summary.collectedByCurrency.USD, 100_000, "only inv-c has cash applied");
+  assert.equal(r.summary.outstandingByCurrency.USD, 300_000);
+  assert.equal(r.summary.outstandingByCurrency.CAD, 100_000);
+});
+
+test("30. CURRENCIES ARE NEVER BLENDED in the consolidated totals", async () => {
+  const r = await readFinancialFacts(db, CONSOLIDATED, {}, 50);
+  for (const map of [r.summary.billedByCurrency, r.summary.collectedByCurrency, r.summary.outstandingByCurrency]) {
+    assert.ok(!Object.hasOwn(map, "TOTAL") && !Object.hasOwn(map, "ALL"), "no blended key may exist");
+    for (const v of Object.values(map)) assert.ok(Number.isSafeInteger(v));
+  }
+  // USD and CAD billed must not have been added into either key.
+  assert.notEqual(r.summary.billedByCurrency.USD, 500_000);
+});
+
+test("31. the consolidated total spans companies WITHOUT normalizing any company id", async () => {
+  // The legacy uppercase company is a DIFFERENT company key and stays one — it gets no lowercase
+  // row. But its amount is an authorized atomic fact at consolidated scope, so it is counted in
+  // the consolidated currency total. Summing authorized facts is not normalizing attribution.
+  const legacyDb = fakeDb({
+    invoices: [
+      invoice("inv-lower", { companyId: "taylor", totalMinor: 10_000 }),
+      invoice("inv-upper", { companyId: "TAYLOR", totalMinor: 5_000 }),
+    ],
+    payment_applications: [],
+    payments: [],
+  });
+  const r = await readFinancialFacts(legacyDb, CONSOLIDATED, {}, 50);
+  assert.equal(r.summary.billedByCurrency.USD, 15_000, "both authorized facts contribute to the consolidated total");
+  assert.deepEqual(r.byCompany.map((c) => c.key).sort(), ["TAYLOR", "taylor"], "the two company keys stay distinct");
+  // A single-company request still sees only its own key — the totals did not merge the ids.
+  const lower = await readFinancialFacts(legacyDb, CONSOLIDATED, { companyId: "taylor" }, 50);
+  assert.equal(lower.summary.billedByCurrency.USD, 10_000);
+});
+
+test("32. single-company views remain correct after the consolidated totals were added", async () => {
+  const taylor = await readFinancialFacts(db, CONSOLIDATED, { companyId: "taylor" }, 50);
+  assert.equal(taylor.summary.billedByCurrency.USD, 300_000);
+  assert.equal(taylor.summary.billedByCurrency.CAD, 100_000);
+  const ventana = await readFinancialFacts(db, CONSOLIDATED, { companyId: "ventana" }, 50);
+  assert.equal(ventana.summary.billedByCurrency.USD, 100_000);
+  assert.equal(ventana.summary.collectedByCurrency.USD, 0);
+});
