@@ -29,7 +29,7 @@ const { resolveEffectivePermission } = await import("../lib/access/resolveEffect
 const { COMPATIBILITY_ROLES } = await import("../lib/access/compatibilityRoles.js");
 const { GOVERNED_BUSINESS_ROLES } = await import("../lib/access/governedBusinessRoles.js");
 const { PERMISSION_CATALOG } = await import("../lib/access/permissionCatalog.js");
-const { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } = await import(
+const { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY, SPINE_OVERRIDE_ELIGIBLE_IDS } = await import(
   "../lib/access/environmentCapabilityOverrides.js"
 );
 const {
@@ -119,8 +119,10 @@ test("PROOF 2 — GRANT ALONE, WHILE INACTIVE, gives zero reach", () => {
 });
 
 test("PROOF 3 — finance.read WITHOUT visibility gives zero reach", () => {
-  // Eleven governed Roles are in exactly this position today, by design.
-  const auth = composeReach({ roleId: "accountingManager", activationOverrides: SANDBOX() });
+  // Seven governed Roles are in exactly this position today, by design. (This case used
+  // accountingManager until the 2026-09-02 ruling granted it CONSOLIDATED; `controller` is now
+  // the representative gate-only Role, and the full set is pinned in the MATRIX block below.)
+  const auth = composeReach({ roleId: "controller", activationOverrides: SANDBOX() });
   assert.equal(auth.factFamilyAllowed, true, "precondition: this Role does hold the fact-family gate");
   assert.deepEqual([...auth.grantedScopes], [], "it holds no visibility scope");
   assert.equal(auth.anyReach, false);
@@ -183,20 +185,62 @@ test("PROOF 5 — fact family + ACTIVE visibility grant reaches EXACTLY the gove
 
 // ════════════════════ The measured Role/scope matrix, pinned ════════════════════
 
-test("MATRIX — exactly admin and owner carry finance.visibility.*; eleven Roles hold the gate alone", () => {
-  const carriers = [];
-  const gateOnly = [];
-  for (const [id, role] of Object.entries(ROLES)) {
-    const perms = new Set(role.permissions);
-    const scopes = Object.values(VIS).filter((v) => perms.has(v));
-    if (scopes.length) carriers.push([id, scopes.length]);
-    else if (perms.has(FACT_FAMILY)) gateOnly.push(id);
+// THE APPROVED MATRIX (Owner ruling 2026-09-02). Every carrier and every scope is named here, so
+// a Role that gains or loses financial reach cannot do so quietly — the diff has to say so.
+const APPROVED_MATRIX = Object.freeze({
+  owner: ["SELF", "TEAM", "BUSINESS_UNIT", "OPERATING_COMPANY", "CONSOLIDATED"],
+  admin: ["SELF", "TEAM", "BUSINESS_UNIT", "OPERATING_COMPANY", "CONSOLIDATED"],
+  generalManager: ["CONSOLIDATED"],
+  financeManager: ["CONSOLIDATED"],
+  accountingManager: ["CONSOLIDATED"],
+  salesManager: ["TEAM"],
+  salesperson: ["SELF"],
+});
+
+/** Scope names a Role carries, in the canonical FINANCIAL_VISIBILITY_CAPABILITIES key order. */
+function carriedScopes(roleId) {
+  const perms = new Set(ROLES[roleId].permissions);
+  return Object.entries(VIS).filter(([, id]) => perms.has(id)).map(([scope]) => scope);
+}
+
+test("MATRIX — every approved carrier holds exactly its ruled scopes, and nothing more", () => {
+  for (const [roleId, expected] of Object.entries(APPROVED_MATRIX)) {
+    assert.ok(ROLES[roleId], `${roleId} must exist`);
+    assert.deepEqual(carriedScopes(roleId).sort(), [...expected].sort(), `${roleId} carries the wrong scopes`);
+    // A scope without the fact-family gate is unreachable by construction, so every carrier
+    // must also hold finance.read. This is the pairing the ruling depends on.
+    assert.ok(ROLES[roleId].permissions.includes(FACT_FAMILY), `${roleId} carries a scope but not ${FACT_FAMILY}`);
   }
-  assert.deepEqual(carriers.sort(), [["admin", 5], ["owner", 5]], "carrying Roles changed — that is an Owner decision");
-  assert.deepEqual(gateOnly.sort(), [
-    "accountingManager", "controller", "fieldManager", "generalManager", "partsAssociate",
-    "partsManager", "purchasingManager", "salesManager", "salesperson", "shopAssociate", "shopManager",
+});
+
+test("MATRIX — NO Role outside the approved matrix carries any finance.visibility.*", () => {
+  const unexpected = Object.keys(ROLES).filter((id) => !(id in APPROVED_MATRIX) && carriedScopes(id).length > 0);
+  assert.deepEqual(unexpected, [], `these Roles gained financial reach without a ruling: ${unexpected.join(", ")}`);
+});
+
+test("MATRIX — BUSINESS_UNIT and OPERATING_COMPANY gained no new carrier", () => {
+  // The ruling is explicit: those scope types stay valid architecture for future explicit use,
+  // and this change establishes no new carrier. admin/owner held them before and still do.
+  for (const scope of ["BUSINESS_UNIT", "OPERATING_COMPANY"]) {
+    const carriers = Object.keys(ROLES).filter((id) => carriedScopes(id).includes(scope)).sort();
+    assert.deepEqual(carriers, ["admin", "owner"], `${scope} carriers changed`);
+  }
+});
+
+test("MATRIX — holding the gate with no scope stays an allowed, intentional fail-closed state", () => {
+  const gateOnly = Object.keys(ROLES)
+    .filter((id) => ROLES[id].permissions.includes(FACT_FAMILY) && carriedScopes(id).length === 0)
+    .sort();
+  assert.deepEqual(gateOnly, [
+    "controller", "fieldManager", "partsAssociate", "partsManager",
+    "purchasingManager", "shopAssociate", "shopManager",
   ], "the set of Roles holding finance.read WITHOUT reach changed");
+  // Each of them genuinely reaches nothing — the state is intentional, not merely unlisted.
+  for (const roleId of gateOnly) {
+    const auth = composeReach({ roleId, activationOverrides: SANDBOX() });
+    assert.equal(auth.factFamilyAllowed, true, `${roleId} should hold the gate`);
+    assert.equal(auth.anyReach, false, `${roleId} must reach nothing`);
+  }
 });
 
 test("MATRIX — admin's five scopes are DERIVED from the catalog, not listed literally", () => {
@@ -236,41 +280,127 @@ test("MATRIX — no admin bypass: reach comes from the grant, not the role name"
   assert.equal(revoked.anyReach, false, "a revoked assignment must confer no reach");
 });
 
-// ════════════════════ The Finance Manager contradiction, recorded as a failing-open fact ════════
+// ════════════════════ Finance Manager parity — CLOSED by Owner ruling 2026-09-02 ════════════════
 
-test("CONTRADICTION — Finance Manager holds NO finance capability, while both descriptions claim parity", () => {
-  // Recorded, NOT fixed: which Role is the financial-oversight Role is an Owner decision, and
-  // granting one by inference is exactly what this test exists to prevent. This asserts the
-  // CURRENT state so the day it is ruled, this test fails and forces the record to be updated.
+test("PARITY CLOSED — Finance Manager can now read financial facts, and matches Accounting Manager exactly", () => {
+  // This test previously recorded the OPPOSITE as current state: financeManager held 5
+  // permissions and zero `finance.*` ids while both descriptions claimed parity. It was written
+  // to fail the day the Owner ruled, which is what happened. Exact set equality is proven at its
+  // canonical home (governedBusinessRoles.test.mjs); what is proven HERE is the consequence that
+  // matters to FIN-004 — the Role can actually reach a financial fact.
   const finance = new Set(GOVERNED_BUSINESS_ROLES.financeManager.permissions);
   const accounting = new Set(GOVERNED_BUSINESS_ROLES.accountingManager.permissions);
+  assert.equal(finance.size, accounting.size);
+  assert.ok([...accounting].every((id) => finance.has(id)) && [...finance].every((id) => accounting.has(id)));
 
-  assert.equal(finance.size, 5);
-  assert.equal(accounting.size, 17);
-  assert.deepEqual(
-    [...finance].filter((id) => id.startsWith("finance.")),
-    [],
-    "financeManager holds no finance.* capability at all — it fails the fact-family gate outright",
+  const auth = composeReach({ roleId: "financeManager", activationOverrides: SANDBOX() });
+  assert.equal(auth.factFamilyAllowed, true, "the gate the drift had removed");
+  assert.deepEqual([...auth.grantedScopes], ["CONSOLIDATED"]);
+  assert.equal(auth.anyReach, true, "Finance Manager reaches financial facts in sandbox");
+});
+
+// ════════════════════ Activation state — measured, and deliberately NOT completed ═══════════════
+
+test("ACTIVATION — CONSOLIDATED is sandbox-active; TEAM and SELF are neither eligible nor active", () => {
+  // The ruling is explicit that the matrix must NOT be "completed" by activating TEAM/SELF here.
+  // This asserts the measured state so that activating one later is a visible, deliberate change.
+  assert.ok(SANDBOX().has(VIS.CONSOLIDATED), "CONSOLIDATED must be sandbox-active");
+  for (const scope of ["TEAM", "SELF", "BUSINESS_UNIT", "OPERATING_COMPANY"]) {
+    assert.ok(!SANDBOX().has(VIS[scope]), `${scope} must NOT be activated by this change`);
+    assert.ok(!SPINE_OVERRIDE_ELIGIBLE_IDS.has(VIS[scope]), `${scope} must not even be ELIGIBLE`);
+  }
+  assert.equal(PRODUCTION().size, 0, "production activates nothing at all");
+});
+
+test("ACTIVATION — the CONSOLIDATED carriers reach in sandbox; salesManager and salesperson do not", () => {
+  for (const roleId of ["owner", "admin", "generalManager", "financeManager", "accountingManager"]) {
+    const auth = composeReach({ roleId, activationOverrides: SANDBOX() });
+    assert.deepEqual([...auth.grantedScopes], ["CONSOLIDATED"], `${roleId} should resolve exactly CONSOLIDATED`);
+    assert.equal(auth.anyReach, true, `${roleId} should reach in sandbox`);
+  }
+  // GRANT != ACTIVATION. These two hold a real, ruled grant and still reach nothing, because the
+  // scope they carry is not active anywhere. That is the correct outcome, not an incomplete one.
+  for (const roleId of ["salesManager", "salesperson"]) {
+    assert.ok(carriedScopes(roleId).length === 1, `${roleId} carries its ruled scope`);
+    const auth = composeReach({ roleId, activationOverrides: SANDBOX() });
+    assert.equal(auth.factFamilyAllowed, true, `${roleId} holds the gate`);
+    assert.deepEqual([...auth.grantedScopes], [], `${roleId} must resolve NO scope while TEAM/SELF are inactive`);
+    assert.equal(auth.anyReach, false);
+  }
+});
+
+test("ACTIVATION — production reaches nothing for any approved carrier, admin and owner included", () => {
+  for (const roleId of Object.keys(APPROVED_MATRIX)) {
+    const auth = composeReach({ roleId, activationOverrides: PRODUCTION() });
+    assert.deepEqual([...auth.grantedScopes], [], `${roleId} must resolve no scope in production`);
+    assert.equal(auth.anyReach, false, `${roleId} must reach nothing in production`);
+  }
+});
+
+// ════════════════════ TEAM / SELF binding — fail-closed even once activated ═════════════════════
+//
+// The grants are ruled but their scopes are inactive, so the composition above cannot exercise the
+// BINDING rules. These assert the binding contract directly at the authority layer, which is where
+// loadFinancialVisibilityAuthority enforces it — so the fail-closed behaviour is pinned BEFORE any
+// future activation, not discovered after one.
+
+test("BINDING — TEAM with an unresolved team reaches nothing, and never widens", () => {
+  // The loader pushes a TEAM grant only when visibleEmployeeIdsFor() returns a non-empty set; an
+  // empty resolution becomes a BLOCKED scope instead. Both halves are asserted here.
+  const unresolved = buildFinancialVisibilityAuthority({
+    factFamilyAllowed: true,
+    grants: [],
+    blockedScopes: [{ scope: "TEAM", reason: "no visible employees resolved for this principal" }],
+  });
+  assert.equal(unresolved.anyReach, false, "an unresolved team must not reach");
+  assert.equal(reaches(unresolved), 0);
+  assert.equal(unresolved.blockedScopes.length, 1, "and the block is surfaced, not silent");
+
+  // A resolved team reaches its own members and NOBODY else — never everything.
+  const resolved = buildFinancialVisibilityAuthority({
+    factFamilyAllowed: true,
+    grants: [{ scope: "TEAM", visibleEmployeeIds: new Set(["emp-1"]) }],
+  });
+  assert.equal(resolved.isInvoiceVisible(INVOICE.taylorServiceMine), true, "own member");
+  assert.equal(resolved.isInvoiceVisible(INVOICE.taylorPartsTeammate), false, "a non-member stays hidden");
+  assert.equal(resolved.isInvoiceVisible(INVOICE.ventanaServiceStranger), false, "a stranger stays hidden");
+  assert.equal(resolved.isInvoiceVisible(INVOICE.unattributed), false, "an unattributed record is nobody's team record");
+  assert.ok(reaches(resolved) < ALL_INVOICES.length, "TEAM is never CONSOLIDATED");
+
+  // An empty visible set is REFUSED at construction — stronger than matching nothing. It is not
+  // expressible as a grant at all, so no code path can hold a TEAM grant that means "everyone"
+  // or "nobody"; an unresolved team must travel as the BLOCKED scope asserted above.
+  assert.throws(
+    () => buildFinancialVisibilityAuthority({
+      factFamilyAllowed: true,
+      grants: [{ scope: "TEAM", visibleEmployeeIds: new Set() }],
+    }),
+    /non-empty visible-employee set/,
+    "an empty team set must be refused, not silently treated as a wildcard or a no-op",
   );
-  assert.ok(accounting.has(FACT_FAMILY), "accountingManager does hold the gate");
+});
 
-  // Both descriptions claim intentional identity. They are not identical.
-  for (const roleId of ["financeManager", "accountingManager"]) {
-    assert.match(
-      GOVERNED_BUSINESS_ROLES[roleId].description,
-      /[Ii]ntentionally identical/,
-      `${roleId}'s description claims parity`,
+test("BINDING — SELF without an employee binding reaches nothing", () => {
+  const unbound = buildFinancialVisibilityAuthority({
+    factFamilyAllowed: true,
+    grants: [],
+    blockedScopes: [{ scope: "SELF", reason: "principal has no linked employeeId" }],
+  });
+  assert.equal(unbound.anyReach, false, "no linked Employee ⇒ no reach");
+  assert.equal(reaches(unbound), 0);
+
+  // A bound SELF reaches only records credited to that employee — and credit is the frozen
+  // FIN-002 attribution, never the acting user.
+  const bound = buildFinancialVisibilityAuthority({ factFamilyAllowed: true, grants: [GRANT_FOR.SELF()] });
+  assert.equal(bound.isInvoiceVisible(INVOICE.taylorServiceMine), true);
+  assert.equal(bound.isInvoiceVisible(INVOICE.taylorPartsTeammate), false, "a teammate's record is not SELF");
+  assert.equal(bound.isInvoiceVisible(INVOICE.unattributed), false, "an uncredited record is nobody's SELF record");
+
+  // An empty or whitespace employeeId cannot be constructed into a reaching grant.
+  for (const bad of ["", "   "]) {
+    assert.throws(
+      () => buildFinancialVisibilityAuthority({ factFamilyAllowed: true, grants: [{ scope: "SELF", employeeId: bad }] }),
+      "a blank employeeId must be refused, not treated as a wildcard",
     );
   }
-  assert.notEqual(finance.size, accounting.size, "...but the two sets differ by twelve permissions");
-
-  // The existing pinning test permits this because it is DIRECTIONAL (accounting ⊇ finance,
-  // length >=), which both holds and hides the divergence. Assert the containment it does check,
-  // so this file agrees with it rather than contradicting it.
-  for (const id of finance) assert.ok(accounting.has(id), `accounting must retain ${id}`);
-
-  // The load-bearing consequence, stated as a decision-forcing assertion.
-  const auth = composeReach({ roleId: "financeManager", activationOverrides: SANDBOX() });
-  assert.equal(auth.factFamilyAllowed, false);
-  assert.equal(auth.anyReach, false, "Finance Manager cannot read a single financial fact anywhere");
 });

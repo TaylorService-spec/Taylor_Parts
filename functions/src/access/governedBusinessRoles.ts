@@ -263,6 +263,13 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
     "customer.record.update",
     "audit.event.read",
     "finance.read",
+    // FIN-004 REACH, Owner ruling 2026-09-02. `finance.read` above is the fact-family gate;
+    // this is the reach. Both are required and either alone reaches nothing. GRANT != ACTIVATION:
+    // registered `active:false`, so it denies wherever it is not per-environment activated.
+    // TEAM, not CONSOLIDATED: reach is the employees the governed role hierarchy places under
+    // this principal (access/hierarchicalVisibility.ts), resolved at load time. An unresolved or
+    // empty hierarchy yields a BLOCKED scope and zero reach -- it never widens to everyone.
+    "finance.visibility.team",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.transaction.read",
@@ -318,6 +325,12 @@ export const SALESPERSON_ROLE: Role = Object.freeze({
     "customer.record.read",
     "customer.record.update",
     "finance.read",
+    // FIN-004 REACH, Owner ruling 2026-09-02. `finance.read` above is the fact-family gate;
+    // this is the reach. Both are required and either alone reaches nothing. GRANT != ACTIVATION:
+    // registered `active:false`, so it denies wherever it is not per-environment activated.
+    // SELF binds to `users/{uid}.employeeId` at load time. No linked Employee => zero reach:
+    // a record credited to nobody is nobody's SELF record.
+    "finance.visibility.self",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.transaction.read",
@@ -345,64 +358,78 @@ export const SALESPERSON_ROLE: Role = Object.freeze({
   ],
 }) as Role;
 
-// Spec §26.2 -- invoice/payment/credit/accounting-reporting capabilities
-// still do not exist in the catalog (Spec §26.4).
+// THE TWO MONEY ROLES SHARE ONE LIST, BECAUSE THEY ARE ONE POLICY.
 //
-// OWNER REVERSAL 2026-08-18: "accountingManager should be like financeManager
-// for now." This DELIBERATELY supersedes the earlier Owner requirement that the
-// two Roles "remain distinct". That distinction was drawn from the one id that
-// happened to differentiate them, not from a described difference in the two
-// jobs, and the Owner has since decided they do the same work here. The two sets
-// are now intentionally identical, and the pinning test was inverted to assert
-// exactly that -- so a future divergence has to be a decision, not a drift.
+// OWNER REVERSAL 2026-08-18: "accountingManager should be like financeManager for now." This
+// DELIBERATELY supersedes the earlier Owner requirement that the two Roles "remain distinct".
+// That distinction was drawn from the one id that happened to differentiate them, not from a
+// described difference in the two jobs. Re-affirmed by Owner ruling 2026-09-02.
+//
+// WHY A SHARED CONSTANT AND NOT TWO LISTS. The two lists DID drift, and drifted badly: on
+// 2026-09-02 accountingManager held 17 permissions and financeManager held 5 -- including every
+// `finance.*` id, so the Role named Finance Manager could not read a single financial fact. Both
+// descriptions said "intentionally identical" the whole time. Nothing caught it because the
+// pinning test was DIRECTIONAL (accounting ⊇ finance, length >=), which both held at 17 vs 5 and
+// which passes while its own comment ("the two are identical again") is false.
+//
+// Two arrays that must be equal are two chances to be wrong. One array is zero. This is the
+// smallest change that makes the recorded policy structurally true rather than aspirationally
+// true -- it introduces no abstraction, no factory and no indirection: it is one shared literal.
+// If the Owner ever rules the two Roles apart, split this constant in that same change; the
+// equality test below will require it.
+//
+// Spec §26.2 -- accounting-reporting capabilities beyond these still do not exist in the
+// catalog (Spec §26.4).
+const MONEY_MANAGER_PERMISSIONS = [
+  "audit.event.read",
+  "customer.governedField.write",
+  "customer.record.read",
+  "finance.adjustment.record",
+  "finance.invoice.issue",
+  "finance.payment.apply",
+  "finance.read",
+  "finance.refund.record",
+  // FIN-004 REACH, Owner ruling 2026-09-02. The fact-family gate above answers "may this
+  // principal see AR facts at all"; this answers "how far". Both are required and either alone
+  // reaches nothing. CONSOLIDATED is the Owner's explicit choice for the money Roles.
+  // GRANT != ACTIVATION: registered `active:false`, so this denies everywhere it is not
+  // per-environment activated, and production activates nothing.
+  "finance.visibility.consolidated",
+  "inventory.action.read",
+  "inventory.balance.read",
+  "inventory.catalog.read",
+  "inventory.serializedAsset.read",
+  "inventory.transaction.read",
+  "opportunity.read",
+  "reorder.purchaseOrder.read",
+  "salesOrder.read",
+  "warehouse.transferOrder.read",
+] as const;
+
 export const ACCOUNTING_MANAGER_ROLE: Role = Object.freeze({
   id: "accountingManager",
   name: "Accounting Manager",
   description:
-    "Customer visibility, governed commercial-field write, Sales Order and Purchase Order read. Intentionally identical to Finance Manager (Owner ruling 2026-08-18). Invoice/payment/credit/accounting-reporting capabilities are a recorded permission-catalog gap (Spec §26.4).",
+    "Customer visibility, governed commercial-field write, Sales Order and Purchase Order read, and CONSOLIDATED financial reach. Intentionally identical to Finance Manager (Owner rulings 2026-08-18, 2026-09-02) — both Roles are built from the same MONEY_MANAGER_PERMISSIONS list, so they cannot drift apart without an explicit code change.",
   systemSeed: true,
   compatibility: false,
-  permissions: [
-    "customer.governedField.write",
-    "customer.record.read",
-    "audit.event.read",
-    "finance.adjustment.record",
-    "finance.invoice.issue",
-    "finance.payment.apply",
-    "finance.read",
-    "finance.refund.record",
-    "inventory.action.read",
-    "inventory.balance.read",
-    "inventory.catalog.read",
-    "inventory.serializedAsset.read",
-    "inventory.transaction.read",
-    "opportunity.read",
-    "reorder.purchaseOrder.read",
-    "salesOrder.read",
-    "warehouse.transferOrder.read",
-  ],
+  permissions: [...MONEY_MANAGER_PERMISSIONS],
 }) as Role;
 
-// Spec §26.2 -- financial oversight/policy authority via the one
-// existing id that concretely matches ("customer.governedField.write",
-// Issue #175's admin-only commercial-terms/tax-status field), distinct
-// from Accounting Manager's operational read-only grant. Margin/cost
-// visibility and finance-specific reporting are a recorded catalog gap
-// (Spec §26.4).
+// Spec §26.2 -- financial oversight/policy authority. PARITY RESTORED 2026-09-02 (Owner
+// ruling): this Role had drifted to five permissions with no `finance.*` id at all, so the
+// Role named Finance Manager could not read a single financial fact. It is built from the
+// same MONEY_MANAGER_PERMISSIONS list as Accounting Manager -- see that constant for why the
+// list is shared rather than repeated. Margin/cost visibility remains a recorded catalog gap
+// (Spec §26.4) and is unaffected by this restoration: FIN-BLOCK-003 governs cost, not reach.
 export const FINANCE_MANAGER_ROLE: Role = Object.freeze({
   id: "financeManager",
   name: "Finance Manager",
   description:
-    "Financial oversight/policy: Customer read visibility, governed commercial-field write authority (Issue #175), and both sides of the committed-money picture -- Sales Orders out, Purchase Orders in. Margin/cost visibility and finance-specific reporting are a recorded permission-catalog gap (Spec §26.4). Intentionally identical to Accounting Manager (Owner ruling 2026-08-18).",
+    "Financial oversight/policy: Customer read visibility, governed commercial-field write authority (Issue #175), both sides of the committed-money picture (Sales Orders out, Purchase Orders in), and CONSOLIDATED financial reach. Intentionally identical to Accounting Manager (Owner rulings 2026-08-18, 2026-09-02) — both Roles are built from the same MONEY_MANAGER_PERMISSIONS list. Margin/cost visibility is a recorded permission-catalog gap (Spec §26.4).",
   systemSeed: true,
   compatibility: false,
-  permissions: [
-    "audit.event.read",
-    "customer.governedField.write",
-    "customer.record.read",
-    "reorder.purchaseOrder.read",
-    "salesOrder.read",
-  ],
+  permissions: [...MONEY_MANAGER_PERMISSIONS],
 }) as Role;
 
 // Spec §26.2 -- full existing Work Order lifecycle authority
@@ -560,6 +587,10 @@ export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    // FIN-004 REACH, Owner ruling 2026-09-02. `finance.read` above is the fact-family gate;
+    // this is the reach. Both are required and either alone reaches nothing. GRANT != ACTIVATION:
+    // registered `active:false`, so it denies wherever it is not per-environment activated.
+    "finance.visibility.consolidated",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
