@@ -676,7 +676,23 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; max-width: 100%; overflow-x: auto; }
 .fo-filter-btn__check-icon { vertical-align: -3px; margin-right: var(--space-1); }
 .fo-filter-btn { background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-.fo-filter-btn:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
+/* THE SYMMETRIC TWIN OF THE DARK-ON-DARK BUG DOCUMENTED AT `button:hover`.
+   That rule pairs an evergreen fill with white text so the two always travel together. This rule
+   outranked it (0-2-0 vs 0-1-1) and overrode ONLY the background — putting the fill back to a
+   near-white surface while the white FOREGROUND stayed. Measured on the accepted Financials
+   palette: white on #F2F5F3 is 1.06:1. Hovering a company chip made its own label disappear.
+
+   It was also a no-op everywhere else: background and border-color were set to the same values as
+   the base state, so outside Financials the control had no hover feedback at all.
+
+   Fixed by carrying the pair, in the same language the sibling chip/tab controls already use
+   (`.ns-view:hover`, `.ns-tabrail__tab:hover`): solid evergreen WITH inverse text. A hover that
+   moves the background must move the foreground with it. */
+.fo-filter-btn:hover {
+  background: var(--color-brand-secondary);
+  border-color: var(--color-brand-secondary);
+  color: var(--color-text-inverse);
+}
 .fo-filter-btn:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
 .fo-filter-btn-active { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); color: var(--color-text-inverse); }
 .fo-filter-btn-active:hover { background: var(--verenward-guardian-hover); border-color: var(--verenward-guardian-hover); }
