@@ -117,7 +117,7 @@ export default function FinancialsPaymentDetail() {
             </section>
 
             <div className="ns-table-wrap">
-              <table className="ns-table">
+              <table className="ns-table fin-facts">
                 <caption className="fo-sr-only">Receipt facts</caption>
                 <tbody>
                   <tr>
