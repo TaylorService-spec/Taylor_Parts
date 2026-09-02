@@ -7,6 +7,25 @@ alone is NOT admissible cost authority; sell price is not cost; ND-27
 (`PART_INVENTORY_VALUATION_AUTHORITY_GAP`) respected; the FIN-006 core
 (`deriveGrossMargin`) already refuses everything below until this decision lands.
 
+> **RE-MEASURED 2026-09-02 against `225052f3`** —
+> [`../assessments/fin-block-003-cost-supply-reconciliation.md`](../assessments/fin-block-003-cost-supply-reconciliation.md).
+>
+> Every finding below was re-verified against current code and **all of them held**. The
+> reconciliation classified the platform **CASE D — no governed cost supply**, added a structural
+> guard (`functions/test/costAuthorityAbsence.test.mjs`) so the absence cannot erode one field at a
+> time, and corrected one stale header that claimed the receiving command was unexported when it is
+> live. **No decision below was made, narrowed or pre-empted.**
+>
+> It adds ONE open decision this package does not currently name: **company attribution on the cost
+> path**. `operatingCompanyId` is absent from `purchase_orders`, `receiving_orders`,
+> `part_supplier_items` and every inventory ledger row, so whatever cost authority is chosen will
+> need a Taylor-vs-Ventana lineage that does not exist today and cannot be inferred from warehouse,
+> vendor, SKU, user or customer.
+>
+> It also sharpens decision 2: the dormant Epic-5 price layer is **floats, with no currency and no
+> operating company**, so adopting it as the capture point as-is would import three defects into the
+> cost authority.
+
 ## 1. Source-by-source classification
 
 | Source | Finding (file:line evidence in audit) | Classification |

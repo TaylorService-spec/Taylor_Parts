@@ -28,6 +28,19 @@ on:
       - "functions/test/financialAttribution.test.mjs"
       - "functions/test/billingQueue.test.mjs"
       - "functions/test/costMargin.test.mjs"
+      # FIN-BLOCK-003 cost-absence guard, and the sources it asserts about. The SOURCE paths matter
+      # as much as the test path: this guard exists to fail when a cost field appears on the
+      # inventory ledger, a labour entry, or a transfer -- none of which live under finance/, so
+      # without these lines the one commit it is designed to catch would not run it.
+      - "functions/test/costAuthorityAbsence.test.mjs"
+      - "functions/src/types/inventoryTransaction.ts"
+      - "functions/src/inventoryLedger/**"
+      - "functions/src/inventoryTransfer/**"
+      - "functions/src/cycleCount/**"
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/workOrderLabor/**"
+      - "functions/src/partMaster/partSupplierItems.ts"
+      - "functions/src/performance/performanceMetricRegistry.ts"
       - "functions/test/planVsActual.test.mjs"
       - "functions/test/forecasting.test.mjs"
       - "functions/test/financialApprovals.test.mjs"
@@ -65,6 +78,19 @@ on:
       - "functions/test/financialAttribution.test.mjs"
       - "functions/test/billingQueue.test.mjs"
       - "functions/test/costMargin.test.mjs"
+      # FIN-BLOCK-003 cost-absence guard, and the sources it asserts about. The SOURCE paths matter
+      # as much as the test path: this guard exists to fail when a cost field appears on the
+      # inventory ledger, a labour entry, or a transfer -- none of which live under finance/, so
+      # without these lines the one commit it is designed to catch would not run it.
+      - "functions/test/costAuthorityAbsence.test.mjs"
+      - "functions/src/types/inventoryTransaction.ts"
+      - "functions/src/inventoryLedger/**"
+      - "functions/src/inventoryTransfer/**"
+      - "functions/src/cycleCount/**"
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/workOrderLabor/**"
+      - "functions/src/partMaster/partSupplierItems.ts"
+      - "functions/src/performance/performanceMetricRegistry.ts"
       - "functions/test/planVsActual.test.mjs"
       - "functions/test/forecasting.test.mjs"
       - "functions/test/financialApprovals.test.mjs"
@@ -127,7 +153,7 @@ jobs:
         working-directory: functions
 
       - name: Invoice command core + numbering (node:test)
-        run: node --test test/financialAttribution.test.mjs test/financialScopeBinding.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/planVsActual.test.mjs test/forecasting.test.mjs test/financialApprovals.test.mjs test/financialPeriods.test.mjs test/financialAllocation.test.mjs test/financialReconciliation.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/financialReportingRead.test.mjs test/refundCommands.test.mjs
+        run: node --test test/financialAttribution.test.mjs test/financialScopeBinding.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/costAuthorityAbsence.test.mjs test/planVsActual.test.mjs test/forecasting.test.mjs test/financialApprovals.test.mjs test/financialPeriods.test.mjs test/financialAllocation.test.mjs test/financialReconciliation.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/financialReportingRead.test.mjs test/refundCommands.test.mjs
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)
