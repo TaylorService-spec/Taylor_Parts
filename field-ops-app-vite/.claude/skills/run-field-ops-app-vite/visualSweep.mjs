@@ -120,6 +120,11 @@ const PROBE = `(() => {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) continue;
     if (srOnly(el)) continue;
+    // WCAG 2.5.5's own inline exception: a link sitting IN a sentence or a table cell is not a
+    // sized target, and its height is the line-height of the text around it. Flagging those
+    // produced a page of "target a 141x20" noise per route and hid the two controls that are
+    // genuinely short. Block-level and inline-block controls are still measured.
+    if (el.tagName === "A" && /^inline$/.test(style.display)) continue;
     if (rect.height < 44 || rect.width < 24) {
       out.smallTargets.push({ el: label(el), w: Math.round(rect.width), h: Math.round(rect.height),
         text: (el.textContent || el.value || "").trim().slice(0, 30) });
@@ -162,7 +167,10 @@ export async function visualSweep(browser, page, accountKey, { login, appRoot, s
 
   await login(view, accountKey);
 
-  for (const viewport of VIEWPORTS) {
+  // SWEEP_VIEWPORTS=handheld-375 runs one width — used to diff this rollout's findings against the
+  // same sweep on the pre-rollout code, so "pre-existing" is a measurement rather than a claim.
+  const wanted = (process.env.SWEEP_VIEWPORTS || "").split(",").filter(Boolean);
+  for (const viewport of VIEWPORTS.filter((v) => !wanted.length || wanted.includes(v.name))) {
     await view.setViewportSize({ width: viewport.width, height: viewport.height });
 
     for (const { key, domain, route } of routes) {
