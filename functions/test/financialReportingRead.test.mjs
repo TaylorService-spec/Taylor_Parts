@@ -398,3 +398,74 @@ test("32. single-company views remain correct after the consolidated totals were
   assert.equal(ventana.summary.billedByCurrency.USD, 100_000);
   assert.equal(ventana.summary.collectedByCurrency.USD, 0);
 });
+
+// ═══════════════ 9. A/R aging, derived on the server ═══════════════
+const { summarizeArAging } = await import("../lib/finance/financeReadProjection.js");
+
+const agingInvoice = (id, dueOffsetDays, outstanding, currency = "USD") => ({
+  invoiceId: id, invoiceNumber: id, accountId: "a", salesOrderId: null, currency, state: "ISSUED",
+  totalMinor: outstanding, appliedMinor: 0, creditsMinor: 0, chargesMinor: 0, writeOffMinor: 0,
+  outstandingMinor: outstanding, dueDate: dueOffsetDays === null ? null : T0 + dueOffsetDays * DAY,
+  arPosition: "CURRENT", daysOverdue: null,
+});
+
+test("33. aging places each owed invoice in exactly one approved bucket", () => {
+  const a = summarizeArAging([
+    agingInvoice("future", 30, 1000),   // not yet due  -> current
+    agingInvoice("due-today", 0, 2000), // due today    -> current (0 days overdue)
+    agingInvoice("d15", -15, 4000),
+    agingInvoice("d45", -45, 8000),
+    agingInvoice("d200", -200, 16000),
+  ], T0)["USD"];
+  assert.equal(a.currentMinor, 3000);
+  assert.equal(a.days1to30Minor, 4000);
+  assert.equal(a.days31to60Minor, 8000);
+  assert.equal(a.days61PlusMinor, 16000);
+  assert.equal(a.unagedMinor, 0);
+});
+
+test("34. the buckets RECONCILE to the total — that is what makes the row trustworthy", () => {
+  const a = summarizeArAging([
+    agingInvoice("a", 10, 500), agingInvoice("b", -5, 700), agingInvoice("c", -40, 900),
+    agingInvoice("d", -90, 1100), agingInvoice("e", null, 1300),
+  ], T0)["USD"];
+  const parts = a.currentMinor + a.days1to30Minor + a.days31to60Minor + a.days61PlusMinor + a.unagedMinor;
+  assert.equal(parts, a.totalOutstandingMinor, "parts must sum to the whole");
+  assert.equal(a.totalOutstandingMinor, 4500);
+});
+
+test("35. an invoice with NO due date is UNAGED, never silently 'current'", () => {
+  const a = summarizeArAging([agingInvoice("nodue", null, 5000)], T0)["USD"];
+  assert.equal(a.unagedMinor, 5000);
+  assert.equal(a.currentMinor, 0, "an unplaceable invoice must not inflate the current bucket");
+});
+
+test("36. settled invoices are not aged — no exposure, nothing to age", () => {
+  const settled = { ...agingInvoice("paid", -90, 0), outstandingMinor: 0, appliedMinor: 1000, totalMinor: 1000 };
+  assert.deepEqual(summarizeArAging([settled], T0), {});
+});
+
+test("37. currencies age SEPARATELY and are never blended", () => {
+  const out = summarizeArAging([agingInvoice("u", -10, 100, "USD"), agingInvoice("c", -10, 200, "CAD")], T0);
+  assert.equal(out.USD.days1to30Minor, 100);
+  assert.equal(out.CAD.days1to30Minor, 200);
+  assert.ok(!Object.hasOwn(out, "TOTAL"));
+});
+
+test("38. the reporting read exposes agingByCurrency from the same visible set", async () => {
+  const r = await readFinancialFacts(db, CONSOLIDATED, {}, 50);
+  assert.ok(r.agingByCurrency && typeof r.agingByCurrency === "object");
+  // Only owed invoices are aged, so the aged total equals the summary's outstanding total.
+  for (const [currency, bucket] of Object.entries(r.agingByCurrency)) {
+    assert.equal(bucket.totalOutstandingMinor, r.summary.outstandingByCurrency[currency],
+      `aging total must reconcile to the outstanding total for ${currency}`);
+  }
+});
+
+test("39. NO 61-90 / 91+ SPLIT is invented — the approved bucket set is exactly these five keys", () => {
+  const a = summarizeArAging([agingInvoice("x", -400, 10)], T0)["USD"];
+  assert.deepEqual(Object.keys(a).sort(), [
+    "currentMinor", "days1to30Minor", "days31to60Minor", "days61PlusMinor", "totalOutstandingMinor", "unagedMinor",
+  ]);
+  assert.equal(a.days61PlusMinor, 10, "a 400-day-old invoice stays in 61+, not a bucket nobody ruled");
+});

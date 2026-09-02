@@ -21,7 +21,10 @@ import {
 import { AR_AGING_BUCKETS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
-import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows } from "../../domain/financialFactsView.js";
+import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows, agingSlots, unagedNote } from "../../domain/financialFactsView.js";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
+import { Link } from "react-router-dom";
 
 const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
 
@@ -46,6 +49,10 @@ export default function FinancialsAccountsReceivable() {
   // READY and EMPTY both mean the server answered; only the record count differs.
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
   const rows = answered ? outstandingRows(result) : [];
+  // The buckets are READ from the server's own derivation — this page buckets nothing.
+  const aging = agingSlots(state, result);
+  const unaged = answered ? unagedNote(result) : null;
+  const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
 
   const honest =
     answered && rows.length === 0
@@ -75,15 +82,22 @@ export default function FinancialsAccountsReceivable() {
             <div key={bucket.key} className="fin-scorecard__slot">
               <div className="fin-figure">
                 <div className="fin-figure__label">{bucket.label}</div>
-                <div className="fin-figure__absence">Not supplied by this read</div>
+                {aging[bucket.key] ? (
+                  <div className="fin-figure__value">{aging[bucket.key]}</div>
+                ) : (
+                  <div className="fin-figure__absence">
+                    {state === FACTS_STATE.LOADING ? "Reading…" : state === FACTS_STATE.DENIED ? "Withheld" : answered ? "Nothing owed" : "Unavailable"}
+                  </div>
+                )}
                 <span className="fin-factclass">Operational actual</span>
               </div>
             </div>
           ))}
         </div>
+        {unaged ? <p className="fin-section-note">{unaged}</p> : null}
         <p className="fin-section-note">
           One aging grammar, everywhere
-          <FinAnnotation tip="One canonical bucket vocabulary — Current / 1–30 / 31–60 / 61+ — used on every surface that ages receivables. The governed read returns per-invoice facts, not aged bucket totals, and this page will not total them itself: a bucket summed from one page of rows would read as a claim about the whole book. Per-invoice age is shown in the table below, where it is factual. No DSO and no risk score: neither has authority." />
+          <FinAnnotation tip="One canonical bucket vocabulary — Current / 1–30 / 31–60 / 61+ — used on every surface that ages receivables. The buckets are derived on the SERVER from each invoice's own governed dueDate; this page buckets nothing. They are deliberately not split into 61–90 and 91+, because no repository authority distinguishes those treatments. No DSO and no risk score: neither has authority." />
         </p>
       </section>
 
@@ -112,6 +126,9 @@ export default function FinancialsAccountsReceivable() {
               <tr>
                 <th scope="col">Customer</th>
                 <th scope="col">Invoice</th>
+                <th scope="col">Company · Unit</th>
+                <th scope="col">Salesperson</th>
+                <th scope="col">Issued</th>
                 <th scope="col">Due</th>
                 <th scope="col">Age</th>
                 <th scope="col" className="ns-num">Original</th>
@@ -123,8 +140,17 @@ export default function FinancialsAccountsReceivable() {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.invoiceId}>
-                    <td>{row.accountId ?? "—"}</td>
-                    <td>{row.invoiceNumber}</td>
+                    <td>{row.accountId ? <Link to={`/customers/${row.accountId}`}>{row.accountId}</Link> : "—"}</td>
+                    <td className="fin-nowrap">
+                      <Link to={`/financials/invoices/${row.invoiceId}`}>{row.invoiceNumber}</Link>
+                    </td>
+                    <td>{(row.companyId ?? "Not attributed") + " · " + row.businessUnit}</td>
+                    <td>
+                      {row.creditedSalespersonId
+                        ? (resolveEmployeeIdentity(row.creditedSalespersonId, { byEmployeeId, loading: dirLoading, error: dirError, noun: "salesperson" }).name ?? "Resolving…")
+                        : "Not attributed"}
+                    </td>
+                    <td>{dateWords(row.issuedAtMillis)}</td>
                     <td>{dateWords(row.dueDate)}</td>
                     <td>
                       {row.daysOverdue === null

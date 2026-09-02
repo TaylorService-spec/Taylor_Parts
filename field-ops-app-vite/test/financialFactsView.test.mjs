@@ -10,6 +10,8 @@ import {
   FACTS_STATE,
   financialFactsState,
   lifecycleScorecard,
+  agingSlots,
+  unagedNote,
   formatByCurrency,
   invoiceRow,
   outstandingRows,
@@ -287,4 +289,55 @@ test("A/R states its period contract VISIBLY, not only in an empty state or a to
   assert.ok(/not an as-of-period balance/.test(beforeSection), "the as-of disclaimer must be visible too");
   // It must not be a FinAnnotation-only claim.
   assert.ok(!/FinAnnotation[^>]*Period filters by invoice issue date/.test(src), "the statement must not be tooltip-only");
+});
+
+// ─── A/R aging (page 04) ───
+const AGING_READY = {
+  status: "ready",
+  invoices: [{ invoiceId: "i1" }],
+  payments: [],
+  applications: [],
+  summary: { count: 1, openCount: 1, overdueCount: 1, billedByCurrency: {}, collectedByCurrency: {}, outstandingByCurrency: { USD: 100_000 } },
+  agingByCurrency: {
+    USD: { totalOutstandingMinor: 100_000, currentMinor: 10_000, days1to30Minor: 20_000, days31to60Minor: 30_000, days61PlusMinor: 35_000, unagedMinor: 5_000 },
+  },
+};
+
+test("aging slots READ the server's buckets — the client buckets nothing", () => {
+  const s = agingSlots(FACTS_STATE.READY, AGING_READY);
+  assert.match(s.total, /1,000\.00/);
+  assert.match(s.current, /100\.00/);
+  assert.match(s.b1_30, /200\.00/);
+  assert.match(s.b31_60, /300\.00/);
+  assert.match(s.b61_plus, /350\.00/);
+});
+
+test("unaged money is NAMED, never folded into Current", () => {
+  const note = unagedNote(AGING_READY);
+  assert.match(note, /no governed due date/);
+  assert.match(note, /\$50\.00/);
+  // Current must show ONLY the server's current bucket, not current + unaged.
+  assert.match(agingSlots(FACTS_STATE.READY, AGING_READY).current, /\$100\.00/);
+  // Nothing unaged => no note at all.
+  const clean = { ...AGING_READY, agingByCurrency: { USD: { ...AGING_READY.agingByCurrency.USD, unagedMinor: 0 } } };
+  assert.equal(unagedNote(clean), null);
+});
+
+test("a non-answered read shows NO aging figure — never a zero bucket", () => {
+  for (const st of [FACTS_STATE.DENIED, FACTS_STATE.UNAVAILABLE, FACTS_STATE.LOADING]) {
+    const s = agingSlots(st, null);
+    for (const k of Object.keys(s)) assert.equal(s[k], null, `${k} must be absent in ${st}`);
+  }
+});
+
+test("SOURCE GUARD: page 04 does not bucket, age or total anything itself", () => {
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsAccountsReceivable.jsx", import.meta.url), "utf8");
+  const code = src.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
+  assert.ok(!/Minor\s*[+\-]/.test(code) && !/[+\-]\s*\w*Minor/.test(code), "no money arithmetic on page 04");
+  assert.ok(!/\.reduce\(/.test(code), "no client-side aggregation");
+  // Per-ROW display of the server's own daysOverdue is factual and fine — "12 days overdue" is that
+  // invoice's own number. What must never happen is ACCUMULATION across rows into age bands, which
+  // is what a bucket is. The guard therefore targets aggregation, not comparison.
+  assert.ok(!/(days1to30|days31to60|days61Plus|currentMinor)\s*\+?=/.test(code), "page 04 must not accumulate its own buckets");
+  assert.ok(/agingSlots\(/.test(code), "buckets must come from the server via the view model");
 });

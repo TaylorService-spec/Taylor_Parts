@@ -218,6 +218,42 @@ export function lifecycleScorecard(state, result) {
   };
 }
 
+/**
+ * A/R AGING for the approved bucket slots (page 04), READ from the server's own derivation.
+ *
+ * The client does not bucket anything here — it selects a field the server already computed and
+ * formats it. Any invoice the server could not place on the aging axis (no governed due date) is
+ * reported separately by `unagedNote` rather than folded into Current, so the buckets on screen
+ * reconcile to the total beside them.
+ */
+export function agingSlots(state, result) {
+  const aging = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY ? (result?.agingByCurrency ?? null) : null;
+  const pick = (field) => {
+    if (!aging) return null;
+    const byCurrency = {};
+    for (const [currency, bucket] of Object.entries(aging)) {
+      if (typeof bucket?.[field] === "number") byCurrency[currency] = bucket[field];
+    }
+    return Object.keys(byCurrency).length > 0 ? formatByCurrency(byCurrency) : null;
+  };
+  return {
+    total: pick("totalOutstandingMinor"),
+    current: pick("currentMinor"),
+    b1_30: pick("days1to30Minor"),
+    b31_60: pick("days31to60Minor"),
+    b61_plus: pick("days61PlusMinor"),
+  };
+}
+
+/** Owed money the server could not age, named rather than hidden in the nearest bucket. */
+export function unagedNote(result) {
+  const aging = result?.agingByCurrency ?? {};
+  const byCurrency = {};
+  for (const [currency, b] of Object.entries(aging)) if (b?.unagedMinor > 0) byCurrency[currency] = b.unagedMinor;
+  if (Object.keys(byCurrency).length === 0) return null;
+  return `${formatByCurrency(byCurrency)} is owed on invoices with no governed due date. It cannot be placed on the aging axis, so it is counted here rather than added to Current — the buckets above plus this figure reconcile to Total A/R.`;
+}
+
 /** What the server said the principal's reach actually was — never what the page guessed. */
 export function scopeSentence(result) {
   const scopes = result?.grantedScopes ?? [];
