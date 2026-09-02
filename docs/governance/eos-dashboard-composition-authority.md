@@ -246,7 +246,11 @@ imperative for an authority the platform does not have.
 Applying these rules to current `main`, the following remain honestly unavailable and are not to be
 filled by inference:
 
-- every financial figure — no Role carries any `finance.visibility.*` capability (census §9.1)
+- every period-based financial figure — the reporting-period authority (below), not reach. **The
+  census's "no Role carries any `finance.visibility.*` capability" finding was WITHDRAWN** (#1743):
+  it was measured by grepping Role sources, which cannot see admin's derived grants. Measured by
+  resolver, admin and owner carry all five scopes and resolve CONSOLIDATED reach in sandbox; #1744
+  additionally gave salesManager TEAM and salesperson SELF, both still awaiting activation
 - every margin, inventory value, turns and carrying-cost figure — FIN-BLOCK-003, no governed cost
   fact exists
 - every period-relative KPI, pacing figure and prior-period delta — no reporting-period authority

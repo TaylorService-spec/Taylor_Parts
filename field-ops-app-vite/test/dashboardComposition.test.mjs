@@ -134,10 +134,27 @@ test("the cost-dependent module is UNAVAILABLE and names all three missing piece
   assert.match(cost.blocker, /would otherwise have happened/i);
 });
 
-test("the financial module is GATED on the grant, and says so without naming a workaround", () => {
+test("the financial module names the reporting period, NOT a reach gap that no longer exists", () => {
+  // CORRECTED 2026-09-02. This test first asserted the blocker mentioned a missing finance
+  // visibility scope, because the dashboard census reported that no Role carried one. That finding
+  // was WITHDRAWN (#1743): it was measured by grepping Role sources, which cannot see admin's
+  // DERIVED grants, and by resolver admin and owner carry all five scopes.
+  //
+  // The assertion is kept and INVERTED rather than deleted, because the failure mode it guards is
+  // real and recurring: a module that keeps citing a blocker which has since cleared sends a reader
+  // to lobby for a grant that already exists. It now fails if the withdrawn claim comes back.
   const fin = DASHBOARD_MODULES.find((m) => m.key === "firmRevenue");
   assert.equal(fin.state({}), MODULE_STATE.GATED);
-  assert.match(fin.blocker, /finance visibility scope/i);
+  assert.match(fin.blocker, /reporting calendar|period/i, "the real blocker is the reporting period");
+  assert.ok(
+    !/no role currently carries a finance visibility scope/i.test(fin.blocker),
+    "the withdrawn FIN-004 reach finding must not be cited as a blocker again",
+  );
+  const booked = DASHBOARD_MODULES.find((m) => m.key === "myBooked");
+  assert.ok(
+    !/no role currently carries a finance visibility scope/i.test(booked.blocker),
+    "nor here",
+  );
 });
 
 // ===========================================================================

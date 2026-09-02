@@ -155,34 +155,62 @@ check("GOVERNED_BUSINESS_ROLES contains exactly the forty-one ids (thirty-one, t
   assert.equal(ALL_GOVERNED_ROLES.length, 41);
 });
 
-check("salesperson and salesManager differ ONLY by audit read and the goal WRITE verbs", () => {
+check("salesperson and salesManager differ ONLY by audit read, financial reach, and the goal WRITE verbs", () => {
   // Reconciliation 2026-08-21. These were byte-identical, and the comment below explains why that was
   // correct. The canonical Detailed CRUD sheet differentiates them in one place:
   // Sales Manager / Audit Log = R, Salesperson / Audit Log = blank. That is a real business
   // distinction the Owner's matrix makes, not a manufactured one -- everything else stays identical,
   // and the INTENTIONAL_OVERLAP reasoning below still governs the rest.
   //
-  // 2026-09-02, Performance Goal Authority: the second real difference. The manager holds the four
-  // goal WRITE verbs; the salesperson holds only performance.goal.read (so the pair is asymmetric,
-  // not disjoint -- read is on BOTH sides and correctly appears in neither list below).
+  // SECOND DIFFERENCE, Owner ruling 2026-09-02: financial REACH. salesManager carries TEAM,
+  // salesperson carries SELF. That is the manager/report distinction expressed in the one dimension
+  // where it genuinely matters. Both still hold the same `finance.read` fact-family gate; only how
+  // far it reaches differs.
   //
-  // THIS ASYMMETRY IS LOAD-BEARING, not a grant that drifted in. The Owner's rule is that an
-  // employee does not manage their own target; if both Roles held the write verbs, a salesperson
-  // could author their own quota, and the hierarchical-visibility narrowing would not stop them --
-  // visibleEmployeeIdsFor deliberately includes the viewer's own employeeId. The Role split is what
-  // makes the refusal structural rather than incidental.
+  // THIRD DIFFERENCE, Performance Goal Authority, same day: the manager holds the four goal WRITE
+  // verbs and the salesperson holds only performance.goal.read -- so that pair is asymmetric rather
+  // than disjoint, and read correctly appears in NEITHER list below.
+  //
+  // The two 2026-09-02 differences arrived from separate workstreams and are the same distinction
+  // seen twice: a manager may see further, and a manager may set the target. THE GOAL ASYMMETRY IS
+  // LOAD-BEARING rather than incidental -- the Owner's rule is that an employee does not manage
+  // their own target, and hierarchical visibility would NOT stop a salesperson authoring their own
+  // quota, because visibleEmployeeIdsFor deliberately includes the viewer's own employeeId. The Role
+  // split is what makes that refusal structural.
+  //
+  // This assertion is TIGHTENED, not relaxed: it names every divergence explicitly, so a FOURTH one
+  // still fails here.
   const mgr = new Set(GOVERNED_BUSINESS_ROLES.salesManager.permissions);
   const rep = new Set(GOVERNED_BUSINESS_ROLES.salesperson.permissions);
   const mgrOnly = [...mgr].filter((p) => !rep.has(p)).sort();
   const repOnly = [...rep].filter((p) => !mgr.has(p)).sort();
   assert.deepEqual(
     mgrOnly,
-    ["audit.event.read", "performance.goal.approve", "performance.goal.create", "performance.goal.retire", "performance.goal.supersede"],
-    "the manager-side differences are audit visibility and the four goal WRITE verbs",
+    [
+      "audit.event.read",
+      "finance.visibility.team",
+      "performance.goal.approve",
+      "performance.goal.create",
+      "performance.goal.retire",
+      "performance.goal.supersede",
+    ],
+    "the manager-side differences are audit visibility, TEAM financial reach, and the four goal WRITE verbs",
   );
-  assert.deepEqual(repOnly, [], "the salesperson holds nothing the manager lacks");
+  assert.deepEqual(
+    repOnly,
+    ["finance.visibility.self"],
+    "the salesperson holds exactly one thing the manager lacks: SELF reach, which TEAM supersedes",
+  );
   assert.ok(rep.has("performance.goal.read"), "the salesperson can still SEE the target they are measured against");
   assert.ok(mgr.has("performance.goal.read"), "and so can the manager");
+  // Neither sales Role reaches beyond its ruled scope, and neither gained the fact-family gate
+  // asymmetrically -- reach differs, the gate does not.
+  for (const roleId of ["salesManager", "salesperson"]) {
+    assert.ok(GOVERNED_BUSINESS_ROLES[roleId].permissions.includes("finance.read"), roleId);
+    for (const wider of ["finance.visibility.consolidated", "finance.visibility.company", "finance.visibility.businessUnit"]) {
+      assert.ok(!GOVERNED_BUSINESS_ROLES[roleId].permissions.includes(wider), `${roleId} must not hold ${wider}`);
+    }
+  }
 });
 
 check("neither sales Role may convert an Opportunity into a Sales Order... until the matrix says so", () => {
@@ -526,35 +554,54 @@ check("the purchasing merge did not hand Accounting Manager approval or void aut
   }
 });
 
-// THE PARITY ENDED ON PURPOSE, and this test is the record of how.
+// PARITY IS EXACT EQUALITY, and this assertion is the record of why it had to become one.
 //
-// 2026-08-18 the Owner ruled "accountingManager should be like financeManager FOR NOW",
-// and the previous version of this test pinned the two sets as identical. "For now" ended
-// on 2026-08-19 with "Purchasing falls under accounting", which gives Accounting a
-// workflow Finance has no claim to.
+// 2026-08-18 the Owner ruled "accountingManager should be like financeManager FOR NOW". The
+// 2026-08-19 "Purchasing falls under accounting" ruling briefly gave Accounting more, so this
+// test was NARROWED to a directional pair: accounting ⊇ finance, and length >=. The 2026-08-20
+// roster then moved purchasing to its own Role, and the comment here was updated to say the two
+// were "identical again".
 //
-// So the assertion is narrowed rather than deleted: everything the 2026-08-18 parity
-// ruling actually established still holds -- Accounting was RAISED to Finance's level and
-// keeps every id Finance has -- while Accounting is now permitted to hold MORE. What is
-// still forbidden is Finance quietly drifting above Accounting, or Accounting losing any
-// of the parity it was granted.
-check("Accounting Manager retains everything Finance Manager holds (the 2026-08-18 parity), and may now hold more", () => {
-  const accountingSet = new Set(ACCOUNTING_MANAGER_ROLE.permissions);
-  for (const id of FINANCE_MANAGER_ROLE.permissions) {
-    assert.ok(accountingSet.has(id), `accountingManager lost "${id}", which the 2026-08-18 parity ruling granted it`);
+// THEY WERE NOT, AND THIS TEST COULD NOT SEE IT. On 2026-09-02 a measurement found
+// accountingManager holding 17 permissions and financeManager holding 5 -- with NO `finance.*`
+// id at all, so the Role named Finance Manager could not read a single financial fact. Both Role
+// descriptions said "intentionally identical" throughout. A directional assertion passes happily
+// at 17 vs 5: `⊇` holds and `17 >= 5` holds. The test's own comment was false for a fortnight.
+//
+// Owner ruling 2026-09-02 restores parity and re-affirms that the two Roles are one policy. So
+// the assertion is EXACT SET EQUALITY -- it must reject a missing permission, an extra
+// permission, and equal-length-but-different-membership. "At least" is what let this through.
+check("Finance Manager and Accounting Manager hold EXACTLY the same permissions (Owner rulings 2026-08-18, 2026-09-02)", () => {
+  const finance = new Set(FINANCE_MANAGER_ROLE.permissions);
+  const accounting = new Set(ACCOUNTING_MANAGER_ROLE.permissions);
+
+  // Set equality, reported as the two directed differences so a failure names what moved.
+  const financeOnly = [...finance].filter((id) => !accounting.has(id)).sort();
+  const accountingOnly = [...accounting].filter((id) => !finance.has(id)).sort();
+  assert.deepEqual(financeOnly, [], `financeManager holds ids accountingManager does not: ${financeOnly.join(", ")}`);
+  assert.deepEqual(accountingOnly, [], `accountingManager holds ids financeManager does not: ${accountingOnly.join(", ")}`);
+  assert.equal(finance.size, accounting.size, "equal membership but different cardinality means a duplicate entry");
+
+  // No duplicates hiding a difference behind Set collapsing.
+  assert.equal(finance.size, FINANCE_MANAGER_ROLE.permissions.length, "financeManager has a duplicate permission");
+  assert.equal(accounting.size, ACCOUNTING_MANAGER_ROLE.permissions.length, "accountingManager has a duplicate permission");
+
+  // The parity is substantive, not vacuous: both carry the money authorities the drift removed.
+  for (const id of ["finance.read", "finance.invoice.issue", "finance.payment.apply", "finance.visibility.consolidated"]) {
+    assert.ok(finance.has(id), `financeManager must hold ${id} -- this is the drift that was corrected`);
+    assert.ok(accounting.has(id), `accountingManager must hold ${id}`);
   }
-  assert.ok(
-    accountingSet.has("customer.governedField.write"),
-    "parity was reached by RAISING Accounting to Finance, not by lowering Finance",
-  );
-  // The 2026-08-19 purchasing grant briefly made Accounting exceed Finance. The 2026-08-20
-  // roster moved purchasing to its own Role, so the two are identical again -- which is the
-  // 2026-08-18 parity ruling, restored rather than broken. Asserted as "at least", so a
-  // future Accounting-only grant is still permitted without editing this back.
-  assert.ok(
-    ACCOUNTING_MANAGER_ROLE.permissions.length >= FINANCE_MANAGER_ROLE.permissions.length,
-    "Accounting must never fall below Finance -- the 2026-08-18 parity ruling raised it to match",
-  );
+
+  // The three drift shapes this assertion must reject, demonstrated against the real set so the
+  // rejection is not merely asserted in a comment.
+  const equal = (a, b) => a.size === b.size && [...a].every((id) => b.has(id));
+  const dropOne = new Set([...finance].slice(1));
+  const addOne = new Set([...finance]).add("customer.record.create");
+  const swapOne = new Set([...finance].slice(1)).add("customer.record.create");
+  assert.ok(!equal(dropOne, accounting), "a missing permission must break parity");
+  assert.ok(!equal(addOne, accounting), "an extra permission must break parity");
+  assert.ok(!equal(swapOne, accounting), "same length, different membership must break parity");
+  assert.equal(swapOne.size, finance.size, "the swap case is genuinely same-length");
 });
 
 // Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
@@ -1043,9 +1090,16 @@ check("warehouse RECORD and STOCK-LOCATION read stay confined; transferOrder rea
   }
 
   // transferOrder.read is granted, and only to roles whose canonical row declares it.
+  //
+  // financeManager ADDED 2026-09-02, by the Owner parity ruling rather than by a new CRUD row:
+  // accountingManager's canonical row declares this id, and the two money Roles are one policy
+  // built from one list (MONEY_MANAGER_PERMISSIONS). Restoring parity necessarily carries it
+  // across. This is a restoration of a recorded Role policy, not a new business authority --
+  // Finance Manager had drifted DOWN to five permissions, and this is part of the eleven it
+  // should never have lost.
   const EXPECTED_TRANSFER_READ = [
-    "accountingManager", "controller", "generalManager", "operationsManager", "owner",
-    "purchasingManager", "warehouseAssociate", "warehouseManager",
+    "accountingManager", "controller", "financeManager", "generalManager", "operationsManager",
+    "owner", "purchasingManager", "warehouseAssociate", "warehouseManager",
   ];
   const actual = Object.values(GOVERNED_BUSINESS_ROLES)
     .filter((r) => r.permissions.includes("warehouse.transferOrder.read"))

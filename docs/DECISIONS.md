@@ -4467,7 +4467,83 @@ Rules branch. No Rules, Functions, grants, capabilities, or authority surface ch
 The historic classification lines in the R-32-era entries above are history and are not
 rewritten; this entry is the closure record.
 
-## #159 — OWNER RULING: EOS dashboards compose authority, and derived information may appear on one (2026-09-02)
+---
+
+## #159 — OWNER RULING: Finance Manager parity restored + the FIN-004 financial visibility matrix (2026-09-02)
+
+**Context.** The dashboard reporting census (#1740) reported that no Role carried any
+`finance.visibility.*` capability. That finding was WRONG — it was measured by grepping the Role
+source files, which cannot see `admin`'s derived grants (`ADMIN_CURATED_PERMISSIONS` + the whole
+`PERMISSION_CATALOG`, ruling 2026-08-19). The correction is #1743 and
+`docs/assessments/fin004-reach-reconciliation.md`.
+
+Re-measuring by resolver DID surface a real defect. `financeManager` held **5** permissions and
+**zero** `finance.*` ids — the Role named Finance Manager could not read a single financial fact
+anywhere — while `accountingManager` held **17**, and both Role descriptions said *"intentionally
+identical (Owner ruling 2026-08-18)"*. Nothing caught it because the pinning test was
+**directional** (`accounting ⊇ finance`, `length >=`), which passes at 17 vs 5 while its own
+comment ("the two are identical again") was false.
+
+**Ruling 1 — parity.** Finance Manager and Accounting Manager **remain intentionally identical**.
+Parity is RESTORED. This is a restoration of already-recorded Role policy (#114 as amended
+2026-08-18), not a new expansion of business authority.
+
+This supersedes the ORDERING left by the 2026-08-19 "Purchasing falls under accounting" ruling:
+purchasing moved to `purchasingManager` on 2026-08-20, so nothing remains that Accounting should
+hold and Finance should not. The relationship is **equality**, and the pinning test is now exact
+set equality — it must reject a missing permission, an extra permission, and
+same-length-different-membership. Both Roles are built from ONE shared constant
+(`MONEY_MANAGER_PERMISSIONS`); if they are ever ruled apart, that constant splits in the same change.
+
+**Ruling 2 — the financial visibility matrix.** Financial visibility is granted by explicit
+business need. Holding `finance.read` alone does NOT imply reach; the FIN-004 invariant stands —
+FINANCIAL REACH = fact-family gate + active explicit visibility scope, and either alone reaches
+nothing.
+
+| Role | Scope |
+|---|---|
+| `owner` | CONSOLIDATED (existing grants untouched) |
+| `admin` | CONSOLIDATED (existing grants untouched) |
+| `generalManager` | CONSOLIDATED |
+| `financeManager` | CONSOLIDATED |
+| `accountingManager` | CONSOLIDATED |
+| `salesManager` | TEAM |
+| `salesperson` | SELF |
+
+**No new financial visibility for** `operationsManager`, `fieldManager`, `purchasingManager`,
+`officeManager`, `marketingManager`, `shopManager`, `shopAssociate`, `partsManager`,
+`partsAssociate`, `warehouseManager`, `warehouseAssociate`, `controller`, `dispatcher`,
+`technician`, `generalEmployee`, or any execution/special-purpose Role. A Role carrying
+`finance.read` and no scope is an **allowed, intentional, fail-closed state**.
+
+**No new BUSINESS_UNIT or OPERATING_COMPANY carrier.** Those scope types remain valid FIN-004
+architecture for future explicit use; this ruling establishes no carrier for either.
+
+**Ruling 3 — GRANT ≠ ACTIVATION; the matrix is deliberately NOT completed.** Only
+`finance.visibility.consolidated` is sandbox-eligible and sandbox-active. So `salesManager` (TEAM)
+and `salesperson` (SELF) hold real ruled grants and resolve **ZERO** reach until a separate Owner
+activation ruling makes those scopes eligible and active. That is the correct outcome, not an
+incomplete one. Production activates nothing for any principal, `admin` and `owner` included.
+
+**Scope binding is fail-closed and unchanged.** TEAM resolves through the governed hierarchical
+visibility authority; SELF binds through `users/{uid}.employeeId`. An unresolved team or an
+unlinked employee reaches zero and is surfaced as a BLOCKED scope — never widened, never inferred
+from Customer ownership, creator, or Opportunity owner.
+
+**Consequential side effect, recorded rather than absorbed:** parity carries
+`warehouse.transferOrder.read` to `financeManager`, taking that roster from eight Roles to nine.
+Required by the parity ruling, since Accounting Manager's canonical row declares the id.
+
+**Not changed by this ruling:** financial calculations, invoice/payment/AR semantics, FIN-002
+attribution, FIN-004 visibility semantics, Firestore Rules, scope types, production. FIN-BLOCK-003
+is untouched — reach is not cost, and margin remains structurally UNKNOWN for every carrier.
+
+**Evidence:** `functions/test/fin004ReachComposition.test.mjs` (18 checks: the five invariant
+proofs, the approved matrix, the no-unintended-carrier guard, activation state, per-environment
+resolved reach, and TEAM/SELF binding) and the exact-equality parity proof in
+`functions/test/governedBusinessRoles.test.mjs`. Record:
+`docs/assessments/fin004-reach-reconciliation.md` §6–§9.
+## #160 — OWNER RULING: EOS dashboards compose authority, and derived information may appear on one (2026-09-02)
 
 **Context:** the dashboard reporting authority census (#1740) classified 132 dashboard fact families
 and closed with four formalization items and four Owner decisions still open. Three of those
@@ -4507,13 +4583,17 @@ unavailable state naming what is missing, and is never filled with something adj
 NOTIFICATION as the platform-wide dashboard vocabulary, including the no-ALERT and no-re-badging
 rules), F-11 (truncation/completeness honesty), and §9 Owner decision 4.
 
-**Does NOT close:** §9 decisions 1 (FIN-004 has no carrying Role), 2 (reporting-period authority) and
-3 (the cost supply). All three remain open, and every fact family behind them stays honestly
-unavailable.
+**Does NOT close:** census §9 decisions 2 (reporting-period authority) and 3 (the cost supply). Both
+remain open, and every fact family behind them stays honestly unavailable.
+
+Decision 1 (FIN-004 has no carrying Role) was **WITHDRAWN by #1743** as a measurement error, and
+closed for admin/owner in sandbox by #1744 — after this ruling was drafted. The dashboard modules
+and metric registry entries that cited it were corrected to name their REAL blockers, which for the
+period-based financial figures is the reporting-period authority rather than reach.
 
 **Enforced by:** `docs/governance/eos-dashboard-composition-authority.md` (canonical text).
 
-## #160 — OWNER DIRECTION: a governed Performance Goal Authority, reconciling FIN-003 (2026-09-02)
+## #161 — OWNER DIRECTION: a governed Performance Goal Authority, reconciling FIN-003 (2026-09-02)
 
 **Context:** EOS could state what happened and never what should have happened. FIN-003
 (`finance/planVsActual.ts`) already defined a versioned GOAL/BUDGET plan with a
@@ -4569,8 +4649,26 @@ set and bless their own team's numbers in a single act; supersede is separate be
 operation that closes an existing version's window. Granted per the Owner's §E policy table to owner,
 generalManager, operationsManager, salesManager, fieldManager, partsManager, warehouseManager and
 purchasingManager (all five verbs), and read-only to salesperson, partsAssociate and
-warehouseAssociate. **admin is deliberately NOT granted** — administering access is a different job
-from setting the business's targets, and the Owner's policy did not name it.
+warehouseAssociate.
+
+**CORRECTION, same day — admin and owner ALSO hold all five, and not by any grant written here.**
+The first version of this entry claimed "admin is deliberately NOT granted", reasoning that
+administering access is a different job from setting targets. That claim was false about this
+codebase. `ADMIN_ROLE.permissions` is DERIVED as `ADMIN_CURATED_PERMISSIONS` plus the ENTIRE
+`PERMISSION_CATALOG` (Owner ruling 2026-08-19: "Admin and Owner have full access to all possible
+features and permissions"), so **registering a capability grants it to admin — and to owner, which
+composes admin's set — the moment it is registered.** Measured by resolver, not by reading: admin
+resolves all five goal verbs.
+
+This is the SAME derivation that defeated the dashboard census's grep-based FIN-004 measurement
+(#1743, withdrawn), met twice in one week. The lesson is recorded rather than the symptom patched:
+**a claim about who holds a capability is measured by the resolver, never by searching Role
+sources** — admin's grants appear as literals nowhere. An explicit owner grant added on the false
+premise has been removed, because a duplicate that reads as a deliberate distinction encodes one
+that does not exist.
+
+The practical consequence is small and acceptable: admin can author and approve goals. FIN-007's
+self-approval prohibition still applies to them unconditionally, and every act is audited.
 
 **One new Role: `performanceGoalSubject`**, carrying exactly `performance.goal.read`. It exists
 because `technician` and `dispatcher` are COMPATIBILITY Roles whose contract is to reproduce today's

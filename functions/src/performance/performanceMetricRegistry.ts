@@ -425,7 +425,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     rollup: rollsUp("SUM", true),
     censusRef: "S-9",
     ...blocked(
-      "TWO blockers. (1) FIN-004: no Role in the repository carries any finance.visibility.* capability, so every financial read resolves to zero reach for every principal in every environment. (2) AB-2: no bounded read for booked facts exists -- listFinancialFacts serves persisted fact types only and excludes booked BY CONSTRUCTION, test-guarded.",
+      "AB-2 -- no bounded read for booked facts exists at all: listFinancialFacts serves persisted fact types only and excludes booked BY CONSTRUCTION, test-guarded. This blocker is independent of reach and of the period -- even a principal with CONSOLIDATED reach has nothing to read. G-05 blocks the window separately. FIN-004 reach EXISTS today: corrected 2026-09-02, the census claim that no Role carried a finance.visibility.* scope was WITHDRAWN (#1743) because it was measured by grepping Role sources, which cannot see admin's DERIVED grants. Measured by resolver: admin and owner carry all five scopes, salesManager TEAM, salesperson SELF (#1744).",
     ),
   }),
   Object.freeze({
@@ -440,7 +440,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("EMPLOYEE", "BUSINESS_UNIT", "OPERATING_COMPANY", "FIRM"),
     rollup: rollsUp("SUM", true),
     censusRef: "S-10",
-    ...blocked("FIN-004 -- no Role carries any finance.visibility.* capability, so the read resolves to zero reach."),
+    ...blocked("G-05 reporting-period authority -- billed is a WINDOWED figure and no fiscal calendar, reporting timezone or period rule exists to sum it over. FIN-004 reach EXISTS today and the blocker is elsewhere. Corrected 2026-09-02: the census claim that no Role carried a finance.visibility.* scope was WITHDRAWN (#1743) -- it was measured by grepping Role sources, which cannot see admin's DERIVED grants. Measured by resolver: admin and owner carry all five scopes, salesManager carries TEAM, salesperson carries SELF (#1744). Only finance.visibility.consolidated is activated for platform-sandbox, so admin/owner resolve CONSOLIDATED reach there while the SELF/TEAM holders resolve nothing anywhere -- an ACTIVATION gap, not a missing grant."),
   }),
   Object.freeze({
     metricId: "sales.collected.amount",
@@ -454,7 +454,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("EMPLOYEE", "BUSINESS_UNIT", "OPERATING_COMPANY", "FIRM"),
     rollup: rollsUp("SUM", true),
     censusRef: "S-11",
-    ...blocked("FIN-004 -- no Role carries any finance.visibility.* capability, so the read resolves to zero reach."),
+    ...blocked("G-05 reporting-period authority -- collected is a WINDOWED figure and no period rule exists to sum it over. FIN-004 reach EXISTS today and the blocker is elsewhere. Corrected 2026-09-02: the census claim that no Role carried a finance.visibility.* scope was WITHDRAWN (#1743) -- it was measured by grepping Role sources, which cannot see admin's DERIVED grants. Measured by resolver: admin and owner carry all five scopes, salesManager carries TEAM, salesperson carries SELF (#1744). Only finance.visibility.consolidated is activated for platform-sandbox, so admin/owner resolve CONSOLIDATED reach there while the SELF/TEAM holders resolve nothing anywhere -- an ACTIVATION gap, not a missing grant."),
   }),
   Object.freeze({
     metricId: "sales.consolidatedBilled.amount",
@@ -469,7 +469,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     rollup: rollsUp("UNELIMINATED_SUM", false),
     censusRef: "S-17 / F-7",
     ...blocked(
-      "FIN-004 reach, and separately FIN-BLOCK-004: intercompany treatment and elimination are undecided, so the consolidated figure is typed UNELIMINATED_SUM and must render with that caveat rather than as a company total.",
+      "FIN-BLOCK-004 -- intercompany treatment and elimination are undecided, so this figure is typed UNELIMINATED_SUM and must render with that caveat rather than as a company total. G-05 blocks the window independently. FIN-004 reach EXISTS today and the blocker is elsewhere. Corrected 2026-09-02: the census claim that no Role carried a finance.visibility.* scope was WITHDRAWN (#1743) -- it was measured by grepping Role sources, which cannot see admin's DERIVED grants. Measured by resolver: admin and owner carry all five scopes, salesManager carries TEAM, salesperson carries SELF (#1744). Only finance.visibility.consolidated is activated for platform-sandbox, so admin/owner resolve CONSOLIDATED reach there while the SELF/TEAM holders resolve nothing anywhere -- an ACTIVATION gap, not a missing grant.",
     ),
   }),
   Object.freeze({

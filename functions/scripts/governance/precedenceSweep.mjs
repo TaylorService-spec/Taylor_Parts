@@ -69,6 +69,14 @@ const DECIDED = {
   // a new object; the decision is recorded rather than the gate bypassed.
   "salesAgreement.create": "#121", "salesAgreement.updateDraft": "#121",
   "salesAgreement.accept": "#121", "salesAgreement.read": "#121",
+  // FIN-004 financial reach. There is no CRUD row because the matrix models OBJECTS and these
+  // model REACH -- how far a holder of the finance.read fact-family gate may see. The Owner ruled
+  // the carrier of each scope explicitly (#159), which is precisely the case this map exists for.
+  // Keyed by capability, like every entry above: the decision fixes WHO holds each scope, and the
+  // per-Role assignment is asserted in fin004ReachComposition.test.mjs's approved matrix.
+  "finance.visibility.consolidated": "#159",
+  "finance.visibility.team": "#159",
+  "finance.visibility.self": "#159",
 };
 // WORKFLOW GRANTS. A capability with no matrix row and no composition, held because a recorded
 // Owner direction describes the SEQUENCE the Role performs. A workflow is not one write, and the
@@ -80,10 +88,21 @@ const WORKFLOW_GRANTS = {
   "fieldManager|workOrder.cancel": "Spec 26.2 Owner direction: Service Manager holds the FULL Work Order lifecycle; cancel is part of that lifecycle",
 };
 
-// NOT an equality. DECISIONS #114's parity said "FOR NOW" and the Owner ruling of 2026-08-19 ended
-// it, leaving an ORDERING (accounting retains everything finance holds, and may hold more). The
-// sweep must not derive capability for the subset Role from the superset -- doing so would raise
-// Finance into the purchasing workflow on the authority of a superseded decision.
+// AN EQUALITY AGAIN, as of DECISIONS #159 (2026-09-02).
+//
+// History, because this pair has moved three times: #114's parity said "FOR NOW"; the 2026-08-19
+// "Purchasing falls under accounting" ruling ended it and left an ORDERING (accounting retains
+// everything finance holds, and may hold more); the 2026-08-20 roster then moved purchasing to
+// purchasingManager, which removed the only thing the ordering was protecting -- but the ordering
+// was left in place, and financeManager silently drifted DOWN to five permissions with no
+// `finance.*` id at all. A one-directional check cannot see a subset shrinking.
+//
+// #159 restores equality and both Roles are now built from one shared constant, so the drift is
+// structurally impossible rather than merely detected. This reverse-sweep entry is KEPT rather
+// than deleted: it still answers "does accounting hold LESS than a decision requires", which is
+// the direction every guard here was blind to until 2026-08-21, and equality means it now also
+// catches the shrink that actually happened. Exact equality in BOTH directions is asserted by
+// governedBusinessRoles.test.mjs; this is the governance-artifact half of the same claim.
 const ASSERTED_ORDERING = { superset: "accountingManager", subset: "financeManager" };
 
 // The 15 governed BUSINESS Roles the sweep covers. The functional Roles are per-employee grants and

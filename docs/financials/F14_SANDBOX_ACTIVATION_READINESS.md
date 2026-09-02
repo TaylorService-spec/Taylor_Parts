@@ -41,11 +41,28 @@ Registered ids (both catalog mirrors), all `active:false` today:
   commit `cc261540` / PR #1711, for sandbox Owner review only. The other four ids
   (`self`/`team`/`businessUnit`/`company`) remain in no registry, and a wider environment
   remains an Owner-authorized PR plus a Functions deploy.
-  **The point this bullet was making is unchanged, and is now sharper: ELIGIBILITY IS NOT
-  CARRIAGE.** No repository Role carries any `finance.visibility.*` capability, so reach is
-  still zero for every principal — see §2's "carrying role TBD", which remains the open
-  decision. Evidence and consequences: `docs/assessments/eos-dashboard-reporting-authority-census.md`
-  §9 decision 1.
+  **A SECOND CORRECTION, 2026-09-02 — the first one overreached.** The 2026-09-02 edit above
+  additionally claimed "no repository Role carries any `finance.visibility.*` capability, so
+  reach is still zero for every principal." **That is FALSE, and it was measured wrongly.**
+  `admin` and `owner` carry all five scopes, and §2's "role carriage TBD" applies to the
+  *other* personas in that table, not to admin/owner.
+
+  The measurement defect is worth recording because it will recur: admin's permissions are
+  **derived**, not listed — `ADMIN_ALL_PERMISSIONS = ADMIN_CURATED_PERMISSIONS + every id in
+  `PERMISSION_CATALOG`` (`compatibilityRoles.ts`, Owner ruling 2026-08-19: "Admin and Owner
+  have full access to all possible features and permissions"). So the five ids are real grants
+  that appear **nowhere as literals** in any Role source, and a grep for them returns nothing.
+  `owner` inherits them through OWNER_PERMISSIONS composition.
+
+  **Measured on `fd40ff5d`, by resolver rather than by grep:** admin and owner carry all five
+  visibility scopes; eleven governed Roles carry `finance.read` and no scope (so they reach
+  nothing, by design); in sandbox only `finance.visibility.consolidated` is ACTIVE, so
+  admin/owner reach is exactly CONSOLIDATED and the other four stay denied while held. Sandbox
+  Financials therefore **does** resolve reach for admin/owner today.
+
+  Proof: `functions/test/fin004ReachComposition.test.mjs` (10 checks, mutation-verified).
+  Matrix and the remaining open decision:
+  `docs/assessments/fin004-reach-reconciliation.md`.
 
 ### Grant examples (persona → capability grant + scope binding; ILLUSTRATIVE — nothing granted)
 

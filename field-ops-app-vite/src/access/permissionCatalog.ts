@@ -1371,7 +1371,19 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // exists for it, and -- for an EMPLOYEE-scoped goal -- requires the subject to be inside the
   // actor's governed hierarchical visibility. Holding a manager title alone widens nothing.
   //
-  // All five registered active:false. REGISTER != GRANT != ACTIVATE.
+  // All five registered active:false.
+  //
+  // "REGISTER != GRANT" HOLDS FOR EVERY ROLE EXCEPT ONE, and the exception is worth knowing before
+  // reading the grant table as the whole story: by Owner ruling (2026-08-19) admin's permission set
+  // is DERIVED as ADMIN_CURATED_PERMISSIONS plus the entire PERMISSION_CATALOG, so a capability
+  // becomes admin's -- and owner's, which composes admin's set -- THE MOMENT IT IS REGISTERED HERE.
+  // Registering these five therefore granted them to admin and owner as a side effect, without
+  // appearing as a literal in any Role source. That derivation is exactly what defeated the
+  // dashboard census's grep-based FIN-004 measurement (#1743), so it is stated here rather than
+  // left to be rediscovered the same way.
+  //
+  // REGISTER != ACTIVATE still holds without exception: an id registered active:false resolves DENY
+  // inactivePermission for admin too, in every environment, until an environment activates it.
   Object.freeze({
     id: "performance.goal.read",
     description:

@@ -193,7 +193,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     key: "myGoals",
     section: SECTION.PERFORMANCE,
     label: "My goals",
-    census: "Decision #160",
+    census: "Decision #161",
     // Everyone with an employee identity has a place for a target, whether or not one is set. The
     // module's own NO_GOAL state is what says "nobody has set one" -- and that absence is worth
     // showing, because it is a management gap rather than a system limitation.
@@ -232,7 +232,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     needs: (ctx) => has(ctx, "opportunity.read") || has(ctx, "salesOrder.read"),
     state: () => MODULE_STATE.GATED,
     blocker:
-      "Booked dollars are not readable yet. No role currently carries a finance visibility scope, and the booked figure additionally has no bounded read of its own.",
+      "Booked dollars have no bounded read of their own yet, and no reporting period to total them over. Financial reach itself is no longer the blocker.",
   },
 
   // ---------------------------------------------------------------- TEAM PERFORMANCE
@@ -250,7 +250,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     key: "teamGoals",
     section: SECTION.TEAM_PERFORMANCE,
     label: "Goals for your area",
-    census: "Decision #160",
+    census: "Decision #161",
     // FIRM and LOCATION goals. A viewer with neither operations scope nor a location assignment has
     // no area, so the module is absent rather than empty.
     needs: (ctx) => isOperationsViewer(ctx) || hasLocationScope(ctx),
@@ -273,7 +273,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.DRIVERS,
     label: "Stock forecast",
     census: "I-5 / I-7",
-    // DERIVED INFORMATION, permitted on a dashboard by Decision #159 and labelled as such by the
+    // DERIVED INFORMATION, permitted on a dashboard by Decision #160 and labelled as such by the
     // component. It may never be called On hand or Available.
     needs: (ctx) => isOperationsViewer(ctx) || hasLocationScope(ctx),
     state: () => MODULE_STATE.NOT_WIRED,
@@ -318,7 +318,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     needs: (ctx) => has(ctx, "finance.read"),
     state: () => MODULE_STATE.GATED,
     blocker:
-      "No role currently carries a finance visibility scope, so every financial figure resolves to no reach for everyone. Granting one is a governance decision, not a setting.",
+      "Booked, billed and collected are period figures, and the platform has no reporting calendar to sum them over yet. Financial reach itself is no longer the blocker.",
   },
   {
     key: "costImpact",

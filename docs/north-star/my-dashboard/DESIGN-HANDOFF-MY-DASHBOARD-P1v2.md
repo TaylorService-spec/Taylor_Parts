@@ -3,7 +3,7 @@
 **Status:** DESIGN AUTHORITY for the My Dashboard family. Recorded 2026-09-02 under the Owner's
 dashboard + performance-management direction. Governed by
 [`eos-dashboard-composition-authority.md`](../../governance/eos-dashboard-composition-authority.md)
-(Decision #159) and the Performance Goal Authority (Decision #160).
+(Decision #160) and the Performance Goal Authority (Decision #161).
 
 **Visual system:** [`../VISUAL-SYSTEM.md`](../VISUAL-SYSTEM.md), unchanged. **This document
 redesigns nothing.** It composes the accepted grammar — the same tokens, the same primitives, the
@@ -108,7 +108,7 @@ in this table does not ship**, and a module here does not ship until its authori
 | `StalledJobRisk` | SV-17 | `jobRiskScoring` / `dispatchScoring` **under their own labels** | admin/dispatcher | DRIVERS |
 | `StockForecast` | I-5, I-7 | `inventoryAnalyticsEngine` — **labelled DERIVED** | per surface | DRIVERS |
 | `MovementCounts` | I-9 | `operationsQueries` | admin/dispatcher | TEAM PERFORMANCE |
-| `GoalProgress` | Decision #160 | `listCurrentPerformanceGoals` + the metric's own domain read | per goal scope | PERFORMANCE |
+| `GoalProgress` | Decision #161 | `listCurrentPerformanceGoals` + the metric's own domain read | per goal scope | PERFORMANCE |
 | `GoTo` | X-6, T-7/W-11, A-4 | `navConfig` visibility + `deriveScanWorkflows` | per principal | GO TO |
 
 ### 3.2 GATED — the authority exists; a named activation or grant does not
@@ -125,10 +125,17 @@ makes clearing the blocker a one-line change rather than a project.
 | `GovernedStockPosition` | I-1..I-4 | AB-1 — `INVENTORY_BALANCE_READ_READY` transport flag is false |
 | `TransfersInFlight`, `CycleCountVariances` | I-13, I-14 | AB-4 |
 | `PutAwayAndPicks` | W-4, W-5, T-8 | AB-4 |
-| `MyBooked` / `MyBilled` / `MyCollected` | S-9, S-10, S-11 | **FIN-004: no Role carries any `finance.visibility.*` capability**, plus AB-2 for booked |
-| `FirmBooked` / `FirmBilled` | S-9, S-10, S-17 | FIN-004; consolidated additionally `UNELIMINATED_SUM` (FIN-BLOCK-004) |
-| `AccountsReceivable` | C-4, F-2 | FIN-004 |
-| `FinancialApprovals` | F-13 | FIN-004 + FIN-007 policy values undecided |
+| `MyBooked` / `MyBilled` / `MyCollected` | S-9, S-10, S-11 | G-05 reporting period (all three are windowed); AB-2 additionally for booked, which has no bounded read at all |
+| `FirmBooked` / `FirmBilled` | S-9, S-10, S-17 | G-05; consolidated additionally `UNELIMINATED_SUM` (FIN-BLOCK-004) |
+| `AccountsReceivable` | C-4, F-2 | FIN-004 reach for principals other than admin/owner (SELF/TEAM are granted but not activated) |
+| `FinancialApprovals` | F-13 | FIN-007 policy values undecided |
+
+> **FIN-004 is no longer the blanket blocker this table first named.** The census finding that no
+> Role carried a `finance.visibility.*` scope was **WITHDRAWN** (#1743): it was measured by grepping
+> Role sources, which cannot see `admin`'s derived grants. Measured by resolver, admin and owner
+> carry all five scopes and resolve CONSOLIDATED reach in sandbox; #1744 gave salesManager TEAM and
+> salesperson SELF, neither yet activated. So the financial rows above are blocked by the REPORTING
+> PERIOD and by their own read wiring — and the blocker sentence each module renders says so.
 
 ### 3.3 DO NOT BUILD — no authority exists, and building one would invent it
 
@@ -240,7 +247,7 @@ financial layer is present and gated.
 
 `AdminDecisionQueue` (privileged role requests, access requests, reset-eligible users), environment
 capability activation state (A-6), and GO TO. Deliberately NOT a performance dashboard: admin holds
-no goal write verbs (Decision #160), and administering access is not a business function with a
+no goal write verbs (Decision #161), and administering access is not a business function with a
 target.
 
 ---
