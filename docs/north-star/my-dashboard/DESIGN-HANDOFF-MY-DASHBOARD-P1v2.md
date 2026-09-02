@@ -125,8 +125,9 @@ makes clearing the blocker a one-line change rather than a project.
 | `GovernedStockPosition` | I-1..I-4 | AB-1 — `INVENTORY_BALANCE_READ_READY` transport flag is false |
 | `TransfersInFlight`, `CycleCountVariances` | I-13, I-14 | AB-4 |
 | `PutAwayAndPicks` | W-4, W-5, T-8 | AB-4 |
-| `MyBooked` / `MyBilled` / `MyCollected` | S-9, S-10, S-11 | G-05 reporting period (all three are windowed); AB-2 additionally for booked, which has no bounded read at all |
-| `FirmBooked` / `FirmBilled` | S-9, S-10, S-17 | G-05; consolidated additionally `UNELIMINATED_SUM` (FIN-BLOCK-004) |
+| `MyBooked` | S-9 | AB-2 — booked has no bounded read at all; independent of period and of reach |
+| `MyBilled` / `MyCollected` | S-10, S-11 | **AUTHORITY-READY since Decision #163.** Read, event time, reach and window all exist; what remains is per-environment capability activation, enforced at runtime |
+| `FirmBooked` / `FirmBilled` | S-9, S-10, S-17 | as above; consolidated additionally `UNELIMINATED_SUM` (FIN-BLOCK-004), which G-05 does not touch |
 | `AccountsReceivable` | C-4, F-2 | FIN-004 reach for principals other than admin/owner (SELF/TEAM are granted but not activated) |
 | `FinancialApprovals` | F-13 | FIN-007 policy values undecided |
 
