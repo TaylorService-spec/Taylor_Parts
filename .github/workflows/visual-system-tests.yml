@@ -29,6 +29,7 @@ on:
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/src/navigation/AppShell.jsx"
       - "field-ops-app-vite/test/visualSystem.test.mjs"
+      - "field-ops-app-vite/test/hoverPairing.test.mjs"
       - "field-ops-app-vite/test/buttonForegroundContrast.test.mjs"
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
       - "docs/north-star/VISUAL-SYSTEM.md"
@@ -70,7 +71,7 @@ jobs:
         run: npm install
         working-directory: field-ops-app-vite
       - name: Canonical schema, contrast and deprecated-palette regression (node:test)
-        run: node --test test/visualSystem.test.mjs
+        run: node --test test/visualSystem.test.mjs test/hoverPairing.test.mjs
         working-directory: field-ops-app-vite
       - name: A rule that re-grounds a background restates its foreground (node:test)
         run: node --test test/buttonForegroundContrast.test.mjs
