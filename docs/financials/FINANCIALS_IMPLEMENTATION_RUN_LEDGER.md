@@ -761,3 +761,50 @@ mission, STOP and return the deployment package instead of executing"):
 3. Hosting deploy for the surface bindings, after PR #1710 merges.
 
 - OWNER VISUAL ACCEPTANCE: PENDING (unchanged by this run).
+
+## 2026-09-02 — SANDBOX VISIBILITY ACTIVATION + POPULATED OWNER REVIEW GATE
+
+The Financials family renders real governed data for the first time.
+
+- ACTIVATION (PR #1711, merge cc261540): `finance.visibility.consolidated` activated for
+  eos-platform-sandbox ONLY, through the canonical per-environment mechanism. `finance.read` was
+  already active; FIN-004 requires a reach scope IN ADDITION, so every page denied until now —
+  correct, and unreviewable. NO Role definition changed and NO grant written: `admin` and `owner`
+  already hold the capability, and the catalog's active:false was the only blocker.
+- DEPLOY SCOPE, computed rather than assumed: of 132 deployed sandbox functions, exactly ONE
+  needed to move. `listFinancialFacts` (e35e4b97 → ceb8e533, srcGen 1788314175006305) was the only
+  deployed function whose decision the added id changes; its delta from the previously deployed
+  768f9c1c was ACTIVATION_ONLY (environmentCapabilityOverrides.ts +28, package.json test script).
+  Every other function retained its prior source generation — verified after the deploy.
+- DELIBERATELY NOT REFRESHED: issueInvoice (authorizes finance.invoice.issue, already active — its
+  decision is bit-identical under both override sets; refreshing it would introduce FIN-002
+  attribution stamping); listAccountInvoiceAr (populates page 07 today precisely BECAUSE it
+  predates FIN-004 enforcement; refreshing is MATERIAL_GOVERNANCE_CHANGE); applyPayment;
+  resolveEffectiveAccessCallable. The broader refresh (39 commits, 72 files, +10,027 lines under
+  functions/src) was NOT performed.
+- DEFECT FOUND AND FIXED (PR #1712, merge 9195ce88): Payments rendered 0 rows at both widths while
+  the server returned 4 payments and 4 applications. Page 05 requests factTypes
+  [PAYMENT_RECEIPT, PAYMENT_APPLICATION], so `invoices` comes back empty by design —
+  and `financialFactsState` tested `result.invoices` alone, declaring the page empty while it held
+  the records it had asked for. Emptiness is a fact about the whole answer, not about invoices.
+  Presentation-layer state branch only; no new derivation, no authority change.
+- HOSTING: 9195ce88 (buildTime 2026-09-02T02:07:51.708Z, platform-sandbox/sandbox). Functions
+  untouched by the hosting deploy — confirmed by source generation.
+- GATE: 70/70 at 1440 and 375. Zero raw client financial reads, zero 403s for the review persona,
+  zero console errors, zero horizontal overflow, zero fabricated figures.
+    03 POPULATED — 7 invoices · 04 POPULATED/PARTIAL — 5 open incl. the 76-day overdue $27,350 ·
+    05 POPULATED — 4 receipts · 07 POPULATED — ONYX settled, Novel $8,150 open, Churn overdue,
+    Handel's long name without overflow · 14 PARTIAL — Billed/Collected/A-R per company, Booked
+    still "Not an invoice fact", Consolidated still "Not summed here" ·
+    15 TRUTHFULLY SPARSE — no rows, and the page states "7 visible invoices carry no credited
+    salesperson" rather than showing Lucian or Petra a zero.
+- UPSTREAM CREDIT EVIDENCE PRESERVED: the 6 FINANCIAL_REVIEW_P1 Sales Orders still carry explicit
+  credit — Lucian Brightwater (cw-emp-034) ×4, Petra Lindqvist (cw-emp-035) ×2 — with 2 orders
+  where ownerEmployeeId != creditedSalespersonId and 6/6 where createdByUid != creditedSalespersonId.
+  The sales-credit model exists upstream; the historical invoice generation simply lacks the frozen
+  attribution, and that gap is reported rather than filled.
+- LEGACY UPPERCASE `TAYLOR`: preserved, not normalized. One $50 invoice (acct-harbor) rolls up under
+  its own company key and therefore appears in no governed lowercase column on page 14 while
+  remaining visible on page 03. Truthful, and left for an Owner decision.
+- FIXTURES: UNCHANGED. Nothing deleted, mutated, reissued, backfilled or normalized.
+- OWNER VISUAL ACCEPTANCE: PENDING.
