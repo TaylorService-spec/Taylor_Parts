@@ -2,13 +2,13 @@
  "basis": "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. Granted-but-inactive is ZERO operational capacity.",
  "environment": {
   "projectId": "eos-platform-sandbox",
-  "activationOverrides": 39
+  "activationOverrides": 40
  },
  "catalog": {
   "total": 129,
   "globallyActive": 72,
-  "activeInThisEnvironment": 111,
-  "inactiveInThisEnvironment": 18
+  "activeInThisEnvironment": 112,
+  "inactiveInThisEnvironment": 17
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -49,10 +49,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2072,
+  "operableHoldingsTotal": 2073,
   "fromCompatibilityRoleOnly": 1262,
   "fromGovernedRoleOnly": 403,
-  "fromBoth": 407,
+  "fromBoth": 408,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -429,7 +429,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 129,
-   "operableCount": 111,
+   "operableCount": 112,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
