@@ -133,7 +133,20 @@ export default function FinancialsPaymentDetail() {
                   <tr><th scope="row">Operating company</th><td>{payment.companyId ?? "Not attributed"}</td></tr>
                   <tr><th scope="row">Cash received</th><td>{dateWords(payment.receivedAtMillis)}</td></tr>
                   <tr><th scope="row">Method</th><td>{payment.method ?? "Not recorded"}</td></tr>
-                  <tr><th scope="row">External reference</th><td>{payment.externalRef ?? "None recorded"}</td></tr>
+                  <tr>
+                    <th scope="row">External reference</th>
+                    {/* undefined and null mean different things here. The deployed function can be
+                        older than this bundle, in which case the field is simply ABSENT from the
+                        response — saying "None recorded" then would assert the receipt carries no
+                        reference when it may well carry one. */}
+                    <td>
+                      {payment.externalRef
+                        ? payment.externalRef
+                        : Object.hasOwn(payment, "externalRef")
+                          ? "None recorded"
+                          : "Not supplied by this read"}
+                    </td>
+                  </tr>
                   <tr><th scope="row">Currency</th><td>{payment.currency ?? "Not recorded"}</td></tr>
                 </tbody>
               </table>
