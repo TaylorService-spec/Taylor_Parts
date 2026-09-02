@@ -122,9 +122,14 @@ Measured on `f690f483`:
 - The **only** writers of `bins` are `createBin` and `setBinStatus`. Nothing else in `functions/src`, `functions/scripts`, or any seed, fixture or certification-world generator writes the collection.
 - Both are reachable only through callables gated on `inventory.location.bin.manage`, which is `active: false` — `resolveEffectivePermission` denies unconditionally ahead of any Role check.
 - `bins` is deny-all to every client, so there is no client write path.
-- The only code creating bins outside those commands lives in `functions/test/*` and runs against the emulator.
+- The only code in `functions/` creating bins outside those commands lives in `functions/test/*` and runs against the emulator.
 
-**Repository evidence says no non-emulator bin or placement record can exist. That is repository-derived, not environment-verified** — see §Migration posture, where the census gate is *not* weakened by it.
+**An earlier draft concluded from this that no non-emulator bin could exist. The census disproved it, and the reasoning is corrected here.** Two things the repository walk missed:
+
+1. **`active: false` is not global.** Per-environment capability activation means the sandbox callables are reachable even while the capability is inert in production. "Registered inactive" describes the default, not every environment.
+2. **`scripts/runSandboxScannerScenarios.mjs` calls `createBin` and `recordPutAway` as real personas against the real deployed callables** — deliberately, since its own header states that test data is created "through the GOVERNED COMMANDS … never by writing documents directly". It is a `scripts/` release-readiness runner, not a `functions/` seed, which is why a `functions/`-scoped search did not surface it.
+
+This is exactly the failure mode the census gate existed to catch: repository evidence bounds what *code* can do, never what an *environment* contains. See §11 for the measured result.
 
 ---
 
@@ -424,26 +429,39 @@ In both cases the placement persists:
 
 **No custody change.** `putAwayCommand.ts` still writes no ledger event, no quantity and no balance, and the test asserting it never imports the ledger stays green.
 
-### 11. Migration posture
+### 11. Migration posture — census PERFORMED, and it changed the answer
 
-Repository evidence (§Persisted-record evidence) points to a **clean shape replacement**: `schemaVersion` moves to `2`, and a fail-closed deserialize rejects a v1 document loudly rather than reading it — the posture the Cycle Count and warehouse validators already take. No dual-version reader.
+**The mandatory pre-implementation census has been run. It is recorded here as evidence, not as a decision.**
 
-**That conclusion does not close the gate.**
+| Environment | Project | `bins` | `bin_placements` | Read mechanism | Measured |
+|---|---|---|---|---|---|
+| **Sandbox** | `eos-platform-sandbox` | **63** | **42** | Firebase MCP `firestore_list_documents`, read-only, field-masked, as `rudy.digiorgio@gmail.com` | 2026-09-02 |
+| **Production** | `taylor-parts` | **0** | **0** | same | 2026-09-02 |
 
-> **MANDATORY PRE-IMPLEMENTATION CENSUS.** Before the first line of BIN-P1 is written, a **read-only** census of **both** the sandbox **and** production `bins` and `bin_placements` collections must be recorded:
->
-> ```
-> SANDBOX      bins: ____   bin_placements: ____
-> PRODUCTION   bins: ____   bin_placements: ____
-> ```
->
-> Repository evidence alone is insufficient. This session can query neither environment.
+Both listings returned **no `nextPageToken`**, so the counts are complete rather than a first page. Project identities came from `config/environments.json` and `.firebaserc`; no project was switched and no Firebase configuration was modified to perform the read.
 
-- **Both empty** → clean schema replacement, v1 → v2, no dual-version reader.
-- **Sandbox holds governed evidence** → **STOP implementation.** A sandbox migration mapping each `bin_{wh}__{code}` to a new `binId` and rewriting `bin_placements.binId` must be specified first.
-- **Production holds any bin or placement evidence** → **STOP.** A governed migration plan is required, and this specification's migration assumption is void.
+**Sandbox classification: fixture / disposable release-readiness artifacts, created through the governed commands.** Not hand-seeded, and not customer or operational data. The evidence is exact:
 
-**No `bin_placement` may ever be orphaned.** Any migration rewrites placement `binId` in the same governed operation that mints the new bin identity, or it does not run.
+- `scripts/runSandboxScannerScenarios.mjs` computes `RUN = "v" + Date.now()`, then `BIN = "A14" + RUN.slice(-5)`, `STAGE_BIN = "ST" + RUN.slice(-5)`, and a third bin `"NB" + RUN.slice(-5)` at `wh-north`. Every one of the 63 bins matches that generator: 21 `A14…` and 21 `ST…` at `wh-main`, 21 `NB…` at `wh-north` — **21 scenario runs**, dated 2026-08-21 to 2026-08-26.
+- The 42 placements are `plc_plc-v<epoch>__PRT-1001` and `plc_pick-v<epoch>__PRT-1001` — the runner's `plc-${RUN}` and `pick-${RUN}` idempotency keys, two per run, all for the single scenario part.
+- All 63 bins are `ACTIVE`, all v1 shape, all `schemaVersion: 1` on the placement side.
+
+**They are nonetheless real governed records, written through the real commands, and they are not this specification's to delete.**
+
+> **BIN-P1 implementation is BLOCKED.** The census result is **CASE B** — sandbox non-empty, production empty. Clean shape replacement is *not* authorized on the strength of repository evidence alone, because that evidence was wrong.
+
+**Two dispositions are available, and choosing between them is an Owner decision, not an implementation detail:**
+
+- **Regenerate.** Treat the 63 bins and 42 placements as spent scenario output, clear them under a governed operation, and re-run `runSandboxScannerScenarios.mjs` after BIN-P1 ships. Cheapest, and it matches what the records actually are. It does discard the record of 21 past scanner-release validation runs.
+- **Migrate.** Map each `bin_{warehouseId}__{code}` to a new surrogate `binId`, mint the corresponding `bin_code_claims` entry, and rewrite `bin_placements.binId` — all in one governed operation. Preserves the evidence trail at the cost of a migration that exists only to serve disposable data.
+
+**Claude Code recommendation: regenerate**, because the records are scenario output whose value is the *run*, not the row, and the runner reproduces them on demand. **Not decided here.**
+
+Whichever is chosen, once BIN-P1 ships, `schemaVersion` moves to `2` and the fail-closed deserialize rejects a v1 document loudly rather than reading it — the posture the Cycle Count and warehouse validators already take. **No dual-version reader**, in either disposition.
+
+**No `bin_placement` may ever be orphaned.** If migration is chosen, it rewrites placement `binId` in the same governed operation that mints the new bin identity, or it does not run. If regeneration is chosen, bins and placements are cleared together — never bins alone.
+
+**Production remains empty and must be re-confirmed immediately before implementation**, since this census is a point-in-time reading and BIN-P4 has not yet activated anything there.
 
 ### 12. Commands affected
 
@@ -579,7 +597,7 @@ Migration tests are added **only if** the census proves records must be transfor
 - [ ] **No Administration formatter or Area configuration authority is created in P1** — the policy is server-owned and injected, and `area` is validated as shape only.
 - [ ] `git diff` touches no `firestore.rules` copy, no capability file, and no role or grant definition.
 - [ ] All 61 tests pass.
-- [ ] **The sandbox and production environment census is recorded before implementation begins.**
+- [ ] **The sandbox and production environment census is recorded before implementation begins.** *(Done 2026-09-02 — §11. Production 0/0; sandbox 63 bins / 42 placements. Implementation additionally requires an Owner ruling on the sandbox disposition.)*
 
 ## Rollback strategy
 
@@ -605,10 +623,13 @@ P1 is repo-only. Every bin capability remains `active: false` and granted to no 
 **No Owner architectural decision is open.** Everything P1 needs is settled by Decision #160 and ADR-014.
 
 ```
-BLOCKING, NON-ARCHITECTURAL
-  Read-only census of sandbox AND production `bins` / `bin_placements`.
-  Repository evidence says both are empty; this must be confirmed in the
-  environments before implementation. Production records => STOP.
+BLOCKING, NON-ARCHITECTURAL — census DONE, disposition OPEN
+  Census performed 2026-09-02 (§11). Production empty (0/0). Sandbox holds
+  63 bins and 42 placements, classified as disposable scanner-scenario
+  output from 21 runs of scripts/runSandboxScannerScenarios.mjs.
+  CASE B => BIN-P1 implementation is BLOCKED until the Owner rules the
+  sandbox disposition: REGENERATE (recommended) or MIGRATE.
+  Production must be re-confirmed empty immediately before implementation.
 
 CLIENT (shape BIN-P3/P5 configuration and labels, NOT the P1 schema)
   C-1  Warehouse bay display width, one digit or two. Stored as an integer
@@ -635,4 +656,6 @@ The Cycle Count implementation plan and A1 specification are on branch `claude/c
 
 ## Approval
 
-Pending final review. **Implementation is not authorized by the existence of this document**, and remains additionally gated on the environment census above.
+Pending final review. **Implementation is not authorized by the existence of this document.**
+
+The environment census is complete (§11) and did **not** clear the way: production is empty, but sandbox holds 63 bins and 42 placements. Implementation therefore remains gated on an Owner ruling for the sandbox disposition — **regenerate** (recommended) or **migrate** — plus a re-confirmation that production is still empty at that moment.
