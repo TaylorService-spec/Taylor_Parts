@@ -6,7 +6,7 @@
   "stale or generated summaries"
  ],
  "totals": {
-  "EXPLICIT_OWNER_DECISION": 68,
+  "EXPLICIT_OWNER_DECISION": 72,
   "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2,
@@ -126,6 +126,15 @@
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
     "controller",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "finance.visibility.consolidated",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #159",
+   "alsoHeldBy": [
     "accountingManager"
    ]
   },
@@ -481,6 +490,13 @@
   },
   {
    "roleId": "salesManager",
+   "capability": "finance.visibility.team",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #159",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "salesManager",
    "capability": "inventory.balance.read",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
@@ -701,6 +717,13 @@
     "shopManager",
     "shopAssociate"
    ]
+  },
+  {
+   "roleId": "salesperson",
+   "capability": "finance.visibility.self",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #159",
+   "alsoHeldBy": []
   },
   {
    "roleId": "salesperson",
@@ -1936,6 +1959,21 @@
   },
   {
    "roleId": "accountingManager",
+   "capability": "audit.event.read",
+   "classification": "CANONICAL_MATRIX",
+   "basis": "Detailed CRUD row",
+   "alsoHeldBy": [
+    "generalManager",
+    "salesManager",
+    "fieldManager",
+    "warehouseManager",
+    "controller",
+    "partsManager",
+    "shopManager"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
    "capability": "customer.governedField.write",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
@@ -1960,21 +1998,6 @@
     "partsManager",
     "shopManager",
     "shopAssociate"
-   ]
-  },
-  {
-   "roleId": "accountingManager",
-   "capability": "audit.event.read",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
-   "alsoHeldBy": [
-    "generalManager",
-    "salesManager",
-    "fieldManager",
-    "warehouseManager",
-    "controller",
-    "partsManager",
-    "shopManager"
    ]
   },
   {
@@ -2035,6 +2058,15 @@
    "alsoHeldBy": [
     "generalManager",
     "controller"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "finance.visibility.consolidated",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS #159",
+   "alsoHeldBy": [
+    "generalManager"
    ]
   },
   {
@@ -2957,5 +2989,5 @@
  "reverseSweep": {
   "missingDecidedMappings": []
  },
- "decisionsFileSha": "sha256:c2f2bd4d322b0d13c207672d3e3265e46d4bd15f606efbafff8ee465ce73c835"
+ "decisionsFileSha": "sha256:355c33e4759ad7f7a776d8c718cd52a65ed0303b2cbe79bcbc9cb680ab894c29"
 }
