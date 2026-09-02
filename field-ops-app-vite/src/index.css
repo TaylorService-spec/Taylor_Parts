@@ -7947,3 +7947,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: rgba(255, 255, 255, 0.14);
   color: var(--color-text-inverse);
 }
+
+/* The Financials period note — explanatory text beside the control, not a warning.
+   Muted and small on purpose: it explains a preset's meaning, and styling it like the
+   adjacent invalid-range message would make a working selection read as a fault. */
+.fin-period__note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
