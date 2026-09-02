@@ -21,6 +21,34 @@ at an authority that already exists somewhere else in the repository.
 says ACTIVATION_REQUIRED and notes "sandbox-active", it means the surface can be exercised in
 sandbox today and is DENIED in production by design.
 
+> ## ⚠ CORRECTION — 2026-09-02, after this census was merged
+>
+> **This document's headline finding was WRONG, and the error was in the measurement.**
+>
+> §1 result 1, §9 decision 1 and §11 correction C-2 claimed that **no Role carries any
+> `finance.visibility.*` capability**, and that fourteen fact families were therefore blocked
+> behind a missing grant. Re-measured against `fd40ff5d` by resolver rather than by text search:
+> **`admin` and `owner` carry all five scopes.** In sandbox, where
+> `finance.visibility.consolidated` is activated, their reach is exactly CONSOLIDATED — so
+> sandbox Financials resolves reach today and the 2026-09-01 activation achieved what it was for.
+>
+> **The cause:** admin's permissions are DERIVED — `ADMIN_CURATED_PERMISSIONS` plus every id in
+> `PERMISSION_CATALOG` (an Owner ruling, 2026-08-19). The five ids are real grants that appear
+> **nowhere as literals** in any Role source, so the grep this census relied on returned nothing
+> and looked like proof of absence. A green test (`financialVisibilitySandboxActivation.test.mjs`)
+> already asserted the opposite; this census contradicted it without running it.
+>
+> **What survives the correction:** the eleven Roles that hold `finance.read` with no scope do
+> reach nothing — that is the FIN-004 invariant working, not a defect — so every financial row
+> below remains correct for every principal except admin and owner. The rows are reclassified
+> from BLOCKED_BY_DEPENDENCY to activation-class **for admin/owner in sandbox only**; §3 keeps its
+> original classification because it is stated for the general principal, and the exception is
+> named in each row's Dependency cell.
+>
+> Full re-measurement, the measured Role/scope matrix, the five deterministic proofs, and the one
+> genuinely open Owner decision (Finance Manager holds no finance capability at all):
+> **`fin004-reach-reconciliation.md`**.
+
 **CI posture.** This is a documentation artifact. Its deterministic validator
 (`scripts/dashboardCensus.test.mjs`) is runnable with `node --test` but is deliberately NOT added to
 any workflow: repository governance does not require CI for a documentation-only output, and adding
@@ -49,16 +77,20 @@ fails the check.
 
 **The three results that matter most.**
 
-1. **The single largest blocker in the repository is not a missing authority — it is a missing
-   grant.** FIN-004 requires TWO facts for any financial read: the fact-family gate
-   (`finance.read`) AND a reach scope (`finance.visibility.*`). Twelve Roles carry `finance.read`.
-   **No Role in the repository carries any `finance.visibility.*` capability** (verified: the only
-   two occurrences of that string outside the permission catalog are both in
-   `environmentCapabilityOverrides.ts`). `finance.visibility.consolidated` was made
-   environment-eligible for sandbox on 2026-09-01 (#1711) for Owner review, but eligibility is not
-   carriage — so **every Financials surface still resolves to zero reach for every principal, in
-   every environment.** Fourteen dashboard fact families are blocked behind this one grant (§5).
-   See §9 Owner decision 1, and §11 correction C-2.
+1. ~~**The single largest blocker in the repository is not a missing authority — it is a missing
+   grant.**~~ **WITHDRAWN 2026-09-02 — see the correction box above.** This result claimed no Role
+   carried any `finance.visibility.*` capability. It was measured by text search over the Role
+   source files, which cannot see admin's derived grants. `admin` and `owner` carry all five
+   scopes; sandbox reach is CONSOLIDATED and real.
+
+   **What the corrected result says.** FIN-004 requires TWO facts for any financial read: the
+   fact-family gate (`finance.read`) AND a reach scope (`finance.visibility.*`). Thirteen Roles
+   carry `finance.read`; **exactly two — `admin` and `owner` — carry any scope.** So the fourteen
+   financial fact families below are ACTIVATION-CLASS for admin/owner in sandbox, and genuinely
+   unreachable for the other eleven finance-gate Roles, which is a scope-grant decision rather
+   than a defect. The remaining open question is narrower and different: **which non-admin Role
+   should carry which scope** — F14 §2 still records "carrying role TBD" for every persona in its
+   grant table. Evidence and matrix: `fin004-reach-reconciliation.md`.
 
 2. **Inventory commitment and ATP are not authority gaps.** Both were ratified by the Owner
    (2026-08-07, amended 2026-08-17) and are implemented, pure, and tested in
@@ -113,11 +145,11 @@ Scope values use the repository's own vocabulary where one exists (`{type:"globa
 | C-1 | Account portfolio counts (total / active / prospect / inactive / archived / unclassified) | Complete server-side `count()` over the authorized scope; never a page, never a sample; unknown status values surface as `unclassified` rather than vanishing | NOW | `accounts` | `getAccountPortfolioSummary` | `customer.record.read`, global | Roles carrying `customer.record.read` | none (point-in-time) | — | `functions/src/account/accountPortfolioSummary.ts:1-60` |
 | C-2 | Account record identity + status | Canonical uppercase status enum ACTIVE/PROSPECT/INACTIVE/ARCHIVED | NOW | `accounts` | `customer.record.read` | global | as C-1 | none | — | `accountPortfolioSummary.ts` `ACCOUNT_STATUS_VALUES` |
 | C-3 | Account attention — WO past due | Composes `workOrderPastDueItem()` over this account's SCHEDULED work orders; never re-implements the predicate | NOW | `fieldops_wos` | account-scoped WO fetch | own account records | admin, dispatcher | `scheduledStart` vs now | — | `field-ops-app-vite/src/domain/accountAttentionProjection.js:1-20` |
-| C-4 | Account attention — AR overdue | Reads `accountArView().rows[i].position === "OVERDUE"`; never recomputes an AR position or outstanding balance | DEP | `invoices` + `invoice_adjustments` | `listAccountInvoiceAr` | FIN-004 reach | none today | invoice due date | **FIN-004: no Role carries a visibility scope** | `accountAttentionProjection.js:11-15`; `functions/src/finance/financialVisibility.ts` |
+| C-4 | Account attention — AR overdue | Reads `accountArView().rows[i].position === "OVERDUE"`; never recomputes an AR position or outstanding balance | DEP | `invoices` + `invoice_adjustments` | `listAccountInvoiceAr` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | invoice due date | FIN-004 reach — admin/owner only; see fin004-reach-reconciliation.md | `accountAttentionProjection.js:11-15`; `functions/src/finance/financialVisibility.ts` |
 | C-5 | Contacts / locations per account | Sub-records of an Account | FORM | `contacts`, `locations` | Account Detail client reads | own account | admin, dispatcher | none | — | `navConfig.js` (global Contacts/Locations subnav retired — they belong to an Account); no aggregate read authority exists for a dashboard-scale count |
 | C-6 | CRM activity feed (notes / activities) | Governed CRM activity records | ACT | `crm_activities` | `getCrmActivities` (`crm.activity.read`) | global | admin, owner, dispatcher (via `crmActivityContributor`) | record timestamp | catalog `active:false` — sandbox-active | `permissionCatalog.ts`; `environments.json` overrides; `compatibilityRoles.ts:187-188` |
 | C-7 | Customer ownership (account owner) | `accountOwner` / `ownerEmployeeId` are the authoritative STORAGE; `typedOwner.ts` is a derived read projection with **no setter** | NOW | `accounts` | `customer.record.read` | global | as C-1 | none | typed-owner model is inert (D-1) | SYSTEM_AUTHORITIES "EOS Ownership Model v1 — typed owner" |
-| C-8 | Customer financial position (AR balance, aging) | Outstanding = total − applied − credits + charges − write-offs; a transactionally-maintained projection, NOT an independent accounting authority | DEP | `invoices` | `listAccountInvoiceAr` | FIN-004 reach | none today | invoice due date | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — trusted AR read"; F12 `customer-financials` |
+| C-8 | Customer financial position (AR balance, aging) | Outstanding = total − applied − credits + charges − write-offs; a transactionally-maintained projection, NOT an independent accounting authority | DEP | `invoices` | `listAccountInvoiceAr` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | invoice due date | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — trusted AR read"; F12 `customer-financials` |
 | C-9 | This account's equipment | The account-scoped view of the register (distinct from E-1, the whole register). `CustomerEquipment.jsx` filters client-side over already-loaded docs | NOW | equipment register | Account Detail equipment reads | own account | admin, dispatcher | none | — | `modules/equipment/CustomerEquipment.jsx`; the client-side-filter shape is noted in `accountAttentionProjection.js`'s audited omissions |
 | C-10 | Customer since / account lifecycle stage | — | AUTH | — | — | — | — | — | — | **ND-11: "An Account has no lifecycle to make visible"** — the page says so out loud rather than inventing one |
 
@@ -133,15 +165,15 @@ Scope values use the repository's own vocabulary where one exists (`{type:"globa
 | S-6 | Sales Agreements awaiting acceptance | DRAFT agreements; both terminal states irreversible | ACT | `sales_agreements` (deny-all) | `getSalesAgreementContext` (`salesAgreement.read`) | global | roles carrying `salesAgreement.read` | none | catalog `active:false` — sandbox-active | SYSTEM_AUTHORITIES "Commercial commitment — Sales Agreement". **ND-14: `DECLINED` is modelled but nothing can produce it** — a "declined" tile would always read 0 |
 | S-7 | Sales Orders index / open orders | Committed commercial order following a WON Opportunity | ACT | `sales_orders` (deny-all) | `listSalesOrderIndex` (`salesOrder.read`) | global | roles carrying `salesOrder.read` | none | catalog `active:false` — sandbox-active | SYSTEM_AUTHORITIES "Sales Order lifecycle" |
 | S-8 | Sales Order lifecycle stage times | — | AUTH | — | — | — | — | — | — | **ND-8: "A Sales Order records no lifecycle stage times"** |
-| S-9 | Booked sales ($) | BOOKED basis = FIN-002 `bookedAtMillis`, stamped at agreement acceptance, ctx-supplied only, frozen | ACT | agreement acceptance snapshot | **none — read wiring missing** | FIN-004 reach | none today | `bookedAtMillis` | FIN-004 grant; K-11 for any period figure | F13 "Booked · SUPPORTED (dormant)"; `financialReportingRead.ts` serves persisted fact types only, booked excluded by construction (test-guarded) |
-| S-10 | Billed sales ($) | Issued invoices, server-recomputed amounts | DEP | `invoices` | `listFinancialFacts` | FIN-004 reach | none today | invoice event time | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — governed reporting read"; F13 |
-| S-11 | Collected ($) | Payment applications, F3-attributed | DEP | `payments`, `payment_applications` | `listFinancialFacts` | FIN-004 reach | none today | `recordedAtMillis` | FIN-004 grant | F13 |
+| S-9 | Booked sales ($) | BOOKED basis = FIN-002 `bookedAtMillis`, stamped at agreement acceptance, ctx-supplied only, frozen | ACT | agreement acceptance snapshot | **none — read wiring missing** | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | `bookedAtMillis` | FIN-004 scope grant for any non-admin Role; K-11 for any period figure | F13 "Booked · SUPPORTED (dormant)"; `financialReportingRead.ts` serves persisted fact types only, booked excluded by construction (test-guarded) |
+| S-10 | Billed sales ($) | Issued invoices, server-recomputed amounts | DEP | `invoices` | `listFinancialFacts` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | invoice event time | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — governed reporting read"; F13 |
+| S-11 | Collected ($) | Payment applications, F3-attributed | DEP | `payments`, `payment_applications` | `listFinancialFacts` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | `recordedAtMillis` | FIN-004 scope grant for any non-admin Role | F13 |
 | S-12 | Average Order Value | — | DEF | — | — | — | — | — | K-9/K-4, K-11 | No AOV definition exists. Invariant A forbids blending bases, so the numerator basis is a required decision |
-| S-13 | Salesperson attribution / sales credit | `creditedSalespersonId` frozen at event time; **never the acting user**; OWNERSHIP ≠ SALES CREDIT; exposed verbatim, never re-derived | DEP | FIN-002 snapshot on the financial event | `listFinancialFacts` | FIN-004 SELF/TEAM | none today | event time | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — reporting attribution" (DECISIONS #154) |
+| S-13 | Salesperson attribution / sales credit | `creditedSalespersonId` frozen at event time; **never the acting user**; OWNERSHIP ≠ SALES CREDIT; exposed verbatim, never re-derived | DEP | FIN-002 snapshot on the financial event | `listFinancialFacts` | FIN-004 SELF/TEAM | admin, owner (CONSOLIDATED, sandbox only) | event time | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — reporting attribution" (DECISIONS #154) |
 | S-14 | Sales goal % / pace / target progress | — | DEP | `planVsActual.ts` core exists; plan RECORDS have no storage | — | FIN-002 dimensions | — | plan period (inclusive ISO) | **plan storage + FIN-007 approval authority** | FIN-003 §2 |
 | S-15 | Forecast / projection | — | DEP | `forecasting.ts` core exists; forecast records have no storage | — | FIN-002 dimensions | — | `asOfMillis` | **forecast storage + methodology (Owner policy)** | FIN-005 §2 |
-| S-16 | Top customers by revenue | — | DEP | `invoices` | `listFinancialFacts` (customerId grain) | FIN-004 reach | none today | event time | FIN-004 grant; K-11 for a window | F12 `customer-financials` |
-| S-17 | Company / business-unit revenue mix | Per-company rollups are exact; **Consolidated is typed `UNELIMINATED_SUM`** and must render with that caveat | DEP | FIN-002 dimensions | `summarizeByCompany` | OPERATING_COMPANY / CONSOLIDATED | none today | event time | FIN-004 grant; FIN-BLOCK-004 for elimination | SYSTEM_AUTHORITIES "Finance — allocation & consolidation (FIN-009)"; F13 |
+| S-16 | Top customers by revenue | — | DEP | `invoices` | `listFinancialFacts` (customerId grain) | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | event time | FIN-004 scope grant for any non-admin Role; K-11 for a window | F12 `customer-financials` |
+| S-17 | Company / business-unit revenue mix | Per-company rollups are exact; **Consolidated is typed `UNELIMINATED_SUM`** and must render with that caveat | DEP | FIN-002 dimensions | `summarizeByCompany` | OPERATING_COMPANY / CONSOLIDATED | admin, owner (CONSOLIDATED, sandbox only) | event time | FIN-004 scope grant for any non-admin Role; FIN-BLOCK-004 for elimination | SYSTEM_AUTHORITIES "Finance — allocation & consolidation (FIN-009)"; F13 |
 | S-18 | Orders requiring action (fulfillment exceptions) | BLOCKED / WAITING_ON_MATERIAL / PARTIAL / REMAINING_WORK / UNKNOWN — **does not invent SLA, risk score, customer promise, severity, or ETA** | ACT | `sales_orders` + coordinated visit projection | `listCoordinatedOperations` (`fulfillment.coordinatedVisit.read`) | global | roles carrying the capability | none | catalog `active:false` — sandbox-active | `field-ops-app-vite/src/domain/obligationAttention.js:1-19` |
 
 ### 3.3 Service
@@ -249,23 +281,29 @@ Scope values use the repository's own vocabulary where one exists (`{type:"globa
 
 ### 3.9 Financials
 
-Every row here composes FIN-004. **All are currently blocked by the same single fact: no Role carries any `finance.visibility.*` capability.** They are listed individually because they unblock individually once reach exists, and because their SECOND gates differ.
+Every row here composes FIN-004. **CORRECTED 2026-09-02.** These rows previously said all were blocked because no Role carried any `finance.visibility.*` capability. That was a measurement error (see the correction box at the head of this document). The accurate position:
+
+- **`admin` and `owner` carry all five scopes.** In `platform-sandbox`, where `finance.visibility.consolidated` is activated, their reach is CONSOLIDATED — so these rows are ACTIVATION-CLASS for those two principals there, and every one of them can be exercised today.
+- **Every other principal reaches nothing**, in every environment, because eleven governed Roles hold `finance.read` with no scope and the rest hold neither. That is the FIN-004 invariant working, not a defect.
+- **Production reaches nothing for anyone, admin included** — no visibility capability is activated there, and the block is role-keyed, override-free and test-asserted.
+
+The `DEP` classification below is retained because §3 is stated for the general principal; the admin/owner sandbox exception is named in each Dependency cell. They are listed individually because they unblock individually and their SECOND gates differ.
 
 | # | Dashboard fact / action | Definition | Cls | Canonical source | Read authority | Scope | Eligible roles | Time basis | Dependency | Evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
-| F-1 | Invoices (list, detail) | Issued invoice history is immutable | DEP | `invoices` (Admin-SDK-only, deny-all both Rules mirrors) | `listFinancialFacts` / `listAccountInvoiceAr` | FIN-004 reach | **none today** | `eventAtMillis` | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — invoice issuance"; F12 |
-| F-2 | A/R outstanding + position | `outstanding = total − applied − credits + charges − writeoffs`; a transactionally-maintained projection, **not** an independent accounting authority. Positions CURRENT/OVERDUE/SETTLED/VOID/UNKNOWN | DEP | as F-1 | `listAccountInvoiceAr` | FIN-004 reach | none today | invoice due date | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — trusted AR read". **Truncation honesty: a page that would truncate renders "unavailable", never a partial "ready"** |
-| F-3 | Payments / receipts | Cash receipt and payment application are separate facts; over-application rejected | DEP | `payments`, `payment_applications` | `listFinancialFacts` | FIN-004 reach (payments inherit their invoice's visibility) | none today | `recordedAtMillis` | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — payment / AR" |
-| F-4 | Credits, adjustments, refunds | CREDIT_MEMO / DEBIT_CHARGE / WRITE_OFF; credit and write-off ≤ outstanding; an issued invoice is never rewritten | DEP | `invoice_adjustments`, `refunds` | trusted reads | FIN-004 reach | none today | event time | FIN-004 grant; FIN-007 policy values for the approval half | SYSTEM_AUTHORITIES "Finance — adjustments", "Finance — refund" |
-| F-5 | Billing queue (unbilled eligible) | unbilled-eligible = `max(0, min(ordered, fulfilled) − billed)` per line — identical to issuance's cap, so the queue never shows what issuance would refuse. **No amounts, test-asserted** | DEP | `sales_orders` + `billedQty` projection | `billingQueue.ts` | FIN-004 reach | none today | none | FIN-004 grant; **service work structurally cannot enter — FIN-BLOCK-002** | SYSTEM_AUTHORITIES "Finance — Billing Queue (F4)" |
-| F-6 | Gross margin / profitability | Margin is COMPUTED only when EVERY revenue line carries a governed cost fact; otherwise **UNKNOWN with no number at all** — never revenue − 0, never a partial margin | NO | `costMargin.ts` | `deriveGrossMargin` | FIN-004 reach | none today | none | **FIN-BLOCK-003 — no governed cost fact exists anywhere** | FIN-006 §1: "every real invocation returns UNKNOWN — which is the truthful current answer to every margin question" |
-| F-7 | Company / BU performance | Per-company rollups exact; **Consolidated typed `UNELIMINATED_SUM`** and must render with that caveat | DEP | FIN-002 dimensions | `summarizeByCompany` | OPERATING_COMPANY / CONSOLIDATED | none today | event time | FIN-004 grant; FIN-BLOCK-004 | SYSTEM_AUTHORITIES FIN-009; F13 |
-| F-8 | Salesperson / employee performance | `creditedSalespersonId` frozen at event time, exposed verbatim, never re-derived from customer owner, createdBy, assignment, technician or warehouse | DEP | FIN-002 snapshots | `listFinancialFacts` | FIN-004 SELF/TEAM | none today | event time | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — governed reporting read" |
+| F-1 | Invoices (list, detail) | Issued invoice history is immutable | DEP | `invoices` (Admin-SDK-only, deny-all both Rules mirrors) | `listFinancialFacts` / `listAccountInvoiceAr` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | `eventAtMillis` | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — invoice issuance"; F12 |
+| F-2 | A/R outstanding + position | `outstanding = total − applied − credits + charges − writeoffs`; a transactionally-maintained projection, **not** an independent accounting authority. Positions CURRENT/OVERDUE/SETTLED/VOID/UNKNOWN | DEP | as F-1 | `listAccountInvoiceAr` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | invoice due date | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — trusted AR read". **Truncation honesty: a page that would truncate renders "unavailable", never a partial "ready"** |
+| F-3 | Payments / receipts | Cash receipt and payment application are separate facts; over-application rejected | DEP | `payments`, `payment_applications` | `listFinancialFacts` | FIN-004 reach (payments inherit their invoice's visibility) | admin, owner (CONSOLIDATED, sandbox only) | `recordedAtMillis` | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — payment / AR" |
+| F-4 | Credits, adjustments, refunds | CREDIT_MEMO / DEBIT_CHARGE / WRITE_OFF; credit and write-off ≤ outstanding; an issued invoice is never rewritten | DEP | `invoice_adjustments`, `refunds` | trusted reads | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | event time | FIN-004 scope grant for any non-admin Role; FIN-007 policy values for the approval half | SYSTEM_AUTHORITIES "Finance — adjustments", "Finance — refund" |
+| F-5 | Billing queue (unbilled eligible) | unbilled-eligible = `max(0, min(ordered, fulfilled) − billed)` per line — identical to issuance's cap, so the queue never shows what issuance would refuse. **No amounts, test-asserted** | DEP | `sales_orders` + `billedQty` projection | `billingQueue.ts` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | none | FIN-004 scope grant for any non-admin Role; **service work structurally cannot enter — FIN-BLOCK-002** | SYSTEM_AUTHORITIES "Finance — Billing Queue (F4)" |
+| F-6 | Gross margin / profitability | Margin is COMPUTED only when EVERY revenue line carries a governed cost fact; otherwise **UNKNOWN with no number at all** — never revenue − 0, never a partial margin | NO | `costMargin.ts` | `deriveGrossMargin` | FIN-004 reach | admin, owner (CONSOLIDATED, sandbox only) | none | **FIN-BLOCK-003 — no governed cost fact exists anywhere** | FIN-006 §1: "every real invocation returns UNKNOWN — which is the truthful current answer to every margin question" |
+| F-7 | Company / BU performance | Per-company rollups exact; **Consolidated typed `UNELIMINATED_SUM`** and must render with that caveat | DEP | FIN-002 dimensions | `summarizeByCompany` | OPERATING_COMPANY / CONSOLIDATED | admin, owner (CONSOLIDATED, sandbox only) | event time | FIN-004 scope grant for any non-admin Role; FIN-BLOCK-004 | SYSTEM_AUTHORITIES FIN-009; F13 |
+| F-8 | Salesperson / employee performance | `creditedSalespersonId` frozen at event time, exposed verbatim, never re-derived from customer owner, createdBy, assignment, technician or warehouse | DEP | FIN-002 snapshots | `listFinancialFacts` | FIN-004 SELF/TEAM | admin, owner (CONSOLIDATED, sandbox only) | event time | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — governed reporting read" |
 | F-9 | Intercompany position | — | NO | — | — | — | — | — | FIN-BLOCK-004 | F12: "none — deliberately. No intercompany record type may exist until the Owner rules treatment". D-3: Ventana is the upstream supplier |
 | F-10 | Reconciled accounting fact | — | NO | — | — | — | — | — | DECISIONS #145 | F13: "ABSENT BY DECISION — authority not yet selected; **nothing may masquerade as reconciled**" |
-| F-11 | Internal AR reconciliation / drift | Recomputes applied/credits/charges/write-offs/outstanding/state from durable facts and diffs vs the stored cache: IN_SYNC or DRIFT with per-field values. Foreign or malformed facts are THROWN — **an unreconcilable set never reports sync**; nothing is auto-fixed | ACT | `financialReconciliation.ts` | internal | FIN-004 reach for display | none today | none | FIN-004 grant | SYSTEM_AUTHORITIES "Finance — internal reconciliation (FIN-010)" |
-| F-12 | Period open / closed | Per-company frozen periods (OPEN\|CLOSED); a close names who/why/when; REOPEN deliberately unmodelled; **an uncovered date is allowed — closing is explicit, absence closes nothing** | ACT | `financialPeriods.ts` | internal | per operating company | none today | period bounds | no periods declared today = nothing closed (safe) | SYSTEM_AUTHORITIES "Finance — period & close (FIN-008)". This is an OPERATIONAL reporting close, not an accounting close |
-| F-13 | Financial approvals awaiting me | Fail-closed requirement engine: **no policy line ⇒ approval required**; unconditional self-approval prohibition; approving 100 is not approving 150 | DEP | `financialApprovals.ts` | internal | approver role | none today | none | **FIN-007 policy VALUES are Owner-undecided** — composed actions fail closed until then | SYSTEM_AUTHORITIES "Finance — approval governance (FIN-007)" |
+| F-11 | Internal AR reconciliation / drift | Recomputes applied/credits/charges/write-offs/outstanding/state from durable facts and diffs vs the stored cache: IN_SYNC or DRIFT with per-field values. Foreign or malformed facts are THROWN — **an unreconcilable set never reports sync**; nothing is auto-fixed | ACT | `financialReconciliation.ts` | internal | FIN-004 reach for display | admin, owner (CONSOLIDATED, sandbox only) | none | FIN-004 scope grant for any non-admin Role | SYSTEM_AUTHORITIES "Finance — internal reconciliation (FIN-010)" |
+| F-12 | Period open / closed | Per-company frozen periods (OPEN\|CLOSED); a close names who/why/when; REOPEN deliberately unmodelled; **an uncovered date is allowed — closing is explicit, absence closes nothing** | ACT | `financialPeriods.ts` | internal | per operating company | admin, owner (CONSOLIDATED, sandbox only) | period bounds | no periods declared today = nothing closed (safe) | SYSTEM_AUTHORITIES "Finance — period & close (FIN-008)". This is an OPERATIONAL reporting close, not an accounting close |
+| F-13 | Financial approvals awaiting me | Fail-closed requirement engine: **no policy line ⇒ approval required**; unconditional self-approval prohibition; approving 100 is not approving 150 | DEP | `financialApprovals.ts` | internal | approver role | admin, owner (CONSOLIDATED, sandbox only) | none | **FIN-007 policy VALUES are Owner-undecided** — composed actions fail closed until then | SYSTEM_AUTHORITIES "Finance — approval governance (FIN-007)" |
 
 ### 3.10 Admin / Governance
 
@@ -327,7 +365,7 @@ Personas use the repository's own role ids (`functions/src/access/governedBusine
 | Reorder requests to assign (W-6) | SHOW | SHOW | SHOW | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | SHOW | NOT_VISIBLE | ACTION_REQUIRED (SHOW_SCOPED, `{type:"location"}`) | ACTION_REQUIRED (assigned to me) | ACTION_REQUIRED (SHOW_SCOPED) |
 | Receiving queue (W-1) | SHOW | ACTION_REQUIRED | SHOW | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | ACTION_REQUIRED | NOT_VISIBLE | GATED (PARTS_ASSOCIATE receive deferred) | GATED | GATED |
 | My assigned work (T-1) | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | SHOW_SCOPED (`users/{uid}.technicianId`) | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
-| Account attention — AR overdue (C-4) | GATED | GATED | GATED | GATED | GATED | GATED | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
+| Account attention — AR overdue (C-4) | SHOW_SCOPED (CONSOLIDATED, sandbox) | SHOW_SCOPED (CONSOLIDATED, sandbox) | GATED | GATED | GATED | GATED | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | **B. Approvals / decisions** |
 | Privileged role requests (A-1) | ACTION_REQUIRED | ACTION_REQUIRED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | Access requests (A-2) | ACTION_REQUIRED | ACTION_REQUIRED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
@@ -341,7 +379,7 @@ Personas use the repository's own role ids (`functions/src/access/governedBusine
 | Put-away / picks queue (W-4/W-5) | GATED | GATED | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | GATED | GATED | GATED (SHOW_SCOPED) | GATED (SHOW_SCOPED) | GATED (SHOW_SCOPED) |
 | **D. Exceptions** |
 | PO receipt discrepancies (P-6) | SHOW | SHOW | SHOW | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | SHOW | NOT_VISIBLE | SHOW_SCOPED | SHOW_SCOPED | SHOW_SCOPED |
-| Internal AR drift (F-11) | GATED | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
+| Internal AR drift (F-11) | SHOW_SCOPED (CONSOLIDATED, sandbox) | SHOW_SCOPED (CONSOLIDATED, sandbox) | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | Stockout risk, labelled derived (I-7) | SHOW | SHOW | SHOW | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | SHOW | NOT_VISIBLE | SHOW | SHOW | SHOW |
 | Fulfillment obligation attention (S-18) | GATED | GATED | GATED | GATED | GATED | NOT_VISIBLE | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | **E. Waiting / in progress** |
@@ -352,7 +390,7 @@ Personas use the repository's own role ids (`functions/src/access/governedBusine
 | Account portfolio counts (C-1) | SHOW | SHOW | SHOW | SHOW | SHOW | SHOW | SHOW | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | Governed on hand / reserved / available (I-1/2/3) | GATED | GATED | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | GATED | NOT_VISIBLE | GATED | GATED | GATED |
 | Ledger-derived stock forecast (I-5) | SHOW | SHOW | SHOW | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | SHOW | NOT_VISIBLE | SHOW | SHOW | SHOW |
-| Billed / collected / A/R (S-10/11, F-2) | GATED | GATED | NOT_VISIBLE | GATED | GATED (SELF) | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
+| Billed / collected / A/R (S-10/11, F-2) | SHOW_SCOPED (CONSOLIDATED, sandbox) | SHOW_SCOPED (CONSOLIDATED, sandbox) | NOT_VISIBLE | GATED | GATED (SELF) | GATED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | Gross margin (F-6) | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | Inventory value / turns (I-15/16) | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
 | My performance, all-time (T-4) | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE | SHOW_SCOPED | NOT_VISIBLE | NOT_VISIBLE | NOT_VISIBLE |
@@ -372,12 +410,15 @@ Personas use the repository's own role ids (`functions/src/access/governedBusine
 ## 5. Dependency graph
 
 ```
-FIN-004 REACH GRANT  (no Role carries finance.visibility.*)
+FIN-004 REACH  (admin + owner carry all five scopes; sandbox activates CONSOLIDATED only.
+                Blocking applies to every OTHER principal: eleven Roles hold finance.read
+                with no scope, and production activates nothing for anyone.)
   └─> F-1 Invoices ─ F-2 A/R ─ F-3 Payments ─ F-4 Adjustments ─ F-5 Billing queue
       F-7 Company/BU ─ F-8 Employee perf ─ F-11 AR drift display
       S-10 Billed ─ S-11 Collected ─ S-16 Top customers ─ S-13 Sales credit
       C-4 Account AR attention ─ C-8 Customer financial position
-      (one grant, fourteen fact families)
+      (fourteen fact families; reachable by admin/owner in sandbox TODAY,
+       and by nobody else anywhere until a scope is granted to a carrying Role)
 
 FIN-BLOCK-003  COST FACT SUPPLY  (no governed cost fact exists)
   ├─> F-6 Gross margin  ─────> Cost-to-Budget surface
@@ -490,19 +531,28 @@ Unresolved product/business decisions. Nothing here can be closed by reading the
 
 Only genuine decisions repository evidence cannot resolve.
 
-1. **FIN-004 reach has no carrying Role — is that the intent?**
-   `finance.visibility.consolidated` was made environment-eligible for sandbox on 2026-09-01 (#1711)
-   "for sandbox Owner review only", but **no Role in the repository carries any
-   `finance.visibility.*` capability**. Verified: the only occurrences of that string outside
-   `permissionCatalog.ts` are both in `environmentCapabilityOverrides.ts`. `admin`
-   (`compatibilityRoles.ts` ADMIN_CURATED_PERMISSIONS) carries `finance.read` and no visibility
-   scope; `owner` inherits the same set through OWNER_PERMISSIONS composition.
-   **Consequence: every Financials surface resolves to zero reach for every principal, including in
-   sandbox — the Owner review that activation was performed for cannot show a single financial
-   figure.** F14 §2 already records "carrying role TBD" as an open Owner decision, so this is a gap
-   rather than a defect; it is surfaced here because the activation PR's own source comment asserts
-   the opposite (correction C-2), and because fourteen dashboard fact families depend on it.
-   **Decision needed: which Role carries which `finance.visibility.*` scope.**
+1. ~~**FIN-004 reach has no carrying Role — is that the intent?**~~ **WITHDRAWN 2026-09-02. The
+   premise was false.** `admin` and `owner` carry all five `finance.visibility.*` scopes, through
+   admin's DERIVED permission set (`ADMIN_CURATED_PERMISSIONS` + the whole `PERMISSION_CATALOG`),
+   which is why they appear as no literal in any Role source and why a text-search measurement
+   missed them. Sandbox reach for admin/owner is CONSOLIDATED and works.
+
+   **Replaced by two narrower questions, both still open** (see `fin004-reach-reconciliation.md`
+   §6):
+
+   **1a. Which non-admin Role carries which `finance.visibility.*` scope?** Eleven governed Roles
+   hold `finance.read` and no scope, so they reach nothing — correct fail-closed behaviour, and
+   also the reason no Financials surface works for anyone but admin/owner. F14 §2 marks the
+   carrying role TBD for all five of its personas (company manager, BU manager, self-view
+   salesperson, team manager, consolidated executive). Unchanged, and unclosed.
+
+   **1b. Finance Manager holds no finance capability at all, while both Roles' descriptions claim
+   they are "intentionally identical".** `financeManager` has 5 permissions and zero `finance.*`
+   ids; `accountingManager` has 17 including all five. The existing pinning test permits this
+   because it asserts containment and `>=` rather than equality, so it passes while its own
+   comment ("the two are identical again") is false. Three coherent answers, none of which a build
+   may pick: restore parity, retire the parity claim, or re-specify Finance Manager as the first
+   non-admin scope holder.
 
 2. **Reporting period and time authority** (G-05). Nothing in the repository defines a fiscal
    calendar, a reporting timezone, MTD/QTD/YTD, partial-period handling, or a prior-period
@@ -549,7 +599,7 @@ No new authority; §6 is the whole list. Ordered by dashboard value per unit of 
 
 ### DO NOT IMPLEMENT YET
 
-- **Anything financial** until Owner decision 1. Fourteen fact families; a Financials dashboard built today renders fourteen honest "unavailable" states — correct behaviour, and a poor use of a build.
+- **Anything financial FOR A NON-ADMIN PERSONA**, until decision 1a grants a scope to a carrying Role — those principals render honest "unavailable" states, which is correct behaviour and a poor use of a build. **CORRECTED 2026-09-02: for `admin`/`owner` in sandbox these fourteen families are SAFE AFTER EXISTING ACTIVATION, not blocked** — reach is CONSOLIDATED and live. Production remains unreachable for everyone.
 - **Any margin, inventory value, turns, or carrying-cost figure** — FIN-BLOCK-003. `deriveGrossMargin` returns UNKNOWN and must render as unknown, never 0%.
 - **Any period-relative KPI, pacing figure, or prior-period delta** — no time authority.
 - **AOV, forecast, goal %, pipeline value, first-time fix, SLA, callbacks, inventory aging, turns, shortages, truck replenishment, notification history, cross-domain activity roll-up, deployment status** — each is a named authority gap in §8.
@@ -562,7 +612,8 @@ No new authority; §6 is the whole list. Ordered by dashboard value per unit of 
 | # | Correction | Evidence | Applied? |
 |---|---|---|---|
 | C-1 | `docs/financials/F14_SANDBOX_ACTIVATION_READINESS.md` §2 said "the `finance.visibility.*` ids are deliberately in NO environment activation registry today." That became false on 2026-09-01: `finance.visibility.consolidated` is in `config/environments.json` platform-sandbox `capabilityActivationOverrides` and in the `environmentCapabilityOverrides.ts` snapshot (commit `cc261540`, PR #1711) | `git log -S"finance.visibility.consolidated" -- config/environments.json` → 2026-09-01; both files read directly | **YES** — a stale current-state label. No authority, behaviour, role or capability changes; the sentence's own point (that a grant is still required) is preserved and sharpened |
-| C-2 | `functions/src/access/environmentCapabilityOverrides.ts` asserts "`admin` and `owner` already hold this capability in their Role definitions." **No Role holds any `finance.visibility.*` capability** — the only occurrences outside `permissionCatalog.ts` are both in that same file | `grep -rn "finance.visibility" functions/src/access/*.ts` returns exactly two hits, both in `environmentCapabilityOverrides.ts`; `ADMIN_CURATED_PERMISSIONS` carries `finance.read` only | **NO** — §M forbids changing Functions in this run, and the assertion's consequence (zero financial reach for every principal) is an Owner decision, not a documentation slip. Raised as Owner decision 1 |
+| C-2 | ~~`environmentCapabilityOverrides.ts` asserts "`admin` and `owner` already hold this capability in their Role definitions" — no Role holds any `finance.visibility.*`.~~ **WITHDRAWN 2026-09-02: the source comment is CORRECT and this correction was the error.** | The grep evidence was the defect, not the finding: `ADMIN_ALL_PERMISSIONS = ADMIN_CURATED_PERMISSIONS + every PERMISSION_CATALOG id`, so all five scopes are real admin grants that appear as no literal. `ROLES.admin.permissions.includes("finance.visibility.consolidated") === true`, asserted by the already-green `financialVisibilitySandboxActivation.test.mjs` and re-proven by `functions/test/fin004ReachComposition.test.mjs` | **NO — and correctly so, for the wrong reason.** Not applying it was right; the stated reason was wrong. Nothing in Functions needed changing because nothing in Functions was wrong |
+| C-4 | This census's own §1 result 1, §9 decision 1 and C-2 above, all resting on the same text-search measurement | `fin004-reach-reconciliation.md` §2–§4; matrix measured by resolver on `fd40ff5d`; 10 mutation-verified proofs | **YES** — withdrawn inline above and in the correction box at the head of this document. The census's fourteen financial rows keep their §3 classification (stated for the general principal) with the admin/owner sandbox exception named |
 | C-3 | ND-25 (2026-08-30) recorded that the governed balance read "is also single-part (`PART_LIST_BALANCE_N1_GAP`), so it could serve the record long before it could serve the list." A batch read now exists | `functions/src/inventory/partBalanceBatchReadService.ts`; `functions/src/index.ts:471` exports `getPartBalancesCallable as getPartBalances` | **NO** — the ND register records the state at the time of a decision and is deliberately append-only history, not a live status board. Recorded in this census instead (I-1, AB-1) |
 
 ---
