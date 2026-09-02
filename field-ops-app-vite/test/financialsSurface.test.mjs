@@ -26,6 +26,19 @@ import {
 import { OPERATING_COMPANY_IDS } from "../src/domain/operatingCompanyAuthority.js";
 
 const MODULE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../src/modules/financials");
+const SRC_DIR = path.join(MODULE_DIR, "../..");
+
+const relativeLuminance = (hex) => {
+  const channels = [1, 3, 5]
+    .map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+};
+
+const contrastRatio = (first, second) => {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+};
 
 test("lifecycle scorecard: six slots, lifecycle order, Unbilled is the one derived figure", () => {
   assert.deepEqual(
@@ -164,5 +177,47 @@ test("no Financials page asserts a capability's activation state in rendered cop
       CLAIM,
       `${file} asserts a capability/visibility activation state in rendered copy`,
     );
+  }
+});
+
+test("the visual system reaches Financials by global inheritance, not a Financials-only seam", () => {
+  // HISTORY, PRESERVED DELIBERATELY. This test used to assert the opposite: that the shell applied
+  // `fo-main--financials-pilot` only on /financials, and that the accepted colours lived inside
+  // that scoped rule. That was correct for the pilot (PR #1724, 2026-09-02) and is the record of
+  // how the system was proven on one family first.
+  //
+  // The Owner then accepted the pilot as the presentation standard for the authenticated
+  // application, so the colours moved to :root and the type step moved onto the shared primitives.
+  // The seam is gone. What Financials must now demonstrate is that it needs NO seam — it inherits.
+  const shell = readFileSync(path.join(SRC_DIR, "navigation/AppShell.jsx"), "utf8");
+  const css = readFileSync(path.join(SRC_DIR, "index.css"), "utf8");
+
+  assert.doesNotMatch(
+    shell,
+    /fo-main--financials-pilot/,
+    "the Financials pilot seam must not come back: every family inherits the same tokens",
+  );
+  assert.match(shell, /<main className="fo-main"/, "the workspace is one unscoped shell surface");
+
+  // No RULE may re-scope the visual system to this one family. Comments are stripped first: the
+  // stylesheet is allowed — and expected — to explain what the seam was and why it went away.
+  const declarations = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(declarations, /\.fo-main--financials-pilot/, "the scoped pilot block must be gone");
+
+  // What legitimately stays family-scoped: components that exist nowhere else. They consume the
+  // shared tokens rather than restating any colour of their own.
+  for (const rule of [".fin-scorecard {", ".fin-figure__value {"]) {
+    assert.ok(css.includes(rule), `Financials-specific rule missing: ${rule}`);
+  }
+  const finBlock = css.slice(css.indexOf(".fin-scorecard {"));
+  assert.doesNotMatch(
+    finBlock.slice(0, finBlock.indexOf("}")),
+    /#[0-9a-fA-F]{3,6}/,
+    "Financials components must reference tokens, never restate a hex of their own",
+  );
+
+  // The promoted values still have to hold up where this family reads them.
+  for (const color of ["#111111", "#3F4542", "#626A66", "#005A3C"]) {
+    assert.ok(contrastRatio(color, "#FFFFFF") >= 4.5, `${color} must pass WCAG AA for body text on white`);
   }
 });

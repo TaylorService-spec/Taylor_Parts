@@ -1826,3 +1826,42 @@ shipped surfaces in the meantime:
 | **RCV-G6** | per-row receipt progress on the list read (progress renders per opened order) |
 | **RCV-G7** | purchase-order scan-identifier contract (no scan-entry field until ruled and built) |
 | **RR numbering** | declared, allocator built, UNWIRED (RCV-G4 record governs the metadata truth) |
+
+---
+
+## Cross-family — EOS visual system (2026-09-02)
+
+Not a family row. This is the presentation standard every family above now renders through, and
+every family below will inherit by default.
+
+The Financials pilot (PR #1724) proved a true-white, high-contrast, one-semantic-step-larger
+presentation on one family behind a shell-scoped class. The Owner accepted it as the standard for
+the authenticated application, so the rollout promoted it: colours to `:root`, the type step onto
+the shared North Star and operational primitives, and the `fo-main--financials-pilot` seam deleted.
+
+| | |
+|---|---|
+| **Design authority** | [`docs/north-star/VISUAL-SYSTEM.md`](../north-star/VISUAL-SYSTEM.md) — the canonical schema, tiers, permitted exceptions and the two rules that are easy to get wrong |
+| **Amendment** | [`eos-north-star-design-grammar.md`](./eos-north-star-design-grammar.md) §2 Color carries a dated amendment. The `[NS]` extraction table is preserved verbatim: it records what the recovered concepts used, and is not rewritten to look like it always used this palette |
+| **Proof** | `test/visualSystem.test.mjs` (schema resolved through the token layer, contrast measured against the actual surface, tiers declared unscoped, deprecated palette held out of live declarations, shadow tokens rejected); `test/buttonForegroundContrast.test.mjs` extended to the hover state |
+| **Mutation proofs** | reverting a surface to `#FCFAF6`, adding a page-local `--color-text-muted`, and removing the `.fo-filter-btn:hover` foreground each fail the suites — three guards, distinct failures |
+| **Authority** | UNCHANGED. No Functions, Rules, indexes, data, capability, role or state-machine touched. Presentation only |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the site-wide result is what the Owner has not yet seen |
+
+### What future North Star work inherits
+
+A new family starts from the shared tokens and primitives. It does not restate colours in its own
+block, and it does not copy a palette out of the previous page. The enforcement test is deliberately
+**not** a repository-wide hex scanner — that test would fail on the governed status ramp, chart
+series, branded surfaces and every historical comment recording a superseded colour, and would then
+be weakened until it meant nothing. It reads declarations only and names the retired values.
+
+### Defects this rollout found and fixed at their cause
+
+| | |
+|---|---|
+| **Hover foreground** | `button:hover` sets a fill *and* white text at 0-1-1, outranking single-class base rules. 38 rules re-grounded a hover background without restating colour; on the pilot's near-white sunken surface that rendered white-on-near-white (Owner finding). All 38 now carry their foreground |
+| **Guard was reading half the sheet** | `buttonForegroundContrast`'s rule walker anchored on `(^\|\})` and consumed each rule's closing brace, so the next rule could not match — it silently inspected every *other* rule. Its className extractor also read only the first string literal of a `className={...}` expression. Both fixed; the strengthened guard immediately found two more genuine white-on-white controls |
+| **Scorecard gutter** | `padding-left: 0` was correct while the scorecard was an open grid aligning flush to the page edge; the card border made it text touching a line (Owner finding) |
+| **Shadow token vocabulary** | 36 `var(--never-declared, #hex)` references whose hardcoded off-white fallbacks were what actually rendered — a second palette that would have survived the rollout untouched |
+| **`--color-warning`** | 4.05:1 on white, 3.71:1 on its own surface — failed AA for body text on both. Darkened to `#8F6109` under the schema's accessibility clause |

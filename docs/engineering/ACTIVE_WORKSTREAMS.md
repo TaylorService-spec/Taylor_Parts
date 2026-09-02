@@ -27,6 +27,18 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          EOS site-wide visual-system rollout — promote the accepted Financials pilot to the whole authenticated application
+- Agent/session:       Claude (Claude Code, 2026-09-02) · Role: builder — HANDED OVER FROM Codex `/root` (ChatGPT Work, 2026-09-02), which built the pilot as commit `ba4ce623`
+- Handover:            The Owner accepted the pilot as the presentation standard and directed the site-wide rollout in this session. Codex's pilot scope is SUPERSEDED, not abandoned: `ba4ce623` remains the first commit on the branch and this session continues on the same branch and the same PR (#1724) rather than opening a parallel visual-system PR. No concurrent writer: `origin/main` was unmoved at `b1ff470b` and the pilot branch was one commit ahead of it when this session took ownership
+- Branch / worktree:   `codex/financials-visual-system-pilot` (PR #1724) · `D:/Taylor_Parts/.claude/worktrees/eos-visual-system-rollout-ecf1a8`
+- Base commit:         `b1ff470bb596843561883444ab7904bcbcab9a20` · pilot head inherited: `ba4ce623ac78fd8b5ea54297ae4478298c694718`
+- Owned paths:         `field-ops-app-vite/src/index.css` (the `:root` token layer and the promoted shared type rules) · `field-ops-app-vite/src/navigation/AppShell.jsx` (pilot seam removed) · `field-ops-app-vite/src/firebase/firebase.js` (DEV-only emulator port override) · `test/visualSystem.test.mjs` · `test/buttonForegroundContrast.test.mjs` · `test/financialsSurface.test.mjs` · `test/suites.json` · `.github/workflows/visual-system-tests.yml` · `.claude/skills/run-field-ops-app-vite/{visualSweep.mjs,driver.mjs,seed.mjs}` · `docs/north-star/VISUAL-SYSTEM.md`
+- Shared paths req'd:  this registry · `docs/design/eos-north-star-design-grammar.md` (dated amendment only, extraction table preserved) · `docs/design/north-star-migration-ledger.md` (appended, never rewritten) · one dated pointer in `docs/north-star/service-operations/DESIGN-HANDOFF-SERVICE-OPERATIONS-P1.md`
+- Dependencies:        the accepted pilot `ba4ce623`; merged Financials P1 composition through PR #1723
+- Expected outcome:    ONE coherent EOS presentation system inherited globally from `:root` and the shared primitives — no family seam, no page-local palettes — plus the canonical North Star schema document and the conformance tests that keep a future design from silently reverting to the off-white, low-contrast palette
+- Protected boundaries:sandbox Hosting deploy ONLY (Owner-authorized for the final reviewed commit). NO Functions, Rules, indexes, extensions, data/fixtures, production Hosting, or any other Firebase project. No capability/grant/role change, no route, workflow, data-model or state-machine change. NO MERGE — stop at `AWAITING_OWNER_VISUAL_ACCEPTANCE`
+- Lifecycle stage:     SANDBOX BUILD → awaiting Owner visual review
+
 - Capability:          Overnight Tier-1 program — Opportunity write paths, Sales Order fulfillment view, Part identifiers, roadmap reconciliation
 - Agent/session:       Claude (overnight autonomous program, 2026-08-20) · Role: builder
 - Branch / worktree:   sequential single-writer lanes off `origin/main`; one isolated worktree used only for the #1061 trial merge, removed afterwards
