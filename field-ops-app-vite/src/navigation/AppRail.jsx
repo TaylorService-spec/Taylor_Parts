@@ -347,7 +347,13 @@ const ROLE_LABEL = Object.freeze({
 });
 
 export function RailIdentity() {
-  const { user, role, displayName, logout } = useAuth();
+  // Read DEFENSIVELY rather than by destructuring. AppShell is rendered in tests (and could be
+  // rendered in an error boundary) with no AuthContext above it, where useAuth() returns undefined
+  // and a destructure throws -- taking the whole navigation shell down to render an identity strip.
+  // Identity is the least important thing on this rail; it fails closed to nothing and the rail
+  // keeps working.
+  const auth = useAuth() ?? {};
+  const { user, role, displayName, logout } = auth;
   if (!user) return null;
   const name = displayName || user.email || "Signed in";
   return (

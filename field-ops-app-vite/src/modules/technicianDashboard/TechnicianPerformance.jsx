@@ -56,10 +56,16 @@ export default function TechnicianPerformance({ employeeId }) {
         />
       )}
 
+      {/* NOT_ENABLED, not UNAVAILABLE, and the difference is assistive rather than cosmetic:
+          HonestState's UNAVAILABLE branch carries role="alert", which makes a screen reader announce
+          it on every page load. An alert is for something that just went wrong and needs attention.
+          This is a permanent, designed statement about what the platform does not measure -- true on
+          every load, actionable by nobody in the moment, and announcing it as an alert would train a
+          technician to ignore alerts. Caught by useCurrentTechnicianFailClosed's queryByRole("alert")
+          assertion, which is a stricter reviewer than the eye. */}
       <HonestState
-        state={HONEST_STATE.UNAVAILABLE}
-        subject="On-time completion, first-time fix and jobs per workday"
-        detail="These are not measured yet. Each needs a business definition the platform does not have: what counts as on time, how a repeat visit is linked to the original job, and what a workday is when a working schedule may not be recorded."
+        state={HONEST_STATE.NOT_ENABLED}
+        detail="On-time completion, first-time fix and jobs per workday are not measured yet. Each needs a business definition the platform does not have: what counts as on time, how a repeat visit is linked to the original job, and what a workday is when a working schedule may not be recorded."
       />
     </RuledSection>
   );

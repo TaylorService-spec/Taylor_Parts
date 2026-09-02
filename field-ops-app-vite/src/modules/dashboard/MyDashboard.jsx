@@ -105,12 +105,19 @@ function AccountPortfolioModule() {
   return (
     <ModuleFrame label="Account portfolio">
     <div className="fo-stat-grid">
-      <CompactMetric value={summary.total ?? "—"} label="Total accounts" />
-      <CompactMetric value={summary.active ?? "—"} label="Active" />
-      <CompactMetric value={summary.prospect ?? "—"} label="Prospect" />
-      <CompactMetric value={summary.inactive ?? "—"} label="Inactive" />
+      {/* Every label NAMES THE CONCEPT rather than standing alone -- ADR-012 section 2.2a, enforced
+          by activeLabelConformance. The rule earns its keep on this screen specifically: a dashboard
+          also surfaces role-assignment state and capability state, and three different things
+          sharing one unqualified status word on one page is the ambiguity the ADR exists to stop.
+          (The conformance gate skips line comments but not JSX ones, so this note is worded to avoid
+          quoting the bare word it is about -- tripping the guard that proves the point would be a
+          poor joke to leave in the build.) */}
+      <CompactMetric value={summary.total ?? "—"} label="All accounts" />
+      <CompactMetric value={summary.active ?? "—"} label="Active accounts" />
+      <CompactMetric value={summary.prospect ?? "—"} label="Prospect accounts" />
+      <CompactMetric value={summary.inactive ?? "—"} label="Inactive accounts" />
       {typeof summary.unclassified === "number" && summary.unclassified > 0 && (
-        <CompactMetric value={summary.unclassified} label="Unclassified" />
+        <CompactMetric value={summary.unclassified} label="Unclassified accounts" />
       )}
     </div>
     </ModuleFrame>
