@@ -1,0 +1,75 @@
+{
+  "measuredAt": "2026-09-02T23:29:21.418Z",
+  "projectId": "taylor-parts",
+  "censusScript": "functions/scripts/r32ProductionExposureCensus.js",
+  "readOnly": true,
+  "writesPerformed": 0,
+  "totals": {
+    "roleAssignments": 2,
+    "users": 16,
+    "employees": 6,
+    "warehouses": 2
+  },
+  "primaryExposure": {
+    "technicianPlusPartsManager": 0,
+    "technicianPlusWarehouseManager": 0,
+    "technicianPlusBoth": 0,
+    "uniqueExposedPrincipals": 0
+  },
+  "principals": [
+    {
+      "principalUid": "JBslDvmpq8RqQAiyzfvwne9yCWc2",
+      "employeeId": null,
+      "classification": "NOT_EXPOSED",
+      "exposed": false,
+      "managerOperationalRoles": [],
+      "activeAssignments": [
+        "admin@global"
+      ]
+    }
+  ],
+  "managerCensus": [
+    {
+      "employeeId": "emp-rudy-parts-manager",
+      "principalUid": "OJAtlrTP7iZ2TBVnmUgrk2f4TjM2",
+      "managerOperationalRoles": [
+        "PARTS_MANAGER"
+      ],
+      "governedRoles": [
+        {
+          "operational": "PARTS_MANAGER",
+          "governedRoleId": "partsManager",
+          "state": "OPERATIONAL_ROLE_ONLY",
+          "scopes": []
+        }
+      ],
+      "locationGrants": [],
+      "assignedWarehouseComparison": "BOTH_EMPTY"
+    },
+    {
+      "employeeId": "emp-rudy-warehouse-manager",
+      "principalUid": "l7kgKGtiYnX7s7Bd1091UHvsNjE3",
+      "managerOperationalRoles": [
+        "WAREHOUSE_MANAGER"
+      ],
+      "governedRoles": [
+        {
+          "operational": "WAREHOUSE_MANAGER",
+          "governedRoleId": "warehouseManager",
+          "state": "OPERATIONAL_ROLE_ONLY",
+          "scopes": []
+        }
+      ],
+      "locationGrants": [],
+      "assignedWarehouseComparison": "BOTH_EMPTY"
+    }
+  ],
+  "anomalies": [
+    {
+      "kind": "PRINCIPAL_HAS_NO_EMPLOYEE_LINK",
+      "principalUid": "JBslDvmpq8RqQAiyzfvwne9yCWc2"
+    }
+  ],
+  "capabilityMatrix": [],
+  "recommendation": "R32_PRODUCTION_DEPLOYMENT_READY_FOR_SEPARATE_AUTHORIZATION"
+}
