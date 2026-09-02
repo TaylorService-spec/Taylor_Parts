@@ -14,11 +14,12 @@
 // borrowing Billed, which would quietly redefine the metric.
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { FinancialsPageFrame, FinAnnotation } from "./FinancialsPrimitives.jsx";
+import { FinancialsPageFrame, FinancialsPeriodControl, FinAnnotation } from "./FinancialsPrimitives.jsx";
 import FilterBar from "../../shared/ui/FilterBar";
 import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 import { OPERATING_COMPANY_IDS } from "../../domain/operatingCompanyAuthority.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 
 const VIEW_OPTIONS = [
@@ -42,7 +43,13 @@ const METRIC_FIELD = {
 export default function FinancialsCompanyPerformance() {
   const [view, setView] = useState("metrics");
 
-  const read = useFinancialFacts({ factTypes: ["INVOICE"] });
+  // Performance is measured over a window, so period is a first-class control here. It scopes by
+  // the invoice issued date — the canonical event date this read carries — and narrows on the server.
+  const period = useFinancialsPeriod();
+  const read = useFinancialFacts(
+    { factTypes: ["INVOICE"], ...period.requestFields },
+    { enabled: !period.blocked },
+  );
   const { state, result } = financialFactsState(read);
   const ready = state === FACTS_STATE.READY;
   const rollups = ready ? (view === "byUnit" ? result.byBusinessUnit : result.byCompany) : [];
@@ -79,7 +86,10 @@ export default function FinancialsCompanyPerformance() {
       custody="Cross-company operational performance. Consolidated figures are an arithmetic operational sum — UNELIMINATED_SUM — not accounting consolidation."
       custodyTip="FIN-009 owns intercompany classification; eliminations belong to the future external accounting authority and are never drawn or implied here. Consolidated stays labelled UNELIMINATED_SUM until an elimination policy exists (FIN-BLOCK-004, Owner decision). Taylor/Ventana treatment is never inferred."
     >
-      <FilterBar variant="chips" label="View" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+      <div className="fin-filter-rail">
+        <FilterBar variant="chips" label="View" options={VIEW_OPTIONS} activeKey={view} onChange={setView} />
+        <FinancialsPeriodControl {...period.controlProps} />
+      </div>
 
       {ready ? null : (
         <p className="ns-state ns-state--na">{FACTS_DETAIL[state] ?? "The governed read has not answered yet."}</p>

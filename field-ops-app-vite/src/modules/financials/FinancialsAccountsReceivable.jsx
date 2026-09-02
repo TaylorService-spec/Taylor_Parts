@@ -20,17 +20,25 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import { AR_AGING_BUCKETS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows } from "../../domain/financialFactsView.js";
 
 const dateWords = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString() : "—");
 
 export default function FinancialsAccountsReceivable() {
   const [company, setCompany] = useState("consolidated");
+  const period = useFinancialsPeriod();
 
-  const read = useFinancialFacts({
-    companyId: company === "consolidated" ? null : company,
-    factTypes: ["INVOICE"],
-  });
+  // Period scopes by the invoice ISSUED date — the canonical event date this read carries. Aging
+  // itself still derives from each invoice's own governed dueDate, which the period never touches.
+  const read = useFinancialFacts(
+    {
+      companyId: company === "consolidated" ? null : company,
+      factTypes: ["INVOICE"],
+      ...period.requestFields,
+    },
+    { enabled: !period.blocked },
+  );
   const { state, result } = financialFactsState(read);
   const rows = state === FACTS_STATE.READY ? outstandingRows(result) : [];
 
@@ -38,7 +46,10 @@ export default function FinancialsAccountsReceivable() {
     state === FACTS_STATE.READY && rows.length === 0
       ? {
           state: "EMPTY",
-          detail: "The governed read answered, and no invoice in your visibility scope carries an outstanding balance.",
+          detail:
+            period.presetKey === "all"
+              ? "The governed read answered, and no invoice in your visibility scope carries an outstanding balance."
+              : `No open receivables from invoices issued in this period (${period.label}). Choose All activity to see the full set.`,
         }
       : state === FACTS_STATE.READY
         ? { state: null }
@@ -51,7 +62,7 @@ export default function FinancialsAccountsReceivable() {
       custody="Issued but unpaid operational exposure. Operational actual — not an accounting-reconciled balance; no accounting authority is connected."
       custodyTip="A/R composes issued invoices minus governed applications and credits. Aging starts from the governed dueDate established by invoice authority. Disputed-invoice, promise-to-pay and terms-change aging treatments are not implemented (FIN-AG-DUEDATE-POLICY) and are never silently invented."
     >
-      <FinancialsFilterRail company={company} onCompanyChange={setCompany} />
+      <FinancialsFilterRail company={company} onCompanyChange={setCompany} period={period.controlProps} />
 
       <section className="fin-scorecard-section" aria-label="Aging">
         <div className="fin-scorecard fin-scorecard--aging">
