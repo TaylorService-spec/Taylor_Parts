@@ -41,6 +41,28 @@ Extracted from the concepts' own inline styling — not from Broadsheet.
 
 ### Color — the Verenward palette, untouched
 
+> **SUPERSEDED FOR FORWARD WORK — amendment dated 2026-09-02.**
+>
+> The table below is a faithful `[NS]` extraction of what the recovered concepts actually used, and
+> it stays exactly as written: it is the historical record of the source artifacts, not a claim
+> about what to build next.
+>
+> From this date, the presentation standard for the authenticated application is
+> [`docs/north-star/VISUAL-SYSTEM.md`](../north-star/VISUAL-SYSTEM.md) — a true-white canvas,
+> stronger text hierarchy, and boundaries that actually meet the non-text contrast floor. It was
+> piloted on Financials (PR #1724) and accepted by the Owner as the standard for the rest of the
+> application.
+>
+> What changed, concretely: `Page ground` and `Raised surface` become `#FFFFFF`; `Ink` / `Ink 2` /
+> `Ink 3` become `#111111` / `#3F4542` / `#626A66`; the `Rules` hairlines become `#87938D` and
+> `#5F6C66` (the warm rules measured 1.35:1 and 1.75:1 on their own ground — below any usable
+> boundary); `Accent` becomes `#005A3C`, used for emphasis rather than chrome. `Warn` is `#8F6109`,
+> darkened on accessibility grounds. **Brass, the status ramp's meanings, and the six Verenward
+> identity colours are unchanged.**
+>
+> The instruction under this table — *use the variables, not the hexes* — is unchanged and is now
+> enforced in CI by `field-ops-app-vite/test/visualSystem.test.mjs`.
+
 | Token | Value | Role |
 | --- | --- | --- |
 | Page ground | `#F3F0E9` | Warm paper |
