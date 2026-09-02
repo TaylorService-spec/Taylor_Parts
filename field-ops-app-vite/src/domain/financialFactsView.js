@@ -201,13 +201,19 @@ export function lifecycleScorecard(state, result) {
   // absent rather than add the rows here. The totals moved to where they belong — the server, which
   // is what knows which facts the caller may see — and this function simply reads them.
   const summary = result?.summary ?? {};
+  // A field the summary does not carry is ABSENT, not zero and not a dash. The deployed function
+  // can legitimately be older than this bundle — the two ship separately — and a page that
+  // rendered "—" for a total the server never sent would be reporting a balance it has no basis
+  // for. Falling back to the named absence keeps the page truthful under either version.
+  const fromSummary = (byCurrency, absentDetail) =>
+    byCurrency && typeof byCurrency === "object" ? value(byCurrency) : absent(absentDetail);
 
   return {
     booked: absent(LIFECYCLE_ABSENCE.booked),
     billable: absent(LIFECYCLE_ABSENCE.billable),
-    billed: value(summary.billedByCurrency),
-    collected: value(summary.collectedByCurrency),
-    arOutstanding: value(summary.outstandingByCurrency),
+    billed: fromSummary(summary.billedByCurrency, LIFECYCLE_ABSENCE.multiCompany),
+    collected: fromSummary(summary.collectedByCurrency, LIFECYCLE_ABSENCE.multiCompany),
+    arOutstanding: fromSummary(summary.outstandingByCurrency, LIFECYCLE_ABSENCE.multiCompany),
     unbilled: absent(LIFECYCLE_ABSENCE.unbilled),
   };
 }

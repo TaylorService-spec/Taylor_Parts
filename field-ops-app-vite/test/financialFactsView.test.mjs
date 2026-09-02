@@ -263,3 +263,14 @@ test("SOURCE GUARD: the Overview computes no money and derives no unbilled", () 
   assert.ok(!/billed[\w.]*\s*-\s*/i.test(viewCode), "no subtraction between lifecycle figures");
   assert.ok(!/booked:\s*value\(/.test(viewCode), "Billed must never be substituted into Booked");
 });
+
+test("a summary field the deployed function does not send is ABSENT, not a dash or a zero", () => {
+  // The bundle and the function ship separately, so the client can legitimately be newer. A page
+  // that rendered "—" for a total the server never sent would be reporting a balance it has no
+  // basis for; the named absence is the truthful fallback.
+  const older = { ...SCORECARD_READY, summary: { count: 10, openCount: 7, overdueCount: 1, outstandingByCurrency: { USD: 5_855_500 } } };
+  const s = lifecycleScorecard(FACTS_STATE.READY, older);
+  assert.equal(s.billed.valueText, null);
+  assert.ok(s.billed.absence && s.billed.detail, "an unsent total must name itself as absent");
+  assert.match(s.arOutstanding.valueText, /58,555\.00/, "fields the older function DOES send still render");
+});
