@@ -18,6 +18,8 @@ import {
 } from "./FinancialsPrimitives.jsx";
 import HonestState from "../../shared/ui/HonestState.jsx";
 import { LIFECYCLE_SCORECARD_SLOTS, READ_STATE_DETAIL } from "../../domain/financialsSurface.js";
+import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
+import { financialFactsState, lifecycleScorecard } from "../../domain/financialFactsView.js";
 
 // The page frame already renders the standing "Operational financial subledger — not the
 // general ledger" line. This description therefore carries the clause that line does not,
@@ -30,7 +32,7 @@ const CUSTODY_TIP =
   "Custody sentence — permanent contract copy. EOS composes governed operational financial events; statutory accounting, chart of accounts and close belong to a future external authority. Every figure carries its fact class so OPERATIONAL_ACTUAL is never mistaken for ACCOUNTING_RECONCILED_ACTUAL, which appears nowhere — no accounting authority exists.";
 
 const SCORECARD_TIP =
-  "One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so. This page does not issue the reads behind these figures yet, so each slot states that rather than a number — it never asserts what your governed scope would return.";
+  "One ribbon carries the six lifecycle facts in lifecycle order — BOOKED, BILLABLE, BILLED, COLLECTED, A/R, UNBILLED stay distinct words on every page. Unbilled is the one derived figure and says so. This page now issues the governed reporting read, and every figure below is one the SERVER computed within your FIN-004 scope — no amount is totalled here. A slot with no figure names the reason in its own words rather than showing a zero.";
 
 // Owning-page drilldowns per slot (hierarchy is navigation, not new data).
 const SLOT_LINKS = Object.freeze({
@@ -43,6 +45,17 @@ const SLOT_LINKS = Object.freeze({
 export default function FinancialsOverview() {
   const [company, setCompany] = useState("consolidated");
   const [businessUnit, setBusinessUnit] = useState("all");
+
+  // The company and unit chips travel as REQUESTED FILTERS. The server intersects them with this
+  // principal's governed FIN-004 reach and may only narrow — selecting a company you cannot see
+  // returns nothing rather than someone else's numbers.
+  const read = useFinancialFacts({
+    companyId: company === "consolidated" ? null : company,
+    businessUnitId: businessUnit === "all" ? null : businessUnit,
+    factTypes: ["INVOICE"],
+  });
+  const { state, result } = financialFactsState(read);
+  const slots = lifecycleScorecard(state, result);
 
   return (
     <FinancialsPageFrame
@@ -66,7 +79,9 @@ export default function FinancialsOverview() {
                 label={slot.label}
                 factClass={slot.factClass}
                 derivation={slot.derivation ?? null}
-                absence="No read on this surface"
+                valueText={slots[slot.key].valueText}
+                absence={slots[slot.key].absence}
+                detail={slots[slot.key].detail}
               />
               {SLOT_LINKS[slot.key] ? (
                 <Link className="fin-figure__link" to={SLOT_LINKS[slot.key].to}>

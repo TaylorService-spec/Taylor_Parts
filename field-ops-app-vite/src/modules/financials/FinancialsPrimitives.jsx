@@ -46,11 +46,17 @@ export function FactClassLabel({ factClass, derivation = null }) {
 // ─── One scorecard figure slot. ───
 // `valueMinor` present → formatted from integer minor units (display only, never
 // arithmetic). Absent → the slot stays, with the honest word for WHY, never a zero.
-export function FinancialFigure({ label, valueMinor = null, currency = "USD", factClass, derivation = null, absence = null, detail = null }) {
+// `valueText` carries an ALREADY-FORMATTED amount for figures whose source is a per-currency map
+// the server computed (domain/financialFactsView.js's formatByCurrency, which lists currencies
+// separately and never sums across them). It exists so a multi-currency figure stays honest in a
+// slot that was built for one scalar — `valueMinor` remains the path for single-currency callers.
+export function FinancialFigure({ label, valueMinor = null, valueText = null, currency = "USD", factClass, derivation = null, absence = null, detail = null }) {
   return (
     <div className="fin-figure">
       <div className="fin-figure__label">{label}</div>
-      {valueMinor != null ? (
+      {valueText != null ? (
+        <div className="fin-figure__value">{valueText}</div>
+      ) : valueMinor != null ? (
         <div className="fin-figure__value">{formatMoneyDisplay(valueMinor, currency)}</div>
       ) : (
         <div className="fin-figure__absence">
