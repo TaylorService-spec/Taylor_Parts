@@ -34,6 +34,7 @@ on:
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
       - "field-ops-app-vite/test/financialFactsView.test.mjs"
       - "field-ops-app-vite/test/financialsPeriod.test.mjs"
+      - "field-ops-app-vite/test/hoverPairing.test.mjs"
       - "field-ops-app-vite/src/domain/financialsPeriod.js"
       - "field-ops-app-vite/src/hooks/useFinancialsPeriod.js"
       - "field-ops-app-vite/src/domain/financialFactsView.js"
@@ -58,6 +59,7 @@ on:
       - "field-ops-app-vite/test/financialsSurface.test.mjs"
       - "field-ops-app-vite/test/financialFactsView.test.mjs"
       - "field-ops-app-vite/test/financialsPeriod.test.mjs"
+      - "field-ops-app-vite/test/hoverPairing.test.mjs"
       - "field-ops-app-vite/src/domain/financialsPeriod.js"
       - "field-ops-app-vite/src/hooks/useFinancialsPeriod.js"
       - "field-ops-app-vite/src/domain/financialFactsView.js"
@@ -102,7 +104,7 @@ jobs:
         run: node --test test/financialsSurface.test.mjs
         working-directory: field-ops-app-vite
       - name: Reporting read view model — no client money arithmetic (node:test)
-        run: node --test test/financialFactsView.test.mjs test/financialsPeriod.test.mjs
+        run: node --test test/financialFactsView.test.mjs test/financialsPeriod.test.mjs test/hoverPairing.test.mjs
         working-directory: field-ops-app-vite
       - name: Wave compositions render honestly (vitest + jsdom)
         run: npx vitest run test/financialsUxLifecycle.test.jsx
