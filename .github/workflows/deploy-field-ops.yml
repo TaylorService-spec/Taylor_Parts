@@ -3,6 +3,13 @@ name: Deploy Field Ops (Vite) to GitHub Pages
 on:
   push:
     branches: [main]
+    # GitHub Pages publishes the production-capable frontend. Do not spend a
+    # build/deploy on governance, Customer 1 ledger, training, or other docs-only
+    # merges that cannot change the published site.
+    paths:
+      - "index.html"
+      - "field-ops-app-vite/**"
+      - ".github/workflows/deploy-field-ops.yml"
 
 permissions:
   contents: read

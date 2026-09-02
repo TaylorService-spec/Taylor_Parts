@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "customer": "Taylor Freezer of Arizona",
+  "product": "Enterprise Operations OS (EOS)",
+  "provider": "Verenward LLC",
+  "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
+  "lastReconciled": "2026-09-02",
+  "statusVocabulary": [
+    "READY",
+    "IN_PROGRESS",
+    "OPEN",
+    "CUSTOMER_ACTION",
+    "DEFERRED",
+    "BLOCKED",
+    "NOT_AUTHORIZED"
+  ],
+  "rules": {
+    "allLaunchCriticalGatesMustBeReadyForGo": true,
+    "ownerAuthorizationMayAutoTransition": false,
+    "taylorAcceptanceMayAutoTransition": false,
+    "trainingRequiredForDeploymentClose": true,
+    "windowsHostedActionsForLedger": "PROHIBITED",
+    "broadApplicationCiForLedgerOnlyChanges": "PROHIBITED"
+  },
+  "gates": [
+    {
+      "id": "C1-SCOPE-01",
+      "name": "Day-1 scope and exclusions",
+      "category": "scope",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Every EOS family is classified as Day 1, post-Day-1, pilot, or excluded; explicit exclusions are accepted.",
+      "evidence": []
+    },
+    {
+      "id": "C1-COMM-01",
+      "name": "Commercial model",
+      "category": "commercial",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Implementation, subscription, support, founding-customer treatment, change requests, and billable custom work are priced and accepted.",
+      "evidence": []
+    },
+    {
+      "id": "C1-CONTRACT-01",
+      "name": "Executed customer agreements",
+      "category": "legal",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Applicable subscription/service terms, implementation SOW, data/confidentiality terms, support terms, liability boundaries, termination, and data-return terms are executed.",
+      "evidence": []
+    },
+    {
+      "id": "C1-DATA-01",
+      "name": "Data migration scope and rehearsal",
+      "category": "data",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Source systems are inventoried, migration tiers and mappings are accepted, at least one repeatable rehearsal is completed, and exceptions are reconciled.",
+      "evidence": []
+    },
+    {
+      "id": "C1-INV-01",
+      "name": "Opening inventory reconciliation",
+      "category": "data",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Taylor",
+      "closeWhen": "Opening warehouse, bin, truck, and serialized inventory is reconciled to an accepted operational baseline and Taylor records acceptance.",
+      "evidence": []
+    },
+    {
+      "id": "C1-IDENTITY-01",
+      "name": "Production identities and roles",
+      "category": "security",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "The production user roster is reconciled and each Day-1 persona is verified at least privilege against production authorities.",
+      "evidence": []
+    },
+    {
+      "id": "C1-ADMIN-01",
+      "name": "Taylor administrative self-service",
+      "category": "operations",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Designated Taylor EOS administrators can perform ordinary Day-1 administration without source-code changes, CLI commands, direct database edits, or Verenward engineering.",
+      "evidence": []
+    },
+    {
+      "id": "C1-PRODUCT-01",
+      "name": "Day-1 workflow readiness",
+      "category": "product",
+      "status": "IN_PROGRESS",
+      "launchCritical": true,
+      "authority": "Verenward + Owner acceptance where required",
+      "closeWhen": "Every Day-1 workflow has passed its applicable governed functional, sandbox, North Star, and acceptance gates.",
+      "evidence": [
+        "docs/design/north-star-migration-ledger.md",
+        "Existing governed authorization, certification, sandbox persona, scanner, service, dispatch, sales, and inventory evidence remains source-specific authority rather than being copied into this ledger."
+      ]
+    },
+    {
+      "id": "C1-SECURITY-01",
+      "name": "Production security and authority verification",
+      "category": "security",
+      "status": "IN_PROGRESS",
+      "launchCritical": true,
+      "authority": "Verenward + Owner for protected production actions",
+      "closeWhen": "Production Rules, Functions, capabilities, roles, protected actions, tenant boundaries, and audit behavior are verified from the production environment for Day-1 scope.",
+      "evidence": [
+        "Repository and sandbox governance evidence exists; production evidence remains required."
+      ]
+    },
+    {
+      "id": "C1-RECOVERY-01",
+      "name": "Backup and restore proof",
+      "category": "continuity",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward",
+      "closeWhen": "Backup policy is defined and a documented restore procedure has been tested with integrity verification.",
+      "evidence": []
+    },
+    {
+      "id": "C1-CONTINUITY-01",
+      "name": "Taylor interruption fallback",
+      "category": "continuity",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Taylor has documented practical fallback/reconciliation procedures for critical Day-1 operations during an EOS interruption.",
+      "evidence": []
+    },
+    {
+      "id": "C1-SUPPORT-01",
+      "name": "Support and escalation model",
+      "category": "support",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Official support intake, severity definitions, escalation, support hours/expectations, bug-vs-enhancement boundary, and third-party IT responsibility are operational and contracted where required.",
+      "evidence": []
+    },
+    {
+      "id": "C1-TRAINING-01",
+      "name": "Day-1 training readiness",
+      "category": "training",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Every Day-1 role/workflow has current training matching the deployed product, designated Taylor administrators are trained, and the permanent deployment training-close gate is operational.",
+      "evidence": [
+        "docs/training/README.md"
+      ]
+    },
+    {
+      "id": "C1-CUTOVER-01",
+      "name": "Cutover rehearsal and authorization package",
+      "category": "cutover",
+      "status": "OPEN",
+      "launchCritical": true,
+      "authority": "Verenward + Taylor",
+      "closeWhen": "Source freeze, final exports, migration, reconciliation, user activation, smoke tests, fallback, and signoff are rehearsed and packaged for the final production action.",
+      "evidence": []
+    },
+    {
+      "id": "C1-COST-01",
+      "name": "Customer 1 CI cost containment",
+      "category": "operations",
+      "status": "IN_PROGRESS",
+      "launchCritical": false,
+      "authority": "Verenward",
+      "closeWhen": "Ledger/documentation-only updates do not trigger broad application CI or GitHub Pages rebuilds, and no Windows-hosted Actions are used for ledger automation.",
+      "evidence": [
+        ".github/workflows/deploy-field-ops.yml uses ubuntu-latest; path filtering is being narrowed in the ledger establishment change."
+      ]
+    },
+    {
+      "id": "C1-OWNER-01",
+      "name": "Final production dependency authorization",
+      "category": "authorization",
+      "status": "NOT_AUTHORIZED",
+      "launchCritical": true,
+      "authority": "Owner only",
+      "closeWhen": "All launch-critical gates are READY and the Owner explicitly authorizes Taylor to depend on EOS in production from the reviewed release/cutover package.",
+      "evidence": [],
+      "automaticTransitionAllowed": false
+    }
+  ]
+}
