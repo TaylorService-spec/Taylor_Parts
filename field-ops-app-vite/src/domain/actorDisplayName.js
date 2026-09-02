@@ -39,13 +39,22 @@ export function resolveActorDisplayName(userId, byUserId) {
 // collapsed to a guessed name), and consistent with that pair's contract shape so callers can share
 // rendering logic. Never returns the raw employeeId as a "name" -- an id that doesn't resolve is
 // "unknown", not silently displayed as if it were a name.
-export function resolveEmployeeIdentity(employeeId, { byEmployeeId, loading = false, error = null } = {}) {
+// `noun` names WHICH relationship the employee holds, and defaults to "owner" so every existing
+// caller is unchanged. Financials needs "salesperson" — the credited salesperson is emphatically
+// not the account owner (FIN-002 keeps them separate facts), so calling an unresolved credit
+// "Unknown owner" would assert the very conflation the model forbids. Parameterising the noun keeps
+// ONE resolver; a Financials-specific copy is how the drift this file's header describes restarts.
+export function resolveEmployeeIdentity(
+  employeeId,
+  { byEmployeeId, loading = false, error = null, noun = "owner" } = {},
+) {
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   if (!employeeId) return { state: "unset", name: null };
-  if (error) return { state: "error", name: "Owner name unavailable" };
+  if (error) return { state: "error", name: `${Noun} name unavailable` };
   if (loading) return { state: "loading", name: null };
   const employee = byEmployeeId?.get?.(employeeId);
   if (employee?.displayName) return { state: "resolved", name: employee.displayName };
-  return { state: "unknown", name: "Unknown owner" };
+  return { state: "unknown", name: `Unknown ${noun}` };
 }
 
 // Certification Wave E -- resolves a Technician DOC id (WorkOrder.assignedTechId /

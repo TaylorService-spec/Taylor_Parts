@@ -173,7 +173,69 @@ export const FIXTURES = [
     lines: [{ ...PART, lineId: "line-1", orderedQty: 25, unitPrice: 7500 }],
     payMinor: null,
   },
+
+  // ════════════ POST-ATTRIBUTION GENERATION (fr-p2-*) ════════════
+  //
+  // The six orders above were invoiced by a command build that predates FIN-002 attribution
+  // stamping, so their invoices carry no creditedSalespersonId and no line businessUnitId. Those
+  // invoices are IMMUTABLE and stay exactly as they are: the gap is truthful evidence of when they
+  // were issued, and backfilling it would replace history with a guess.
+  //
+  // These three are ADDITIVE. New ids mean new idempotency keys, so a rerun issues only these and
+  // replays the six above as no-ops. Their amounts are deliberately unlike any existing total so
+  // old and new are distinguishable on sight, and each carries a governed line business unit so
+  // the BU axis becomes exercisable for the first time.
+  //
+  // The point of the set is that BOTH generations coexist: page 15 should show real figures for
+  // Lucian and Petra AND still name the seven invoices it cannot attribute.
+  {
+    id: "fr-p2-so-lucian-paid",
+    scenario: "NEW A · attributed, credited to Lucian, paid in full",
+    accountId: ACCT_PAID,
+    operatingCompanyId: "taylor",
+    creditedSalespersonId: SALESPERSON_A,
+    ownerEmployeeId: SALESPERSON_A,
+    dueOffsetDays: 20,
+    lines: [{ ...EQUIP, lineId: "line-1", orderedQty: 1, unitPrice: 512500 }],
+    payMinor: 512500, // exactly the total → derives PAID
+  },
+  {
+    id: "fr-p2-so-petra-partial",
+    scenario: "NEW B · attributed, credited to Petra, second company, partially paid",
+    // Petra's OWN customer. The fixture contract requires each salesperson to hold at least one
+    // account the other does not, so credit can never be confirmed by coincidence of customer.
+    accountId: ACCT_OVERDUE,
+    // Ventana again, and again an ORDINARY same-company sale — not an intercompany event.
+    operatingCompanyId: "ventana",
+    creditedSalespersonId: SALESPERSON_B,
+    ownerEmployeeId: SALESPERSON_B,
+    dueOffsetDays: 25,
+    lines: [{ ...PART, lineId: "line-1", orderedQty: 20, unitPrice: 37150 }],
+    payMinor: 250000, // materially less than 743000 → derives PARTIALLY_PAID
+  },
+  {
+    id: "fr-p2-so-credit-split",
+    scenario: "NEW C · attributed, OWNER != CREDIT — credited to Lucian, owned by Petra, open",
+    accountId: ACCT_MIXED,
+    operatingCompanyId: "taylor",
+    // THE HISTORICAL-CREDIT PROOF, now visible in a stamped invoice rather than only upstream:
+    // the commercial owner is Petra and the credit is Lucian's. Reporting must attribute this to
+    // Lucian and must never substitute the owner — nor the operator in createdByUid, who is
+    // neither of them.
+    creditedSalespersonId: SALESPERSON_A,
+    ownerEmployeeId: SALESPERSON_B,
+    dueOffsetDays: 40,
+    lines: [{ ...EQUIP, lineId: "line-1", orderedQty: 1, unitPrice: 1050000 }],
+    payMinor: null,
+  },
 ];
+
+/** The post-attribution generation, by id — the set whose invoices should carry FIN-002 facts. */
+export const ATTRIBUTED_FIXTURE_IDS = Object.freeze([
+  "fr-p2-so-lucian-paid",
+  "fr-p2-so-petra-partial",
+  "fr-p2-so-credit-split",
+]);
 
 export const expectedTotalMinor = (f) => f.lines.reduce((sum, l) => sum + l.unitPrice * l.orderedQty, 0);
 

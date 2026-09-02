@@ -6,6 +6,7 @@
 //
 // Run: node test/actorDisplayName.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   resolveActorDisplayName,
   resolveEmployeeIdentity,
@@ -116,6 +117,66 @@ ok("resolveEmployeeIdentity: employeeId with no directory match -> state=unknown
   const result = resolveEmployeeIdentity("EMP-does-not-exist", { byEmployeeId: new Map() });
   assert.equal(result.state, "unknown");
   assert.notStrictEqual(result.name, "EMP-does-not-exist");
+});
+
+// ─── Financials credited-salesperson labelling (page 15) ───
+//
+// Three claims, because each fails differently: a name must appear where a person belongs, an
+// unresolved id must NOT be shown as if it were a name, and the money must never be grouped by
+// the label.
+const FIN_DIRECTORY = new Map([
+  ["cw-emp-034", { id: "cw-emp-034", displayName: "Lucian Brightwater" }],
+  ["cw-emp-035", { id: "cw-emp-035", displayName: "Petra Lindqvist" }],
+]);
+
+ok("credited salesperson resolves to a name, and an unresolved id is never shown as one", () => {
+  const opts = { byEmployeeId: FIN_DIRECTORY, noun: "salesperson" };
+  assert.equal(resolveEmployeeIdentity("cw-emp-034", opts).name, "Lucian Brightwater");
+  assert.equal(resolveEmployeeIdentity("cw-emp-035", opts).name, "Petra Lindqvist");
+  // An id the directory cannot place stays a NAMED unknown — the row is not hidden (it is a real
+  // financial fact) and the id is not dressed up as a person.
+  const missing = resolveEmployeeIdentity("cw-emp-999", opts);
+  assert.equal(missing.state, "unknown");
+  assert.equal(missing.name, "Unknown salesperson");
+  assert.ok(!String(missing.name).includes("cw-emp-999"), "an id must never be rendered as a name");
+});
+
+ok("the noun follows the relationship: a credited salesperson is not the account owner", () => {
+  assert.equal(resolveEmployeeIdentity("nope", { byEmployeeId: FIN_DIRECTORY }).name, "Unknown owner");
+  assert.equal(
+    resolveEmployeeIdentity("nope", { byEmployeeId: FIN_DIRECTORY, noun: "salesperson" }).name,
+    "Unknown salesperson",
+  );
+  assert.equal(
+    resolveEmployeeIdentity("x", { byEmployeeId: FIN_DIRECTORY, error: new Error("e"), noun: "salesperson" }).name,
+    "Salesperson name unavailable",
+  );
+  assert.equal(
+    resolveEmployeeIdentity("x", { byEmployeeId: FIN_DIRECTORY, loading: true, noun: "salesperson" }).name,
+    null,
+  );
+});
+
+ok("page 15 groups money by creditedSalespersonId, never by the mutable display name", () => {
+  const src = readFileSync(
+    new URL("../src/modules/financials/FinancialsEmployeePerformance.jsx", import.meta.url),
+    "utf8",
+  );
+  assert.ok(src.includes("byCreditedSalesperson"), "rows must come from the server credited-salesperson rollup");
+  assert.ok(src.includes("<tr key={row.key}>"), "the row identity must remain the employeeId");
+  // The grouping is the SERVER's rollup mapped by rollupRow, which is called with the row alone —
+  // the directory is never an input to it, so a renamed employee cannot regroup money.
+  assert.ok(/\.map\(rollupRow\)/.test(src), "rollupRow must receive only the server rollup row");
+  assert.ok(!/rollupRow\([^)]*byEmployeeId/.test(src), "the directory must never be an input to grouping");
+  // The name is derived FROM the key, never the other way round.
+  assert.ok(/resolveEmployeeIdentity\(row\.key,/.test(src), "the label must be resolved from the credited id");
+  // Credit is never DERIVED from ownership or record creation. The page names those fields in its
+  // annotation copy on purpose — stating that creditedSalespersonId ≠ ownerEmployeeId is the
+  // distinction the surface exists to keep — so this forbids READING them, not mentioning them.
+  for (const f of ["ownerEmployeeId", "createdByUid", "commercialOwnerEmployeeId", "responsibleEmployeeId"]) {
+    assert.ok(!new RegExp("\\.\\s*" + f).test(src), "page 15 must not read " + f + " off any record");
+    assert.ok(!new RegExp("\\b" + f + "\\s*[,}]\\s*=").test(src), "page 15 must not destructure " + f);
+  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);
