@@ -40,8 +40,12 @@ const FAMILIES = [
   ["Financials", "/financials/billing-queue"],
   ["Financials", "/financials/accounts-receivable"],
   ["Financials", "/financials/payments"],
-  ["Inventory", "/inventory"],
-  ["Parts", "/inventory/parts"],
+  // /inventory IS the Parts Catalog — its nav path is "" (navConfig.js). "/inventory/parts" is not
+  // a route at all: it resolves as :partId="parts" and renders an honest not-found, which the sweep
+  // was reporting as a one-control PASS for the Parts family. A route that does not exist
+  // cannot be evidence about the family it was standing in for.
+  ["Inventory / Parts Catalog", "/inventory"],
+  ["Parts — Part Master", "/inventory/part-master"],
   ["Receiving", "/inventory/receiving"],
   ["Dispatch", "/service/dispatcher-board"],
   ["Sales", "/customers/opportunities"],
@@ -151,10 +155,19 @@ async function main() {
     if (candidates.length === 0) unmeasured.push(family + " " + route + ": no interactive control found");
     console.log(`=== ${family} (${route}) — ${candidates.length} distinct controls ===`);
     for (const c of candidates) {
+      // Bring it into view FIRST. elementFromPoint is viewport-relative, so a control whose centre
+      // sits below the fold reports as covered and loses its verdict — .ns-info__close did exactly
+      // that, and scrolling it into view turned "UNREACHABLE" into a clean 18.88:1.
+      await page.evaluate((k) => document.querySelector(`[data-hoversweep="${k}"]`)
+        ?.scrollIntoView({ block: "center" }), c.key);
+      await page.waitForTimeout(120);
       const before = await page.evaluate(readState(c.key));
       if (!before) continue;
       if (!before.reachable) { unreachable += 1; console.log(`   ${c.key.padEnd(44)} UNREACHABLE (covered) — no verdict`); continue; }
-      await page.mouse.move(c.x, c.y);
+      const at = await page.evaluate((k) => { const el = document.querySelector(`[data-hoversweep="${k}"]`);
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; }, c.key);
+      await page.mouse.move(at.x, at.y);
       await page.waitForTimeout(140);
       const after = await page.evaluate(readState(c.key));
       await page.mouse.move(2, 2);
