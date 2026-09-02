@@ -1,0 +1,87 @@
+name: EOS Visual System Tests
+
+# CI for the site-wide EOS visual system — the true-white, high-contrast, one-semantic-step-larger
+# presentation the Owner accepted from the Financials pilot (PR #1724) and this rollout promoted to
+# the whole authenticated application.
+#
+# Design authority: docs/north-star/VISUAL-SYSTEM.md (the canonical schema every North Star starts
+# from). This lane is the enforcement behind that document.
+#
+#   visualSystem.test.mjs             The schema itself: the canonical tokens resolved through the
+#                                     token layer, their contrast measured against the surfaces they
+#                                     are actually painted on, the shared type tiers declared
+#                                     unscoped, and the deprecated palette held out of live
+#                                     declarations. Reads declarations only — comments keep the
+#                                     historical record of superseded colours.
+#   buttonForegroundContrast.test.mjs If a rule re-grounds a background it must restate the
+#                                     foreground — in the base state AND in hover. The hover half
+#                                     exists because the Owner found white-on-near-white filter
+#                                     buttons in the pilot.
+#   financialsSurface.test.mjs        Proves Financials now inherits the system with no seam of its
+#                                     own (it is also in the Financials lane, on purpose: this
+#                                     rollout is the reason that assertion inverted).
+#
+# Offline: no emulator, no deploy, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/src/navigation/AppShell.jsx"
+      - "field-ops-app-vite/test/visualSystem.test.mjs"
+      - "field-ops-app-vite/test/hoverPairing.test.mjs"
+      - "field-ops-app-vite/test/buttonForegroundContrast.test.mjs"
+      - "field-ops-app-vite/test/financialsSurface.test.mjs"
+      - "docs/north-star/VISUAL-SYSTEM.md"
+      - ".github/workflows/visual-system-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/src/navigation/AppShell.jsx"
+      - "field-ops-app-vite/test/visualSystem.test.mjs"
+      - "field-ops-app-vite/test/buttonForegroundContrast.test.mjs"
+      - "field-ops-app-vite/test/financialsSurface.test.mjs"
+      - "docs/north-star/VISUAL-SYSTEM.md"
+      - ".github/workflows/visual-system-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  visual-system-tests:
+    name: EOS visual system (schema + contrast + foreground pairing + inheritance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Canonical schema, contrast and deprecated-palette regression (node:test)
+        run: node --test test/visualSystem.test.mjs test/hoverPairing.test.mjs
+        working-directory: field-ops-app-vite
+      - name: A rule that re-grounds a background restates its foreground (node:test)
+        run: node --test test/buttonForegroundContrast.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Financials inherits the system with no family seam (node:test)
+        run: node --test test/financialsSurface.test.mjs
+        working-directory: field-ops-app-vite
+      - name: Lint the shell surface
+        run: npx oxlint src/navigation/AppShell.jsx
+        working-directory: field-ops-app-vite
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: field-ops-app-vite

@@ -45,33 +45,60 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(here, "../src");
 const cssPath = path.join(srcDir, "index.css");
 
+/**
+ * Every `selector { … }` rule in the sheet, as `{ sel, body }`.
+ *
+ * ANCHORING THIS ON `(^|\})` WAS A BUG, and it is the reason the Owner's hover defect could reach
+ * production. A rule's match ended by CONSUMING its own closing `}`, so the next rule had no `}`
+ * left in front of it and could not match; the engine then skipped ahead to the following one.
+ * The walker therefore read every OTHER rule, silently, and `.fo-filter-btn:hover` happened to
+ * land in the half it never looked at. There is no need for the anchor: a selector cannot contain
+ * a brace, so `[^{}]+` already starts wherever the previous rule stopped.
+ */
+function rules(css) {
+  const out = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) out.push({ sel: m[1].trim(), body: m[2] });
+  return out;
+}
+
 /** Element-level rules that set a colour every instance inherits (`button { color: ... }`). */
 function elementsWithInheritedColor(css) {
   const found = new Map();
-  for (const m of css.matchAll(/(^|\})\s*([a-z][a-z0-9]*(?:\s*,\s*[a-z][a-z0-9]*)*)\s*\{([^}]*)\}/gi)) {
-    const body = m[3];
+  for (const { sel, body } of rules(css)) {
     const color = body.match(/(^|[;{\s])color\s*:\s*([^;]+)/);
     if (!color) continue;
-    for (const sel of m[2].split(",").map((s) => s.trim())) {
-      if (/^[a-z][a-z0-9]*$/i.test(sel)) found.set(sel.toLowerCase(), color[2].trim());
+    for (const part of sel.split(",").map((s) => s.trim())) {
+      if (/^[a-z][a-z0-9]*$/i.test(part)) found.set(part.toLowerCase(), color[2].trim());
     }
   }
   return found;
 }
 
 /**
- * Classes whose rule re-grounds the background but declares no colour.
+ * Classes whose rule re-grounds the background but declares no colour, in a given STATE.
  *
- * State-scoped selectors (`:hover`, `:focus`, `:active`, `:disabled`) are excluded: they layer a
- * background onto a base rule that has already settled the colour question, so requiring it again
- * would flag correct code.
+ * `state: null` inspects base rules; `state: ":hover"` inspects hover rules.
+ *
+ * HOVER USED TO BE EXCLUDED HERE, on the reasoning that a state rule "layers a background onto a
+ * base rule that has already settled the colour question". THAT REASONING WAS WRONG, and the Owner
+ * found the proof on the Financials filter rail: Consolidated / Taylor / Ventana turned
+ * white-on-near-white the moment the pointer touched them.
+ *
+ * The base rule settles nothing during hover, because index.css colours the bare element in that
+ * state too -- `button:hover { background: <brand green>; color: #FFFFFF }`. That selector is
+ * specificity 0-1-1, which OUTRANKS a single-class base rule at 0-1-0. So when
+ * `.fo-filter-btn:hover` (0-2-0) re-grounded the background to a light surface and said nothing
+ * about colour, the winning colour was the white from `button:hover`, not the dark text from
+ * `.fo-filter-btn`.
+ *
+ * The invariant is the one this file always asserted, now applied per state: if you change the
+ * ground, state the figure -- in the rule that changes it.
  */
-function classesThatRegroundWithoutColor(css) {
+function classesThatRegroundWithoutColor(css, state = null) {
   const risky = new Set();
-  for (const m of css.matchAll(/(^|\})\s*([^{}]+)\{([^}]*)\}/g)) {
-    const sel = m[2].trim();
-    const body = m[3];
-    if (/:hover|:focus|:active|:disabled|:focus-visible/.test(sel)) continue;
+  const STATES = /:hover|:focus|:active|:disabled|:focus-visible/;
+  for (const { sel, body } of rules(css)) {
+    if (state === null ? STATES.test(sel) : !sel.includes(state)) continue;
     if (!/(^|[;{\s])background(-color)?\s*:/.test(body)) continue;
     if (/(^|[;{\s])color\s*:/.test(body)) continue;
     for (const c of sel.matchAll(/\.([A-Za-z0-9_-]+)/g)) risky.add(c[1]);
@@ -89,18 +116,67 @@ function jsxFiles(dir) {
   return out;
 }
 
-/** Every `<button …>` opening tag, with the class names written on it. */
+/**
+ * Every `<button …>` opening tag, with the class names written on it.
+ *
+ * THIS USED TO READ ONLY THE FIRST STRING LITERAL of a `className={...}` expression, because the
+ * pattern that scanned the expression could not cross a `}` -- and the first `}` in a real
+ * conditional className is usually the one closing a `${...}` interpolation, long before the
+ * interesting branch. On FilterBar's button that meant the guard saw `ns-view` and never saw
+ * `fo-filter-btn` at all, so the Owner's hover defect could not have been caught even once the
+ * hover state was inspected. A guard that silently reads a fraction of its input is worse than no
+ * guard, so the expression is now scanned with balanced braces and EVERY literal is collected.
+ */
+function classLiteralsIn(expr) {
+  const out = [];
+  // Static text of "…", '…' and `…`; the ${…} parts of a template are expressions, not classes.
+  for (const m of expr.matchAll(/"([^"]*)"|'([^']*)'|`([^`]*)`/g)) {
+    const raw = m[1] ?? m[2] ?? m[3] ?? "";
+    for (const piece of raw.split(/\$\{[^}]*\}?/)) out.push(piece);
+  }
+  return out;
+}
+
 function buttonsWithClasses(text) {
   const found = [];
-  for (const m of text.matchAll(/<button\b[\s\S]{0,400}?>/g)) {
-    const tag = m[0];
+  for (const m of text.matchAll(/<button\b/g)) {
+    // Walk to the end of the opening tag, respecting nested braces so `onClick={() => …}` and
+    // friends do not terminate it early.
+    let i = m.index + "<button".length, depth = 0, tag = "";
+    for (; i < text.length; i += 1) {
+      const ch = text[i];
+      if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) break;
+      tag += ch;
+    }
     const classes = new Set();
-    // Plain strings, template literals, and string literals inside a `className={...}` expression
-    // (conditional classes are common and are exactly where a state class hides).
-    for (const cm of tag.matchAll(/className=(?:"([^"]*)"|`([^`]*)`|\{[^}]*?["`]([^"`]*)["`][^}]*\})/g)) {
-      for (const c of (cm[1] || cm[2] || cm[3] || "").split(/\s+/)) if (c) classes.add(c);
+    for (const cm of tag.matchAll(/className=/g)) {
+      let j = cm.index + "className=".length, d = 0, expr = "";
+      for (; j < tag.length; j += 1) {
+        const ch = tag[j];
+        if (ch === "{") d += 1;
+        else if (ch === "}") { d -= 1; if (d === 0) { expr += ch; break; } }
+        else if (d === 0 && /\s/.test(ch) && expr && !expr.startsWith("{")) break;
+        expr += ch;
+      }
+      for (const literal of classLiteralsIn(expr)) {
+        for (const c of literal.split(/\s+/)) if (c && /^[A-Za-z][A-Za-z0-9_-]*$/.test(c)) classes.add(c);
+      }
     }
     if (classes.size) found.push({ line: text.slice(0, m.index).split("\n").length, classes });
+  }
+  return found;
+}
+
+/** Element-level rules for one state, e.g. `button:hover { color: ... }`. */
+function elementsWithStateColor(css, state) {
+  const found = new Map();
+  // `m` matters: `button:hover` is preceded by a comment, not by a closing brace.
+  const re = new RegExp(`(^|\\})\\s*([a-z][a-z0-9]*)${state}\\s*\\{([^}]*)\\}`, "gim");
+  for (const m of css.matchAll(re)) {
+    const color = m[3].match(/(^|[;{\s])color\s*:\s*([^;]+)/);
+    if (color) found.set(m[2].toLowerCase(), color[2].trim());
   }
   return found;
 }
@@ -137,6 +213,40 @@ test("no button wears a class that re-grounds the background without restating c
     [],
     "These buttons override `background` but inherit `color: white` from the bare `button` rule, "
       + "so their text is coloured for a background they no longer have. Declare `color` in each "
+      + "rule:\n  " + offenders.join("\n  "),
+  );
+});
+
+test("the premise holds in the hover state too: `button:hover` imposes its own colour", () => {
+  // The guard below only means something while this is true. If the bare hover rule stops setting
+  // a colour, re-derive the guard rather than leaving it passing over an expired premise.
+  assert.ok(
+    elementsWithStateColor(css, ":hover").has("button"),
+    "index.css no longer sets `color` on `button:hover` -- re-derive this guard",
+  );
+});
+
+test("no button wears a class whose HOVER re-grounds the background without restating colour", () => {
+  // THE OWNER'S DEFECT, 2026-09-02. `.fo-filter-btn:hover` set a light background and no colour, so
+  // the Financials company filter rendered white on near-white under the pointer. The base rule's
+  // dark text lost to `button:hover`'s white at higher specificity. Same invariant, hover state.
+  const risky = classesThatRegroundWithoutColor(css, ":hover");
+  const offenders = [];
+
+  for (const file of jsxFiles(srcDir)) {
+    const text = readFileSync(file, "utf8");
+    for (const btn of buttonsWithClasses(text)) {
+      for (const c of btn.classes) {
+        if (risky.has(c)) offenders.push(`${path.relative(srcDir, file)}:${btn.line}  .${c}:hover`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "These buttons re-ground `background` on hover but inherit `color` from `button:hover`, so their "
+      + "label is coloured for a background they no longer have. Declare `color` in the same hover "
       + "rule:\n  " + offenders.join("\n  "),
   );
 });

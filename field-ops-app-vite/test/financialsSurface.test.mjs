@@ -180,53 +180,44 @@ test("no Financials page asserts a capability's activation state in rendered cop
   }
 });
 
-test("the high-contrast refresh is a Financials-only shell pilot over shared semantic tokens", () => {
+test("the visual system reaches Financials by global inheritance, not a Financials-only seam", () => {
+  // HISTORY, PRESERVED DELIBERATELY. This test used to assert the opposite: that the shell applied
+  // `fo-main--financials-pilot` only on /financials, and that the accepted colours lived inside
+  // that scoped rule. That was correct for the pilot (PR #1724, 2026-09-02) and is the record of
+  // how the system was proven on one family first.
+  //
+  // The Owner then accepted the pilot as the presentation standard for the authenticated
+  // application, so the colours moved to :root and the type step moved onto the shared primitives.
+  // The seam is gone. What Financials must now demonstrate is that it needs NO seam — it inherits.
   const shell = readFileSync(path.join(SRC_DIR, "navigation/AppShell.jsx"), "utf8");
   const css = readFileSync(path.join(SRC_DIR, "index.css"), "utf8");
 
-  assert.match(
+  assert.doesNotMatch(
     shell,
-    /activeDomainPath === "financials" \? " fo-main--financials-pilot" : ""/,
-    "the shell must scope the pilot to the Financials domain",
+    /fo-main--financials-pilot/,
+    "the Financials pilot seam must not come back: every family inherits the same tokens",
+  );
+  assert.match(shell, /<main className="fo-main"/, "the workspace is one unscoped shell surface");
+
+  // No RULE may re-scope the visual system to this one family. Comments are stripped first: the
+  // stylesheet is allowed — and expected — to explain what the seam was and why it went away.
+  const declarations = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(declarations, /\.fo-main--financials-pilot/, "the scoped pilot block must be gone");
+
+  // What legitimately stays family-scoped: components that exist nowhere else. They consume the
+  // shared tokens rather than restating any colour of their own.
+  for (const rule of [".fin-scorecard {", ".fin-figure__value {"]) {
+    assert.ok(css.includes(rule), `Financials-specific rule missing: ${rule}`);
+  }
+  const finBlock = css.slice(css.indexOf(".fin-scorecard {"));
+  assert.doesNotMatch(
+    finBlock.slice(0, finBlock.indexOf("}")),
+    /#[0-9a-fA-F]{3,6}/,
+    "Financials components must reference tokens, never restate a hex of their own",
   );
 
-  const tokenRule = css.match(/\.fo-main--financials-pilot \{([\s\S]*?)\n\}/)?.[1] ?? "";
-  for (const declaration of [
-    "--color-surface-page: #FFFFFF",
-    "--color-surface-card: #FFFFFF",
-    "--color-text-primary: #111111",
-    "--color-text-secondary: #3F4542",
-    "--color-text-muted: #626A66",
-    "--color-brand-secondary: #005A3C",
-    "--color-border: #87938D",
-    "--color-border-strong: #5F6C66",
-  ]) {
-    assert.ok(tokenRule.includes(declaration), `pilot token missing: ${declaration}`);
-  }
-
+  // The promoted values still have to hold up where this family reads them.
   for (const color of ["#111111", "#3F4542", "#626A66", "#005A3C"]) {
     assert.ok(contrastRatio(color, "#FFFFFF") >= 4.5, `${color} must pass WCAG AA for body text on white`);
   }
-  assert.ok(
-    contrastRatio("#87938D", "#FFFFFF") >= 3,
-    "the normal pilot border must remain visible as a non-text boundary on white",
-  );
-  assert.ok(
-    contrastRatio("#5F6C66", "#FFFFFF") >= 3,
-    "the strong pilot border must remain visible as a non-text boundary on white",
-  );
-
-  // The Owner asked for a semantic step, with display headings left alone unless undersized.
-  // These assertions pin the representative operational tiers instead of allowing a blind
-  // global font-size bump or a handful of page-specific overrides.
-  for (const rule of [
-    ".fo-main--financials-pilot .ns-state { font-size: 16px",
-    ".fo-main--financials-pilot .ns-table { font-size: 15px",
-    ".fo-main--financials-pilot .ns-view { font-size: 15px",
-    ".fo-main--financials-pilot .fo-filter-btn { font-size: 15px",
-    ".fo-main--financials-pilot .fin-figure__value",
-  ]) {
-    assert.ok(css.includes(rule), `semantic pilot rule missing: ${rule}`);
-  }
-  assert.doesNotMatch(tokenRule, /--font-size-display-/, "the pilot must not inflate established display headings");
 });

@@ -150,6 +150,15 @@ No new Firestore read **except** the named SO-G5 parts-readiness integration, wh
 and separately scoped.
 
 ## Design Tokens (map to existing Verenward CSS variables — do not hard-code)
+
+> **Amendment 2026-09-02.** The hexes below record the palette this handoff was written against and
+> are left unedited as the historical record. The live values are now the canonical schema in
+> [`docs/north-star/VISUAL-SYSTEM.md`](../VISUAL-SYSTEM.md) — true-white surfaces, `#111111` /
+> `#3F4542` / `#626A66` text, `#87938D` / `#5F6C66` rules, `#005A3C` accent, `#8F6109` warn.
+> The instruction on this line has not changed and is the point: **map to the CSS variables, do not
+> hard-code.** A handoff that names variables inherited the new system automatically; only a
+> handoff that copied hexes would have needed changing.
+
 Ground #F3F0E9 · surface #FCFAF6 · ink #102B24 · ink-2 #4A5B55 · ink-3 #6B7A74 · rules #D9D3C6 /
 #E3DDD0 / #C3BCAB · accent #1C4638 · brass #B08A55 · positive #237A45 · warn #A9740D · negative
 #B23B3B · amber tint #F0E4C8 (suggestion only). Type: Source Serif 4 (titles + display numerals

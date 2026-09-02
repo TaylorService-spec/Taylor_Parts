@@ -1084,6 +1084,10 @@
     {
       "file": "test/impeccableIgnoreScope.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/visualSystem.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
