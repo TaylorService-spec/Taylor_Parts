@@ -30,15 +30,31 @@
   /* Derived steps. Kept minimal and purposeful rather than a full tint ramp. */
   --verenward-evergreen-hover: #0A1F1A;
   --verenward-guardian-hover:  #163629;
-  --verenward-stone-page:      #F3F0E9;  /* lightened stone: page canvas       */
-  --verenward-stone-card:      #FCFAF6;  /* near-white warm: data surfaces     */
-  --verenward-stone-sunken:    #EDE8DE;  /* recessed / table header            */
-  --verenward-border:          #D9D3C6;  /* stone-derived hairline             */
-  --verenward-border-strong:   #C3BCAB;
+  /* DERIVED SURFACE + LINE STEPS — retuned by the site-wide visual-system
+     rollout (2026-09-02, Owner-accepted from the Financials pilot). These five
+     are DERIVED steps, not brand identity: the six ramp colours above are
+     untouched, so Verenward's identity is unchanged. What changed is the
+     canvas the product is read on — a true-white operational surface with
+     boundaries that are actually visible.
+
+     The old warm off-whites (#F3F0E9 / #FCFAF6 / #EDE8DE) and their beige
+     hairlines (#D9D3C6 at 1.35:1, #C3BCAB at 1.75:1) put every table, panel
+     and field edge below the WCAG 1.4.11 3:1 floor for a meaningful boundary.
+     The replacements are measured against white in the visual-system test. */
+  --verenward-stone-page:      #FFFFFF;  /* page canvas: true white            */
+  --verenward-stone-card:      #FFFFFF;  /* data surfaces: true white          */
+  --verenward-stone-sunken:    #F2F5F3;  /* recessed / table header            */
+  --verenward-border:          #87938D;  /* hairline — 3.02:1 on white         */
+  --verenward-border-strong:   #5F6C66;  /* emphatic boundary — 5.24:1         */
 
   /* --- Semantic tokens: what components should actually reference ---------- */
   --color-brand-primary:   var(--verenward-evergreen);
-  --color-brand-secondary: var(--verenward-guardian);
+  /* Evergreen. Guardian (#1C4638) read as near-black at small sizes and could
+     not carry brand emphasis on a white canvas; this is the accepted evergreen,
+     still AA for body text on white and for white text on itself. It is an
+     EMPHASIS colour (actions, links, selected states, focus, KPI values) — the
+     rail and other branded chrome stay on --color-brand-primary. */
+  --color-brand-secondary: #005A3C;
   --color-brand-accent:    var(--verenward-bronze);
   --color-brand-growth:    var(--verenward-living);
 
@@ -48,9 +64,9 @@
   --color-surface-sunken:   var(--verenward-stone-sunken);
   --color-surface-inverse:  var(--verenward-evergreen);
 
-  --color-text-primary:   var(--verenward-evergreen);   /* 13.3:1 on page      */
-  --color-text-secondary: #4A5B55;                      /*  6.3:1 on page      */
-  --color-text-muted:     #6B7A74;
+  --color-text-primary:   #111111;                      /* 18.9:1 on white     */
+  --color-text-secondary: #3F4542;                      /*  9.8:1 on white     */
+  --color-text-muted:     #626A66;                      /*  5.4:1 on white     */
   --color-text-inverse:   #FFFFFF;                      /* 15.1:1 on evergreen */
   --color-text-on-accent: var(--verenward-evergreen);   /* 4.75:1 on bronze —
         deliberately NOT white: white-on-bronze is 3.18:1 and fails AA at body
@@ -58,14 +74,19 @@
 
   --color-border:        var(--verenward-border);
   --color-border-strong: var(--verenward-border-strong);
-  --color-focus:         var(--verenward-guardian);
+  --color-focus:         var(--color-brand-secondary);
 
   /* Semantic status. Deliberately NOT folded into the brand ramp: operational
      clarity outranks brand consistency, and these must stay instantly
      distinguishable from each other and from brand surfaces. */
   --color-success:         #237A45;
   --color-success-surface: #E6F6EC;
-  --color-warning:         #A9740D;
+  /* Darkened by the visual-system rollout (2026-09-02) on accessibility
+     grounds, which the schema explicitly permits for status colours. #A9740D
+     measured 4.05:1 on white and 3.71:1 on its own warning surface — it failed
+     AA for body text on BOTH, and the true-white canvas removed the last of
+     its margin. #8F6109 keeps the amber identity at 5.41:1 / 4.96:1. */
+  --color-warning:         #8F6109;
   --color-warning-surface: #FFF4DE;
   --color-danger:          #B23B3B;
   --color-danger-surface:  #FDECEC;
@@ -441,7 +462,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   background: rgba(255, 255, 255, 0.07);
   box-shadow: inset 3px 0 0 var(--color-brand-accent);
 }
-.fo-rail__domain-row--current:hover { background: rgba(255, 255, 255, 0.11); }
+.fo-rail__domain-row--current:hover { background: rgba(255, 255, 255, 0.11); color: var(--color-text-inverse); }
 .fo-rail__domain-label { min-width: 0; overflow-wrap: anywhere; }
 /* Icon wrapper: kept at its fixed token size (never squeezed by a long domain label
    fighting it for space in the same flex row); the row's own layout (display:flex, gap)
@@ -537,7 +558,8 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 
 /* --- Workspace column ---------------------------------------------------- */
 .fo-workspace { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.fo-main { padding-block: 26px; flex: 1 1 auto; }
+.fo-main { padding-block: 26px; flex: 1 1 auto;
+  background: var(--color-surface-page); color: var(--color-text-primary); }
 
 /* --- Drawer (below --rail-drawer-max) ------------------------------------ */
 .fo-drawer__scrim {
@@ -583,7 +605,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm); cursor: pointer;
 }
-.fo-navtoggle:hover { background: var(--color-surface-sunken); }
+.fo-navtoggle:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 .fo-navtoggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .fo-navtoggle__bars, .fo-navtoggle__bars::before, .fo-navtoggle__bars::after {
   display: block; width: 15px; height: 1.5px; background: var(--color-text-secondary); border-radius: 1px;
@@ -676,10 +698,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; max-width: 100%; overflow-x: auto; }
 .fo-filter-btn__check-icon { vertical-align: -3px; margin-right: var(--space-1); }
 .fo-filter-btn { background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-.fo-filter-btn:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
+.fo-filter-btn:hover { background: var(--color-surface-sunken); border-color: var(--color-border); color: var(--color-text-primary); }
 .fo-filter-btn:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
 .fo-filter-btn-active { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); color: var(--color-text-inverse); }
-.fo-filter-btn-active:hover { background: var(--verenward-guardian-hover); border-color: var(--verenward-guardian-hover); }
+.fo-filter-btn-active:hover { background: var(--verenward-guardian-hover); border-color: var(--verenward-guardian-hover); color: var(--color-text-inverse); }
 
 /* Sprint 2.1.3 -- Reorder Request & Notification Foundation. Minimal
    (Version 0.1) header notification dropdown -- AppHeader.jsx's own
@@ -689,10 +711,10 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    low-contrast problem already fixed elsewhere in this file). */
 .fo-notification-panel { position: relative; }
 .fo-notification-panel > button { display: inline-flex; align-items: center; gap: 6px; background: var(--color-surface-sunken); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
-.fo-notification-panel > button:hover { background: var(--color-surface-sunken); border-color: var(--color-border); }
+.fo-notification-panel > button:hover { background: var(--color-surface-sunken); border-color: var(--color-border); color: var(--color-text-primary); }
 .fo-notification-panel-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 240px; max-width: 320px; padding: 8px; z-index: 20; }
 .fo-notification-panel-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; text-decoration: none; color: var(--color-brand-primary); font-size: 14px; }
-.fo-notification-panel-item:hover { background: var(--color-surface-page); }
+.fo-notification-panel-item:hover { background: var(--color-surface-page); color: var(--color-text-primary); }
 /* Sprint 2.1.5: section heading for the Notification Panel's two
    groups (Pending Review, Ready for Parts Manager). */
 .fo-notification-panel-section { margin: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--color-text-secondary); }
@@ -752,7 +774,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .fo-form input { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; }
 .fo-form button { padding: 8px 16px; border: none; border-radius: 6px; background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; font-size: 14px; }
-.fo-form button:hover { background: var(--color-brand-secondary); }
+.fo-form button:hover { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
 /* Sprint 2.1.4 -- Reorder Review & Decision. Reject-notes textarea in
    PartDetail.jsx's review form -- fo-form previously only styled
    <input>; a rejection reason needs a multi-line field. */
@@ -766,7 +788,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-inline-form { display: inline-flex; gap: 6px; align-items: center; }
 .fo-inline-form input { width: 64px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; }
 .fo-inline-form button { padding: 6px 12px; border: none; border-radius: 6px; background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; font-size: 14px; }
-.fo-inline-form button:hover { background: var(--color-brand-secondary); }
+.fo-inline-form button:hover { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
 .fo-inline-form button:disabled { background: var(--color-text-muted); cursor: not-allowed; }
 
 .fo-table { width: 100%; border-collapse: collapse; }
@@ -958,7 +980,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .fo-card--field button { padding: 8px 16px; border: none; border-radius: 6px; background: var(--color-brand-secondary); color: var(--color-text-inverse); cursor: pointer; font-size: 14px; }
-.fo-card--field button:hover { background: var(--color-brand-secondary); }
+.fo-card--field button:hover { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
 
 .fo-card--field-active {
   border: 2px solid var(--color-brand-secondary);
@@ -976,13 +998,13 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   cursor: pointer;
   margin-top: 8px;
 }
-.fo-btn-large:hover { background: var(--color-brand-secondary); }
+.fo-btn-large:hover { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
 
 .fo-btn-secondary {
   background: var(--color-surface-sunken);
   color: var(--color-brand-secondary);
 }
-.fo-btn-secondary:hover { background: var(--color-border); }
+.fo-btn-secondary:hover { background: var(--color-border); color: var(--color-text-primary); }
 
 .fo-btn-row {
   display: flex;
@@ -1008,7 +1030,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   color: var(--color-brand-primary);
   cursor: pointer;
 }
-.fo-part-picker-row:hover:not(:disabled) { background: var(--color-surface-page); }
+.fo-part-picker-row:hover:not(:disabled) { background: var(--color-surface-page); color: var(--color-text-primary); }
 .fo-part-picker-row:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1423,6 +1445,7 @@ button:hover {
 
 .fo-global-search-result:hover {
   background: var(--color-surface-page);
+  color: var(--color-text-primary);
 }
 
 .fo-global-search-empty {
@@ -1472,6 +1495,7 @@ button:hover {
 .fo-employee-picker-result:hover,
 .fo-employee-picker-result-highlighted {
   background: var(--color-surface-page);
+  color: var(--color-text-primary);
 }
 
 .fo-employee-picker-status {
@@ -1530,7 +1554,7 @@ button:hover {
 /* PartsScanner mounted as a tool within FieldMode (Section A). */
 .fo-fieldmode-tool { margin-top: 12px; }
 .fo-fieldmode-tool-toggle { background: none; border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; }
-.fo-fieldmode-tool-toggle:hover { background: var(--color-surface-card); }
+.fo-fieldmode-tool-toggle:hover { background: var(--color-surface-card); color: var(--color-text-primary); }
 /* The scanner's hero was authored to bleed to a padded page edge; contain it inside the tool panel. */
 .fo-fieldmode-tool .scan-workspace { max-width: none; }
 .fo-fieldmode-tool .scan-hero { margin-left: 0; margin-right: 0; border-radius: 10px; }
@@ -1542,7 +1566,7 @@ button:hover {
 .fo-receive-back { background: none; border: none; color: #2563eb; cursor: pointer; font-size: 13px; }
 .fo-receive-candidates { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .fo-receive-candidate { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-elevated); cursor: pointer; }
-.fo-receive-candidate:hover { background: var(--color-surface-card); }
+.fo-receive-candidate:hover { background: var(--color-surface-card); color: var(--color-text-primary); }
 .fo-receive-confirm { margin: 8px 0; }
 .fo-receive-confirm > div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--color-surface-sunken); }
 .fo-receive-confirm dt { font-weight: 600; margin: 0; }
@@ -1567,7 +1591,7 @@ button:hover {
 .fo-transfer-form { display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-sunken); }
 .fo-form-row { display: flex; flex-direction: column; gap: 4px; }
 .fo-form-row label { font-size: 13px; color: var(--color-text-secondary); }
-.fo-form-row input, .fo-form-row select, .fo-form-row textarea { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--color-surface); color: var(--color-text-primary); }
+.fo-form-row input, .fo-form-row select, .fo-form-row textarea { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--color-surface-card); color: var(--color-text-primary); }
 .fo-form-row select { min-width: 180px; }
 .fo-form-row .fo-form-row { flex-direction: row; gap: 8px; }
 .fo-form-fieldset { border: 1px solid var(--color-border); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -1583,7 +1607,7 @@ button:hover {
 
 /* Inventory > Cycle Counts workspace. */
 .fo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.fo-panel--nested { border: 1px solid var(--color-border); border-radius: 8px; padding: 12px 14px; background: var(--color-surface); }
+.fo-panel--nested { border: 1px solid var(--color-border); border-radius: 8px; padding: 12px 14px; background: var(--color-surface-card); }
 .fo-transfer-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .fo-inline-form--stacked { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .fo-chip-list { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1601,10 +1625,10 @@ button:hover {
 .fo-sup-footnote { margin-top: 14px; font-size: 13px; }
 /* Governed Supplier picker (PO creation) */
 .fo-supplier-picker { display: flex; flex-direction: column; gap: 6px; }
-.fo-supplier-options { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--color-border); border-radius: 6px; max-height: 220px; overflow-y: auto; background: var(--color-surface); }
+.fo-supplier-options { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--color-border); border-radius: 6px; max-height: 220px; overflow-y: auto; background: var(--color-surface-card); }
 .fo-supplier-options li { padding: 0; }
 .fo-supplier-option { display: block; width: 100%; text-align: left; padding: 8px 10px; border: none; background: none; border-radius: 4px; cursor: pointer; font-size: 14px; color: var(--color-text-primary); }
-.fo-supplier-option:hover, .fo-supplier-option:focus-visible { background: var(--color-surface-sunken); }
+.fo-supplier-option:hover, .fo-supplier-option:focus-visible { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 .fo-supplier-selected { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-sunken); }
 .fo-linkbtn { border: none; background: none; color: var(--color-brand-primary); cursor: pointer; font-size: 13px; padding: 0; text-decoration: underline; }
 .scan-hero { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin: -24px -24px 18px; padding: 28px 28px 24px; background: linear-gradient(125deg, var(--color-brand-primary), var(--color-brand-secondary)); color: white; }
@@ -1646,7 +1670,7 @@ button:hover {
 .scan-quantity button { border-radius: 8px; font-size: 20px; }
 .scan-quantity input { text-align: center; margin: 0 5px; }
 .scan-confirm { width: 100%; margin-top: 16px; padding: 14px; border-radius: 9px; font-weight: 800; background: #e27b32; }
-.scan-confirm:hover { background: #c96522; }
+.scan-confirm:hover { background: #c96522; color: var(--color-text-inverse); }
 .scan-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 0; }
 .scan-summary div { background: var(--color-surface-sunken); border-radius: 10px; padding: 13px; }
 .scan-summary span, .scan-summary strong { display: block; }
@@ -1703,7 +1727,7 @@ button:hover {
   --fo-brand-star: var(--verenward-bronze);
 }
 .fo-brand--onLight {
-  --fo-brand-ring: var(--verenward-guardian);
+  --fo-brand-ring: var(--color-brand-secondary);
   --fo-brand-v: var(--verenward-evergreen);
   --fo-brand-star: var(--verenward-bronze);
 }
@@ -1908,10 +1932,11 @@ button:hover {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.05rem;
   text-align: left; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 6px; overflow: hidden;
   border: 1px solid var(--color-border-strong); background: var(--color-surface-elevated); font-size: 0.74rem;
+  color: var(--color-text-primary);
 }
 .fo-dboard-chip__wo { font-weight: 600; }
 .fo-dboard-chip__time { color: var(--color-text-secondary); }
-.fo-dboard-chip--overlap { border-color: var(--color-warning); background: var(--color-warning-surface); }
+.fo-dboard-chip--overlap { border-color: var(--color-warning); background: var(--color-warning-surface); color: var(--color-warning); }
 .fo-dboard-chip__flag { color: var(--color-warning); }
 .fo-dboard-dropghost {
   position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-brand-primary);
@@ -2051,7 +2076,7 @@ button:hover {
   font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out);
 }
-.fo-btn-field:hover:not(:disabled) { background: var(--verenward-evergreen-hover); }
+.fo-btn-field:hover:not(:disabled) { background: var(--verenward-evergreen-hover); color: var(--color-text-inverse); }
 .fo-btn-field:disabled { opacity: 0.6; cursor: default; }
 .fo-btn-field:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: 2px; }
 .fo-job__failure { margin: 0; font-size: 13px; color: var(--color-danger); }
@@ -2124,7 +2149,7 @@ button:hover {
 .fo-action-rail__start { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .fo-action-rail__end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .fo-btn-primary { background: var(--color-brand-primary); color: var(--color-text-inverse); border: 1px solid var(--color-brand-primary); }
-.fo-btn-primary:hover { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+.fo-btn-primary:hover { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); color: var(--color-text-inverse); }
 .fo-btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid transparent; }
 .fo-btn-ghost:hover { color: var(--color-brand-primary); background: var(--color-surface-sunken); }
 /* Destructive -- same danger treatment as .fo-button--destructive below (Button primitive's
@@ -2136,7 +2161,7 @@ button:hover {
    so a Cancel/Delete confirm rendered as an unstyled native button indistinguishable from the
    ghost/secondary button beside it. */
 .fo-btn-destructive { background: var(--color-danger); color: var(--color-text-inverse); border: 1px solid var(--color-danger); }
-.fo-btn-destructive:hover { background: #962f2f; border-color: #962f2f; }
+.fo-btn-destructive:hover { background: #962f2f; border-color: #962f2f; color: var(--color-text-inverse); }
 
 /* Semantic Status Pill — ONE pill, tone-driven (domain maps state -> tone). Use sparingly. */
 .fo-status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-sm); font-weight: 600;
@@ -2269,7 +2294,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 /* A line with scans against it reads as touched at a glance -- the reconciliation table is scanned
    during counting, not studied afterwards. */
-.fo-table tr.is-observed td { background: var(--color-surface-subtle, rgba(0, 0, 0, 0.03)); }
+.fo-table tr.is-observed td { background: var(--color-surface-sunken); }
 .fo-list li.is-blocked { color: var(--color-danger); }
 /* The receipt is the good outcome, not an alert. */
 .fo-receipt { border-left: 3px solid var(--color-success, var(--color-accent)); }
@@ -2302,7 +2327,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   border: none; border-radius: var(--radius-md);
   font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer;
 }
-.fo-scan__camera:hover { background: var(--verenward-evergreen-hover); }
+.fo-scan__camera:hover { background: var(--verenward-evergreen-hover); color: var(--color-text-inverse); }
 .fo-scan__entry input {
   min-height: 48px; padding: 12px 14px; font-size: 16px; /* 16px avoids iOS zoom-on-focus */
   border: 1px solid var(--color-border); border-radius: var(--radius-sm);
@@ -2333,7 +2358,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* PENDING is neither success nor failure, and must not borrow either one's colour. Held on the
    phone, not recorded on the platform -- an "ok" green here would say the stock moved. */
 .fo-scan__notice--pending {
-  background: var(--color-surface-subtle, #f3f0e8); color: var(--color-text-primary);
+  background: var(--color-surface-sunken); color: var(--color-text-primary);
   border-left: 3px solid var(--color-text-secondary);
 }
 .fo-scan__plan { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
@@ -2736,7 +2761,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   color: var(--color-text-muted); font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--color-border); }
 .fo-sales-pipeline td { padding: 9px 12px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
 .fo-sales-row { cursor: pointer; }
-.fo-sales-row:hover { background: var(--color-surface-sunken); }
+.fo-sales-row:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 .fo-sales-row.is-selected { background: var(--color-info-surface); }
 .fo-sales-row.is-attention td:first-child { box-shadow: inset 3px 0 0 var(--color-warning); }
 .fo-sales-row__customer { font-weight: 600; color: var(--color-text-primary); }
@@ -2786,9 +2811,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-sales-lifecycle-won {
   margin: 0;
   padding: 8px 10px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   border-left: 3px solid var(--color-success, var(--color-accent));
-  background: var(--color-surface-subtle, rgba(0, 0, 0, 0.03));
+  background: var(--color-surface-sunken);
   font-size: 13px;
 }
 .fo-sales-lifecycle-won a { font-weight: 600; }
@@ -2896,16 +2921,16 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .wo-parts-warning {
   margin-block: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--color-warning-border, #C9A227);
+  border: 1px solid var(--color-warning);
   border-left-width: 3px;
   border-radius: 6px;
-  background: var(--color-warning-bg, #FDF8EC);
+  background: var(--color-warning-surface);
 }
 .wo-parts-warning__text {
   margin: 0 0 8px;
   font-size: 13.5px;
   line-height: 1.45;
-  color: var(--color-text, #2B2B2B);
+  color: var(--color-text-primary);
 }
 
 /* ── EDITING-READY OPPORTUNITY DETAIL ──────────────────────────────────────────────────────────────────
@@ -2939,7 +2964,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Shared control base for the edit forms (no canonical .fo-input existed; this is a modest token-driven
    control the Opportunity edit forms use and other surfaces may adopt). */
 .fo-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border);
-  border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--color-surface-card, #fff);
+  border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--color-surface-card);
   color: var(--color-text-primary); }
 .fo-input:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 1px; }
 
@@ -2975,7 +3000,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   display: inline-block; margin-left: 6px; padding: 1px 6px;
   border: 1px solid var(--color-border); border-radius: 999px;
   font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
-  color: var(--color-text-muted); background: var(--color-surface-muted, #F3F1EC);
+  color: var(--color-text-muted); background: var(--color-surface-sunken);
   vertical-align: middle;
 }
 
@@ -3021,11 +3046,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    presented as unavailable-with-a-reason, not as absent. */
 .fo-list-grid-actions { display: flex; gap: 8px; justify-content: flex-end; white-space: nowrap; }
 .fo-list-grid-action[disabled] { opacity: 0.6; cursor: not-allowed; }
-.fo-list-grid:focus-visible { outline: 2px solid var(--fo-focus, #2563eb); outline-offset: 2px; }
+.fo-list-grid:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .fo-account-health { margin: 12px 0 18px; }
 .fo-stat-label { font-size: 0.85em; }
 .fo-stat-value { font-size: 1.15em; font-weight: 600; }
-.fo-stat-warn { color: var(--color-danger, #b42318); }
+.fo-stat-warn { color: var(--color-danger); }
 
 @media (max-width: 900px) {
   .fo-account-layout { grid-template-columns: 1fr; }
@@ -3104,7 +3129,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    today and improves automatically rather than needing a second edit. */
 .eos-auth__headline {
   margin: 0;
-  font-family: var(--font-display, "Barlow Condensed", "Arial Narrow", Arial, sans-serif);
+  font-family: var(--font-display);
   font-size: 42px;
   font-weight: 800;
   line-height: 1.02;
@@ -3254,7 +3279,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   transition: background-color 120ms ease-out;
 }
 
-.eos-auth__submit:hover:not(:disabled) { background: var(--verenward-evergreen-hover); }
+.eos-auth__submit:hover:not(:disabled) { background: var(--verenward-evergreen-hover); color: var(--color-text-inverse); }
 .eos-auth__submit:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .eos-auth__secondary {
@@ -3411,7 +3436,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--color-brand-primary); border-color: var(--color-brand-primary);
   color: var(--color-text-inverse);
 }
-.fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+.fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); color: var(--color-text-inverse); }
 
 /* Secondary -- outlined, guardian. 10.59:1 text; 10.59:1 border against white
    (non-text components need only 3:1; this clears it with margin). */
@@ -3435,7 +3460,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: var(--color-danger); border-color: var(--color-danger);
   color: var(--color-text-inverse);
 }
-.fo-button--destructive:hover:not(:disabled):not([aria-disabled="true"]) { background: #962f2f; border-color: #962f2f; }
+.fo-button--destructive:hover:not(:disabled):not([aria-disabled="true"]) { background: #962f2f; border-color: #962f2f; color: var(--color-text-inverse); }
 
 /* Protected -- explains capability unavailability rather than hiding the
    control. Always rendered disabled (this primitive never grants capability --
@@ -4009,7 +4034,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 @media (max-width: 640px) {
   .fo-equipment-compat-table thead {position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .fo-equipment-compat-table, .fo-equipment-compat-table tbody, .fo-equipment-compat-table tr, .fo-equipment-compat-table td {display: block; width: 100%; }
-  .fo-equipment-compat-table tr {border: 1px solid #E3E8E6; border-radius: 8px; margin-bottom: 10px; padding: 6px 10px; }
+  .fo-equipment-compat-table tr {border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 10px; padding: 6px 10px; }
   .fo-equipment-compat-table td {border: none; padding: 4px 0; }
   .fo-equipment-compat-table td::before {content: attr(data-label) ": "; font-weight: 600; color: #667; }
 }
@@ -4116,7 +4141,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   color: var(--color-text-primary);
   font-size: 13px;
 }
-.fo-filter-chip:hover { background: var(--color-surface-sunken); }
+.fo-filter-chip:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 .fo-filter-chip-active {
   background: var(--color-brand-secondary);
   color: #FFFFFF;
@@ -4208,7 +4233,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   background: none;
   /* See .fo-global-search-result: white button text on the stone page background. */
   color: var(--color-text-primary);
-  border: 1px solid #D6DCDA;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 13px;
@@ -4316,7 +4341,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   padding: 8px 12px;
   font-size: 13px;
   color: #33474C;
-  border-bottom: 1px solid #EDF1F0;
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0; 
 }
 .fo-customer-picker-retry { font-size: 13px; }
@@ -4336,7 +4361,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-customer-picker-locs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; min-width: 0; }
 .fo-customer-picker-loc { color: #2F4247; overflow-wrap: anywhere; }
 .fo-customer-picker-more-locs { white-space: nowrap; }
-.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; flex-shrink: 0; }
+.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); border-top: 1px solid var(--color-border); flex-shrink: 0; }
 @media (max-width: 480px) {
   .fo-customer-picker-locs {flex-direction: column; gap: 2px; }
 }
@@ -4349,9 +4374,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .fo-state-action { margin-top: 2px; }
 .fo-tone-info { border-left: 3px solid #2E4A50; padding-left: 12px; }
-.fo-tone-warning { border-left: 3px solid #A9740D; padding-left: 12px; }
+.fo-tone-warning { border-left: 3px solid var(--color-warning); padding-left: 12px; }
 .fo-saved-report-list { list-style: none; margin: 12px 0 0; padding: 0; }
-.fo-saved-report { border-top: 1px solid #EEF1F0; padding: 10px 0; }
+.fo-saved-report { border-top: 1px solid var(--color-border); padding: 10px 0; }
 .fo-saved-report-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .fo-saved-report-name { font-weight: 600; }
 .fo-saved-report-meta { margin-right: auto; }
@@ -4637,7 +4662,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    cell carries the link treatment, rather than pretending the name is a separate control. */
 .fo-list-grid-row-clickable { cursor: pointer; }
 
-.fo-list-grid-row-clickable:hover { background: var(--color-surface-sunken); }
+.fo-list-grid-row-clickable:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 
 /* Keyboard users get the same signal as mouse users. Inset so the ring is not clipped by the
    adjacent cell borders. */
@@ -4680,7 +4705,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-handheld__nav {
   position: fixed; bottom: 0; left: 0; right: 0;
   display: grid; grid-template-columns: repeat(4, 1fr);
-  background: var(--color-surface); border-top: 1px solid var(--color-border);
+  background: var(--color-surface-card); border-top: 1px solid var(--color-border);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 20;
 }
@@ -4728,7 +4753,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    --------------------------------------------------------------------------- */
 .fo-sync-indicator { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
   justify-content: space-between; padding: 10px 12px; border-radius: 8px;
-  border-left: 4px solid var(--fo-border, #d5d0c4); background: var(--fo-surface, #faf8f4); }
+  border-left: 4px solid var(--color-border); background: var(--color-surface-sunken); }
 .fo-sync-indicator--ok { border-left-color: #2f7d4f; }
 .fo-sync-indicator--pending { border-left-color: #b07d15; }
 .fo-sync-indicator--attention { border-left-color: #b3261e; }
@@ -4751,7 +4776,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   display: flex; flex-direction: column; gap: 10px; }
 
 .fo-sync-item { padding: 10px 12px; border-radius: 8px;
-  border: 1px solid var(--fo-border, #d5d0c4); background: var(--fo-surface, #fff); }
+  border: 1px solid var(--color-border); background: var(--color-surface-card); }
 .fo-sync-item--attention { border-left: 4px solid #b3261e; }
 .fo-sync-item__what { margin: 0; font-weight: 600; display: flex; flex-wrap: wrap;
   gap: 8px; align-items: baseline; justify-content: space-between; }
@@ -4785,7 +4810,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-fields__row {
   display: grid; grid-template-columns: minmax(96px, 34%) 1fr; gap: 10px;
   align-items: baseline; padding: 4px 0;
-  border-bottom: 1px solid var(--color-border-subtle, rgba(0,0,0,0.06));
+  border-bottom: 1px solid var(--color-border);
 }
 .fo-fields__row:last-child { border-bottom: 0; }
 .fo-fields__label {
@@ -4799,7 +4824,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* Status is a field with its own presentation. Colour may supplement it; the WORD always carries it. */
 .fo-fields__status {
   display: inline-block; padding: 2px 8px; border-radius: 999px;
-  background: var(--color-surface-subtle, #f3f0e8); border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken); border: 1px solid var(--color-border);
   font-size: 0.8125rem; font-weight: 600;
 }
 @media (max-width: 359.98px) {
@@ -4815,7 +4840,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-wh-queue__button {
   display: grid; gap: 4px; width: 100%; text-align: left;
   min-height: 64px; padding: 12px 14px; cursor: pointer;
-  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px;
+  background: var(--color-surface-card); border: 1px solid var(--color-border); border-radius: 10px;
   /* RESTATE THE COLOUR. The bare `button` rule sets `color: white` for the primary background; a
      rule that re-grounds the background and inherits that ships white text on a light card, which
      is invisible rather than merely ugly. Caught by buttonForegroundContrast. */
@@ -4838,7 +4863,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-listctl__builder {
   display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
   padding: 12px; border: 1px solid var(--color-border); border-radius: 8px;
-  background: var(--color-surface-subtle, #f7f5f0);
+  background: var(--color-surface-sunken);
 }
 .fo-listctl__step { display: grid; gap: 4px; font-size: 0.8125rem; color: var(--color-text-secondary); }
 .fo-listctl__step select, .fo-listctl__step input { min-height: 44px; min-width: 0; box-sizing: border-box; }
@@ -4851,7 +4876,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-listctl__chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 8px 6px 12px; border-radius: 999px;
-  background: var(--color-surface); border: 1px solid var(--color-border);
+  background: var(--color-surface-card); border: 1px solid var(--color-border);
   font-size: 0.875rem; overflow-wrap: anywhere;
 }
 /* 44px on the remove control: it is a target on a phone, not a decoration. */
@@ -4980,8 +5005,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-listview-header__view select:focus-visible {
   /* It does not LOOK like a control until you reach for it, then it does. A
      permanently-bordered select here would read as a form field on every screen. */
-  border-color: var(--color-border, #d8d5cf);
-  background: var(--color-surface, #fff);
+  border-color: var(--color-border);
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
 }
 
 .fo-listview-header__meta {
@@ -5028,7 +5054,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-record-field:hover .fo-record-field__edit,
 .fo-record-field__edit:focus-visible {
   opacity: 1;
-  border-color: var(--color-border, #d8d5cf);
+  border-color: var(--color-border);
   color: var(--color-text-primary);
 }
 
@@ -5068,7 +5094,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 
 .fo-record-section__toggle:focus-visible {
-  outline: 2px solid var(--color-accent, #2f7d4f);
+  outline: 2px solid var(--color-brand-secondary);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -5122,7 +5148,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   cursor: pointer; font-size: 13px; color: var(--color-text-primary); }
 .fo-typeahead__list button:hover,
 .fo-typeahead__list button:focus-visible,
-.fo-typeahead__list button.is-active { background: var(--color-surface-sunken); }
+.fo-typeahead__list button.is-active { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 .fo-typeahead__name { font-weight: 600; }
 
 /* A chosen part: the canonical ref, its name, and a way to change it. Deliberately NOT an input --
@@ -5141,7 +5167,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .fo-agreement-accept { display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
   padding: 12px; border: 1px solid var(--color-border); border-radius: 8px;
-  background: var(--color-surface-subtle, transparent); }
+  background: var(--color-surface-sunken); }
 .fo-agreement-accept p { margin: 0; font-size: 12px; }
 
 /* ── Opportunity view switch ───────────────────────────────────────────────────
@@ -5156,7 +5182,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   border: 1px solid var(--color-border); background: transparent;
   color: var(--color-text-secondary); font-size: 13px; cursor: pointer; }
 .fo-sales-view:hover { color: var(--color-text-primary); }
-.fo-sales-view.is-active { background: var(--color-surface-subtle, transparent);
+.fo-sales-view.is-active { background: var(--color-surface-sunken);
   border-color: var(--color-text-primary); color: var(--color-text-primary); font-weight: 600; }
 .fo-sales-view__count { font-variant-numeric: tabular-nums; font-size: 12px;
   color: var(--color-text-secondary); }
@@ -5257,11 +5283,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   padding: 10px 0 10px 14px; border-left: 3px solid var(--color-border-strong);
   border-bottom: 1px solid var(--color-border); }
 .ns-attention__item:last-child { border-bottom: 0; }
-.ns-attention__item.is-blocking { border-left-color: var(--color-danger, #B23B3B); }
+.ns-attention__item.is-blocking { border-left-color: var(--color-danger); }
 .ns-attention__item.is-attention { border-left-color: var(--verenward-bronze); }
 .ns-attention__severity { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
   font-weight: 700; white-space: nowrap; }
-.ns-attention__item.is-blocking .ns-attention__severity { color: var(--color-danger, #B23B3B); }
+.ns-attention__item.is-blocking .ns-attention__severity { color: var(--color-danger); }
 .ns-attention__item.is-attention .ns-attention__severity { color: var(--verenward-bronze); }
 .ns-attention__fact { flex: 1 1 22ch; min-width: 0; color: var(--color-text-primary); font-size: 14.5px; }
 .ns-attention__owner, .ns-attention__link { font-size: 13px; color: var(--color-text-secondary); }
@@ -5460,7 +5486,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
      both wide and genuinely pointer-driven (see the query below). A coarse pointer keeps 44px at
      any width, including a touch laptop at 1440. */
   min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
-  transition: background var(--duration-fast, 140ms);
+  transition: background var(--duration-fast);
   clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); }
 /* The first chip has no left notch and the last no right point: the band reads as one
    continuous run rather than a row of detached arrows. */
@@ -5468,14 +5494,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   padding-left: 14px; }
 .ns-chip--last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 11px 50%); padding-right: 14px; }
 .ns-chip--complete { background: var(--verenward-stone-sunken); color: var(--color-success); }
-.ns-chip--complete:hover { background: var(--verenward-border-strong); }
+.ns-chip--complete:hover { background: var(--color-surface-sunken); color: var(--color-text-primary); }
 .ns-chip--current { background: var(--verenward-evergreen); color: #fff; }
-.ns-chip--current:hover { background: var(--verenward-guardian); }
+.ns-chip--current:hover { background: var(--color-brand-secondary); color: var(--color-text-inverse); }
 /* --color-text-muted on stone-card measures 4.32:1 at 12.5px, a hair under AA. One step darker
    keeps the chip visibly quieter than the reached ones and clears the floor. */
 .ns-chip--future { background: var(--verenward-stone-card); color: var(--color-text-secondary);
   outline: 1px solid var(--verenward-border); outline-offset: -1px; }
-.ns-chip--future:hover { background: var(--verenward-stone-sunken); }
+.ns-chip--future:hover { background: var(--verenward-stone-sunken); color: var(--color-text-primary); }
 .ns-chip--terminal { background: var(--color-danger-surface); color: var(--color-danger); cursor: default; }
 .ns-chip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .ns-chip__pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
@@ -5533,9 +5559,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-identity__actions .fo-button--primary { background: var(--verenward-evergreen);
   border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
 .ns-identity__actions .fo-button--primary:hover:not(:disabled):not([aria-disabled="true"]) {
-  background: var(--verenward-guardian); border-color: var(--verenward-guardian); }
+  background: var(--color-brand-secondary); border-color: var(--color-brand-secondary);
+  color: var(--color-text-inverse);
+}
 .ns-identity__actions .fo-button--secondary { background: none;
-  border: 1px solid var(--verenward-border-strong); color: var(--verenward-guardian); }
+  border: 1px solid var(--verenward-border-strong); color: var(--color-brand-secondary); }
 .ns-identity__actions .fo-button--secondary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--verenward-stone-sunken); border-color: var(--verenward-bronze);
   color: var(--verenward-evergreen); }
@@ -5659,7 +5687,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    Renders only when deriveAttention raised something or a next action exists. */
 .ns-attention-strip { display: grid; grid-template-columns: auto 1fr auto; gap: 16px;
   align-items: center; border: 1px solid var(--verenward-bronze);
-  background: var(--color-surface-raised, #FCFAF6); padding: 12px 16px; margin: 8px 0 24px;
+  background: var(--color-surface-card); padding: 12px 16px; margin: 8px 0 24px;
   font-size: 13.5px; }
 .ns-attention-strip__label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--verenward-bronze); white-space: nowrap; }
@@ -5673,15 +5701,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* ── The Sales Agreement card. A related record, never a stage. */
 .ns-agreement { display: flex; justify-content: space-between; align-items: center; gap: 16px;
-  flex-wrap: wrap; border: 1px solid var(--color-border, #D9D3C6);
-  background: var(--color-surface-raised, #FCFAF6); padding: 12px 16px; }
+  flex-wrap: wrap; border: 1px solid var(--color-border);
+  background: var(--color-surface-card); padding: 12px 16px; }
 .ns-agreement--none { color: var(--color-text-secondary); }
 .ns-agreement__facts { min-width: 0; font-size: 13.5px; line-height: 1.6; }
 .ns-agreement__ref { font-weight: 700; }
 .ns-agreement__state { font-weight: 600; }
-.ns-agreement__state.is-positive { color: var(--color-positive, #237A45); }
-.ns-agreement__state.is-negative { color: var(--color-negative, #B23B3B); }
-.ns-agreement__state.is-info { color: var(--color-info, #2B5B7A); }
+.ns-agreement__state.is-positive { color: var(--color-success); }
+.ns-agreement__state.is-negative { color: var(--color-danger); }
+.ns-agreement__state.is-info { color: var(--color-info); }
 .ns-agreement__detail { color: var(--color-text-secondary); }
 .ns-agreement__action { white-space: nowrap; text-decoration: none; }
 
@@ -5711,15 +5739,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-deflist dd { margin: 0; overflow-wrap: anywhere; }
 
 /* A command that failed, stated where it was invoked. */
-.ns-state--error { color: var(--color-negative, #B23B3B); }
+.ns-state--error { color: var(--color-danger); }
 
 /* ── SALES AGREEMENT LINE EDITOR (SA-G7), on the record that owns the prices.
    The editor itself is the pane's, moved to salesAgreementLines.jsx and shared, so it carries its
    own .fo-agreement-line grid. These two rules only give it a home in the North Star section: the
    ruled panel the expansion report admits for EDITORS specifically (Grammar R13), never for
    read-only layout. */
-.ns-lines-edit { border: 1px solid var(--color-border, #D9D3C6);
-  background: var(--color-surface-raised, #FCFAF6); padding: 14px 16px; }
+.ns-lines-edit { border: 1px solid var(--color-border);
+  background: var(--color-surface-card); padding: 14px 16px; }
 .ns-lines-edit__actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 
 /* ── THE 44px TOUCH FLOOR, on the two controls that are inline text rather than buttons.
@@ -5743,7 +5771,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    positions so the header does not reflow when the behaviour ships. */
 .ns-btn-pending { border-radius: 0; font-weight: 600; font-size: 13px; padding: 9px 16px;
   background: none; border: 1px solid var(--verenward-border-strong);
-  color: var(--verenward-guardian); opacity: 0.45; cursor: not-allowed; font-family: var(--font-interface); }
+  color: var(--color-brand-secondary); opacity: 0.45; cursor: not-allowed; font-family: var(--font-interface); }
 .ns-btn-pending--primary { background: var(--verenward-evergreen);
   border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
 /* THE ACTION CLUSTER KEEPS ONE HEIGHT, and that height clears the floor.
@@ -5827,7 +5855,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-variant-numeric: tabular-nums; }
 /* A count that is genuinely a problem is weighted, and the WORD beside it ("Past due") is what
    carries the meaning — the colour is emphasis, never the only signal. */
-.ns-standing__metric-value.is-warn { color: var(--color-danger, #B23B3B); }
+.ns-standing__metric-value.is-warn { color: var(--color-danger); }
 /* The two non-numeric answers read as prose rather than as a value, so nobody mistakes one for
    a number. */
 .ns-standing__absent { font-weight: 400; font-style: italic; color: var(--color-text-secondary); }
@@ -5859,7 +5887,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-attn__row { display: flex; justify-content: space-between; align-items: baseline;
   gap: 12px; flex-wrap: wrap; padding: 4px 0; font-size: 13px; }
 .ns-attn__fact { flex: 1 1 20ch; min-width: 0; }
-.ns-attn__emph { color: var(--color-danger, #B23B3B); font-weight: 600; }
+.ns-attn__emph { color: var(--color-danger); font-weight: 600; }
 .ns-attn__link { white-space: nowrap; }
 /* THE EXPLANATION SITS BENEATH THE FACTS IT EXPLAINS, inside the same surface, divided by a rule
    rather than moved into a box of its own. It is prose, not a callout: nothing here is an action,
@@ -5874,7 +5902,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 
 /* ── AR position words carry a tone as EMPHASIS. The word is the signal. */
-.ns-tone--critical { color: var(--color-danger, #B23B3B); font-weight: 600; }
+.ns-tone--critical { color: var(--color-danger); font-weight: 600; }
 .ns-tone--info { color: var(--color-info); font-weight: 600; }
 .ns-tone--positive { color: var(--color-success); font-weight: 600; }
 .ns-tone--muted, .ns-tone--unknown { color: var(--color-text-secondary); font-weight: 600; }
@@ -5945,7 +5973,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   min-height: 44px; min-width: 88px; padding: 9px 18px; font-weight: 600; font-size: 13px;
   border: 1px solid var(--color-border-strong); color: var(--color-text-primary);
   text-decoration: none; }
-.ns-primary__call:hover { background: var(--verenward-stone-sunken); }
+.ns-primary__call:hover { background: var(--verenward-stone-sunken); color: var(--color-text-primary); }
 .ns-primary__call:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 /* A primary contact with no stored number gets this, never a link to nothing and never another
    contact's number. */
@@ -6164,7 +6192,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-ladder__block dd { margin: 0; }
 .ns-ladder__total { border-top: 2px solid var(--color-text-primary); margin-top: 4px;
   padding-top: 7px !important; font-weight: 700; font-size: 15px; }
-.ns-ladder__block--credits { border-left: 2px solid var(--color-border-subtle, #D9D3C6);
+.ns-ladder__block--credits { border-left: 2px solid var(--color-border);
   padding-left: 12px; font-size: 12.5px; color: var(--color-text-secondary); }
 .ns-ladder__block--credits .ns-section__note { text-align: left; margin-top: 6px; }
 
@@ -6186,7 +6214,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-terms-edit__field > span { font-size: 12px; color: var(--color-text-muted); }
 .ns-terms-edit__field input[type="text"], .ns-terms-edit__field select,
 .ns-terms-edit__field textarea { font: inherit; padding: 6px 8px;
-  border: 1px solid var(--color-border, #C3BCAB); background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border); background: var(--color-surface-card);
   color: inherit; width: 100%; }
 .ns-terms-edit__field input[type="checkbox"] { justify-self: start; width: 18px; height: 18px; }
 .ns-terms-edit__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
@@ -6276,7 +6304,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* ── Rows. The whole row is the target; the reference cell is the anchor that makes it one. */
 .ns-row { cursor: pointer; }
-.ns-row:hover { background: var(--verenward-stone-card); }
+.ns-row:hover { background: var(--verenward-stone-card); color: var(--color-text-primary); }
 /* The row's focus ring is drawn from the ANCHOR inside it, because the anchor is the focusable
    thing — the <tr> is deliberately not in the tab order (a second tab stop per row would announce
    every row twice and put a fake button in the sequence). */
@@ -6438,7 +6466,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch__live { display: flex; align-items: center; gap: 7px; margin: 0;
   font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 .ns-dispatch__live-dot { width: 7px; height: 7px; border-radius: 50%;
-  background: var(--color-status-success, #237A45); flex: none; }
+  background: var(--color-success); flex: none; }
 
 .ns-dispatch__rule { margin: 4px 0 16px; font-size: var(--font-size-sm);
   color: var(--color-text-secondary); max-width: 96ch; }
@@ -6450,7 +6478,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-week__blocked,
 .ns-dispatch-load__cell--blocked {
   background: repeating-linear-gradient(135deg,
-    var(--verenward-stone) 0 6px, var(--verenward-border) 6px 12px);
+    var(--color-surface-sunken) 0 6px, var(--color-border) 6px 12px);
 }
 .ns-dispatch__hatch-key { display: inline-block; width: 26px; height: 11px;
   vertical-align: -1px; outline: 1px solid var(--verenward-border-strong); }
@@ -6468,13 +6496,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* --- messages ------------------------------------------------------------ */
 .ns-dispatch__message { margin: 0 0 14px; padding: 9px 12px; font-size: var(--font-size-sm);
   border-left: 3px solid var(--verenward-border-strong); background: var(--verenward-stone-card); }
-.ns-dispatch__message--ok { border-left-color: var(--color-status-success, #237A45); }
+.ns-dispatch__message--ok { border-left-color: var(--color-success); }
 /* A WARNING is not a failure. ND-20's out-of-hours placement COMMITTED; styling it as an error would
    tell a dispatcher their action failed when it succeeded. Bronze is the guidance colour. */
 .ns-dispatch__message--warn { border-left-color: var(--color-brand-accent); }
-.ns-dispatch__message--error { border-left-color: var(--color-status-danger, #B23B3B); }
+.ns-dispatch__message--error { border-left-color: var(--color-danger); }
 .ns-dispatch__failure { margin: 0 0 12px; padding: 9px 12px; font-size: var(--font-size-sm);
-  border-left: 3px solid var(--color-status-danger, #B23B3B); background: var(--verenward-stone-card); }
+  border-left: 3px solid var(--color-danger); background: var(--verenward-stone-card); }
 .ns-dispatch__loading, .ns-dispatch-denied { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 
 /* --- the lane grid ------------------------------------------------------- */
@@ -6491,13 +6519,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-lane__identity { padding: 14px 12px 14px 0; min-width: 0; }
 .ns-dispatch-lane__name { font-size: 13.5px; font-weight: 700; }
 .ns-dispatch-lane__meta { font-size: 11.5px; color: var(--color-text-secondary); }
-.ns-dispatch-lane__meta-muted { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-lane__meta-muted { color: var(--color-text-muted); }
 .ns-dispatch-lane__meta-strained { color: var(--color-brand-accent); }
 
 /* The hour gridlines are a repeating background over the SAME 10-column band the header draws, so
    the two stay aligned at any width without either measuring the other. */
 .ns-dispatch-lane { position: relative; height: 74px; min-width: 0;
-  background-image: linear-gradient(to right, var(--verenward-stone) 1px, transparent 1px);
+  background-image: linear-gradient(to right, var(--color-border) 1px, transparent 1px);
   background-size: 10% 100%; }
 .ns-dispatch-lane--over { background-color: var(--verenward-stone-sunken); }
 
@@ -6520,8 +6548,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-queue--over { background: var(--verenward-stone-sunken); outline: 2px dashed var(--verenward-border-strong); }
 .ns-dispatch-queue__title { font-family: var(--font-record-title); font-size: 19px; font-weight: 700;
   margin: 0 0 4px; display: flex; align-items: baseline; gap: 8px; }
-.ns-dispatch-queue__count { font: 600 11px var(--font-interface); color: var(--color-text-inverse, #fff);
-  background: var(--color-status-danger, #B23B3B); padding: 2px 8px; border-radius: 999px; }
+.ns-dispatch-queue__count { font: 600 11px var(--font-interface); color: var(--color-text-inverse);
+  background: var(--color-danger); padding: 2px 8px; border-radius: 999px; }
 .ns-dispatch-queue__note { font-size: var(--font-size-sm); color: var(--color-text-secondary); margin: 0 0 12px; }
 .ns-dispatch-queue__clear { font-size: var(--font-size-sm); color: var(--color-text-secondary);
   border-top: 1px solid var(--verenward-border); padding-top: 14px; margin: 0; }
@@ -6537,11 +6565,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-card__ref { font-size: 12.5px; }
 .ns-dispatch-card__type { font-size: 11.5px; color: var(--color-text-secondary); }
 .ns-dispatch-card__customer { font-size: 11.5px; color: var(--color-text-secondary); margin-top: 3px; }
-.ns-dispatch-card__unresolved { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-card__unresolved { color: var(--color-text-muted); }
 .ns-dispatch-card__actions { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .ns-dispatch-card__rec { font-size: 11.5px; }
-.ns-dispatch-card__score { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-card__score { color: var(--color-text-muted); }
 
 /* --- week + fortnight ---------------------------------------------------- */
 .ns-dispatch-week, .ns-dispatch-load { margin-bottom: 22px; }
@@ -6553,17 +6581,17 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
 .ns-dispatch-week__today { color: var(--color-brand-accent); }
 .ns-dispatch-week__identity { padding: 10px 12px 10px 0; font-size: 13px; font-weight: 700; }
-.ns-dispatch-week__cell { border-left: 1px solid var(--verenward-stone); padding: 8px;
+.ns-dispatch-week__cell { border-left: 1px solid var(--color-border); padding: 8px;
   display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-height: 44px; }
 .ns-dispatch-week__cell--droppable { background: var(--verenward-stone-sunken); }
 .ns-dispatch-week__chip { background: var(--verenward-evergreen); color: var(--verenward-stone-card);
   padding: 4px 8px; font: 600 11px var(--font-interface); }
 .ns-dispatch-week__blocked { padding: 4px 8px; font: 600 11px var(--font-interface);
   outline: 1px solid var(--verenward-border-strong); outline-offset: -1px; color: var(--color-text-secondary); }
-.ns-dispatch-week__open { font-size: 11px; color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-week__open { font-size: 11px; color: var(--color-text-muted); }
 /* Weekends are shown but quieter — present so nothing is hidden, recessive so the working week still
    reads first. */
-.ns-dispatch-week__cell--weekend { background: var(--verenward-stone); }
+.ns-dispatch-week__cell--weekend { background: var(--color-surface-sunken); }
 
 .ns-dispatch-load__head, .ns-dispatch-load__row { display: grid;
   /* auto-fit rather than a fixed 10: the band gains a column when a weekend carries work. */
@@ -6578,11 +6606,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-load__cell:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
 /* Four buckets, and UNKNOWN is one of them. It is the page ground rather than a paler shade of
    booked, so an unrecorded shift cannot be misread as a quiet day. */
-.ns-dispatch-load__cell[data-load="low"] { background: #DCE5DF; }
-.ns-dispatch-load__cell[data-load="medium"] { background: #F2E3C2; }
-.ns-dispatch-load__cell[data-load="high"] { background: #E9CDCD; }
-.ns-dispatch-load__cell[data-load="unknown"] { background: var(--verenward-stone); }
-.ns-dispatch-load__unknown { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-load__cell[data-load="low"] { background: #DCE5DF; color: var(--color-text-primary); }
+.ns-dispatch-load__cell[data-load="medium"] { background: #F2E3C2; color: var(--color-text-primary); }
+.ns-dispatch-load__cell[data-load="high"] { background: #E9CDCD; color: var(--color-text-primary); }
+.ns-dispatch-load__cell[data-load="unknown"] { background: var(--color-surface-sunken); color: var(--color-text-primary); }
+.ns-dispatch-load__unknown { color: var(--color-text-muted); }
 .ns-dispatch-load__legend { font-size: 11.5px; color: var(--color-text-secondary); margin: 12px 0 0; }
 
 .ns-dispatch-map { border: 1px solid var(--verenward-border-strong);
@@ -6610,10 +6638,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-dialog__field > span { font-weight: 600; }
 .ns-dispatch-dialog__field input, .ns-dispatch-dialog__field select, .ns-dispatch-dialog__field textarea {
   font: inherit; padding: 8px 10px; min-height: 44px;
-  border: 1px solid var(--verenward-border-strong); background: var(--color-surface, #fff); }
+  border: 1px solid var(--verenward-border-strong); background: var(--color-surface-card); }
 .ns-dispatch-dialog__field textarea { min-height: 72px; resize: vertical; }
 .ns-dispatch-dialog__error { margin: 0; font-size: var(--font-size-sm); padding: 8px 10px;
-  border-left: 3px solid var(--color-status-danger, #B23B3B); background: var(--verenward-stone-sunken); }
+  border-left: 3px solid var(--color-danger); background: var(--verenward-stone-sunken); }
 .ns-dispatch-dialog__actions { display: flex; gap: 8px; margin-top: 4px; }
 .ns-dispatch-dialog__hint { margin: 0; font-size: 11.5px; color: var(--color-text-secondary); }
 
@@ -6644,7 +6672,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    inherits whatever the surrounding text colour happens to be, which is how a control ends up
    unreadable on a surface nobody tested it against. */
 .ns-dispatch-unplaced__row { font: 600 12px var(--font-interface); padding: 8px 12px; min-height: 44px;
-  background: var(--color-surface, #fff); color: var(--color-text-primary);
+  background: var(--color-surface-card); color: var(--color-text-primary);
   border: 1px solid var(--verenward-border-strong); cursor: pointer; }
 
 /* The five structural hooks the composition names. Declared rather than left phantom: a class in the
@@ -6669,7 +6697,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-views__jump { display: flex; align-items: center; gap: 6px; font-size: 11.5px;
   color: var(--color-text-secondary); }
 .ns-dispatch-views__jump input { font: inherit; min-height: 44px; padding: 6px 8px;
-  background: var(--color-surface, #fff); color: var(--color-text-primary);
+  background: var(--color-surface-card); color: var(--color-text-primary);
   border: 1px solid var(--verenward-border-strong); }
 /* The "Go to" label. Visible rather than sr-only: a bare date field beside two arrows reads as an
    unexplained control, and the word costs one line. */
@@ -6687,20 +6715,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font: 600 12.5px var(--font-interface); background: var(--verenward-stone-card);
   color: var(--color-text-primary); border: 1px solid var(--verenward-border-strong); cursor: pointer; }
 .ns-dispatch-techfilter__trigger:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: -2px; }
-.ns-dispatch-techfilter__caret { color: var(--color-text-tertiary, #6B7A74); }
+.ns-dispatch-techfilter__caret { color: var(--color-text-muted); }
 .ns-dispatch-techfilter__menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
   min-width: 260px; max-height: 340px; overflow: auto; padding: 8px;
   background: var(--verenward-stone-card); color: var(--color-text-primary);
   border: 1px solid var(--verenward-border-strong); }
 .ns-dispatch-techfilter__all { width: 100%; text-align: left; min-height: 44px; padding: 8px 10px;
-  font: 600 12px var(--font-interface); background: var(--color-surface, #fff);
+  font: 600 12px var(--font-interface); background: var(--color-surface-card);
   color: var(--color-text-primary); border: 1px solid var(--verenward-border-strong);
   cursor: pointer; margin-bottom: 6px; }
 .ns-dispatch-techfilter__all:disabled { opacity: 0.5; cursor: default; }
 .ns-dispatch-techfilter__list { list-style: none; margin: 0; padding: 0; }
 .ns-dispatch-techfilter__option { display: flex; align-items: center; gap: 8px; min-height: 44px;
   padding: 4px 10px; font-size: var(--font-size-sm); cursor: pointer; }
-.ns-dispatch-techfilter__option:hover { background: var(--verenward-stone-sunken); }
+.ns-dispatch-techfilter__option:hover { background: var(--verenward-stone-sunken); color: var(--color-text-primary); }
 
 /* ── Dispatch P1v1 · Owner visual corrections VC-2/VC-3/VC-4 ───────────────────────────────── */
 
@@ -6711,7 +6739,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .ns-dispatch-lane__past {
   position: absolute; inset-block: 0; inset-inline-start: 0; pointer-events: none; z-index: 0;
   background: repeating-linear-gradient(135deg,
-    var(--verenward-stone) 0 3px, transparent 3px 8px);
+    var(--color-border) 0 3px, transparent 3px 8px);
   opacity: 0.55;
   border-inline-end: 1px solid var(--verenward-border-strong);
 }
@@ -6740,7 +6768,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .ns-dispatch-reason {
   width: min(30rem, calc(100vw - 2rem));
-  background: var(--color-surface); color: var(--color-text-primary);
+  background: var(--color-surface-card); color: var(--color-text-primary);
   border: 1px solid var(--verenward-border-strong); border-radius: 10px;
   padding: 1.15rem 1.25rem 1rem; box-shadow: 0 18px 40px rgb(0 0 0 / 22%);
 }
@@ -6754,11 +6782,11 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 .ns-dispatch-reason__input {
   width: 100%; padding: 0.5rem 0.6rem; font: inherit;
-  color: var(--color-text-primary); background: var(--color-surface);
+  color: var(--color-text-primary); background: var(--color-surface-card);
   border: 1px solid var(--verenward-border-strong); border-radius: 6px;
 }
 .ns-dispatch-reason__input:focus-visible { outline: 2px solid var(--verenward-ink); outline-offset: 1px; }
-.ns-dispatch-reason__error { margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--color-danger, #a3282f); }
+.ns-dispatch-reason__error { margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--color-danger); }
 .ns-dispatch-reason__actions {
   display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.9rem;
 }
@@ -7161,7 +7189,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    <p>, where a <div> is invalid -- so the block behaviour is supplied here. */
 .ns-info__panel { position: absolute; z-index: 40; top: calc(100% - 6px); display: block;
   width: max(260px, 30ch); max-width: min(420px, 80vw);
-  background: var(--color-surface, #FFFFFF); border: 1px solid var(--color-text-primary);
+  background: var(--color-surface-card); border: 1px solid var(--color-text-primary);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.13); padding: 12px 14px 10px;
   font: 400 12.5px/1.55 var(--font-interface); color: var(--color-text-primary);
   font-style: normal; text-transform: none; letter-spacing: normal; }
@@ -7222,7 +7250,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-receiving-bottom section[aria-labelledby="recent-receipts-heading"] { margin-top: 32px; }
 .fo-receiving-bottom section[aria-labelledby="recent-receipts-heading"] h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
 /* The RCV-G1 held slot: visibly a reserved place, not a failed load and not an empty success. */
-.fo-receiving-slot { border: 1px dashed var(--color-border); border-radius: var(--radius-sm, 4px);
+.fo-receiving-slot { border: 1px dashed var(--color-border); border-radius: var(--radius-sm);
   padding: 14px 16px; font-size: 13px; color: var(--color-text-secondary, var(--color-text-primary)); }
 
 @media (max-width: 900px) {
@@ -7247,7 +7275,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    nested shell, no card farm, no second page H1. Identity is the governed supplier name; the
    opaque order id never renders (RCV-G5/RCV-G7), and its absent business number is stated. */
 .fo-receiving-session { display: grid; gap: 22px; width: 100%; }
-.fo-receiving-session__kicker { margin: 0 0 2px; font: 600 11px var(--font-interface, inherit);
+.fo-receiving-session__kicker { margin: 0 0 2px; font: 600 11px var(--font-interface);
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); }
 .fo-receiving-session__title { margin: 0 0 4px; font-size: 24px; line-height: 1.2; }
 .fo-receiving-session__identity > .fo-muted { margin: 0; }
@@ -7277,7 +7305,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* ═══════════════ Receiving North Star P1 — frame 1d (reorder linear journey) ═══════════════ */
 /* The step line labels the existing RECEIVE_STEP stage — presentation only, quiet uppercase. */
-.fo-receiving-session__step { margin: 0; font: 600 11px var(--font-interface, inherit);
+.fo-receiving-session__step { margin: 0; font: 600 11px var(--font-interface);
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); }
 .fo-receive-stepnote { font-size: 12px; max-width: 64ch; }
 /* 375px safety for the review read-back: label/value rows already stack as flex pairs; keep long
@@ -7321,74 +7349,73 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    (Source Serif 4) per the family's typographic law; absence states are words, never
    zeros. 375 recomposes (2-up scorecard) rather than shrinking. */
 
-.fin-custody-note { font-size: var(--font-size-small, 12.5px); color: var(--color-text-secondary); margin: 4px 0 0; }
+.fin-custody-note { font-size: var(--font-size-sm); color: var(--color-text-secondary); margin: 4px 0 0; }
 
-.fin-filter-rail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3, 12px); padding: var(--space-2, 8px) 0 var(--space-4, 16px); border-bottom: 1px solid var(--color-border); }
+.fin-filter-rail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--color-border); }
 .fin-period { font-size: 12.5px; color: var(--color-text-secondary); }
 
 /* The period FILTER. It reads as a control rather than a footnote, which is the whole point:
    the same words rendered as static text told the user a range existed and gave them no way to
    set one. Sits in the shared rail beside Company and Business Unit, in the same grammar. */
-.fin-period-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2, 8px); }
+.fin-period-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .fin-period__label {
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--color-text-secondary); display: inline-flex; align-items: center; gap: 4px;
 }
 .fin-period__select {
   min-height: 44px; /* touch target, governed minimum */
-  padding: 0 var(--space-2, 8px);
+  padding: 0 var(--space-2);
   font: inherit; font-size: 13px;
   color: var(--color-text-primary);
-  background: var(--color-surface, transparent);
+  background: var(--color-surface-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   max-width: 100%;
 }
-.fin-period__range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2, 8px); }
+.fin-period__range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .fin-period__field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
 .fin-period__date {
   min-height: 44px;
-  padding: 0 var(--space-2, 8px);
+  padding: 0 var(--space-2);
   font: inherit; font-size: 13px;
   color: var(--color-text-primary);
-  background: var(--color-surface, transparent);
+  background: var(--color-surface-card);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   max-width: 100%;
 }
-.fin-period__invalid { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--color-danger, #b3261e); }
+.fin-period__invalid { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--color-danger); }
 
 /* At 375 the control stacks rather than shrinking: a date input squeezed onto one line stops
    being tappable, and minmax(0,1fr) keeps the row from forcing the page wider than the viewport. */
 @media (max-width: 640px) {
   .fin-period-control { width: 100%; align-items: flex-start; flex-direction: column; }
   .fin-period__select { width: 100%; }
-  .fin-period__range { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2, 8px); }
+  .fin-period__range { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
   .fin-period__field { width: 100%; justify-content: space-between; }
   .fin-period__date { flex: 1 1 auto; min-width: 0; }
 }
 
-.fin-scorecard-section { padding: var(--space-4, 16px) 0 var(--space-2, 8px); }
+.fin-scorecard-section { padding: var(--space-4) 0 var(--space-2); }
 .fin-scorecard { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 2px solid var(--color-text-primary); }
 .fin-scorecard--aging { grid-template-columns: repeat(5, 1fr); }
 .fin-scorecard--customer { grid-template-columns: repeat(4, 1fr); }
-.fin-scorecard__slot { padding: 12px 18px 12px 0; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
-.fin-scorecard__slot + .fin-scorecard__slot { padding-left: 18px; }
+.fin-scorecard__slot { padding: 12px 18px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
 .fin-scorecard__slot:last-child { border-right: none; }
 
 .fin-figure { min-width: 0; }
 .fin-rail { min-width: 0; }
-.fin-figure__label { font: 600 11px var(--font-interface, Inter, sans-serif); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); }
-.fin-figure__value { font-family: var(--font-record-title, "Source Serif 4", serif); font-size: 28px; font-weight: 700; margin-top: 2px; }
+.fin-figure__label { font: 600 11px var(--font-interface); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); }
+.fin-figure__value { font-family: var(--font-record-title); font-size: 28px; font-weight: 700; margin-top: 2px; }
 .fin-figure__absence { font-size: 13px; font-style: italic; color: var(--color-text-secondary); margin-top: 6px; }
 .fin-figure__link { display: inline-block; font-size: 12px; margin-top: 4px; }
-.fin-factclass { display: block; font: 600 9.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); margin-top: 3px; }
+.fin-factclass { display: block; font: 600 9.5px var(--font-interface); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-secondary); margin-top: 3px; }
 
-.fin-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-6, 32px); margin-top: var(--space-4, 16px); }
+.fin-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-6); margin-top: var(--space-4); }
 
-.fin-truth-band { background: var(--color-surface-raised, #FCFAF6); border: 1px solid var(--color-border); padding: 14px 16px; font-size: 13px; max-width: 620px; }
+.fin-truth-band { background: var(--color-surface-card); border: 1px solid var(--color-border); padding: 14px 16px; font-size: 13px; max-width: 620px; }
 .fin-truth-band p { color: var(--color-text-secondary); margin: 4px 0 0; line-height: 1.6; }
-.fin-truth-band--future { border-left: 3px solid var(--color-warning, #8A6D28); margin: var(--space-4, 16px) 0; }
+.fin-truth-band--future { border-left: 3px solid var(--color-warning); margin: var(--space-4) 0; }
 
 .fin-exception-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
 .fin-exception-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--color-border); }
@@ -7403,39 +7430,39 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* Hover-ⓘ annotation: contract copy visible, explanation behind a focusable ⓘ. */
 .fin-hlp-wrap { position: relative; display: inline-block; }
-.fin-hlp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--color-text-secondary); border-radius: 50%; background: transparent; color: var(--color-text-secondary); font: 700 10px var(--font-interface, Inter, sans-serif); cursor: help; vertical-align: middle; margin-left: 6px; }
+.fin-hlp { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--color-text-secondary); border-radius: 50%; background: transparent; color: var(--color-text-secondary); font: 700 10px var(--font-interface); cursor: help; vertical-align: middle; margin-left: 6px; }
 .fin-hlp:hover, .fin-hlp:focus-visible { border-color: var(--color-text-primary); color: var(--color-text-primary); }
-.fin-tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: min(340px, 78vw); background: var(--color-text-primary); color: var(--color-surface-page, #fff); padding: 12px 14px; font: 400 12px/1.6 var(--font-interface, Inter, sans-serif); text-align: left; z-index: 40; box-shadow: var(--shadow-overlay, 0 6px 20px rgba(0,0,0,0.35)); }
+.fin-tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: min(340px, 78vw); background: var(--color-text-primary); color: var(--color-surface-page); padding: 12px 14px; font: 400 12px/1.6 var(--font-interface); text-align: left; z-index: 40; box-shadow: var(--shadow-overlay, 0 6px 20px rgba(0,0,0,0.35)); }
 .fin-hlp:hover + .fin-tip, .fin-hlp:focus-visible + .fin-tip, .fin-hlp-wrap:hover .fin-tip { display: block; }
 
-.fin-search-label { display: block; font: 600 11px var(--font-interface, Inter, sans-serif); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); margin-bottom: 4px; }
-.fin-search-input { width: min(420px, 100%); min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-border); background: var(--color-surface-raised, #fff); font-size: 14px; }
+.fin-search-label { display: block; font: 600 11px var(--font-interface); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); margin-bottom: 4px; }
+.fin-search-input { width: min(420px, 100%); min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-border); background: var(--color-surface-card); font-size: 14px; }
 .fin-search-results { list-style: none; margin: 8px 0 0; padding: 0; max-width: 420px; border: 1px solid var(--color-border); }
 .fin-search-result { display: block; width: 100%; min-height: 44px; padding: 10px 12px; text-align: left; background: transparent; color: var(--color-text-primary); border: none; border-bottom: 1px solid var(--color-border); font-size: 13.5px; cursor: pointer; }
 .fin-search-results li:last-child .fin-search-result { border-bottom: none; }
-.fin-search-result:hover, .fin-search-result:focus-visible { background: var(--color-surface-page); }
+.fin-search-result:hover, .fin-search-result:focus-visible { background: var(--color-surface-page); color: var(--color-text-primary); }
 
 .fin-identity-line { font-size: 14px; }
 
 /* 375 recomposition: scorecards become 2-up grids; the rail stacks under the work column. */
 @media (max-width: 640px) {
   .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer { grid-template-columns: 1fr 1fr; }
-  .fin-scorecard__slot { padding: 12px 12px 12px 0; }
+  .fin-scorecard__slot { padding: 12px; }
   /* minmax(0, 1fr), not 1fr: a bare 1fr track cannot shrink below its content's
      intrinsic width (min-width:auto), so a wide table forced the WHOLE DOCUMENT to
      scroll sideways at 375 instead of scrolling inside .ns-table-wrap. */
-  .fin-overview-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-4, 16px); }
+  .fin-overview-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
   .fin-figure__value { font-size: 22px; }
 }
 
 /* Financials Wave UX-2: gated primary action slot (design: dark action button; disabled
    while the governing capability is inactive, with the capability-inactive one-liner). */
 .fin-action-slot { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 300px; text-align: right; }
-.fin-primary-action { font: 600 13px var(--font-interface, Inter, sans-serif); padding: 9px 16px; min-height: 44px; background: var(--color-text-primary); color: var(--color-surface-page, #fff); border: none; cursor: pointer; }
+.fin-primary-action { font: 600 13px var(--font-interface); padding: 9px 16px; min-height: 44px; background: var(--color-text-primary); color: var(--color-surface-page); border: none; cursor: pointer; }
 .fin-primary-action:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Financials Wave UX-3: measurement-basis chip (outlined, uppercase, its own slot). */
-.fin-basis { display: inline-block; font: 600 10.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-primary); border: 1px solid var(--color-border-strong, var(--color-border)); padding: 2px 8px; }
+.fin-basis { display: inline-block; font: 600 10.5px var(--font-interface); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-primary); border: 1px solid var(--color-border-strong, var(--color-border)); padding: 2px 8px; }
 
 /* Financials Wave UX-5: governance state rows + dimmed structural specimen (page 16). */
 .fin-dimmed { opacity: 0.62; }
@@ -7444,9 +7471,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-gov-row__label { min-width: 0; }
 .fin-gov-row__value { text-align: right; }
 .fin-gov-row__words { margin-left: 8px; color: var(--color-text-secondary); }
-.fin-gov-chip { display: inline-block; font: 600 10.5px var(--font-interface, Inter, sans-serif); letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; }
-.fin-gov-chip--configured { background: var(--color-text-primary); color: var(--color-surface-page, #fff); }
-.fin-gov-chip--dormant { background: var(--color-warning-surface, #F7EFE4); color: var(--color-warning, #8A6D28); outline: 1px solid var(--color-border); outline-offset: -1px; }
+.fin-gov-chip { display: inline-block; font: 600 10.5px var(--font-interface); letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; }
+.fin-gov-chip--configured { background: var(--color-text-primary); color: var(--color-surface-page); }
+.fin-gov-chip--dormant { background: var(--color-warning-surface); color: var(--color-warning); outline: 1px solid var(--color-border); outline-offset: -1px; }
 .fin-gov-chip--future { outline: 1px solid var(--color-border); outline-offset: -1px; color: var(--color-text-secondary); }
 
 /* ══════ Financials — Owner visual-acceptance corrections (2026-09-01) ══════ */
@@ -7486,7 +7513,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     justify-content: center;
     border: 1px solid var(--color-text-secondary);
     border-radius: 50%;
-    font: 700 10px var(--font-interface, Inter, sans-serif);
+    font: 700 10px var(--font-interface);
   }
   /* The glyph now comes from ::before, so the button's own text would double it. */
   .fin-hlp { font-size: 0; }
@@ -7536,111 +7563,111 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fin-scorecard--five { grid-template-columns: 1fr 1fr; }
 }
 
-/* ══════ Financials — high-contrast visual-system pilot (2026-09-02) ══════
-   Owner direction: true-white canvas, stronger contrast and borders, and one
-   semantic type step larger for operational text. The class is applied by the
-   shell only while the active domain is /financials, so this is a real family
-   pilot rather than a premature site-wide token migration. No page composition,
-   fact, action, route or authority changes here.
+/* ══════════════════════════════════════════════════════════════════════════
+   SITE-WIDE VISUAL SYSTEM — promoted semantic typography (2026-09-02)
+   ──────────────────────────────────────────────────────────────────────────
+   These rules were the Financials pilot's scoped type step. The Owner accepted
+   the pilot as the presentation standard for the authenticated application, so
+   the COLOURS moved to :root (see the token block at the top of this file) and
+   the TYPE rules moved here, unscoped, onto the shared North Star and
+   operational primitives they were always describing.
 
-   The tokens intentionally reuse the existing semantic names. Financials pages
-   and shared North Star primitives therefore inherit one grammar; there is no
-   parallel component system and no per-page restyling. After Owner acceptance,
-   these values can move to :root and the scoped type rules can be reconciled
-   across the remaining families. */
-.fo-main--financials-pilot {
-  --verenward-stone-page: #FFFFFF;
-  --verenward-stone-card: #FFFFFF;
-  --verenward-stone-sunken: #F2F5F3;
-  --color-surface-page: #FFFFFF;
-  --color-surface-card: #FFFFFF;
-  --color-surface-elevated: #FFFFFF;
-  --color-surface-sunken: #F2F5F3;
-  --color-text-primary: #111111;
-  --color-text-secondary: #3F4542;
-  --color-text-muted: #626A66;
-  --color-brand-secondary: #005A3C;
-  --color-border: #87938D;
-  --color-border-strong: #5F6C66;
-  --color-focus: #005A3C;
-  background: var(--color-surface-page);
-  color: var(--color-text-primary);
+   There is no `.fo-main--financials-pilot` seam any more, and no per-route
+   overrides: every family inherits one grammar from the primitives below. If a
+   family looks wrong, the fix belongs to a primitive here or to a token above —
+   not to a new page-scoped block.
+
+   This is ONE SEMANTIC STEP on the operational tiers that were hardest to read
+   (tables, states, view chips, filters, helper copy). It is deliberately NOT a
+   blind global font-size increase: display headings keep their established
+   North Star scale, which is asserted by the visual-system test.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Workspace + page furniture. */
+.ns-workspace { font-size: 16px; }
+.ns-page__crumb { font-size: 12px; }
+.ns-workspace__description { font-size: 15px; line-height: 1.5; }
+.ns-workspace__summary,
+.ns-workspace__count { font-size: 15px; }
+.ns-section__meta { font-size: 14px; }
+
+/* States (loading / empty / denied / unavailable) are important operational
+   copy, not fine print — they carry the top tier. */
+.ns-state { font-size: 16px; line-height: 1.5; }
+
+/* Tables: the primary working text of this product. */
+.ns-table { font-size: 15px; }
+.ns-table th,
+.ns-workspace table th { font-size: 12px; line-height: 1.4; }
+.ns-table td,
+.ns-workspace table td { font-size: 15px; line-height: 1.45; padding-block: 11px; }
+.ns-table__note,
+.ns-collection__result { font-size: 14px; line-height: 1.5; }
+
+/* Collection views + filters. */
+.ns-view { font-size: 15px; }
+.ns-view__count { font-size: 13px; }
+.fo-filter-btn { font-size: 15px; border-color: var(--color-border-strong); }
+
+/* Selected view state keeps a rule and a weight in addition to colour, so the
+   selection is never communicated by colour alone. */
+.ns-view.is-active {
+  color: var(--color-brand-secondary);
+  border-bottom-color: var(--color-brand-secondary);
 }
 
-/* One semantic step, not a mechanical +1px sweep. Display headings remain at
-   their established North Star scale; the operational tiers that were hardest
-   to read move into the handoff's 12–16px working range. */
-.fo-main--financials-pilot .ns-workspace { font-size: 16px; }
-.fo-main--financials-pilot .ns-page__crumb { font-size: 12px; }
-.fo-main--financials-pilot .ns-workspace__description { font-size: 15px; line-height: 1.5; }
-.fo-main--financials-pilot .ns-workspace__summary,
-.fo-main--financials-pilot .ns-workspace__count { font-size: 15px; }
-.fo-main--financials-pilot .ns-section__meta { font-size: 14px; }
-.fo-main--financials-pilot .ns-state { font-size: 16px; line-height: 1.5; }
-.fo-main--financials-pilot .ns-table { font-size: 15px; }
-.fo-main--financials-pilot .ns-table th,
-.fo-main--financials-pilot .ns-workspace table th { font-size: 12px; line-height: 1.4; }
-.fo-main--financials-pilot .ns-table td,
-.fo-main--financials-pilot .ns-workspace table td { font-size: 15px; line-height: 1.45; padding-block: 11px; }
-.fo-main--financials-pilot .ns-table__note,
-.fo-main--financials-pilot .ns-collection__result { font-size: 14px; line-height: 1.5; }
-.fo-main--financials-pilot .ns-view { font-size: 15px; }
-.fo-main--financials-pilot .ns-view__count { font-size: 13px; }
-.fo-main--financials-pilot .fo-filter-btn { font-size: 15px; border-color: var(--color-border-strong); }
-
-.fo-main--financials-pilot .fin-custody-note,
-.fo-main--financials-pilot .fin-period,
-.fo-main--financials-pilot .fin-period__field,
-.fo-main--financials-pilot .fin-period__invalid,
-.fo-main--financials-pilot .fin-figure__absence,
-.fo-main--financials-pilot .fin-figure__link,
-.fo-main--financials-pilot .fin-section-note,
-.fo-main--financials-pilot .fin-inact { font-size: 14px; line-height: 1.5; }
-.fo-main--financials-pilot .fin-period__label,
-.fo-main--financials-pilot .fin-figure__label,
-.fo-main--financials-pilot .fin-search-label,
-.fo-main--financials-pilot .fin-factclass,
-.fo-main--financials-pilot .fin-basis,
-.fo-main--financials-pilot .fin-gov-chip { font-size: 12px; }
-.fo-main--financials-pilot .fin-period__select,
-.fo-main--financials-pilot .fin-period__date,
-.fo-main--financials-pilot .fin-search-input,
-.fo-main--financials-pilot .fin-search-result,
-.fo-main--financials-pilot .fin-primary-action { font-size: 15px; border-color: var(--color-border-strong); }
-.fo-main--financials-pilot .fin-truth-band,
-.fo-main--financials-pilot .fin-exception-list,
-.fo-main--financials-pilot .fin-gov-row,
-.fo-main--financials-pilot .fin-identity-line { font-size: 15px; line-height: 1.5; }
-.fo-main--financials-pilot .fin-attr-label { font-size: 13px; }
-.fo-main--financials-pilot .fin-tip { font-size: 14px; line-height: 1.5; }
+/* ── Financials-only rules ────────────────────────────────────────────────
+   These stay a family block because the components ARE domain-specific: the
+   lifecycle scorecard, the period control, the fact-class and basis chips and
+   the custody notes exist nowhere else. They consume the shared tokens above;
+   they do not restate them. */
+.fin-custody-note,
+.fin-period,
+.fin-period__field,
+.fin-period__invalid,
+.fin-figure__absence,
+.fin-figure__link,
+.fin-section-note,
+.fin-inact { font-size: 14px; line-height: 1.5; }
+.fin-period__label,
+.fin-figure__label,
+.fin-search-label,
+.fin-factclass,
+.fin-basis,
+.fin-gov-chip { font-size: 12px; }
+.fin-period__select,
+.fin-period__date,
+.fin-search-input,
+.fin-search-result,
+.fin-primary-action { font-size: 15px; border-color: var(--color-border-strong); }
+.fin-truth-band,
+.fin-exception-list,
+.fin-gov-row,
+.fin-identity-line { font-size: 15px; line-height: 1.5; }
+.fin-attr-label { font-size: 13px; }
+.fin-tip { font-size: 14px; line-height: 1.5; }
 
 /* KPI hierarchy: white bounded cells, a deliberate evergreen top edge, and a
    value that is visibly primary without turning every surrounding label green. */
-.fo-main--financials-pilot .fin-scorecard {
+.fin-scorecard {
   border: 1px solid var(--color-border);
   border-top: 3px solid var(--color-brand-secondary);
   background: var(--color-surface-card);
 }
-.fo-main--financials-pilot .fin-scorecard__slot { padding-block: 16px; }
-.fo-main--financials-pilot .fin-figure__value {
+.fin-scorecard__slot { padding-block: 16px; }
+.fin-figure__value {
   color: var(--color-brand-secondary);
   font-size: 32px;
   line-height: 1.15;
 }
 
-/* Controls must read as controls on white. Selected states still carry weight
-   and a rule in addition to colour, preserving the existing non-colour cue. */
-.fo-main--financials-pilot .fin-period__select,
-.fo-main--financials-pilot .fin-period__date,
-.fo-main--financials-pilot .fin-search-input,
-.fo-main--financials-pilot .fin-search-results { border-color: var(--color-border-strong); }
-.fo-main--financials-pilot .ns-view.is-active {
-  color: var(--color-brand-secondary);
-  border-bottom-color: var(--color-brand-secondary);
-}
+/* Controls must read as controls on white. */
+.fin-period__select,
+.fin-period__date,
+.fin-search-input,
+.fin-search-results { border-color: var(--color-border-strong); }
 
 @media (max-width: 640px) {
-  .fo-main--financials-pilot .fin-scorecard__slot { padding: 14px 10px; }
-  .fo-main--financials-pilot .fin-scorecard__slot + .fin-scorecard__slot { padding-left: 10px; }
-  .fo-main--financials-pilot .fin-figure__value { font-size: 24px; }
+  .fin-scorecard__slot { padding: 14px 10px; }
+  .fin-figure__value { font-size: 24px; }
 }

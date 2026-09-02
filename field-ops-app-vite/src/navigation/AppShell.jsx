@@ -177,11 +177,7 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
           navToggleRef={toggleRef}
           navOpen={drawerOpen}
         />
-        <main
-          className={`fo-main${activeDomainPath === "financials" ? " fo-main--financials-pilot" : ""}`}
-          id="fo-main"
-          tabIndex={-1}
-        >
+        <main className="fo-main" id="fo-main" tabIndex={-1}>
           <h1 className="fo-visually-hidden">{activeDomainLabel}</h1>
           {children}
         </main>
