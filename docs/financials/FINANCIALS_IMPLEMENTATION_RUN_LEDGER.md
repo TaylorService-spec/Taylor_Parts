@@ -862,3 +862,58 @@ facts it cannot attribute. Both generations coexist, which was the point.
               plus "7 visible invoices carry no credited salesperson…" — the unattributed count is
               NOT merged into either person.
 - OWNER VISUAL ACCEPTANCE: PENDING.
+
+## 2026-09-02 — OVERVIEW LIFECYCLE ACTUALS + THE PERIOD FILTER
+
+Two Owner-reported stale-state defects, both fixed as presentation/read-binding only. No Function,
+Rules, index, grant, capability or fixture change.
+
+### Overview lifecycle scorecard (PR #1716, merge 011d44f7)
+
+Every slot said "No read on this surface" — true before the reporting read existed, false after.
+
+- CHECKED THE DEPLOYED RESPONSE BEFORE WRITING ANYTHING. `summary.outstandingByCurrency` is the
+  ONLY server-computed CONSOLIDATED lifecycle total; billed and collected come back per company.
+- A/R OUTSTANDING populates in every scope from the server's own total ($58,555.00 consolidated).
+  BILLED and COLLECTED populate when the requested filters resolve to exactly ONE company rollup —
+  then the figure is that row's value, a read rather than a sum (Taylor: $70,145.00 / $18,445.00).
+  Across several companies they stay ABSENT and name the seam. THE MISSING SEAM, stated rather than
+  papered over: the read exposes no consolidated billed/collected total, and adding the company
+  rows client-side would present a scoped slice as a book-wide figure. A test asserts the summed
+  value ($79,450.00) appears nowhere.
+- BOOKED / BILLABLE NOW / UNBILLED stay absent in every scope, each naming its own reason. Billed
+  is never substituted into Booked — proved by mutation.
+- A denied or failed read renders no figure at all, never $0.00.
+
+### Period filter (PR #1717, merge 022b1fbf; correction PR #1718, merge 1b93b344)
+
+"Period — all activity" was static text: it named a range and offered no way to set one.
+
+- NO NEW AUTHORITY. The deployed callable already honored periodStartMillis/periodEndMillis —
+  verified live first: full span 10, last day 9, future window 0 (status ready), taylor+period 7
+  with no ventana leak.
+- ONE helper owns calendar boundaries (`domain/financialsPeriod.js`). LOCAL boundaries, matching
+  the family's existing toLocaleDateString rendering; a UTC boundary under a local-rendering
+  surface would put a record on one side of the line and its own printed date on the other.
+  Windows are INCLUSIVE of both chosen days (end = 23:59:59.999): an end-exclusive boundary drops
+  a full day of records, most often the day the user cared enough to name. ALL ACTIVITY is the
+  ABSENCE of a period — the request carries no bounds at all.
+- AN INVALID CUSTOM RANGE ISSUES NO READ. A backwards window returns a correct empty result that
+  reads as "no records" when the truth is "that range is backwards".
+- Bound to 01, 03, 04, 05, 14, 15. Page 07 excluded: account-scoped read, different contract.
+  Period composes with company, business unit and the view tabs; none resets another.
+- DATE SEMANTICS STATED, NOT IMPLIED: the read carries one canonical event date (invoice issued),
+  so page 05 filters payments by the issue date of the invoices they settle and says so rather
+  than implying a payment-date filter that does not exist. A/R aging still derives from each
+  invoice's own governed dueDate, which the period never touches.
+- CORRECTION FOUND BY THE GATE: a period-filtered zero showed the GENERIC empty sentence, because
+  the wording was gated on READY while a zero-record answer is EMPTY — reading as "no invoices
+  exist" instead of "none in this period". READY and EMPTY both mean the server ANSWERED; one
+  named predicate now says so on all three collection pages, pinned by a source guard.
+- HOSTING: 1b93b344 (2026-09-02T04:41:38.027Z). No function moved.
+- GATE: 1440 and 375 — period control present and ≥44px on all six surfaces, server-side narrowing
+  proved (Last month → 1 row), company+period composition with no leak, backwards-range validation
+  with no read issued, filtered empty naming the period and offering the way back, zero raw client
+  financial reads, zero console errors, zero horizontal overflow. Every $0.00 on screen was
+  verified to be a governed zero (Applied on unpaid invoices, Outstanding on settled ones).
+- OWNER VISUAL ACCEPTANCE: PENDING.
