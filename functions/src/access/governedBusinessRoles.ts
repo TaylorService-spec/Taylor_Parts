@@ -67,7 +67,24 @@ const OWNER_ACTIVE_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter(
   (p) => p.id.startsWith("report.") && p.active !== false,
 ).map((p) => p.id);
 
-const OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...OWNER_ACTIVE_REPORT_PERMISSIONS];
+// PERFORMANCE GOAL AUTHORITY is composed here rather than on ADMIN_ROLE, deliberately. The Owner's
+// goal-management policy names Owner for every goal type and does NOT name admin: administering
+// access is a different job from setting the business's targets, and admin is additionally a
+// COMPATIBILITY Role whose contract is to reproduce today's matrix exactly. Adding the ids to admin
+// would both widen an authority the policy withheld and corrupt the parity oracle, so owner takes
+// them on its own line.
+const OWNER_GOAL_PERMISSIONS = [
+  "performance.goal.read",
+  "performance.goal.create",
+  "performance.goal.approve",
+  "performance.goal.supersede",
+  "performance.goal.retire",
+];
+const OWNER_PERMISSIONS = [
+  ...ADMIN_ROLE.permissions,
+  ...OWNER_ACTIVE_REPORT_PERMISSIONS,
+  ...OWNER_GOAL_PERMISSIONS,
+];
 const OWNER_CONDITIONS = ADMIN_ROLE.conditionsByPermission;
 
 // Spec §26.2 -- least-privilege baseline. Deliberately zero permissions:
@@ -287,6 +304,22 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
     "opportunity.write",
     "salesOrder.read",
     "salesOrder.write",
+    // PERFORMANCE GOAL AUTHORITY -- the Owner names Sales Manager for salesperson and sales-team
+    // goals. THIS ROLE CANNOT REACH A TECHNICIAN'S GOALS, and not because anything checks its name:
+    // an EMPLOYEE-scoped goal requires the subject to be inside this principal's governed
+    // hierarchical visibility, and roleHierarchy.ts places technicians under the Service Manager
+    // branch, not under Sales. The Owner's "a Sales Manager may not edit technician goals merely
+    // because they can reach an administrative screen" is enforced by that existing model, not by a
+    // title comparison.
+    //
+    // THIS IS THE FIRST AUTHORITY DIFFERENCE BETWEEN salesManager AND salesperson. The note on
+    // SALESPERSON_ROLE below has been updated to match; the two Roles are no longer identical, and
+    // the difference is deliberate rather than drift.
+    "performance.goal.read",
+    "performance.goal.create",
+    "performance.goal.approve",
+    "performance.goal.supersede",
+    "performance.goal.retire",
   ],
 }) as Role;
 
@@ -294,13 +327,26 @@ export const SALES_MANAGER_ROLE: Role = Object.freeze({
 // 2026-08-19 on the Owner's clarification that "salesManager and Sales are
 // different -- the manager is over the salesperson".
 //
-// ITS CAPABILITIES ARE IDENTICAL TO SALES MANAGER'S TODAY, deliberately, and that
-// is worth stating rather than hiding: the difference between the two Roles is
-// ORGANISATIONAL, not authorizational. A manager currently holds no authority over
-// their reports' records, because "a manager sees their team's work" requires the
-// coverage/territory model the Owner explicitly deferred ("record and preserve the
-// seams, do NOT build during the runway"). Giving salesManager a wider grant here
-// would be building that model by accident, one capability at a time.
+// ITS CAPABILITIES WERE IDENTICAL TO SALES MANAGER'S until the Performance Goal
+// Authority landed, and the ONE difference now is worth stating precisely, because
+// the reasoning below still holds everywhere else: salesManager holds the four goal
+// WRITE verbs (create/approve/supersede/retire) and this Role holds only
+// performance.goal.read.
+//
+// That is not the deferred coverage model arriving by accident. It is narrower than
+// coverage and differently shaped: it confers no authority over a report's RECORDS,
+// only over their TARGET, and the reach it grants is bounded by the ALREADY-EXISTING
+// hierarchical-visibility model rather than by a new one. The Owner's rule that an
+// employee does not manage their own target is what makes the asymmetry necessary --
+// if both Roles held the write verbs, a salesperson could author their own quota.
+//
+// EVERYWHERE ELSE the two Roles remain deliberately identical, and the original
+// reasoning is unchanged: the difference between them is ORGANISATIONAL, not
+// authorizational. A manager holds no authority over their reports' records, because
+// "a manager sees their team's work" requires the coverage/territory model the Owner
+// explicitly deferred ("record and preserve the seams, do NOT build during the
+// runway"). Giving salesManager a wider grant here would be building that model by
+// accident, one capability at a time.
 //
 // The same pattern already exists in this file: accountingManager and financeManager
 // are intentionally identical (DECISIONS #114). Two Roles that resolve the same way
@@ -342,6 +388,14 @@ export const SALESPERSON_ROLE: Role = Object.freeze({
     "opportunity.write",
     "salesOrder.read",
     "salesOrder.write",
+    // PERFORMANCE GOAL AUTHORITY -- READ ONLY, and that is the whole grant. A person must be able to
+    // see the target they are measured against; authoring it is someone else's act (the Owner:
+    // "Employees do NOT automatically manage their own targets").
+    //
+    // READ IS NOT REACH. This Role is a leaf in roleHierarchy.ts, so its governed hierarchical
+    // visibility resolves to its own employeeId and nothing else -- holding this id at global scope
+    // still shows this person exactly one person's goals: their own.
+    "performance.goal.read",
   ],
 }) as Role;
 
@@ -440,6 +494,15 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
     "workOrder.cancel",
     "workOrder.create",
     "workOrder.transition",
+    // PERFORMANCE GOAL AUTHORITY -- this Role IS the org chart's Service Manager, whom the Owner
+    // names for technician and service-team goals. Dispatcher and technician sit beneath it in
+    // roleHierarchy.ts, so its EMPLOYEE-goal reach resolves to exactly its own service branch and
+    // reaches no salesperson, no warehouse associate and no peer manager.
+    "performance.goal.read",
+    "performance.goal.create",
+    "performance.goal.approve",
+    "performance.goal.supersede",
+    "performance.goal.retire",
   ],
 }) as Role;
 
@@ -498,6 +561,15 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
     // this system today, so the inlet stays closed until there is. Revisit with dedup, not
     // before.
     "inventory.catalog.manage",
+    // PERFORMANCE GOAL AUTHORITY -- the Owner names Operations Manager for technician, service-team,
+    // parts/warehouse-location and company/branch operational goals. Reach is not conferred by this
+    // grant: a LOCATION-scoped goal is resolved at { type: "location", value: warehouseId }, so this
+    // Role reaches a warehouse's goals only through an assignment that actually covers it.
+    "performance.goal.read",
+    "performance.goal.create",
+    "performance.goal.approve",
+    "performance.goal.supersede",
+    "performance.goal.retire",
   ],
 }) as Role;
 
@@ -593,6 +665,18 @@ export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
     "warehouse.transferOrder.read",
     "workOrder.create",
     "workOrder.transition",
+    // PERFORMANCE GOAL AUTHORITY -- the Owner's goal-management policy names General Manager for
+    // every goal type, including firm strategic goals. Holding all five verbs is not firm-wide
+    // reach: each act still resolves the capability AT THE GOAL'S OWN TARGET SCOPE, and an
+    // EMPLOYEE-scoped goal is additionally narrowed to this Role's governed hierarchical
+    // visibility. Approve is held alongside create ON PURPOSE -- self-approval is refused
+    // unconditionally (FIN-007), so holding both permits approving a COLLEAGUE's draft and never
+    // one's own.
+    "performance.goal.read",
+    "performance.goal.create",
+    "performance.goal.approve",
+    "performance.goal.supersede",
+    "performance.goal.retire",
   ],
 }) as Role;
 
@@ -616,6 +700,20 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
     "reorder.request.create.manual",
     "salesOrder.read",
     "warehouse.transferOrder.read",
+    // PERFORMANCE GOAL AUTHORITY -- the Owner names Warehouse Manager for parts/warehouse LOCATION
+    // goals, and only "where its governed scope actually covers the target". That qualifier needs no
+    // new mechanism: a LOCATION goal resolves the capability at { type: "location", value:
+    // warehouseId }, so a manager assigned wh-north reaches wh-north and is refused wh-south by the
+    // SAME value match that already governs reorder.request.create.manual on this Role.
+    //
+    // The goal verbs are deliberately NOT listed in scopesByPermission below. An EMPLOYEE-scoped
+    // goal for a warehouse associate is asked at global scope and narrowed by hierarchy instead, so
+    // a location-only binding would make authoring one impossible.
+    "performance.goal.read",
+    "performance.goal.create",
+    "performance.goal.approve",
+    "performance.goal.supersede",
+    "performance.goal.retire",
   ],
   // R-32 (#152) -- PER-BINDING assignment-scope policy. THIS Role's grant of THESE permissions may
   // only be conferred by a RoleAssignment scoped to a single governed Warehouse. Absent entries are
@@ -650,6 +748,14 @@ export const WAREHOUSE_ASSOCIATE_ROLE: Role = Object.freeze({
     "reorder.purchaseOrder.read",
     "salesOrder.read",
     "warehouse.transferOrder.read",
+    // PERFORMANCE GOAL AUTHORITY -- READ ONLY, and that is the whole grant. A person must be able to
+    // see the target they are measured against; authoring it is someone else's act (the Owner:
+    // "Employees do NOT automatically manage their own targets").
+    //
+    // READ IS NOT REACH. This Role is a leaf in roleHierarchy.ts, so its governed hierarchical
+    // visibility resolves to its own employeeId and nothing else -- holding this id at global scope
+    // still shows this person exactly one person's goals: their own.
+    "performance.goal.read",
   ],
 }) as Role;
 
@@ -677,6 +783,16 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",
+    // PERFORMANCE GOAL AUTHORITY -- the Owner names Parts Manager for Parts Associate goals and for
+    // parts/warehouse LOCATION goals at their governed location. "A Parts Manager for wh-north may
+    // not modify a goal for a location outside their governed location authority" is enforced by the
+    // existing value match on a location-scoped assignment, never by a check that reads this Role's
+    // name. Not listed in scopesByPermission below, for the reason given on WAREHOUSE_MANAGER_ROLE.
+    "performance.goal.read",
+    "performance.goal.create",
+    "performance.goal.approve",
+    "performance.goal.supersede",
+    "performance.goal.retire",
   ],
   // R-32 (#152) -- PER-BINDING assignment-scope policy; see WAREHOUSE_MANAGER_ROLE above for the full
   // rationale. The eleven permissions NOT listed here (finance.*, workOrder.*, customer.record.read,
@@ -708,6 +824,14 @@ export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",
+    // PERFORMANCE GOAL AUTHORITY -- READ ONLY, and that is the whole grant. A person must be able to
+    // see the target they are measured against; authoring it is someone else's act (the Owner:
+    // "Employees do NOT automatically manage their own targets").
+    //
+    // READ IS NOT REACH. This Role is a leaf in roleHierarchy.ts, so its governed hierarchical
+    // visibility resolves to its own employeeId and nothing else -- holding this id at global scope
+    // still shows this person exactly one person's goals: their own.
+    "performance.goal.read",
   ],
 }) as Role;
 
@@ -1384,6 +1508,33 @@ export const WORK_ORDER_LABOR_CORRECTOR_ROLE: Role = Object.freeze({
   permissions: ["workOrder.labor.correct"],
 }) as Role;
 
+
+// PERFORMANCE GOAL SUBJECT -- the narrow, durable READ grant that lets a person see the target they
+// are measured against.
+//
+// WHY A SEPARATE ROLE RATHER THAN ADDING THE ID TO `technician` / `dispatcher`. Those two are
+// COMPATIBILITY Roles, and their contract is precise: each "reproduces today's security-role matrix
+// EXACTLY". They are the parity ORACLE the shadow harness scores the resolver against, so putting a
+// capability on one that has no legacy counterpart would corrupt the measuring instrument to add a
+// feature. The governed business Roles (salesperson, partsAssociate, warehouseAssociate) carry
+// performance.goal.read directly because they are under no such contract; this Role exists for the
+// principals whose position is expressed only as a compatibility Role.
+//
+// Carries EXACTLY ONE id, and it is a read. It confers no authority to author, approve, supersede or
+// retire anything, and no reach over any metric's ACTUAL. Holding it at global scope still shows the
+// holder only the goals their governed hierarchical visibility reaches -- for a leaf position, that
+// is their own and nobody else's.
+export const PERFORMANCE_GOAL_SUBJECT_ROLE: Role = Object.freeze({
+  id: "performanceGoalSubject",
+  name: "Performance Goal Subject",
+  description:
+    "Durable least-privilege READ-ONLY Role: see the performance goals within your own governed visibility. Carries exactly performance.goal.read -- it authors nothing, approves nothing, and confers no reach over any metric's actual. Intended for principals whose position is expressed as a compatibility Role (technician, dispatcher), which cannot carry it directly without corrupting the parity oracle. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["performance.goal.read"],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -1425,4 +1576,5 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   equipmentInstaller: EQUIPMENT_INSTALLER_ROLE,
   technicianLaborRecorder: TECHNICIAN_LABOR_RECORDER_ROLE,
   workOrderLaborCorrector: WORK_ORDER_LABOR_CORRECTOR_ROLE,
+  performanceGoalSubject: PERFORMANCE_GOAL_SUBJECT_ROLE,
 });

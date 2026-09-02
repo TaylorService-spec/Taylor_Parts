@@ -48,6 +48,12 @@ function check(name, fn) {
 
 const ALL_GOVERNED_ROLES = Object.values(GOVERNED_BUSINESS_ROLES);
 const EXPECTED_IDS = [
+  // Performance Goal Authority (2026-09-02). A narrow READ grant, not a position: it exists because
+  // technician and dispatcher are COMPATIBILITY Roles that must keep reproducing today's matrix
+  // exactly, so they cannot carry performance.goal.read directly without corrupting the parity
+  // oracle. Listed in NON_HIERARCHICAL_ROLES for the same reason it carries one id: holding it must
+  // never place anyone in the org tree.
+  "performanceGoalSubject",
   // Owner ruling 2026-08-19: "need a marketing top top equal to salesManager".
   "marketingManager",
   // Owner roster 2026-08-20: Tom holds Purchasing, Erik holds Purchasing Manager as a
@@ -136,7 +142,7 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the forty ids (thirty-one, three reporting tiers, equipment catalog, receiving, two serialized-equipment stations, two labor stations)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the forty-one ids (thirty-one, three reporting tiers, equipment catalog, receiving, two serialized-equipment stations, two labor stations, one goal-subject read grant)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
@@ -146,21 +152,37 @@ check("GOVERNED_BUSINESS_ROLES contains exactly the forty ids (thirty-one, three
   // had no such Role -- so the business had defined a position the platform could not
   // represent, let alone grant. This pin failing on that addition is the guard working.
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 40);
+  assert.equal(ALL_GOVERNED_ROLES.length, 41);
 });
 
-check("salesperson and salesManager differ ONLY by audit read, which the canonical matrix declares", () => {
+check("salesperson and salesManager differ ONLY by audit read and the goal WRITE verbs", () => {
   // Reconciliation 2026-08-21. These were byte-identical, and the comment below explains why that was
-  // correct. The canonical Detailed CRUD sheet now differentiates them in exactly one place:
+  // correct. The canonical Detailed CRUD sheet differentiates them in one place:
   // Sales Manager / Audit Log = R, Salesperson / Audit Log = blank. That is a real business
   // distinction the Owner's matrix makes, not a manufactured one -- everything else stays identical,
   // and the INTENTIONAL_OVERLAP reasoning below still governs the rest.
+  //
+  // 2026-09-02, Performance Goal Authority: the second real difference. The manager holds the four
+  // goal WRITE verbs; the salesperson holds only performance.goal.read (so the pair is asymmetric,
+  // not disjoint -- read is on BOTH sides and correctly appears in neither list below).
+  //
+  // THIS ASYMMETRY IS LOAD-BEARING, not a grant that drifted in. The Owner's rule is that an
+  // employee does not manage their own target; if both Roles held the write verbs, a salesperson
+  // could author their own quota, and the hierarchical-visibility narrowing would not stop them --
+  // visibleEmployeeIdsFor deliberately includes the viewer's own employeeId. The Role split is what
+  // makes the refusal structural rather than incidental.
   const mgr = new Set(GOVERNED_BUSINESS_ROLES.salesManager.permissions);
   const rep = new Set(GOVERNED_BUSINESS_ROLES.salesperson.permissions);
   const mgrOnly = [...mgr].filter((p) => !rep.has(p)).sort();
   const repOnly = [...rep].filter((p) => !mgr.has(p)).sort();
-  assert.deepEqual(mgrOnly, ["audit.event.read"], "the only manager-side difference is audit visibility");
+  assert.deepEqual(
+    mgrOnly,
+    ["audit.event.read", "performance.goal.approve", "performance.goal.create", "performance.goal.retire", "performance.goal.supersede"],
+    "the manager-side differences are audit visibility and the four goal WRITE verbs",
+  );
   assert.deepEqual(repOnly, [], "the salesperson holds nothing the manager lacks");
+  assert.ok(rep.has("performance.goal.read"), "the salesperson can still SEE the target they are measured against");
+  assert.ok(mgr.has("performance.goal.read"), "and so can the manager");
 });
 
 check("neither sales Role may convert an Opportunity into a Sales Order... until the matrix says so", () => {
@@ -251,7 +273,7 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all forty governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all forty-one governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   // A Role defined but missing from the allowlist is the worst kind of gap: it appears in the
   // catalog, shows up in every admin surface, and throws UnknownRoleError the moment anyone tries to
   // actually grant it. The two lists are asserted equal in both directions so neither can drift.
@@ -260,8 +282,8 @@ check("all forty governed business Roles are governed-assignable (no UnknownRole
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    40,
-    "the governed allowlist must contain exactly the 40 declared governed business Roles",
+    41,
+    "the governed allowlist must contain exactly the 41 declared governed business Roles",
   );
 });
 

@@ -78,6 +78,7 @@ import {
   EQUIPMENT_INSTALLER_ROLE,
   TECHNICIAN_LABOR_RECORDER_ROLE,
   WORK_ORDER_LABOR_CORRECTOR_ROLE,
+  PERFORMANCE_GOAL_SUBJECT_ROLE,
   SALESPERSON_ROLE,
   GENERAL_MANAGER_ROLE,
   WAREHOUSE_MANAGER_ROLE,
@@ -253,6 +254,11 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   // moment somebody tries to staff it.
   technicianLaborRecorder: TECHNICIAN_LABOR_RECORDER_ROLE,
   workOrderLaborCorrector: WORK_ORDER_LABOR_CORRECTOR_ROLE,
+  // Performance Goal Authority. Here for the reason stated above: a Role the writer cannot name is a
+  // Role nobody can hold. This one especially -- it is the ONLY way a principal whose position is a
+  // compatibility Role (technician, dispatcher) can be given sight of their own target, so leaving it
+  // unassignable would ship a goal system those people could never see the output of.
+  performanceGoalSubject: PERFORMANCE_GOAL_SUBJECT_ROLE,
   salesperson: SALESPERSON_ROLE,
   generalManager: GENERAL_MANAGER_ROLE,
   warehouseManager: WAREHOUSE_MANAGER_ROLE,
