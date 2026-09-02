@@ -14,6 +14,7 @@ import {
   validateCustomRange,
   periodLabel,
   periodRequestFields,
+  periodNote,
 } from "../src/domain/financialsPeriod.js";
 
 // REPORTING-ZONE helpers, replacing host-local ones (G-05, Decision #163).
@@ -50,6 +51,21 @@ test("the preset list is the approved vocabulary, defaulting to all activity", (
     ["all", "monthToDate", "thisMonth", "lastMonth", "quarterToDate", "thisQuarter", "lastQuarter", "yearToDate", "last12Months", "custom"],
   );
   assert.equal(DEFAULT_PERIOD_KEY, "all");
+});
+
+test("only the preset whose meaning CHANGED carries an explanatory note", () => {
+  // Owner-approved follow-up to G-05. T12M moved from "first of the month eleven months back" to a
+  // rolling twelve months, so a reader who knew the old behaviour sees a number change with no
+  // transaction behind it. One sentence beside the control is the cheapest honest explanation.
+  //
+  // The assertion that matters is the SECOND one: exactly one preset has a note. A note on every
+  // preset would train the reader to skip all of them, which is how explanatory text stops working.
+  assert.match(periodNote("last12Months"), /rolling 12-calendar-month window/i);
+  assert.equal(PERIOD_PRESETS.filter((p) => p.note).length, 1);
+  for (const k of ["all", "monthToDate", "thisMonth", "lastMonth", "quarterToDate", "thisQuarter", "lastQuarter", "yearToDate", "custom"]) {
+    assert.equal(periodNote(k), null, `${k} needs no note — it means what it says`);
+  }
+  assert.equal(periodNote("nonsense"), null, "an unknown preset yields no note rather than throwing");
 });
 
 test("ALL ACTIVITY is the ABSENCE of a period, not a very wide one", () => {

@@ -1,8 +1,23 @@
-// Enterprise Inventory -- EI Phase-2 Receiving, Phase B: the INERT, UNEXPORTED trusted
-// `receiveInventoryStock` command. One Firestore transaction, all-or-nothing, governed by the ratified
-// spec (docs/specifications/enterprise-inventory-receiving-phase2.md §7). NOT exported from
-// functions/src/index.ts; no callable; production-inert (no caller). Reuses the merged Phase-A receiving
-// repository + the merged inventoryLedger repository; touches no existing writer.
+// Enterprise Inventory -- EI Phase-2 Receiving: the trusted `receiveInventoryStock` command. One
+// Firestore transaction, all-or-nothing, governed by the ratified spec
+// (docs/specifications/enterprise-inventory-receiving-phase2.md §7). Reuses the merged Phase-A
+// receiving repository + the merged inventoryLedger repository; touches no existing writer.
+//
+// HEADER CORRECTED 2026-09-02 (FIN-BLOCK-003 reconciliation). This block previously said the command
+// was "INERT, UNEXPORTED", "NOT exported from functions/src/index.ts; no callable; production-inert
+// (no caller)". That described Phase B and became false when Phase C wired it: the callable is
+// defined at `inventoryReceiving/receivingCallables.ts:220` and exported from
+// `functions/src/index.ts` as `receiveInventoryStock`.
+//
+// The staleness was worth correcting rather than leaving: a reader asking "could receiving carry a
+// cost fact?" -- exactly the FIN-BLOCK-003 question -- would have read this header, concluded the
+// receiving path was not live, and stopped looking. It IS live, and it records NO monetary value of
+// any kind, which is a materially different finding from "the path does not run".
+//
+// WHAT IS STILL TRUE, and is the reason the correction is narrow: exporting a callable is not
+// deployment authorization, and this command writes no cost. The receipt it stages carries quantity,
+// part, location, actor and time -- there is no unit cost, extended cost or currency on a receipt,
+// and none is derived from the purchase order it receives against.
 //
 // The server-derived ACTOR is TRUSTED COMMAND CONTEXT (deps.actor, derived by the caller from
 // request.auth.uid) -- it is NEVER read from the untrusted request payload. Authorization and audit are

@@ -40,7 +40,15 @@ export const PERIOD_PRESETS = Object.freeze([
   Object.freeze({ key: "thisQuarter", label: "This quarter" }),
   Object.freeze({ key: "lastQuarter", label: "Last quarter" }),
   Object.freeze({ key: "yearToDate", label: "Year to date" }),
-  Object.freeze({ key: "last12Months", label: "Last 12 months" }),
+  // The ONE preset carrying a note, because it is the one whose meaning moved. G-05 (#163) defines
+  // T12M as a rolling window; this preset previously started at the first of the month eleven months
+  // back. Someone who knew the old behaviour will see a number change with no transaction behind it,
+  // and one sentence beside the control is the cheapest honest way to explain it.
+  Object.freeze({
+    key: "last12Months",
+    label: "Last 12 months",
+    note: "A rolling 12-calendar-month window through the selected reporting day.",
+  }),
   Object.freeze({ key: "custom", label: "Custom range" }),
 ]);
 
@@ -141,6 +149,12 @@ export function validateCustomRange({ from, to } = {}) {
   const endMillis = dayWindow(t.y, t.mo, t.d).endInclusiveMillis;
   if (startMillis > endMillis) return { valid: false, reason: "The start date is after the end date." };
   return { valid: true, startMillis, endMillis };
+}
+
+/** The explanatory note for a preset, where one exists. Null for the rest — most presets mean what
+ *  they say, and a note on every one would train the reader to skip all of them. */
+export function periodNote(presetKey) {
+  return PERIOD_PRESETS.find((p) => p.key === presetKey)?.note ?? null;
 }
 
 /** The words for the current selection — what the rail says the user is looking at. */

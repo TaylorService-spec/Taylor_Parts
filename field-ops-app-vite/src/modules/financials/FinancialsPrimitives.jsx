@@ -17,7 +17,7 @@ import {
   COMPANY_FILTER_OPTIONS,
   BUSINESS_UNIT_FILTER_OPTIONS,
 } from "../../domain/financialsSurface.js";
-import { PERIOD_PRESETS } from "../../domain/financialsPeriod.js";
+import { PERIOD_PRESETS, periodNote } from "../../domain/financialsPeriod.js";
 
 // ─── Hover-ⓘ annotation (the design's binding convention: .hlp/.tip) ───
 // Only contract copy stays visible; the explanation sits behind a focusable ⓘ. Rendered
@@ -167,6 +167,10 @@ export function FinancialsPeriodControl({ presetKey, onPresetChange, custom, onC
           </label>
         </div>
       ) : null}
+      {/* EXPLANATORY ONLY. Deliberately not role="alert" and not styled as a warning: nothing has
+          gone wrong, and a permanent alert beside a working control teaches people to ignore alerts.
+          It is tied to the SELECTION, so it appears where it explains something and nowhere else. */}
+      {periodNote(presetKey) ? <p className="fin-period__note">{periodNote(presetKey)}</p> : null}
       {invalidReason ? (
         <p className="fin-period__invalid" role="alert">
           {invalidReason} No read was issued.
