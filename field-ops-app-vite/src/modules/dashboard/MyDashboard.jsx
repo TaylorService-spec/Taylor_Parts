@@ -97,11 +97,15 @@ import PreviewList from "./PreviewList.jsx";
  * ARCHIVED is included because the server counts it: omitting a status the summary carries would
  * make the visible categories look like the whole book of business when they are not.
  */
+// EVERY LABEL NAMES THE CONCEPT -- ADR-012 section 2.2a, enforced by activeLabelConformance, which
+// caught a bare "Active" here. The rule earns its keep on this screen specifically: a dashboard also
+// surfaces role-assignment state and capability state, and three different things sharing one
+// unqualified status word on one page is the ambiguity the ADR exists to stop.
 const ACCOUNT_STATUS_LABELS = Object.freeze([
-  ["ACTIVE", "Active"],
-  ["PROSPECT", "Prospect"],
-  ["INACTIVE", "Inactive"],
-  ["ARCHIVED", "Archived"],
+  ["ACTIVE", "Active accounts"],
+  ["PROSPECT", "Prospect accounts"],
+  ["INACTIVE", "Inactive accounts"],
+  ["ARCHIVED", "Archived accounts"],
 ]);
 
 function useOneShot(load, enabled) {
