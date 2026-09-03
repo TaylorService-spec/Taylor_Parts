@@ -1,14 +1,14 @@
 {
  "catalog": {
-  "total": 134,
+  "total": 136,
   "active": 72,
-  "inactive": 62
+  "inactive": 64
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 16,
+  "total": 18,
   "byStatus": {
-   "UNCLASSIFIED": 2,
+   "UNCLASSIFIED": 4,
    "RECORDED_GAP": 9,
    "DELIBERATELY_PRIVILEGED_ONLY": 5
   },
@@ -21,6 +21,18 @@
    },
    {
     "capability": "finance.visibility.company",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "financialPolicy.profile.read",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "financialPolicy.profile.configure",
     "active": false,
     "status": "UNCLASSIFIED",
     "why": "no recorded decision either way -- surface before PASS"
@@ -125,9 +137,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 134,
+   "grantedCount": 136,
    "operableCount": 72,
-   "blockedCount": 62,
+   "blockedCount": 64,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -158,6 +170,8 @@
     "finance.visibility.consolidated",
     "finance.visibility.self",
     "finance.visibility.team",
+    "financialPolicy.profile.configure",
+    "financialPolicy.profile.read",
     "fulfillment.coordinatedVisit.read",
     "inventory.action.create",
     "inventory.action.read",
@@ -360,6 +374,8 @@
     "finance.visibility.consolidated",
     "finance.visibility.self",
     "finance.visibility.team",
+    "financialPolicy.profile.configure",
+    "financialPolicy.profile.read",
     "fulfillment.coordinatedVisit.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",

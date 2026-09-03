@@ -202,9 +202,19 @@ cycle count, coverage): *register ≠ grant ≠ activate*.
 
 **No authority was created.** `financial_policy_profiles` has no `firestore.rules` match block, so it
 is deny-all to every client; the only write path is the trusted Admin-SDK command; and an ungranted
-capability means the surface is inert rather than merely hidden. **Owner action required:** decide
-which authority owns this configuration, then grant and activate. Until then the framework is
-complete and unreachable, which is the correct fail-closed posture.
+capability means the surface is inert rather than merely hidden. The generated governance artifacts
+record both as `active: false · UNCLASSIFIED — no recorded decision either way`, which is the honest
+state and was regenerated rather than hand-edited.
+
+**One nuance the Owner should have before granting.** Admin holds the capability catalog by
+*derivation*, so activating these two ids is not a neutral act: it would confer the configure
+authority on Admin unless the grant is scoped deliberately. That is precisely the decision this item
+is blocked on, and it argues for a narrower holder than "whoever can already administer users" —
+company financial configuration is a different kind of authority from role administration. Recorded,
+not decided.
+
+**Owner action required:** decide which authority owns this configuration, then grant and activate.
+Until then the framework is complete and unreachable, which is the correct fail-closed posture.
 
 ## 11. CERT-FIN-02 disposition
 
