@@ -77,6 +77,15 @@ const DECIDED = {
   "finance.visibility.consolidated": "#159",
   "finance.visibility.team": "#159",
   "finance.visibility.self": "#159",
+  // CERT-FIN-02 financial policy VISIBILITY. There is no CRUD row because the matrix models
+  // OBJECTS and a policy profile is company CONFIGURATION rather than a business object anyone
+  // transacts against. The Owner ruled the split explicitly: READ goes to the Roles that work with
+  // the numbers this policy governs (accountingManager + financeManager via
+  // MONEY_MANAGER_PERMISSIONS, controller, generalManager), and CONFIGURE stays with the
+  // administrative company authority -- so approving an accounting policy confers no EOS
+  // configuration authority. `.configure` is deliberately absent from this map: it is held only by
+  // the privileged Roles and is classified in effectiveAuthority.mjs's DELIBERATE list instead.
+  "financialPolicy.profile.read": "OWNER-CERT-FIN-02 (financial-policy authority ruling)",
   // Performance Goal Authority. No CRUD row exists because the matrix models OBJECTS and a goal is
   // a TARGET on a metric -- the same shape of gap the FIN-004 reach entries above describe. The
   // Owner's direction fixed the carrier of each verb by Role (#162), which is exactly what this map

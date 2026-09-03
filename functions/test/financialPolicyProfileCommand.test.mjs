@@ -227,3 +227,66 @@ test("a blocked COGS recognition point is refused before anything is written", a
   );
   assert.equal(await readFinancialPolicyProfile(co, db), null);
 });
+
+// ============================ THE LOCK BEATS ADMIN AND OWNER ============================
+//
+// Owner ruling (financial-policy authority): once LOCKED, the ordinary configuration command MUST
+// refuse everyone, admin and owner included. That is not a limit on Admin authority -- it is a
+// governed financial boundary, and the distinction only means anything if it is enforced on stored
+// state rather than in a UI.
+//
+// The command deliberately takes no principal: authorization happens at the callable boundary, and
+// by the time a request reaches here the caller has ALREADY been authorized. So these cases are the
+// strongest form of the claim available -- a fully authorized caller, a well-formed request, and a
+// refusal that comes only from what is stored.
+
+test("LOCK: an already-authorized caller (admin/owner) is still refused on a locked profile", async () => {
+  const co = await lockedCompany();
+  for (const actorUid of ["uid-admin", "uid-owner"]) {
+    await assert.rejects(
+      () => configureFinancialPolicyProfile(draft(co, { inventoryCostMethod: "FIFO" }), deps({ actorUid })),
+      (e) => e instanceof FinancialPolicyError && e.code === "PROFILE_LOCKED",
+      `${actorUid}: holding financialPolicy.profile.configure must not reach a locked policy`,
+    );
+  }
+  const stored = await readFinancialPolicyProfile(co, db);
+  assert.equal(stored.inventoryCostMethod, "WEIGHTED_AVERAGE", "no refused write may have landed");
+  assert.equal(stored.status, "LOCKED");
+});
+
+test("LOCK: the refusal is on STORED state -- locking between read and write still refuses", async () => {
+  const co = nextCompany();
+  await configureFinancialPolicyProfile(draft(co, { status: "APPROVED", approval: APPROVAL }), deps());
+  // The operator opened an editable profile. It is activated underneath them, exactly as a second
+  // administrator finishing a deployment would do.
+  await activateFinancialPolicyProfile({ operatingCompanyId: co }, deps());
+  // Their save now arrives against a locked profile. A client-side check made before activation
+  // would have let this through; the transaction re-read does not.
+  await assert.rejects(
+    () => configureFinancialPolicyProfile(draft(co, { inventoryCostMethod: "FIFO", status: "APPROVED", approval: APPROVAL }), deps()),
+    (e) => e instanceof FinancialPolicyError && e.code === "PROFILE_LOCKED",
+    "a stale tab must not be able to edit a policy that locked while it was open",
+  );
+});
+
+test("LOCK: there is no argument, flag or field through which a caller can claim a bypass", async () => {
+  const co = await lockedCompany();
+  for (const attempt of [
+    { force: true },
+    { override: true },
+    { unlock: true },
+    { admin: true },
+    { bypassLock: true },
+  ]) {
+    await assert.rejects(
+      () => configureFinancialPolicyProfile({ ...draft(co), ...attempt }, deps()),
+      (e) =>
+        e instanceof FinancialPolicyError &&
+        // Refused either as an unknown field (the validator) or as a locked profile (the command).
+        // Both are correct; what must never happen is that one of these words does something.
+        (e.code === "PROFILE_MALFORMED" || e.code === "PROFILE_LOCKED"),
+      `"${Object.keys(attempt)[0]}" must not be a bypass`,
+    );
+  }
+  assert.equal((await readFinancialPolicyProfile(co, db)).inventoryCostMethod, "WEIGHTED_AVERAGE");
+});

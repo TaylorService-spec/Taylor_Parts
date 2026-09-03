@@ -22,9 +22,13 @@ on:
       - "functions/src/finance/acquisitionCost.ts"
       - "functions/src/workOrderConsumption/consumptionActivation.ts"
       - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "config/environments.json"
       - "functions/test/financialPolicyProfile.test.mjs"
       - "functions/test/financialPolicyProfileCommand.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/financialPolicyAuthorityActivation.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -38,9 +42,13 @@ on:
       - "functions/src/finance/acquisitionCost.ts"
       - "functions/src/workOrderConsumption/consumptionActivation.ts"
       - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "config/environments.json"
       - "functions/test/financialPolicyProfile.test.mjs"
       - "functions/test/financialPolicyProfileCommand.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/financialPolicyAuthorityActivation.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -86,9 +94,21 @@ jobs:
         run: node --test test/financialPolicyProfile.test.mjs
         working-directory: functions
 
-      # The capability guard: financialPolicy.profile.* must stay registered-but-ungranted.
-      - name: Permission catalog (capabilities registered, not granted)
+      # THE AUTHORITY CONTRACT. Who may configure, who may only read, that read never implies
+      # write, that production and certification activate nothing, and that none of it beats the
+      # lock. The negative assertions are the point.
+      - name: Financial policy authority activation (who holds what, and what the lock ignores)
+        run: node --test test/financialPolicyAuthorityActivation.test.mjs
+        working-directory: functions
+
+      # The catalogue guard: both ids must stay active:false, because true means production too.
+      - name: Permission catalog (catalogue-inactive; activation is per-environment)
         run: node test/permissionCatalog.test.mjs
+        working-directory: functions
+
+      # The activation seam itself: eligible-set size, sandbox resolution, production EMPTY.
+      - name: Environment capability overrides (production stays triple-blocked)
+        run: node --test test/environmentCapabilityOverrides.test.mjs
         working-directory: functions
 
   financial-policy-command-tests:

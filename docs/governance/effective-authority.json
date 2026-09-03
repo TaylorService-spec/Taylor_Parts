@@ -6,11 +6,11 @@
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 18,
+  "total": 17,
   "byStatus": {
-   "UNCLASSIFIED": 4,
-   "RECORDED_GAP": 9,
-   "DELIBERATELY_PRIVILEGED_ONLY": 5
+   "UNCLASSIFIED": 2,
+   "DELIBERATELY_PRIVILEGED_ONLY": 6,
+   "RECORDED_GAP": 9
   },
   "capabilities": [
    {
@@ -26,16 +26,10 @@
     "why": "no recorded decision either way -- surface before PASS"
    },
    {
-    "capability": "financialPolicy.profile.read",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
-   },
-   {
     "capability": "financialPolicy.profile.configure",
     "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner ruling (CERT-FIN-02 financial-policy authority): recording a company's approved accounting policy is DEPLOYMENT-TIME company configuration, so it stays with the administrative company authority (admin/owner). The customer's accounting team DETERMINES and APPROVES the policy, and that does not by itself confer EOS configuration authority -- which is why the money Roles hold financialPolicy.profile.read and deliberately not this. Belongs here rather than UNCLASSIFIED: a decision was made, not merely inherited from admin's catalog derivation. Note that no capability, including this one, can edit a LOCKED profile."
    },
    {
     "capability": "coverage.write",
@@ -423,9 +417,9 @@
    "roleId": "generalManager",
    "label": "General Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 36,
+   "grantedCount": 37,
    "operableCount": 13,
-   "blockedCount": 23,
+   "blockedCount": 24,
    "granted": [
     "audit.event.read",
     "customer.record.create",
@@ -437,6 +431,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
@@ -486,6 +481,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -868,9 +864,9 @@
    "roleId": "accountingManager",
    "label": "Accounting Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 18,
+   "grantedCount": 19,
    "operableCount": 7,
-   "blockedCount": 11,
+   "blockedCount": 12,
    "granted": [
     "audit.event.read",
     "customer.governedField.write",
@@ -881,6 +877,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -907,6 +904,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -918,9 +916,9 @@
    "roleId": "financeManager",
    "label": "Finance Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 18,
+   "grantedCount": 19,
    "operableCount": 7,
-   "blockedCount": 11,
+   "blockedCount": 12,
    "granted": [
     "audit.event.read",
     "customer.governedField.write",
@@ -931,6 +929,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -957,6 +956,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -1018,9 +1018,9 @@
    "roleId": "controller",
    "label": "Controller",
    "composedFunctionalRoles": [],
-   "grantedCount": 16,
+   "grantedCount": 17,
    "operableCount": 6,
-   "blockedCount": 10,
+   "blockedCount": 11,
    "granted": [
     "audit.event.read",
     "customer.record.read",
@@ -1029,6 +1029,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -1053,6 +1054,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
