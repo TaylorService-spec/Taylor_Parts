@@ -1,61 +1,28 @@
-// Epic 4 Warehouse + Fulfillment System.
+// Warehouse authority types.
 //
-// A physical-reality layer on top of the ledger, NOT a second source
-// of truth: `inventory_transactions` (Epic 2D) remains the sole
-// authority for stock movement; these types model where physical
-// stock actually sits (bin-level) and how it moves between physical
-// locations, entirely separate from that authority.
+// ============================ WHAT USED TO LIVE HERE, AND WHY IT DOES NOT ============================
+//
+// This file once carried the Epic 4 "physical-reality layer": `StockLocation` (a per-warehouse,
+// per-part, per-binCode quantity row), an Epic-4 `TransferOrder` keyed on from/to bin codes, and a
+// `WarehouseDiscrepancy` whose only job was comparing the two against the ledger.
+//
+// BIN-P2 retired all of it under Decision #160 / ADR-014. `stock_locations` was never written by
+// anything in this repository -- it was a seeded legacy projection -- and in the sandbox it diverged
+// from the ledger in BOTH directions: a part holding three genuinely received units read as 0, and a
+// part with nothing ever received read as 40. A source that can both refuse real stock and promise
+// imaginary stock is not an authority, and keeping its TYPES alive was an invitation to write a
+// second one.
+//
+// The surviving authorities are elsewhere and unchanged:
+//   quantity            inventory_transactions (NONE) / serialized_assets (SERIAL)
+//   physical movement   functions/src/inventoryTransfer/* -- the governed Enterprise Inventory
+//                       Transfer authority, which uses the SAME `transfer_orders` collection and is
+//                       NOT what was retired here
+//   bin identity        functions/src/inventoryLocation/* (BIN-P1)
+//
+// What remains below is the governed §3A Warehouse eligibility record, which is live and load-bearing
+// for Receiving, Transfer, Cycle Count and ownership.
 import type { Timestamp } from "firebase-admin/firestore";
-
-export interface Warehouse {
-  id: string;
-  name: string;
-  location: string;
-}
-
-// Bin-level physical stock. Composite-unique on (warehouseId, partId,
-// binCode) -- see warehouseService.ts's doc-id derivation.
-export interface StockLocation {
-  id: string;
-  warehouseId: string;
-  partId: string;
-  quantity: number;
-  binCode: string;
-  updatedAt: Timestamp;
-}
-
-export type TransferOrderStatus = "REQUESTED" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
-
-// Physical movement between warehouses. Never writes
-// inventory_transactions -- a transfer moves where stock physically
-// sits, not how much of it exists or is reserved/consumed against a
-// Work Order.
-export interface TransferOrder {
-  id: string;
-  partId: string;
-  quantity: number;
-  fromWarehouseId: string;
-  toWarehouseId: string;
-  fromBinCode: string;
-  toBinCode: string;
-  status: TransferOrderStatus;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-export type DiscrepancySeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-
-// Output of a read-only comparison between physical stock (StockLocation)
-// and ledger-derived expectation -- see warehouseReconciliationService.ts.
-// Never triggers a correction; purely informational.
-export interface WarehouseDiscrepancy {
-  partId: string;
-  warehouseId: string;
-  expectedQuantity: number;
-  actualQuantity: number;
-  variance: number;
-  severity: DiscrepancySeverity;
-}
 
 // ---------------------------------------------------------------------------
 // Receiving Location Authority -- I-LA C2 (ratified: docs/specifications/

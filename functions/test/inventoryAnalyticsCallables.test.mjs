@@ -1,13 +1,18 @@
-// Site-work r3 D -- getInventoryAnalytics availableStock must be
-// reservation-netted, consistent with inventoryService.ts's
-// getAvailableQuantity() (warehouseQty - (grossReserved - released))
-// and the client mirror's computeAvailableStockByPart(). Before this
-// fix, the callable summed STOCK_LOCATIONS_COLLECTION `quantity`
-// (raw physical bin stock) with no reservation netting at all, so
-// availableStock was overstated -- and generateInventoryHealthDashboard's
-// stockout/urgency math (which trusts availableStock as the netted
-// figure) understated risk -- whenever a part had outstanding RESERVED
-// transactions.
+// getInventoryAnalytics -- where availableStock comes from, and what it means.
+//
+// TWO DEFECTS, PINNED IN ORDER.
+//
+// Site-work r3 D: the callable summed raw bin stock with no reservation netting, so availableStock
+// was overstated and generateInventoryHealthDashboard's stockout math understated risk. Netting is
+// still asserted below.
+//
+// BIN-P2 (Decision #160 / ADR-014): the thing being netted was `stock_locations`, a collection
+// NOTHING in this repository writes. Where it had been seeded it diverged from the ledger in BOTH
+// directions -- a part holding three genuinely received units read as 0, and a part with nothing
+// ever received read as 40. A source that can both refuse real stock and promise imaginary stock is
+// not an authority. The baseline is now the governed one every other inventory surface uses:
+// the location-aware operational ledger at ACTIVE warehouses for NONE-tracked parts, and the
+// serialized-asset registry's AVAILABLE units for SERIAL-tracked ones.
 //
 // Same harness as functions/test/manufacturerCallables.test.mjs: invoke
 // the v2 onCall directly via `.run(request)` against a LIVE Firestore
@@ -16,6 +21,7 @@
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 import assert from "node:assert/strict";
 import admin from "firebase-admin";
+import { readFileSync } from "node:fs";
 admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 const { getInventoryAnalytics } = await import("../lib/inventoryAnalyticsCallables.js");
@@ -60,30 +66,132 @@ console.log("inventoryAnalyticsCallables.test.mjs");
 
 const admUid = await seedAdmin();
 
-await check("availableStock is reservation-netted (bin total minus outstanding RESERVED), not raw bin sum", async () => {
-  const partId = id("SKU");
+const TS = () => admin.firestore.Timestamp.now();
+async function seedActiveWarehouse() {
   const warehouseId = id("WH");
-
-  // Physical bin stock: 100 units on hand.
-  await db.collection("stock_locations").doc(id("loc")).set({
-    id: id("loc"), warehouseId, partId, quantity: 100, binCode: "A1", updatedAt: admin.firestore.Timestamp.now(),
+  await db.collection("warehouses").doc(warehouseId).set({
+    id: warehouseId, name: warehouseId, location: "somewhere", status: "ACTIVE", version: 1, provenance: "NATIVE",
+    createdAt: TS(), createdBy: "seed", updatedAt: TS(), updatedBy: "seed",
   });
-
-  // 40 units reserved against a Work Order, 10 of those released back --
-  // net outstanding reservation = 30. Reservation-netted availableStock
-  // should be 100 - 30 = 70, NOT the raw bin total of 100.
+  return warehouseId;
+}
+/** One operational movement, in the shape the location-aware ledger actually stores. */
+async function movement(partId, warehouseId, type, quantity, over = {}) {
   await db.collection("inventory_transactions").doc(id("tx")).set({
-    workOrderId: id("wo"), partId, type: "RESERVED", quantity: 40, timestamp: admin.firestore.Timestamp.now(),
+    partId, type, quantity, timestamp: TS(),
+    location: { type: "WAREHOUSE", locationId: warehouseId },
+    trackingMode: "NONE", ...over,
+  });
+}
+
+await check("BIN-P2: the physical baseline is the LEDGER, and it is reservation-netted", async () => {
+  const partId = id("SKU");
+  const warehouseId = await seedActiveWarehouse();
+
+  // 100 units of genuine physical evidence, expressed the way Receiving/Transfer/Cycle Count
+  // express it -- not a stock_locations row, which nothing writes and which diverged from this
+  // ledger in both directions wherever it was seeded (Decision #160 / ADR-014).
+  await movement(partId, warehouseId, "RECEIVED", 100);
+
+  // 40 reserved against a Work Order, 10 released -- net outstanding 30. RESERVED/RELEASED are
+  // LOGICAL commitment events, deliberately absent from the physical sum, so netting them here
+  // subtracts them exactly once.
+  await db.collection("inventory_transactions").doc(id("tx")).set({
+    workOrderId: id("wo"), partId, type: "RESERVED", quantity: 40, timestamp: TS(),
   });
   await db.collection("inventory_transactions").doc(id("tx")).set({
-    workOrderId: id("wo"), partId, type: "RELEASED", quantity: 10, timestamp: admin.firestore.Timestamp.now(),
+    workOrderId: id("wo"), partId, type: "RELEASED", quantity: 10, timestamp: TS(),
   });
 
   const result = await getInventoryAnalytics.run(req({}, admUid));
   const entry = result.health.find((e) => e.partId === partId);
   assert.ok(entry, "expected an inventory health entry for the seeded part");
-  assert.equal(entry.stock.availableStock, 70, "availableStock must be netted (100 bin - 30 net reserved), not the raw bin sum of 100");
+  assert.equal(entry.stock.availableStock, 70, "availableStock must be (100 ledger on-hand - 30 net reserved)");
   assert.equal(entry.recommendation.availableStock, 70, "recommendation must carry the same netted availableStock");
+});
+
+await check("BIN-P2: every movement type contributes exactly as the governed authorities define it", async () => {
+  const partId = id("SKU");
+  const warehouseId = await seedActiveWarehouse();
+  const otherWarehouse = await seedActiveWarehouse();
+
+  await movement(partId, warehouseId, "RECEIVED", 50);      // 50
+  await movement(partId, warehouseId, "RETURNED", 10);      // 60
+  await movement(partId, warehouseId, "TRANSFER_IN", 5);    // 65
+  await movement(partId, warehouseId, "TRANSFER_OUT", 15);  // 50
+  await movement(partId, warehouseId, "SCRAPPED", 4);       // 46
+  await movement(partId, warehouseId, "ADJUSTED", -6);      // 40  (signed, not absolute)
+  // A prior count's own snapshot is EVIDENCE, not a movement. Counting it would compound a shelf
+  // reading into the quantity it was measuring.
+  await movement(partId, warehouseId, "COUNTED", 999);
+  // Another eligible building's stock IS company warehouse stock, which is what this dashboard means.
+  await movement(partId, otherWarehouse, "RECEIVED", 7);    // 47
+  // A MOBILE (truck) location is deliberately not warehouse stock.
+  await movement(partId, warehouseId, "RECEIVED", 1000, { location: { type: "MOBILE", locationId: id("truck") } });
+  // A row with no location attribution fails closed rather than inflating anything.
+  await db.collection("inventory_transactions").doc(id("tx")).set({ partId, type: "RECEIVED", quantity: 500, timestamp: TS() });
+
+  const result = await getInventoryAnalytics.run(req({}, admUid));
+  const entry = result.health.find((e) => e.partId === partId);
+  assert.ok(entry, "expected an inventory health entry");
+  assert.equal(entry.stock.availableStock, 47, "50+10+5-15-4-6 at two eligible warehouses = 47");
+});
+
+await check("BIN-P2: stock at an INACTIVE warehouse is not sellable stock", async () => {
+  const partId = id("SKU");
+  const warehouseId = id("WH");
+  await db.collection("warehouses").doc(warehouseId).set({
+    id: warehouseId, name: warehouseId, location: "somewhere", status: "INACTIVE", version: 1, provenance: "NATIVE",
+    createdAt: TS(), createdBy: "seed", updatedAt: TS(), updatedBy: "seed",
+  });
+  await movement(partId, warehouseId, "RECEIVED", 42);
+
+  const result = await getInventoryAnalytics.run(req({}, admUid));
+  const entry = result.health.find((e) => e.partId === partId);
+  // Evidence exists, but none of it is at a sellable warehouse -- a known 0, never a fabricated 42.
+  if (entry) assert.equal(entry.stock.availableStock, 0, "stock at an INACTIVE warehouse is not available");
+});
+
+await check("BIN-P2: a SERIAL part counts AVAILABLE units from the serialized-asset authority", async () => {
+  const partId = id("SKU");
+  const warehouseId = await seedActiveWarehouse();
+
+  // The ledger stores serial movements one-per-unit and does NOT aggregate them into a quantity,
+  // so the registry is what makes a serialized part's figure truthful rather than zero.
+  await movement(partId, warehouseId, "RECEIVED", 1, { trackingMode: "SERIAL", serialNo: id("SN") });
+  for (const state of ["AVAILABLE", "AVAILABLE", "RESERVED"]) {
+    await db.collection("serialized_assets").doc(id("asset")).set({
+      partId, serialNo: id("SN"), currentLocationId: warehouseId, inventoryState: state,
+    });
+  }
+  // A unit elsewhere is not this warehouse-available stock.
+  await db.collection("serialized_assets").doc(id("asset")).set({
+    partId, serialNo: id("SN"), currentLocationId: id("elsewhere"), inventoryState: "AVAILABLE",
+  });
+
+  const result = await getInventoryAnalytics.run(req({}, admUid));
+  const entry = result.health.find((e) => e.partId === partId);
+  assert.ok(entry, "expected an inventory health entry for the serialized part");
+  assert.equal(entry.stock.availableStock, 2, "two AVAILABLE units at an eligible warehouse, and only those");
+});
+
+await check("BIN-P2: the callable no longer reads stock_locations at all", async () => {
+  const source = readFileSync(new URL("../src/inventoryAnalyticsCallables.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /STOCK_LOCATIONS_COLLECTION/, "no stock_locations constant");
+  assert.doesNotMatch(source, /db\.collection\(["']stock_locations["']\)/, "no stock_locations read");
+  assert.doesNotMatch(source, /import type \{ StockLocation \}/, "no StockLocation type import");
+
+  // And prove it behaviourally: a part known ONLY to stock_locations must not appear.
+  const partId = id("SKU");
+  await db.collection("stock_locations").doc(id("loc")).set({
+    id: id("loc"), warehouseId: await seedActiveWarehouse(), partId, quantity: 9999, binCode: "A1", updatedAt: TS(),
+  });
+  const result = await getInventoryAnalytics.run(req({}, admUid));
+  assert.equal(
+    result.health.some((e) => e.partId === partId),
+    false,
+    "a part known ONLY to stock_locations must not appear -- absence is how UNKNOWN is expressed",
+  );
 });
 
 await check("unauthenticated -> unauthenticated", async () => {
