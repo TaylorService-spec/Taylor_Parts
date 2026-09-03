@@ -91,7 +91,7 @@ export const REPORT_OBJECTS: readonly ReportObject[] = Object.freeze([
   obj("technician", "Technician", "fieldops_technicians", 2, false),
   obj("serviceHistory", "Service History", null, 2, false, { derivedFrom: "fieldops_wos" }),
   obj("reorderRequest", "Reorder Request", "reorder_requests", 3, false),
-  obj("purchaseOrder", "Purchase Order", "reorder_purchase_orders", 3, false),
+  obj("purchaseOrder", "Reorder Purchase Order", "reorder_purchase_orders", 3, false),
   obj("inventoryAction", "Inventory Action", "inventory_actions", 3, false),
   obj("employee", "Employee", "employees", 4, false),
 ]);

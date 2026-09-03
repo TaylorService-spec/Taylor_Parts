@@ -62,7 +62,9 @@ export const REPORT_OBJECTS = Object.freeze([
   // Derived, read-only (Spec §4): no own collection; synthesized from Work Orders.
   obj("serviceHistory", "Service History", null, 2, false, { derivedFrom: "fieldops_wos" }),
   obj("reorderRequest", "Reorder Request", "reorder_requests", 3, false),
-  obj("purchaseOrder", "Purchase Order", "reorder_purchase_orders", 3, false),
+  // Labelled for the collection it actually binds to. `purchase_orders` is a DIFFERENT authority;
+  // calling this one "Purchase Order" made a reporting result claim a source it never read.
+  obj("purchaseOrder", "Reorder Purchase Order", "reorder_purchase_orders", 3, false),
   obj("inventoryAction", "Inventory Action", "inventory_actions", 3, false),
   obj("employee", "Employee", "employees", 4, false),
   // Invoice is deliberately ABSENT (Spec §4): no domain model/collection exists; deferred to
