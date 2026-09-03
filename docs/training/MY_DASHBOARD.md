@@ -7,8 +7,8 @@
 **Environment:** sandbox training  
 **Owner:** Verenward product training
 
-> **Status: DRAFT — PENDING FINAL LIVE VERIFICATION.** Written against the merged code, not against a
-> deployed environment. It must be re-checked against the live screen after the sandbox refresh.
+> **Status: COMPLETE — LIVE VERIFIED.** Checked against the running screen in `platform-sandbox` at
+> live commit `50792fef`, Owner accepted 2026-09-03.
 
 ## What this guide helps you do
 

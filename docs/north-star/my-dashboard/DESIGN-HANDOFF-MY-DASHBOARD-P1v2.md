@@ -1,6 +1,6 @@
 # My Dashboard — North Star P1v2 · design handoff
 
-**Status:** DESIGN AUTHORITY for the My Dashboard family. Recorded 2026-09-02 under the Owner's
+**Status:** DESIGN AUTHORITY for the My Dashboard family — **CLOSED / OWNER ACCEPTED 2026-09-03** (see §0-C). Recorded 2026-09-02 under the Owner's
 dashboard + performance-management direction. Governed by
 [`eos-dashboard-composition-authority.md`](../../governance/eos-dashboard-composition-authority.md)
 (Decision #161) and the Performance Goal Authority (Decision #162).
@@ -8,6 +8,70 @@ dashboard + performance-management direction. Governed by
 **Visual system:** [`../VISUAL-SYSTEM.md`](../VISUAL-SYSTEM.md), unchanged. **This document
 redesigns nothing.** It composes the accepted grammar — the same tokens, the same primitives, the
 same hover contract — into one dashboard family. Where it names a component it names an existing one.
+
+---
+
+## 0-C. OWNER ACCEPTANCE AND CLOSURE — 2026-09-03
+
+**Status: CLOSED / OWNER ACCEPTED.**
+
+| | |
+|---|---|
+| **Accepted environment** | `platform-sandbox` (`eos-platform-sandbox.web.app`) |
+| **Accepted live commit** | `50792fef23f1aae3e1f68f395e548c7a0e5e7a55` (`/version.json` → `commit: 50792fef`, `environmentRole: sandbox`) |
+| **Production** | untouched. No production deploy, no production data, no Rules, no Functions, no indexes |
+| **Training** | [`docs/training/MY_DASHBOARD.md`](../../training/MY_DASHBOARD.md) — COMPLETE, LIVE VERIFIED |
+
+Acceptance followed the live corrective recorded in 0-B — not the first sandbox build. The build the
+Owner accepted is the one that removed Go To, fixed the Awaiting Receipt result comparison, fixed the
+account-portfolio status shape and with it the Active Accounts goal actual, compacted unset team
+goals into one counted line, labelled warehouse-scoped goals, turned an unresolvable technician id
+into an explicit data-quality state, and shortened the two long blocker paragraphs — while preserving
+the ContextBand, the AttentionBand, the 32px/24px KPI tier, Decision #172's bounded previews, and
+UNKNOWN ≠ zero. **The intermediate builds at `6ac99d90` and earlier are not accepted and are not
+restated as such.**
+
+### Final module census — measured from `dashboardComposition.js` at the accepted commit
+
+| State | Count |
+|---|---|
+| READY | 15 |
+| SATISFIED_ELSEWHERE | 2 |
+| GATED | 1 |
+| UNAVAILABLE | 5 |
+| **NOT_WIRED** | **0** |
+| **Total** | **23** |
+
+### What CLOSED means, and what it does not
+
+CLOSED does **not** mean every figure a dashboard could imaginably carry is available. Five modules
+render an honest unavailable state and one is gated, and that is the accepted result, not a shortfall
+against it.
+
+It means every module in the current design is in exactly one of four honest states — composed from
+existing governed authority, satisfied on its owning profile surface, explicitly gated on a named
+release decision, or explicitly unavailable for a named missing authority — that **no executable
+dashboard composition debt remains** (`NOT_WIRED = 0`, and that zero is enforced by
+`test/dashboardComposition.test.mjs`), that the running sandbox was reviewed on the screen rather
+than in the diff, and that the Owner accepted the visual and operational result.
+
+### The remaining blockers leave this family
+
+The items below are **platform / domain authority backlog**, not dashboard defects, and they do not
+hold this North Star open. Each is named on the tile that lacks it, so nothing is hidden by closing:
+
+| Missing authority | Module it blocks | Owner |
+|---|---|---|
+| Governed `booked` read (no read exists at any period; the G-05 reporting calendar is *not* the blocker) | `myBooked`, `firmBooked` | Sales/Finance domain authority |
+| On-time definition, first-time-fix linkage, workday definition | `technicianQualityMetrics` | Service Operations domain authority |
+| Location-level governed stock aggregate | `governedStockPosition` | INV-1 inventory governance |
+| `INVENTORY_BALANCE_READ_READY` client transport release decision | `governedStockPosition` (second, independent gate) | per-environment activation programme |
+| Governed forecast-exception read (forecasts are per part by design) | `stockForecast` | INV-1 inventory governance |
+| Costing method, carrying rate, waste-avoided event or counterfactual | `costImpact` | FIN-BLOCK-003A follow-on |
+| Intercompany elimination rule (FIN-BLOCK-004) | `firmBooked` consolidated figures | Financials authority |
+
+No new tickets are raised for these: each already has an owning authority above, and duplicating them
+here would split ownership.
 
 ---
 
