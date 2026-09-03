@@ -86,7 +86,8 @@ the layout later will report it as already there rather than clashing with it.
 
 - **Rename** gives a bin a friendly name (`Fast movers`). Correcting a bin's code keeps the same
   bin, so labels and history still point at the right place.
-- **Deactivate** takes a bin out of use. **Reactivate** brings it back.
+- **Deactivate** takes a bin out of use — the list then shows it as *Out of use*. **Reactivate**
+  brings it back to *In use*.
 
 There is no delete. A bin's code stays reserved to it permanently, so an old printed label can never
 quietly start meaning somewhere else.

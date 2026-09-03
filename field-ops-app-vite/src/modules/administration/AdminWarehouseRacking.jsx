@@ -98,7 +98,10 @@ function BinRow({ bin, canManage, onRename, onSetStatus, busy }) {
       </td>
       <td>
         <StatusIndicator tone={bin.status === "ACTIVE" ? "positive" : "neutral"}>
-          {bin.status === "ACTIVE" ? "Active" : "Inactive"}
+          {/* The concept is named rather than left bare (ADR-012 2.2a): a bin's ACTIVE status means the place is
+              available to stow into, which is a different thing from an active employee, an active
+              role assignment or an active capability. */}
+          {bin.status === "ACTIVE" ? "In use" : "Out of use"}
         </StatusIndicator>
       </td>
       <td>
