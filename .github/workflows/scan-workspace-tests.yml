@@ -217,6 +217,7 @@ on:
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
       - "functions/test/binRegistry.test.mjs"
+      - "functions/test/binPreviewService.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
@@ -346,6 +347,7 @@ on:
       - "field-ops-app-vite/test/lookupScanAlias.test.jsx"
       - "functions/test/partAliasScanResolver.test.mjs"
       - "functions/test/binRegistry.test.mjs"
+      - "functions/test/binPreviewService.test.mjs"
       - "field-ops-app-vite/test/lookupScan.test.jsx"
       - "field-ops-app-vite/test/scanWorkspace.test.jsx"
       - "field-ops-app-vite/test/multiScanReceiving.test.jsx"
@@ -448,7 +450,7 @@ jobs:
         working-directory: functions
 
       - name: Descriptive bin registry (pure)
-        run: node --test test/binRegistry.test.mjs test/putAwayCommand.test.mjs test/returnIntakeCommand.test.mjs
+        run: node --test test/binRegistry.test.mjs test/binPreviewService.test.mjs test/putAwayCommand.test.mjs test/returnIntakeCommand.test.mjs
         working-directory: functions
 
       - name: Scanner release readiness matrix
