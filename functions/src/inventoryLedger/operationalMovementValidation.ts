@@ -75,11 +75,10 @@ export function validateActorReason(actor: unknown): string | null {
 }
 
 // Per-mode / per-direction quantity rules (SHAPE only; no stock math). SERIAL -> exactly 1;
-// SNAPSHOT -> >= 0; SIGNED -> nonzero; IN/OUT -> > 0. All must be finite numbers.
+// SIGNED -> nonzero; IN/OUT -> > 0. All must be finite numbers.
 export function validateQuantityReason(mode: PartTrackingMode, direction: MovementDirection, quantity: unknown): string | null {
   if (typeof quantity !== "number" || !Number.isFinite(quantity)) return "quantity_invalid";
   if (mode === "SERIAL") return quantity === 1 ? null : "quantity_invalid";
-  if (direction === "SNAPSHOT") return quantity >= 0 ? null : "quantity_invalid";
   if (direction === "SIGNED") return quantity !== 0 ? null : "quantity_invalid";
   return quantity > 0 ? null : "quantity_invalid";
 }

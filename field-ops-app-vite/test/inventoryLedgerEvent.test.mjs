@@ -3,7 +3,7 @@
 // governed envelope decisions: Part-owned tracking mode + boundary controlType
 // translation (SERIALIZED_LOT fail-closed), bounded source taxonomy + movement/source
 // compatibility matrix, {USER,SYSTEM} actor with a SYSTEM allowlist, quantity rules
-// (SERIAL=1; NONE/LOT positive incl. fractional; COUNTED>=0; ADJUSTED signed nonzero),
+// (SERIAL=1; NONE/LOT positive incl. fractional; ADJUSTED signed nonzero),
 // occurredAt-required / recordedAt-forbidden, transfer counterparty (no transferId), and
 // fail-closed shape validation. No aggregation / pairing / stock math is exercised.
 //
@@ -51,8 +51,8 @@ function ev(type, mode, over = {}) {
 }
 
 // --- constants / governance ---
-ok("operational movement types are the seven-member frozen subset", () => {
-  assert.deepEqual(OPERATIONAL_MOVEMENT_TYPES, ["RECEIVED", "ADJUSTED", "TRANSFER_OUT", "TRANSFER_IN", "COUNTED", "RETURNED", "SCRAPPED"]);
+ok("operational movement types are the six-member frozen subset", () => {
+  assert.deepEqual(OPERATIONAL_MOVEMENT_TYPES, ["RECEIVED", "ADJUSTED", "TRANSFER_OUT", "TRANSFER_IN", "RETURNED", "SCRAPPED"]);
   assert.equal(Object.isFrozen(OPERATIONAL_MOVEMENT_TYPES), true);
   // Reservation/consumption + opening-balance are deliberately NOT members.
   for (const excluded of ["RESERVED", "RELEASED", "CONSUMED", "OPENING_BALANCE"]) {
@@ -60,19 +60,31 @@ ok("operational movement types are the seven-member frozen subset", () => {
   }
 });
 
+// CERT-LEDGER-COUNTED-08. COUNTED was declared for two years and never written once, so it was
+// retired along with the SNAPSHOT direction and the COUNT_SHEET source that existed only to serve
+// it. This is a guard against re-adding it: a count that moves no stock must not author a movement.
+ok("COUNTED is retired -- the type, its direction and its source are all gone", () => {
+  assert.equal(OPERATIONAL_MOVEMENT_TYPES.includes("COUNTED"), false);
+  assert.equal("COUNTED" in MOVEMENT_DIRECTION, false);
+  assert.equal("COUNTED" in MOVEMENT_SOURCE_TYPE, false);
+  assert.equal(Object.values(MOVEMENT_DIRECTION).includes("SNAPSHOT"), false);
+  assert.equal(SOURCE_OBJECT_TYPES.includes("COUNT_SHEET"), false);
+  assert.equal(validateInventoryMovementEvent(ev("COUNTED", "NONE", { quantity: 5 }), PART("NONE")).reason, "type_invalid");
+});
+
 ok("direction metadata classifies each type (no sign inference)", () => {
   assert.deepEqual(MOVEMENT_DIRECTION, {
     RECEIVED: "IN", RETURNED: "IN", TRANSFER_IN: "IN",
-    TRANSFER_OUT: "OUT", SCRAPPED: "OUT", ADJUSTED: "SIGNED", COUNTED: "SNAPSHOT",
+    TRANSFER_OUT: "OUT", SCRAPPED: "OUT", ADJUSTED: "SIGNED",
   });
 });
 
 ok("source taxonomy declared ahead; WORK_ORDER present but unused by operational types", () => {
-  assert.deepEqual(SOURCE_OBJECT_TYPES, ["WORK_ORDER", "RECEIVING_ORDER", "TRANSFER_ORDER", "COUNT_SHEET", "ADJUSTMENT", "RMA", "SCRAP"]);
+  assert.deepEqual(SOURCE_OBJECT_TYPES, ["WORK_ORDER", "RECEIVING_ORDER", "TRANSFER_ORDER", "ADJUSTMENT", "RMA", "SCRAP"]);
   assert.equal(Object.values(MOVEMENT_SOURCE_TYPE).includes("WORK_ORDER"), false);
   assert.deepEqual(MOVEMENT_SOURCE_TYPE, {
     RECEIVED: "RECEIVING_ORDER", RETURNED: "RMA", TRANSFER_OUT: "TRANSFER_ORDER",
-    TRANSFER_IN: "TRANSFER_ORDER", COUNTED: "COUNT_SHEET", ADJUSTED: "ADJUSTMENT", SCRAPPED: "SCRAP",
+    TRANSFER_IN: "TRANSFER_ORDER", ADJUSTED: "ADJUSTMENT", SCRAPPED: "SCRAP",
   });
 });
 
@@ -196,9 +208,10 @@ ok("SERIAL quantity must be exactly 1 (dominant over per-type rule)", () => {
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "SERIAL", { quantity: 2 }), PART("SERIAL")).reason, "quantity_invalid");
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "SERIAL", { quantity: 0 }), PART("SERIAL")).reason, "quantity_invalid");
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "SERIAL", { quantity: 1.5 }), PART("SERIAL")).reason, "quantity_invalid");
-  // Even COUNTED/ADJUSTED for a serial are pinned to 1 in this envelope gate.
-  assert.equal(validateInventoryMovementEvent(ev("COUNTED", "SERIAL", { quantity: 0 }), PART("SERIAL")).reason, "quantity_invalid");
-  assert.equal(validateInventoryMovementEvent(ev("COUNTED", "SERIAL", { quantity: 1 }), PART("SERIAL")).valid, true);
+  // Even ADJUSTED for a serial is pinned to 1 in this envelope gate -- the SIGNED rule does not
+  // relax SERIAL's, and a serial unit is never a fraction or a negative count of itself.
+  assert.equal(validateInventoryMovementEvent(ev("ADJUSTED", "SERIAL", { quantity: 0 }), PART("SERIAL")).reason, "quantity_invalid");
+  assert.equal(validateInventoryMovementEvent(ev("ADJUSTED", "SERIAL", { quantity: 1 }), PART("SERIAL")).valid, true);
 });
 
 ok("NONE/LOT allow positive fractional; IN/OUT reject <= 0", () => {
@@ -210,9 +223,7 @@ ok("NONE/LOT allow positive fractional; IN/OUT reject <= 0", () => {
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { quantity: Infinity }), PART("NONE")).reason, "quantity_invalid");
 });
 
-ok("COUNTED snapshot >= 0 (0 allowed); ADJUSTED signed nonzero (negative allowed)", () => {
-  assert.equal(validateInventoryMovementEvent(ev("COUNTED", "NONE", { quantity: 0 }), PART("NONE")).valid, true);
-  assert.equal(validateInventoryMovementEvent(ev("COUNTED", "NONE", { quantity: -1 }), PART("NONE")).reason, "quantity_invalid");
+ok("ADJUSTED is signed nonzero (negative allowed); zero is never a movement", () => {
   assert.equal(validateInventoryMovementEvent(ev("ADJUSTED", "NONE", { quantity: -3 }), PART("NONE")).valid, true);
   assert.equal(validateInventoryMovementEvent(ev("ADJUSTED", "LOT", { quantity: -2.5 }), PART("LOT")).valid, true);
   assert.equal(validateInventoryMovementEvent(ev("ADJUSTED", "NONE", { quantity: 0 }), PART("NONE")).reason, "quantity_invalid");
