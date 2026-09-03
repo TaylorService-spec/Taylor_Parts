@@ -37,6 +37,47 @@ const CANONICAL_REGISTRY = JSON.parse(
 // The historical SPINE_11 name is kept because the constant, not its name, is the authoritative
 // list -- renaming it would churn every reference below for no behavioral gain.
 const SPINE_11 = [
+  // 2C.6C -- the REPORTING family joins the spine allow-list. It was catalog `active: true`, i.e.
+  // live in EVERY environment including production, and an override set can only ADD activation.
+  // Flipping the catalog to `active: false` is what makes production fail-closed; re-listing the
+  // previously-live ids for the SANDBOX ONLY is what keeps this correction a one-environment change.
+  // Certification is deliberately NOT given these: its activation set is an exact-set contract.
+  "report.customer.read",
+  "report.customer.field.name.read",
+  "report.customer.field.status.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.billingAddress.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.externalIds.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.paymentTerms.read",
+  "report.customer.field.taxStatus.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.billingContact.read",
+  "report.contact.read",
+  "report.contact.field.name.read",
+  "report.contact.field.email.read",
+  "report.contact.field.phone.read",
+  "report.contact.field.role.read",
+  "report.contact.field.customer.read",
+  "report.location.read",
+  "report.location.field.name.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.equipment.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.status.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.notes.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.createdAt.read",
+  "report.definition.create",
+  "report.definition.read",
+  "report.definition.rename",
+  "report.definition.duplicate",
+  "report.definition.delete",
   "opportunity.write",
   "opportunity.read",
   "opportunity.createSalesOrder",
@@ -105,9 +146,9 @@ const SPINE_11 = [
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 45 eligible capability ids", () => {
+test("eligible allow-list is exactly the 81 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 45);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 81);
 });
 
 test("sandbox project resolves the full spine override set", () => {

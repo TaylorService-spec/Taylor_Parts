@@ -1,8 +1,8 @@
 {
  "catalog": {
   "total": 134,
-  "active": 72,
-  "inactive": 62
+  "active": 36,
+  "inactive": 98
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
@@ -62,7 +62,7 @@
    },
    {
     "capability": "report.definition.delete",
-    "active": true,
+    "active": false,
     "status": "DELIBERATELY_PRIVILEGED_ONLY",
     "why": "Owner decision 2026-08-21: authoring a saved report definition is delegable to reportAuthor; DESTROYING one is not. A delete removes something other people depend on and there is no per-definition ownership model to scope it."
    },
@@ -126,8 +126,8 @@
    "label": "Owner",
    "composedFunctionalRoles": [],
    "grantedCount": 134,
-   "operableCount": 72,
-   "blockedCount": 62,
+   "operableCount": 36,
+   "blockedCount": 98,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -295,42 +295,6 @@
     "reorder.request.recordPurchaseOrder",
     "reorder.request.reject",
     "reorder.request.startPurchasing",
-    "report.contact.field.customer.read",
-    "report.contact.field.email.read",
-    "report.contact.field.name.read",
-    "report.contact.field.phone.read",
-    "report.contact.field.role.read",
-    "report.contact.read",
-    "report.customer.field.billingAddress.read",
-    "report.customer.field.billingContact.read",
-    "report.customer.field.commercialProfile.read",
-    "report.customer.field.createdAt.read",
-    "report.customer.field.externalIds.read",
-    "report.customer.field.name.read",
-    "report.customer.field.paymentTerms.read",
-    "report.customer.field.relationshipTypes.read",
-    "report.customer.field.status.read",
-    "report.customer.field.tags.read",
-    "report.customer.field.taxStatus.read",
-    "report.customer.read",
-    "report.definition.create",
-    "report.definition.delete",
-    "report.definition.duplicate",
-    "report.definition.read",
-    "report.definition.rename",
-    "report.equipment.field.createdAt.read",
-    "report.equipment.field.customer.read",
-    "report.equipment.field.dates.read",
-    "report.equipment.field.identity.read",
-    "report.equipment.field.location.read",
-    "report.equipment.field.name.read",
-    "report.equipment.field.notes.read",
-    "report.equipment.field.status.read",
-    "report.equipment.read",
-    "report.location.field.address.read",
-    "report.location.field.customer.read",
-    "report.location.field.name.read",
-    "report.location.read",
     "warehouse.record.read",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
@@ -387,9 +351,45 @@
     "performance.goal.read",
     "performance.goal.retire",
     "performance.goal.supersede",
+    "report.contact.field.customer.read",
+    "report.contact.field.email.read",
+    "report.contact.field.name.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.read",
     "report.customer.field.accountOwner.read",
+    "report.customer.field.billingAddress.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.createdAt.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.name.read",
     "report.customer.field.notes.read",
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.status.read",
+    "report.customer.field.tags.read",
+    "report.customer.field.taxStatus.read",
+    "report.customer.read",
+    "report.definition.create",
+    "report.definition.delete",
+    "report.definition.duplicate",
+    "report.definition.read",
+    "report.definition.rename",
+    "report.equipment.field.createdAt.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.status.read",
+    "report.equipment.read",
     "report.location.field.accessNotes.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.location.field.name.read",
+    "report.location.read",
     "salesAgreement.accept",
     "salesAgreement.create",
     "salesAgreement.read",
@@ -494,8 +494,8 @@
    "label": "Report Viewer",
    "composedFunctionalRoles": [],
    "grantedCount": 27,
-   "operableCount": 27,
-   "blockedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 27,
    "granted": [
     "report.contact.field.customer.read",
     "report.contact.field.email.read",
@@ -525,7 +525,8 @@
     "report.location.field.name.read",
     "report.location.read"
    ],
-   "operableNow": [
+   "operableNow": [],
+   "grantedButInactive": [
     "report.contact.field.customer.read",
     "report.contact.field.email.read",
     "report.contact.field.name.read",
@@ -553,8 +554,7 @@
     "report.location.field.customer.read",
     "report.location.field.name.read",
     "report.location.read"
-   ],
-   "grantedButInactive": []
+   ]
   },
   {
    "roleId": "salesManager",
@@ -1273,8 +1273,8 @@
    "label": "Report Finance Viewer",
    "composedFunctionalRoles": [],
    "grantedCount": 5,
-   "operableCount": 5,
-   "blockedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 5,
    "granted": [
     "report.customer.field.billingAddress.read",
     "report.customer.field.billingContact.read",
@@ -1282,14 +1282,14 @@
     "report.customer.field.paymentTerms.read",
     "report.customer.field.taxStatus.read"
    ],
-   "operableNow": [
+   "operableNow": [],
+   "grantedButInactive": [
     "report.customer.field.billingAddress.read",
     "report.customer.field.billingContact.read",
     "report.customer.field.commercialProfile.read",
     "report.customer.field.paymentTerms.read",
     "report.customer.field.taxStatus.read"
-   ],
-   "grantedButInactive": []
+   ]
   },
   {
    "roleId": "officeManager",
@@ -1398,19 +1398,19 @@
    "label": "Report Author",
    "composedFunctionalRoles": [],
    "grantedCount": 3,
-   "operableCount": 3,
-   "blockedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 3,
    "granted": [
     "report.definition.create",
     "report.definition.duplicate",
     "report.definition.rename"
    ],
-   "operableNow": [
+   "operableNow": [],
+   "grantedButInactive": [
     "report.definition.create",
     "report.definition.duplicate",
     "report.definition.rename"
-   ],
-   "grantedButInactive": []
+   ]
   },
   {
    "roleId": "crmActivityContributor",

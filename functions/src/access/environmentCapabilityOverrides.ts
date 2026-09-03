@@ -36,6 +36,48 @@ import type { PermissionId } from "../types/access";
 // (functions/src/partMaster/manufacturerReadService.ts), never the write/
 // activate authority Part Master's own governance track still owns.
 export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<PermissionId>([
+  // 2C.6C -- the REPORTING family. These were catalog `active: true`, which in this architecture
+  // means LIVE IN EVERY ENVIRONMENT, production included: an override set can only ADD
+  // activation, never remove it. Reporting ELIGIBILITY was ruled settled (admin holds the whole
+  // family); production ACTIVATION was never reviewed, and runReportDefinitionCallable is already
+  // deployed there. Registering them here, with the catalog flipped to `active: false`, is what
+  // lets those two axes be answered separately instead of one implying the other.
+  "report.customer.read",
+  "report.customer.field.name.read",
+  "report.customer.field.status.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.billingAddress.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.externalIds.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.paymentTerms.read",
+  "report.customer.field.taxStatus.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.billingContact.read",
+  "report.contact.read",
+  "report.contact.field.name.read",
+  "report.contact.field.email.read",
+  "report.contact.field.phone.read",
+  "report.contact.field.role.read",
+  "report.contact.field.customer.read",
+  "report.location.read",
+  "report.location.field.name.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.equipment.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.status.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.notes.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.createdAt.read",
+  "report.definition.create",
+  "report.definition.read",
+  "report.definition.rename",
+  "report.definition.duplicate",
+  "report.definition.delete",
   "opportunity.write",
   "opportunity.read",
   "opportunity.createSalesOrder",
@@ -270,6 +312,54 @@ export function resolveSyntheticOperationalInterpretation(
 // minimal projection -- role + projectId + override declaration only -- and its
 // exact agreement with the canonical registry is CI-enforced by
 // functions/test/environmentCapabilityOverrides.test.mjs. Drift fails the build.
+// 2C.6C -- the reporting capabilities that were live in EVERY environment before the catalog moved
+// to `active: false`. Spread into each NON-PRODUCTION environment below so this correction changes
+// exactly one environment's behaviour: production's.
+//
+// PRODUCTION IS DELIBERATELY ABSENT. Its override set stays empty, so every id here resolves
+// inactivePermission there -- BEFORE Role eligibility is consulted. Admin keeps all 39 report
+// permissions and is denied all 39 in production. That is the distinction: eligibility is not
+// activation, and `Admin can do all things` means admin is eligible for everything ACTIVE in the
+// environment -- never that admin activates a family the environment has not adopted.
+const REPORTING_PREVIOUSLY_ACTIVE_IDS: readonly PermissionId[] = Object.freeze([
+  "report.customer.read",
+  "report.customer.field.name.read",
+  "report.customer.field.status.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.billingAddress.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.externalIds.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.paymentTerms.read",
+  "report.customer.field.taxStatus.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.billingContact.read",
+  "report.contact.read",
+  "report.contact.field.name.read",
+  "report.contact.field.email.read",
+  "report.contact.field.phone.read",
+  "report.contact.field.role.read",
+  "report.contact.field.customer.read",
+  "report.location.read",
+  "report.location.field.name.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.equipment.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.status.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.notes.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.createdAt.read",
+  "report.definition.create",
+  "report.definition.read",
+  "report.definition.rename",
+  "report.definition.duplicate",
+  "report.definition.delete",
+]);
+
 export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze({
   environments: Object.freeze([
     Object.freeze({ role: "sandbox", firebase: Object.freeze({ projectId: null }),
@@ -282,6 +372,9 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
       // flag governs whether customer facts may reach a model, so the flag does not follow it.
       privateAiSyntheticOperationalInterpretation: false,
       capabilityActivationOverrides: Object.freeze([
+        // 2C.6C: preserves this environment's pre-existing Reporting posture, which came from
+        // the catalog being active:true rather than from any deliberate activation here.
+        ...REPORTING_PREVIOUSLY_ACTIVE_IDS,
         "opportunity.write",
         "opportunity.read",
         "opportunity.createSalesOrder",

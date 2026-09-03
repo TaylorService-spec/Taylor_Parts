@@ -2,11 +2,11 @@
  "basis": "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. Granted-but-inactive is ZERO operational capacity.",
  "environment": {
   "projectId": "eos-platform-sandbox",
-  "activationOverrides": 45
+  "activationOverrides": 81
  },
  "catalog": {
   "total": 134,
-  "globallyActive": 72,
+  "globallyActive": 36,
   "activeInThisEnvironment": 117,
   "inactiveInThisEnvironment": 17
  },
