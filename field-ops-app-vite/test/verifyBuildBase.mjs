@@ -14,10 +14,27 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { routerBasenameFrom } from "../src/routerBasename.js";
+import { checkInstalledDeps, formatRefusal } from "../../scripts/verifyInstalledDeps.mjs";
 
 const appDir = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const indexPath = path.join(appDir, "dist", "index.html");
 const GITHUB_BASE = "/Taylor_Parts/field-ops/";
+
+// PREFLIGHT: the tree this is about to build must be the tree the release declares.
+//
+// This gate spends two full production builds before it can say anything, and when the installed
+// tree is stale it reports the wrong thing entirely -- a missing `jsbarcode` arrived as sixty lines
+// of Rolldown binding stack (aggregateBindingErrorsIntoJsError / unwrapBindingResult), which reads
+// like a bundler or native-binding defect and sent a release investigation after Vite versions,
+// execSync, Node memory and Windows file locks. None of those was involved.
+//
+// Naming it costs milliseconds and changes nothing about what this file proves: every build-base
+// invariant below still runs the REAL npm scripts against a REAL dist.
+const staleTree = checkInstalledDeps(appDir);
+if (staleTree.length > 0) {
+  console.error(formatRefusal(appDir, staleTree));
+  process.exit(2);
+}
 
 function build(script) {
   // Clean dist so each assertion reflects only this build. Exercise the REAL

@@ -21,7 +21,66 @@ handoff.
 | sandbox build time | `2026-09-02T17:15:02.702Z` |
 | **DEPLOYABLE SURFACE MEASURED THROUGH** | `8ae9c7e1b969842476e82b5ec2f387d8f2386138` |
 | **RELEASE_CANDIDATE** | current `origin/main` — see below |
-| status | **PARTIAL — one attempt ran and FAILED during Functions.** See §0. |
+| status | **PARTIAL — two attempts. Functions COMPLETE; Hosting NOT deployed.** See §0. |
+
+## 0-bis. Attempt 2 — 2026-09-03, after #1784. Functions COMPLETE, build-base FAILED
+
+| Phase | Outcome |
+|---|---|
+| Preflight + guards | PASSED |
+| Functions | **COMPLETED** — all 142 applicable deployed |
+| `[3a/5]` build-base contract | **FAILED** |
+| Hosting | **NOT REACHED** |
+| Rules | **NOT DEPLOYED** |
+
+**Functions is done, and measured.** `gcloud functions list` reports **142 functions, all with a
+2026-09-03 `updateTime`** — the estate grew 132 → 142, exactly the derived deployable set from
+#1784 (143 exported − 1 governed exclusion). `interpretWorkOrderReadinessContext` is correctly still
+absent. The secret-blocker fix worked as designed.
+
+**Hosting is not.** `https://eos-platform-sandbox.web.app/version.json` still reports
+`commit 5eaa403a`, `buildTime 2026-09-02T17:15:02.702Z` — the *previous* release. `LIVE_SANDBOX_SHA`
+is therefore unchanged.
+
+**Cause of the build-base failure — not what the stack suggested.** The release died inside
+`field-ops-app-vite/test/verifyBuildBase.mjs` with ~60 lines of Rolldown stack ending in
+`aggregateBindingErrorsIntoJsError` / `unwrapBindingResult`. The actual error was one line in the
+middle:
+
+```
+[vite]: Rolldown failed to resolve import "jsbarcode" from src/shared/ui/BinBarcode.jsx
+```
+
+`jsbarcode` is declared in `field-ops-app-vite/package.json` and pinned at `3.12.3` in its
+lockfile. It entered in **#1774 (`0f9a7c60`) — inside this undeployed release gap.** The operator
+checkout's `node_modules` predated that commit, so the package was simply not on disk.
+
+Not Vite, Rolldown, `execSync`, Node heap, Windows file locks, stale `dist`, or process spawning.
+**The release was being built against a dependency tree that was not the one it declares.**
+
+Reproduced deterministically: hiding `node_modules/jsbarcode` in a healthy checkout produces the
+identical error and exit code; restoring it passes 12/12. The same checkout's `functions` tree is
+clean — which is precisely why the Functions phase completed and only the client build failed.
+
+**Why CI reported `build-base 12 pass`.** `.github/workflows/vite-build-check.yml` runs `npm ci`
+*before* `verify:build-base`. CI's tree is installed from the lockfile by construction and can never
+be stale, so this class of failure is invisible to it. The axis is **not** Linux-vs-Windows — a
+Windows checkout with a current install passes fine. It is *CI installs from the lockfile* vs
+*the operator builds from whatever is on disk*.
+
+**Remedy.** `scripts/verifyInstalledDeps.mjs` compares each package's declared direct dependencies
+against the lockfile's exact versions. The runbook refuses at `[0/5]` — before anything is built —
+and `verify:build-base` preflights the same check, so a stale tree now yields one line and the
+`npm ci` that fixes it instead of a bundler stack. It **refuses; it does not install** — `npm ci`
+inside a deploy would delete and rebuild the operator's `node_modules` as a side effect of a
+protected action.
+
+The larger hole this closes: the runbook builds both packages and installed **neither**. A stale
+tree could fail loudly (what happened) *or* silently build at the wrong versions and ship an
+artifact nobody approved. Commit provenance was already guarded; dependency provenance was not.
+
+**Every build-base invariant is unchanged** — both REAL npm scripts still run against a real `dist`,
+12/12.
 
 ## 0. Attempt log — 2026-09-03, PARTIAL / FAILED
 
@@ -374,9 +433,20 @@ Blocked metrics do **not** block deployment: the dashboard renders their unavail
 
 ## 12. Blockers
 
-**Deployment blockers: NONE remaining.** One blocker was hit and is now fixed — the unfiltered
-`--only functions` batch that demanded absent `KEYSTONE_*` secrets (§0). The release is assembled,
-gated and green, and the refresh must be **re-run from the beginning**.
+**Deployment blockers: NONE remaining.** Two were hit and both are fixed:
+
+1. the unfiltered `--only functions` batch that demanded absent `KEYSTONE_*` secrets (§0) — fixed in
+   #1784, and **proven in production use**: attempt 2 deployed all 142 applicable functions;
+2. the stale operator dependency tree that surfaced as a Rolldown stack (§0-bis).
+
+**Retry mode: `-HostingOnly`.** Evidence, not assumption: all 142 applicable functions carry a
+2026-09-03 `updateTime`, so the Functions phase is complete, and no commit since touches
+`functions/src`. Redeploying the estate would be authority this release does not need and carries
+this repository's documented half-new-estate risk. `-HostingOnly` still executes build-base, the
+platform-sandbox build, artifact identity, release identity, the Hosting deploy and live revision
+verification — it skips only the functions lib build and the Functions deploy.
+
+Rules remain **separate, protected and AFTER Hosting**.
 
 **Authorization gates (not defects):**
 
