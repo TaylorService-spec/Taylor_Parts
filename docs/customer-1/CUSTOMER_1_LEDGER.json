@@ -178,14 +178,14 @@
       "id": "C1-COST-01",
       "name": "Customer 1 CI cost containment",
       "category": "operations",
-      "status": "READY",
+      "status": "IN_PROGRESS",
       "launchCritical": false,
       "authority": "Verenward",
       "closeWhen": "Ledger/documentation-only updates do not trigger broad application CI or GitHub Pages rebuilds, and no Windows-hosted Actions are used for ledger automation.",
       "evidence": [
-        "PR #1726 merged as 606278d2fcaf2aa26290d97d5c7f0f455c03dc9e.",
-        ".github/workflows/deploy-field-ops.yml remains ubuntu-latest and now runs only for index.html, field-ops-app-vite/**, or its own workflow file.",
-        "PR #1726 checks ran only on ubuntu-latest; zero Windows Actions were used."
+        "PR #1726 merged as 606278d2fcaf2aa26290d97d5c7f0f455c03dc9e; GitHub Pages is now path-filtered and remains ubuntu-latest.",
+        "Measured on docs-only Customer 1 reconciliation commit 72be6c52: no GitHub Pages deployment was triggered, but Vite Build Check and Operational Payload Guard still ran. Therefore the original READY claim was too broad and this gate is reopened until broad application CI is also excluded for ledger/training-only changes.",
+        "No Windows-hosted Action was introduced or observed in this reconciliation."
       ]
     },
     {
