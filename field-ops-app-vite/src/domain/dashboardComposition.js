@@ -165,9 +165,9 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Awaiting receipt",
     census: "W-1 / W-2 / P-6",
     needs: (ctx) => has(ctx, "inventory.stock.receive") || isOperationsViewer(ctx),
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "The receiving queue is live in the Receiving workspace. This dashboard does not yet compose its counts.",
+    // BOUNDED ACTIONABLE PREVIEW (#172) over the EXISTING governed callable seam
+    // (fetchReceivablePurchaseOrders). No new receiving authority, no client-direct collection read.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "adminDecisions",
@@ -175,9 +175,10 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Decisions for you",
     census: "A-1 / A-2 / A-3",
     needs: (ctx) => ctx?.role === "admin",
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "The decision queues are live in Administration. This dashboard does not yet compose their counts.",
+    // BOUNDED PREVIEW of ROLE REQUESTS ONLY, named as such. Access requests and password resets
+    // have server callables but no governed client list read, so folding them into one tile would
+    // assert a completeness nothing here can support (#172 s4: never flatten distinct classes).
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "myOpportunities",
@@ -262,9 +263,10 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Work orders by status",
     census: "SV-1",
     needs: isOperationsViewer,
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "The status breakdown is live in Service Operations. This dashboard does not yet compose its chart.",
+    // A COMPLETE count, permitted because the read is an UNBOUNDED subscription narrowed only by
+    // Rules -- not a page. Stored statuses only; past-due and conflict overlap and live in Service
+    // attention, which states its counts are not a total.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "teamGoals",
@@ -282,9 +284,10 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "By technician",
     census: "SV-10 / T-4",
     needs: isOperationsViewer,
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "A per-technician comparison needs completed-count and open-count reads this dashboard does not yet make.",
+    // COMPOSED, AND DELIBERATELY NOT A LEADERBOARD. Rows come back in NAME order with no rank,
+    // score or colour, and the quality measures the platform does not define are shown as an
+    // explicit reserved absence rather than omitted -- throughput alone is not the whole of the job.
+    state: () => MODULE_STATE.READY,
   },
 
   // ---------------------------------------------------------------- DRIVERS
@@ -296,9 +299,17 @@ export const DASHBOARD_MODULES = Object.freeze([
     // DERIVED INFORMATION, permitted on a dashboard by Decision #161 and labelled as such by the
     // component. It may never be called On hand or Available.
     needs: (ctx) => isOperationsViewer(ctx) || hasLocationScope(ctx),
-    state: () => MODULE_STATE.NOT_WIRED,
+    // RECLASSIFIED after tracing the authority (#172 s2: NOT_WIRED must not hide a real gap).
+    //
+    // The forecast engine is real and governed, but it answers PER PART, from that part's own ledger
+    // and usage history. A dashboard section has no part in hand: composing one would mean reading
+    // the catalogue and every part's ledger to pick which parts to show, and any location-level
+    // figure built that way would be an aggregate of derived per-part predictions -- a number with
+    // no authority behind it wearing the name of a stock position. There is no governed
+    // forecast-exception read to preview instead.
+    state: () => MODULE_STATE.UNAVAILABLE,
     blocker:
-      "The stock forecast is live on the part record, labelled as derived. This dashboard does not yet compose it.",
+      "Stock forecasts are produced for one part at a time, from that part's own history, and are shown on the part record where they are labelled as derived. There is no governed forecast for a whole location, and building one by adding up per-part predictions would produce a figure with no authority behind it.",
   },
   {
     key: "governedStockPosition",
@@ -328,9 +339,12 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Technician availability",
     census: "SV-7",
     needs: isOperationsViewer,
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "Recorded working hours are live in Scheduling. This dashboard does not yet compose them.",
+    // COMPOSED from the Scheduling READ (both availability collections deny client reads, so this
+    // is a windowed callable, not a subscription). The technicians asked about are exactly those
+    // with work assigned in this viewer's governed reach -- no second scope model. A technician with
+    // NO recorded schedule is shown as unrecorded, never as zero hours: rendering null as 0 would
+    // state that someone is unavailable all day, which is a claim nobody made.
+    state: () => MODULE_STATE.READY,
   },
 
   // ---------------------------------------------------------------- BUSINESS IMPACT
@@ -355,12 +369,12 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Billed",
     census: "S-10",
     needs: (ctx) => has(ctx, "finance.read"),
-    state: () => MODULE_STATE.NOT_WIRED,
-    // ENGINEERING DEBT, not a governance boundary. `listFinancialFacts` accepts a period and rolls
-    // money up server-side per currency, and refuses to summarize a truncated page at all -- so the
-    // figure it returns is complete or it is honestly absent. Composing it here is implementation.
-    blocker:
-      "Billed totals are governed and readable for a reporting period. This dashboard does not yet compose them; they are live in Financials.",
+    // COMPOSED from the server's OWN per-company, per-currency rollup. The dashboard performs no
+    // money arithmetic: it renders what the server rolled up, and never adds the two operating
+    // companies together (that needs an intercompany elimination rule -- FIN-BLOCK-004) nor two
+    // currencies (that needs an FX policy). A truncated read is REFUSED by the server and stays
+    // refused here.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "firmCollected",
@@ -368,9 +382,8 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Collected",
     census: "S-11",
     needs: (ctx) => has(ctx, "finance.read"),
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "Collected totals are governed and readable for a reporting period. This dashboard does not yet compose them; they are live in Financials.",
+    // Same authority and same refusals as Billed. Booked's absence does not suppress it.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "firmBooked",

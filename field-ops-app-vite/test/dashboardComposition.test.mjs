@@ -122,7 +122,14 @@ test("GATED, UNAVAILABLE and NOT_WIRED stay three different states", () => {
   const states = new Set(DASHBOARD_MODULES.map((m) => m.state({})));
   assert.ok(states.has(MODULE_STATE.GATED));
   assert.ok(states.has(MODULE_STATE.UNAVAILABLE));
-  assert.ok(states.has(MODULE_STATE.NOT_WIRED));
+  assert.ok(states.has(MODULE_STATE.READY));
+  // SATISFIED_ELSEWHERE joined them (#172 s11): live on another governed surface, deliberately.
+  assert.ok(states.has(MODULE_STATE.SATISFIED_ELSEWHERE));
+  // NOT_WIRED is now EMPTY, and that is the point of this run rather than an accident. Every module
+  // that was engineering debt has been composed; everything still absent is absent for a named
+  // authority reason. The state itself is KEPT so a newly declared module can be honest about
+  // being unbuilt -- see the dedicated NOT_WIRED = 0 assertion below.
+  assert.ok(!states.has(MODULE_STATE.NOT_WIRED), "NOT_WIRED must be empty after the reconciliation");
 });
 
 test("the cost-dependent module is UNAVAILABLE and names what is actually missing", () => {
@@ -189,9 +196,9 @@ test("booked, billed and collected are three facts with three readinesses, never
   const collected = DASHBOARD_MODULES.find((m) => m.key === "firmCollected");
   const booked = DASHBOARD_MODULES.find((m) => m.key === "firmBooked");
 
-  // Billed and collected are ENGINEERING DEBT -- nobody must decide anything.
-  assert.equal(billed.state({}), MODULE_STATE.NOT_WIRED);
-  assert.equal(collected.state({}), MODULE_STATE.NOT_WIRED);
+  // Billed and collected are now COMPOSED, from the server's own per-company, per-currency rollup.
+  assert.equal(billed.state({}), MODULE_STATE.READY);
+  assert.equal(collected.state({}), MODULE_STATE.READY);
   // Booked is a genuine absence -- there is no read to switch on, at any period.
   assert.equal(booked.state({}), MODULE_STATE.UNAVAILABLE);
   assert.match(booked.blocker, /no governed read/i);
@@ -359,5 +366,57 @@ test("a non-READY progress has a neutral tone and no bar", () => {
   ]) {
     assert.equal(goalTone(p), "neutral");
     assert.equal(goalBarPercent(p), null);
+  }
+});
+
+// ===========================================================================
+// THE CLOSING GATE
+// ===========================================================================
+
+test("NO module is left as engineering debt -- NOT_WIRED must be zero", () => {
+  // The terminal condition of the reconciliation. Every module is now exactly one of: composed,
+  // satisfied on another governed surface, gated on a named activation, or unavailable for a named
+  // missing authority. NOT_WIRED means "nobody must decide anything and this surface simply has not
+  // done the work" -- and there is no longer any of that.
+  const notWired = DASHBOARD_MODULES.filter((m) => m.state({}) === MODULE_STATE.NOT_WIRED);
+  assert.deepEqual(notWired.map((m) => m.key), [], "these modules are unfinished, not blocked");
+});
+
+test("every module resolves to exactly one of the four honest end states", () => {
+  const allowed = new Set([
+    MODULE_STATE.READY,
+    MODULE_STATE.SATISFIED_ELSEWHERE,
+    MODULE_STATE.GATED,
+    MODULE_STATE.UNAVAILABLE,
+  ]);
+  for (const m of DASHBOARD_MODULES) {
+    assert.ok(allowed.has(m.state({})), `${m.key} is in an unclassified state`);
+  }
+});
+
+test("every non-READY module names a blocker; no bare 'unavailable' survives", () => {
+  // A blocker sentence is the whole value of a module that shows no number: it says whether someone
+  // must decide something, define something, or look somewhere else.
+  for (const m of DASHBOARD_MODULES) {
+    if (m.state({}) === MODULE_STATE.READY) continue;
+    assert.ok(typeof m.blocker === "string" && m.blocker.length > 40, `${m.key} has no usable blocker`);
+    assert.ok(!/^unavailable.?$/i.test(m.blocker.trim()), `${m.key} says nothing`);
+  }
+});
+
+test("no blocker cites an authority gap that has since been closed", () => {
+  // The stale-claim guard, generalized. Each pattern was TRUE when written and became false without
+  // anyone editing it -- which is exactly how a blocker sends a reader to build what already exists.
+  const disproven = [
+    [/no reporting (calendar|period)/i, "G-05 landed the reporting calendar"],
+    [/no governed cost fact exists/i, "FIN-BLOCK-003A writes acquisition-cost facts"],
+    [/not switched on for this environment/i, "inventory.balance.read is activated in platform-sandbox"],
+    [/no role currently carries a finance visibility scope/i, "the FIN-004 reach finding was withdrawn"],
+  ];
+  for (const m of DASHBOARD_MODULES) {
+    if (!m.blocker) continue;
+    for (const [pattern, why] of disproven) {
+      assert.ok(!pattern.test(m.blocker), `${m.key} cites a closed gap: ${why}`);
+    }
   }
 });
