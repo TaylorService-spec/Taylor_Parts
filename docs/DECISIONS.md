@@ -5059,3 +5059,104 @@ was registered, no grant was made, FIN-004 reach is unchanged, and SELF/TEAM act
 `functions/test/acquisitionCostReceipt.test.mjs` (10 cases, emulator); workflow
 `.github/workflows/inventory-receiving-command-tests.yml`, in a job with **its own emulator** for the
 reason that file already documents.
+---
+
+## #165 — OWNER RULING: one inventory commitment authority (2026-09-02)
+
+**Number note:** #160 and #161 are claimed by the concurrently-open PR #1745. This entry takes the
+next free number rather than colliding with it.
+
+**Source:** the CASE C reconciliation in PR #1746 (merge `73616944`), which found two commitment
+authorities over one physical stock, two conflicting on-hand definitions, and four lifecycle gaps.
+
+### The ruling
+
+1. **ONE COMMITMENT POOL.** Work Orders and Sales Orders may not operate as independent inventory
+   commitment authorities over the same physical stock. The canonical mechanism is the
+   transactional reservation ledger — `inventory_transactions` RESERVED / RELEASED / CONSUMED with
+   its per-part locking. `sales_orders.lines[].allocatedQty` must not remain a second authority
+   capable of independently consuming availability, and `salesOrder.fulfill` must not be activated
+   against the competing allocation model.
+2. **ONE OPERATIONAL ON-HAND AUTHORITY.** Operational accept/refuse decisions use governed
+   inventory evidence. The static `partsCatalog` baseline is not authoritative on-hand and must not
+   determine whether a Work Order dispatch succeeds. Missing evidence stays UNKNOWN and is never
+   silently converted to zero.
+3. **RESERVATION FOLLOWS CURRENT DEMAND.** After commitment, a demand change adjusts the
+   commitment: increase reserves the delta, decrease releases the excess, removal releases
+   everything outstanding. All-or-nothing is preserved for any newly requested positive delta.
+4. **RESERVATION SCOPE.** Canonical reservations must be attributable to `operatingCompanyId` and
+   an inventory location, so Taylor/Ventana and warehouse/truck can be distinguished. Company must
+   not be inferred from location, nor location from ownership.
+5. **STOCKOUT REMAINS OPEN.** Not defined by this package.
+6. **ATP REMAINS OPEN.** Not defined by this package; no ATP formula and no ATP dashboard metric.
+
+### What this package IMPLEMENTED and PROVED
+
+**Ruling 2 — CLOSED.** `inventoryService.getAvailableQuantity` no longer reads the static
+catalogue. It composes `sumLedgerEligibleOnHand` (the same Owner-ratified derivation the Sales
+Order path uses, over the same `status==ACTIVE` warehouses) minus open commitment, and returns
+`null` for UNKNOWN. `reserveParts` and `consumeParts` fail closed on UNKNOWN with a refusal
+distinct from a shortage. The duplicate all-location derivation `sumGovernedLedger` is **deleted**;
+its H7/H7b coverage was retargeted onto the surviving function rather than lost. MOBILE/truck stock
+is excluded from committable warehouse stock, and that exclusion is now tested.
+
+**Ruling 3 — CLOSED.** `reconcileReservation()` re-derives the commitment from the current plan in
+one transaction, reusing the existing locks: delta-reserve on increase (never a second full line),
+exact release on decrease, full release on removal. `releaseParts` now iterates the **ledger**
+rather than the current plan, which closes the orphan leak where a deleted requirement's
+reservation could never be released. `setWorkOrderPartsPlan` invokes it, gated on the governed
+`inventory_sync_status.processedStates.DISPATCHED` marker, outside the plan transaction so an
+inventory shortfall cannot roll back the business action.
+
+**Ruling 1 — PARTIALLY closed.** On-hand is now one function for both families, and availability
+here nets every commitment in the ledger regardless of which family wrote it — so the moment Sales
+Order commitments become ledger events, a Work Order dispatch sees them with no further change.
+Sales Order commitments are **not yet** ledger events. See the blocker below.
+
+**Ruling 4 — NOT closed.** See the blocker below.
+
+### The blocker: nothing removes consumed stock from on-hand
+
+Implementing ruling 1 surfaced a **pre-existing defect in a ratified derivation**, proven in
+`functions/test/inventoryConsumptionOnHandGap.test.mjs`:
+
+`sumLedgerEligibleOnHand` counts only physical movement types, and legacy commitment rows carry no
+`location`, so a CONSUMED entry is invisible to it twice over. `consumeParts` writes no physical
+removal. **Consumed stock therefore never leaves on-hand.** The two paths compensate differently:
+`inventoryService` never subtracts CONSUMED from commitment, so the consumed quantity stays out of
+availability (right number, wrong reason); `openWorkOrderReserved` does subtract it and does not
+compensate, so **the Sales Order path reports 5 available after 5 were received and 2 consumed,
+when 3 physically remain.**
+
+Adopting the Sales Order commitment sum in the Work Order path — the obvious route to one pool —
+would import that over-availability into the live dispatch path. So this package took the
+convergence that is unambiguously safe (one on-hand source) and left the commitment sum alone.
+
+**The decision required:** how does consumption reduce on-hand? Either (a) consumption writes a
+physical removal movement, (b) `sumLedgerEligibleOnHand` counts location-less CONSUMED rows, or
+(c) commitment permanently retains consumed quantity platform-wide. Each changes inventory
+semantics or a ratified derivation, so none was chosen here.
+
+### Ruling 4 is blocked on an authority that does not exist
+
+A canonical reservation cannot carry what its source cannot supply, and inference is forbidden:
+
+- **Company.** A Sales Order carries a required governed `operatingCompanyId`. A **Work Order does
+  not carry one at all**, and DECISIONS #143 forbids deriving it from technician, dispatcher,
+  creator, customer or location. The 30 unresolved sandbox Work Orders are already recorded as
+  `NO_GOVERNED_COMPANY_SOURCE`.
+- **Location.** **Neither family selects a warehouse.** Both pool across all eligible ACTIVE
+  warehouses. There is no Work Order inventory-location selection authority, and the ruling
+  explicitly forbids inventing a fake "global" location.
+
+Requiring both on every new reservation would fail every Work Order dispatch closed. Creating the
+missing selection authority is new business authority this package may not mint. Recorded, not
+worked around.
+
+### Preserved
+
+Firestore transactional semantics; per-part `inventory_reservation_locks`; all-or-nothing
+reservation; idempotency; the DISPATCHED/CANCELLED/COMPLETED trigger points; PLAN PARTS != RESERVE
+PARTS != USE PARTS before dispatch; picking and staging reserve nothing; `salesOrder.fulfill`
+`active:false`; no ATP formula; no stockout definition; no dashboard Committed/Available/ATP; no
+Rules, schema, capability, role or production change; no deploy.

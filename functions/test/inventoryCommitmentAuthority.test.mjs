@@ -137,19 +137,46 @@ test("the WORK ORDER path is BLIND to Sales Order allocations — the asymmetry,
   assert.match(service, /Insufficient stock/, "and refuses when short");
 });
 
-test("the two paths also disagree about WHAT IS ON HAND", () => {
-  // A second, quieter divergence. The Sales Order path counts ledger movements at ACTIVE
-  // WAREHOUSES only. The Work Order path sums the ledger across ALL locations and adds a STATIC
-  // catalogue baseline (partsCatalog.ts warehouseQty) that the catalogue's own header calls
-  // "METADATA ONLY -- NO STOCK AUTHORITY". Both are recorded; neither is changed here.
+test("CLOSED — both paths now derive on-hand from the SAME function over the same eligible warehouses", () => {
+  // This test previously pinned the DIVERGENCE: the Work Order path added a static catalogue
+  // baseline and summed all locations, while the Sales Order path used the ledger at ACTIVE
+  // warehouses. DECISIONS #165 retired the baseline, so the assertion is inverted rather than
+  // deleted — it now fails if a second on-hand derivation reappears.
   const service = code(INVENTORY_SERVICE);
-  assert.match(service, /warehouseQty/, "the WO path still uses the static baseline");
-  assert.match(service, /getCatalogItem/, "sourced from the static catalogue");
+  assert.ok(!service.includes("getCatalogItem"), "the WO path must not read the static catalogue");
+  assert.ok(!service.includes("warehouseQty"), "…and must not reference its quantity at all");
+  assert.match(service, /sumLedgerEligibleOnHand/, "it composes the canonical on-hand derivation");
+  assert.match(service, /WAREHOUSES_COLLECTION/, "…over eligible warehouses");
+  assert.ok(!service.includes("sumGovernedLedger"), "the duplicate all-location sum is deleted");
+
   const alloc = code(ALLOCATE_SO);
-  assert.ok(!alloc.includes("getCatalogItem"), "the SO path uses the ledger only");
-  assert.match(alloc, /eligibleWarehouseIds/, "and restricts to eligible warehouses");
-  // The static catalogue says of itself that it is not stock authority.
+  assert.match(alloc, /sumLedgerEligibleOnHand/, "the SO path composes the same one");
+  assert.match(alloc, /eligibleWarehouseIds/, "over the same eligible set");
+
+  // The static catalogue still says of itself that it is not stock authority — and now nothing
+  // operational contradicts it.
   assert.match(src("data/partsCatalog.ts"), /NO STOCK AUTHORITY/i);
+});
+
+test("UNKNOWN reaches the refusal — a dispatch cannot commit stock nobody has evidence of", () => {
+  const service = code(INVENTORY_SERVICE);
+  assert.match(service, /Unknown stock/, "UNKNOWN is its own refusal, distinct from a shortage");
+  assert.match(service, /Insufficient stock/, "and a real shortage still reads as one");
+  // The signature carries UNKNOWN rather than collapsing it into a number at the boundary.
+  assert.match(service, /getAvailableQuantity[\s\S]{0,400}?Promise<number \| null>/, "availability is number|null");
+});
+
+test("STILL OPEN — Sales Order commitments are not yet ledger events", () => {
+  // The honest half of DECISIONS #165. On-hand converged; the commitment pool has not, because
+  // consumption never leaves on-hand (inventoryConsumptionOnHandGap.test.mjs). This fails when
+  // that is fixed, which is the point — it forces the record forward rather than going quiet.
+  const alloc = code(ALLOCATE_SO);
+  assert.match(alloc, /allocatedQty/, "SO commitment is still a Sales Order field");
+  assert.ok(!alloc.includes('type: "RESERVED"'), "…and does not yet write a ledger reservation");
+  // Which is safe only while the capability stays inactive.
+  const catalog = src("access/permissionCatalog.ts");
+  const entry = catalog.slice(catalog.indexOf('id: "salesOrder.fulfill"'));
+  assert.match(entry.slice(0, 400), /active:\s*false/, "salesOrder.fulfill must remain inactive");
 });
 
 // ════════════════════ 3. THE PURE SEMANTICS, WHERE THEY ARE GOVERNED ════════════════════
