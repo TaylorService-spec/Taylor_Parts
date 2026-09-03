@@ -50,6 +50,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission";
+import { resolveRuntimeCapabilityOverrides } from "../access/environmentCapabilityOverrides";
 import { isValidAccessVersionValue } from "../access/compactClaims";
 import { recordStandaloneAuditEvent } from "../access/auditEventWriter";
 import type { Role } from "../types/access";
@@ -209,6 +210,13 @@ function isAllowed(
       roles,
       currentAccessVersion: runner.accessVersion,
       target,
+      // 2C.6C (DECISIONS #167): the report.* family is ENVIRONMENT-ACTIVATED. Without the runtime
+      // activation set this service would deny every report capability in EVERY environment --
+      // including the sandbox where Reporting is live -- because the catalog now registers them
+      // active:false. Resolved from the runtime's own trusted project identity, exactly as
+      // effectiveAccessFeed.ts does. Production carries no overrides, so Reporting stays
+      // fail-closed there until a separate activation ruling.
+      activationOverrides: resolveRuntimeCapabilityOverrides(),
     }).decision === "ALLOW"
   );
 }

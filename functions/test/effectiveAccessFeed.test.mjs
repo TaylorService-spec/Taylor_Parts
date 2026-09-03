@@ -87,6 +87,9 @@ async function withProject(projectId, fn) {
 }
 
 const PROJECT_ID = "taylor-parts";
+// The environment where Reporting is activated. Named explicitly so the reporting assertions
+// below cannot silently become production assertions.
+const SANDBOX_PROJECT = "eos-platform-sandbox";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 
@@ -201,20 +204,25 @@ async function main() {
   // test pinned admin OUT of it; the Owner ruling "Admin and Owner have full access to all
   // possible features and permissions" put admin in. The assertion is flipped rather than
   // dropped, so admin's report access stays something the suite states on purpose.
+  await withProject(SANDBOX_PROJECT, async () => {
+    // report.* is environment-activated (DECISIONS #167). The feed resolves its activation set
+    // from GCLOUD_PROJECT, so the environment where Reporting is live must be named -- in
+    // production these same ids resolve DENY/inactivePermission, which is the whole point.
   await check("admin: real grants ALLOW, and report.* now ALLOWs too (2026-08-19 full-catalog ruling)", async () => {
-    const principalUid = await seedUser(1);
-    await grantRole(principalUid, "admin");
-    const result = await resolveEffectiveAccess({
-      principalUid,
-      permissionIds: ["customer.record.read", "workOrder.create", "report.customer.read"],
+      const principalUid = await seedUser(1);
+      await grantRole(principalUid, "admin");
+      const result = await resolveEffectiveAccess({
+        principalUid,
+        permissionIds: ["customer.record.read", "workOrder.create", "report.customer.read"],
+      });
+      assert.equal(result.decisions["customer.record.read"], true);
+      assert.equal(result.decisions["workOrder.create"], true);
+      assert.equal(
+        result.decisions["report.customer.read"],
+        true,
+        "admin holds the full catalog since 2026-08-19; report.customer.read is registered active, so it resolves ALLOW",
+      );
     });
-    assert.equal(result.decisions["customer.record.read"], true);
-    assert.equal(result.decisions["workOrder.create"], true);
-    assert.equal(
-      result.decisions["report.customer.read"],
-      true,
-      "admin holds the full catalog since 2026-08-19; report.customer.read is registered active, so it resolves ALLOW",
-    );
   });
 
   await check("technician: unconditional grant ALLOWs, admin-only capability DENIEs", async () => {
@@ -231,17 +239,22 @@ async function main() {
 
   // === Owner (governed business Role) -- Issue #325 W1's real report.* grant ===
 
+  await withProject(SANDBOX_PROJECT, async () => {
+    // report.* is environment-activated (DECISIONS #167). The feed resolves its activation set
+    // from GCLOUD_PROJECT, so the environment where Reporting is live must be named -- in
+    // production these same ids resolve DENY/inactivePermission, which is the whole point.
   await check("Owner: mirrors admin AND additionally ALLOWs every active wave-1 report.* id", async () => {
-    const principalUid = await seedUser(1);
-    await grantRole(principalUid, "owner");
-    const result = await resolveEffectiveAccess({
-      principalUid,
-      permissionIds: ["customer.record.read", "report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"],
+      const principalUid = await seedUser(1);
+      await grantRole(principalUid, "owner");
+      const result = await resolveEffectiveAccess({
+        principalUid,
+        permissionIds: ["customer.record.read", "report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"],
+      });
+      assert.equal(result.decisions["customer.record.read"], true);
+      assert.equal(result.decisions["report.customer.read"], true);
+      assert.equal(result.decisions["report.customer.field.name.read"], true);
+      assert.equal(result.decisions["report.equipment.field.location.read"], true);
     });
-    assert.equal(result.decisions["customer.record.read"], true);
-    assert.equal(result.decisions["report.customer.read"], true);
-    assert.equal(result.decisions["report.customer.field.name.read"], true);
-    assert.equal(result.decisions["report.equipment.field.location.read"], true);
   });
 
   await check("Owner: inactive (active:false) report fields still DENY despite the real grant -- fail closed", async () => {
