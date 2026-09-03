@@ -11,6 +11,7 @@
 // Prerequisite: `npm run build` in functions/ first (imports the
 // compiled lib/ output, not the TypeScript source).
 import assert from "node:assert/strict";
+import { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } from "../lib/access/environmentCapabilityOverrides.js";
 import { resolveEffectivePermission } from "../lib/access/resolveEffectivePermission.js";
 import { COMPATIBILITY_ROLES, ADMIN_ROLE, DISPATCHER_ROLE, TECHNICIAN_ROLE } from "../lib/access/compatibilityRoles.js";
 import {
@@ -130,13 +131,19 @@ function grant(roleId, roles) {
   };
 }
 
-function resolve(permissionId, roleId, roles) {
+// 2C.6C: `activationOverrides` is optional and defaults to none, so every existing call keeps its
+// exact behaviour. It exists for the reporting checks, whose capabilities became
+// environment-activated (DECISIONS #167) and therefore need the environment supplied to resolve
+// at all. Deliberately NOT defaulted to the sandbox set: that would activate unrelated spine
+// capabilities and could silently flip assertions elsewhere in this file.
+function resolve(permissionId, roleId, roles, activationOverrides = undefined) {
   return resolveEffectivePermission({
     permissionId,
     assignments: [grant(roleId, roles)],
     roles,
     currentAccessVersion: 1,
     target: { scope: { type: "global" }, condition: {} },
+    ...(activationOverrides ? { activationOverrides } : {}),
   });
 }
 
@@ -1159,11 +1166,20 @@ check("Owner holds every ADMIN_ROLE permission, through the same governed resolv
 
 // === Issue #325 / ADR-007 W1 + W-SAVE -- Owner's active report.* grant ===
 
+// 2C.6C (DECISIONS #167): the 36-active / 3-inactive split used to be a CATALOGUE fact. The whole
+// report.* family is now `active: false` so production can be fail-closed, and the split moved to
+// the ACTIVATION layer: the sandbox override set carries exactly the 36 that were live and
+// deliberately withholds the three sensitive ones (accountOwner, notes, accessNotes).
+//
+// Deriving these two lists from the sandbox activation set rather than from `p.active` keeps every
+// assertion below meaning what it meant, and keeps them honest: if a future change activates a
+// withheld field in sandbox, INACTIVE_REPORT_IDS shrinks and the count assertions fail.
+const REPORTING_SANDBOX_ACTIVE = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-sandbox");
 const ACTIVE_REPORT_IDS = PERMISSION_CATALOG.filter(
-  (p) => p.id.startsWith("report.") && p.active !== false,
+  (p) => p.id.startsWith("report.") && REPORTING_SANDBOX_ACTIVE.has(p.id),
 ).map((p) => p.id);
 const INACTIVE_REPORT_IDS = PERMISSION_CATALOG.filter(
-  (p) => p.id.startsWith("report.") && p.active === false,
+  (p) => p.id.startsWith("report.") && !REPORTING_SANDBOX_ACTIVE.has(p.id),
 ).map((p) => p.id);
 const DEFINITION_CRUD_IDS = [
   "report.definition.create",
@@ -1182,7 +1198,7 @@ check("ACTIVE_REPORT_IDS is exactly 36 ids (31 wave-1 object/field + 5 W-SAVE de
 check("Owner holds every ACTIVE report.* id (wave-1 + W-SAVE), resolving ALLOW", () => {
   for (const id of ACTIVE_REPORT_IDS) {
     assert.ok(OWNER_ROLE.permissions.includes(id), `Owner is missing "${id}"`);
-    assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+    assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES, REPORTING_SANDBOX_ACTIVE).decision, "ALLOW", id);
   }
 });
 
@@ -1320,16 +1336,18 @@ check("report.* is confined to owner and the three approved Reporting tiers -- N
 });
 
 check("no compatibility Role and no BUSINESS-TITLE governed Role can resolve a report.* capability", () => {
+  // The reporting family is environment-activated; supply it so the POSITIVE half can resolve.
+  const REPORTING_ACTIVE = new Set(PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.")).map((p) => p.id));
   const sampleIds = ["report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"];
   for (const id of sampleIds) {
     // admin is NOT asserted here -- it holds the full catalog by the 2026-08-19 ruling and correctly
     // ALLOWs. dispatcher and technician are the Roles this check exists to protect.
-    assert.equal(resolve(id, "dispatcher", COMPATIBILITY_ROLES).decision, "DENY", `dispatcher + ${id}`);
-    assert.equal(resolve(id, "technician", COMPATIBILITY_ROLES).decision, "DENY", `technician + ${id}`);
+    assert.equal(resolve(id, "dispatcher", COMPATIBILITY_ROLES, REPORTING_ACTIVE).decision, "DENY", `dispatcher + ${id}`);
+    assert.equal(resolve(id, "technician", COMPATIBILITY_ROLES, REPORTING_ACTIVE).decision, "DENY", `technician + ${id}`);
     for (const role of ALL_GOVERNED_ROLES) {
       if (role.id === "owner" || REPORTING_ROLE_IDS.includes(role.id)) continue;
       assert.equal(
-        resolve(id, role.id, GOVERNED_BUSINESS_ROLES).decision, "DENY",
+        resolve(id, role.id, GOVERNED_BUSINESS_ROLES, REPORTING_ACTIVE).decision, "DENY",
         `${role.id} + ${id} -- a business title must not resolve reporting`,
       );
     }
@@ -1337,16 +1355,16 @@ check("no compatibility Role and no BUSINESS-TITLE governed Role can resolve a r
   // And the positive half, resolver-verified: the tier that SHOULD read it does. Asserting only
   // denials would let the tiers be defined as empty and still pass.
   assert.equal(
-    resolve("report.customer.field.name.read", "reportViewer", GOVERNED_BUSINESS_ROLES).decision,
+    resolve("report.customer.field.name.read", "reportViewer", GOVERNED_BUSINESS_ROLES, REPORTING_ACTIVE).decision,
     "ALLOW", "reportViewer must actually resolve an ordinary report field",
   );
   assert.equal(
-    resolve("report.customer.field.paymentTerms.read", "reportFinanceViewer", GOVERNED_BUSINESS_ROLES).decision,
+    resolve("report.customer.field.paymentTerms.read", "reportFinanceViewer", GOVERNED_BUSINESS_ROLES, REPORTING_ACTIVE).decision,
     "ALLOW", "reportFinanceViewer must actually resolve a finance-sensitive field",
   );
   // The separation, resolver-verified rather than asserted from the permission list.
   assert.equal(
-    resolve("report.customer.field.paymentTerms.read", "reportViewer", GOVERNED_BUSINESS_ROLES).decision,
+    resolve("report.customer.field.paymentTerms.read", "reportViewer", GOVERNED_BUSINESS_ROLES, REPORTING_ACTIVE).decision,
     "DENY", "reportViewer must be DENIED the finance-sensitive fields",
   );
 });
