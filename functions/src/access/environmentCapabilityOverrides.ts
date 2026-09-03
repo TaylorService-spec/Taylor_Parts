@@ -35,6 +35,47 @@ import type { PermissionId } from "../types/access";
 // exception (Wave 6 Owner Decision, 2026-08-15): a trusted READ-only projection
 // (functions/src/partMaster/manufacturerReadService.ts), never the write/
 // activate authority Part Master's own governance track still owns.
+// PRODUCTION ADOPTION ELIGIBILITY (2C.6F). A SEPARATE, NARROWER allow-list than the spine set
+// above, and deliberately not derived from it.
+//
+// Production adoption is higher-risk than sandbox activation, so a capability being registered --
+// or even being sandbox-eligible -- must not make it production-adoptable. Every id here was named
+// by an Owner ruling for production. There is NO prefix matching and no `report.*` wildcard: the
+// fourteen deferred Reporting capabilities share the prefix and are absent on purpose, so a future
+// catalog addition under any existing prefix is NOT silently production-adoptable.
+//
+// FIRST AND ONLY USE TODAY: Reporting SET 2 (5 entity/execution reads + 20 ordinary field reads).
+// Deferred and therefore ABSENT: the 4 report.definition mutations (no saved-definition callable is
+// deployed in production) and the 10 sensitive field reads (billingAddress, externalIds, notes,
+// paymentTerms, taxStatus, accountOwner, contact email, contact phone, location accessNotes,
+// equipment notes).
+export const PRODUCTION_ACTIVATION_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<PermissionId>([
+  "report.customer.read",
+  "report.contact.read",
+  "report.location.read",
+  "report.equipment.read",
+  "report.definition.read",
+  "report.customer.field.name.read",
+  "report.customer.field.status.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.billingContact.read",
+  "report.contact.field.name.read",
+  "report.contact.field.role.read",
+  "report.contact.field.customer.read",
+  "report.location.field.name.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.status.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.createdAt.read",
+]);
 export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<PermissionId>([
   // 2C.6C -- the REPORTING family. These were catalog `active: true`, which in this architecture
   // means LIVE IN EVERY ENVIRONMENT, production included: an override set can only ADD
@@ -213,6 +254,18 @@ const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
 // structural (not the full registry type): only role, project identity, and the
 // override declaration matter to the activation decision.
 export interface ActivationRegistryEnv {
+  /**
+   * PRODUCTION ADOPTION (2C.6F). Exact PermissionIds this PRODUCTION environment has explicitly
+   * adopted for use despite their catalog `active: false`.
+   *
+   * DELIBERATELY A DIFFERENT FIELD FROM `capabilityActivationOverrides`, not a widening of it.
+   * That field's production hard-block is intentional defence in depth and is UNCHANGED: a
+   * production environment still yields EMPTY from it no matter what its data says. This field
+   * carries a different meaning -- not "an environment override" but "production has adopted
+   * this governed capability" -- and is read by a different resolver with its own narrower
+   * eligibility list.
+   */
+  readonly productionCapabilityActivations?: readonly unknown[] | null;
   readonly role?: unknown;
   readonly firebase?: { readonly projectId?: unknown } | null;
   readonly capabilityActivationOverrides?: unknown;
@@ -546,7 +599,42 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
     Object.freeze({ role: "production", firebase: Object.freeze({ projectId: "taylor-parts" }),
       // Declared false AND refused by role. Two independent blocks, so a future edit to
       // either one cannot open this on its own.
-      privateAiSyntheticOperationalInterpretation: false }),
+      privateAiSyntheticOperationalInterpretation: false,
+      // 2C.6F -- the FIRST production capability adoption. Reporting SET 2: 25 of the 39 report.*
+      // capabilities, named by Owner ruling. This is NOT capabilityActivationOverrides -- that field
+      // stays absent here, and would be refused by role even if present.
+      //
+      // The other 14 report.* capabilities are ABSENT on purpose and resolve DENY/inactivePermission:
+      // 4 definition mutations (no saved-definition callable is deployed in production) and 10
+      // sensitive field reads. Admin stays ELIGIBLE for all 39 everywhere; this is only what
+      // production has ADOPTED.
+      productionCapabilityActivations: Object.freeze([
+        "report.customer.read",
+        "report.contact.read",
+        "report.location.read",
+        "report.equipment.read",
+        "report.definition.read",
+        "report.customer.field.name.read",
+        "report.customer.field.status.read",
+        "report.customer.field.relationshipTypes.read",
+        "report.customer.field.tags.read",
+        "report.customer.field.createdAt.read",
+        "report.customer.field.commercialProfile.read",
+        "report.customer.field.billingContact.read",
+        "report.contact.field.name.read",
+        "report.contact.field.role.read",
+        "report.contact.field.customer.read",
+        "report.location.field.name.read",
+        "report.location.field.address.read",
+        "report.location.field.customer.read",
+        "report.equipment.field.name.read",
+        "report.equipment.field.status.read",
+        "report.equipment.field.identity.read",
+        "report.equipment.field.dates.read",
+        "report.equipment.field.customer.read",
+        "report.equipment.field.location.read",
+        "report.equipment.field.createdAt.read",
+      ]) }),
   ]) as readonly ActivationRegistryEnv[],
 });
 
@@ -558,10 +646,64 @@ let cachedOverrides: ReadonlySet<PermissionId> | null = null;
  * populated by the platform -- never client-supplied, so it cannot be spoofed).
  * Cached at cold start: the deployed project cannot change within a runtime.
  */
+/**
+ * PRODUCTION ADOPTION RESOLVER (2C.6F). The production-only counterpart to
+ * resolveCapabilityOverrides, kept as a separate function so that one's absolute production
+ * refusal survives verbatim.
+ *
+ * Fails closed at every step, and the order matters:
+ *  - missing/empty projectId        -> EMPTY
+ *  - project not in the registry    -> EMPTY (an unknown environment adopts nothing)
+ *  - env.role !== "production"      -> EMPTY (this field is INERT outside production, the mirror
+ *                                     image of capabilityActivationOverrides being inert inside it)
+ *  - malformed/absent declaration   -> EMPTY
+ *  - id not in PRODUCTION_ACTIVATION_ELIGIBLE_IDS -> dropped
+ *
+ * Adoption is NOT eligibility. Everything this returns still has to pass Role membership, scope,
+ * conditions and accessVersion in resolveEffectivePermission. Admin does not bypass activation,
+ * and activation does not confer a grant.
+ */
+export function resolveProductionCapabilityActivations(
+  registry: ActivationRegistry | null | undefined,
+  projectId: string | null | undefined,
+): ReadonlySet<PermissionId> {
+  if (typeof projectId !== "string" || projectId.length === 0) return EMPTY;
+  const environments = registry?.environments;
+  if (!Array.isArray(environments)) return EMPTY;
+  const env = environments.find(
+    (e) => typeof e?.firebase?.projectId === "string" && e.firebase.projectId === projectId,
+  );
+  if (!env) return EMPTY;
+  // Mirror hard-block: this authority exists ONLY for production. A non-production environment
+  // declaring it gets nothing, exactly as a production environment declaring
+  // capabilityActivationOverrides gets nothing.
+  if (env.role !== "production") return EMPTY;
+
+  const declared = Array.isArray(env.productionCapabilityActivations)
+    ? env.productionCapabilityActivations
+    : [];
+  const result = new Set<PermissionId>();
+  for (const id of declared) {
+    if (typeof id === "string" && PRODUCTION_ACTIVATION_ELIGIBLE_IDS.has(id as PermissionId)) {
+      result.add(id as PermissionId);
+    }
+  }
+  return result;
+}
 export function resolveRuntimeCapabilityOverrides(): ReadonlySet<PermissionId> {
   if (cachedOverrides) return cachedOverrides;
   const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? null;
-  cachedOverrides = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, projectId);
+  // 2C.6F: the SINGLE place the two activation authorities are composed. Every runtime consumer
+  // (eleven call sites: the effective-access feed, reporting execution and saved definitions,
+  // reorder, finance, performance, cycle count, transfer, install, acquire, labor) reads activation
+  // through THIS function, so composing here is what makes production adoption honoured
+  // consistently without touching a single caller.
+  //
+  // Exactly one of the two can ever be non-empty for a given project, because each refuses the
+  // other's role. The union is therefore a statement of intent, not an overlap to reason about.
+  const nonProduction = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, projectId);
+  const production = resolveProductionCapabilityActivations(ENVIRONMENT_ACTIVATION_REGISTRY, projectId);
+  cachedOverrides = production.size > 0 ? production : nonProduction;
   return cachedOverrides;
 }
 

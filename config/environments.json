@@ -288,6 +288,33 @@
           "governed": false,
           "notes": "Auto-publishes on merge to main, outside the promotion lifecycle. Recorded as an open governance gap (R-2); this registry observes it and does not change it."
         }
+      ],
+      "productionCapabilityActivations": [
+        "report.customer.read",
+        "report.contact.read",
+        "report.location.read",
+        "report.equipment.read",
+        "report.definition.read",
+        "report.customer.field.name.read",
+        "report.customer.field.status.read",
+        "report.customer.field.relationshipTypes.read",
+        "report.customer.field.tags.read",
+        "report.customer.field.createdAt.read",
+        "report.customer.field.commercialProfile.read",
+        "report.customer.field.billingContact.read",
+        "report.contact.field.name.read",
+        "report.contact.field.role.read",
+        "report.contact.field.customer.read",
+        "report.location.field.name.read",
+        "report.location.field.address.read",
+        "report.location.field.customer.read",
+        "report.equipment.field.name.read",
+        "report.equipment.field.status.read",
+        "report.equipment.field.identity.read",
+        "report.equipment.field.dates.read",
+        "report.equipment.field.customer.read",
+        "report.equipment.field.location.read",
+        "report.equipment.field.createdAt.read"
       ]
     }
   ]

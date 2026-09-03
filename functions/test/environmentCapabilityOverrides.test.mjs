@@ -17,7 +17,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import {
-  resolveCapabilityOverrides,
+  resolveCapabilityOverrides,
+  resolveProductionCapabilityActivations,
   resolveRuntimeCapabilityOverrides,
   resolveSyntheticOperationalInterpretation,
   __resetRuntimeCapabilityOverridesCacheForTest,
@@ -366,17 +367,48 @@ test("runtime resolution is driven by GCLOUD_PROJECT (sandbox -> full spine)", (
   }
 });
 
-test("runtime resolution for production project -> EMPTY", () => {
+// UPDATED BY 2C.6F, and split into the two things it was conflating.
+//
+// This used to assert that the RUNTIME resolver returns EMPTY for production. That was true only
+// because production had no adoption mechanism at all -- `capabilityActivationOverrides` refuses
+// production by role, and nothing else existed. Option 2 added a DISTINCT authority
+// (`productionCapabilityActivations`), and the runtime resolver is precisely where the two are
+// composed, so it now returns what production has explicitly ADOPTED.
+//
+// The security invariant the old assertion was protecting is NOT weakened -- it is asserted
+// directly below, on the mechanism it actually belongs to. What changed is that the runtime
+// resolver is no longer a proxy for it.
+test("runtime resolution for production returns what production has ADOPTED, not the override set", () => {
   const prev = process.env.GCLOUD_PROJECT;
   try {
     __resetRuntimeCapabilityOverridesCacheForTest();
     process.env.GCLOUD_PROJECT = "taylor-parts";
-    assert.equal(resolveRuntimeCapabilityOverrides().size, 0);
+    const runtime = resolveRuntimeCapabilityOverrides();
+    // the adopted set, and nothing from the override path
+    assert.deepEqual(
+      [...runtime].sort(),
+      [...resolveProductionCapabilityActivations(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts")].sort(),
+    );
+    assert.ok(runtime.size > 0, "production has adopted capabilities as of 2C.6F");
   } finally {
     if (prev === undefined) delete process.env.GCLOUD_PROJECT;
     else process.env.GCLOUD_PROJECT = prev;
     __resetRuntimeCapabilityOverridesCacheForTest();
   }
+});
+
+test("the OLD invariant, on the mechanism it belongs to: production yields EMPTY from the override path", () => {
+  // Unchanged and unweakened. capabilityActivationOverrides must never activate production,
+  // whatever its data says -- proven here against the real registry and against poisoned data.
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts").size, 0);
+  const poisoned = {
+    environments: [{
+      role: "production",
+      firebase: { projectId: "taylor-parts" },
+      capabilityActivationOverrides: ["opportunity.write", "report.customer.read"],
+    }],
+  };
+  assert.equal(resolveCapabilityOverrides(poisoned, "taylor-parts").size, 0);
 });
 
 test("runtime resolution with no project identity -> EMPTY", () => {
