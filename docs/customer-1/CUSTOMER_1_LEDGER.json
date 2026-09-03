@@ -103,7 +103,12 @@
       "closeWhen": "Every Day-1 workflow has passed its applicable governed functional, sandbox, North Star, and acceptance gates.",
       "evidence": [
         "docs/design/north-star-migration-ledger.md",
-        "Existing governed authorization, certification, sandbox persona, scanner, service, dispatch, sales, and inventory evidence remains source-specific authority rather than being copied into this ledger."
+        "PR #1761 / a81e5b47: Certification formally closed with world 1.8.0, 1093/1093, final applied-inventory verifier 38/38 PASS, and bounded live Purchasing, Receiving, and Cycle Count evidence. The closeout explicitly does not claim production deployment or close transferred findings.",
+        "PR #1749 / 0d76bea9: Work Order availability now uses the governed ledger on-hand derivation and reservation follows current demand, but the work proved a remaining consumption/on-hand defect: consumed stock is not physically removed from the on-hand derivation, causing Sales Order availability to overstate stock after consumption. Treat as a Customer 1 product blocker if the affected inventory/fulfillment path is Day 1.",
+        "PR #1759 / 94d6e940: legacy stock_locations runtime backend authority was retired from analytics; a remaining client-direct stock_locations read and Rules read block are explicitly carried to a separate Tier-2 retirement gate.",
+        "Existing governed authorization, certification, sandbox persona, scanner, service, dispatch, sales, and inventory evidence remains source-specific authority rather than being copied into this ledger.",
+        "PR #1762 / b19a7486: FIN-BLOCK-003A cost activation merged (Decision #166) — new purchase commitments require price + currency, legacy unpriced purchases grandfathered by a server-stamped priceAuthorityVersion, receipt produces immutable AcquisitionCostFact. MERGED, NOT DEPLOYED.",
+        "PHYSICAL_CONSUMPTION_LOCATION_AUTHORITY_REQUIRED — OPEN Day-1 blocker, pending Owner ruling. A Work Order records consumption with no governed source location, so consumed stock stays in physical on-hand and Sales Order availability re-offers it (receive 5 / consume 2 still reads 5). NOT a code defect that can be closed by implementation: the custody model (WAREHOUSE<->MOBILE transfer, truck registry, bin_placements.pickedForWorkOrderId, serialized currentLocationId) all EXISTS and is governed; the single missing fact is which governed location a consumed quantity left. Every remaining route is a forbidden inference. Options A/B/C and a recommendation: docs/assessments/physical-consumption-location-authority.md. Pinned by functions/test/inventoryConsumptionOnHandGap.test.mjs and functions/test/consumptionCustodyBoundary.test.mjs. C1-PRODUCT-01 CANNOT be READY while this is open if the affected inventory/fulfillment path is Day 1."
       ]
     },
     {
@@ -115,7 +120,8 @@
       "authority": "Verenward + Owner for protected production actions",
       "closeWhen": "Production Rules, Functions, capabilities, roles, protected actions, tenant boundaries, and audit behavior are verified from the production environment for Day-1 scope.",
       "evidence": [
-        "Repository and sandbox governance evidence exists; production evidence remains required."
+        "Repository and sandbox governance evidence exists; production evidence remains required.",
+        "PR #1752 / be1e5579: read-only production R-32 exposure census found zero exposed principals and zero writes/deploys. It also found production is barely using the governed access model: two RoleAssignments on one principal, no manager Roles, and no location scopes. This narrows one production exposure question but does not satisfy full Day-1 production identity/authority verification."
       ]
     },
     {
@@ -174,14 +180,14 @@
       "id": "C1-COST-01",
       "name": "Customer 1 CI cost containment",
       "category": "operations",
-      "status": "READY",
+      "status": "IN_PROGRESS",
       "launchCritical": false,
       "authority": "Verenward",
       "closeWhen": "Ledger/documentation-only updates do not trigger broad application CI or GitHub Pages rebuilds, and no Windows-hosted Actions are used for ledger automation.",
       "evidence": [
-        "PR #1726 merged as 606278d2fcaf2aa26290d97d5c7f0f455c03dc9e.",
-        ".github/workflows/deploy-field-ops.yml remains ubuntu-latest and now runs only for index.html, field-ops-app-vite/**, or its own workflow file.",
-        "PR #1726 checks ran only on ubuntu-latest; zero Windows Actions were used."
+        "PR #1726 merged as 606278d2fcaf2aa26290d97d5c7f0f455c03dc9e; GitHub Pages is now path-filtered and remains ubuntu-latest.",
+        "Measured on docs-only Customer 1 reconciliation commit 72be6c52: no GitHub Pages deployment was triggered, but Vite Build Check and Operational Payload Guard still ran. Therefore the original READY claim was too broad and this gate is reopened until broad application CI is also excluded for ledger/training-only changes.",
+        "No Windows-hosted Action was introduced or observed in this reconciliation."
       ]
     },
     {

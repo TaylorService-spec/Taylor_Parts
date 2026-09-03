@@ -163,12 +163,6 @@ const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
       permissions: [],
     },
     {
-      collection: "stock_locations",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
       collection: "transfer_orders",
       sites: { isAdminOrDispatcher: 1 },
       row: "row24",

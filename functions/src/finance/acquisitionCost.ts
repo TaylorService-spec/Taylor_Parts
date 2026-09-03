@@ -61,6 +61,38 @@ export const PURCHASE_ORDER_LINE_PRICE: AcquisitionCostBasis = "PURCHASE_ORDER_L
 /** Repo convention (partSupplierItems.ts:52): ISO-4217 style, 3 uppercase letters. */
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 
+/**
+ * THE LEGACY CUTOFF, and the reason it is a stored version rather than anything else.
+ *
+ * Activation makes price MANDATORY on new purchase commitments while leaving the purchase orders
+ * already in Firestore — all of which carry no money at all — legitimately unpriced. Something has to
+ * tell those two populations apart, forever, for records written years apart.
+ *
+ * "Missing price means legacy" is the tempting rule and it is exactly wrong: it hands any future
+ * caller a way to skip the requirement and be read as historical. A deployment date is worse — a wall
+ * clock is not authority, and a record's meaning would depend on when someone happened to release.
+ *
+ * So the cutoff is a fact the SERVER stamps on the document at creation, following the
+ * schemaVersion precedent this repo already uses for receiving orders. A document written by the
+ * current command always carries version 2 AND a governed price, because the same command requires
+ * both. A document without the stamp predates this authority and can only have been written by the
+ * earlier command. A current caller therefore cannot masquerade as legacy: it cannot omit the price
+ * (refused) and it cannot choose its own version (server-authored).
+ */
+export const PRICE_AUTHORITY_VERSION = 2;
+
+/**
+ * Is this STORED purchase order governed by the price authority?
+ *
+ * False for every legacy document — which is a statement about which rules it was written under, not
+ * a judgement about whether it is valid. A legacy purchase remains fully receivable; its cost is
+ * simply UNKNOWN.
+ */
+export function isPriceGovernedPurchase(data: { readonly priceAuthorityVersion?: unknown }): boolean {
+  const v = data?.priceAuthorityVersion;
+  return typeof v === "number" && Number.isInteger(v) && v >= PRICE_AUTHORITY_VERSION;
+}
+
 export type AcquisitionCostFailureCode =
   | "PRICE_INVALID"
   | "CURRENCY_INVALID"

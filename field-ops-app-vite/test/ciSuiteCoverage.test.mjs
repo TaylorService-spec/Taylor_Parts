@@ -64,7 +64,6 @@ const KNOWN_UNNAMED = new Set([
   "onHandGovernedLedger.test.jsx", "operationalCard.test.jsx",
   "operationsProcurementLiveSource.test.jsx", "opportunitySectionSaveUi.test.jsx", "ownerSelect.test.jsx",
   "partDetailReorderReenable.test.jsx", "partsStockSection.test.jsx", "performanceSnapshotErrorState.test.jsx",
-  "reconciliationHonestyM15.test.jsx",
   "reconciliationSection.test.jsx", "reorderConsumersDeniedVsAbsent.test.jsx",
   "reorderPurchaseOrderReadErrorContract.test.jsx",
   "reportBuilderArrayFilterAndSavedWiring.test.jsx", "reservationsSection.test.jsx",

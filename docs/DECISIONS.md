@@ -5161,9 +5161,107 @@ PARTS != USE PARTS before dispatch; picking and staging reserve nothing; `salesO
 `active:false`; no ATP formula; no stockout definition; no dashboard Committed/Available/ATP; no
 Rules, schema, capability, role or production change; no deploy.
 
+## #166 — OWNER RULING: acquisition cost ACTIVATION — price is mandatory on new purchase commitments (2026-09-02)
+
+**Context.** Decision #164 built the acquisition-cost authority and deliberately left price OPTIONAL,
+because recording a purchase order is a live deployed workflow and every purchase order in Firestore
+carries no money at all. #164 named making it mandatory as an ACTIVATION step, not a code default.
+This is that step.
+
+It changes WHEN a price is required. It changes nothing about what a cost fact is, and it closes no
+accounting policy.
+
+### The ruling
+
+**1. PRICE IS MANDATORY ON EVERY NEW PURCHASE COMMITMENT.** `recordReorderPurchaseOrder` now refuses a
+commitment without `unitPriceMinor` and `currency`, with its own code `PO_PRICE_REQUIRED` — distinct
+from a malformed-payload error, because "enter the price" and "this field is wrong" are different
+situations and a UI should not have to parse prose to tell them apart.
+
+**2. EXPLICIT ZERO IS A LEGAL PRICE, AND IS NOT THE SAME AS ABSENT.** A no-charge line — a warranty
+replacement, a sample, a supplier making good — is a real commercial fact worth recording as 0.
+Refusing it would push exactly that case into the UNKNOWN bucket, where it becomes indistinguishable
+from a price nobody entered. Zero produces a governed cost fact of zero; absent produces none.
+
+**3. LEGACY PURCHASES ARE GRANDFATHERED, AND THE CUTOFF IS A SERVER-STAMPED VERSION.** This is the
+load-bearing part of the ruling.
+
+Two populations now share one collection and must never be confused. The distinction is
+`priceAuthorityVersion`, authored by the server at creation, following the `schemaVersion` precedent
+this repo already uses for receiving orders:
+
+- **Stamped** ⇒ written under this authority ⇒ always carries a price, because the same command
+  requires both.
+- **Unstamped** ⇒ predates this authority ⇒ may be unpriced, permanently and legitimately.
+
+**The two rejected alternatives matter as much as the chosen one.** "Missing price means legacy" hands
+every future caller a way to skip the requirement and be read as historical. A deployment date is
+worse: a wall clock is not authority, and a record's meaning would depend on when someone happened to
+release. A current caller therefore cannot masquerade as legacy — it cannot omit the price (refused)
+and it cannot choose its own version (server-authored, and a caller-supplied value is discarded).
+
+**4. A STAMPED PURCHASE ORDER WITH NO PRICE IS REFUSED AS CORRUPT.** The command that stamps the
+version is the one that requires the price, so the two cannot legitimately disagree. Reading such a
+document as "unpriced" would turn a corrupt record into a free one — the exact failure this authority
+exists to prevent.
+
+**5. LEGACY UNPRICED PURCHASES REMAIN FULLY RECEIVABLE, WITH COST UNKNOWN.** No cost fact, no `$0`
+fallback, and **no backfill** — not from the supplier quote, not from a catalog price, not from a
+later purchase order, not from an average. The absence stays an absence.
+
+**6. THE PURCHASING USER CONFIRMS THE COMMITTED PRICE, IN THE EXISTING WORKFLOW.** The unit price and
+currency are entered in the Record Purchase Order form on the Part detail screen, beside the ordered
+quantity — the pair a purchasing person reads together. **No separate cost screen was created**, and
+the receiver never re-enters a price.
+
+**7. MONEY IS PARSED EXACTLY, ONCE.** The form accepts what a person types (`19.99`) and converts it
+through the repo's existing `fromMajorString` — which reads the string digit by digit, rejects more
+fractional digits than the currency allows rather than rounding to a price nobody agreed, and range-
+checks the result. `Number(major) * 100` is refused as an approach: 19.99 × 100 is 1998.9999… in
+IEEE-754, and the rounding needed to rescue it is a decision about someone's money. **Minor units
+cross the wire; the typed string never reaches the callable.**
+
+**8. THE SUPPLIER QUOTE MAY PREFILL, BUT DOES NOT TODAY, AND THE FIELD SAYS SO.** `part_supplier_items`
+has **no client read** — the repo exposes only write callables, and the cost projection is gated
+behind `inventory.catalog.cost.read` with no surface serving it here. Building that read would be a
+new gated visibility surface, which is a separate authority decision this ruling does not make. So
+the field states its source rather than leaving a blank the reader might assume was filled from a
+quote. When such a read exists, a prefilled value must remain visibly sourced, editable, and
+explicitly submitted; quote absence must never block manual entry; and a later quote change can never
+mutate a committed purchase order or a cost fact.
+
+**9. THE DORMANT `purchase_orders` PATH REMAINS NON-CANONICAL** and was not rehabilitated or migrated.
+
+**10. SANDBOX ACTIVATION ONLY. PRODUCTION IS NOT AUTHORIZED.**
+
+### What this does NOT close
+
+Valuation, COGS, margin, inventory turns, carrying cost, landed cost, labour cost, FX, cost
+corrections, and returns/rebates all remain **OPEN**, exactly as #164 left them. Acquisition cost is
+evidence; it is not book value and it is not cost against revenue.
+
+**Metric registry: 37 registered, 12 active, 25 blocked — UNCHANGED.** No metric was activated. A
+repository that now has real prices in it looks like one that can answer cost questions; it cannot,
+and the registry still says which authority each blocked metric is actually waiting on.
+
+### Measured, not assumed
+
+- `salesOrder.fulfill` remains **`active: false`**, measured through the permission catalog.
+- No capability was registered, no grant made, FIN-004 reach unchanged, SELF/TEAM untouched.
+- `inventory_acquisition_costs` still has **no Rules match block**, so every client read is denied by
+  default. No Rules change, no index.
+
+**Enforced by:** `functions/src/finance/acquisitionCost.ts` (`PRICE_AUTHORITY_VERSION`,
+`isPriceGovernedPurchase`), `functions/src/reorderRequest/reorderCommands.ts`,
+`functions/src/purchasing/purchaseOrderNormalization.ts`,
+`field-ops-app-vite/src/domain/reorderPurchaseOrders.js`,
+`field-ops-app-vite/src/modules/inventory/PartDetail.jsx`; suites
+`functions/test/acquisitionCostActivation.test.mjs` (24 cases),
+`field-ops-app-vite/test/recordPurchaseOrderPrice.test.mjs` (10 cases), plus the #164 suites which
+were updated where activation legitimately made an assertion false.
 ---
 
-## #166 — OWNER RULING (2C.6C): Reporting eligibility and Reporting activation are separate axes
+## #167 — OWNER RULING (2C.6C): Reporting eligibility and Reporting activation are separate axes
 
 **Date:** 2026-09-02
 **Classification:** ACCESS ARCHITECTURE CORRECTION. Repository only — no deploy, no grant, no
