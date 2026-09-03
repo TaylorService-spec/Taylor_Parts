@@ -150,12 +150,17 @@ test("a live write demands BOTH flags; production and unknown targets refuse", a
 test("dry run is the default and writes nothing", () => {
   assert.match(CODE, /const APPLY = argv\.includes\("--apply"\)/);
   assert.match(SRC, /DRY RUN -- nothing written\./);
-  // Every write goes through cycleCountAs, and every call sits behind the APPLY branch.
-  const applyBranch = CODE.slice(CODE.indexOf("if (!APPLY)"));
+  // Every write goes through cycleCountAs, and none may run before the dry-run check. There are
+  // now TWO apply branches -- the fresh ceremony and the resume path -- so asserting that one
+  // slice holds them all would be wrong; what matters is that nothing writes ahead of the gate.
+  const firstApplyBranch = CODE.indexOf("if (!APPLY)");
+  assert.ok(firstApplyBranch > 0, "an APPLY branch must exist");
+  const beforeAnyBranch = CODE.slice(0, firstApplyBranch);
+  assert.equal((beforeAnyBranch.match(/cycleCountAs\(/g) ?? []).length, 0,
+    "no cycleCountAs call may run before the dry-run check");
   const writes = (CODE.match(/cycleCountAs\(/g) ?? []).length;
-  const writesInBranch = (applyBranch.match(/cycleCountAs\(/g) ?? []).length;
-  assert.equal(writes, writesInBranch, "no cycleCountAs call may sit outside the APPLY branch");
-  assert.equal(writes, 4, "create, submit, self-approval probe, reconcile");
+  assert.equal(writes, 6,
+    "fresh: create, submit, self-approval, reconcile; resume: self-approval, reconcile");
 });
 
 // ============================================================================================
@@ -206,4 +211,110 @@ test("a state shift between plan and CREATE stops the ceremony", () => {
   // snapshot. A disagreement means the world moved under the ceremony, and continuing would submit
   // a variance computed against a number that is no longer true.
   assert.match(CODE, /state moved under the ceremony, STOPPING before submit/);
+});
+
+// ============================================================================================
+// CERT-CYCLE-12 — THE GUARD THAT COULD NEVER PASS.
+//
+// The first live ceremony reached COUNTED and stopped on "COUNTING MOVED STOCK". Nothing had moved:
+// warehouse still 48, inventory_transactions still 88, and the three ADJUSTED rows it counted were
+// the part's OWN OPENING BALANCES -- cw_open_CW-P-0501_{wh-main,cert-trk-01,cert-trk-04}, recorded
+// at the fixture epoch 2025-12-06 by the seeder, none referencing the count.
+//
+// The guard asserted `adjustmentRows === 0` ABSOLUTELY. Opening balances are themselves ADJUSTED
+// movements, so every stocked part in this world begins with adjustment evidence and the assertion
+// could never have passed for ANY part. It was not a subtle bug; it was unconditionally broken, and
+// the dry run never exercises it because it lives inside the APPLY branch.
+//
+// The invariant was right. The measurement was wrong. What must be proven is that SUBMIT added no
+// NEW adjustment -- a set difference by document id, not a count.
+// ============================================================================================
+const { newAdjustmentIds, planResume } = applier;
+
+test("CERT-CYCLE-12: historical adjustment rows are NOT new -- the ceremony proceeds", () => {
+  // The exact live shape: three pre-existing opening-balance rows, unchanged by submit.
+  const before = new Set(["imv_5120ff82", "imv_9738b246", "imv_c0590d31"]);
+  const after = new Set(["imv_5120ff82", "imv_9738b246", "imv_c0590d31"]);
+  assert.deepEqual(newAdjustmentIds(before, after), [],
+    "three rows before, the same three after -- counting observed and moved nothing");
+  // The old guard's question, for contrast: a count of 3 is not zero, and it stopped the ceremony.
+  assert.equal(after.size, 3, "an absolute zero assertion fails here, which is the defect");
+});
+
+test("CERT-CYCLE-12: a genuinely NEW adjustment during submit is caught", () => {
+  const before = new Set(["imv_5120ff82", "imv_9738b246", "imv_c0590d31"]);
+  const after = new Set([...before, "imv_NEWROW"]);
+  assert.deepEqual(newAdjustmentIds(before, after), ["imv_NEWROW"],
+    "counting must never stage an adjustment; this is the case the guard exists for");
+});
+
+test("CERT-CYCLE-12: an added row is caught even when the TOTAL is unchanged", () => {
+  // Why ids, not counts. One row added and one gone nets to the same total; a count comparison
+  // reports no change while the ledger has genuinely moved.
+  const before = new Set(["a", "b", "c"]);
+  const after = new Set(["a", "b", "NEW"]);
+  assert.equal(after.size, before.size, "totals agree");
+  assert.deepEqual(newAdjustmentIds(before, after), ["NEW"], "and the set difference still catches it");
+});
+
+// ============================================================================================
+// THE RESUME PATH. Finish the existing count; never open a second one.
+// ============================================================================================
+const stored = (over = {}) => ({
+  partId: "CW-P-0501", location: { type: "WAREHOUSE", locationId: "wh-main" },
+  expectedQuantity: 48, countedQuantity: 43, variance: -5, status: "COUNTED",
+  submittedBy: "Wx3MuDOIO5VFRNJCJ9SQv01vntI2", ...over,
+});
+const asked = { cycleCountId: "cyc_live", partId: "CW-P-0501", locationId: "wh-main",
+  expectedQuantity: 48, countedQuantity: 43 };
+const okCtx = (over = {}) => ({ stored: stored(), warehouseNow: 48, newAdjustments: [], ...over });
+
+test("RESUME: a COUNTED record with no movement is resumable", () => {
+  const plan = planResume(asked, okCtx());
+  assert.equal(plan.resumable, true);
+  assert.equal(plan.variance, -5);
+});
+
+test("RESUME: only a COUNTED record may be resumed", () => {
+  for (const status of ["OPEN", "RECONCILED", "REJECTED", "CANCELLED"]) {
+    assert.throws(() => planResume(asked, okCtx({ stored: stored({ status }) })),
+      new RegExp(`is ${status}, not COUNTED`));
+  }
+});
+
+test("RESUME: the stored record must match what was stated, field by field", () => {
+  assert.throws(() => planResume(asked, okCtx({ stored: stored({ partId: "CW-P-0999" }) })), /part CW-P-0999/);
+  assert.throws(() => planResume(asked, okCtx({ stored: stored({ expectedQuantity: 47 }) })), /expected 47/);
+  assert.throws(() => planResume(asked, okCtx({ stored: stored({ countedQuantity: 40 }) })), /counted 40/);
+  assert.throws(() => planResume(asked, okCtx({
+    stored: stored({ location: { type: "WAREHOUSE", locationId: "wh-other" } }) })), /location wh-other/);
+});
+
+test("RESUME: stock moving after the count refuses -- a correction must not apply twice", () => {
+  assert.throws(() => planResume(asked, okCtx({ warehouseNow: 43 })),
+    /warehouse is 43 but the count expected 48/);
+  assert.throws(() => planResume(asked, okCtx({ newAdjustments: ["imv_x"] })),
+    /SUBMIT created adjustment rows/);
+});
+
+test("RESUME: a stored variance disagreeing with counted-expected refuses", () => {
+  assert.throws(() => planResume(asked, okCtx({ stored: stored({ variance: -4 }) })),
+    /stored variance -4 disagrees with counted-expected -5/);
+});
+
+test("RESUME creates nothing: no create, no resubmit, no new idempotency event", () => {
+  const resumeBlock = CODE.slice(CODE.indexOf("RESUME_ID"), CODE.indexOf("} else if (target)"));
+  assert.doesNotMatch(resumeBlock, /"create"/, "resume must never open a second count");
+  assert.doesNotMatch(resumeBlock, /"submit"/, "resume must never resubmit the observation");
+  assert.doesNotMatch(resumeBlock, /countIdempotencyKey/, "resume mints no new idempotency event");
+  assert.match(resumeBlock, /"reconcile"/, "it performs only the self-approval probe and the approval");
+  assert.match(resumeBlock, /--resumeCycleCountId/, "the exact id must be stated");
+});
+
+test("RESUME: the submitter must be the counter, and SoD is re-resolved live", () => {
+  const resumeBlock = CODE.slice(CODE.indexOf("RESUME_ID"), CODE.indexOf("} else if (target)"));
+  assert.match(resumeBlock, /stored\.submittedBy !== idx\.get\(COUNTER\)/,
+    "reconciling a count submitted by someone else would settle an unverified observation");
+  assert.match(resumeBlock, /separation of duties does not hold -- refusing to resume/);
+  assert.match(resumeBlock, /SELF-APPROVAL SUCCEEDED/);
 });

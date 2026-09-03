@@ -102,6 +102,77 @@ export async function protectedParts(db) {
   return out;
 }
 
+/**
+ * The ids of every ADJUSTMENT-sourced ledger row for a part. CERT-CYCLE-12.
+ *
+ * An earlier guard asserted this COUNT was zero after submit. That assertion could never pass for
+ * ANY part in this world: opening balances are themselves ADJUSTED movements
+ * (`cw_open_<part>_<loc>_<seq>`, sourced from a `cwob_` adjustment), so every stocked part starts
+ * life with adjustment evidence. The first live ceremony stopped on it with three historical rows
+ * -- the part's own opening balances, recorded at the fixture epoch nine months earlier by the
+ * seeder, none referencing the count.
+ *
+ * The invariant was right and the measurement was wrong. What must be proven is that SUBMIT created
+ * no NEW adjustment, so the before-set is captured and compared by DOCUMENT ID. A count comparison
+ * would also miss the case that matters most: one row added and one removed nets to zero.
+ */
+export async function adjustmentRowIds(db, partId) {
+  const snap = await db.collection(LEDGER).where("partId", "==", partId).get();
+  return new Set(snap.docs.filter((d) => d.data().sourceObject?.type === "ADJUSTMENT").map((d) => d.id));
+}
+
+/** Rows in `after` that were not in `before`. The only thing SUBMIT is allowed to produce: none. */
+export function newAdjustmentIds(before, after) {
+  return [...after].filter((id) => !before.has(id));
+}
+
+/**
+ * May this EXISTING count be resumed from COUNTED? PURE. Returns a plan or throws.
+ *
+ * The first live ceremony stopped between SUBMIT and reconciliation on a defective guard
+ * (CERT-CYCLE-12). The count itself is sound -- COUNTED, variance recorded, no stock moved -- so
+ * the correct recovery is to finish THAT count, never to open a second one. Restarting would
+ * submit a second observation of the same shelf and leave two counts competing to explain one
+ * variance.
+ *
+ * Everything is re-verified against the STORED record rather than trusted from the operator
+ * recollection of an interrupted run.
+ */
+export function planResume({ cycleCountId, partId, locationId, expectedQuantity, countedQuantity },
+  { stored, warehouseNow, newAdjustments }) {
+  if (!stored) throw new Error(`cycle count ${cycleCountId} does not exist`);
+  if (stored.status !== "COUNTED") {
+    throw new Error(`cycle count ${cycleCountId} is ${stored.status}, not COUNTED -- `
+      + "resume finishes a submitted count and nothing else");
+  }
+  const mismatch = [];
+  if (stored.partId !== partId) mismatch.push(`part ${stored.partId} != ${partId}`);
+  if (stored.location?.locationId !== locationId) mismatch.push(`location ${stored.location?.locationId} != ${locationId}`);
+  if (stored.expectedQuantity !== expectedQuantity) mismatch.push(`expected ${stored.expectedQuantity} != ${expectedQuantity}`);
+  if (stored.countedQuantity !== countedQuantity) mismatch.push(`counted ${stored.countedQuantity} != ${countedQuantity}`);
+  if (mismatch.length) {
+    throw new Error(`the stored count does not match what was stated: ${mismatch.join("; ")} -- refusing`);
+  }
+  const variance = stored.countedQuantity - stored.expectedQuantity;
+  if (variance !== stored.variance) {
+    throw new Error(`stored variance ${stored.variance} disagrees with counted-expected ${variance} -- refusing`);
+  }
+  if (!isMaterial(variance, stored.expectedQuantity)) {
+    throw new Error(`variance ${variance} is immaterial -- reconciliation would stage no adjustment`);
+  }
+  // THE LOAD-BEARING RECOVERY CHECK. Submit must not have moved stock, and nothing may have moved
+  // it since -- reconciling onto a shelf that already changed would apply a correction twice.
+  if (warehouseNow !== stored.expectedQuantity) {
+    throw new Error(`warehouse is ${warehouseNow} but the count expected ${stored.expectedQuantity} -- `
+      + "stock moved after the count was taken, so this variance no longer describes the shelf");
+  }
+  if (newAdjustments.length > 0) {
+    throw new Error(`SUBMIT created adjustment rows (${newAdjustments.join(", ")}) -- counting moved stock, `
+      + "refusing to reconcile on top of it");
+  }
+  return { cycleCountId, partId, locationId, expectedQuantity, countedQuantity, variance, resumable: true };
+}
+
 /** Deterministic per (part, location, counted) so a rerun is recognised rather than duplicated. */
 export function countIdempotencyKey({ partId, locationId, countedQuantity }) {
   return `cw_cycle_${partId}_${locationId}_${countedQuantity}`;
@@ -164,7 +235,79 @@ if (target && (target.apply || APPLY)) {
   }
 }
 
-if (target) {
+const RESUME_ID = (() => { const i = argv.indexOf("--resumeCycleCountId"); return i >= 0 ? argv[i + 1] : null; })();
+
+if (target && RESUME_ID) {
+  console.log(describeTarget(target));
+  if (!getApps().length) {
+    initializeApp(target.isEmulator
+      ? { projectId: target.projectId }
+      : { credential: applicationDefault(), projectId: target.projectId });
+  }
+  const db = getFirestore();
+  console.log(`mode     : ${APPLY ? "APPLY (writes)" : "DRY RUN"}  [RESUME]\n`);
+
+  const stored = await readCycleCount(db, RESUME_ID);
+  if (!stored) throw new Error(`cycle count ${RESUME_ID} does not exist`);
+  const location = { type: "WAREHOUSE", locationId: stored.location?.locationId };
+  const warehouseNow = await onHandAt(db, stored.partId, location);
+  // Any adjustment row naming THIS count is one submit must not have produced.
+  const ledgerSnap = await db.collection(LEDGER).where("partId", "==", stored.partId).get();
+  const fromThisCount = ledgerSnap.docs
+    .filter((d) => d.data().sourceObject?.type === "ADJUSTMENT" && d.data().sourceObject?.id === RESUME_ID)
+    .map((d) => d.id);
+
+  const plan = planResume({
+    cycleCountId: RESUME_ID, partId: stored.partId, locationId: location.locationId,
+    expectedQuantity: stored.expectedQuantity, countedQuantity: stored.countedQuantity,
+  }, { stored, warehouseNow, newAdjustments: fromThisCount });
+
+  const historical = ledgerSnap.docs.filter((d) => d.data().sourceObject?.type === "ADJUSTMENT").length;
+  console.log("RESUME SCOPE -- finishing an existing COUNTED record, creating nothing new:");
+  console.log(`  cycleCountId     ${plan.cycleCountId}`);
+  console.log(`  status           ${stored.status}`);
+  console.log(`  part             ${plan.partId}    location WAREHOUSE ${plan.locationId}`);
+  console.log(`  expected         ${plan.expectedQuantity}    counted ${plan.countedQuantity}    variance ${plan.variance}`);
+  console.log(`  warehouse now    ${warehouseNow}   (unchanged since the count -- submit moved nothing)`);
+  console.log(`  adjustment rows  ${historical} historical, ${fromThisCount.length} created by this count`);
+  console.log(`  submittedBy      ${stored.submittedBy}`);
+  console.log("  NOT DONE HERE    no new count, no resubmission, no new idempotency event\n");
+
+  const idx = await loadPrincipalIndex(db);
+  const decide = async (emp, cap) => (await resolveCapability(db, idx, emp, cap)).allowed ? "ALLOW" : "DENY";
+  const counterReconcile = await decide(COUNTER, COUNT_RECONCILE);
+  const reconcilerReconcile = await decide(RECONCILER, COUNT_RECONCILE);
+  const reconcilerSubmit = await decide(RECONCILER, COUNT_SUBMIT);
+  console.log("SEPARATION OF DUTIES (resolved live):");
+  console.log(`  counter     ${COUNTER} (${idx.get(COUNTER)})  reconcile ${counterReconcile}  <- must be DENY`);
+  console.log(`  reconciler  ${RECONCILER} (${idx.get(RECONCILER)})  reconcile ${reconcilerReconcile} - submit ${reconcilerSubmit}`);
+  if (stored.submittedBy !== idx.get(COUNTER)) {
+    throw new Error(`the count was submitted by ${stored.submittedBy}, not by ${COUNTER} -- refusing`);
+  }
+  if (counterReconcile !== "DENY" || reconcilerReconcile !== "ALLOW" || reconcilerSubmit !== "DENY"
+      || idx.get(COUNTER) === idx.get(RECONCILER)) {
+    throw new Error("separation of duties does not hold -- refusing to resume");
+  }
+  console.log("  SoD HOLDS.\n");
+
+  if (!APPLY) {
+    console.log("DRY RUN -- nothing written.");
+  } else {
+    const clock = { now: () => new Date() };
+    const selfApprove = await cycleCountAs(db, COUNTER, "reconcile",
+      { cycleCountId: RESUME_ID, decision: "APPROVE", reason: "self-approval probe -- must be refused" }, clock);
+    if (selfApprove.ok) throw new Error("SELF-APPROVAL SUCCEEDED -- separation of duties has failed. STOPPING.");
+    console.log(`PHASE 3 SELF-APPROVAL REFUSED  ${selfApprove.code}: ${selfApprove.message}`);
+
+    const reconciled = await cycleCountAs(db, RECONCILER, "reconcile",
+      { cycleCountId: RESUME_ID, decision: "APPROVE",
+        reason: "Independent recount confirms the shortfall; adjusting the books to the shelf." }, clock);
+    if (!reconciled.ok) throw new Error(`PHASE 4 RECONCILE refused: ${reconciled.code} -- ${reconciled.message}`);
+    console.log(`PHASE 4 RECONCILED  status ${(await readCycleCount(db, RESUME_ID))?.status} - `
+      + `warehouse ${plan.expectedQuantity} -> ${await onHandAt(db, plan.partId, location)}`);
+    console.log(`\nCYCLE COUNT COMPLETE (resumed): ${RESUME_ID}`);
+  }
+} else if (target) {
   console.log(describeTarget(target));
   const request = parseCountRequest(argv);
   if (!getApps().length) {
@@ -251,18 +394,23 @@ if (target) {
         + `${plan.expectedQuantity} -- state moved under the ceremony, STOPPING before submit`);
     }
 
-    // ── PHASE 2: COUNTED. Still no stock moves, and that is verified, not assumed.
+    // ── PHASE 2: COUNTED. Still no stock moves, and that is verified against a BASELINE.
+    //
+    // The baseline is captured BEFORE submit precisely because historical adjustment evidence is
+    // normal -- see adjustmentRowIds. What is asserted is that submit added none.
+    const adjBefore = await adjustmentRowIds(db, plan.partId);
     const submitted = await cycleCountAs(db, COUNTER, "submit",
       { cycleCountId, countedQuantity: plan.countedQuantity }, clock);
     if (!submitted.ok) throw new Error(`PHASE 2 SUBMIT refused: ${submitted.code} -- ${submitted.message}`);
     const afterSubmitWh = await onHandAt(db, plan.partId, location);
-    const adjAfterSubmit = (await db.collection(LEDGER).where("partId", "==", plan.partId).get())
-      .docs.filter((d) => d.data().sourceObject?.type === "ADJUSTMENT").length;
+    const adjAfter = await adjustmentRowIds(db, plan.partId);
+    const added = newAdjustmentIds(adjBefore, adjAfter);
     console.log(`PHASE 2 COUNTED     variance ${submitted.outcome.variance} · status `
       + `${(await readCycleCount(db, cycleCountId))?.status} · warehouse still ${afterSubmitWh} · `
-      + `ADJUSTED rows ${adjAfterSubmit}`);
-    if (afterSubmitWh !== plan.expectedQuantity || adjAfterSubmit !== 0) {
-      throw new Error("COUNTING MOVED STOCK -- it must only observe. STOPPING before reconciliation.");
+      + `adjustment rows ${adjBefore.size} -> ${adjAfter.size}, NEW ${added.length}`);
+    if (afterSubmitWh !== plan.expectedQuantity || added.length > 0) {
+      throw new Error("COUNTING MOVED STOCK -- it must only observe. STOPPING before reconciliation. "
+        + `new adjustment rows: ${added.join(", ") || "(none, but warehouse changed)"}`);
     }
 
     // ── PHASE 3: the counter may not settle its own variance.
