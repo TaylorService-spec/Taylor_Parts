@@ -58,7 +58,7 @@ import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
-import { resolveReportingPeriod } from "../../domain/reportingPeriod.js";
+import { resolveReportingPeriod, TAYLOR_VENTANA_REPORTING_CALENDAR } from "../../domain/reportingPeriod.js";
 import {
   workOrdersByStatus as projectWorkOrdersByStatus,
   technicianComparison as projectTechnicianComparison,
@@ -353,13 +353,22 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   // America/Phoenix calendar -- never browser-local date arithmetic.
   const wantsFinance = moduleKeys.has("firmBilled") || moduleKeys.has("firmCollected");
   const financePeriod = useMemo(
-    () => (wantsFinance ? resolveReportingPeriod({ type: "MTD", asOfMillis: Date.now() }) : null),
+    // periodType (not "type"), and the CALENDAR is required -- the resolver refuses to guess a
+    // timezone, which is the whole point of G-05. The window is half-open: [start, endExclusive).
+    () =>
+      wantsFinance
+        ? resolveReportingPeriod({
+            periodType: "MTD",
+            asOfMillis: Date.now(),
+            calendar: TAYLOR_VENTANA_REPORTING_CALENDAR,
+          }).current
+        : null,
     [wantsFinance],
   );
   const financeFilters = useMemo(
     () =>
       financePeriod
-        ? { periodStartMillis: financePeriod.startMillis, periodEndMillis: financePeriod.endMillis }
+        ? { periodStartMillis: financePeriod.startMillis, periodEndMillis: financePeriod.endInclusiveMillis }
         : {},
     [financePeriod],
   );
@@ -373,8 +382,14 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   const wantsAvailability = moduleKeys.has("technicianAvailability");
   const availabilityWindow = useMemo(() => {
     if (!wantsAvailability) return null;
-    const day = resolveReportingPeriod({ type: "DAY", asOfMillis: Date.now() });
-    return { startMillis: day.startMillis, endMillis: day.endMillis };
+    const day = resolveReportingPeriod({
+      periodType: "DAY",
+      asOfMillis: Date.now(),
+      calendar: TAYLOR_VENTANA_REPORTING_CALENDAR,
+    }).current;
+    // The availability read takes an INCLUSIVE end; the reporting window is half-open. Passing
+    // endExclusive here would reach one millisecond into tomorrow.
+    return { startMillis: day.startMillis, endMillis: day.endInclusiveMillis };
   }, [wantsAvailability]);
   const assignedTechnicianIds = useMemo(() => {
     if (!wantsAvailability || workOrdersLoading || workOrdersError) return [];
