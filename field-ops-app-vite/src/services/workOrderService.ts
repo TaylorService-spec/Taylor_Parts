@@ -162,9 +162,48 @@ const updateWorkOrderExecutionDataCallable = httpsCallable<
 
 export async function updateWorkOrderExecutionData(
   workOrderId: string,
-  updates: { qtyUsedUpdates?: QtyUsedDelta[]; executionNote?: string }
+  updates: {
+    qtyUsedUpdates?: QtyUsedDelta[];
+    executionNote?: string;
+    // Decision #169 -- the governed physical source per sku, for POSITIVE deltas only. A decrement is
+    // a correction against the original lineage and deliberately carries none.
+    consumptionSources?: { sku: string; locationId: string }[];
+  }
 ): Promise<UpdateWorkOrderExecutionDataResult> {
   const result = await updateWorkOrderExecutionDataCallable({ workOrderId, ...updates });
+  return result.data;
+}
+
+// Decision #169 -- the trusted, command-scoped source projection. Identities and labels only: no
+// on-hand, no available, no reserved. It exists so a technician can name where a part came from
+// WITHOUT being granted any standing read of warehouses, trucks or inventory.
+export interface ConsumptionSourceOption {
+  locationId: string;
+  locationType: string;
+  label: string;
+  method: "PICK" | "EXPLICIT" | "SERIALIZED_CUSTODY";
+}
+export interface ConsumptionSourceOptions {
+  autoSource: ConsumptionSourceOption | null;
+  selectableSources: ConsumptionSourceOption[];
+  serializedSource: ConsumptionSourceOption | null;
+  sourceRequired: boolean;
+  autoSourceUnavailableReason: string | null;
+  mobileAmbiguous: boolean;
+}
+const listConsumptionSourcesCallable = httpsCallable<
+  { workOrderId: string; partId: string; requestedQuantity?: number; trackingMode?: string; serialNo?: string },
+  ConsumptionSourceOptions
+>(functions, "listWorkOrderConsumptionSources");
+
+export async function listWorkOrderConsumptionSources(input: {
+  workOrderId: string;
+  partId: string;
+  requestedQuantity?: number;
+  trackingMode?: string;
+  serialNo?: string;
+}): Promise<ConsumptionSourceOptions> {
+  const result = await listConsumptionSourcesCallable(input);
   return result.data;
 }
 

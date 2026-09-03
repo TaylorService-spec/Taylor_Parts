@@ -19,10 +19,24 @@ import { executionDataAuditId, mergeQtyUsed, type QtyUsedDelta } from "./workOrd
 import { TERMINAL_STATUSES } from "./transitionEngine";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
 import type { WorkOrder, InventorySnapshotItem } from "./types/workOrder";
+import { PHYSICAL_CONSUMPTION_ACTIVE } from "./workOrderConsumption/consumptionActivation";
+import { planPhysicalConsumption } from "./workOrderConsumption/planPhysicalConsumption";
+import { stageOperationalMovement } from "./inventoryLedger/operationalMovementRepository";
+import { INVENTORY_TRANSACTIONS_COLLECTION } from "./constants/collections";
+import { createHash } from "node:crypto";
 
 interface UpdateWorkOrderExecutionDataInput {
   workOrderId: string;
   qtyUsedUpdates?: QtyUsedDelta[];
+  /**
+   * Decision #169 — the governed physical source per part, keyed by sku, for POSITIVE deltas only.
+   *
+   * Optional in the type and required in behaviour: omitting it when no pick resolves the source is a
+   * REFUSAL with wording the technician can act on, not a silent SOURCE UNKNOWN. It is deliberately
+   * NOT consulted for a negative delta — a correction reverses against the original lineage, and
+   * letting someone name a location there would let a decrement conjure stock somewhere it never was.
+   */
+  consumptionSources?: Array<{ sku?: unknown; locationId?: unknown }>;
   executionNote?: string;
   // Optional client-supplied idempotency key. When present, a retry / double-tap carrying the SAME key is a
   // no-op replay (see the finance callables' proven pattern): the additive qtyUsed delta and the arrayUnion
@@ -77,6 +91,26 @@ function assertValidInput(data: unknown): asserts data is UpdateWorkOrderExecuti
   }
 }
 
+/**
+ * The movement's idempotency lineage when the client supplies no key.
+ *
+ * A physical decrement needs a stable identity or a double-tap decrements twice — and unlike the
+ * qtyUsed delta, that one silently destroys stock. Derived from the actor, the Work Order and the
+ * exact deltas, so the SAME submit reproduces the key while a genuinely different one does not.
+ *
+ * This does NOT make the whole command idempotent — an explicit `idempotencyKey` still does that, and
+ * the client should send one. It makes the STOCK MOVEMENT safe in the meantime, which is the half
+ * that cannot be undone by hand.
+ */
+function movementCommandKey(
+  actorUid: string,
+  workOrderId: string,
+  updates: readonly { sku: string; delta: number }[],
+): string {
+  const material = [actorUid, workOrderId, ...updates.map((u) => u.sku + ":" + String(u.delta))].join("/");
+  return "wox_" + createHash("sha256").update(material).digest("hex").slice(0, 32);
+}
+
 export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Must be signed in.");
@@ -105,6 +139,7 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
   const woRef = db.collection(WORK_ORDERS_COLLECTION).doc(workOrderId);
 
   const outcome = await db.runTransaction(async (tx) => {
+    let stagedMovements: Array<{ event: Record<string, unknown>; part: { partId: string; trackingMode: string } }> = [];
     // Firestore requires all reads before any write. Read the WO and (when an idempotency key was supplied)
     // the deterministic Audit Event marker up front.
     const snap = await tx.get(woRef);
@@ -154,6 +189,28 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
       }
       payload.inventorySnapshot = merged.snapshot;
       fields.push("inventorySnapshot");
+
+      // ============================ PHYSICAL CONSUMPTION (Decision #168 / #169) ============================
+      //
+      // The qtyUsed change and its physical stock movement are staged in THIS transaction, so they
+      // cannot diverge: a recorded usage whose decrement failed would leave inventory overstated
+      // exactly as before, which is the defect this whole chain exists to close.
+      //
+      // Gated, so the previous behaviour is one constant away for as long as the gate says so.
+      if (PHYSICAL_CONSUMPTION_ACTIVE) {
+        const movements = await planPhysicalConsumption(tx, db, {
+          workOrderId,
+          actorId: caller.technicianId as string,
+          technicianId: caller.technicianId as string,
+          snapshot: base,
+          qtyUsedUpdates,
+          consumptionSources: request.data.consumptionSources ?? [],
+          occurredAt: Date.now(),
+          commandKey: idempotencyKey ?? movementCommandKey(actorUid, workOrderId, qtyUsedUpdates),
+        });
+        stagedMovements = movements;
+        if (movements.length > 0) fields.push("physicalConsumption");
+      }
     }
 
     // executionLog is append-only via arrayUnion -- chosen over a
@@ -171,6 +228,29 @@ export const updateWorkOrderExecutionData = onCall({ region: "us-central1" }, as
         byTechnicianId: caller.technicianId,
       });
       fields.push("executionLog");
+    }
+
+    // ---- PHYSICAL MOVEMENTS, staged in THIS transaction, before the document write ----
+    //
+    // Everything above was a read or a decision; this is where stock actually moves. Staged through
+    // the SAME `stageOperationalMovement` every other physical movement uses — no second ledger, no
+    // second idempotency scheme — so a retry replays instead of decrementing twice.
+    //
+    // If any of these throws, the qtyUsed update below never happens: usage and the stock it moved
+    // commit together or not at all.
+    for (const staged of stagedMovements) {
+      const store = {
+        async read(docId: string) {
+          const s = await tx.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).doc(docId));
+          return s.exists ? (s.data() ?? {}) : null;
+        },
+        create(docId: string, data: Record<string, unknown>) {
+          tx.create(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).doc(docId), data);
+        },
+      };
+      // The Part authority travels WITH the event: the validator reads trackingMode from the Part,
+      // never from the event, so a movement carrying its own would be a second forgeable answer.
+      await stageOperationalMovement(store, staged.event, staged.part, { now: new Date() });
     }
 
     tx.update(woRef, payload);

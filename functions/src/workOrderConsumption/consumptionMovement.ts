@@ -104,10 +104,12 @@ export function buildConsumptionMovement(input: ConsumptionMovementInput): Recor
     throw new ConsumptionMovementError("MOVEMENT_DIRECTION_INVALID", "direction must be CONSUME or CORRECT");
   }
   const signed = input.direction === "CONSUME" ? -input.quantity : input.quantity;
+  // trackingMode is deliberately NOT on the event: the validator takes it from the PART authority
+  // argument, so carrying it here would be a second, forgeable answer to a question the Part already
+  // owns -- and the validator rejects the unknown field outright.
   return {
     type: WORK_ORDER_CONSUMPTION_TYPE,
     partId,
-    trackingMode: input.trackingMode,
     location: { type: locationType, locationId },
     quantity: signed,
     // The Work Order IS the source object — the boundary this ruling moved.

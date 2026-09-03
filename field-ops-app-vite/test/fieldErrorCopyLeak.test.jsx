@@ -11,7 +11,20 @@ const RAW_MESSAGE = "FirebaseError: permission-denied at documents/fieldops_wos/
 const RAW = /permission-denied|functions\/|firestore\/|FirebaseError|documents\/|[A-Za-z0-9]{20,}/;
 
 const updateWorkOrderExecutionData = vi.fn();
-vi.mock("../src/services/workOrderService", () => ({ updateWorkOrderExecutionData: (...args) => updateWorkOrderExecutionData(...args) }));
+// Decision #169: a positive qtyUsed now resolves a governed source first. The component asks the
+// server which sources are permitted, so the read is mocked alongside the write -- an unambiguous
+// pick, which is the case that needs no technician input.
+vi.mock("../src/services/workOrderService", () => ({
+  updateWorkOrderExecutionData: (...args) => updateWorkOrderExecutionData(...args),
+  listWorkOrderConsumptionSources: vi.fn().mockResolvedValue({
+    autoSource: { locationId: "wh-1", locationType: "WAREHOUSE", label: "Phoenix Warehouse", method: "PICK" },
+    selectableSources: [],
+    serializedSource: null,
+    sourceRequired: false,
+    autoSourceUnavailableReason: null,
+    mobileAmbiguous: false,
+  }),
+}));
 
 // PartsScanner deps: real domain resolution/derivation logic runs unmocked --
 // only the auth identity and the live-data hook are stubbed, same seam as
