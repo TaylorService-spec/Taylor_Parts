@@ -74,6 +74,12 @@ at a governed event and never re-derive:
 
 ## 4. Exact Owner choices remaining (dependency order)
 
+> **SUPERSEDED IN FRAMING, 2026-09-03 — EOS supports POLICY PROFILES, not one permanent method.**
+> The platform implements and tests several accounting methods; each customer's accounting team selects
+> one during deployment and it locks at financial activation. See
+> [`../assessments/cert-fin-02-policy-framework-reconciliation.md`](../assessments/cert-fin-02-policy-framework-reconciliation.md).
+> This package remains the source-by-source audit that justified the questions.
+>
 > **SUPERSEDED AS THE RULING INSTRUMENT, 2026-09-03.** The §4 choices below are now carried, in
 > signable form and with two additions (cost-correction authority; retroactive cost change), by
 > [`CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md`](CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md).

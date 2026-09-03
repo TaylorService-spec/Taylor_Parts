@@ -9,7 +9,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
-// Decision #169: a positive qtyUsed now resolves a governed source first. The component asks the
+// Decision #171: a positive qtyUsed now resolves a governed source first. The component asks the
 // server which sources are permitted, so the read is mocked alongside the write -- an unambiguous
 // pick, which is the case that needs no technician input.
 vi.mock("../src/services/workOrderService", () => ({
@@ -52,7 +52,7 @@ describe("ExecutionCapture over-plan guard (site-work r2 #6)", () => {
     await waitFor(() =>
       expect(updateWorkOrderExecutionData).toHaveBeenCalledWith("wo1", {
         qtyUsedUpdates: [{ sku: "PRT-1001", delta: 1 }],
-        // Decision #169: a POSITIVE delta now carries the governed source it resolved. The negative
+        // Decision #171: a POSITIVE delta now carries the governed source it resolved. The negative
         // case below deliberately does not — a correction reverses against the original lineage.
         consumptionSources: [{ sku: "PRT-1001", locationId: "wh-1" }],
       }),
@@ -79,7 +79,7 @@ describe("ExecutionCapture over-plan guard (site-work r2 #6)", () => {
     await waitFor(() =>
       expect(updateWorkOrderExecutionData).toHaveBeenCalledWith("wo1", {
         qtyUsedUpdates: [{ sku: "PRT-1001", delta: 1 }],
-        // Decision #169: a POSITIVE delta now carries the governed source it resolved. The negative
+        // Decision #171: a POSITIVE delta now carries the governed source it resolved. The negative
         // case below deliberately does not — a correction reverses against the original lineage.
         consumptionSources: [{ sku: "PRT-1001", locationId: "wh-1" }],
       }),

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, SectionHeader, StatusIndicator, CompactMetric, Button } from "../../shared/ui/primitives";
 import { Field, FormError, FormStatus } from "../../shared/ui/form";
 import { binCommandClient } from "../../services/binCommandClient";
+import BinLabelsAndExport from "./BinLabelsAndExport";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
 import {
@@ -75,7 +76,7 @@ function Ungated({ what, capability }) {
 
 // ═══════════════════════════════════ existing bins ═══════════════════════════════════
 
-function BinRow({ bin, canManage, onRename, onSetStatus, busy }) {
+function BinRow({ bin, canManage, onRename, onSetStatus, onLabel, busy }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(bin.name ?? "");
 
@@ -105,6 +106,12 @@ function BinRow({ bin, canManage, onRename, onSetStatus, busy }) {
         </StatusIndicator>
       </td>
       <td>
+        {/* Available regardless of manage authority: producing a label is a READ of the bin.
+            After a rename this is how the operator gets the corrected label -- there is no
+            "needs reprint" flag, because EOS cannot know what is physically on the shelf. */}
+        <Button variant="tertiary" onClick={() => onLabel(bin)}>
+          Label
+        </Button>
         {!canManage ? (
           <span className="fo-muted">View only</span>
         ) : renaming ? (
@@ -173,6 +180,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [applied, setApplied] = useState(null);
+  const [labelRequest, setLabelRequest] = useState(null);
 
   useEffect(() => {
     let live = true;
@@ -358,6 +366,7 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
                     bin={bin}
                     canManage={canManage}
                     busy={busy}
+                    onLabel={(b) => setLabelRequest({ binId: b.binId, at: Date.now() })}
                     onRename={(b, name) => mutate("Name", () => client.renameBin({ binId: b.binId, name }))}
                     onSetStatus={(b, status) => mutate(
                       status === "ACTIVE" ? "Reactivation" : "Deactivation",
@@ -371,6 +380,15 @@ export default function AdminWarehouseRacking({ client = binCommandClient, loadW
             </table>
           )}
           {notice && <FormStatus visible>{notice.text}</FormStatus>}
+
+          {/* BIN-P5. Reads the SAME governed list above -- no second catalog, no extra call. */}
+          {bins?.length > 0 && (
+            <BinLabelsAndExport
+              bins={bins}
+              warehouse={warehouses.find((w) => w.id === warehouseId) ?? { id: warehouseId, name: null }}
+              labelRequest={labelRequest}
+            />
+          )}
         </>
       )}
 

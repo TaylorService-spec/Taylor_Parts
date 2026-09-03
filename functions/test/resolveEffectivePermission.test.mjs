@@ -164,7 +164,10 @@ check("A3: every Permission id is granted by at least one compatibility Role, or
 // the SAME accounting A3 uses (broadening the shared exception to inventory.stock.* would make this fail) ---
 check("A3-inv: a synthetic future inventory.stock.* capability is reported UNACCOUNTED by the real A3 accounting", () => {
   // Sanity: today exactly one inventory.stock.* exists (the reviewed one).
-  assert.deepEqual(PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id).sort(), ["inventory.stock.receive"]);
+  // BIN-P6 / DECISIONS #169 added inventory.stock.relocate (active:false). The list stays EXACT on
+  // purpose: it must fail when a new inventory.stock.* lands, which is what keeps the
+  // synthetic-future guard below meaningful instead of a prefix that waves everything through.
+  assert.deepEqual(PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id).sort(), ["inventory.stock.receive", "inventory.stock.relocate"]);
   // Run an AUGMENTED catalog (with a future capability) through the SAME accounting the real A3 uses:
   const synthetic = Object.freeze({ id: "inventory.stock.transferOut", description: "synthetic future capability", resource: "inventory.stock", action: "transferOut" });
   const augmented = [...PERMISSION_CATALOG, synthetic];
@@ -529,6 +532,9 @@ check("D-226: inactive wave-4-deferred accountOwner field capability denies the 
   assert.equal(result.reason, "inactivePermission");
 });
 
+// 2C.6C: report.* became environment-activated, so these two supply the activation the sandbox
+// runtime supplies. What they assert is unchanged -- an ACTIVE granted field capability ALLOWs,
+// and an ACTIVE ungranted one denies as noQualifyingGrant rather than inactivePermission.
 check("D-226: an ACTIVE, registered field capability ALLOWs normally when actually granted (the mechanism works, not just denies)", () => {
   const roles = {
     syntheticGrantsName: {
@@ -543,6 +549,7 @@ check("D-226: an ACTIVE, registered field capability ALLOWs normally when actual
     roles,
     currentAccessVersion: 1,
     target: baseTarget(),
+    activationOverrides: new Set(["report.customer.field.name.read"]),
   });
   assert.equal(result.decision, "ALLOW");
   assert.equal(result.reason, "qualifyingGrant");
@@ -561,6 +568,7 @@ check("D-226: an active, registered field capability with NO grant at all denies
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
     target: baseTarget(),
+    activationOverrides: new Set(["report.customer.field.name.read"]),
   });
   assert.equal(result.decision, "DENY");
   assert.equal(result.reason, "noQualifyingGrant");

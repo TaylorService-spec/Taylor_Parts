@@ -1,7 +1,7 @@
 // Consumption source OPTIONS — the trusted projection, its limits, and what it must never leak.
 // Run: node --test test/consumptionSourceOptions.test.mjs   (pure — no emulator)
 //
-// Decision #169's whole claim is that a technician can now name a source WITHOUT being granted any
+// Decision #171's whole claim is that a technician can now name a source WITHOUT being granted any
 // standing inventory or location read. The security assertions at the end are the ones that make
 // that claim checkable rather than merely stated: Rules unchanged, no balances, no other technician's
 // truck.
@@ -144,7 +144,7 @@ test("NO inventory quantity of any kind appears in a source option", () => {
 
 test("firestore.rules is UNCHANGED — no client read was widened to make this work", () => {
   // The claim the whole design rests on. If this ever fails, the trusted projection was abandoned in
-  // favour of a grant, and Decision #169's reasoning no longer holds.
+  // favour of a grant, and Decision #171's reasoning no longer holds.
   const rules = readFileSync(join(HERE, "..", "..", "firestore.rules"), "utf8");
   const warehouses = rules.slice(rules.indexOf("match /warehouses/"), rules.indexOf("match /warehouses/") + 260);
   assert.match(warehouses, /allow read: if isAdminOrDispatcher\(\) \|\| isAssignedToWarehouse\(warehouseId\);/);

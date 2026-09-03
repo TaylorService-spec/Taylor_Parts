@@ -29,7 +29,7 @@ interface UpdateWorkOrderExecutionDataInput {
   workOrderId: string;
   qtyUsedUpdates?: QtyUsedDelta[];
   /**
-   * Decision #169 — the governed physical source per part, keyed by sku, for POSITIVE deltas only.
+   * Decision #171 — the governed physical source per part, keyed by sku, for POSITIVE deltas only.
    *
    * Optional in the type and required in behaviour: omitting it when no pick resolves the source is a
    * REFUSAL with wording the technician can act on, not a silent SOURCE UNKNOWN. It is deliberately

@@ -1,16 +1,16 @@
 {
  "catalog": {
-  "total": 134,
-  "active": 72,
-  "inactive": 62
+  "total": 137,
+  "active": 36,
+  "inactive": 101
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 16,
+  "total": 18,
   "byStatus": {
-   "UNCLASSIFIED": 2,
-   "RECORDED_GAP": 9,
-   "DELIBERATELY_PRIVILEGED_ONLY": 5
+   "UNCLASSIFIED": 3,
+   "DELIBERATELY_PRIVILEGED_ONLY": 6,
+   "RECORDED_GAP": 9
   },
   "capabilities": [
    {
@@ -24,6 +24,12 @@
     "active": false,
     "status": "UNCLASSIFIED",
     "why": "no recorded decision either way -- surface before PASS"
+   },
+   {
+    "capability": "financialPolicy.profile.configure",
+    "active": false,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner ruling (CERT-FIN-02 financial-policy authority): recording a company's approved accounting policy is DEPLOYMENT-TIME company configuration, so it stays with the administrative company authority (admin/owner). The customer's accounting team DETERMINES and APPROVES the policy, and that does not by itself confer EOS configuration authority -- which is why the money Roles hold financialPolicy.profile.read and deliberately not this. Belongs here rather than UNCLASSIFIED: a decision was made, not merely inherited from admin's catalog derivation. Note that no capability, including this one, can edit a LOCKED profile."
    },
    {
     "capability": "coverage.write",
@@ -62,7 +68,7 @@
    },
    {
     "capability": "report.definition.delete",
-    "active": true,
+    "active": false,
     "status": "DELIBERATELY_PRIVILEGED_ONLY",
     "why": "Owner decision 2026-08-21: authoring a saved report definition is delegable to reportAuthor; DESTROYING one is not. A delete removes something other people depend on and there is no per-definition ownership model to scope it."
    },
@@ -89,6 +95,12 @@
     "active": false,
     "status": "DELIBERATELY_PRIVILEGED_ONLY",
     "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
+    "capability": "inventory.stock.relocate",
+    "active": false,
+    "status": "UNCLASSIFIED",
+    "why": "no recorded decision either way -- surface before PASS"
    },
    {
     "capability": "equipment.compatibility.view",
@@ -125,9 +137,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 134,
-   "operableCount": 72,
-   "blockedCount": 62,
+   "grantedCount": 137,
+   "operableCount": 36,
+   "blockedCount": 101,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -158,6 +170,8 @@
     "finance.visibility.consolidated",
     "finance.visibility.self",
     "finance.visibility.team",
+    "financialPolicy.profile.configure",
+    "financialPolicy.profile.read",
     "fulfillment.coordinatedVisit.read",
     "inventory.action.create",
     "inventory.action.read",
@@ -179,6 +193,7 @@
     "inventory.serializedAsset.acquire",
     "inventory.serializedAsset.read",
     "inventory.stock.receive",
+    "inventory.stock.relocate",
     "inventory.transaction.read",
     "inventory.transfer.cancel",
     "inventory.transfer.create",
@@ -295,42 +310,6 @@
     "reorder.request.recordPurchaseOrder",
     "reorder.request.reject",
     "reorder.request.startPurchasing",
-    "report.contact.field.customer.read",
-    "report.contact.field.email.read",
-    "report.contact.field.name.read",
-    "report.contact.field.phone.read",
-    "report.contact.field.role.read",
-    "report.contact.read",
-    "report.customer.field.billingAddress.read",
-    "report.customer.field.billingContact.read",
-    "report.customer.field.commercialProfile.read",
-    "report.customer.field.createdAt.read",
-    "report.customer.field.externalIds.read",
-    "report.customer.field.name.read",
-    "report.customer.field.paymentTerms.read",
-    "report.customer.field.relationshipTypes.read",
-    "report.customer.field.status.read",
-    "report.customer.field.tags.read",
-    "report.customer.field.taxStatus.read",
-    "report.customer.read",
-    "report.definition.create",
-    "report.definition.delete",
-    "report.definition.duplicate",
-    "report.definition.read",
-    "report.definition.rename",
-    "report.equipment.field.createdAt.read",
-    "report.equipment.field.customer.read",
-    "report.equipment.field.dates.read",
-    "report.equipment.field.identity.read",
-    "report.equipment.field.location.read",
-    "report.equipment.field.name.read",
-    "report.equipment.field.notes.read",
-    "report.equipment.field.status.read",
-    "report.equipment.read",
-    "report.location.field.address.read",
-    "report.location.field.customer.read",
-    "report.location.field.name.read",
-    "report.location.read",
     "warehouse.record.read",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
@@ -360,6 +339,8 @@
     "finance.visibility.consolidated",
     "finance.visibility.self",
     "finance.visibility.team",
+    "financialPolicy.profile.configure",
+    "financialPolicy.profile.read",
     "fulfillment.coordinatedVisit.read",
     "inventory.balance.read",
     "inventory.catalog.alias.read",
@@ -375,6 +356,7 @@
     "inventory.returns.intake",
     "inventory.serializedAsset.acquire",
     "inventory.serializedAsset.read",
+    "inventory.stock.relocate",
     "inventory.transfer.cancel",
     "inventory.transfer.create",
     "inventory.transfer.dispatch",
@@ -387,9 +369,45 @@
     "performance.goal.read",
     "performance.goal.retire",
     "performance.goal.supersede",
+    "report.contact.field.customer.read",
+    "report.contact.field.email.read",
+    "report.contact.field.name.read",
+    "report.contact.field.phone.read",
+    "report.contact.field.role.read",
+    "report.contact.read",
     "report.customer.field.accountOwner.read",
+    "report.customer.field.billingAddress.read",
+    "report.customer.field.billingContact.read",
+    "report.customer.field.commercialProfile.read",
+    "report.customer.field.createdAt.read",
+    "report.customer.field.externalIds.read",
+    "report.customer.field.name.read",
     "report.customer.field.notes.read",
+    "report.customer.field.paymentTerms.read",
+    "report.customer.field.relationshipTypes.read",
+    "report.customer.field.status.read",
+    "report.customer.field.tags.read",
+    "report.customer.field.taxStatus.read",
+    "report.customer.read",
+    "report.definition.create",
+    "report.definition.delete",
+    "report.definition.duplicate",
+    "report.definition.read",
+    "report.definition.rename",
+    "report.equipment.field.createdAt.read",
+    "report.equipment.field.customer.read",
+    "report.equipment.field.dates.read",
+    "report.equipment.field.identity.read",
+    "report.equipment.field.location.read",
+    "report.equipment.field.name.read",
+    "report.equipment.field.notes.read",
+    "report.equipment.field.status.read",
+    "report.equipment.read",
     "report.location.field.accessNotes.read",
+    "report.location.field.address.read",
+    "report.location.field.customer.read",
+    "report.location.field.name.read",
+    "report.location.read",
     "salesAgreement.accept",
     "salesAgreement.create",
     "salesAgreement.read",
@@ -407,9 +425,9 @@
    "roleId": "generalManager",
    "label": "General Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 36,
+   "grantedCount": 37,
    "operableCount": 13,
-   "blockedCount": 23,
+   "blockedCount": 24,
    "granted": [
     "audit.event.read",
     "customer.record.create",
@@ -421,6 +439,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
@@ -470,6 +489,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -494,8 +514,8 @@
    "label": "Report Viewer",
    "composedFunctionalRoles": [],
    "grantedCount": 27,
-   "operableCount": 27,
-   "blockedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 27,
    "granted": [
     "report.contact.field.customer.read",
     "report.contact.field.email.read",
@@ -525,7 +545,8 @@
     "report.location.field.name.read",
     "report.location.read"
    ],
-   "operableNow": [
+   "operableNow": [],
+   "grantedButInactive": [
     "report.contact.field.customer.read",
     "report.contact.field.email.read",
     "report.contact.field.name.read",
@@ -553,8 +574,7 @@
     "report.location.field.customer.read",
     "report.location.field.name.read",
     "report.location.read"
-   ],
-   "grantedButInactive": []
+   ]
   },
   {
    "roleId": "salesManager",
@@ -852,9 +872,9 @@
    "roleId": "accountingManager",
    "label": "Accounting Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 18,
+   "grantedCount": 19,
    "operableCount": 7,
-   "blockedCount": 11,
+   "blockedCount": 12,
    "granted": [
     "audit.event.read",
     "customer.governedField.write",
@@ -865,6 +885,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -891,6 +912,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -902,9 +924,9 @@
    "roleId": "financeManager",
    "label": "Finance Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 18,
+   "grantedCount": 19,
    "operableCount": 7,
-   "blockedCount": 11,
+   "blockedCount": 12,
    "granted": [
     "audit.event.read",
     "customer.governedField.write",
@@ -915,6 +937,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -941,6 +964,7 @@
     "finance.read",
     "finance.refund.record",
     "finance.visibility.consolidated",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -1002,9 +1026,9 @@
    "roleId": "controller",
    "label": "Controller",
    "composedFunctionalRoles": [],
-   "grantedCount": 16,
+   "grantedCount": 17,
    "operableCount": 6,
-   "blockedCount": 10,
+   "blockedCount": 11,
    "granted": [
     "audit.event.read",
     "customer.record.read",
@@ -1013,6 +1037,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",
@@ -1037,6 +1062,7 @@
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    "financialPolicy.profile.read",
     "inventory.balance.read",
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
@@ -1273,8 +1299,8 @@
    "label": "Report Finance Viewer",
    "composedFunctionalRoles": [],
    "grantedCount": 5,
-   "operableCount": 5,
-   "blockedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 5,
    "granted": [
     "report.customer.field.billingAddress.read",
     "report.customer.field.billingContact.read",
@@ -1282,14 +1308,14 @@
     "report.customer.field.paymentTerms.read",
     "report.customer.field.taxStatus.read"
    ],
-   "operableNow": [
+   "operableNow": [],
+   "grantedButInactive": [
     "report.customer.field.billingAddress.read",
     "report.customer.field.billingContact.read",
     "report.customer.field.commercialProfile.read",
     "report.customer.field.paymentTerms.read",
     "report.customer.field.taxStatus.read"
-   ],
-   "grantedButInactive": []
+   ]
   },
   {
    "roleId": "officeManager",
@@ -1398,19 +1424,19 @@
    "label": "Report Author",
    "composedFunctionalRoles": [],
    "grantedCount": 3,
-   "operableCount": 3,
-   "blockedCount": 0,
+   "operableCount": 0,
+   "blockedCount": 3,
    "granted": [
     "report.definition.create",
     "report.definition.duplicate",
     "report.definition.rename"
    ],
-   "operableNow": [
+   "operableNow": [],
+   "grantedButInactive": [
     "report.definition.create",
     "report.definition.duplicate",
     "report.definition.rename"
-   ],
-   "grantedButInactive": []
+   ]
   },
   {
    "roleId": "crmActivityContributor",

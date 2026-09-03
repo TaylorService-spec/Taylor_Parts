@@ -378,7 +378,7 @@ test("updateWorkOrderExecutionData: unknown sku in qtyUsedUpdates is rejected", 
   );
 });
 
-// Decision #169: a positive qtyUsed now REQUIRES a governed physical source. These cases are about
+// Decision #171: a positive qtyUsed now REQUIRES a governed physical source. These cases are about
 // qtyUsed mechanics, so they seed one ACTIVE warehouse and name it -- without that they refuse, which
 // is the new authority working rather than a defect.
 const EXEC_SRC_WH = "wh-engine-test";

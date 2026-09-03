@@ -32,6 +32,11 @@ import {
   NotOwnerError,
 } from "../lib/reporting/savedDefinitionCommands.js";
 
+// 2C.6C (DECISIONS #167): Reporting is ENVIRONMENT-ACTIVATED. These commands gate on report.*,
+// which is registered active:false so production is fail-closed; the sandbox override set is what
+// makes it live. Naming the environment is required or every case here denies for the wrong reason.
+process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
+
 const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();

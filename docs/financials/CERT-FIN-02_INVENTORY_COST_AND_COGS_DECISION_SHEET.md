@@ -1,5 +1,23 @@
 # CERT-FIN-02 — Inventory Cost & COGS Authority Decision Sheet
 
+> **SUPERSEDED IN FRAMING, 2026-09-03 — Owner ruling: EOS supports POLICY PROFILES, not one method.**
+>
+> This sheet was written on the premise that EOS must be told which single accounting method to
+> implement. That premise is retired. EOS now implements a governed **financial policy profile** per
+> operating company: the platform supports and tests several methods, each customer's accounting team
+> selects one during deployment, and the choice **locks** when that company's financial authority is
+> activated. Changing it afterwards is a separately governed migration that deliberately does not
+> exist.
+>
+> **What that changes about this sheet.** Decisions 1, 2, 3, 6, 7 and 11–14 are no longer asking the
+> platform to choose — they are asking **Taylor's accounting team to choose its deployment profile**,
+> which is data entered on the Financial Policy screen rather than a code change. Decisions 4, 5, 8,
+> 9, 10 and 15 concern platform behaviour and are answered in
+> [`../assessments/cert-fin-02-policy-framework-reconciliation.md`](../assessments/cert-fin-02-policy-framework-reconciliation.md).
+>
+> **The sheet is still unsigned and still worth signing** — Taylor's profile has not been selected.
+> But the platform no longer waits on it.
+
 **Status: UNRATIFIED. Every ruling box below is blank, and no implementation is authorized.**
 
 This is the ruling instrument for `CERT-FIN-02`, the last open item from the post-Certification

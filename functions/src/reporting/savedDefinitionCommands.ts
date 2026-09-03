@@ -61,6 +61,7 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission";
+import { resolveRuntimeCapabilityOverrides } from "../access/environmentCapabilityOverrides";
 import { isValidAccessVersionValue } from "../access/compactClaims";
 import { stageAuditEvent, recordStandaloneAuditEvent } from "../access/auditEventWriter";
 import type { AuditAction, Role } from "../types/access";
@@ -175,6 +176,12 @@ async function hasCapability(
       roles,
       currentAccessVersion: caller.accessVersion,
       target: GLOBAL_TARGET,
+      // 2C.6C (DECISIONS #167): the report.* family is ENVIRONMENT-ACTIVATED. Without the runtime
+      // activation set every saved-definition command would deny in EVERY environment, including
+      // the sandbox where Reporting is live, because the catalog registers these active:false.
+      // Same source as effectiveAccessFeed.ts and reportExecutionService.ts -- the runtime's own
+      // trusted project identity. Production carries no overrides, so this stays fail-closed there.
+      activationOverrides: resolveRuntimeCapabilityOverrides(),
     }).decision === "ALLOW"
   );
 }

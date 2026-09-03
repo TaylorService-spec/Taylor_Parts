@@ -17,7 +17,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import {
-  resolveCapabilityOverrides,
+  resolveCapabilityOverrides,
+  resolveProductionCapabilityActivations,
   resolveRuntimeCapabilityOverrides,
   resolveSyntheticOperationalInterpretation,
   __resetRuntimeCapabilityOverridesCacheForTest,
@@ -37,6 +38,47 @@ const CANONICAL_REGISTRY = JSON.parse(
 // The historical SPINE_11 name is kept because the constant, not its name, is the authoritative
 // list -- renaming it would churn every reference below for no behavioral gain.
 const SPINE_11 = [
+  // 2C.6C -- the REPORTING family joins the spine allow-list. It was catalog `active: true`, i.e.
+  // live in EVERY environment including production, and an override set can only ADD activation.
+  // Flipping the catalog to `active: false` is what makes production fail-closed; re-listing the
+  // previously-live ids for the SANDBOX ONLY is what keeps this correction a one-environment change.
+  // Certification is deliberately NOT given these: its activation set is an exact-set contract.
+  "report.customer.read",
+  "report.customer.field.name.read",
+  "report.customer.field.status.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.billingAddress.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.externalIds.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.paymentTerms.read",
+  "report.customer.field.taxStatus.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.billingContact.read",
+  "report.contact.read",
+  "report.contact.field.name.read",
+  "report.contact.field.email.read",
+  "report.contact.field.phone.read",
+  "report.contact.field.role.read",
+  "report.contact.field.customer.read",
+  "report.location.read",
+  "report.location.field.name.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.equipment.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.status.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.notes.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.createdAt.read",
+  "report.definition.create",
+  "report.definition.read",
+  "report.definition.rename",
+  "report.definition.duplicate",
+  "report.definition.delete",
   "opportunity.write",
   "opportunity.read",
   "opportunity.createSalesOrder",
@@ -101,13 +143,17 @@ const SPINE_11 = [
   "performance.goal.approve",
   "performance.goal.supersede",
   "performance.goal.retire",
+  // CERT-FIN-02 financial policy, activated in the sandbox by Owner ruling. Catalogue-inactive on
+  // purpose: `active: true` would mean live in production too, which is a separate ruling.
+  "financialPolicy.profile.read",
+  "financialPolicy.profile.configure",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 45 eligible capability ids", () => {
+test("eligible allow-list is exactly the 83 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 45);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 83);
 });
 
 test("sandbox project resolves the full spine override set", () => {
@@ -325,17 +371,48 @@ test("runtime resolution is driven by GCLOUD_PROJECT (sandbox -> full spine)", (
   }
 });
 
-test("runtime resolution for production project -> EMPTY", () => {
+// UPDATED BY 2C.6F, and split into the two things it was conflating.
+//
+// This used to assert that the RUNTIME resolver returns EMPTY for production. That was true only
+// because production had no adoption mechanism at all -- `capabilityActivationOverrides` refuses
+// production by role, and nothing else existed. Option 2 added a DISTINCT authority
+// (`productionCapabilityActivations`), and the runtime resolver is precisely where the two are
+// composed, so it now returns what production has explicitly ADOPTED.
+//
+// The security invariant the old assertion was protecting is NOT weakened -- it is asserted
+// directly below, on the mechanism it actually belongs to. What changed is that the runtime
+// resolver is no longer a proxy for it.
+test("runtime resolution for production returns what production has ADOPTED, not the override set", () => {
   const prev = process.env.GCLOUD_PROJECT;
   try {
     __resetRuntimeCapabilityOverridesCacheForTest();
     process.env.GCLOUD_PROJECT = "taylor-parts";
-    assert.equal(resolveRuntimeCapabilityOverrides().size, 0);
+    const runtime = resolveRuntimeCapabilityOverrides();
+    // the adopted set, and nothing from the override path
+    assert.deepEqual(
+      [...runtime].sort(),
+      [...resolveProductionCapabilityActivations(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts")].sort(),
+    );
+    assert.ok(runtime.size > 0, "production has adopted capabilities as of 2C.6F");
   } finally {
     if (prev === undefined) delete process.env.GCLOUD_PROJECT;
     else process.env.GCLOUD_PROJECT = prev;
     __resetRuntimeCapabilityOverridesCacheForTest();
   }
+});
+
+test("the OLD invariant, on the mechanism it belongs to: production yields EMPTY from the override path", () => {
+  // Unchanged and unweakened. capabilityActivationOverrides must never activate production,
+  // whatever its data says -- proven here against the real registry and against poisoned data.
+  assert.equal(resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "taylor-parts").size, 0);
+  const poisoned = {
+    environments: [{
+      role: "production",
+      firebase: { projectId: "taylor-parts" },
+      capabilityActivationOverrides: ["opportunity.write", "report.customer.read"],
+    }],
+  };
+  assert.equal(resolveCapabilityOverrides(poisoned, "taylor-parts").size, 0);
 });
 
 test("runtime resolution with no project identity -> EMPTY", () => {

@@ -205,6 +205,10 @@ test("no existing domain's routes changed — every non-financials domain path s
     "/administration/objects", "/administration/permission-preview", "/administration/vehicles",
     "/administration/regions", "/administration/company-settings", "/administration/duplicate-rules",
     "/administration/warehouse-racking",
+    // CERT-FIN-02. Financial Policy is Administration, not Financials, deliberately: it is company
+    // setup chosen once with the accounting team and locked at financial activation. Financials
+    // carries a read-only summary that links here and edits nothing.
+    "/administration/financial-policy",
     "/administration/integrations", "/administration/audit-logs",
   ]);
 });

@@ -1,6 +1,6 @@
 # ADR-014 — Warehouse and Bin Inventory Custody Model
 
-**Status:** ACCEPTED. Owner decision, 2026-09-02 (Model A — warehouse roll-up).
+**Status:** ACCEPTED. Owner decision, 2026-09-02 (Model A — warehouse roll-up). **Amended 2026-09-03 by Decision #169** (internal relocation authority and ledger vocabulary; see *Movement semantics*).
 **Amends:** Decision #116 (2026-08-20), for future BIN authority only. #116's ruling on the phase it governed stands as recorded.
 **Recorded as:** Decision #160.
 **Reconciliation:** `docs/implementation-plans/bin-location-authority-and-scanning.md`, `docs/assessments/inventory-location-registry-2026-08-20.md`.
@@ -73,7 +73,47 @@ Parentage is authoritative in the `bins` registry: a bin belongs to exactly one 
 
 **Cross-warehouse bin movement remains a governed Transfer.** There is no bin-to-bin shortcut across custody boundaries; crossing a warehouse boundary crosses a custody boundary and goes through the Transfer authority like any other.
 
-**Ledger vocabulary is not decided here.** The existing `TRANSFER_OUT` / `TRANSFER_IN` pair already expresses "leaves one location, arrives at another, aggregate preserved when both sit inside the same custody parent". Whether put-away may emit that pair — given that Transfer holds exclusive movement authority today — or whether a distinct governed movement type is required, is a BIN-P6 decision to be specified from existing ledger conventions. This ADR deliberately invents no event name.
+**Ledger vocabulary — RESOLVED by Decision #169 (2026-09-03).** This paragraph originally left the
+question open. The Owner has since ruled, and the answer is a **distinct vocabulary**:
+
+| Concern | Authority | Ledger types | Source object |
+|---|---|---|---|
+| Internal relocation (same Warehouse custody parent) | `inventory.stock.relocate` *(inert)* | `RELOCATION_OUT` / `RELOCATION_IN` | `STOCK_RELOCATION` |
+| Custody boundary (warehouse↔warehouse, anything touching MOBILE) | existing Transfer commands | `TRANSFER_OUT` / `TRANSFER_IN` | `TRANSFER_ORDER` |
+
+**`TRANSFER_OUT` / `TRANSFER_IN` are deliberately NOT overloaded.** The pair would have expressed the
+arithmetic correctly, but it would have made every shelf-to-shelf move read as stock leaving the
+building — and it would have handed the Transfer authority a second meaning it does not own. Two
+paired rows rather than one signed row (the shape Decision #168 chose for `WORK_ORDER_CONSUMPTION`)
+because a relocation genuinely has two endpoints: it leaves one exact location and arrives at
+another, and one signed row cannot say both.
+
+**Put-away therefore needs two capabilities, not one.** `inventory.placement.record` stays narrow —
+placement and history evidence, no quantity. An operation that both moves stock and records where it
+went requires **both** it and `inventory.stock.relocate`, atomically; an actor holding only placement
+is **refused** the quantity movement rather than given a descriptive-only success that looks
+authoritative.
+
+### Internal relocation versus custody transfer
+
+The distinction this ADR draws between *aggregate-preserving* and *aggregate-changing* movement is now
+also an **authority** boundary, not only an arithmetic one. The rows in the table above that leave the
+aggregate unchanged are `inventory.stock.relocate`; every row that changes it is Transfer. There is no
+third path and no shortcut: in particular, **no separate "quick truck move" writer** may be created,
+because every MOBILE endpoint crosses a custody boundary and belongs to Transfer.
+
+**Exact location is authoritative for movement, and aggregate is not.** A `WAREHOUSE` ledger row means
+*direct / unbinned* stock; a `BIN` row means that exact bin; the Warehouse aggregate is a **derived
+read** over direct plus all child bins. A movement may never be authorized by aggregate sufficiency,
+and a parent `WAREHOUSE` row is never debited merely because stock exists somewhere in its children.
+
+**Consequence measured during the Decision #169 reconciliation:** three existing readers assume a
+location scalar is a Warehouse and silently drop BIN-located stock —
+`fulfillment/fulfillmentAvailability.ts:106`, `inventoryAnalyticsCallables.ts:85`, and
+`cycleCount/cycleCountExpectedQuantity.ts:70`. They are correct today because nothing is ever located
+at a bin. Each becomes wrong the moment relocation is real, and the first would let a purely internal
+move **destroy** warehouse on-hand. Making them bin-aware is BIN-P6 scope and is required by the
+derived-read rule above.
 
 ## Historical data posture
 

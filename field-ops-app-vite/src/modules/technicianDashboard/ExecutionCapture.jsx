@@ -101,7 +101,7 @@ function PartSource({ item, options, selected, loading, onLoad, onSelect }) {
 
 export default function ExecutionCapture({ workOrder }) {
   const [submittingSku, setSubmittingSku] = useState(null);
-  // Decision #169 -- the governed source per sku, and the options the server offered for it.
+  // Decision #171 -- the governed source per sku, and the options the server offered for it.
   //
   // Fetched LAZILY, on first increment of a part, rather than for every planned part on render. A
   // technician who records nothing should cost nothing, and the common case (one unambiguous pick)

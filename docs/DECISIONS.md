@@ -5259,6 +5259,108 @@ and the registry still says which authority each blocked metric is actually wait
 `functions/test/acquisitionCostActivation.test.mjs` (24 cases),
 `field-ops-app-vite/test/recordPurchaseOrderPrice.test.mjs` (10 cases), plus the #164 suites which
 were updated where activation legitimately made an assertion false.
+---
+
+## #167 — OWNER RULING (2C.6C): Reporting eligibility and Reporting activation are separate axes
+
+**Date:** 2026-09-02
+**Classification:** ACCESS ARCHITECTURE CORRECTION. Repository only — no deploy, no grant, no
+production action of any kind.
+**Status:** IMPLEMENTED.
+
+### The ruling
+
+`ADMIN_ALL_PERMISSIONS` remains authoritative and admin keeps the **complete** `report.*` family.
+The defect was never eligibility. It was that Reporting had **no activation boundary at all**.
+
+    CAPABILITY ELIGIBILITY   who may exercise a capability     admin: YES, all 39
+    ENVIRONMENT ACTIVATION   is the family live HERE           production: NO
+
+**"Admin can do all things" means admin is eligible for every governed capability that is ACTIVE in
+the environment.** It does not mean admin activates a capability family the environment has never
+adopted. Recording that sentence is the point of this entry: it is what dissolves the apparent
+conflict between a complete admin Role and controlled production activation.
+
+### What was actually wrong
+
+36 of the 39 `report.*` capabilities were catalogued `active: true`. In this architecture that means
+**live in every environment**, production included, because an environment override set can only
+**ADD** activation and never remove it. So Reporting had eligibility control and no activation
+control.
+
+That mattered concretely, and it was measured rather than theorised: **`runReportDefinitionCallable`
+is already deployed in production.** A generic current-main Functions publish would therefore have
+taken production admin from **0** report capabilities to **39** — including 30 field-level reads over
+Customer, Contact, Equipment and Location, among them `billingAddress`, `externalIds`,
+`paymentTerms`, `taxStatus` — with no production activation review. That finding is 2C.6B's, and it
+is why this correction preceded any deployment decision.
+
+### The correction, and why it is this shape
+
+The `report.*` family moves onto the activation pattern the architecture already has: catalogue
+`active: false`, then activate per environment. No new mechanism, no reporting-specific flag
+framework, no callable-local check, and **no change to Role membership** — the ruling forbids
+answering an activation question by damaging eligibility.
+
+| environment | report.* live | why |
+|---|---|---|
+| `taylor-parts` (production) | **0 / 39** | no override set. Fail-closed, pending a separate Reporting activation ruling |
+| `eos-platform-sandbox` | **36 / 39** | exactly the set that was live before — a no-regression re-declaration |
+| `eos-platform-certification` | 0 | see below |
+| `demo-certworld` | 0 | see below |
+
+The three capabilities already inactive before this change stay inactive everywhere.
+
+### Certification was deliberately NOT given the reporting set
+
+Both certification environments pin their activation sets with **exact-set assertions**, whose own
+comments say *"an activation list is not a wish list"* and warn that a subset check would let a future
+edit quietly widen the certification emulator. Spreading 36 ids into them would have broken precisely
+the control those assertions exist to enforce. My first implementation did exactly that and their
+tests caught it.
+
+Certification does name `report.definition.read`, in `certificationWorld/authorityMatrix.mjs`. That
+matrix asserts **Role eligibility** — which Role must hold the capability — not environment
+activation, and Role membership is untouched: admin, owner, `reportViewer` and `reportAuthor` all
+still hold it. Certification therefore loses nothing it was actually asserting.
+
+### Proof
+
+Resolver-level, with the denial **reason** asserted and not merely the decision:
+
+    production, admin, report.customer.read                      DENY  inactivePermission
+    production, admin, report.definition.read                    DENY  inactivePermission
+    production, admin, report.customer.field.billingAddress.read DENY  inactivePermission
+    production, admin, report.definition.create                  DENY  inactivePermission
+    sandbox,    admin, report.customer.read                      ALLOW
+
+`inactivePermission` is the load-bearing detail: the denial comes from ACTIVATION, **before** Role
+eligibility is consulted. A `noQualifyingGrant` there would have meant the problem had been "fixed"
+by taking capabilities away from admin, which is the outcome this ruling forbids.
+
+The governance artifact shows the same split from the other side: `granted` counts are unchanged for
+every Role (eligibility preserved) while `operable` counts drop for the four report-holding Roles
+(activation withdrawn) — owner 72 -> 36, `reportViewer` 27 -> 0, `reportFinanceViewer` 5 -> 0,
+`reportAuthor` 3 -> 0.
+
+`functions/test/reportingActivationBoundary.test.mjs` pins both axes simultaneously, including a test
+that fails if a future change removes `report.*` from admin.
+
+### The future activation ceremony
+
+Production Reporting activation is a **separate Owner-gated tranche**. It must decide the three
+groups explicitly and need not activate them together:
+
+- **report read** (5) — object-level reads
+- **report definition mutation** (4) — create / rename / duplicate / delete
+- **report field reads** (30) — and this group carries the sensitivity: `billingAddress`,
+  `externalIds`, `paymentTerms`, `taxStatus`, `notes`, contact `email`, contact `phone`
+
+### Not closed by this entry
+
+The current-main Functions bundle remains **NOT** authorized. Removing the Reporting blocker does not
+authorize 57 new production Function surfaces, the Reorder three-part cutover, the Rules catch-up or
+the Hosting catch-up. Reorder remains `BLOCKED_BY_DEPENDENCY`.
 
 ## #168 — OWNER RULING: Work Order physical consumption requires a governed source location (2026-09-02)
 
@@ -5361,7 +5463,318 @@ governed read?*
 on-hand). Suites: `consumptionSource.test.mjs` (21), `consumptionMovement.test.mjs` (15),
 `consumptionCustodyBoundary.test.mjs` (10).
 
-## #169 — OWNER RULING: consumption source SELECTION, and physical consumption goes live (2026-09-02)
+---
+
+## #169 — OWNER RULING (2C.6F): production adoption is a DISTINCT authority, not a widened override
+
+**Date:** 2026-09-03
+**Classification:** ACCESS ARCHITECTURE. Repository only — no deploy, no grant, no production action.
+**Status:** IMPLEMENTED. Reporting SET 2 is now **representable**; it is **not live**.
+
+### Why a second mechanism was needed at all
+
+DECISIONS #167 moved the `report.*` family to catalogue `active: false` so production would be
+fail-closed. That was right, and it exposed a gap nobody had needed to look at before:
+
+`capabilityActivationOverrides` carries a **triple production hard-block** — no production env
+carries the field (data), `role === "production"` returns EMPTY unconditionally (code, *"the block
+does not trust the data"*), and results intersect a spine-eligible allow-list. So a capability
+registered `active: false` was, in effect, *"inactive unless a **non-production** environment adopts
+it"*. **Production had no way to adopt a governed capability at all** — short of flipping the
+catalogue globally, which is exactly the unreviewed-widening problem #167 had just fixed.
+
+**The old absolute was a valid security boundary, not a bug.** This entry does not reinterpret it,
+and 2C.6E's implementation attempt — which added 25 ids to production's override list and measured
+them being correctly ignored — is retained as the evidence that the block works as designed.
+
+### The correction (Owner ruling: Option 2)
+
+A **separate field answering a different question**, rather than a widening of the existing one:
+
+| field | question | refusal |
+|---|---|---|
+| `capabilityActivationOverrides` | has this NON-PRODUCTION environment activated it? | refused in production, by role |
+| `productionCapabilityActivations` | has PRODUCTION explicitly **adopted** it? | inert outside production, by role |
+
+They are mirror images: each refuses the other's role, so exactly one can be non-empty for any
+project. `resolveCapabilityOverrides` is **byte-unchanged** — its production refusal survives
+verbatim, asserted against both the real registry and poisoned data.
+
+**A second, narrower eligibility list.** `PRODUCTION_ACTIVATION_ELIGIBLE_IDS` is deliberately not
+derived from the spine set: being registered, or even sandbox-eligible, must not make a capability
+production-adoptable. Exact ids only — no prefix matching, no `report.*` wildcard — so the 14
+deferred Reporting capabilities share the prefix and remain non-adoptable, and a future catalogue
+addition is never silently adoptable.
+
+**Composed in exactly one place.** All eleven runtime consumers read activation through
+`resolveRuntimeCapabilityOverrides()`, so composing the two authorities there makes production
+adoption honoured consistently without touching a single caller. Configuration lives in the trusted
+environment registry: never client-writable, never a callable argument, never a Firestore business
+record.
+
+### Adoption is not eligibility
+
+    ADMIN ELIGIBILITY        39 / 39 report.*  in every environment
+    PRODUCTION ADOPTION      25 / 39
+
+Everything the mechanism returns still has to pass Role membership, scope, conditions and
+accessVersion. Proven both ways: an adopted capability held by a Role that lacks it denies
+`noQualifyingGrant` (eligibility), and an unadopted capability held by admin denies
+`inactivePermission` (activation). **Admin does not bypass activation.** Production's default
+remains zero adoptions.
+
+### The first approved use — Reporting SET 2
+
+25 exact PermissionIds: the 5 entity/execution reads and the 20 ordinary field reads, each re-proved
+present in the canonical catalogue rather than transcribed from prose. Postures after this change:
+
+    production      25 / 39      sandbox        36 / 39
+    certification    0 / 39      demo-certworld  0 / 39
+
+The other 14 stay unadopted and are not even production-*eligible*.
+
+### Two dependencies that ride forward unchanged
+
+**GROUP B — definition mutation (4).** Deferred because no saved-definition callable is deployed in
+production; adopting them today would be inert. **This is a dependency, not a permanent decision:**
+if a future Functions bundle ships those callables, Group B must be re-reviewed **before** that
+deployment and must not be auto-adopted with it. Pinned by keeping them out of the eligibility list
+rather than by baking a production function inventory into the access suite.
+
+**REPORTING_ROW_SCOPE_DEPENDENCY.** Report execution runs an unfiltered collection scan with no
+row-level authority; predicates are applied in memory afterwards. SET 2 is safe for admin **only**
+because admin already holds whole-collection read on accounts/contacts/equipment/locations. A Role
+with narrower source-record authority must not receive Reporting on field permissions alone until
+row scope is proven no broader than that Role's source authority.
+
+### What this entry does NOT do
+
+It does not deploy. `REPORTING_PRODUCTION_TARGET = APPROVED_25, REPRESENTABLE`;
+`REPORTING_PRODUCTION_LIVE = STILL_0`, and stays 0 until a governed production deployment publishes
+this configuration and the behaviour is independently proven. The current-main Functions bundle
+remains unauthorized — 57 new surfaces, the Reorder three-part cutover, the Rules catch-up and the
+Hosting catch-up all stand. Reorder is untouched and remains `BLOCKED_BY_DEPENDENCY`.
+
+## #170 — OWNER RULING: internal stock relocation is its own authority, and the scanner derives it (2026-09-03)
+
+**Context.** BIN-P0 through BIN-P5 built the Bin as a governed *place*: stable identity (P1), an
+Administration generator (P3), and printable labels (P5). None of them moved a single unit of stock —
+Decision #116 and ADR-014 deliberately kept the Warehouse as the sole custody authority. BIN-P6 is
+where physical movement into and between Bins becomes real, and it is the phase that changes what an
+existing quantity *means*. The Owner issued rulings for it: an authority ruling, an operating model, and a
+batch-scanning acceptance requirement. A third followed, on batch scanning. All three are recorded here. **None authorizes implementation.**
+
+### Part A — the authority ruling
+
+**1. A NEW INERT CAPABILITY, `inventory.stock.relocate`.** Move already-owned physical inventory
+between exact governed locations inside the same Warehouse custody parent. `active: false`, granted to
+no Role. **BIN-P4 owns activation and grants.** Registered in both governed catalog copies by this
+change; the command it will authorize does not exist yet.
+
+**2. `inventory.placement.record` STAYS NARROW.** It continues to authorize placement/history evidence
+only and **does not by itself authorize ledger movement**. A put-away that records *both* placement
+evidence *and* authoritative physical relocation requires **BOTH** capabilities, atomically. If an
+actor may record placement but may not relocate, the quantity movement is **REFUSED** — never a silent
+descriptive-only success that looks like an authoritative put-away. This is the ruling's sharpest
+edge: the failure it forbids is a screen telling a warehouse worker the stock moved when only a note
+was written.
+
+**3. A DISTINCT INTERNAL-RELOCATION VOCABULARY:** `RELOCATION_OUT` / `RELOCATION_IN`, source object
+`STOCK_RELOCATION`. **`TRANSFER_OUT` / `TRANSFER_IN` are NOT overloaded** — they remain owned by
+`TRANSFER_ORDER`. Two paired rows rather than one signed row (the shape #168 chose for
+`WORK_ORDER_CONSUMPTION`) because a relocation genuinely has two endpoints: it leaves one exact
+location and arrives at another, and one signed row cannot say both.
+
+**4. INTERNAL MEANS SAME WAREHOUSE CUSTODY PARENT, ONLY:** `WAREHOUSE direct → BIN`,
+`BIN → WAREHOUSE direct`, `BIN → BIN` in the same Warehouse. **Warehouse aggregate change: ZERO.**
+
+**5. TRANSFER REMAINS THE CUSTODY-BOUNDARY AUTHORITY:** Warehouse A → Warehouse B, BIN in A →
+Warehouse B, BIN in A → BIN in B, and every move touching MOBILE. These stay `TRANSFER_OUT` /
+`TRANSFER_IN` through the existing governed Transfer commands.
+
+**6. NO PART-TO-BIN EXCLUSIVITY.** One Part may occupy many Bins; one Bin may hold many Parts.
+Quantity stays keyed by `partId + exact governed locationId`. No `part_bin_assignments`, no
+preferred-bin authority, no exclusive-bin rules unless Taylor later asks for those operating
+constraints.
+
+**7. EXACT LocationRef IS AUTHORITATIVE FOR MOVEMENT.** A movement cannot invent which child Bin stock
+came from. `WAREHOUSE` on a ledger row means **direct / unbinned** Warehouse stock; `BIN` means that
+exact Bin. The Warehouse aggregate is a **DERIVED read**: direct WAREHOUSE + all child BIN locations.
+**Never subtract from a parent WAREHOUSE row merely because aggregate stock exists somewhere in its
+child Bins.**
+
+**8. A CONDITIONAL STOP ON TRANSFER.** Before changing Transfer behaviour, P6 must reconcile how
+existing Warehouse-level Transfer orders choose exact source stock under Model A — and STOP if
+Transfer cannot remain truthful without a new allocation/source-location contract. **That
+reconciliation was performed. Its answer is below.**
+
+### Part B — the scanner operating model
+
+**ONE operator experience: "Scan / Move Stock". The user never picks the ledger event type.** EOS
+derives the governed command from actor, source LocationRef, destination LocationRef, part tracking
+mode and business context. The same governed command results whether the operator scans
+location-first or item-first; **UI scan order must not alter authority semantics.**
+
+Routing, by endpoint pair:
+
+| Movement | Authority | Ledger |
+|---|---|---|
+| WAREHOUSE ↔ BIN, BIN → BIN (same warehouse) | `inventory.stock.relocate` | `RELOCATION_OUT` / `RELOCATION_IN` |
+| Anything touching MOBILE (truck) | **existing Transfer commands** | `TRANSFER_OUT` / `TRANSFER_IN` |
+| Truck stock used on a job | **#168 Work Order physical-consumption authority** | `WORK_ORDER_CONSUMPTION` |
+
+**No second "quick truck move" writer**, and **the scanner is not its own inventory writer** — a
+lightweight UX composes the existing `createTransferOrder` / `dispatchTransferOrder` /
+`receiveTransferOrder`, or an approved composition over exactly those.
+
+**Nothing moves by scanning alone.** Every authoritative move previews what will happen — *"Move 4 ×
+PRT-1001 from A01-001 to A01-003"* — and requires confirmation.
+
+**The scanner must never guess source quantity.** Aggregate sufficiency cannot authorize an
+exact-location move: if the stock is physically in A01-001, the source *is* A01-001. Context may
+supply what governed assignment already proves (the selected Warehouse, a technician's assigned truck,
+the selected Work Order), but never *"probably A01-001"*, *"nearest bin"* or *"last bin used"*.
+
+**Serialized stock moves only through its owning governed command** — no manual serial-location
+overwrite, and **no parallel serial-location table**. P6 must define how
+`serialized_assets.currentLocationId` moves to a BIN while preserving Warehouse parentage.
+
+**Picking creates no reservation**; reservations remain governed by the Work Order lifecycle. A
+`pickedForWorkOrderId` is retained as context explaining *why* stock moved — it creates no second
+movement authority.
+
+**Controls are capability-driven, not persona-driven.** No permission means the control is absent or
+disabled with a truthful reason — never a fake successful scanner flow. **Offline may queue intent but
+must never display authoritative success before the server commits:** *"Waiting to sync"* and
+*"Moved"* are different states.
+
+**Acceptance is operator paths, not projection.** P6 is not complete merely because the ledger
+projection understands BIN; the warehouse, technician and scanner journeys enumerated in the ruling
+must each reach the correct existing authority.
+
+### Part C — batch scanning is an acceptance requirement, not an enhancement
+
+**P6 is NOT complete if a warehouse or technician user must submit one screen per scanned item.**
+
+This closes a loop back to the origin of the whole BIN programme. The Owner's assessment of the
+Insight Works Advanced Inventory Count add-on was precisely this: *"it gives the ability to scan
+multiple items at once then process them at once instead of 1 at a time that we have built."* One
+screen per item is the thing being replaced — shipping P6 with a per-item submit would rebuild the
+limitation the programme exists to remove.
+
+**What this requires of the design.** An operator accumulates many scanned lines, reviews them once,
+confirms once, and gets one result. That is compatible with — and does not weaken — Part B's rule
+that nothing moves by scanning alone: the confirmation gate moves from per-item to per-batch, it does
+not disappear. Scanning still commits nothing; a batch is still previewed before it is applied.
+
+**The open question this creates, for the P6 specification to answer explicitly:** is a batch
+**all-or-nothing**, or **per-line** with individual results? The two are not interchangeable, and the
+wrong default is expensive either way — an all-or-nothing batch of sixty scans discarded because line
+fifty-eight was short is unusable on a warehouse floor, while a silently partial batch that reports
+overall success is the class of lie this codebase keeps removing. The repository already holds a
+worked precedent in BIN-P3's apply runner: N governed commands at bounded concurrency, **partial
+success treated as the normal outcome**, no aggregate verdict, and one truthful result per row.
+That precedent is offered as the starting point, **not** as a decision taken here.
+
+Batch behaviour must also survive the failure paths Part B already enumerates: retry/idempotency,
+partial/network failure, insufficient stock on one line of many, and an offline queue that shows
+*"Waiting to sync"* rather than a fabricated *"Moved"*.
+
+### The Ruling-8 reconciliation — measured, and the answer is NO STOP
+
+**Question:** can existing Warehouse-level Transfer remain truthful under Model A without a new
+allocation/source-location contract?
+
+**Answer: YES.** Transfer's sufficiency is already **exact-location matched**, not aggregated
+(`transferOrderCommand.ts:149`):
+
+```ts
+if (v.location.type !== location.type || v.location.locationId !== location.locationId) continue;
+```
+
+It sums only ledger rows at the exact origin `{type, locationId}` and writes its `TRANSFER_OUT` at
+that same exact location. It therefore **cannot** see child Bins, **cannot** aggregate them, and
+**cannot** invent a source Bin — the three things Ruling 7 forbids. Under Model A it becomes
+*narrower* (a WAREHOUSE-origin transfer sees only direct/unbinned stock) but never *wrong*: once stock
+is binned, such a transfer is **refused as insufficient**, which is an honest refusal rather than a
+false success. **No allocation contract is required for Transfer to stay truthful, so Ruling 8's stop
+does not fire.**
+
+What Transfer *does* need, to deliver Ruling 5 and the truck journeys, is an **endpoint vocabulary
+widening**. `TRANSFER_ENDPOINT_TYPES` is `WAREHOUSE | MOBILE` today
+(`transferOrderValidation.ts:22-30`), so **every BIN-endpoint transfer the ruling assigns to Transfer
+is currently refused fail-closed**: BIN → MOBILE, MOBILE → BIN, BIN in A → Warehouse B. That widening
+is additive and needs no allocation contract.
+
+### The hazard this reconciliation exposed — three readers, one structural assumption
+
+Measuring Transfer surfaced a larger and more dangerous finding. **Three separate readers assume a
+location scalar is a Warehouse, and each silently drops BIN-located stock:**
+
+| Site | Line | What it does |
+|---|---|---|
+| `fulfillment/fulfillmentAvailability.ts` | 106 | `if (loc.type !== "WAREHOUSE") continue` — the governed NONE on-hand derivation **skips every BIN row** |
+| `inventoryAnalyticsCallables.ts` | 85 | counts a serialized asset only when `currentLocationId` is an **eligible warehouse id** |
+| `cycleCount/cycleCountExpectedQuantity.ts` | 70 | queries serials by `currentLocationId == location.locationId`, an **exact scalar match** |
+
+None is a defect today, because nothing is ever located at a BIN. Each becomes one the moment P6
+makes relocation real — and the first one fails in the worst available direction:
+
+> `RELOCATION_OUT` at `WAREHOUSE/WH-1` (−10) would be counted; `RELOCATION_IN` at `BIN/bin_x` (+10)
+> would be **skipped**. A purely internal shelf-to-shelf move would **destroy 10 units of warehouse
+> on-hand** — directly contradicting Ruling 4's "Warehouse aggregate change: ZERO."
+
+This is the same class of error #168's Ruling 7 pinned by test (a double subtraction that "would drive
+the warehouse negative and erase stock still on the shelf"), reached by a new route. **Ruling 7 already
+states the correct behaviour** — the Warehouse aggregate is a derived read over direct WAREHOUSE plus
+all child BINs — so making these three readers Bin-aware is *executing* this ruling, not requesting a
+new one. It is recorded here because it is scope P6 must own, it is invisible until the first
+relocation commits, and the serialized sites additionally require a bin→warehouse parentage lookup
+they do not currently have.
+
+### One correction to the ruling as written: what "grants: NONE" means here
+
+Ruling 1 says `grants: NONE`. Registering the capability and then asking the resolver shows something
+more precise, and it is worth stating rather than leaving to be rediscovered:
+
+```
+seeded-granted to admin/dispatcher/technician  : TRUE  (by derivation, not an explicit grant)
+resolveEffectivePermission(admin,      relocate) : DENY  inactivePermission
+resolveEffectivePermission(dispatcher, relocate) : DENY  inactivePermission
+resolveEffectivePermission(technician, relocate) : DENY  inactivePermission
+```
+
+**No explicit grant was written, and none is implied by this record.** But the compatibility roles
+derive their permission set from the catalog, so a newly registered id appears in the admin set
+automatically. That is a pre-existing structural property of the role model — identical for
+`inventory.placement.record` and both bin capabilities, checked rather than assumed — and changing it
+is not P6 work.
+
+**What actually holds the line is `active: false`**, which denies every role with reason
+`inactivePermission`. So BIN-P4 owning **activation** is the correct and sufficient gate, and the
+ruling's intent is satisfied. "Grants: NONE" should be read as *"no explicit grant, and inert until
+BIN-P4 activates it"* — not as *"absent from every role's derived set"*, which is not how this catalog
+works.
+
+### What this decision does and does not authorize
+
+**Recorded and registered:** the two rulings above, and the inert `inventory.stock.relocate` capability
+(`active: false`, no grants, both catalog copies).
+
+**NOT authorized by this record:** the relocation command; the `RELOCATION_OUT` / `RELOCATION_IN`
+ledger vocabulary and `STOCK_RELOCATION` source object; the Transfer endpoint widening; any change to
+the three readers above; the scanner surfaces; serialized bin custody; capability activation or grants
+(BIN-P4); and any deployment. **BIN-P6 is Tier-2 and remains unstarted.**
+
+### Enforced by
+
+`functions/src/access/permissionCatalog.ts` and `field-ops-app-vite/src/access/permissionCatalog.ts`
+(the inert capability, both copies byte-identical); ADR-014 §"Internal relocation versus custody
+transfer"; and `docs/assessments/bin-p6-transfer-reconciliation.md`, which carries the measured
+evidence for the Ruling-8 answer and the three-reader hazard.
+
+---
+## #171 — OWNER RULING: consumption source SELECTION, and physical consumption goes live (2026-09-02)
 
 **Context.** Decision #168 made Work Order physical consumption require a governed source location and
 shipped it **inactive**, with a named blocker: the ruling's fallback needs a technician to name a

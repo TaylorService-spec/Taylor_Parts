@@ -2,7 +2,7 @@
 
 **Audience:** technicians recording parts used in the field
 **Applies to:** Work Order → Execution capture → **Parts Used**
-**Training represents:** Decisions #168 + #169 (merged)
+**Training represents:** Decisions #168 + #171 (merged)
 **Effective date:** 2026-09-02
 **Environment:** merged and active in code — **not yet deployed to any environment**
 **Owner:** Verenward product training
@@ -93,7 +93,7 @@ Administrator — do not work around it.
 ## Verification receipt
 
 - Training checked against deployed release/SHA: **NOT DEPLOYED.** Written against merged code
-  (Decisions #168 + #169), verified against nine end-to-end emulator proofs of the real callable.
+  (Decisions #168 + #171), verified against nine end-to-end emulator proofs of the real callable.
 - Workflow exercised/visually verified: **NOT IN A DEPLOYED ENVIRONMENT.** The behaviour is active in
   code and proven against the Firestore emulator, but the sandbox is at an older release, so no user
   has yet exercised this screen anywhere.

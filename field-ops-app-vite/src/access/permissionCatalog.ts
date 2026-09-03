@@ -384,6 +384,46 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "record",
     active: false,
   }),
+  // CERT-FIN-02 Financial Policy Profile -- a company's DEPLOYMENT-TIME accounting configuration
+  // (functions/src/finance/financialPolicyProfile.ts). Deliberately NOT a `finance.*` transaction
+  // capability: this is company setup authority, exercised once with the customer's accounting team
+  // during deployment, not routine financial work.
+  //
+  // OWNER RULING (financial-policy authority). Both are now ACTIVATED -- through the per-environment
+  // seam, NOT by flipping `active` here. A catalogued `active: true` means LIVE IN EVERY ENVIRONMENT
+  // including production, because an override set can only ADD activation and never remove it; that
+  // is the exact defect DECISIONS #166 corrected for the report.* family. So these stay
+  // `active: false` and environmentCapabilityOverrides.ts activates them per environment. Production
+  // activation is a separate ruling and that path cannot deliver it (production is triple-blocked).
+  //
+  // WHO HOLDS WHAT. `.configure` is held by admin and owner ONLY, and by DERIVATION rather than a new
+  // grant: ADMIN_ALL_PERMISSIONS is every catalog id and OWNER_PERMISSIONS is built from
+  // ADMIN_ROLE.permissions, so no Role edit was needed and none was made. `.read` is deliberately
+  // broader -- accountingManager + financeManager (via MONEY_MANAGER_PERMISSIONS), controller and
+  // generalManager -- because seeing which costing method governs your numbers is part of that work.
+  // The money Roles do NOT get `.configure`: approving an accounting policy does not confer EOS
+  // configuration authority, and read authority never implies write authority.
+  //
+  // NEITHER BEATS THE LOCK. Once a profile is LOCKED the trusted command refuses mutation for every
+  // principal including admin and owner, checked against stored state inside the transaction.
+  // `financial_policy_profiles` has no firestore.rules match block (deny-all to every client), and
+  // the only write path is that command.
+  Object.freeze({
+    id: "financialPolicy.profile.read",
+    description:
+      "Read the operating company's governed financial policy profile (inventory cost method, COGS recognition point, treatment choices, lifecycle status) via the trusted read. A READ capability: it configures nothing and widens no client Rule.",
+    resource: "financialPolicy.profile",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "financialPolicy.profile.configure",
+    description:
+      "Configure an operating company's DRAFT/APPROVED financial policy profile during deployment via the trusted command. Never edits a LOCKED profile: once financial authority is activated, changing accounting policy requires a separately governed financial-policy migration, and no capability -- including admin and owner -- bypasses that.",
+    resource: "financialPolicy.profile",
+    action: "configure",
+    active: false,
+  }),
   // Commercial Coverage & Territory (#15) -- create durable Sales Territories + effective-dated coverage
   // assignments via the trusted coverage commands. Records only (no precedence/credit/commission). Registered
   // active:false (fail-closed). sales_territories / commercial_coverage_assignments are Admin-SDK-only.
@@ -607,28 +647,28 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Object-level read gate for reporting on Customer/Account records.",
     resource: "report.customer",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.name.read",
     description: "Report field-read: customer.name.",
     resource: "report.customer.field.name",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.status.read",
     description: "Report field-read: customer.status.",
     resource: "report.customer.field.status",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.relationshipTypes.read",
     description: "Report field-read: customer.relationshipTypes.",
     resource: "report.customer.field.relationshipTypes",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.billingAddress.read",
@@ -636,14 +676,14 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Report field-read: customer.billingAddress (street/city/state/zip -- one capability, grouped per Spec §5.1).",
     resource: "report.customer.field.billingAddress",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.tags.read",
     description: "Report field-read: customer.tags.",
     resource: "report.customer.field.tags",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.externalIds.read",
@@ -651,7 +691,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Report field-read: customer.customerNumber/erpId/accountingId/legacyId (one capability, grouped per Spec §5.1).",
     resource: "report.customer.field.externalIds",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.notes.read",
@@ -666,21 +706,21 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Report field-read: customer.createdAt.",
     resource: "report.customer.field.createdAt",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.paymentTerms.read",
     description: "Report field-read: customer.paymentTerms -- governed (Rules admin-only write, Issue #175).",
     resource: "report.customer.field.paymentTerms",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.taxStatus.read",
     description: "Report field-read: customer.taxStatus -- governed (Rules admin-only write, Issue #175).",
     resource: "report.customer.field.taxStatus",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.commercialProfile.read",
@@ -688,14 +728,14 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Report field-read: customer.defaultCurrency/purchaseOrderRequired/invoiceDeliveryMethod (one capability, grouped per Spec §5.1).",
     resource: "report.customer.field.commercialProfile",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.billingContact.read",
     description: "Report field-read: customer.billingContact (reference -> contact).",
     resource: "report.customer.field.billingContact",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.customer.field.accountOwner.read",
@@ -711,42 +751,42 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Object-level read gate for reporting on Contact records.",
     resource: "report.contact",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.contact.field.name.read",
     description: "Report field-read: contact.name.",
     resource: "report.contact.field.name",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.contact.field.email.read",
     description: "Report field-read: contact.email.",
     resource: "report.contact.field.email",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.contact.field.phone.read",
     description: "Report field-read: contact.phone.",
     resource: "report.contact.field.phone",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.contact.field.role.read",
     description: "Report field-read: contact.role.",
     resource: "report.contact.field.role",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.contact.field.customer.read",
     description: "Report field-read: contact.accountId (reference -> customer).",
     resource: "report.contact.field.customer",
     action: "read",
-    active: true,
+    active: false,
   }),
 
   Object.freeze({
@@ -754,14 +794,14 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Object-level read gate for reporting on Location records.",
     resource: "report.location",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.location.field.name.read",
     description: "Report field-read: location.name.",
     resource: "report.location.field.name",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.location.field.address.read",
@@ -769,7 +809,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Report field-read: location.address.street/city/state/zip (one capability, grouped per Spec §5.3).",
     resource: "report.location.field.address",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.location.field.accessNotes.read",
@@ -784,7 +824,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Report field-read: location.accountId (reference -> customer).",
     resource: "report.location.field.customer",
     action: "read",
-    active: true,
+    active: false,
   }),
 
   Object.freeze({
@@ -792,21 +832,21 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Object-level read gate for reporting on Equipment records.",
     resource: "report.equipment",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.name.read",
     description: "Report field-read: equipment.name.",
     resource: "report.equipment.field.name",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.status.read",
     description: "Report field-read: equipment.status.",
     resource: "report.equipment.field.status",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.identity.read",
@@ -814,42 +854,42 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Report field-read: equipment.manufacturer/model/serialNumber/assetTag (one capability, grouped per Spec §5.4).",
     resource: "report.equipment.field.identity",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.dates.read",
     description: "Report field-read: equipment.installedDate/warrantyExpiresDate (one capability, grouped per Spec §5.4).",
     resource: "report.equipment.field.dates",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.notes.read",
     description: "Report field-read: equipment.notes -- standard (not security-text; distinct from customer/location notes, Spec §5.4).",
     resource: "report.equipment.field.notes",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.customer.read",
     description: "Report field-read: equipment.accountId (reference -> customer).",
     resource: "report.equipment.field.customer",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.location.read",
     description: "Report field-read: equipment.locationId (reference -> location).",
     resource: "report.equipment.field.location",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.equipment.field.createdAt.read",
     description: "Report field-read: equipment.createdAt.",
     resource: "report.equipment.field.createdAt",
     action: "read",
-    active: true,
+    active: false,
   }),
 
   // --- Report saved-definition domain (Issue #325 / ADR-007 W-SAVE) ---
@@ -874,35 +914,35 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Create a saved report definition (trusted saved-definition service).",
     resource: "report.definition",
     action: "create",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.definition.read",
     description: "Read (get one or list one's own) saved report definitions (trusted saved-definition service).",
     resource: "report.definition",
     action: "read",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.definition.rename",
     description: "Rename one's own saved report definition (trusted saved-definition service).",
     resource: "report.definition",
     action: "rename",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.definition.duplicate",
     description: "Duplicate one's own saved report definition (trusted saved-definition service).",
     resource: "report.definition",
     action: "duplicate",
-    active: true,
+    active: false,
   }),
   Object.freeze({
     id: "report.definition.delete",
     description: "Delete one's own saved report definition (trusted saved-definition service).",
     resource: "report.definition",
     action: "delete",
-    active: true,
+    active: false,
   }),
 
   // --- Enterprise Access & Administration domain (this platform; Spec §16) ---
@@ -1014,6 +1054,33 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
       "Record a physical put-away: which bin stock was stowed in, within the warehouse that already holds it. Placement only -- authors no ledger movement, no quantity change and no inventory custody (DECISIONS #116).",
     resource: "inventory.placement",
     action: "record",
+    active: false,
+  }),
+  // BIN-P6 / DECISIONS #169 -- INTERNAL PHYSICAL RELOCATION.
+  //
+  // Move already-owned stock between exact governed locations INSIDE one Warehouse custody parent:
+  // WAREHOUSE direct -> BIN, BIN -> WAREHOUSE direct, BIN -> BIN in the same Warehouse. The
+  // Warehouse aggregate does not change, because nothing crossed a custody boundary.
+  //
+  // A THIRD AUTHORITY, DELIBERATELY DISTINCT FROM BOTH ITS NEIGHBOURS.
+  //
+  // Not `inventory.placement.record`: that authorizes placement/history EVIDENCE only and authors no
+  // quantity. Keeping it narrow is the point -- a put-away that both moves stock and records where it
+  // went requires BOTH capabilities, and an actor holding only placement must be REFUSED the quantity
+  // movement rather than given a descriptive-only success that looks authoritative.
+  //
+  // Not the Transfer authority: Transfer owns CUSTODY BOUNDARIES (warehouse to warehouse, and every
+  // move touching MOBILE). Reusing it for an internal shelf-to-shelf move would make every relocation
+  // look like stock leaving the building.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role. BIN-P4 owns
+  // activation and grants; the relocation command itself is BIN-P6 work and does not exist yet.
+  Object.freeze({
+    id: "inventory.stock.relocate",
+    description:
+      "Move already-owned physical inventory between exact governed locations inside the same Warehouse custody parent (warehouse-direct to bin, bin to warehouse-direct, bin to bin). Authors internal relocation movement only: the Warehouse aggregate is unchanged, no custody boundary is crossed, and this grants nothing about transferring stock between warehouses or to a truck (DECISIONS #169).",
+    resource: "inventory.stock",
+    action: "relocate",
     active: false,
   }),
   // Scanner Phase K -- the DESCRIPTIVE BIN REGISTRY (functions/src/inventoryLocation/bin*.ts).

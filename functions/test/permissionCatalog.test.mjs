@@ -10,6 +10,7 @@
 // Prerequisite: `npm run build` in functions/ first (this test imports
 // the compiled lib/ output, not the TypeScript source).
 import assert from "node:assert/strict";
+import { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } from "../lib/access/environmentCapabilityOverrides.js";
 import {
   PERMISSION_CATALOG,
   isValidPermissionId,
@@ -154,7 +155,10 @@ check("every wave-1 report.* id is registered and passes isValidPermissionId (th
 });
 
 check("isActivePermission: true for a registered, active id", () => {
-  assert.equal(isActivePermission("report.customer.field.name.read"), true);
+  // 2C.6C: the example used to be report.customer.field.name.read. The report.* family is now
+  // environment-activated (DECISIONS #167), so no report id is catalogue-active any more and the
+  // example moved to a capability that still is. The assertion itself is unchanged.
+  assert.equal(isActivePermission("workOrder.transition"), true);
   assert.equal(isActivePermission("customer.record.read"), true, "an ordinary pre-existing id with no active flag is active");
 });
 
@@ -169,22 +173,25 @@ check("isActivePermission: false (never true) for an unregistered id -- stricter
   assert.equal(isActivePermission("not.a.realPermission"), false);
 });
 
-check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is active", () => {
+check("the three sensitive wave-1 report ids stay withheld -- now at the activation layer", () => {
+  // 2C.6C moved the ENTIRE report.* family to `active: false` so production could be fail-closed
+  // (DECISIONS #167). That erased this distinction at the CATALOGUE level, where it used to live:
+  // 36 active, 3 inactive-pending-review.
+  //
+  // The distinction is not lost, it MOVED to where it is now meaningful. Sandbox re-activates
+  // exactly the 36 that were live and deliberately does NOT carry these three, so the
+  // sensitivity decision still holds in the one environment where Reporting runs.
   const reportIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("report."));
-  const inactive = reportIds.filter((p) => p.active === false).map((p) => p.id);
-  assert.deepEqual(
-    inactive.sort(),
-    [
-      "report.customer.field.accountOwner.read",
-      "report.customer.field.notes.read",
-      "report.location.field.accessNotes.read",
-    ].sort(),
-  );
-  for (const p of reportIds) {
-    if (!inactive.includes(p.id)) {
-      assert.equal(p.active, true, `"${p.id}" is expected active: true (explicit), not merely omitted`);
-    }
-  }
+  assert.ok(reportIds.every((p) => p.active === false), "the whole family is environment-activated now");
+
+  const sandbox = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-sandbox");
+  const withheld = reportIds.filter((p) => !sandbox.has(p.id)).map((p) => p.id).sort();
+  assert.deepEqual(withheld, [
+    "report.customer.field.accountOwner.read",   // employee-sensitivity, deferred to wave 4
+    "report.customer.field.notes.read",          // security-text, pending wave-1 review
+    "report.location.field.accessNotes.read",    // security-text, pending wave-1 review
+  ].sort());
+  assert.equal(reportIds.length - withheld.length, 36, "the other 36 are activated in sandbox");
 });
 
 // The invariant this protects is that introducing `active` did not change behavior for any
@@ -248,7 +255,7 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile.", "inventory.stock.relocate"];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -327,6 +334,28 @@ check("every inventory.transfer.* entry is registered-but-not-grantable (active:
   }
 });
 
+check("every financialPolicy.profile.* entry stays catalogue-inactive, so activation is per-environment", () => {
+  const policy = PERMISSION_CATALOG.filter((p) => p.id.startsWith("financialPolicy.profile."));
+  assert.deepEqual(
+    policy.map((p) => p.id).sort(),
+    ["financialPolicy.profile.configure", "financialPolicy.profile.read"],
+    "deployment-time financial policy registers exactly two capabilities: read it, and configure it",
+  );
+  // The Owner ACTIVATED both. `active: false` here is how that is delivered, not a contradiction of
+  // it: a catalogued `active: true` means live in EVERY environment including production, because an
+  // override set can only ADD activation (DECISIONS #166). Activation therefore happens in
+  // environmentCapabilityOverrides.ts + config/environments.json, where production is triple-blocked.
+  // Flipping either of these to true would activate deployment-time financial configuration in
+  // production without a production activation ruling.
+  for (const permission of policy) {
+    assert.equal(
+      permission.active,
+      false,
+      `"${permission.id}" must stay catalogue-inactive -- true here would activate it in production too`,
+    );
+  }
+});
+
 check("every inventory.cycleCount.* entry is registered-but-not-grantable (active: false, never true)", () => {
   const cycleCount = PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.cycleCount."));
   assert.deepEqual(
@@ -362,6 +391,32 @@ check("no DISPOSITION capability exists, because no disposition policy has been 
   // against an authority whose meaning nobody has settled.
   const disposition = PERMISSION_CATALOG.filter((p) => /disposition|restock|scrap|quarantine/i.test(p.id));
   assert.deepEqual(disposition.map((p) => p.id), []);
+});
+
+check("inventory.stock.relocate is registered exactly once, active: false, resource/action match", () => {
+  // BIN-P6 / DECISIONS #169. Internal relocation inside one Warehouse custody parent. Registered
+  // ahead of its command deliberately -- the Owner ruling names it, BIN-P4 owns activation, and the
+  // relocation command is BIN-P6 work that does not exist yet.
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.stock.relocate");
+  assert.equal(matches.length, 1);
+  const [permission] = matches;
+  assert.equal(permission.active, false, "internal relocation must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.stock");
+  assert.equal(permission.action, "relocate");
+});
+
+check("relocation is a DISTINCT authority from placement and from transfer", () => {
+  // The whole point of DECISIONS #169 rulings 2 and 5. If these ever collapse into one id, a
+  // put-away that only records evidence would start authorizing quantity movement, and an internal
+  // shelf-to-shelf move would start looking like stock leaving the building.
+  const ids = PERMISSION_CATALOG.map((p) => p.id);
+  assert.ok(ids.includes("inventory.stock.relocate"));
+  assert.ok(ids.includes("inventory.placement.record"));
+  const relocate = PERMISSION_CATALOG.find((p) => p.id === "inventory.stock.relocate");
+  const placement = PERMISSION_CATALOG.find((p) => p.id === "inventory.placement.record");
+  assert.notEqual(relocate.resource, placement.resource);
+  // And it is not a transfer capability wearing a different name.
+  assert.ok(!relocate.id.includes("transfer"));
 });
 
 check("inventory.placement.record is registered exactly once, active: false, resource/action match", () => {

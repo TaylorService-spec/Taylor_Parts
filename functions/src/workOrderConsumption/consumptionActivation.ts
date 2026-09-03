@@ -11,7 +11,7 @@
 // role === "technician" exactly. The actor who must name the source could read neither the
 // warehouses nor their own truck.
 //
-// Decision #169 closed that WITHOUT granting a standing read. listWorkOrderConsumptionSources is
+// Decision #171 closed that WITHOUT granting a standing read. listWorkOrderConsumptionSources is
 // a trusted, command-scoped projection: it answers "for this technician, this Work Order, this
 // part, what may the source be?" and returns location IDENTITIES ONLY -- no on-hand, no available,
 // no reserved, no ATP. firestore.rules is unchanged, and a test asserts it.
@@ -30,7 +30,7 @@
 export const PHYSICAL_CONSUMPTION_ACTIVE = true;
 
 /**
- * The blocker this gate WAS waiting on, kept as the name of what closed it (Decision #169).
+ * The blocker this gate WAS waiting on, kept as the name of what closed it (Decision #171).
  * Retained rather than removed so a future reader can find the question, not just the answer.
  */
 export const PHYSICAL_CONSUMPTION_BLOCKER = "CONSUMPTION_SOURCE_SELECTION_AUTHORITY_REQUIRED";

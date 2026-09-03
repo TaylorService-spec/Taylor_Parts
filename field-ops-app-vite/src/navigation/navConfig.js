@@ -563,6 +563,11 @@ export const NAV_DOMAINS = [
       // configuration surfaces. Bins are places, not stock, so this is configuration and not an
       // Inventory workspace.
       { key: "warehouseRacking", label: "Warehouse Racking", path: "warehouse-racking" },
+      // Financial Policy -- Company Setup, not Finance. The accounting method a company deploys with
+      // is chosen once with its accounting team and locked at financial activation, which makes it
+      // configuration of the same kind as Roles and Racking rather than routine financial work.
+      // Financials carries a read-only summary that links here; this is the only editing surface.
+      { key: "financialPolicy", label: "Financial Policy", path: "financial-policy" },
       { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],

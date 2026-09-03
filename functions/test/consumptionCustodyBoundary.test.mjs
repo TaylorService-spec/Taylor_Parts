@@ -147,7 +147,7 @@ test("SERIAL custody stays with the serialized-asset authority, never with quant
 // ══════════════════════════ THE ONE MISSING FACT ══════════════════════════
 
 test("the consumption path NOW carries a source — at the layer where it is actually known", () => {
-  // INVERTED by Decision #169. This previously proved the gap: no source at the plan, the capture or
+  // INVERTED by Decision #171. This previously proved the gap: no source at the plan, the capture or
   // the ledger write. Two of those three closed, and the third stayed shut ON PURPOSE — which is why
   // the assertion is rewritten rather than deleted.
   //

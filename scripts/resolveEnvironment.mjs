@@ -54,6 +54,46 @@ export const READINESS_KEYS = Object.freeze([
 // environmentArchitecture.test.mjs). Hardcoded allow-list: bounds what ANY
 // environment can activate, so registry data can only ever be a subset.
 export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
+  // 2C.6C (DECISIONS #167): the reporting family became environment-activated, so its ids must be
+  // override-eligible here too. This list is the SCRIPT-side copy of the same contract the
+  // Functions module declares; the environment-architecture guard compares config/environments.json
+  // against THIS one, so omitting them here would reject the sandbox declaration as ineligible.
+  "report.customer.read",
+  "report.customer.field.name.read",
+  "report.customer.field.status.read",
+  "report.customer.field.relationshipTypes.read",
+  "report.customer.field.billingAddress.read",
+  "report.customer.field.tags.read",
+  "report.customer.field.externalIds.read",
+  "report.customer.field.createdAt.read",
+  "report.customer.field.paymentTerms.read",
+  "report.customer.field.taxStatus.read",
+  "report.customer.field.commercialProfile.read",
+  "report.customer.field.billingContact.read",
+  "report.contact.read",
+  "report.contact.field.name.read",
+  "report.contact.field.email.read",
+  "report.contact.field.phone.read",
+  "report.contact.field.role.read",
+  "report.contact.field.customer.read",
+  "report.location.read",
+  "report.location.field.name.read",
+  "report.location.field.address.read",
+  "report.location.field.customer.read",
+  "report.equipment.read",
+  "report.equipment.field.name.read",
+  "report.equipment.field.status.read",
+  "report.equipment.field.identity.read",
+  "report.equipment.field.dates.read",
+  "report.equipment.field.notes.read",
+  "report.equipment.field.customer.read",
+  "report.equipment.field.location.read",
+  "report.equipment.field.createdAt.read",
+  "report.definition.create",
+  "report.definition.read",
+  "report.definition.rename",
+  "report.definition.duplicate",
+  "report.definition.delete",
   'opportunity.write',
   'opportunity.read',
   'opportunity.createSalesOrder',
@@ -120,6 +160,13 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'performance.goal.approve',
   'performance.goal.supersede',
   'performance.goal.retire',
+  // CERT-FIN-02 FINANCIAL POLICY -- mirrors environmentCapabilityOverrides.ts, whose comment
+  // carries the full reasoning. Present here for the same reason as the ids above: the frontend
+  // bakes THIS list into the bundle, so a capability eligible on the backend but absent here would
+  // hide the Financial Policy surface the governed read would have answered -- a disagreement
+  // rather than a safeguard.
+  'financialPolicy.profile.read',
+  'financialPolicy.profile.configure',
 ]);
 
 /**

@@ -165,7 +165,7 @@ export async function updateWorkOrderExecutionData(
   updates: {
     qtyUsedUpdates?: QtyUsedDelta[];
     executionNote?: string;
-    // Decision #169 -- the governed physical source per sku, for POSITIVE deltas only. A decrement is
+    // Decision #171 -- the governed physical source per sku, for POSITIVE deltas only. A decrement is
     // a correction against the original lineage and deliberately carries none.
     consumptionSources?: { sku: string; locationId: string }[];
   }
@@ -174,7 +174,7 @@ export async function updateWorkOrderExecutionData(
   return result.data;
 }
 
-// Decision #169 -- the trusted, command-scoped source projection. Identities and labels only: no
+// Decision #171 -- the trusted, command-scoped source projection. Identities and labels only: no
 // on-hand, no available, no reserved. It exists so a technician can name where a part came from
 // WITHOUT being granted any standing read of warehouses, trucks or inventory.
 export interface ConsumptionSourceOption {

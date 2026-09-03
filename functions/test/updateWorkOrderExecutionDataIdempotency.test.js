@@ -34,7 +34,7 @@ function callRequest(data, uid) {
   return { data, auth: uid !== undefined ? { uid, token: {} } : undefined };
 }
 
-// Decision #169: a positive qtyUsed now REQUIRES a governed physical source, so these fixtures seed
+// Decision #171: a positive qtyUsed now REQUIRES a governed physical source, so these fixtures seed
 // one ACTIVE warehouse and name it. Without this every positive case below refuses -- which is the
 // new behaviour working, not a defect. The idempotency/clamping properties under test are unchanged.
 const SRC_WH = "wh-exec-test";

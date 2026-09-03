@@ -2,7 +2,7 @@
 //
 // It exists because no trusted Work Order execution read existed to extend: the client reads
 // `fieldops_wos` directly under Rules, so there was no server-composed response to add a projection
-// to. This is the smaller of the two options Decision #169 permits, and it is scoped to one question.
+// to. This is the smaller of the two options Decision #171 permits, and it is scoped to one question.
 //
 // IT GRANTS NOTHING STANDING. Same actor boundary as the command that records usage — technician
 // role, and assigned to THIS Work Order. A principal who may not record execution data may not
