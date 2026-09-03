@@ -150,6 +150,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dashboardComposition.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/deniedSubnavRouting.test.mjs",
       "runner": "node"
     },
@@ -270,11 +274,19 @@
       "runner": "node"
     },
     {
+      "file": "test/financialFactsView.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/financialForecastHorizons.test.mjs",
       "runner": "node"
     },
     {
       "file": "test/financialsNavStructure.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/financialsSurface.test.mjs",
       "runner": "node --test"
     },
     {
@@ -284,6 +296,10 @@
     {
       "file": "test/formPrimitives.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/impeccableIgnoreScope.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/installedEquipmentListView.test.mjs",
@@ -336,10 +352,6 @@
     {
       "file": "test/manufacturerWrite.test.mjs",
       "runner": "node"
-    },
-    {
-      "file": "test/metadataNumberingAuthority.test.mjs",
-      "runner": "node --test"
     },
     {
       "file": "test/metadataAccountDefinition.test.mjs",
@@ -407,6 +419,10 @@
     },
     {
       "file": "test/metadataManufacturerDefinition.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/metadataNumberingAuthority.test.mjs",
       "runner": "node --test"
     },
     {
@@ -706,6 +722,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/recordPurchaseOrderPrice.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/referenceResolution.test.mjs",
       "runner": "node"
     },
@@ -994,6 +1014,10 @@
       "runner": "node"
     },
     {
+      "file": "test/visualSystem.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/warehouseHandheld.test.mjs",
       "runner": "node"
     },
@@ -1072,26 +1096,6 @@
     {
       "file": "test/workOrderWorkflowMirrorContract.test.mjs",
       "runner": "node"
-    },
-    {
-      "file": "test/financialsSurface.test.mjs",
-      "runner": "node --test"
-    },
-    {
-      "file": "test/financialFactsView.test.mjs",
-      "runner": "node --test"
-    },
-    {
-      "file": "test/impeccableIgnoreScope.test.mjs",
-      "runner": "node --test"
-    },
-    {
-      "file": "test/visualSystem.test.mjs",
-      "runner": "node --test"
-    },
-    {
-      "file": "test/dashboardComposition.test.mjs",
-      "runner": "node --test"
     }
   ]
 }
