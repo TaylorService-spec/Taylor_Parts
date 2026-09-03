@@ -7883,6 +7883,58 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   border-left: 2px solid var(--color-border);
 }
 
+/* THE MODULE GRID.
+   At 1440 a one-module-per-row dashboard leaves two thirds of the width empty and reads as a column
+   of unrelated sentences. Auto-fit rather than a fixed column count, so a section with one module
+   does not leave a hole, and `align-items: start` so a short module beside a tall one does not
+   stretch to match it. NOT a card farm: the modules stay unboxed, which is what the design asked
+   for -- this changes where they sit, not what they look like. */
+.fo-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-5) var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 899.98px) {
+  /* One column below the width where two would each be too narrow to hold a blocker sentence
+     without it becoming a ragged column of three-word lines. */
+  .fo-dashboard-grid { grid-template-columns: 1fr; }
+}
+
+/* An honest state inside a module is ONE SENTENCE, not a full-page alert. HonestState's own layout
+   centres its content and reserves generous vertical space, which is right for a whole screen that
+   failed and wrong for one module among six -- a single unread queue was taking 200px of a dashboard
+   and pushing real work below the fold. The words are untouched; only the box around them shrinks. */
+.fo-dashboard-module .fo-state--iconic {
+  padding: var(--space-2) 0;
+  align-items: flex-start;
+  text-align: left;
+  gap: var(--space-2);
+}
+
+/* The icon is what makes a one-line module state read as a page-sized failure. The severity is
+   already carried by the colour AND by the sentence itself, so dropping the glyph here loses no
+   meaning -- and a module that cannot be read still says so, in its own words, in place. */
+.fo-dashboard-module .fo-state--iconic > .fo-icon { display: none; }
+
+.fo-dashboard-module .fo-state--iconic .fo-state-message { max-width: 60ch; }
+
+/* THE KPI TIER, ON THE DASHBOARD'S OWN FIGURES.
+   North Star section 8: "Stat values at the 32px KPI tier", dropping to the 24px handheld tier --
+   the visual system's existing 32/24 scorecard pair, which the goal tile above already uses. The
+   dashboard was rendering every module figure at CompactMetric's dense-row size, which is correct
+   for a dense row and wrong for the headline number of a section: a service-attention count and a
+   line in a table read as the same weight, and the screen flattened into undifferentiated text.
+   Scoped to dashboard modules so CompactMetric keeps its dense-row size everywhere else. */
+.fo-dashboard-module .fo-compact-metric__value {
+  font-size: var(--font-size-2xl);
+}
+
+@media (max-width: 639.98px) {
+  .fo-dashboard-module .fo-compact-metric__value { font-size: var(--font-size-xl); }
+}
+
 /* BOUNDED ACTIONABLE PREVIEW (Owner Decision #172) -- rows of real work, never a total.
    Deliberately a plain list rather than a table or a card grid: five rows of work read as
    a queue, and a card each would give five items the visual weight of five metrics. */

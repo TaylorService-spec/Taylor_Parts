@@ -30,13 +30,19 @@ import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import StatusIndicator from "../../shared/ui/primitives/StatusIndicator.jsx";
 import CompactMetric from "../../shared/ui/primitives/CompactMetric.jsx";
 import EmptyState from "../../shared/ui/EmptyState.jsx";
+// THE TWO BANDS THE DESIGN NAMES (North Star section 8: "WorkspaceShell with ContextBand for the
+// situation line and AttentionBand for ACTION_ITEMs"). Both existed and neither was used: the
+// situation line was a generic one-sentence StatusIndicator, and the attention signals were rendered
+// as ordinary counts among the other counts -- so nothing on the screen said "this one needs you".
+import ContextBand from "../../shared/ui/ContextBand.jsx";
+import AttentionBand from "../../shared/ui/AttentionBand.jsx";
 import { ReachableDestinations, buildReachableGroups } from "../../navigation/LandingPage.jsx";
 import { composeDashboard, goalTargetsFor, resolvedModuleKeys, MODULE_STATE, SECTION } from "../../domain/dashboardComposition.js";
 import { usePerformanceGoals, goalKey } from "../../hooks/usePerformanceGoals.js";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames.js";
 import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary.js";
 import { fetchReorderWarehouseOptions } from "../../services/reorderCallableClient.js";
-import { reportingDayIso } from "../../domain/reportingPeriod.js";
+
 import { useWorkOrders } from "../../hooks/useWorkOrders.js";
 import {
   workOrderAttentionItems,
@@ -54,11 +60,12 @@ import { useSubmissionQueue } from "../../hooks/useSubmissionQueue.js";
 import { governedOpportunitySource } from "../../access/opportunitySource.js";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
-import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection.js";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants.js";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
-import { resolveReportingPeriod, TAYLOR_VENTANA_REPORTING_CALENDAR } from "../../domain/reportingPeriod.js";
+import { resolveReportingPeriod, reportingDayIso, TAYLOR_VENTANA_REPORTING_CALENDAR } from "../../domain/reportingPeriod.js";
 import {
   workOrdersByStatus as projectWorkOrdersByStatus,
   technicianComparison as projectTechnicianComparison,
@@ -343,10 +350,25 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   // Technician names for the comparison, through the GOVERNED resolver. Ten surfaces in this repo
   // once hand-rolled this lookup and nine rendered a raw document id where a person's name belongs.
   const wantsTeam = moduleKeys.has("technicianComparison") || moduleKeys.has("technicianAvailability");
-  const { byUserId: employeesByUserId } = useEmployeeDirectory({ enabled: wantsTeam });
+  // THE TECHNICIAN COLLECTION, in the shape the resolver actually takes.
+  //
+  // This first passed the employee directory's byUserId MAP and read `.displayName`. The resolver
+  // takes `{ technicians: [{id, name}] }` and returns `.name`, so every row silently fell through
+  // to its unresolved label -- the exact "raw id where a person's name belongs" family of defect
+  // this resolver exists to prevent, arriving as a wrong-but-plausible label instead. Caught on the
+  // rendered screen: two rows both read "Name not resolved".
+  //
+  // A technician id is NOT a user id. Same collection ControlTower reads, same resolver, same shape.
+  const { data: technicians, loading: techniciansLoading, error: techniciansError } =
+    useFirestoreCollection(TECHNICIANS_COLLECTION, wantsTeam);
   const resolveTechName = useMemo(
-    () => (technicianId) => resolveTechnicianIdentity(technicianId, employeesByUserId)?.displayName ?? null,
-    [employeesByUserId],
+    () => (technicianId) =>
+      resolveTechnicianIdentity(technicianId, {
+        technicians: technicians ?? [],
+        loading: techniciansLoading,
+        error: techniciansError,
+      }).name,
+    [technicians, techniciansLoading, techniciansError],
   );
 
   // FINANCIALS. The reporting period is the GOVERNED one (G-05) -- month to date on the
@@ -447,6 +469,49 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
     };
   }, [moduleKeys, reorder, submissionQueue, opportunityFeed, coordinated, receiving, adminDecisions]);
 
+  /**
+   * The situation line, as label/value pairs rather than one sentence.
+   *
+   * A dashboard's context is WHAT GOVERNS WHAT YOU ARE SEEING -- the reporting calendar the dated
+   * figures use, and the scope that decided which modules are here at all. The previous single
+   * sentence ("every figure here comes from the same authority...") was true of the whole platform
+   * and told this reader nothing about their own screen.
+   */
+  const contextItems = useMemo(() => {
+    const items = [
+      { key: "period", label: "Reporting day", value: onDate },
+      { key: "calendar", label: "Calendar", value: TAYLOR_VENTANA_REPORTING_CALENDAR.reportingTimeZone },
+    ];
+    if (warehouseIds.length > 0) {
+      items.push({ key: "locations", label: warehouseIds.length === 1 ? "Location" : "Locations", value: String(warehouseIds.length) });
+    }
+    return items;
+  }, [onDate, warehouseIds]);
+
+  /**
+   * ACTION ITEMS -- and only genuine ones.
+   *
+   * AttentionBand renders NOTHING when the list is empty, deliberately: "a band that says 'no
+   * issues' every time trains people not to look at it". So this emits only signals that mean
+   * something is wrong, never merely-true information. Ready-to-schedule work is work, not a
+   * blocker, and is left to its module.
+   *
+   * The counts come from the SAME projection the module below renders, so the band and the module
+   * can never disagree.
+   */
+  const attentionItems = useMemo(() => {
+    const items = [];
+    for (const s of attentionSections ?? []) {
+      if (s.sectionLabel === "Past Due") {
+        items.push({ key: "past-due", severity: "BLOCKING", fact: `${s.items.length} scheduled work order${s.items.length === 1 ? " is" : "s are"} past due` });
+      }
+      if (s.sectionLabel === "Scheduling Conflict") {
+        items.push({ key: "conflict", severity: "ATTENTION", fact: `${s.items.length} scheduling conflict${s.items.length === 1 ? "" : "s"} to resolve` });
+      }
+    }
+    return items;
+  }, [attentionSections]);
+
   const actualsByKey = useMemo(
     () =>
       actualsByGoalKey(
@@ -480,19 +545,23 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   return (
     <WorkspaceShell
       title={displayName ? `Hi, ${displayName}` : "My dashboard"}
-      context={
-        <StatusIndicator
-          tone="info"
-          label="Every figure here comes from the same authority that governs its own workspace"
-        />
-      }
+      context={<ContextBand items={contextItems} />}
     >
+      {/* ACTION ITEMS FIRST, above every section. Renders nothing when there is nothing wrong --
+          which is what makes it worth looking at when it does appear. */}
+      <AttentionBand items={attentionItems} ariaLabel="Work needing attention" />
       {sections.map(({ section, label, modules }) => (
         <RuledSection key={section} title={label} id={`dashboard-${section.toLowerCase()}`}>
           {section === SECTION.GO_TO ? (
             <ReachableDestinations groups={destinationGroups} operationalContext={operationalContext} />
           ) : (
-            modules.map((m) => {
+            // MODULES SIT IN A GRID, not a stack. At 1440 a one-module-per-row dashboard leaves two
+            // thirds of the width empty and reads as a column of unrelated sentences; the section
+            // rules stop doing their job because everything inside them is equally spaced. This is
+            // NOT a card farm -- the modules remain unboxed, exactly as the design requires. It is
+            // the same auto-fit grid the goal tiles already use, applied one level up.
+            <div className="fo-dashboard-grid">
+            {modules.map((m) => {
               if (m.state !== MODULE_STATE.READY) {
                 return <BlockedModule key={m.key} label={m.label} blocker={m.blocker} />;
               }
@@ -782,7 +851,8 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                   blocker="This module is declared but not composed. That is a defect, not a governance limit."
                 />
               );
-            })
+          })}
+            </div>
           )}
         </RuledSection>
       ))}
