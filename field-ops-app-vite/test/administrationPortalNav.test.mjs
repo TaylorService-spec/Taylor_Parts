@@ -96,12 +96,15 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly eleven Administration subnav items now exist (eight original + Overview + Permission Preview + Duplicate Rules)", () => {
+ok("exactly thirteen Administration subnav items now exist", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
   // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
   // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
   // keep immediately: a scripted edit inserted Objects TWICE and this assertion caught it.
-  assert.equal(adminDomain.subnav.length, 12);
+  // Warehouse Racking joined them for BIN-P3 (2026-09-02): the physical shape of a warehouse is
+  // governed configuration, so it sits with the other configuration surfaces rather than in an
+  // Inventory workspace.
+  assert.equal(adminDomain.subnav.length, 13);
 });
 
 ok("Duplicate Rules is a visible Administration tab, not hidden", () => {

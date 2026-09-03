@@ -69,10 +69,14 @@ There is also no lineage gap to repair. `buildAcquisitionCostFact` already store
 Physical evidence and cost evidence are joinable today, and both are written by the same
 all-or-nothing commit.
 
-Finally, making it a required stored key would break read compatibility. The stored record has a
-strict key allowlist and a fail-closed deserializer (`operationalMovementRepository.ts:102-146`), and
-the fingerprint is computed over the value — so a new required field would make every historical row
-deserialize as malformed rather than merely older.
+Finally, making it a required stored key would break read compatibility — and unlike the `COUNTED`
+deletion in §3, it would do so *harmfully*. The stored record has a strict key allowlist and a
+fail-closed deserializer (`operationalMovementRepository.ts:102-146`), and the fingerprint is computed
+over the value. A newly required field would therefore make every historical row throw
+`MalformedStoredRecordError` on deserialize; each reader catches that and `continue`s, so those rows
+would be silently **dropped from every on-hand balance**. Deleting a type nobody wrote skips rows that
+already contributed nothing; adding a field nobody wrote skips rows that contributed real stock. Same
+mechanism, opposite consequence — which is exactly why the two findings resolve differently.
 
 ### `classification`
 
@@ -209,19 +213,27 @@ No approved valuation or cost-flow policy exists in source. The absence is delib
 a method was chosen, and a test fails if any appears. DECISIONS #164 rulings 16–18 hold valuation,
 COGS and margin open explicitly.
 
-**It already has a governed home, so no new decision package was created.** The questions live in
+**The ruling instrument now exists:**
+[`../financials/CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md`](../financials/CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md)
+— the Owner's 16-decision sheet, recorded **unsigned**, with an engineering reconciliation measured
+from source. It does not change this disposition: `CERT-FIN-02` stays OPEN until that sheet carries an
+accountant sign-off and an Owner ruling. It also closes the two residual questions noted below, which
+are now Decisions 9 and 10 on the sheet.
+
+**The underlying analysis already had a governed home.** The questions live in
 [`../financials/FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md`](../financials/FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md)
 §4 (basis vocabulary and admissibility; capture point and the Epic-5 question; labour cost policy;
 ND-27 valuation authority; freight-in D-6) and in the re-measurement
 [`fin-block-003-cost-supply-reconciliation.md`](fin-block-003-cost-supply-reconciliation.md).
 
-Two questions the finding implies are **not** in that §4 list, recorded here rather than added to an
-Owner-facing package by this pass:
+Two questions the finding implies were **not** in that §4 list. Both are now carried by the decision
+sheet, and both are still unanswered:
 
-1. **Cost-correction authority.** DECISIONS #164 ruling 11 states corrections must be additive and
-   that the authority is OPEN. Nothing names who may issue one, or on what evidence.
-2. **Retroactive cost change.** Whether a later-discovered price error may produce a superseding fact
-   at all, and what a downstream reader is required to do with the pair.
+1. **Cost-correction authority** — sheet Decision 9. DECISIONS #164 ruling 11 states corrections must
+   be additive and that the authority is OPEN. Nothing names who may issue one, or on what evidence;
+   those are the sheet's two blanks.
+2. **Retroactive cost change** — sheet Decision 10. Whether a later-discovered price error may produce
+   a superseding fact at all, and what a downstream reader must do with the pair.
 
 Currency treatment beyond a single currency, and historical opening inventory value, are subsumed by
 ND-27 and by the "no cost backfill under any outcome" constraint already recorded in the package.

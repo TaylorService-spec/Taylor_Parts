@@ -66,6 +66,7 @@ const AdministrationUnavailable = lazy(() => import("./modules/administration/Ad
 const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
 const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminRolesPermissions"));
 const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
+const AdminWarehouseRacking = lazy(() => import("./modules/administration/AdminWarehouseRacking"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const EmployeesList = lazy(() => import("./modules/administration/EmployeesList.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
@@ -610,6 +611,13 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // Administration > Duplicate Rules -- reads the seeded ruleset and renders every
   // edit control as protected+disabled with the reason, because the governed rules
   // service does not exist yet. No Firestore access, no writes.
+  // Administration > Warehouse Racking -- describe a warehouse rack once and create its bins.
+  // Both bin capabilities are threaded from the trusted feed and gated INDEPENDENTLY: the read
+  // (list + the trusted preview) and the manage (create/rename/deactivate) are different audiences,
+  // and today neither is active, which the screen states rather than rendering as an empty rack.
+  if (domain.key === "administration" && item.key === "warehouseRacking") {
+    return <AdminWarehouseRacking hasCapability={operationalContext?.hasCapability} />;
+  }
   if (domain.key === "administration" && item.key === "duplicateRules") {
     return <AdminDuplicateRules />;
   }
