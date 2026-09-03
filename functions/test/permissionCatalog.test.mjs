@@ -10,6 +10,7 @@
 // Prerequisite: `npm run build` in functions/ first (this test imports
 // the compiled lib/ output, not the TypeScript source).
 import assert from "node:assert/strict";
+import { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } from "../lib/access/environmentCapabilityOverrides.js";
 import {
   PERMISSION_CATALOG,
   isValidPermissionId,
@@ -154,7 +155,10 @@ check("every wave-1 report.* id is registered and passes isValidPermissionId (th
 });
 
 check("isActivePermission: true for a registered, active id", () => {
-  assert.equal(isActivePermission("report.customer.field.name.read"), true);
+  // 2C.6C: the example used to be report.customer.field.name.read. The report.* family is now
+  // environment-activated (DECISIONS #167), so no report id is catalogue-active any more and the
+  // example moved to a capability that still is. The assertion itself is unchanged.
+  assert.equal(isActivePermission("workOrder.transition"), true);
   assert.equal(isActivePermission("customer.record.read"), true, "an ordinary pre-existing id with no active flag is active");
 });
 
@@ -169,22 +173,25 @@ check("isActivePermission: false (never true) for an unregistered id -- stricter
   assert.equal(isActivePermission("not.a.realPermission"), false);
 });
 
-check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is active", () => {
+check("the three sensitive wave-1 report ids stay withheld -- now at the activation layer", () => {
+  // 2C.6C moved the ENTIRE report.* family to `active: false` so production could be fail-closed
+  // (DECISIONS #167). That erased this distinction at the CATALOGUE level, where it used to live:
+  // 36 active, 3 inactive-pending-review.
+  //
+  // The distinction is not lost, it MOVED to where it is now meaningful. Sandbox re-activates
+  // exactly the 36 that were live and deliberately does NOT carry these three, so the
+  // sensitivity decision still holds in the one environment where Reporting runs.
   const reportIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("report."));
-  const inactive = reportIds.filter((p) => p.active === false).map((p) => p.id);
-  assert.deepEqual(
-    inactive.sort(),
-    [
-      "report.customer.field.accountOwner.read",
-      "report.customer.field.notes.read",
-      "report.location.field.accessNotes.read",
-    ].sort(),
-  );
-  for (const p of reportIds) {
-    if (!inactive.includes(p.id)) {
-      assert.equal(p.active, true, `"${p.id}" is expected active: true (explicit), not merely omitted`);
-    }
-  }
+  assert.ok(reportIds.every((p) => p.active === false), "the whole family is environment-activated now");
+
+  const sandbox = resolveCapabilityOverrides(ENVIRONMENT_ACTIVATION_REGISTRY, "eos-platform-sandbox");
+  const withheld = reportIds.filter((p) => !sandbox.has(p.id)).map((p) => p.id).sort();
+  assert.deepEqual(withheld, [
+    "report.customer.field.accountOwner.read",   // employee-sensitivity, deferred to wave 4
+    "report.customer.field.notes.read",          // security-text, pending wave-1 review
+    "report.location.field.accessNotes.read",    // security-text, pending wave-1 review
+  ].sort());
+  assert.equal(reportIds.length - withheld.length, 36, "the other 36 are activated in sandbox");
 });
 
 // The invariant this protects is that introducing `active` did not change behavior for any
