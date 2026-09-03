@@ -255,7 +255,7 @@ check("the three sensitive wave-1 report ids stay withheld -- now at the activat
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -331,6 +331,18 @@ check("every inventory.transfer.* entry is registered-but-not-grantable (active:
   );
   for (const permission of transfer) {
     assert.equal(permission.active, false, `"${permission.id}" must be inactive (registered-but-ungranted)`);
+  }
+});
+
+check("every financialPolicy.profile.* entry is registered-but-not-grantable (active: false, never true)", () => {
+  const policy = PERMISSION_CATALOG.filter((p) => p.id.startsWith("financialPolicy.profile."));
+  assert.deepEqual(
+    policy.map((p) => p.id).sort(),
+    ["financialPolicy.profile.configure", "financialPolicy.profile.read"],
+    "deployment-time financial policy registers exactly two capabilities: read it, and configure it",
+  );
+  for (const permission of policy) {
+    assert.equal(permission.active, false, `"${permission.id}" must be inactive -- which authority owns deployment-time financial configuration is an open Owner decision`);
   }
 });
 

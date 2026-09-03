@@ -83,6 +83,50 @@ export default function FinancialsGovernance() {
             <Row label="Operating currency" state="Configured" words="USD" last />
           </section>
 
+          {/* ACCOUNTING POLICY — READ-ONLY, DELIBERATELY. Financials is not a second configuration
+              authority: a company's accounting method is chosen once with its accounting team during
+              deployment and locked at financial activation, so the ONE editing surface is
+              Administration → Financial Policy and this section only links there. Two places to
+              change an accounting method is two places for them to disagree.
+
+              The rows read "Not configured" because no company profile exists yet and the read
+              capability is registered active:false — an honest state, not a default policy. EOS
+              never implies a costing method nobody chose. */}
+          <section className="ns-section" aria-label="Accounting policy">
+            <div className="ns-section__head">
+              <h2 className="ns-section__title">Accounting policy</h2>
+            </div>
+            <Row
+              label="Inventory costing"
+              state="Not configured"
+              words="Chosen at deployment"
+              tip="Weighted average or FIFO. Selected with the accounting team during deployment; EOS applies no method until one is configured and never assumes one."
+            />
+            <Row
+              label="Serialized equipment"
+              state="Not configured"
+              words="Chosen at deployment"
+              tip="Specific identification, or pooled with the part's other stock. A serialized unit's own acquisition cost is derivable from its receipt lineage."
+            />
+            <Row
+              label="COGS recognition"
+              state="Not configured"
+              words="Chosen at deployment"
+              tip="The governed event at which cost becomes COGS. Physical movement — transfer, put-away, staging, receipt, cycle count — is never one. Work-order consumption is unavailable until consumption removes physical stock."
+            />
+            <Row
+              label="Unknown cost"
+              state="Configured"
+              words="Preserved as unknown"
+              tip="A platform invariant, not a deployment choice: EOS never substitutes zero for a cost it does not know."
+            />
+            <Row
+              label="Policy profile"
+              words={<Link to="/administration/financial-policy">View Financial Policy →</Link>}
+              last
+            />
+          </section>
+
           <section className="ns-section" aria-label="Structure">
             <div className="ns-section__head">
               <h2 className="ns-section__title">Structure</h2>
