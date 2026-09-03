@@ -2,8 +2,12 @@ name: Inventory Cycle Count Command Tests
 
 # Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/**).
 # Firestore-emulator tests only: NO production, NO deployment. Every inventory.cycleCount.* capability
-# is registered `active: false` and granted to NO Role, so the callables never authorize a real
-# principal until a later, separately-authorized grant + activation gate. Reuses the SAME
+# is still registered `active: false` in permissionCatalog -- that fail-closed posture is unchanged.
+# What HAS changed since this note was written (Owner ruling CERT-CYCLE-11): the governed
+# Counter/Reconciler Roles carry these capabilities, and eos-platform-certification activates
+# create/submit/reconcile (never cancel) through the per-environment override seam. So a real
+# principal CAN now be authorized there, which is precisely why the bounded operator that drives it
+# is exercised here. Reuses the SAME
 # location-aware operational ledger (inventoryLedger) and Serialized Asset registry Transfer's own
 # workflow depends on, so this workflow's path filter mirrors inventory-transfer-command-tests.yml's.
 
@@ -16,6 +20,11 @@ on:
       - "functions/src/inventoryTransfer/transferLocationResolver.ts"
       - "functions/src/truckRegistry/**"
       - "functions/src/warehouseGovernance/**"
+      - "functions/scripts/certificationWorld/applyCycleVariance.mjs"
+      - "functions/scripts/certificationWorld/executeCycleCount.mjs"
+      - "functions/scripts/certificationWorld/actorAuthority.mjs"
+      - "functions/scripts/certificationWorld/executionTarget.mjs"
+      - "functions/test/certificationCycleVariance.test.mjs"
       - "functions/test/cycleCountCommand.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -29,6 +38,11 @@ on:
       - "functions/src/inventoryTransfer/transferLocationResolver.ts"
       - "functions/src/truckRegistry/**"
       - "functions/src/warehouseGovernance/**"
+      - "functions/scripts/certificationWorld/applyCycleVariance.mjs"
+      - "functions/scripts/certificationWorld/executeCycleCount.mjs"
+      - "functions/scripts/certificationWorld/actorAuthority.mjs"
+      - "functions/scripts/certificationWorld/executionTarget.mjs"
+      - "functions/test/certificationCycleVariance.test.mjs"
       - "functions/test/cycleCountCommand.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -59,7 +73,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -69,6 +83,15 @@ jobs:
 
       - name: Build (TypeScript)
         run: npm run build
+        working-directory: functions
+
+      # The bounded Certification OPERATOR, deliberately separate from the domain suite below.
+      # One tests whether a cycle count is correct; this tests whether the tool that drives a LIVE
+      # one is safe -- argument binding, protected-part refusal, materiality, the no-movement
+      # baseline diff (CERT-CYCLE-12) and the resume path. Needs no emulator, so it runs first and
+      # fails fast.
+      - name: Certification cycle-count operator safety tests
+        run: node --test test/certificationCycleVariance.test.mjs
         working-directory: functions
 
       - name: Start Firestore emulator (background)
