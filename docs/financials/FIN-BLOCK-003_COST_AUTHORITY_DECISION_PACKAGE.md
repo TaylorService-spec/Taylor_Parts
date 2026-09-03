@@ -74,6 +74,12 @@ at a governed event and never re-derive:
 
 ## 4. Exact Owner choices remaining (dependency order)
 
+> **SUPERSEDED AS THE RULING INSTRUMENT, 2026-09-03.** The §4 choices below are now carried, in
+> signable form and with two additions (cost-correction authority; retroactive cost change), by
+> [`CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md`](CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md).
+> That sheet is **unsigned**; nothing below has been ruled on. This package remains the source-by-source
+> audit that justifies the questions — rule on the sheet, not here.
+
 1. **Basis vocabulary + admissibility per domain** — ratify/amend §2's per-domain shape
    (receipt cost for parts, specific identification for serialized equipment); name the
    admissible `costBasis` labels for `GovernedCostFact`.
