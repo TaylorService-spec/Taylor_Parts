@@ -209,7 +209,42 @@ deploy_batch "scanner: placement + returns" \
 deploy_batch "receiving: canonical multi-line reads" \
   "functions:getPurchaseOrderReceivingProgress,functions:listReceivablePurchaseOrders"
 # Everything else, after the scanner set is known good.
-deploy_batch "remaining estate" "functions"
+#
+# DERIVED, NOT `--only functions`, AND NOT A HAND-MAINTAINED LIST.
+#
+# This line used to be `deploy_batch "remaining estate" "functions"`. Unfiltered, that pulls in
+# EVERY export -- including interpretWorkOrderReadinessContext, which binds five KEYSTONE_* secrets
+# that platform-sandbox intentionally does not have. On 2026-09-03 the four batches above shipped,
+# this one failed with `Secret KEYSTONE_* not found or has no versions`, and the release stopped
+# before Hosting. The only ways to satisfy the old command were to provision Keystone credentials
+# for a capability platform-sandbox has deliberately not activated, or to weaken the function's
+# secret binding. Both are wrong; filtering the deploy is neither.
+#
+# `--except` IS NOT THE MECHANISM, THOUGH IT LOOKS LIKE IT. firebase-tools 15.22.4's
+# lib/filterTargets.js splits `--only` on ":" and keeps the target prefix, but applies `--except` as
+# a plain string difference over TOP-LEVEL targets. So `--except functions:interpretWorkOrder...`
+# matches no target and excludes NOTHING (the deploy proceeds exactly as before), while
+# `--except functions` would drop the entire estate. Verified in the installed CLI, not assumed.
+#
+# The set comes from functions/lib/index.js -- the same compiled manifest `firebase deploy` loads to
+# discover this codebase -- minus a governed exclusion list of exact ids. See
+# scripts/sandboxDeployableFunctions.mjs; it REFUSES the release if a secret-bound function appears
+# that no one has explicitly decided about.
+#
+# One consequence worth naming: these batches are filtered, so `--force` no longer prunes deployed
+# functions that have been removed from the codebase (an unfiltered deploy did). Nothing is stale
+# today -- the live estate is smaller than the codebase -- but a deletion now needs its own
+# `firebase functions:delete`, deliberately, rather than happening as a side effect of a refresh.
+echo "-- deriving the deployable Function set from the compiled manifest"
+FUNCTION_BATCHES="$(node scripts/sandboxDeployableFunctions.mjs functions/lib/index.js)"
+_batch_number=0
+while IFS= read -r _filter; do
+  [ -n "$_filter" ] || continue
+  _batch_number=$((_batch_number + 1))
+  deploy_batch "remaining estate ${_batch_number}" "$_filter"
+done <<EOF
+${FUNCTION_BATCHES}
+EOF
 
 fi  # end of the Functions phase -- skipped entirely in hosting-only mode
 

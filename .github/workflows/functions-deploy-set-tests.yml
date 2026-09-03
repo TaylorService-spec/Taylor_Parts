@@ -1,0 +1,80 @@
+name: Functions Deploy Set & Secret Isolation
+
+# WHAT A GENERAL platform-sandbox REFRESH IS ALLOWED TO DEPLOY, AND WHOSE SECRETS IT MAY DEMAND.
+#
+# Both suites here read the COMPILED manifest (functions/lib), which is why this workflow builds
+# functions rather than reusing a lint-only lane. Reading functions/src instead is how this gets
+# quietly wrong: scripts/buildCapabilityGraph.mjs's source parser finds 55 of the 143 real exports,
+# and an enumerator that under-counts fails OPEN -- it deploys a subset and leaves the rest stale.
+#
+# The regression these guard is real and recent. On 2026-09-03 a governed sandbox refresh ran
+# `firebase deploy --only functions` unfiltered, pulled in interpretWorkOrderReadinessContext, and
+# died on five KEYSTONE_* secrets that platform-sandbox does not have on purpose. Four batches had
+# already shipped; Hosting was never reached.
+#
+# test:secretIsolation (ND-33) had NO workflow before this one -- it was written, passing locally,
+# and completely uncovered by CI. A guard nobody runs is not a guard.
+#
+# Nothing here deploys, reads a live project, or touches a secret. Local build, local assertions.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/sandboxDeployableFunctions.mjs"
+      - "scripts/sandboxDeployableFunctions.test.mjs"
+      - "scripts/_sandboxRefresh.run.sh"
+      - "functions/src/index.ts"
+      - "functions/src/ai/**"
+      - "functions/test/functionsSecretIsolation.test.mjs"
+      - "config/environments.json"
+      - ".github/workflows/functions-deploy-set-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/sandboxDeployableFunctions.mjs"
+      - "scripts/sandboxDeployableFunctions.test.mjs"
+      - "scripts/_sandboxRefresh.run.sh"
+      - "functions/src/index.ts"
+      - "functions/src/ai/**"
+      - "functions/test/functionsSecretIsolation.test.mjs"
+      - "config/environments.json"
+      - ".github/workflows/functions-deploy-set-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-set:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      # The manifest is the artifact under test. Without it the deploy-set suite SKIPS its three
+      # manifest-backed cases, which would make this workflow green and hollow.
+      - name: Build the Functions manifest
+        run: npm run build
+        working-directory: functions
+
+      # ND-33: a secret binding is local to its function; it must never become a codebase-wide
+      # deployment parameter that every unrelated targeted deploy has to satisfy.
+      - name: Secret ownership is local to the function that uses it (ND-33)
+        run: node --test test/functionsSecretIsolation.test.mjs
+        working-directory: functions
+
+      # The deployable set itself: derived from the manifest, minus governed exact-id exclusions.
+      # Fails closed on an empty manifest, a stale exclusion, or a secret-bound function nobody has
+      # decided about -- the last one is what stops this defect from recurring silently.
+      - name: Sandbox refresh deploys the applicable Function set
+        run: node --test scripts/sandboxDeployableFunctions.test.mjs

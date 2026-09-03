@@ -74,13 +74,16 @@ function stubTree() {
     stubNames.push(name);
   };
 
-  // `node` answers only the one question the runbook needs before anything else: where is the
-  // release root. Every other node invocation is a guard -- logged, and allowed to pass, so the
-  // tests can assert the guard RAN without depending on its internals here.
+  // `node` answers the two questions the runbook needs a real ANSWER to -- where is the release
+  // root, and which Functions are deployable. The second is stubbed with a two-batch reply so the
+  // tests can prove the runbook iterates the derived batches rather than falling back to an
+  // unfiltered `--only functions`. Every other node invocation is a guard: logged, and allowed to
+  // pass, so the tests can assert the guard RAN without depending on its internals here.
   stub(
     "node",
     `case "$*" in
        *releaseRoot.mjs*) echo "${posix(root)}" ;;
+       *sandboxDeployableFunctions.mjs*) echo "functions:alpha,functions:beta"; echo "functions:gamma" ;;
      esac
      exit 0`,
   );
@@ -172,6 +175,64 @@ behavioural("DEFAULT (no flag) still deploys Functions AND Hosting -- unchanged"
     "the default refresh must still deploy Hosting",
   );
   assert.match(commands, /npm run build/, "the default refresh must still build the functions lib");
+});
+
+// ═════════════════════════════════════════ the secret-bound function must not block the refresh
+
+behavioural("the default refresh NEVER issues an unfiltered `--only functions`", () => {
+  // This is the 2026-09-03 blocker, asserted behaviourally. Unfiltered, that command pulls in
+  // interpretWorkOrderReadinessContext and demands five KEYSTONE_* secrets platform-sandbox does
+  // not have on purpose -- so the batch failed, Hosting was never reached, and the estate was left
+  // half-new. Every Functions deploy must now carry a colon filter.
+  const { code, commands } = runRunbook();
+  assert.equal(code, 0);
+  const functionCalls = firebaseLines(commands).filter((l) => /--only functions/.test(l));
+  assert.ok(functionCalls.length > 0, "the default refresh must still deploy Functions");
+  for (const line of functionCalls) {
+    assert.match(line, /--only functions:/, `unfiltered Functions deploy: ${line}`);
+  }
+});
+
+behavioural("the default refresh derives its Function set and deploys every derived batch", () => {
+  const { commands } = runRunbook();
+  assert.match(commands, /sandboxDeployableFunctions\.mjs/, "the deployable set must be derived");
+  // Both stubbed batches ship. A loop that ran once would leave most of the estate stale -- the
+  // fail-OPEN shape, which is worse than the blocker this replaced.
+  const fb = firebaseLines(commands);
+  assert.ok(fb.some((l) => l.includes("functions:alpha,functions:beta")), "first derived batch missing");
+  assert.ok(fb.some((l) => l.includes("functions:gamma")), "second derived batch missing");
+});
+
+behavioural("a failure to derive the set STOPS the release before any remaining-estate deploy", () => {
+  // Fail closed. If the manifest is unbuilt or a new secret-bound function appears, the derivation
+  // exits non-zero; `set -e` must stop there rather than fall through to Hosting.
+  const { root, bin, log, posix } = stubTree();
+  writeFileSync(
+    join(bin, "node"),
+    `#!/usr/bin/env bash\necho "node $*" >> "${posix(log)}"\n` +
+      `case "$*" in\n` +
+      `  *releaseRoot.mjs*) echo "${posix(root)}" ;;\n` +
+      `  *sandboxDeployableFunctions.mjs*) echo "ABORT: ungoverned secret binding" >&2; exit 3 ;;\n` +
+      `esac\nexit 0\n`,
+  );
+  execFileSync(BASH, ["-c", `chmod 755 '${posix(join(bin, "node"))}'`]);
+
+  let code = 0;
+  try {
+    execFileSync(
+      BASH,
+      ["-c", `export PATH="${msysPath(bin)}:$PATH"; '${posix(join(root, "scripts", "_sandboxRefresh.run.sh"))}' --release-root '${posix(root)}'`],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+  } catch (err) {
+    code = err.status ?? -1;
+  }
+  const commands = readFileSync(log, "utf8");
+  assert.notEqual(code, 0, "the release must stop when the deployable set cannot be derived");
+  assert.ok(
+    !firebaseLines(commands).some((l) => l.includes("--only hosting")),
+    "Hosting must not deploy after a failed Functions derivation",
+  );
 });
 
 behavioural("--hosting-only deploys Hosting and NO Functions batch at all", () => {

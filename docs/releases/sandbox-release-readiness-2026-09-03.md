@@ -21,7 +21,63 @@ handoff.
 | sandbox build time | `2026-09-02T17:15:02.702Z` |
 | **DEPLOYABLE SURFACE MEASURED THROUGH** | `8ae9c7e1b969842476e82b5ec2f387d8f2386138` |
 | **RELEASE_CANDIDATE** | current `origin/main` — see below |
-| status | **READY_FOR_SANDBOX_DEPLOYMENT** — nothing deployed by this run |
+| status | **PARTIAL — one attempt ran and FAILED during Functions.** See §0. |
+
+## 0. Attempt log — 2026-09-03, PARTIAL / FAILED
+
+The Owner launched the governed refresh. Preflight passed. **The release did not complete.**
+
+| Phase | Outcome |
+|---|---|
+| Preflight + guards | PASSED |
+| Functions — 4 named batches | **DEPLOYED** — 11 functions, 09:16:04Z → 09:22:07Z |
+| Functions — `remaining estate` | **FAILED** — `Secret KEYSTONE_* not found or has no versions` ×5 |
+| Hosting | **NOT REACHED** |
+| Rules | **NOT DEPLOYED** |
+
+**Cause.** The final batch was `firebase deploy --only functions` — unfiltered, so it pulled in
+`interpretWorkOrderReadinessContext`, which binds five `KEYSTONE_*` Secret Manager secrets.
+platform-sandbox does not have them **on purpose**: `privateAiSyntheticOperationalInterpretation` is
+`false` there. The only ways to satisfy that command were to provision Keystone credentials for a
+capability nobody authorized, or to weaken the function's secret binding. Both are wrong.
+
+**Measured live state** (`gcloud functions list`, read-only). Exactly 11 functions carry a
+2026-09-03 `updateTime`; the next most recent is `listFinancialFacts` at 2026-09-02T15:42Z, i.e. the
+*previous* release. So the partial deploy is precisely the four named batches and nothing else:
+
+```
+resolveScannedPartIdentifier  getPartBalance
+createBin  deactivateBin  reactivateBin  resolveBin  listBins
+recordPutAway  recordReturnIntake
+getPurchaseOrderReceivingProgress  listReceivablePurchaseOrders
+```
+
+`interpretWorkOrderReadinessContext` is **MISSING** from platform-sandbox — it has never been
+deployed there, and this change does not deploy it. Its non-secret sibling
+`getWorkOrderReadinessContext` is live and unaffected. Live estate: 132 functions.
+
+**Consequence of the partial deploy: none that blocks a retry.** All 11 are idempotent redeploys of
+scanner and receiving reads from the same candidate tree; Hosting still serves `5eaa403a`, so
+`LIVE_SANDBOX_SHA` is unchanged and every measurement below still holds.
+
+**Remedy — merged.** `scripts/_sandboxRefresh.run.sh` no longer issues an unfiltered
+`--only functions`. It derives the deployable set from the compiled manifest
+(`functions/lib/index.js` — the same artifact `firebase deploy` loads) minus a governed exact-id
+exclusion list, and deploys it in batches. See `scripts/sandboxDeployableFunctions.mjs`.
+
+- The excluded function still requires all five secrets **when it is itself deployed**. Nothing was
+  weakened, stubbed, faked or created. No secret exists that did not exist before.
+- No private-AI capability was activated anywhere.
+  `privateAiSyntheticOperationalInterpretation` remains `false` in all five environments.
+- `--except` is **not** the mechanism. firebase-tools 15.22.4 applies `--except` as a plain string
+  difference over *top-level* targets and never splits on `:` — so
+  `--except functions:interpretWorkOrderReadinessContext` would have excluded **nothing**, and
+  `--except functions` would have dropped the entire estate. Verified in the installed CLI.
+- A future secret-bound function does **not** get skipped: the derivation **refuses the release** and
+  names it, so a human decides. "Has a secret" never means "skip in sandbox."
+
+**Action: re-run the governed refresh from the beginning.** Do not resume mid-way. The four named
+batches re-run harmlessly, and the guards must all execute against the current tree.
 
 **Why the candidate is a ref and not a pinned SHA.** The governed runbook derives its own approved
 commit from `HEAD` and gates on `HEAD == origin/main`; it takes no pinned SHA. Naming one here would
@@ -318,7 +374,9 @@ Blocked metrics do **not** block deployment: the dashboard renders their unavail
 
 ## 12. Blockers
 
-**Deployment blockers: NONE.** The release is assembled, gated and green.
+**Deployment blockers: NONE remaining.** One blocker was hit and is now fixed — the unfiltered
+`--only functions` batch that demanded absent `KEYSTONE_*` secrets (§0). The release is assembled,
+gated and green, and the refresh must be **re-run from the beginning**.
 
 **Authorization gates (not defects):**
 
