@@ -5,7 +5,7 @@
 // classifies a bin locally, never reports a refusal as an empty rack, and never reports a partial
 // apply as a success.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import AdminWarehouseRacking from "../src/modules/administration/AdminWarehouseRacking.jsx";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../src/services/rackingApply.js";
 import { BIN_CALLABLES } from "../src/services/binCommandClient.js";
@@ -80,7 +80,9 @@ describe("capability posture is stated, independently, and never faked", () => {
     const client = stubClient();
     mount({ client, hasCapability: holds("inventory.location.bin.read") });
     await selectWarehouse();
-    expect(await screen.findByText("A01-003")).toBeTruthy();
+    // Scoped to the racking table: BIN-P5 renders the same code again in the label picker below.
+    await waitFor(() => expect(document.querySelector("table.fo-table")).toBeTruthy());
+    expect(within(document.querySelector("table.fo-table")).getByText("A01-003")).toBeTruthy();
     expect(screen.getByText("inventory.location.bin.manage")).toBeTruthy();
     expect(screen.queryByText("Preview these bins")).toBeNull();
     expect(screen.getAllByText("View only").length).toBeGreaterThan(0);
@@ -288,7 +290,7 @@ describe("what this screen refuses to be", () => {
   it("it never mentions quantity, stock or custody", async () => {
     mount();
     await selectWarehouse();
-    await screen.findByText("A01-003");
+    await waitFor(() => expect(document.querySelector("table.fo-table")).toBeTruthy());
     for (const word of [/on hand/i, /quantity/i, /in stock/i, /custody/i]) {
       expect(screen.queryByText(word)).toBeNull();
     }

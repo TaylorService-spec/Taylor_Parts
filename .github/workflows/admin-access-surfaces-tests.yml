@@ -36,6 +36,10 @@ on:
       - "field-ops-app-vite/src/domain/rackingLayoutGenerator.js"
       - "field-ops-app-vite/src/services/rackingApply.js"
       - "field-ops-app-vite/src/services/binCommandClient.js"
+      # BIN-P5 label projection, barcode renderer and download helper.
+      - "field-ops-app-vite/src/domain/binLabel.js"
+      - "field-ops-app-vite/src/shared/ui/BinBarcode.jsx"
+      - "field-ops-app-vite/src/services/downloadFile.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       # The contracts these surfaces READ. A role gaining or losing a capability, or a
       # capability flipping active, changes what these screens must show -- so a change to the
@@ -47,6 +51,9 @@ on:
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
       - "field-ops-app-vite/test/rackingLayoutGenerator.test.jsx"
+      - "field-ops-app-vite/test/binLabel.test.jsx"
+      - "field-ops-app-vite/test/binLabelsSurface.test.jsx"
+      - "field-ops-app-vite/test/binLabelsIntegration.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
@@ -66,6 +73,10 @@ on:
       - "field-ops-app-vite/src/domain/rackingLayoutGenerator.js"
       - "field-ops-app-vite/src/services/rackingApply.js"
       - "field-ops-app-vite/src/services/binCommandClient.js"
+      # BIN-P5 label projection, barcode renderer and download helper.
+      - "field-ops-app-vite/src/domain/binLabel.js"
+      - "field-ops-app-vite/src/shared/ui/BinBarcode.jsx"
+      - "field-ops-app-vite/src/services/downloadFile.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/src/access/permissionCatalog.ts"
       - "field-ops-app-vite/src/access/compatibilityRoles.ts"
@@ -74,6 +85,9 @@ on:
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
       - "field-ops-app-vite/test/rackingLayoutGenerator.test.jsx"
+      - "field-ops-app-vite/test/binLabel.test.jsx"
+      - "field-ops-app-vite/test/binLabelsSurface.test.jsx"
+      - "field-ops-app-vite/test/binLabelsIntegration.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
@@ -127,6 +141,9 @@ jobs:
           test/adminRolesPermissionsDeclined.test.jsx
           test/adminWarehouseRacking.test.jsx
           test/rackingLayoutGenerator.test.jsx
+          test/binLabel.test.jsx
+          test/binLabelsSurface.test.jsx
+          test/binLabelsIntegration.test.jsx
           test/objectAccessModel.test.jsx
           test/approvalRequests.test.jsx
         working-directory: field-ops-app-vite

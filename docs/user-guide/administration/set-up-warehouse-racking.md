@@ -98,3 +98,73 @@ quietly start meaning somewhere else.
 - It does not create warehouses. That is a separate job with its own approval.
 - It does not print labels.
 - It does not let you change the code format.
+
+---
+
+# Print shelf labels
+
+**Administration → Warehouse Racking → Labels & Export**
+
+Once a warehouse's bins exist, this is where you produce the labels that go on the racking.
+
+## Two identities on one label
+
+A label carries the same place twice, for two different readers:
+
+| On the label | Who reads it | Does it change? |
+|---|---|---|
+| **A01-003**, in large text | People | **Yes** — if the location code is ever corrected |
+| The **barcode** | Scanners | **No, ever** — it holds the bin's permanent internal identity |
+
+This is the part worth knowing: **renaming a bin does not break the barcode.** A scanner still reads
+the label on the wall and lands on the right shelf. Only the printed *code* is out of date, so
+reprint when convenient — nothing is broken in the meantime.
+
+The system has no way of knowing which labels are physically on your shelves, so it will never tell
+you they are all up to date. It only ever offers to produce the current one.
+
+## Choose the labels
+
+1. Pick the warehouse and let the bin list load.
+2. In **Labels & Export**, tick the bins you want, or use **Select all shown**.
+3. Bins that are **out of use** are hidden by default. Tick *Include bins that are out of use* to see
+   them; their labels print with a clear **OUT OF USE** mark so nobody mistakes one for a live
+   location.
+
+Nothing is selected to begin with, and with nothing selected there is nothing to print or export —
+the buttons stay off rather than producing an empty file.
+
+## Preview and print
+
+The preview is exactly what will print. **Print** uses your browser's own print dialogue, so you can
+pick the printer and paper there. Only the labels print — the menus, buttons and the rest of the
+screen are left out.
+
+## Export a CSV
+
+**Export CSV** downloads the same labels as a spreadsheet file, for external label software. It
+contains the warehouse, the bin's internal id, its area, aisle, bay and position, the printed code,
+the barcode text and whether the bin is in use.
+
+Exporting the same bins twice gives you an identical file, so you can compare two exports and see
+exactly what changed about the racking.
+
+## Reprint one label
+
+Every row in the bin list has a **Label** button. It selects just that bin, ready to print — which is
+what you want right after correcting a location code.
+
+## Before you label the whole warehouse
+
+Three things are still to be confirmed with the business before a mass print run:
+
+- the **code width** convention (whether `A01-001` is the final format);
+- the **barcode type** (labels currently use Code 128);
+- the **label stock and printer** (thermal rolls or laser sheets).
+
+Previewing, printing a few and exporting are all safe to do meanwhile.
+
+## A label says nothing about stock
+
+A label identifies a **place**. It carries no quantity, no part and no stock information, and
+scanning one never moves inventory — it only tells the system which shelf you are standing at.
