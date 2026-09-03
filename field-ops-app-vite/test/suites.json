@@ -154,6 +154,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dashboardGoalActuals.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/deniedSubnavRouting.test.mjs",
       "runner": "node"
     },

@@ -31,8 +31,8 @@ import StatusIndicator from "../../shared/ui/primitives/StatusIndicator.jsx";
 import CompactMetric from "../../shared/ui/primitives/CompactMetric.jsx";
 import EmptyState from "../../shared/ui/EmptyState.jsx";
 import { ReachableDestinations, buildReachableGroups } from "../../navigation/LandingPage.jsx";
-import { composeDashboard, goalTargetsFor, MODULE_STATE, SECTION } from "../../domain/dashboardComposition.js";
-import { usePerformanceGoals } from "../../hooks/usePerformanceGoals.js";
+import { composeDashboard, goalTargetsFor, resolvedModuleKeys, MODULE_STATE, SECTION } from "../../domain/dashboardComposition.js";
+import { usePerformanceGoals, goalKey } from "../../hooks/usePerformanceGoals.js";
 import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary.js";
 import { fetchReorderWarehouseOptions } from "../../services/reorderCallableClient.js";
 import { reportingDayIso } from "../../domain/reportingPeriod.js";
@@ -41,6 +41,7 @@ import {
   workOrderAttentionItems,
   groupWorkOrderAttentionItemsBySection,
 } from "../../domain/workOrderAttentionProjection.js";
+import { dashboardGoalActuals, actualsByGoalKey } from "../../domain/dashboardGoalActuals.js";
 import GoalGrid from "./GoalGrid.jsx";
 
 /**
@@ -97,9 +98,14 @@ function ModuleFrame({ label, children, blocked = false }) {
   );
 }
 
-/** The one module with a governed actual wired today. */
-function AccountPortfolioModule() {
-  const { summary, state } = useAccountPortfolioSummary();
+/**
+ * Account portfolio -- a complete server-side count over the authorized scope.
+ *
+ * The read is LIFTED to the dashboard and passed in, because the same aggregate answers two things:
+ * this module's tiles and the `crm.account.active.count` goal actual. Fetching it twice would put two
+ * subscriptions on one number and could show a goal actual that disagrees with the tile beside it.
+ */
+function AccountPortfolioModule({ summary, state }) {
   if (state === "LOADING") {
     return <ModuleFrame label="Account portfolio"><HonestState state={HONEST_STATE.LOADING} subject="Account portfolio" /></ModuleFrame>;
   }
@@ -151,16 +157,14 @@ function AccountPortfolioModule() {
  * conflict; a total would double-count it, and a stacked bar would assert a mutual exclusivity
  * nobody has proven.
  */
-function ServiceAttentionModule() {
-  const { data: workOrders, loading, error } = useWorkOrders();
-
+// The projection output is computed ONCE at the dashboard and passed in, because the same sections
+// answer both this module's tiles and three FIRM goal actuals. Two derivations of one projection is
+// how a tile and the goal beside it come to disagree.
+function ServiceAttentionModule({ grouped, loading, error }) {
   if (loading) return <HonestState state={HONEST_STATE.LOADING} subject="Service attention" />;
   if (error) {
     return <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Service attention" detail="Work orders could not be read just now." />;
   }
-
-  const items = workOrderAttentionItems({ workOrders: workOrders ?? [] });
-  const grouped = groupWorkOrderAttentionItemsBySection(items);
 
   if (grouped.length === 0) {
     // A CONFIRMED clean state, not an unknown one: the read succeeded and the projection found
@@ -239,6 +243,36 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   const onDate = useMemo(() => reportingToday(), []);
   const goalFeed = usePerformanceGoals(targets, onDate);
 
+  // ---- the governed reads this surface composes, LIFTED so one read serves both its module and its
+  // goal actual. Each is gated on the module actually resolving: a viewer with no service scope must
+  // not open an unfiltered work-order subscription their Rules would deny.
+  const moduleKeys = useMemo(() => new Set(resolvedModuleKeys(ctx)), [ctx]);
+  const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders(
+    moduleKeys.has("serviceAttention"),
+  );
+  const { summary: portfolio, state: portfolioState } = useAccountPortfolioSummary({
+    enabled: moduleKeys.has("accountPortfolio"),
+  });
+
+  // The projection runs once. `null` while the read is unresolved -- NOT an empty array, which would
+  // become four confirmed zeros on the goal tiles.
+  const attentionSections = useMemo(() => {
+    if (!moduleKeys.has("serviceAttention") || workOrdersLoading || workOrdersError) return null;
+    return groupWorkOrderAttentionItemsBySection(workOrderAttentionItems({ workOrders: workOrders ?? [] }));
+  }, [moduleKeys, workOrders, workOrdersLoading, workOrdersError]);
+
+  const actualsByKey = useMemo(
+    () =>
+      actualsByGoalKey(
+        dashboardGoalActuals({
+          attentionSections,
+          portfolio: portfolioState === "READY" ? portfolio : null,
+        }),
+        goalKey,
+      ),
+    [attentionSections, portfolio, portfolioState],
+  );
+
   const destinationGroups = useMemo(
     () => buildReachableGroups(role, allowedLegacyKeys, operationalContext),
     [role, allowedLegacyKeys, operationalContext],
@@ -279,11 +313,11 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
               if (m.key === "serviceAttention") {
                 return (
                   <ModuleFrame key={m.key} label={m.label}>
-                    <ServiceAttentionModule />
+                    <ServiceAttentionModule grouped={attentionSections ?? []} loading={workOrdersLoading} error={workOrdersError} />
                   </ModuleFrame>
                 );
               }
-              if (m.key === "accountPortfolio") return <AccountPortfolioModule key={m.key} />;
+              if (m.key === "accountPortfolio") return <AccountPortfolioModule key={m.key} summary={portfolio} state={portfolioState} />;
               if (m.key === "myGoals" || m.key === "teamGoals") {
                 const scoped = targets.filter((t) =>
                   m.key === "myGoals" ? t.targetScopeType === "EMPLOYEE" : t.targetScopeType !== "EMPLOYEE",
@@ -291,7 +325,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                 if (scoped.length === 0) return null;
                 return (
                   <ModuleFrame key={m.key} label={m.label}>
-                    <GoalGrid targets={scoped} feed={goalFeed} actualsByKey={null} />
+                    <GoalGrid targets={scoped} feed={goalFeed} actualsByKey={actualsByKey} />
                   </ModuleFrame>
                 );
               }
