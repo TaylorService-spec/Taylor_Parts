@@ -119,6 +119,7 @@ jobs:
 
       - name: Inventory ledger (inventoryService.ts) behavioral tests (build + run)
         run: npm run build && node --test test/inventoryService.test.mjs
+        working-directory: functions
 
       - name: Reservation follows current demand (increase / decrease / removal, emulator)
         run: node --test test/reservationFollowsDemand.test.mjs
