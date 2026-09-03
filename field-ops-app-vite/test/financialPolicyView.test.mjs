@@ -90,12 +90,29 @@ ok("unknown-cost treatment is not a configurable field of the policy", () => {
 
 // ============================ RECOGNITION POINTS ============================
 
-ok("a blocked recognition point is SHOWN as unavailable with its reason, not hidden", () => {
+ok("an unavailable recognition point is SHOWN with its reason, never hidden", () => {
+  // The RULE is unchanged; its example moved. WORK_ORDER_CONSUMPTION was the blocked point, and
+  // Decision #171 lifted that block by making consumption actually remove physical stock -- so this
+  // now asserts the rule against whatever is unavailable, and states the current fact when none is.
+  //
+  // Hiding an unavailable point would read as "EOS does not do that" rather than "not yet", which
+  // is why every point is rendered either way.
   const view = ready();
-  const blocked = view.cogsRecognitionPoints.find((p) => p.id === "WORK_ORDER_CONSUMPTION");
-  assert.ok(blocked, "hiding it would read as 'EOS does not do that' rather than 'not yet'");
-  assert.equal(blocked.available, false);
-  assert.match(blocked.blockedReason, /CONSUMPTION_SOURCE_SELECTION_AUTHORITY_REQUIRED/);
+  const unavailable = view.cogsRecognitionPoints.filter((p) => !p.available);
+  for (const point of unavailable) {
+    assert.ok(point.blockedReason, `${point.id} is unavailable and must say why`);
+  }
+  assert.deepEqual(unavailable, [], "none is blocked today -- consumption was the last");
+});
+
+ok("WORK_ORDER_CONSUMPTION is now shown as available, with no stale blocked reason", () => {
+  // The mirror must not keep telling a technician the feature is off after it was turned on. The
+  // backend parity test enforces the value; this one proves the SCREEN renders it.
+  const view = ready();
+  const point = view.cogsRecognitionPoints.find((p) => p.id === "WORK_ORDER_CONSUMPTION");
+  assert.ok(point);
+  assert.equal(point.available, true);
+  assert.equal(point.blockedReason, null);
 });
 
 ok("physical movement never appears as a recognition point", () => {

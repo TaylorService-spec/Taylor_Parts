@@ -146,24 +146,35 @@ test("SERIAL custody stays with the serialized-asset authority, never with quant
 
 // ══════════════════════════ THE ONE MISSING FACT ══════════════════════════
 
-test("the consumption path carries NO source location at ANY of its three layers", () => {
-  // The gap, stated as code rather than as narrative, at each place it could have been closed.
+test("the consumption path NOW carries a source — at the layer where it is actually known", () => {
+  // INVERTED by Decision #171. This previously proved the gap: no source at the plan, the capture or
+  // the ledger write. Two of those three closed, and the third stayed shut ON PURPOSE — which is why
+  // the assertion is rewritten rather than deleted.
   //
-  // 1. THE PLAN — what a Work Order intends to use.
+  // 1. THE PLAN — still carries NO location, and that is correct, not an omission. A plan says what a
+  //    job needs, not where it will be taken from; deciding the source at planning time would be a
+  //    guess made days before anyone touched the shelf.
   const snapshot = src("types/workOrder.ts").slice(src("types/workOrder.ts").indexOf("export interface InventorySnapshotItem"));
   const snapshotBody = snapshot.slice(0, snapshot.indexOf("\n}"));
-  for (const field of ["warehouseId", "locationId", "inventoryLocationId", "sourceLocation", "location"]) {
-    assert.ok(!new RegExp(`\\b${field}\\??:`).test(snapshotBody), `InventorySnapshotItem must not already carry ${field}`);
-  }
-  // 2. THE CAPTURE — what the technician records as actually used. The ONLY qtyUsed writer.
-  const capture = codeOnly("updateWorkOrderExecutionData.ts");
   for (const field of ["warehouseId", "locationId", "inventoryLocationId", "sourceLocation"]) {
-    assert.ok(!capture.includes(field), `the qtyUsed writer must not already carry ${field}`);
+    assert.ok(!new RegExp(`\\b${field}\\??:`).test(snapshotBody), `the PLAN must not carry ${field} — source is decided at use`);
   }
-  // 3. THE LEDGER WRITE — what consumption actually records.
+  // 2. THE CAPTURE — the source arrives here, with the usage it explains.
+  const capture = codeOnly("updateWorkOrderExecutionData.ts");
+  assert.match(capture, /consumptionSources/, "the qtyUsed writer now accepts a governed source per sku");
+  assert.match(capture, /planPhysicalConsumption/, "and resolves it through the governed resolver");
+  assert.match(capture, /stageOperationalMovement/, "staging the movement in the SAME transaction");
+  // 3. THE MOVEMENT — the physical write is location-scoped by construction.
+  const movement = codeOnly("workOrderConsumption/consumptionMovement.ts");
+  assert.match(movement, /location: \{ type: locationType, locationId \}/);
+  // The location-less COMMITMENT path is deliberately untouched: it still writes no location,
+  // because it still moves no stock.
   const consume = codeOnly("inventoryService.ts");
   const consumeBlock = consume.slice(consume.indexOf("export async function consumeParts"));
-  assert.ok(!/location/i.test(consumeBlock.slice(0, consumeBlock.indexOf("\n}\n"))), "consumeParts must not already write a location");
+  assert.ok(
+    !/location/i.test(consumeBlock.slice(0, consumeBlock.indexOf("\n}\n"))),
+    "consumeParts stays location-less — it reconciles a reservation, it does not move stock",
+  );
 });
 
 test("a WORK_ORDER now produces EXACTLY ONE physical movement, and no more", () => {

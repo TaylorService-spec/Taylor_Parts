@@ -58,13 +58,18 @@ export const COGS_RECOGNITION_POINTS = Object.freeze([
     label: "Work order part consumption",
     description: "Cost is relieved when a technician consumes a part against a work order.",
     // Mirrors the backend, which DERIVES this from PHYSICAL_CONSUMPTION_ACTIVE in
-    // functions/src/workOrderConsumption/consumptionActivation.ts. The consumption movement
-    // authority is built and tested; it is inert behind one named boolean, and while that boolean is
-    // false consumption does not remove physical stock. The parity test diffs this against the
-    // backend's computed value, so flipping the gate cannot leave the screen lying.
-    available: false,
-    blockedReason:
-      "Physical consumption is built but not active (CONSUMPTION_SOURCE_SELECTION_AUTHORITY_REQUIRED): a technician cannot yet name the inventory location stock was consumed from, so consumption does not remove physical stock. Recognizing cost here would relieve inventory the system still counts on the shelf.",
+    // functions/src/workOrderConsumption/consumptionActivation.ts.
+    //
+    // UPDATED BY Decision #171, and the parity test is what forced it. The gate flipped: a technician
+    // can now name the governed location a part came from, consumption writes a located movement, and
+    // physical on-hand drops. The condition this was blocked on -- "consumption does not remove
+    // physical stock" -- stopped being true, so the backend computed available: true and the diff
+    // against this mirror failed. Exactly the lie that comment promised to catch.
+    //
+    // SELECTABLE IS NOT RECOGNIZED: an operator may now choose this recognition point. Nothing here
+    // computes or relieves cost.
+    available: true,
+    blockedReason: null,
   }),
 ]);
 

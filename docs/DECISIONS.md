@@ -5774,3 +5774,101 @@ transfer"; and `docs/assessments/bin-p6-transfer-reconciliation.md`, which carri
 evidence for the Ruling-8 answer and the three-reader hazard.
 
 ---
+## #171 — OWNER RULING: consumption source SELECTION, and physical consumption goes live (2026-09-02)
+
+**Context.** Decision #168 made Work Order physical consumption require a governed source location and
+shipped it **inactive**, with a named blocker: the ruling's fallback needs a technician to name a
+location, and a technician could read neither `warehouses` (admin/dispatcher or warehouse-assigned)
+nor `mobile_locations` (admin/dispatcher only), while `updateWorkOrderExecutionData` requires
+`role === "technician"` exactly. This ruling closes that blocker and turns the authority on.
+
+### The ruling
+
+**1. TECHNICIANS RECEIVE NO GENERAL LOCATION OR INVENTORY READ.** `warehouses`, `mobile_locations`,
+inventory balances and warehouse contents stay exactly as gated as they were. **firestore.rules is
+unchanged**, and a test asserts each of those three rules verbatim.
+
+The obvious fix was to widen a read. It was rejected because the permission would outlive the
+question: granting warehouse browsing to answer "which of a handful of places did this part come
+from" leaves a standing inventory surface behind forever.
+
+**2. SOURCE OPTIONS ARE A TRUSTED, COMMAND-SCOPED PROJECTION.**
+`listWorkOrderConsumptionSources` answers ONE question — *for this authenticated technician, this
+Work Order, this part, what may the source be?* — and returns **location identities and labels only**.
+It is not warehouse browsing, inventory reporting, or location management.
+
+**3. NO BALANCES. AT ALL.** No on-hand, available, reserved, ATP or stockout. A picker does not need
+them, and including one would turn a source selector into the visibility surface this design exists
+to avoid. A test pins the option shape to exactly `{ locationId, locationType, label, method }`.
+
+**4. AN UNAMBIGUOUS PICKED WAREHOUSE IS THE DEFAULT.** Composed from #168's resolver — not
+re-implemented in the read path, because two implementations of "unambiguous" would eventually
+disagree with the write path that actually refuses. Ambiguity and insufficient picked quantity both
+mean the technician is asked, never that the first is taken.
+
+**5. A TECHNICIAN MAY EXPLICITLY DECLARE AN ACTIVE WAREHOUSE.** Resolved with the SAME
+`status == "ACTIVE"` predicate the availability authority uses, deliberately rather than a similar
+one: a warehouse that cannot hold sellable stock must not be offerable as a source.
+
+This authorizes **declaring where a part came from**. It does not authorize browsing inventory,
+editing configuration, transferring, adjusting, or reading financial information.
+
+**6. A TECHNICIAN MAY SELECT ONLY THEIR OWN GOVERNED TRUCK.** Resolved server-side from
+`trucks.assignedDriverEmployeeId`. **Another technician's truck is not offered** — structurally: the
+projection accepts exactly ONE mobile candidate, so a second has no way in.
+
+**7. THE DRIVER LINK AUTHORIZES AN OPTION, NEVER AN INFERENCE.** A truck appearing in the list is not
+EOS concluding the part came off it. The technician still selects it. Two trucks for one driver —
+which the registry promises cannot happen — **fails closed** rather than picking one, because
+choosing arbitrarily would turn a data defect into a silent inventory misattribution.
+
+**8. THE SERVER REVALIDATES AT SUBMIT.** The permitted set is re-derived inside the write
+transaction, so a warehouse deactivated between render and submit **refuses**. A stale picker option
+is not authority.
+
+**9. SERIALIZED SOURCE REMAINS SERIALIZED CUSTODY.** `serialized_assets.currentLocationId` decides;
+the screen displays it and offers no choice; a contradicting selection is refused; unknown custody
+fails closed. Unchanged from #168.
+
+**10. NO SOURCE REMAINS A REFUSAL.** *"Select where this part came from before recording usage."*
+Unchanged, and now reachable to act on.
+
+**11. PHYSICAL CONSUMPTION IS ACTIVE.** `PHYSICAL_CONSUMPTION_ACTIVE = true`. The gate was **flipped,
+not deleted** — one place still answers "is this live?", and turning it off is how this is reverted
+without unpicking a transaction.
+
+**12. RESERVATION, SALES ORDER COMMITMENT AND `salesOrder.fulfill` ARE UNCHANGED.** Work Order
+commitment stays location-less. `salesOrder.fulfill` remains `active: false`. Physical correctness
+removes a prerequisite for cross-family commitment; it does not authorize it.
+
+### The Customer 1 defect is closed in code
+
+Proven end to end against the emulator, through the real callable:
+
+```
+receive 5 at Warehouse A → consume 2 → physical on-hand 3, and Sales Order availability sees 3
+```
+
+Closed through the **canonical** facts — a `WORK_ORDER_CONSUMPTION` movement flows into
+`sumLedgerEligibleOnHand` and out through the existing availability read. **No Sales Order-specific
+subtraction, no second availability engine.**
+
+Nine end-to-end proofs: warehouse decrement; retry decrements once; no-source refused with qtyUsed
+and stock both unchanged; **truck consumption leaves the warehouse at 2, never 0**; pick default
+resolves with no selection; pick ambiguity refuses then succeeds explicitly; explicit override
+decrements the truck and preserves the placement untouched; correction restores to the original
+source once and both events survive; a correction cannot give back more than was used.
+
+### What did NOT change
+
+Valuation, COGS, margin, turns, carrying cost, ATP and stockout all remain open. **No acquisition
+cost is attached to the new movement** — that would be a cost-flow ruling not made here. Historical
+`qtyUsed` predating activation is not reinterpreted and no location is backfilled. Metric registry
+unchanged. No Rules change, no index (every new query is single-field equality).
+
+**Enforced by:** `functions/src/workOrderConsumption/consumptionSourceOptions.ts`,
+`consumptionSourceService.ts`, `consumptionSourceCallables.ts`, `planPhysicalConsumption.ts`,
+`consumptionActivation.ts`; `functions/src/updateWorkOrderExecutionData.ts`;
+`field-ops-app-vite/src/modules/technicianDashboard/ExecutionCapture.jsx`. Suites:
+`consumptionSourceOptions.test.mjs` (16), `physicalConsumptionE2E.test.js` (9, emulator),
+`updateWorkOrderExecutionDataIdempotency.test.js` (12, emulator), plus #168's 46.

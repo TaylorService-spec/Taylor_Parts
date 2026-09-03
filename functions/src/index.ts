@@ -8,6 +8,10 @@ initializeApp();
 export { createWorkOrder } from "./createWorkOrder";
 export { transitionWorkOrder } from "./transitionWorkOrder";
 export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
+
+// Decision #171 -- the ONE narrow trusted read that makes consumption source selection possible
+// without granting technicians any standing inventory or location read.
+export { listWorkOrderConsumptionSources } from "./workOrderConsumption/consumptionSourceCallables";
 export { detectInventoryEffects } from "./inventoryEffectCallables";
 export { getInventoryAnalytics } from "./inventoryAnalyticsCallables";
 export { getAccountPortfolioSummary } from "./account/accountPortfolioSummary";

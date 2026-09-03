@@ -378,7 +378,17 @@ test("updateWorkOrderExecutionData: unknown sku in qtyUsedUpdates is rejected", 
   );
 });
 
+// Decision #171: a positive qtyUsed now REQUIRES a governed physical source. These cases are about
+// qtyUsed mechanics, so they seed one ACTIVE warehouse and name it -- without that they refuse, which
+// is the new authority working rather than a defect.
+const EXEC_SRC_WH = "wh-engine-test";
+async function seedExecutionSourceWarehouse() {
+  await db.collection("warehouses").doc(EXEC_SRC_WH).set({ name: "Engine Test Warehouse", status: "ACTIVE" });
+}
+const execSource = (sku) => ({ consumptionSources: [{ sku, locationId: EXEC_SRC_WH }] });
+
 test("updateWorkOrderExecutionData: assigned technician increments qtyUsed for a planned part, floored at 0", async () => {
+  await seedExecutionSourceWarehouse();
   const techUid = uid("uwoed-qty-happy");
   await seedUser(techUid, "technician", { technicianId: "tech-uwoed-qty-happy" });
   const woId = uid("wo-uwoed-qty-happy");
@@ -387,7 +397,7 @@ test("updateWorkOrderExecutionData: assigned technician increments qtyUsed for a
     inventorySnapshot: [{ sku: "part-1", qtyUsed: 0 }],
   });
   const result = await updateWorkOrderExecutionData.run(
-    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "part-1", delta: 3 }] }, techUid),
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "part-1", delta: 3 }], ...execSource("part-1") }, techUid),
   );
   assert.ok(result.updatedFields.includes("inventorySnapshot"));
   let snap = await db.collection("fieldops_wos").doc(woId).get();
