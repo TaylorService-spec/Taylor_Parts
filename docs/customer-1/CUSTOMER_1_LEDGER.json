@@ -103,6 +103,9 @@
       "closeWhen": "Every Day-1 workflow has passed its applicable governed functional, sandbox, North Star, and acceptance gates.",
       "evidence": [
         "docs/design/north-star-migration-ledger.md",
+        "PR #1761 / a81e5b47: Certification formally closed with world 1.8.0, 1093/1093, final applied-inventory verifier 38/38 PASS, and bounded live Purchasing, Receiving, and Cycle Count evidence. The closeout explicitly does not claim production deployment or close transferred findings.",
+        "PR #1749 / 0d76bea9: Work Order availability now uses the governed ledger on-hand derivation and reservation follows current demand, but the work proved a remaining consumption/on-hand defect: consumed stock is not physically removed from the on-hand derivation, causing Sales Order availability to overstate stock after consumption. Treat as a Customer 1 product blocker if the affected inventory/fulfillment path is Day 1.",
+        "PR #1759 / 94d6e940: legacy stock_locations runtime backend authority was retired from analytics; a remaining client-direct stock_locations read and Rules read block are explicitly carried to a separate Tier-2 retirement gate.",
         "Existing governed authorization, certification, sandbox persona, scanner, service, dispatch, sales, and inventory evidence remains source-specific authority rather than being copied into this ledger."
       ]
     },
@@ -115,7 +118,8 @@
       "authority": "Verenward + Owner for protected production actions",
       "closeWhen": "Production Rules, Functions, capabilities, roles, protected actions, tenant boundaries, and audit behavior are verified from the production environment for Day-1 scope.",
       "evidence": [
-        "Repository and sandbox governance evidence exists; production evidence remains required."
+        "Repository and sandbox governance evidence exists; production evidence remains required.",
+        "PR #1752 / be1e5579: read-only production R-32 exposure census found zero exposed principals and zero writes/deploys. It also found production is barely using the governed access model: two RoleAssignments on one principal, no manager Roles, and no location scopes. This narrows one production exposure question but does not satisfy full Day-1 production identity/authority verification."
       ]
     },
     {
