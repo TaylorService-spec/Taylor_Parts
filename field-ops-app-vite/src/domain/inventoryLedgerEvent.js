@@ -29,19 +29,26 @@ import { isTrackingMode } from "./partTrackingMode.js";
 // The OPERATIONAL physical-movement subset (NOT the complete UD-3 taxonomy). The
 // existing WO reservation/consumption ledger (RESERVED/RELEASED/CONSUMED) and the
 // deferred OPENING_BALANCE event are deliberately NOT members here.
+//
+// COUNTED WAS REMOVED (CERT-LEDGER-COUNTED-08). It was declared here for two years and never
+// written once: a cycle count records its counted quantity on the count record, and the
+// reconciliation writes the real stock correction as ADJUSTED. Nothing else ever produced it.
+// Its SNAPSHOT direction and COUNT_SHEET source type went with it, because they existed only to
+// serve it. Do not re-add any of the three to make a future count "look complete" -- a count that
+// moves no stock must not author a movement, and the workflow status COUNTED (cycleCountTypes.ts)
+// is a different thing that remains correct and live.
 export const OPERATIONAL_MOVEMENT_TYPES = Object.freeze([
   "RECEIVED",
   "ADJUSTED",
   "TRANSFER_OUT",
   "TRANSFER_IN",
-  "COUNTED",
   "RETURNED",
   "SCRAPPED",
 ]);
 
 // Direction is metadata carried by the TYPE (never inferred from a quantity sign). IN/OUT
-// are positive magnitudes; SIGNED (ADJUSTED) is a signed nonzero delta; SNAPSHOT (COUNTED)
-// is an observed absolute. This is classification only -- no on-hand math is performed.
+// are positive magnitudes; SIGNED (ADJUSTED) is a signed nonzero delta. This is
+// classification only -- no on-hand math is performed.
 export const MOVEMENT_DIRECTION = Object.freeze({
   RECEIVED: "IN",
   RETURNED: "IN",
@@ -49,7 +56,6 @@ export const MOVEMENT_DIRECTION = Object.freeze({
   TRANSFER_OUT: "OUT",
   SCRAPPED: "OUT",
   ADJUSTED: "SIGNED",
-  COUNTED: "SNAPSHOT",
 });
 
 // Bounded source-object taxonomy, DECLARED AHEAD of persistence. WORK_ORDER and
@@ -60,7 +66,6 @@ export const SOURCE_OBJECT_TYPES = Object.freeze([
   "WORK_ORDER",
   "RECEIVING_ORDER",
   "TRANSFER_ORDER",
-  "COUNT_SHEET",
   "ADJUSTMENT",
   "RMA",
   "SCRAP",
@@ -75,7 +80,6 @@ export const MOVEMENT_SOURCE_TYPE = Object.freeze({
   RETURNED: "RMA",
   TRANSFER_OUT: "TRANSFER_ORDER",
   TRANSFER_IN: "TRANSFER_ORDER",
-  COUNTED: "COUNT_SHEET",
   ADJUSTED: "ADJUSTMENT",
   SCRAPPED: "SCRAP",
 });
@@ -155,11 +159,10 @@ function validateActor(actor) {
 
 // Per-mode quantity/identifier + per-type quantity rules (SHAPE only; no stock math).
 // SERIAL is dominant: quantity === 1 exactly. NONE/LOT apply the per-direction rule:
-// IN/OUT -> finite > 0 (fractional allowed); SIGNED -> finite nonzero; SNAPSHOT -> finite >= 0.
+// IN/OUT -> finite > 0 (fractional allowed); SIGNED -> finite nonzero.
 function validateQuantity(mode, direction, quantity) {
   if (typeof quantity !== "number" || !Number.isFinite(quantity)) return "quantity_invalid";
   if (mode === "SERIAL") return quantity === 1 ? null : "quantity_invalid";
-  if (direction === "SNAPSHOT") return quantity >= 0 ? null : "quantity_invalid";
   if (direction === "SIGNED") return quantity !== 0 ? null : "quantity_invalid";
   return quantity > 0 ? null : "quantity_invalid"; // IN / OUT
 }

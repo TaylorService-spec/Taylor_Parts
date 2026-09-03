@@ -106,7 +106,7 @@ Capabilities are registered **`active: false` and granted to no role**: `invento
 
 `operationalMovementTypes.ts` defines `INVENTORY_LOCATION_TYPES = ["WAREHOUSE", "BIN", "MOBILE", "VENDOR", "CUSTOMER", "VIRTUAL"]` and a `LocationRef { type, locationId }` on every movement. **`BIN` is already schema-legal on a movement.** Nothing emits one.
 
-Quantity derivation, verified in `cycleCount/cycleCountExpectedQuantity.ts` and `fulfillment/fulfillmentAvailability.ts`: `RECEIVED`/`RETURNED`/`TRANSFER_IN` add, `TRANSFER_OUT`/`SCRAPPED` subtract, `ADJUSTED` is signed, `COUNTED` is excluded. Filtering is on **both** `location.type` and `location.locationId`.
+Quantity derivation, verified in `cycleCount/cycleCountExpectedQuantity.ts` and `fulfillment/fulfillmentAvailability.ts`: `RECEIVED`/`RETURNED`/`TRANSFER_IN` add, `TRANSFER_OUT`/`SCRAPPED` subtract, `ADJUSTED` is signed. Those branches are an allowlist: a type they do not name contributes nothing, which is what let CERT-LEDGER-COUNTED-08 retire the never-written `COUNTED` type without changing a number. Filtering is on **both** `location.type` and `location.locationId`.
 
 - **WAREHOUSE quantity: authoritative today.**
 - **MOBILE quantity: authoritative today** (Cycle Count and Transfer both operate on it).

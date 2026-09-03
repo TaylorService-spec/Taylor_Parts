@@ -22,8 +22,8 @@ export const INVENTORY_ANALYTICS_READ_CAPABILITY = "inventory.analytics.read";
 // movement semantics Transfer, Cycle Count and Sales-Order allocation encode:
 //
 //   NONE-tracked   sumLedgerEligibleOnHand over the operational ledger at status==ACTIVE warehouses
-//                  (RECEIVED/RETURNED/TRANSFER_IN +, TRANSFER_OUT/SCRAPPED -, ADJUSTED signed,
-//                  COUNTED excluded, non-WAREHOUSE locations excluded)
+//                  (RECEIVED/RETURNED/TRANSFER_IN +, TRANSFER_OUT/SCRAPPED -, ADJUSTED signed;
+//                  an unnamed type and a non-WAREHOUSE location both contribute nothing)
 //   SERIAL-tracked serialized_assets units that are AVAILABLE at an eligible warehouse -- the same
 //                  rule Cycle Count's expected-serial snapshot uses. The ledger deliberately does
 //                  not aggregate serial quantity, so counting the registry is what makes a
