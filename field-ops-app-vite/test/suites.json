@@ -158,6 +158,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dashboardPreview.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/deniedSubnavRouting.test.mjs",
       "runner": "node"
     },

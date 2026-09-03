@@ -7883,6 +7883,56 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   border-left: 2px solid var(--color-border);
 }
 
+/* BOUNDED ACTIONABLE PREVIEW (Owner Decision #172) -- rows of real work, never a total.
+   Deliberately a plain list rather than a table or a card grid: five rows of work read as
+   a queue, and a card each would give five items the visual weight of five metrics. */
+.fo-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fo-preview-list__row {
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
+}
+
+.fo-preview-list__row:last-child { border-bottom: none; }
+
+/* ONE RULE FOR BOTH A LINKED AND AN UNLINKED ROW. They render the same wrapper element, so the
+   layout cannot land on the primary span and stack what should sit on one line. */
+.fo-preview-list__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  /* 44px minimum target. These rows are tapped on a handheld by someone holding a part in
+     the other hand; a dense list that is merely readable is not usable. */
+  min-height: 44px;
+  padding: var(--space-2) 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: underline; }
+
+.fo-preview-list__primary {
+  font-family: var(--font-interface);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.fo-preview-list__secondary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* NOTHING HERE CLAMPS OR TRUNCATES. The footer carries "More items available", which is the
+   only statement this surface may make about what it is not showing; hiding it at a narrow
+   width would leave a five-row list looking like the whole queue. */
+.fo-preview-list__footer { margin-top: var(--space-2); }
+
 @media (max-width: 639.98px) {
   /* Single column, and the handheld KPI tier. What must survive this width is
      fixed by the design: every action item, every target-and-actual pair, and
