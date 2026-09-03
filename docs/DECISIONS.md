@@ -5259,3 +5259,104 @@ and the registry still says which authority each blocked metric is actually wait
 `functions/test/acquisitionCostActivation.test.mjs` (24 cases),
 `field-ops-app-vite/test/recordPurchaseOrderPrice.test.mjs` (10 cases), plus the #164 suites which
 were updated where activation legitimately made an assertion false.
+
+## #168 — OWNER RULING: Work Order physical consumption requires a governed source location (2026-09-02)
+
+**Context.** PR #1749 proved that consumed stock never leaves physical on-hand, so Sales Order
+availability re-offers units already fitted to a machine: receive 5, consume 2, still reads 5.
+PR #1765 measured why and classified it `OWNER_LOCATION_AUTHORITY_REQUIRED` — the custody model
+existed in full, but nothing recorded WHICH governed location a consumed quantity left. This ruling
+supplies that authority.
+
+### The ruling
+
+**1. PHYSICAL CONSUMPTION MUST NAME A GOVERNED SOURCE LOCATION.** A Work Order part cannot become
+physically consumed without identifying where it came from. **No source is a REFUSAL.** EOS will not
+knowingly record SOURCE UNKNOWN for new usage — doing so preserves an overstatement it knows about.
+
+**2. SOURCE-AT-PICK IS THE PRIMARY NON-SERIALIZED DEFAULT.** An unambiguous governed `bin_placement`
+naming this Work Order, this part, a governed warehouse, and enough quantity to account for the
+consumption, IS the source. This composes an existing server-written record; it invents nothing.
+**Picking still changes no balance** — the physical decrement happens at consumption, not at pick.
+
+**3. AMBIGUITY IS ASKED, NEVER GUESSED.** Two warehouses picked for one job, or a pick too small to
+account for what was used, both REFUSE and require an explicit answer. Taking the first would be a
+guess wearing the authority of a record.
+
+**4. EXPLICIT SOURCE IS THE FALLBACK *AND* THE OVERRIDE.** Where no unambiguous pick exists the user
+names the location. An explicit selection also **outranks** a pick suggestion: parts get picked from
+Warehouse A and an equivalent unit already on Truck T gets used instead. The pick is what someone
+intended; the explicit answer is what happened, and physical truth beats historical intent. The
+placement is preserved as history and never rewritten.
+
+**5. SOURCE MUST BE A GOVERNED PHYSICAL LOCATION.** Never an arbitrary string, and never inferred
+from customer, technician, nearest warehouse, operating company, default branch, first ACTIVE
+warehouse or largest balance. The resolver takes the permitted set as an INPUT, so the constraint is
+structural rather than a comment.
+
+**6. SERIALIZED INVENTORY USES SERIALIZED CUSTODY.** `serialized_assets.currentLocationId` is the
+authority. A serialized unit is not a quantity, so no selection is offered; a **contradicting**
+explicit source is a DEFECT, not a preference; and unknown custody **fails closed** rather than
+letting someone assert a location, which is the one case where a selection would fabricate history.
+
+**7. MOBILE IS VALID PHYSICAL CUSTODY, AND WAREHOUSE AVAILABILITY IS UNCHANGED.** A truck may be a
+consumption source. This does NOT put truck stock into warehouse Sales Order availability: the
+warehouse→truck transfer already decremented the warehouse once, and **a later truck consumption must
+not decrement it again.** That double subtraction would drive the warehouse negative and erase stock
+still on the shelf; it is pinned by test.
+
+**8. PHYSICAL CONSUMPTION IS A DISTINCT FACT FROM COMMITMENT `CONSUMED`.** The location-less
+`CONSUMED` remains exactly what it is — a reservation-reconciliation event — and was NOT reclassified.
+The new movement is `WORK_ORDER_CONSUMPTION`: **SIGNED**, following ADJUSTED's precedent, negative
+when stock leaves and positive when a correction restores it. One type rather than a separate reversal
+type, because two types can drift and a reversal naming a different location than the movement it
+reverses is exactly how a correction would manufacture stock. `WORK_ORDER` becomes a movement-producing
+source object for the first time — the boundary this ruling deliberately moved — and produces
+**exactly one** movement type, asserted by test.
+
+**9. A qtyUsed DECREASE IS A CORRECTION, NOT A RETURN.** It reverses prior consumption **against the
+original source lineage**, derived from the movements themselves, so the user is never asked to choose
+a return location. It cannot restore more than was consumed, repeated corrections cannot inflate
+stock, and the original movement is preserved — history is additive, never deleted. Where several
+sources contributed, the most recent unreversed entry reverses first: that is bookkeeping about which
+execution record is being corrected, **explicitly not FIFO/LIFO and not a valuation rule**. Returns
+disposition, condition and credit are untouched.
+
+**10. RESERVATION IS UNCHANGED.** Work Order commitment stays location-less and continues to pool
+eligible warehouse supply. This ruling governs physical consumption SOURCE only.
+
+### What is NOT closed — and this is the honest part
+
+**The authority is implemented, tested, and DELIBERATELY INERT.**
+`PHYSICAL_CONSUMPTION_ACTIVE = false`.
+
+Ruling 4's fallback requires a technician to name a location, and measurement says they cannot:
+
+```
+firestore.rules  warehouses        allow read: isAdminOrDispatcher() || isAssignedToWarehouse(id)
+firestore.rules  mobile_locations  allow read: isAdminOrDispatcher()
+```
+
+`updateWorkOrderExecutionData` requires `caller.role === "technician"` EXACTLY — admin and dispatcher
+are rejected. So the actor who must select the source can read neither the warehouses nor their own
+truck, and **no capability anywhere says which locations a technician may consume from.**
+
+Activating regardless would refuse every consumption lacking a pick placement — and picking is
+optional, so that is a large share of real field work. It would trade a known inventory overstatement
+for technicians unable to record what they did, with no action available to fix it. That is a worse
+failure, not a safer one.
+
+**Named blocker: `CONSUMPTION_SOURCE_SELECTION_AUTHORITY_REQUIRED`** — a narrower question than the
+one this ruling answered: *which inventory locations may a technician consume from, and through what
+governed read?*
+
+### Enforced by
+
+`functions/src/workOrderConsumption/consumptionSource.ts` (resolution order + refusals),
+`consumptionMovement.ts` (the movement, its identity, and the correction plan),
+`consumptionActivation.ts` (the gate and its reason),
+`functions/src/inventoryLedger/operationalMovementTypes.ts` +
+`field-ops-app-vite/src/domain/inventoryLedgerEvent.js` (the type, held at parity),
+`functions/src/fulfillment/fulfillmentAvailability.ts` (the line that makes consumed stock leave
+on-hand). Suites: `consumptionSource.test.mjs` (21), `consumptionMovement.test.mjs` (15),
+`consumptionCustodyBoundary.test.mjs` (10).
