@@ -230,9 +230,14 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "My booked",
     census: "S-9",
     needs: (ctx) => has(ctx, "opportunity.read") || has(ctx, "salesOrder.read"),
-    state: () => MODULE_STATE.GATED,
+    // UNAVAILABLE, not GATED. Nobody can activate their way to this: there is no read to switch on.
+    state: () => MODULE_STATE.UNAVAILABLE,
+    // CORRECTED. This said "no reporting period to total them over", which stopped being true when
+    // G-05 landed: DAY, MTD, QTD, YTD and T12M are governed, on the America/Phoenix reporting
+    // calendar, and `resolveReportingPeriod` is the same authority the server uses. The period was
+    // never the real obstruction anyway -- AB-2 is that booked has no read AT ALL, at any period.
     blocker:
-      "Booked dollars have no bounded read of their own yet, and no reporting period to total them over. Financial reach itself is no longer the blocker.",
+      "Booked has no governed read of its own — there is nothing to total, over any period. Summing order lines in the browser would invent the figure rather than report it. The reporting calendar exists and is not the blocker.",
   },
 
   // ---------------------------------------------------------------- TEAM PERFORMANCE
@@ -287,8 +292,20 @@ export const DASHBOARD_MODULES = Object.freeze([
     census: "I-1 / I-2 / I-3 / I-4",
     needs: (ctx) => has(ctx, "inventory.balance.read"),
     state: () => MODULE_STATE.GATED,
+    // CORRECTED, AND STILL BLOCKED -- for two reasons, neither of which is the one this used to give.
+    //
+    // "The governed balance read is not switched on for this environment yet" is wrong on its face:
+    // `inventory.balance.read` IS activated in platform-sandbox, and `getPartBalance` is deployed.
+    // Naming activation as the blocker sent a reader to check a box that is already ticked.
+    //
+    // What actually blocks it: (1) the client transport flag INVENTORY_BALANCE_READ_READY is false,
+    // a deliberate separate gate whose flip needs its own authorization and its own bundle release;
+    // and (2) even with it on, the governed reads answer PER PART. A section headed "on hand,
+    // reserved and available" is a claim about a whole location, and totalling a page of parts into
+    // one would be exactly the partial-number-under-a-complete-name failure this platform has
+    // already been bitten by.
     blocker:
-      "The governed balance read is not switched on for this environment yet. Until it is, the stock forecast above is derived information and is not a stock position.",
+      "Stock balances are governed per part, and this section would state a position for a whole location — an aggregate that does not exist yet. The per-part read is also still switched off in the browser bundle, which is a separate release decision. The stock forecast above remains derived information and is not a stock position.",
   },
   {
     key: "technicianAvailability",
@@ -310,15 +327,45 @@ export const DASHBOARD_MODULES = Object.freeze([
     needs: (ctx) => has(ctx, "customer.record.read") || isOperationsViewer(ctx),
     state: () => MODULE_STATE.READY,
   },
+  // THREE FACTS, THREE MODULES -- split from one "Booked, billed and collected" tile.
+  //
+  // They had one shared GATED state and one shared blocker sentence, so the least-ready fact
+  // suppressed the other two: billed and collected have a governed period read with SERVER-SIDE
+  // rollups today, and were being reported as unavailable because booked is not. One module cannot
+  // hold three readiness states honestly, and collapsing them hid two available figures behind one
+  // missing one.
   {
-    key: "firmRevenue",
+    key: "firmBilled",
     section: SECTION.BUSINESS_IMPACT,
-    label: "Booked, billed and collected",
-    census: "S-9 / S-10 / S-11 / S-17",
+    label: "Billed",
+    census: "S-10",
     needs: (ctx) => has(ctx, "finance.read"),
-    state: () => MODULE_STATE.GATED,
+    state: () => MODULE_STATE.NOT_WIRED,
+    // ENGINEERING DEBT, not a governance boundary. `listFinancialFacts` accepts a period and rolls
+    // money up server-side per currency, and refuses to summarize a truncated page at all -- so the
+    // figure it returns is complete or it is honestly absent. Composing it here is implementation.
     blocker:
-      "Booked, billed and collected are period figures, and the platform has no reporting calendar to sum them over yet. Financial reach itself is no longer the blocker.",
+      "Billed totals are governed and readable for a reporting period. This dashboard does not yet compose them; they are live in Financials.",
+  },
+  {
+    key: "firmCollected",
+    section: SECTION.BUSINESS_IMPACT,
+    label: "Collected",
+    census: "S-11",
+    needs: (ctx) => has(ctx, "finance.read"),
+    state: () => MODULE_STATE.NOT_WIRED,
+    blocker:
+      "Collected totals are governed and readable for a reporting period. This dashboard does not yet compose them; they are live in Financials.",
+  },
+  {
+    key: "firmBooked",
+    section: SECTION.BUSINESS_IMPACT,
+    label: "Booked",
+    census: "S-9 / S-17",
+    needs: (ctx) => has(ctx, "finance.read"),
+    state: () => MODULE_STATE.UNAVAILABLE,
+    blocker:
+      "Booked has no governed read of its own — there is nothing to total, over any period. Consolidated firm figures additionally have no elimination rule yet, so a group total would double-count business the two companies do with each other. The reporting calendar exists and is not the blocker.",
   },
   {
     key: "costImpact",
@@ -327,8 +374,19 @@ export const DASHBOARD_MODULES = Object.freeze([
     census: "I-15 / G-01",
     needs: (ctx) => isOperationsViewer(ctx) || hasLocationScope(ctx),
     state: () => MODULE_STATE.UNAVAILABLE,
+    // CORRECTED. "No governed cost fact exists anywhere in the platform" stopped being true with
+    // FIN-BLOCK-003A: an immutable acquisition-cost fact is written at receipt, on the
+    // PURCHASE_ORDER_LINE_PRICE basis, with explicit company and currency.
+    //
+    // ACQUISITION COST IS NOT VALUATION, and the distinction is the whole reason this stays
+    // unavailable. Knowing what one receipt cost does not say what stock is worth (no valuation
+    // method has been chosen -- standard, average, FIFO and LIFO give different answers from the
+    // same facts), what a consumed part cost (no COGS recognition point), what holding it costs
+    // (no carrying rate), or what was saved by not scrapping it (waste avoided needs a prevention
+    // event AND a statement of what would otherwise have happened). Each is an Owner decision, not
+    // a missing query.
     blocker:
-      "No governed cost fact exists anywhere in the platform, so inventory value, carrying cost and waste avoided cannot be computed. Waste avoided additionally needs a prevention event to count and a statement of what would otherwise have happened.",
+      "Purchase costs are now recorded at receipt, but a value for stock on hand is a different question: it needs a costing method nobody has chosen yet. Carrying cost needs a holding rate, and waste avoided needs both a prevention event to count and a statement of what would otherwise have happened.",
   },
 
   // ---------------------------------------------------------------- GO TO

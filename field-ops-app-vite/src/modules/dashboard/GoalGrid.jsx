@@ -5,16 +5,20 @@
 // first change to how an absent measurement reads. The drift would be silent in the worst
 // direction: one screen honest about a missing actual and the other showing a zero.
 //
-// EVERY ACTUAL IS NULL TODAY, and that is a visible state rather than an oversight. The TARGETS are
-// governed and readable now; the ACTUALS live behind each domain's own read at that domain's own
-// scope, and connecting them is per-domain work that must not be short-cut by a dashboard-local
-// count -- which is precisely the second implementation of domain logic this platform has been
-// bitten by. Until a domain's actual is wired, the tile shows the real target and says the
-// measurement is not connected. When one IS wired it arrives through `actualsByKey` and nothing else
-// about this component changes.
+// ACTUALS ARRIVE THROUGH `actualsByKey` AND NOWHERE ELSE. They live behind each domain's own read at
+// that domain's own scope, and must never be short-cut by a dashboard-local count -- precisely the
+// second implementation of domain logic this platform has been bitten by.
+//
+// Four are connected today (the three service work-order signals and active accounts), each from a
+// COMPLETE governed read: the attention projection over the unbounded work-order subscription, and
+// the account portfolio aggregate that takes no bound by design. The rest show their real target
+// beside the specific reason the measurement is missing -- see GOAL_ACTUAL_BLOCKER. A tile with a
+// target and no actual is an honest state, not an oversight; a tile showing 0 for an unknown would
+// be a false one.
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { GOAL_FEED_STATUS, goalKey } from "../../hooks/usePerformanceGoals.js";
 import { goalProgress } from "../../domain/goalProgress.js";
+import { GOAL_ACTUAL_BLOCKER, GOAL_ACTUAL_BLOCKER_DEFAULT } from "../../domain/dashboardGoalActuals.js";
 import GoalTile from "./GoalTile.jsx";
 
 /** How each metric reads to a person. A metric id is not a label. */
@@ -31,7 +35,13 @@ export const GOAL_LABELS = Object.freeze({
   "receiving.purchaseOrder.receivable.count": ["Awaiting receipt", "Awaiting now"],
 });
 
-const NOT_CONNECTED = "This measurement is not connected to the dashboard yet.";
+// ONE SENTENCE PER METRIC, not one sentence for all of them. "This measurement is not connected"
+// was true of every unwired actual and told a reader nothing about which were engineering debt and
+// which were governance boundaries -- a bounded read that cannot total, a scope this surface does
+// not hold, an input it deliberately refuses to guess. GOAL_ACTUAL_BLOCKER names each.
+function blockerFor(metricId) {
+  return GOAL_ACTUAL_BLOCKER[metricId] ?? GOAL_ACTUAL_BLOCKER_DEFAULT;
+}
 
 export default function GoalGrid({ targets, feed, actualsByKey = null }) {
   if (feed?.status === GOAL_FEED_STATUS.DENIED) {
@@ -57,7 +67,7 @@ export default function GoalGrid({ targets, feed, actualsByKey = null }) {
         key,
         label,
         actualLabel,
-        progress: goalProgress(result, actualsByKey?.[key] ?? null, NOT_CONNECTED),
+        progress: goalProgress(result, actualsByKey?.[key] ?? null, blockerFor(t.metricId)),
       };
     })
     .filter(Boolean);

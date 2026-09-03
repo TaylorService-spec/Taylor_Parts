@@ -125,13 +125,31 @@ test("GATED, UNAVAILABLE and NOT_WIRED stay three different states", () => {
   assert.ok(states.has(MODULE_STATE.NOT_WIRED));
 });
 
-test("the cost-dependent module is UNAVAILABLE and names all three missing pieces", () => {
+test("the cost-dependent module is UNAVAILABLE and names what is actually missing", () => {
   const cost = DASHBOARD_MODULES.find((m) => m.key === "costImpact");
   assert.equal(cost.state({}), MODULE_STATE.UNAVAILABLE);
   // Waste avoided is the direction's worked example of a figure that must never be invented.
-  assert.match(cost.blocker, /cost fact/i);
   assert.match(cost.blocker, /prevention event/i);
   assert.match(cost.blocker, /would otherwise have happened/i);
+  // The remaining gaps are a COSTING METHOD and a HOLDING RATE -- both Owner decisions, not queries.
+  assert.match(cost.blocker, /costing method/i);
+  assert.match(cost.blocker, /rate/i);
+});
+
+test("the cost blocker must never again claim no cost fact exists", () => {
+  // STALE-CLAIM GUARD. This module said "no governed cost fact exists anywhere in the platform"
+  // until FIN-BLOCK-003A wrote an immutable acquisition-cost fact at receipt. The sentence was
+  // correct when written and became false without anyone editing it, which is the whole failure
+  // mode this suite exists to catch: a blocker that outlives its cause sends a reader to build
+  // something that is already there.
+  const cost = DASHBOARD_MODULES.find((m) => m.key === "costImpact");
+  assert.ok(
+    !/no governed cost fact exists/i.test(cost.blocker),
+    "acquisition-cost facts exist; this claim is disproven by FIN-BLOCK-003A",
+  );
+  // ...and the correction must not overshoot in the other direction. Acquisition cost is NOT
+  // valuation, NOT COGS and NOT margin, so the module stays unavailable rather than inventing them.
+  assert.equal(cost.state({}), MODULE_STATE.UNAVAILABLE);
 });
 
 test("the financial module names the reporting period, NOT a reach gap that no longer exists", () => {
@@ -143,18 +161,72 @@ test("the financial module names the reporting period, NOT a reach gap that no l
   // The assertion is kept and INVERTED rather than deleted, because the failure mode it guards is
   // real and recurring: a module that keeps citing a blocker which has since cleared sends a reader
   // to lobby for a grant that already exists. It now fails if the withdrawn claim comes back.
-  const fin = DASHBOARD_MODULES.find((m) => m.key === "firmRevenue");
-  assert.equal(fin.state({}), MODULE_STATE.GATED);
-  assert.match(fin.blocker, /reporting calendar|period/i, "the real blocker is the reporting period");
-  assert.ok(
-    !/no role currently carries a finance visibility scope/i.test(fin.blocker),
-    "the withdrawn FIN-004 reach finding must not be cited as a blocker again",
+  // INVERTED A SECOND TIME, for the same reason it was inverted the first. This asserted that the
+  // blocker names the REPORTING PERIOD -- true when written, false once G-05 landed DAY/MTD/QTD/YTD
+  // /T12M on the America/Phoenix calendar. A test that pins a blocker to a cleared cause does not
+  // merely go stale; it actively prevents the correction.
+  const financial = ["firmBilled", "firmCollected", "firmBooked", "myBooked"].map((key) =>
+    DASHBOARD_MODULES.find((m) => m.key === key),
   );
+  for (const m of financial) {
+    assert.ok(m, "financial module missing from the table");
+    assert.ok(
+      !/no role currently carries a finance visibility scope/i.test(m.blocker),
+      `the withdrawn FIN-004 reach finding must not be cited again: ${m.key}`,
+    );
+    assert.ok(
+      !/no reporting (calendar|period)|has no reporting calendar/i.test(m.blocker),
+      `G-05 landed the reporting calendar; ${m.key} must not cite its absence`,
+    );
+  }
+});
+
+test("booked, billed and collected are three facts with three readinesses, never one tile", () => {
+  // They shared one GATED state and one blocker, so the least-ready fact suppressed the other two:
+  // billed and collected have a governed period read with server-side rollups TODAY, and were being
+  // reported unavailable because booked is not.
+  const billed = DASHBOARD_MODULES.find((m) => m.key === "firmBilled");
+  const collected = DASHBOARD_MODULES.find((m) => m.key === "firmCollected");
+  const booked = DASHBOARD_MODULES.find((m) => m.key === "firmBooked");
+
+  // Billed and collected are ENGINEERING DEBT -- nobody must decide anything.
+  assert.equal(billed.state({}), MODULE_STATE.NOT_WIRED);
+  assert.equal(collected.state({}), MODULE_STATE.NOT_WIRED);
+  // Booked is a genuine absence -- there is no read to switch on, at any period.
+  assert.equal(booked.state({}), MODULE_STATE.UNAVAILABLE);
+  assert.match(booked.blocker, /no governed read/i);
+
+  // The compound tile must not come back.
+  assert.equal(DASHBOARD_MODULES.find((m) => m.key === "firmRevenue"), undefined);
+});
+
+test("the stock-position blocker must not claim the capability is switched off", () => {
+  // STALE-CLAIM GUARD. This said "the governed balance read is not switched on for this environment
+  // yet". `inventory.balance.read` IS activated in platform-sandbox and `getPartBalance` is
+  // deployed, so that sentence sent a reader to tick a box already ticked.
+  //
+  // It stays GATED, because two real obstructions remain: the client transport flag, and the
+  // absence of any LOCATION-level aggregate -- the reads answer per part. Naming the wrong one is
+  // what this guards.
+  const stock = DASHBOARD_MODULES.find((m) => m.key === "governedStockPosition");
+  assert.equal(stock.state({}), MODULE_STATE.GATED);
+  assert.ok(
+    !/not switched on for this environment/i.test(stock.blocker),
+    "the capability is activated; this claim is disproven by config/environments.json",
+  );
+  // The real reasons, both named.
+  assert.match(stock.blocker, /per part/i, "the per-part vs per-location gap must be stated");
+  assert.match(stock.blocker, /browser bundle|switched off in the browser/i, "the transport gate must be stated");
+  // And the module must keep refusing to be read as a stock position.
+  assert.match(stock.blocker, /derived information/i);
+});
+
+test("myBooked is UNAVAILABLE because no read exists, not because a period is missing", () => {
   const booked = DASHBOARD_MODULES.find((m) => m.key === "myBooked");
-  assert.ok(
-    !/no role currently carries a finance visibility scope/i.test(booked.blocker),
-    "nor here",
-  );
+  assert.equal(booked.state({}), MODULE_STATE.UNAVAILABLE);
+  assert.match(booked.blocker, /no governed read/i);
+  // The direction's explicit prohibition, stated on the tile so nobody "fixes" it the wrong way.
+  assert.match(booked.blocker, /browser|invent/i);
 });
 
 // ===========================================================================
