@@ -125,7 +125,21 @@ export async function planPhysicalConsumption(
     const item = input.snapshot.find((i) => i.sku === update.sku);
     const partId = item?.partId ?? update.sku;
     const outstanding = outstandingConsumptionByLocation(priorRows, input.workOrderId, partId);
-    const plan = planConsumptionCorrection(outstanding, Math.abs(update.delta));
+    const totalOutstanding = outstanding.reduce((n, e) => n + e.outstanding, 0);
+
+    // A DECREMENT IS CAPPED AT WHAT WAS PHYSICALLY CONSUMED, NOT REFUSED WHEN IT EXCEEDS IT.
+    //
+    // The two situations that look identical here are not. `qtyUsed` may have been recorded BEFORE
+    // this authority existed, in which case there is no physical consumption to reverse — and
+    // refusing the correction would make historical usage uneditable, which is exactly the
+    // reinterpretation of pre-authority records the ruling forbids.
+    //
+    // So: reverse what physically exists, and let the rest be an ordinary qtyUsed correction of a
+    // pre-authority record. The invariant that actually matters is preserved either way — NEVER
+    // restore more than was physically consumed, so a decrement can never conjure stock.
+    const reversible = Math.min(Math.abs(update.delta), totalOutstanding);
+    if (reversible <= 0) continue; // nothing physical to reverse; qtyUsed still corrects below
+    const plan = planConsumptionCorrection(outstanding, reversible);
     if (!plan.ok) {
       throw new HttpsError(
         "failed-precondition",

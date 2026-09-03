@@ -25,6 +25,7 @@ import {
   ledgerEntries,
   auditEvents,
   CATALOG_SKUS,
+  E2E_WAREHOUSE,
 } from "./lib/testKit.mjs";
 
 const { createWorkOrder } = await import("../../lib/createWorkOrder.js");
@@ -126,6 +127,9 @@ await check("full chain: create -> plan -> schedule -> dispatch -> accept -> tra
     callReq(techUid, {
       workOrderId,
       qtyUsedUpdates: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, delta: 1 }],
+      // Decision #169: a positive qtyUsed names the governed source it came from. The harness already
+      // seeds this warehouse ACTIVE and stocks it, so this is the source the parts genuinely left.
+      consumptionSources: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, locationId: E2E_WAREHOUSE }],
       executionNote: "Replaced compressor, 1 used of 2 planned.",
       idempotencyKey: execIdemKey,
     }),
@@ -146,6 +150,9 @@ await check("full chain: create -> plan -> schedule -> dispatch -> accept -> tra
     callReq(techUid, {
       workOrderId,
       qtyUsedUpdates: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, delta: 1 }],
+      // Decision #169: a positive qtyUsed names the governed source it came from. The harness already
+      // seeds this warehouse ACTIVE and stocks it, so this is the source the parts genuinely left.
+      consumptionSources: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, locationId: E2E_WAREHOUSE }],
       executionNote: "Replaced compressor, 1 used of 2 planned.",
       idempotencyKey: execIdemKey,
     }),

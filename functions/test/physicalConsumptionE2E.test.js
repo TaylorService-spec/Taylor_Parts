@@ -273,7 +273,13 @@ test("CORRECTION: a decrement restores to the ORIGINAL source, once", async () =
   assert.deepEqual(rows.map((r) => r.quantity).sort((a, b) => a - b), [-2, 1]);
 });
 
-test("a correction cannot give back more than was used", async () => {
+
+
+test("a decrement is CAPPED at what was physically consumed — never more, never refused", async () => {
+  // The distinction this proves: qtyUsed may have been recorded BEFORE this authority existed, so a
+  // decrement can legitimately exceed the physical consumption on record. Refusing would make
+  // pre-authority usage uneditable; capping reverses what exists and lets the rest be an ordinary
+  // qtyUsed correction. The invariant that matters holds either way: stock is never conjured.
   const uid = id("uid"), tech = id("tech"), woId = id("WO"), part = id("PRT"), wh = id("wh");
   await seedWarehouse(wh);
   await seedTech(uid, tech);
@@ -285,11 +291,27 @@ test("a correction cannot give back more than was used", async () => {
       consumptionSources: [{ sku: part, locationId: wh }], idempotencyKey: id("k"),
     }, uid),
   );
-  await assert.rejects(
-    updateWorkOrderExecutionData.run(
-      callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: part, delta: -5 }], idempotencyKey: id("c") }, uid),
-    ),
-    (e) => /more than has been recorded as used/i.test(e.message),
+  assert.equal(await onHandAt(part, [wh]), 4, "1 consumed");
+
+  await updateWorkOrderExecutionData.run(
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: part, delta: -5 }], idempotencyKey: id("c") }, uid),
   );
-  assert.equal(await onHandAt(part, [wh]), 4, "no stock was conjured");
+  assert.equal(await onHandAt(part, [wh]), 5, "restored exactly the 1 consumed — not 5");
+  const wo = (await db.collection("fieldops_wos").doc(woId).get()).data();
+  assert.equal(wo.inventorySnapshot[0].qtyUsed, 0, "and qtyUsed floors at 0");
+});
+
+test("a decrement with NO physical consumption at all still corrects qtyUsed, moving no stock", async () => {
+  // The pre-authority case in its pure form.
+  const uid = id("uid"), tech = id("tech"), woId = id("WO"), part = id("PRT"), wh = id("wh");
+  await seedWarehouse(wh);
+  await seedTech(uid, tech);
+  await seedWorkOrder(woId, tech, [{ sku: part, partId: part, qtyPlanned: 9, qtyUsed: 3 }]);
+  await receive(part, 5, wh);
+  await updateWorkOrderExecutionData.run(
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: part, delta: -1 }], idempotencyKey: id("c") }, uid),
+  );
+  assert.equal(await onHandAt(part, [wh]), 5, "no stock moved — there was no physical consumption to reverse");
+  const wo = (await db.collection("fieldops_wos").doc(woId).get()).data();
+  assert.equal(wo.inventorySnapshot[0].qtyUsed, 2, "but the historical record was corrected");
 });
