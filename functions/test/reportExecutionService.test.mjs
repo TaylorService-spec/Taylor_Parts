@@ -26,6 +26,15 @@ import {
   InvalidReportDefinitionError,
 } from "../lib/reporting/reportExecutionService.js";
 
+// 2C.6C (DECISIONS #167): Reporting is ENVIRONMENT-ACTIVATED -- report.* is registered
+// `active: false` so production is fail-closed, and the sandbox override set is what makes it
+// live. the report execution service resolves its activation set from the runtime project identity,
+// so the environment must be named or every report.* assertion below resolves inactivePermission.
+//
+// Not a workaround: in production these same ids DO deny, which is the point of the correction.
+// The suite now states which environment it is asserting about.
+process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
+
 const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
