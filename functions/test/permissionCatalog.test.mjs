@@ -255,7 +255,7 @@ check("the three sensitive wave-1 report ids stay withheld -- now at the activat
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile.", "inventory.stock.relocate"];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -381,6 +381,32 @@ check("no DISPOSITION capability exists, because no disposition policy has been 
   // against an authority whose meaning nobody has settled.
   const disposition = PERMISSION_CATALOG.filter((p) => /disposition|restock|scrap|quarantine/i.test(p.id));
   assert.deepEqual(disposition.map((p) => p.id), []);
+});
+
+check("inventory.stock.relocate is registered exactly once, active: false, resource/action match", () => {
+  // BIN-P6 / DECISIONS #169. Internal relocation inside one Warehouse custody parent. Registered
+  // ahead of its command deliberately -- the Owner ruling names it, BIN-P4 owns activation, and the
+  // relocation command is BIN-P6 work that does not exist yet.
+  const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.stock.relocate");
+  assert.equal(matches.length, 1);
+  const [permission] = matches;
+  assert.equal(permission.active, false, "internal relocation must be inactive (registered-but-ungranted)");
+  assert.equal(permission.resource, "inventory.stock");
+  assert.equal(permission.action, "relocate");
+});
+
+check("relocation is a DISTINCT authority from placement and from transfer", () => {
+  // The whole point of DECISIONS #169 rulings 2 and 5. If these ever collapse into one id, a
+  // put-away that only records evidence would start authorizing quantity movement, and an internal
+  // shelf-to-shelf move would start looking like stock leaving the building.
+  const ids = PERMISSION_CATALOG.map((p) => p.id);
+  assert.ok(ids.includes("inventory.stock.relocate"));
+  assert.ok(ids.includes("inventory.placement.record"));
+  const relocate = PERMISSION_CATALOG.find((p) => p.id === "inventory.stock.relocate");
+  const placement = PERMISSION_CATALOG.find((p) => p.id === "inventory.placement.record");
+  assert.notEqual(relocate.resource, placement.resource);
+  // And it is not a transfer capability wearing a different name.
+  assert.ok(!relocate.id.includes("transfer"));
 });
 
 check("inventory.placement.record is registered exactly once, active: false, resource/action match", () => {

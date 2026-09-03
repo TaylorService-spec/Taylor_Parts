@@ -1043,6 +1043,33 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "record",
     active: false,
   }),
+  // BIN-P6 / DECISIONS #169 -- INTERNAL PHYSICAL RELOCATION.
+  //
+  // Move already-owned stock between exact governed locations INSIDE one Warehouse custody parent:
+  // WAREHOUSE direct -> BIN, BIN -> WAREHOUSE direct, BIN -> BIN in the same Warehouse. The
+  // Warehouse aggregate does not change, because nothing crossed a custody boundary.
+  //
+  // A THIRD AUTHORITY, DELIBERATELY DISTINCT FROM BOTH ITS NEIGHBOURS.
+  //
+  // Not `inventory.placement.record`: that authorizes placement/history EVIDENCE only and authors no
+  // quantity. Keeping it narrow is the point -- a put-away that both moves stock and records where it
+  // went requires BOTH capabilities, and an actor holding only placement must be REFUSED the quantity
+  // movement rather than given a descriptive-only success that looks authoritative.
+  //
+  // Not the Transfer authority: Transfer owns CUSTODY BOUNDARIES (warehouse to warehouse, and every
+  // move touching MOBILE). Reusing it for an internal shelf-to-shelf move would make every relocation
+  // look like stock leaving the building.
+  //
+  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role. BIN-P4 owns
+  // activation and grants; the relocation command itself is BIN-P6 work and does not exist yet.
+  Object.freeze({
+    id: "inventory.stock.relocate",
+    description:
+      "Move already-owned physical inventory between exact governed locations inside the same Warehouse custody parent (warehouse-direct to bin, bin to warehouse-direct, bin to bin). Authors internal relocation movement only: the Warehouse aggregate is unchanged, no custody boundary is crossed, and this grants nothing about transferring stock between warehouses or to a truck (DECISIONS #169).",
+    resource: "inventory.stock",
+    action: "relocate",
+    active: false,
+  }),
   // Scanner Phase K -- the DESCRIPTIVE BIN REGISTRY (functions/src/inventoryLocation/bin*.ts).
   //
   // WHAT A BIN IS, PER DECISIONS #116: the warehouse is the inventory custody authority and a bin is
