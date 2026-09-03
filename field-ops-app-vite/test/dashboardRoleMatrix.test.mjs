@@ -57,7 +57,8 @@ test("every governed context composes a dashboard, and none is empty", () => {
   for (const [name, ctx] of Object.entries(CONTEXTS)) {
     const keys = resolvedModuleKeys(ctx);
     assert.ok(keys.length > 0, `${name} composes nothing at all`);
-    assert.ok(keys.includes("goTo"), `${name} must always reach its destinations`);
+    // GO TO was removed after the live Owner review -- navigation belongs to the rail and drawer.
+    assert.ok(!keys.includes("goTo"), `${name} must not compose a Go to module`);
   }
 });
 

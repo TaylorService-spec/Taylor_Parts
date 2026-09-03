@@ -28,7 +28,6 @@ export const SECTION = Object.freeze({
   TEAM_PERFORMANCE: "TEAM_PERFORMANCE",
   DRIVERS: "DRIVERS",
   BUSINESS_IMPACT: "BUSINESS_IMPACT",
-  GO_TO: "GO_TO",
 });
 
 /** Render order. Fixed here so every persona's dashboard reads in the same order -- a reader who
@@ -39,7 +38,6 @@ export const SECTION_ORDER = Object.freeze([
   SECTION.TEAM_PERFORMANCE,
   SECTION.DRIVERS,
   SECTION.BUSINESS_IMPACT,
-  SECTION.GO_TO,
 ]);
 
 export const SECTION_LABEL = Object.freeze({
@@ -48,7 +46,6 @@ export const SECTION_LABEL = Object.freeze({
   TEAM_PERFORMANCE: "Team performance",
   DRIVERS: "Drivers and exceptions",
   BUSINESS_IMPACT: "Business impact",
-  GO_TO: "Go to",
 });
 
 export const MODULE_STATE = Object.freeze({
@@ -308,6 +305,13 @@ export const DASHBOARD_MODULES = Object.freeze([
     // no authority behind it wearing the name of a stock position. There is no governed
     // forecast-exception read to preview instead.
     state: () => MODULE_STATE.UNAVAILABLE,
+    // TWO SENTENCES ON THE TILE, THE FULL REASONING IN `blocker`.
+    //
+    // The live dashboard gave this a paragraph, and Cost and waste avoided another. Both were exact
+    // and both were too long to sit among six other modules: the screen became prose. `blocker`
+    // remains the authoritative statement -- docs, tests and the North Star read it -- and
+    // `displayBlocker` is what the tile shows. Neither overstates readiness.
+    displayBlocker: "Forecasts are produced per part, not as a governed location total.",
     blocker:
       "Stock forecasts are produced for one part at a time, from that part's own history, and are shown on the part record where they are labelled as derived. There is no governed forecast for a whole location, and building one by adding up per-part predictions would produce a figure with no authority behind it.",
   },
@@ -413,19 +417,12 @@ export const DASHBOARD_MODULES = Object.freeze([
     // (no carrying rate), or what was saved by not scrapping it (waste avoided needs a prevention
     // event AND a statement of what would otherwise have happened). Each is an Owner decision, not
     // a missing query.
+    displayBlocker:
+      "Purchase costs are recorded, but stock valuation, carrying cost and waste avoided are not governed yet.",
     blocker:
       "Purchase costs are now recorded at receipt, but a value for stock on hand is a different question: it needs a costing method nobody has chosen yet. Carrying cost needs a holding rate, and waste avoided needs both a prevention event to count and a statement of what would otherwise have happened.",
   },
 
-  // ---------------------------------------------------------------- GO TO
-  {
-    key: "goTo",
-    section: SECTION.GO_TO,
-    label: "Go to",
-    census: "X-6 / T-7 / W-11",
-    needs: () => true,
-    state: () => MODULE_STATE.READY,
-  },
 ]);
 
 /**
@@ -455,6 +452,9 @@ export function composeDashboard(ctx) {
     census: m.census,
     state: m.state(ctx),
     blocker: m.blocker ?? null,
+    // What the TILE shows. Falls back to the full blocker, so a module without a concise variant
+    // is unchanged and nothing is ever left without a reason.
+    displayBlocker: m.displayBlocker ?? m.blocker ?? null,
   }));
 
   return SECTION_ORDER.map((section) => ({

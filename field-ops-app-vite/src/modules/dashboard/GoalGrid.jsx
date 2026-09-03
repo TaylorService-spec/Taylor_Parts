@@ -17,7 +17,7 @@
 // be a false one.
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import { GOAL_FEED_STATUS, goalKey } from "../../hooks/usePerformanceGoals.js";
-import { goalProgress } from "../../domain/goalProgress.js";
+import { goalProgress, GOAL_PROGRESS_STATE } from "../../domain/goalProgress.js";
 import { GOAL_ACTUAL_BLOCKER, GOAL_ACTUAL_BLOCKER_DEFAULT } from "../../domain/dashboardGoalActuals.js";
 import GoalTile from "./GoalTile.jsx";
 
@@ -43,7 +43,7 @@ function blockerFor(metricId) {
   return GOAL_ACTUAL_BLOCKER[metricId] ?? GOAL_ACTUAL_BLOCKER_DEFAULT;
 }
 
-export default function GoalGrid({ targets, feed, actualsByKey = null }) {
+export default function GoalGrid({ targets, feed, actualsByKey = null, scopeLabelFor = null }) {
   if (feed?.status === GOAL_FEED_STATUS.DENIED) {
     return <HonestState state={HONEST_STATE.DENIED} subject="Goals" detail="Your access does not include performance targets." />;
   }
@@ -63,9 +63,15 @@ export default function GoalGrid({ targets, feed, actualsByKey = null }) {
       // this" indistinguishable from "there isn't one".
       if (!result) return null;
       const [label, actualLabel] = GOAL_LABELS[t.metricId] ?? [t.metricId, "Actual"];
+      // THE SCOPE IS PART OF THE NAME when a metric is asked at more than one scope. The live
+      // dashboard showed "Open reorder requests" and "Awaiting receipt" repeated once per governed
+      // warehouse -- legitimately DISTINCT targets, and visually identical, so the screen read as
+      // duplicated. The scope label comes from the caller, which is the only layer that knows what a
+      // warehouse id is called.
+      const scope = typeof scopeLabelFor === "function" ? scopeLabelFor(t) : null;
       return {
         key,
-        label,
+        label: scope ? `${label} — ${scope}` : label,
         actualLabel,
         progress: goalProgress(result, actualsByKey?.[key] ?? null, blockerFor(t.metricId)),
       };
@@ -76,11 +82,38 @@ export default function GoalGrid({ targets, feed, actualsByKey = null }) {
     return <HonestState state={HONEST_STATE.EMPTY} subject="Goals" detail="No targets have been set for you yet." />;
   }
 
+  // ============================ ABSENCE MUST NOT OUTWEIGH PERFORMANCE ============================
+  //
+  // Every metric this viewer's scope can carry a goal for is asked about, so on a dashboard where
+  // few targets are configured the grid became a wall of identical "No target has been set." tiles
+  // with the real performance lost among them. The Owner saw exactly that.
+  //
+  // A tile with a target keeps its full treatment. A metric with NO GOAL AT ALL collapses into one
+  // counted line -- the distinction between "target exists" and "target absent" is PRESERVED, it is
+  // simply no longer the loudest thing on the screen. Every other absence (denied, unresolved, or a
+  // target present without a measurement) keeps its own tile, because each says something different
+  // and none of them means "nobody set this".
+  const configured = tiles.filter((t) => t.progress.state !== GOAL_PROGRESS_STATE.NO_GOAL);
+  const unset = tiles.length - configured.length;
+
   return (
-    <div className="fo-goal-grid">
-      {tiles.map((t) => (
-        <GoalTile key={t.key} progress={t.progress} label={t.label} actualLabel={t.actualLabel} />
-      ))}
-    </div>
+    <>
+      {configured.length > 0 && (
+        <div className="fo-goal-grid">
+          {configured.map((t) => (
+            <GoalTile key={t.key} progress={t.progress} label={t.label} actualLabel={t.actualLabel} />
+          ))}
+        </div>
+      )}
+      {unset > 0 && (
+        <p className="fo-muted">
+          {/* NOT A BUSINESS METRIC. This counts goal SLOTS in the resolved registry that carry no
+              target -- a management gap worth naming, and deliberately not derived into anything. */}
+          {unset === 1
+            ? "1 further measure has no target set yet."
+            : `${unset} further measures have no target set yet.`}
+        </p>
+      )}
+    </>
   );
 }

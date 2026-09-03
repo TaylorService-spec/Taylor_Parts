@@ -18,6 +18,7 @@ import {
   workOrdersByStatus,
   technicianComparison,
   UNKNOWN_STATUS_LABEL,
+  TECHNICIAN_IDENTITY_UNAVAILABLE,
   TECHNICIAN_QUALITY_UNAVAILABLE,
 } from "../src/domain/dashboardTeamProjections.js";
 
@@ -69,7 +70,9 @@ test("status labels are trimmed but never invented or renamed", () => {
 // ── technician comparison ───────────────────────────────────────────────────────────────────────
 
 const NAMES = { "t-1": "Ada Byron", "t-2": "Grace Hopper", "t-3": "Zoe Quinn" };
-const resolve = (id) => NAMES[id] ?? null;
+// The projection now takes the WHOLE identity, because the STATE is what distinguishes a person
+// from a Work Order pointing at a technician record that does not exist.
+const resolve = (id) => (NAMES[id] ? { state: "resolved", name: NAMES[id] } : { state: "unknown", name: "Unknown technician" });
 
 test("rows come back in NAME order -- never ranked by throughput", () => {
   // The load-bearing assertion. t-3 has the most completed work; if this ever sorts by count, the
@@ -87,7 +90,7 @@ test("rows come back in NAME order -- never ranked by throughput", () => {
 
 test("no row carries a rank, score, percentage or tone", () => {
   const [row] = technicianComparison([wo("COMPLETED", "t-1")], resolve);
-  assert.deepEqual(Object.keys(row).sort(), ["completed", "name", "open", "technicianId"]);
+  assert.deepEqual(Object.keys(row).sort(), ["completed", "identityResolved", "name", "open", "technicianId"]);
   for (const forbidden of ["rank", "score", "percent", "tone", "position", "rating"]) {
     assert.ok(!(forbidden in row), `a technician row exposes "${forbidden}"`);
   }
@@ -109,13 +112,28 @@ test("unassigned work is NOT a technician row", () => {
   assert.equal(rows[0].technicianId, "t-1");
 });
 
-test("an unresolved technician name SAYS SO and never shows a document id", () => {
-  // Ten surfaces in this repo once hand-rolled this lookup and nine rendered the raw id.
+test("an unresolved technician is a DATA QUALITY row, not a person with a missing name", () => {
+  // The live dashboard showed two rows reading "Unknown technician" sitting among real colleagues.
+  // That reads like a person whose name is missing; the truth is that the Work Order points at a
+  // technician record which does not exist.
   const rows = technicianComparison([wo("SCHEDULED", "t-unknown")], resolve);
-  assert.equal(rows[0].name, "Name not resolved");
-  assert.ok(!rows[0].name.includes("t-unknown"));
+  assert.equal(rows[0].name, TECHNICIAN_IDENTITY_UNAVAILABLE);
+  assert.equal(rows[0].identityResolved, false);
+  assert.ok(!rows[0].name.includes("t-unknown"), "never the raw id");
+  assert.ok(!/unknown technician/i.test(rows[0].name), "must not read as a person");
   // A missing resolver is the same answer, not a crash.
-  assert.equal(technicianComparison([wo("SCHEDULED", "t-1")], null)[0].name, "Name not resolved");
+  const noResolver = technicianComparison([wo("SCHEDULED", "t-1")], null)[0];
+  assert.equal(noResolver.identityResolved, false);
+  assert.equal(noResolver.name, TECHNICIAN_IDENTITY_UNAVAILABLE);
+});
+
+test("unresolved rows sort LAST -- they are data to fix, not people to compare", () => {
+  const rows = technicianComparison(
+    [wo("SCHEDULED", "t-unknown"), wo("SCHEDULED", "t-1"), wo("SCHEDULED", "t-2")],
+    resolve,
+  );
+  assert.deepEqual(rows.map((r) => r.identityResolved), [true, true, false]);
+  assert.deepEqual(rows.slice(0, 2).map((r) => r.name), ["Ada Byron", "Grace Hopper"]);
 });
 
 // ── the reserved half is stated, not omitted ────────────────────────────────────────────────────

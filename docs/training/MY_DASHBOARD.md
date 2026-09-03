@@ -7,7 +7,7 @@
 **Environment:** sandbox training  
 **Owner:** Verenward product training
 
-> **Status: DRAFT — PENDING DEPLOYMENT VERIFICATION.** Written against the merged code, not against a
+> **Status: DRAFT — PENDING FINAL LIVE VERIFICATION.** Written against the merged code, not against a
 > deployed environment. It must be re-checked against the live screen after the sandbox refresh.
 
 ## What this guide helps you do
@@ -41,7 +41,6 @@ actually assigned — which warehouses, which accounts, which capabilities — n
 | **Team performance** | Your area's work and people |
 | **Drivers and exceptions** | Things that will cause problems if ignored |
 | **Business impact** | Money and customers |
-| **Go to** | Every workspace you can actually open |
 
 A section with nothing in it is not shown. An empty "Team performance" heading would imply you have
 a team.
@@ -73,6 +72,13 @@ mean the queue is empty — it means nobody could look. Do not treat it as "all 
 ## Goals: target versus actual
 
 A goal tile shows two things: the **target** somebody set for you, and the **actual** measurement.
+
+**Not every measure has a target.** Where nobody has set one, the tile is not repeated for each
+measure — you will see a single line such as *"8 further measures have no target set yet."* That is a
+management gap worth knowing about, and it is deliberately not turned into a score.
+
+Where the same measure applies to more than one location, each tile names its warehouse, so two
+tiles with the same measure are not duplicates — they are different places.
 
 Sometimes you will see a real target beside a sentence explaining that the measurement is not
 connected. That is deliberate. It means the goal is real and the number to compare it against is not
@@ -118,6 +124,10 @@ Where you see billed or collected amounts:
 
 It shows each technician's open and completed work, **in name order**.
 
+If a row reads **"Technician identity unavailable"**, that is not a person whose name is missing. It
+means the work order points at a technician record that does not exist — a data problem worth
+reporting. The counts are still real; the identity is not.
+
 It is deliberately **not a ranking**. There are no scores, no positions, and no colours marking
 people as good or bad. Completed jobs alone are not the whole of the work, and the panel says plainly
 which quality measures are not yet available.
@@ -140,11 +150,15 @@ is for doing the job, not for watching yourself do it.
 Your assigned work is **not** duplicated onto My Dashboard. It is read against your own technician
 identity, and having it in two places would eventually mean two answers.
 
-## Go to
+## Getting to a workspace
 
-The bottom section lists every workspace you can actually open. A destination that is not listed is
-one your account cannot reach — the list is built from the same rules that govern the navigation
-menu, so a link that appears will open.
+Use the navigation rail on the left (or the menu on a handheld). **The dashboard no longer repeats
+the list of destinations** — it was duplicating what the rail already does, and it pushed the
+business content off the screen.
+
+Panels still link where they should: an action item links to the workspace where you resolve it, and
+a work list links to the full queue behind **View all**. A link only appears when your account can
+genuinely open it.
 
 ## What EOS does automatically
 

@@ -70,11 +70,13 @@ const COMPLETED_STATUSES = new Set(["COMPLETED", "CLOSED", "VERIFIED"]);
  * not exist. None is invented here.
  *
  * @param workOrders  the governed collection.
- * @param resolveName (technicianId) -> display name, or null when it cannot be resolved. A row whose
- *                    name will not resolve is still returned, labelled, and never shows a raw id.
- * @returns `[{ technicianId, name, completed, open }]` in name order, or null if unresolved.
+ * @param resolveIdentity (technicianId) -> `{ state, name }` from resolveTechnicianIdentity. The
+ *                    STATE is carried through, not flattened to a name: a technician id that does
+ *                    not resolve is a DATA QUALITY fact about the Work Order, not a person called
+ *                    "Unknown technician", and the screen must be able to say which it is looking at.
+ * @returns `[{ technicianId, name, identityResolved, completed, open }]` in name order, or null.
  */
-export function technicianComparison(workOrders, resolveName) {
+export function technicianComparison(workOrders, resolveIdentity) {
   if (!Array.isArray(workOrders)) return null;
   const byTech = new Map();
   for (const wo of workOrders) {
@@ -88,14 +90,31 @@ export function technicianComparison(workOrders, resolveName) {
     byTech.set(techId, row);
   }
   return [...byTech.values()]
-    .map((row) => ({
-      ...row,
-      // Never the id. An unresolved name says so -- ten surfaces in this repo once fell back to
-      // rendering the document id where a person's name belongs.
-      name: (typeof resolveName === "function" ? resolveName(row.technicianId) : null) || "Name not resolved",
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((row) => {
+      const identity = typeof resolveIdentity === "function" ? resolveIdentity(row.technicianId) : null;
+      // "resolved" is the ONLY state that yields a person's name. Every other state -- unknown (the
+      // Work Order names a technician id no technician record carries), error, loading, unset --
+      // is a fact about the DATA, and the row is marked so the screen can present it as one.
+      // Never the raw id: nobody can match a document key to a person.
+      const resolved = identity?.state === "resolved" && typeof identity.name === "string" && identity.name.length > 0;
+      return {
+        ...row,
+        identityResolved: resolved,
+        name: resolved ? identity.name : TECHNICIAN_IDENTITY_UNAVAILABLE,
+      };
+    })
+    // Unresolved rows sort last: they are data to fix, not people to compare.
+    .sort((a, b) => (a.identityResolved === b.identityResolved ? a.name.localeCompare(b.name) : a.identityResolved ? -1 : 1));
 }
+
+/**
+ * What a row says when the Work Order's technician id resolves to no technician record.
+ *
+ * NOT a name, and deliberately not "Unknown technician" -- that reads like a person whose name
+ * happens to be missing, when the truth is that the Work Order points at a technician that does not
+ * exist. The live dashboard showed two such rows sitting among real people.
+ */
+export const TECHNICIAN_IDENTITY_UNAVAILABLE = "Technician identity unavailable";
 
 /** The reason the quality half of the comparison is empty. Rendered verbatim beside the table. */
 export const TECHNICIAN_QUALITY_UNAVAILABLE =

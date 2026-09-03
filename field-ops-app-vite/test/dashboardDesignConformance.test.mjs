@@ -25,6 +25,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { DASHBOARD_MODULES, composeDashboard } from "../src/domain/dashboardComposition.js";
+
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 /** Source with comments stripped, so a guard can never pass or fail on prose ABOUT the code. */
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
@@ -170,4 +172,119 @@ test("modules sit in a grid, and blocked modules stay compact", () => {
   assert.match(CSS, /\.fo-dashboard-grid\s*\{[^}]*display:\s*grid/, "the grid rule was removed");
   // The compact module-local honest state: an unread module was taking ~200px of the page.
   assert.match(CSS, /\.fo-dashboard-module \.fo-state--iconic/, "module states are back to page-sized alerts");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LIVE OWNER ACCEPTANCE (2026-09-03) -- the findings from reviewing the running dashboard.
+//
+// Every guard below exists because something was WRONG ON THE SCREEN while every test was green.
+// They are written against the specific defect, not against the general principle, because the
+// general principle was already documented and still did not catch any of these.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const GOAL_GRID = code(read("../src/modules/dashboard/GoalGrid.jsx"));
+const PROJECTIONS = code(read("../src/domain/dashboardTeamProjections.js"));
+
+test("the dashboard composes no navigation section -- the rail owns navigation", () => {
+  // Owner, live: "not sure we really need the links at the bottom". Repeating the site map below
+  // the business content cost most of the page.
+  assert.ok(!/SECTION\.GO_TO/.test(DASHBOARD), "a GO_TO section is being rendered");
+  assert.ok(!/<ReachableDestinations/.test(DASHBOARD), "the destination grid is back on the dashboard");
+  // buildReachableGroups STAYS -- reachableHref still asks it whether a destination genuinely opens.
+  assert.match(DASHBOARD, /buildReachableGroups/, "reachability must still be derived, not assumed");
+});
+
+test("a resolved goals module always renders something -- never an empty section heading", () => {
+  // The live Admin screen showed "Performance against goal" with nothing under it: the module
+  // resolved (an employee identity exists), so the section was kept, and then the branch returned
+  // null because a non-technician has no EMPLOYEE-scope targets.
+  assert.ok(
+    !/if \(scoped\.length === 0\) return null;/.test(DASHBOARD),
+    "a resolved goals module returns null and leaves an empty heading",
+  );
+  assert.match(DASHBOARD, /No individual goals are set for you\./);
+});
+
+test("unset targets collapse to one line instead of a wall of identical tiles", () => {
+  // Every metric the viewer's scope can carry a goal for is asked about, so on a dashboard with few
+  // targets configured the grid became a wall of "No target has been set." with real performance
+  // lost among it.
+  assert.match(GOAL_GRID, /GOAL_PROGRESS_STATE\.NO_GOAL/, "unset goals are no longer separated out");
+  assert.match(GOAL_GRID, /further measures? (has|have) no target set yet/);
+  // The DISTINCTION must survive: a configured target still gets a full tile.
+  assert.match(GOAL_GRID, /configured\.map\(/);
+});
+
+test("a metric asked at several scopes is labelled by scope, not repeated identically", () => {
+  // "Open reorder requests" and "Awaiting receipt" appeared once per governed warehouse, as
+  // legitimately distinct targets that looked like duplicates.
+  assert.match(GOAL_GRID, /scopeLabelFor/, "GoalGrid cannot distinguish scopes");
+  assert.match(DASHBOARD, /scopeLabelFor=\{goalScopeLabel\}/, "the dashboard supplies no scope label");
+  // The warehouse NAME, not its id -- the ids were being fetched and thrown away.
+  assert.match(DASHBOARD, /warehouseNameById\[t\.targetScopeId\]/);
+});
+
+test("an unresolved technician is a data-quality row, never a name-shaped label", () => {
+  assert.match(PROJECTIONS, /TECHNICIAN_IDENTITY_UNAVAILABLE/);
+  assert.match(PROJECTIONS, /identityResolved/);
+  // "Unknown technician" reads as a person whose name is missing. The truth is that the Work Order
+  // points at a technician record which does not exist.
+  assert.ok(
+    !/name: .*Unknown technician/.test(PROJECTIONS),
+    "an unresolved id is being presented as a person",
+  );
+  assert.match(DASHBOARD, /fo-preview-list__primary--unresolved/, "the row is not visually distinguished");
+  assert.match(CSS, /\.fo-preview-list__primary--unresolved/);
+});
+
+test("the receiving read compares against the CONSTANT, not a hand-typed status string", () => {
+  // THE LIVE DEFECT. RECEIVING_OUTCOME.READY is the lowercase "ready"; the check compared against
+  // "READY", so it could never pass and the tile reported "could not be read just now" on every
+  // load -- including a perfectly successful callable.
+  assert.match(DASHBOARD, /receiving\.data\?\.status === RECEIVING_OUTCOME\.READY/);
+  assert.ok(!/receiving\.data\?\.status === "READY"/.test(DASHBOARD), "the literal is back");
+});
+
+test("the account portfolio reads the shape the server actually returns", () => {
+  // The summary carries `byStatus.ACTIVE`; the module read `summary.active`, which has never
+  // existed -- so three KPI slots rendered "—" beside one real number. The same wrong field
+  // silently disabled the crm.account.active.count goal actual.
+  assert.match(DASHBOARD, /summary\.byStatus\?\.\[key\]/);
+  assert.ok(!/summary\.active/.test(DASHBOARD), "the non-existent flat field is back");
+  const actuals = code(read("../src/domain/dashboardGoalActuals.js"));
+  assert.match(actuals, /portfolio\?\.byStatus\?\.ACTIVE/);
+  assert.ok(!/portfolio\.active/.test(actuals), "the goal actual reads a field the server never sends");
+});
+
+test("an unavailable portfolio figure never becomes a zero", () => {
+  // "not available" is the only permitted absence here. A 0 would state that the book of business
+  // contains no active accounts.
+  assert.match(DASHBOARD, /typeof n === "number" \? n : "not available"/);
+});
+
+test("dashboard blocker copy is concise; the full reasoning lives in the module metadata", () => {
+  // The live screen gave a paragraph each to Stock forecast and Cost and waste avoided. The exact
+  // truth is preserved in the module's blocker, which docs and tests read; the SCREEN gets a
+  // sentence.
+  // Asserted on the MODULE OBJECTS, not by regexing the source: the values are what render, and a
+  // source regex here was quietly matching nothing because of line endings.
+  const byKey = new Map(DASHBOARD_MODULES.map((m) => [m.key, m]));
+  for (const key of ["stockForecast", "costImpact"]) {
+    const m = byKey.get(key);
+    assert.ok(m, `${key} not found`);
+    assert.ok(typeof m.displayBlocker === "string" && m.displayBlocker.length > 0, `${key} has no concise copy`);
+    assert.ok(m.displayBlocker.length <= 160, `${key}'s tile copy is ${m.displayBlocker.length} chars -- too long`);
+    // The FULL reasoning survives, because docs, tests and the North Star read it.
+    assert.ok(m.blocker.length > m.displayBlocker.length, `${key} lost its detailed blocker`);
+    // Concise must not become vague: each still names its own missing thing.
+    assert.ok(!/^unavailable/i.test(m.displayBlocker.trim()));
+  }
+  // Every non-READY module a real principal composes renders SOME reason -- composeDashboard falls
+  // back to the full blocker for modules with no concise variant.
+  for (const section of composeDashboard({ role: "admin", employeeId: "e", hasCapability: () => true, warehouseIds: [] })) {
+    for (const mod of section.modules) {
+      if (mod.state === "READY") continue;
+      assert.ok(mod.displayBlocker && mod.displayBlocker.length > 20, `${mod.key} renders no reason`);
+    }
+  }
 });
