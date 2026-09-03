@@ -205,6 +205,26 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "performance.goal.approve",
   "performance.goal.supersede",
   "performance.goal.retire",
+  // CERT-FIN-02 FINANCIAL POLICY (Owner ruling, financial-policy authority). Deployment-time
+  // company accounting configuration.
+  //
+  // WHY THESE ARE HERE RATHER THAN `active: true` IN THE CATALOG. The Owner ruled the capabilities
+  // activated; in this architecture a catalogued `active: true` means LIVE IN EVERY ENVIRONMENT,
+  // production included, because an override set can only ADD activation and never remove it. That
+  // is precisely the defect DECISIONS #166 corrected for the report.* family one day earlier. So
+  // the catalog entries stay `active: false` and activation happens per environment through this
+  // seam -- which is what "activate" means in this codebase. Production activation is a separate
+  // ruling and this path cannot deliver it: production is triple-blocked above.
+  //
+  // ELIGIBILITY IS NOT ACTIVATION, AND NEITHER IS AUTHORIZATION. Being here only makes a registry
+  // entry POSSIBLE. config/environments.json decides what an environment DOES activate, and a
+  // principal still needs a qualifying Role grant on top of that.
+  //
+  // AND NEITHER BEATS THE LOCK. Once a profile is LOCKED the trusted command refuses mutation for
+  // every principal including admin and owner, on stored state, inside the transaction -- so no
+  // amount of activation here reaches a locked policy.
+  "financialPolicy.profile.read",
+  "financialPolicy.profile.configure",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -358,6 +378,12 @@ const REPORTING_PREVIOUSLY_ACTIVE_IDS: readonly PermissionId[] = Object.freeze([
   "report.definition.rename",
   "report.definition.duplicate",
   "report.definition.delete",
+  // CERT-FIN-02 financial policy, Owner ruling. This list is the SANDBOX activation set that ships
+  // inside the Functions bundle (config/environments.json does not), and a drift guard asserts it
+  // equals the canonical registry's. Only the sandbox: certification pins its own three-id set and
+  // production carries no key at all.
+  "financialPolicy.profile.read",
+  "financialPolicy.profile.configure",
 ]);
 
 export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze({
