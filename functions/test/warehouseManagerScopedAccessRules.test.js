@@ -3,7 +3,8 @@
 // warehouse-manager-scoped-access.md, docs/implementation-plans/
 // warehouse-manager-scoped-access.md, Implementation Plan Row B). Firestore
 // Rules emulator test for the three additive `isAssignedToWarehouse(...)`
-// read arms on warehouses/stock_locations/transfer_orders. Same
+// read arms on warehouses/transfer_orders. stock_locations is retired by BIN-P2R and is now
+// asserted DENIED for every persona, including admin and dispatcher. Same
 // zero-new-dependency posture as functions/test/issue100WarehouseManagerRules.test.js
 // and its siblings (firebase-admin + Node's built-in fetch against the
 // emulator REST APIs, no @firebase/rules-unit-testing, no test runner).
@@ -197,10 +198,13 @@ async function main() {
     (await getDocAt("warehouses", "wh-satellite", tokens["user-admin-wh"])) === 200);
   report("dispatcher still reads warehouses (regression, unaffected)",
     (await getDocAt("warehouses", "wh-satellite", tokens["user-dispatcher-wh"])) === 200);
-  report("admin still reads stock_locations (regression, unaffected)",
-    (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-admin-wh"])) === 200);
-  report("dispatcher still reads stock_locations (regression, unaffected)",
-    (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-dispatcher-wh"])) === 200);
+  // BIN-P2R: stock_locations is retired (Decision #160 / ADR-014). Its read arm is gone from both
+  // governed Rules copies, so DENIAL is now the regression to protect -- including for the two roles
+  // that previously had unconditional access. A collection with no match block is deny-all.
+  report("admin is DENIED stock_locations (retired authority)",
+    (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-admin-wh"])) === 403);
+  report("dispatcher is DENIED stock_locations (retired authority)",
+    (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-dispatcher-wh"])) === 403);
   report("admin still reads transfer_orders (regression, unaffected)",
     (await getDocAt("transfer_orders", "to-other-other", tokens["user-admin-wh"])) === 200);
   report("dispatcher still reads transfer_orders (regression, unaffected)",
@@ -210,8 +214,8 @@ async function main() {
 
   report("Scoped manager reads warehouses/wh-main (their assigned warehouse)",
     (await getDocAt("warehouses", "wh-main", tokens["user-wm-scoped-1"])) === 200);
-  report("Scoped manager reads stock_locations for their assigned warehouse",
-    (await getDocAt("stock_locations", "sl-main-1", tokens["user-wm-scoped-1"])) === 200);
+  report("Scoped manager is DENIED stock_locations even for their assigned warehouse",
+    (await getDocAt("stock_locations", "sl-main-1", tokens["user-wm-scoped-1"])) === 403);
   report("Scoped manager reads a transfer_order where their warehouse is the FROM endpoint",
     (await getDocAt("transfer_orders", "to-main-to-satellite", tokens["user-wm-scoped-1"])) === 200);
   report("A different scoped manager reads the SAME transfer_order via the TO endpoint",
@@ -221,7 +225,7 @@ async function main() {
 
   report("Scoped manager denied warehouses/wh-satellite (not their assigned warehouse)",
     (await getDocAt("warehouses", "wh-satellite", tokens["user-wm-scoped-1"])) === 403);
-  report("Scoped manager denied stock_locations for an unassigned warehouse",
+  report("Scoped manager denied stock_locations for an unassigned warehouse (unchanged)",
     (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-wm-scoped-1"])) === 403);
   report("Scoped manager denied a transfer_order touching neither of their assigned warehouses",
     (await getDocAt("transfer_orders", "to-other-other", tokens["user-wm-scoped-1"])) === 403);

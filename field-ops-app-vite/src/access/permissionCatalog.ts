@@ -560,7 +560,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   Object.freeze({
     id: "warehouse.stockLocation.read",
-    description: "LEGACY, RETIRED AUTHORITY. Read a stock_locations record. BIN-P2 (Decision #160 / ADR-014) retired stock_locations as an inventory authority: nothing writes it, no runtime code reads it, and it is NOT bin-level quantity truth. Physical on-hand is inventory_transactions (NONE) and serialized_assets (SERIAL). Retained only because a stock_locations Rules block still exists; its removal is a separate Tier-2 gate.",
+    description: "LEGACY, RETIRED AUTHORITY. Read a stock_locations record. BIN-P2 (Decision #160 / ADR-014) retired stock_locations as an inventory authority: nothing writes it, no runtime code reads it, and it is NOT bin-level quantity truth. Physical on-hand is inventory_transactions (NONE) and serialized_assets (SERIAL). BIN-P2R removed the last client reader and the Firestore Rules read arm, so no principal can reach the collection at all; the id is retained only as a historical catalog entry and nothing evaluates it.",
     resource: "warehouse.stockLocation",
     action: "read",
   }),

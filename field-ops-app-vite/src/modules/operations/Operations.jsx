@@ -6,7 +6,6 @@ import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import {
   fetchInventoryTransactions,
-  fetchStockLocations,
   fetchWarehouses,
   fetchTransferOrderDocs,
   fetchSuppliers,
@@ -18,10 +17,6 @@ import {
   generateInventoryHealthDashboard,
   computeAvailableStockByPart,
 } from "../../domain/inventoryAnalyticsEngine";
-import {
-  detectStockDiscrepancies,
-  generateReconciliationReport,
-} from "../../domain/warehouseReconciliationEngine";
 import { generateProcurementDrafts } from "../../domain/procurementDraftEngine";
 import {
   getInventoryConsumptionSnapshot,
@@ -95,7 +90,6 @@ export default function Operations({ accessVersion } = {}) {
 
     Promise.all([
       fetchInventoryTransactions(),
-      fetchStockLocations(),
       fetchWarehouses(),
       fetchTransferOrderDocs(),
       fetchSuppliers(),
@@ -108,7 +102,6 @@ export default function Operations({ accessVersion } = {}) {
       .then(
         ([
           rawTransactions,
-          stockLocations,
           warehouses,
           transferOrderDocs,
           suppliers,
@@ -123,7 +116,6 @@ export default function Operations({ accessVersion } = {}) {
         const technicians = techniciansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         const transactions = rawTransactions.map(normalizeLedgerTransaction);
-        const consumedTransactions = transactions.filter((t) => t.type === "CONSUMED");
         const availableByPart = computeAvailableStockByPart(transactions);
 
         const stockSnapshots = [...availableByPart.entries()].map(([partId, availableStock]) => ({
@@ -132,20 +124,6 @@ export default function Operations({ accessVersion } = {}) {
         }));
 
         const healthEntries = generateInventoryHealthDashboard(transactions, stockSnapshots);
-
-        const discrepancyResult = detectStockDiscrepancies({
-          warehouseStock: stockLocations,
-          ledgerConsumption: consumedTransactions,
-        });
-        const reconciliationReport = generateReconciliationReport(discrepancyResult);
-
-        // M-OPS-1: the health dashboard below is built ONLY from parts that have at least
-        // one ledger transaction (computeAvailableStockByPart iterates transactions, not bin
-        // stock) -- a part with recorded bin stock but zero ledger history is silently absent
-        // from healthEntries, not shown as zero. Count what's omitted so the panel can
-        // disclose it instead of looking like a complete inventory picture.
-        const stockPartIds = new Set(stockLocations.map((loc) => loc.partId));
-        const omittedBinStockCount = [...stockPartIds].filter((partId) => !availableByPart.has(partId)).length;
 
         const procurementRecommendations = healthEntries
           .filter((entry) => entry.recommendation.recommendedOrderQty > 0)
@@ -162,11 +140,8 @@ export default function Operations({ accessVersion } = {}) {
           error: null,
           data: {
             healthEntries,
-            omittedBinStockCount,
             warehouses,
-            stockLocations,
             transferOrderDocs,
-            reconciliationReport,
             purchaseOrders,
             suppliers,
             procurementDrafts,
@@ -208,11 +183,8 @@ export default function Operations({ accessVersion } = {}) {
 
   const {
     healthEntries,
-    omittedBinStockCount,
     warehouses,
-    stockLocations,
     transferOrderDocs,
-    reconciliationReport,
     purchaseOrders,
     suppliers,
     procurementDrafts,
@@ -239,14 +211,11 @@ export default function Operations({ accessVersion } = {}) {
       )}
       <InventoryHealthPanel
         healthEntries={healthEntries}
-        omittedBinStockCount={omittedBinStockCount}
         resolveName={resolveName}
       />
       <WarehousePanel
         warehouses={warehouses}
-        stockLocations={stockLocations}
         transferOrderDocs={transferOrderDocs}
-        reconciliationReport={reconciliationReport}
         resolveName={resolveName}
       />
       <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} />

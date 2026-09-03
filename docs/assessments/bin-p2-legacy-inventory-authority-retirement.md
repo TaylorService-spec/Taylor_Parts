@@ -144,11 +144,82 @@ They were **not deleted**. Nor was any `transfer_orders` row — the modern auth
 | `governedBusinessRoles` + `semanticMappingGuards` | pass |
 | `functions` `tsc` build | clean |
 
+
+---
+
+# BIN-P2R — closure: the client reader and the Rules read arm
+
+**The section above stands as written.** BIN-P2 genuinely stopped with a client-direct reader and an active Rules read arm still in place, and that was the honest state at the time. BIN-P2R closed both. The order matters and is preserved rather than rewritten.
+
+## What was still live after BIN-P2
+
+| Surface | Kind |
+|---|---|
+| `operationsQueries.ts` → `fetchStockLocations()` | **runtime client reader** (client-direct Firestore) |
+| `Operations.jsx` | UI composition: fed the reader into reconciliation and an omitted-parts count |
+| `WarehousePanel.jsx` | operator UI: bin-stock table + Reconciliation section |
+| `InventoryHealthPanel.jsx` | `omittedBinStockCount` disclosure, counted from `stock_locations` |
+| `domain/warehouseReconciliationEngine.ts` | pure obsolete engine |
+| `firestore.rules` ×2 | **active read grant** (`isAdminOrDispatcher()` OR `isAssignedToWarehouse(...)`); writes already denied |
+| backend | already zero readers, zero writers |
+
+## Retired
+
+- **`fetchStockLocations`, `RawStockLocation` and the collection constant** deleted from `operationsQueries.ts`.
+- **`Operations.jsx`**: the fetch, the `detectStockDiscrepancies` / `generateReconciliationReport` composition, `stockLocations`, `reconciliationReport`, `omittedBinStockCount`, and the now-unused `consumedTransactions` all removed.
+- **`WarehousePanel.jsx`**: the bin-stock table and the entire Reconciliation section removed. The **Transfer Orders** table — a read-only view of the *current* governed transfer authority — is untouched, and `resolveName` is retained because that table uses it.
+- **`InventoryHealthPanel.jsx`**: the omitted-bin-stock disclosure removed. It counted parts present in `stock_locations` but absent from the ledger; with the collection retired there is no such set, and asserting one would be fiction.
+- **`domain/warehouseReconciliationEngine.ts`** and its test deleted; the dead `suites.json` entry removed.
+- **Firestore Rules**: the `stock_locations` match block removed from **both** governed copies. No block means **deny-all**, the same posture `bins`, `bin_code_claims` and `bin_placements` already use. The diff is authority-narrowing only — `warehouses` and `transfer_orders` are untouched.
+- **Doc drift**: the `warehouse.stockLocation.read` catalog description (both copies) no longer claims the Rules block still exists; `metadata/definitions/stockLocation.js` now records READ PATH: NONE; and `legacyAuthorizationSurface` — a *measured* inventory of legacy Rules sites — dropped its `stock_locations` row and was regenerated through `scripts/syncAccessContracts.mjs`.
+
+## The false-clean, deliberately made unreachable
+
+`reconciliationHonestyM15.test.jsx` is superseded by **`stockLocationSurfaceRetired.test.jsx`**, which inverts it: the panel must now render **neither** verdict.
+
+This matters because the shortcut was dangerous. The M15 scope guard only fires when bin stock is **present**, so keeping the component and passing `warehouseStock: []` would have flipped the panel from an honest `CANNOT_EVALUATE` to **"No discrepancies"** — a clean bill of health for a comparison nobody performed, which is worse than the defect M15 fixed. One test therefore renders the panel *with* the old props still attached and proves they are ignored: the false-clean is unreachable **by shape**, not by discipline.
+
+## Post-closure proof
+
+| Claim | Result |
+|---|---|
+| Backend runtime `stock_locations` readers | **0** |
+| Client runtime `stock_locations` readers | **0** |
+| Runtime writers, anywhere | **0** |
+| `match /stock_locations/` in either Rules copy | **0** |
+| Client imports of `warehouseReconciliationEngine` | **0** (one stale comment in `operationsIntelligenceService.ts`) |
+| Active `StockLocation` UI consumers | **0** |
+| `warehouses` / `transfer_orders` Rules | **unchanged** |
+| `functions/src/inventoryTransfer/*` | 10 files, untouched |
+| `TRANSFER_ORDERS_COLLECTION`, `WAREHOUSES_COLLECTION`, `GovernedWarehouse` | intact |
+| BIN-P1 (`functions/src/inventoryLocation/*`) | 5 files, untouched |
+| New capability / grant / activation | **none** |
+| Deployment | **none** |
+
+Remaining textual hits are historical or descriptive: the metadata definition of an inert collection, catalog history, seed/fixture tooling, and append-only decision records. **Current and runtime are zero; historical documentation may remain.**
+
+## Tests
+
+| Suite | Result |
+|---|---|
+| `stockLocationSurfaceRetired.test.jsx` (new) | **10/10** |
+| `operationsTransferOrders` · `operationsPanelsNames` · `operationsCanonicalNames` · `operationsProcurementLiveSource` · `warehouseOfflineBindings` | **36/36 total** |
+| `metadataStockLocationDefinition` | 10/10 |
+| `legacyAuthorizationSurface` (contract + drift) | 7/7 |
+| `functions` `tsc` build · Vite build | clean |
+
+**One test updated but not run locally.** `functions/test/warehouseManagerScopedAccessRules.test.js` had its assertions **inverted** — admin, dispatcher and an assigned warehouse manager are now all expected to be **denied** `stock_locations`, while its `warehouses` / `transfer_orders` cases are unchanged. It requires the Firestore **and Auth** emulators together, and in this environment it hangs before emitting any output; that is a local harness failure, not evidence about the Rules. The static and behavioural proofs above stand on their own — an absent match block is deny-all — and CI is the verifier for the persona-level run.
+
+## Environment data
+
+Unchanged and **not mutated**: 5 `stock_locations` in sandbox, 4 in production. After P2R they have zero readers, zero writers, and **no client access path at all**. Inert legacy data pending an optional, separately authorized maintenance disposition. The one unreadable legacy production `transfer_orders` record was **not touched**.
+
+## Deployment
+
+**None, and deliberately so.** The repository now removes both the client dependency and the permission in one change. When deployment is authorized it must be **coordinated**: a Hosting bundle that still expected the old read must never be live against Rules that deny it. That sequencing decision belongs to the release gate, not here.
+
 ## Next gate
 
 **BIN-P3 — Administration racking configuration and generator.**
 
-Two carried-forward items, neither blocking P3:
-
-1. **Tier-2 Rules gate** — remove the `stock_locations` block from both copies, and with it the client-direct read, `fetchStockLocations`, the `WarehousePanel` bin-stock table and the frontend reconciliation engine.
-2. **Environment data disposition** — 9 inert `stock_locations` documents, and one unreadable legacy `transfer_orders` record in production.
+One carried-forward item, not blocking P3: **environment data disposition** — 9 inert `stock_locations` documents and one unreadable legacy `transfer_orders` record in production.

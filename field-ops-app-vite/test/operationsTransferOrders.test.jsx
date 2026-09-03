@@ -19,7 +19,6 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("../src/services/operationsQueries", () => ({
   fetchInventoryTransactions: async () => [],
-  fetchStockLocations: async () => [],
   fetchWarehouses: async () => h.warehouses,
   fetchTransferOrderDocs: () => h.transferResult(),
   fetchTransferOrders: async () => [],
@@ -42,7 +41,6 @@ import Operations from "../src/modules/operations/Operations.jsx";
 afterEach(cleanup);
 
 const WAREHOUSES = [{ id: "WH-1", name: "Main Warehouse" }, { id: "WH-2", name: "Satellite" }];
-const NO_RECON = { totalDiscrepancies: 0 };
 const resolveName = (id) => `NAME(${id})`;
 const legacyDoc = (docId, status) => ({ docId, data: { partId: "PART-1", fromWarehouseId: "WH-1", toWarehouseId: "WH-2", quantity: 9, status } });
 
@@ -50,9 +48,7 @@ function renderPanel(transferOrderDocs) {
   return render(
     <WarehousePanel
       warehouses={WAREHOUSES}
-      stockLocations={[]}
       transferOrderDocs={transferOrderDocs}
-      reconciliationReport={NO_RECON}
       resolveName={resolveName}
     />,
   );
