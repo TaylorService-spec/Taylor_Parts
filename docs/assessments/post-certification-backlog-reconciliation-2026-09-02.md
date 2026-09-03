@@ -7,6 +7,10 @@ Measured against `origin/main` = `ba4d5f8e` (`docs(customer-1): reopen CI cost-c
 measured docs-only build`). The formal Certification closeout `a81e5b47` **is** an ancestor of that
 SHA; three commits have landed since, all documentation.
 
+Main advanced to `5824df2a` during this pass (#1762 purchase-order price capture, #1763 legacy
+stock-location retirement); every disposition below was re-verified against that tip, and none
+changed.
+
 **This document does not amend the Certification result.** The closeout
 ([`certification-program-closeout-2026-09-02.md`](certification-program-closeout-2026-09-02.md))
 recorded nine findings as TRANSFERRED, and it was correct when written. What follows is the
@@ -150,7 +154,7 @@ prove production absence.
 
 `functions/src/finance/acquisitionCost.ts` (FIN-BLOCK-003A, DECISIONS #164, merged as `25da85cb`
 before the closeout) supplies a governed acquisition-cost fact for purchased physical goods, and
-`functions/test/acquisitionCost.test.mjs` (43 tests) asserts each property the finding asked for:
+`functions/test/acquisitionCost.test.mjs` (43 tests, plus the 22-test `acquisitionCostActivation.test.mjs` added by #1762) asserts each property the finding asked for:
 integer minor units with an explicit currency and floats refused; unknown is `null`, never zero;
 created inside the receipt's own transaction with a deterministic `(receivingId, lineId)` identity so
 duplication is impossible by shape; a partial receipt priced for the quantity received; and
