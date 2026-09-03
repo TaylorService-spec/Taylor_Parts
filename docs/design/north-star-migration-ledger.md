@@ -1865,3 +1865,35 @@ be weakened until it meant nothing. It reads declarations only and names the ret
 | **Scorecard gutter** | `padding-left: 0` was correct while the scorecard was an open grid aligning flush to the page edge; the card border made it text touching a line (Owner finding) |
 | **Shadow token vocabulary** | 36 `var(--never-declared, #hex)` references whose hardcoded off-white fallbacks were what actually rendered — a second palette that would have survived the rollout untouched |
 | **`--color-warning`** | 4.05:1 on white, 3.71:1 on its own surface — failed AA for body text on both. Darkened to `#8F6109` under the schema's accessibility clause |
+
+---
+
+## Family 10 — My Dashboard · **ACCEPTED** (Owner, 2026-09-03)
+
+| | |
+|---|---|
+| **Composition** | `src/modules/dashboard/MyDashboard.jsx` over `src/domain/dashboardComposition.js`, with `dashboardGoalActuals.js`, `dashboardPreview.js` and `dashboardTeamProjections.js` as the derivation layer |
+| **Design authority** | [`docs/north-star/my-dashboard/DESIGN-HANDOFF-MY-DASHBOARD-P1v2.md`](../north-star/my-dashboard/DESIGN-HANDOFF-MY-DASHBOARD-P1v2.md) — §0-C closure, §0-B live review, §0-A reconciliation, all three preserved |
+| **Governing decisions** | #161 (dashboard composition authority), #162 (Performance Goal Authority), #172 (bounded actionable previews — a list of real work is allowed, a total derived from that list is not) |
+| **Proof** | `test/dashboardComposition.test.mjs` (30), `test/dashboardDesignConformance.test.mjs` (21), `test/dashboardGoalActuals.test.mjs` (13), `test/dashboardPreview.test.mjs` (13), `test/dashboardRoleMatrix.test.mjs` (16), `test/dashboardTeamProjections.test.mjs` (13) |
+| **Mutation proofs** | 5 mutations, re-run at closure — dropping the 32px KPI tier to 28px, reintroducing `SECTION.GO_TO`, restoring the hand-typed `"READY"` receiving literal, and turning an absent portfolio figure into `0` (all caught by `dashboardDesignConformance`), plus widening `PREVIEW_ROW_LIMIT` past 5 (caught by `dashboardPreview`). One caveat worth keeping: the suites strip comments before matching, so a mutation applied to the first textual occurrence of a symbol can land in a comment and pass vacuously — the `GO_TO` mutation did exactly that on the first attempt and had to be re-applied to the executable line |
+| **Census** | 23 modules — 15 READY, 2 SATISFIED_ELSEWHERE, 1 GATED, 5 UNAVAILABLE, **NOT_WIRED = 0**, the zero itself enforced by the composition suite |
+| **Named decisions** | none open. The remaining gaps are domain-authority backlog transferred out of the family in §0-C, each named on the tile that lacks it |
+| **Authority** | UNCHANGED. No Functions, Rules, indexes, capability, role or state-machine touched by the accepting build — client composition only |
+| **Deployed** | `platform-sandbox`, live commit `50792fef23f1aae3e1f68f395e548c7a0e5e7a55` |
+| **Training** | [`docs/training/MY_DASHBOARD.md`](../training/MY_DASHBOARD.md) — COMPLETE, LIVE VERIFIED |
+| **Acceptance** | **Closed 2026-09-03.** Accepted on the corrected build, not on the first deployment |
+
+### What the live review caught that green suites did not
+
+Three of the six findings the Owner raised on the running screen were defects no unit test had any
+chance of failing on, and the pattern is worth keeping:
+
+| Defect | Why the suite agreed with it |
+|---|---|
+| "Purchase orders awaiting receipt could not be read just now" on every successful call | The comparison was against the string `"READY"`; the constant is lowercase `"ready"`. The check could never pass, and no test compared the two |
+| Three account counts rendering as `—` | The module read `summary.active`, a field the server has never sent (`summary.byStatus.ACTIVE` is the real shape). **The fixtures encoded the same wrong shape**, so the suite confirmed the bug |
+| The same wrong field silently disabling the `crm.account.active.count` goal actual | It had been unmeasured since the commit that "connected" it |
+
+A fixture written from the same misreading as the code under test is not evidence. Both of these were
+caught by looking at the browser, and the fixtures were corrected to the server's real shape.
