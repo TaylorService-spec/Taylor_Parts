@@ -19,7 +19,15 @@ const { sumLedgerEligibleOnHand } = require("../lib/fulfillment/fulfillmentAvail
 
 const runId = Date.now();
 let seq = 0;
-const id = (p) => `${p}-${runId}-${(seq += 1)}`;
+// FILE-SCOPED ids. `runId` is Date.now(), and a sibling suite in the same `node --test` process uses
+// the same scheme with its own counter — so two files starting in the same millisecond can mint the
+// SAME document id and silently overwrite each other. That is exactly what happened in CI: this
+// suite seeded fieldops_wos/WO-<ms>-1 with one part, the idempotency suite seeded the same id with
+// another, and the second call reported "No planned part with sku A".
+//
+// The tag makes a cross-file collision impossible rather than merely unlikely.
+const FILE_TAG = "pce";
+const id = (p) => `${p}-${FILE_TAG}-${runId}-${(seq += 1)}`;
 const callRequest = (data, uid) => ({ data, auth: { uid, token: {} }, rawRequest: {} });
 
 async function seedTech(uid, technicianId) {
