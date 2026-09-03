@@ -204,6 +204,7 @@ test("no existing domain's routes changed — every non-financials domain path s
     "/administration/overview", "/administration", "/administration/users", "/administration/roles-permissions",
     "/administration/objects", "/administration/permission-preview", "/administration/vehicles",
     "/administration/regions", "/administration/company-settings", "/administration/duplicate-rules",
+    "/administration/warehouse-racking",
     "/administration/integrations", "/administration/audit-logs",
   ]);
 });
