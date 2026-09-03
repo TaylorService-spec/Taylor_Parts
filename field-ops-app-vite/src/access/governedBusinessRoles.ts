@@ -451,6 +451,16 @@ const MONEY_MANAGER_PERMISSIONS = [
   // GRANT != ACTIVATION: registered `active:false`, so this denies everywhere it is not
   // per-environment activated, and production activates nothing.
   "finance.visibility.consolidated",
+  // CERT-FIN-02 financial policy VISIBILITY, Owner ruling (financial-policy authority). READ only,
+  // and deliberately not `.configure`: the Owner ruled that supplying or approving an accounting
+  // policy does not by itself confer EOS configuration authority, so the money Roles can SEE which
+  // costing method and recognition point govern the numbers they work with, and cannot change them.
+  // Configuration stays with the administrative company authority (admin / owner).
+  //
+  // It lands in MONEY_MANAGER_PERMISSIONS rather than on either Role, because Accounting Manager and
+  // Finance Manager are "intentionally identical ... so they cannot drift apart without an explicit
+  // code change" -- granting one and not the other is exactly the drift that list exists to prevent.
+  "financialPolicy.profile.read",
   "inventory.action.read",
   "inventory.balance.read",
   "inventory.catalog.read",
@@ -665,6 +675,12 @@ export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
     // this is the reach. Both are required and either alone reaches nothing. GRANT != ACTIVATION:
     // registered `active:false`, so it denies wherever it is not per-environment activated.
     "finance.visibility.consolidated",
+    // CERT-FIN-02 financial policy VISIBILITY, Owner ruling. READ only, and deliberately NOT
+    // `.configure`: this Role holds "NO security administration ... Privileged access administration
+    // remains with Owner and Admin", and company financial configuration belongs on that side of the
+    // line. A General Manager who issues invoices and records adjustments is working with numbers
+    // this policy governs, which is what earns the read.
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.manage",
@@ -892,6 +908,11 @@ export const CONTROLLER_ROLE: Role = Object.freeze({
     "finance.payment.apply",
     "finance.read",
     "finance.refund.record",
+    // CERT-FIN-02 financial policy VISIBILITY, Owner ruling. READ only. A Controller books the
+    // financial execution this policy governs -- which costing method relieved a number, and at
+    // which event -- so seeing the policy is part of doing the job. Changing it is not:
+    // configuration stays with the administrative company authority (admin / owner).
+    "financialPolicy.profile.read",
     "inventory.action.read",
     "inventory.balance.read",
     "inventory.catalog.read",

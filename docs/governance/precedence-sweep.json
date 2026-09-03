@@ -6,7 +6,7 @@
   "stale or generated summaries"
  ],
  "totals": {
-  "EXPLICIT_OWNER_DECISION": 100,
+  "EXPLICIT_OWNER_DECISION": 103,
   "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2,
@@ -135,6 +135,16 @@
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #159",
    "alsoHeldBy": [
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "financialPolicy.profile.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-CERT-FIN-02 (financial-policy authority ruling)",
+   "alsoHeldBy": [
+    "controller",
     "accountingManager"
    ]
   },
@@ -2090,6 +2100,16 @@
   },
   {
    "roleId": "controller",
+   "capability": "financialPolicy.profile.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-CERT-FIN-02 (financial-policy authority ruling)",
+   "alsoHeldBy": [
+    "generalManager",
+    "accountingManager"
+   ]
+  },
+  {
+   "roleId": "controller",
    "capability": "inventory.action.read",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
@@ -2349,6 +2369,16 @@
    "basis": "DECISIONS #159",
    "alsoHeldBy": [
     "generalManager"
+   ]
+  },
+  {
+   "roleId": "accountingManager",
+   "capability": "financialPolicy.profile.read",
+   "classification": "EXPLICIT_OWNER_DECISION",
+   "basis": "DECISIONS OWNER-CERT-FIN-02 (financial-policy authority ruling)",
+   "alsoHeldBy": [
+    "generalManager",
+    "controller"
    ]
   },
   {

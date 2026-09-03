@@ -62,6 +62,7 @@ const privilegedOnly = IDS.filter((id) => heldBy[id]?.length && heldBy[id].every
 const DELIBERATE = {
   "admin.": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved.",
   "report.definition.delete": "Owner decision 2026-08-21: authoring a saved report definition is delegable to reportAuthor; DESTROYING one is not. A delete removes something other people depend on and there is no per-definition ownership model to scope it.",
+  "financialPolicy.profile.configure": "Owner ruling (CERT-FIN-02 financial-policy authority): recording a company's approved accounting policy is DEPLOYMENT-TIME company configuration, so it stays with the administrative company authority (admin/owner). The customer's accounting team DETERMINES and APPROVES the policy, and that does not by itself confer EOS configuration authority -- which is why the money Roles hold financialPolicy.profile.read and deliberately not this. Belongs here rather than UNCLASSIFIED: a decision was made, not merely inherited from admin's catalog derivation. Note that no capability, including this one, can edit a LOCKED profile.",
 };
 
 // GAP CODES. Each is a capability nobody holds because a decision deliberately deferred it, not

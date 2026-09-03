@@ -387,14 +387,27 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // CERT-FIN-02 Financial Policy Profile -- a company's DEPLOYMENT-TIME accounting configuration
   // (functions/src/finance/financialPolicyProfile.ts). Deliberately NOT a `finance.*` transaction
   // capability: this is company setup authority, exercised once with the customer's accounting team
-  // during deployment, not routine financial work. Holding finance.read (see AR facts) or admin.*
-  // (manage users and roles) does not and must not confer it.
+  // during deployment, not routine financial work.
   //
-  // BOTH registered active:false and granted to NO Role -- REGISTER != GRANT != ACTIVATE. Which
-  // authority owns deployment-time financial configuration is an OPEN Owner decision, so nothing is
-  // activated here. `financial_policy_profiles` has no firestore.rules match block (deny-all to every
-  // client), and the only write path is the trusted command, so an ungranted capability means the
-  // surface is inert rather than merely hidden.
+  // OWNER RULING (financial-policy authority). Both are now ACTIVATED -- through the per-environment
+  // seam, NOT by flipping `active` here. A catalogued `active: true` means LIVE IN EVERY ENVIRONMENT
+  // including production, because an override set can only ADD activation and never remove it; that
+  // is the exact defect DECISIONS #166 corrected for the report.* family. So these stay
+  // `active: false` and environmentCapabilityOverrides.ts activates them per environment. Production
+  // activation is a separate ruling and that path cannot deliver it (production is triple-blocked).
+  //
+  // WHO HOLDS WHAT. `.configure` is held by admin and owner ONLY, and by DERIVATION rather than a new
+  // grant: ADMIN_ALL_PERMISSIONS is every catalog id and OWNER_PERMISSIONS is built from
+  // ADMIN_ROLE.permissions, so no Role edit was needed and none was made. `.read` is deliberately
+  // broader -- accountingManager + financeManager (via MONEY_MANAGER_PERMISSIONS), controller and
+  // generalManager -- because seeing which costing method governs your numbers is part of that work.
+  // The money Roles do NOT get `.configure`: approving an accounting policy does not confer EOS
+  // configuration authority, and read authority never implies write authority.
+  //
+  // NEITHER BEATS THE LOCK. Once a profile is LOCKED the trusted command refuses mutation for every
+  // principal including admin and owner, checked against stored state inside the transaction.
+  // `financial_policy_profiles` has no firestore.rules match block (deny-all to every client), and
+  // the only write path is that command.
   Object.freeze({
     id: "financialPolicy.profile.read",
     description:
@@ -406,7 +419,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "financialPolicy.profile.configure",
     description:
-      "Configure an operating company's DRAFT/APPROVED financial policy profile during deployment via the trusted command. Never edits a LOCKED profile: once financial authority is activated, changing accounting policy requires a separately governed financial-policy migration, and no capability -- including admin -- bypasses that.",
+      "Configure an operating company's DRAFT/APPROVED financial policy profile during deployment via the trusted command. Never edits a LOCKED profile: once financial authority is activated, changing accounting policy requires a separately governed financial-policy migration, and no capability -- including admin and owner -- bypasses that.",
     resource: "financialPolicy.profile",
     action: "configure",
     active: false,

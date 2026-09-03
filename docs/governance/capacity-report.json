@@ -2,13 +2,13 @@
  "basis": "OPERABLE authority = granted capability INTERSECT permission-catalog active flag. Granted-but-inactive is ZERO operational capacity.",
  "environment": {
   "projectId": "eos-platform-sandbox",
-  "activationOverrides": 81
+  "activationOverrides": 83
  },
  "catalog": {
   "total": 137,
   "globallyActive": 36,
-  "activeInThisEnvironment": 117,
-  "inactiveInThisEnvironment": 20
+  "activeInThisEnvironment": 119,
+  "inactiveInThisEnvironment": 18
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -48,10 +48,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2158,
+  "operableHoldingsTotal": 2165,
   "fromCompatibilityRoleOnly": 1257,
-  "fromGovernedRoleOnly": 483,
-  "fromBoth": 418,
+  "fromGovernedRoleOnly": 488,
+  "fromBoth": 420,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -428,7 +428,7 @@
    ],
    "functionalRoles": [],
    "grantedCount": 137,
-   "operableCount": 117,
+   "operableCount": 119,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
@@ -476,8 +476,8 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 87,
-   "operableCount": 87,
+   "grantedCount": 88,
+   "operableCount": 88,
    "assignments": [
     {
      "workstream": "BUSINESS_ADMINISTRATION",
@@ -518,8 +518,8 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 87,
-   "operableCount": 87,
+   "grantedCount": 88,
+   "operableCount": 88,
    "assignments": [
     {
      "workstream": "BUSINESS_ADMINISTRATION",
@@ -1706,8 +1706,8 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 84,
-   "operableCount": 84,
+   "grantedCount": 85,
+   "operableCount": 85,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1744,8 +1744,8 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 84,
-   "operableCount": 84,
+   "grantedCount": 85,
+   "operableCount": 85,
    "assignments": [
     {
      "workstream": "ACCOUNTING",
@@ -1782,8 +1782,8 @@
     "reportFinanceViewer"
    ],
    "functionalRoles": [],
-   "grantedCount": 84,
-   "operableCount": 84,
+   "grantedCount": 85,
+   "operableCount": 85,
    "assignments": [
     {
      "workstream": "ACCOUNTING",

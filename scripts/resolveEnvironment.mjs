@@ -160,6 +160,13 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'performance.goal.approve',
   'performance.goal.supersede',
   'performance.goal.retire',
+  // CERT-FIN-02 FINANCIAL POLICY -- mirrors environmentCapabilityOverrides.ts, whose comment
+  // carries the full reasoning. Present here for the same reason as the ids above: the frontend
+  // bakes THIS list into the bundle, so a capability eligible on the backend but absent here would
+  // hide the Financial Policy surface the governed read would have answered -- a disagreement
+  // rather than a safeguard.
+  'financialPolicy.profile.read',
+  'financialPolicy.profile.configure',
 ]);
 
 /**

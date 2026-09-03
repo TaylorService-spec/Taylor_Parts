@@ -334,15 +334,25 @@ check("every inventory.transfer.* entry is registered-but-not-grantable (active:
   }
 });
 
-check("every financialPolicy.profile.* entry is registered-but-not-grantable (active: false, never true)", () => {
+check("every financialPolicy.profile.* entry stays catalogue-inactive, so activation is per-environment", () => {
   const policy = PERMISSION_CATALOG.filter((p) => p.id.startsWith("financialPolicy.profile."));
   assert.deepEqual(
     policy.map((p) => p.id).sort(),
     ["financialPolicy.profile.configure", "financialPolicy.profile.read"],
     "deployment-time financial policy registers exactly two capabilities: read it, and configure it",
   );
+  // The Owner ACTIVATED both. `active: false` here is how that is delivered, not a contradiction of
+  // it: a catalogued `active: true` means live in EVERY environment including production, because an
+  // override set can only ADD activation (DECISIONS #166). Activation therefore happens in
+  // environmentCapabilityOverrides.ts + config/environments.json, where production is triple-blocked.
+  // Flipping either of these to true would activate deployment-time financial configuration in
+  // production without a production activation ruling.
   for (const permission of policy) {
-    assert.equal(permission.active, false, `"${permission.id}" must be inactive -- which authority owns deployment-time financial configuration is an open Owner decision`);
+    assert.equal(
+      permission.active,
+      false,
+      `"${permission.id}" must stay catalogue-inactive -- true here would activate it in production too`,
+    );
   }
 });
 
