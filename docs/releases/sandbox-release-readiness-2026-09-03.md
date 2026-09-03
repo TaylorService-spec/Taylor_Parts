@@ -3,20 +3,35 @@
 **Generated 2026-09-03.** Measured against the live sandbox and current main, not against any prior
 handoff.
 
-> ## ⚠ THIS HANDOFF EXPIRES IF EITHER SHA CHANGES
+> ## ⚠ THIS HANDOFF EXPIRES IF THE DEPLOYABLE SURFACE MOVES
 >
-> It is valid **only** for `LIVE_SANDBOX_SHA = 5eaa403a` → `RELEASE_CANDIDATE_SHA = 8ae9c7e1`.
-> If `origin/main` advances, or the sandbox is deployed by anyone, **every figure below is stale** —
-> re-run §"Re-measure" before deploying. The Rules requirement in this release is the proof of why:
-> it entered through a commit no audited workstream authored.
+> Valid for `LIVE_SANDBOX_SHA = 5eaa403a`, with the deployable surface measured through `8ae9c7e1`.
+> If the sandbox is deployed by anyone, or if `origin/main` gains a commit touching `functions/src`,
+> `field-ops-app-vite/src`, either `firestore.rules`, `firestore.indexes.json` or
+> `config/environments.json`, **every figure below is stale** — re-run §13 before deploying.
+>
+> Docs-only commits do not expire it, which is the distinction that lets this document survive its own
+> merge. The Rules requirement in this release is the proof of why the check matters at all: it entered
+> through a commit no audited workstream authored.
 
 | | |
 |---|---|
 | **LIVE_SANDBOX_SHA** | `5eaa403a` |
 | sandbox project | `eos-platform-sandbox` (env id `platform-sandbox`, role `sandbox`, status `live`) |
 | sandbox build time | `2026-09-02T17:15:02.702Z` |
-| **RELEASE_CANDIDATE_SHA** | `8ae9c7e1b969842476e82b5ec2f387d8f2386138` |
+| **DEPLOYABLE SURFACE MEASURED THROUGH** | `8ae9c7e1b969842476e82b5ec2f387d8f2386138` |
+| **RELEASE_CANDIDATE** | current `origin/main` — see below |
 | status | **READY_FOR_SANDBOX_DEPLOYMENT** — nothing deployed by this run |
+
+**Why the candidate is a ref and not a pinned SHA.** The governed runbook derives its own approved
+commit from `HEAD` and gates on `HEAD == origin/main`; it takes no pinned SHA. Naming one here would
+also be self-defeating: merging this very document moves `origin/main`, which by the expiry rule above
+would make the document stale the moment it lands.
+
+So the durable fact is the **deployable surface**: every Functions, client, Rules, index and
+environment measurement below was taken through `8ae9c7e1`. Commits after it that touch **none** of
+those paths — this document among them — do not change the release. The preflight in §9 is what proves
+that still holds at deploy time.
 
 ---
 
