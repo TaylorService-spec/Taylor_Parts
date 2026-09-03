@@ -1,0 +1,139 @@
+name: Financial Policy Profile Tests
+
+# CERT-FIN-02 -- the governed financial policy profile, the inventory cost engine, and the backend
+# lock. A NEW subsystem needs its own workflow or it is CI-uncovered, and this one guards financial
+# arithmetic and a one-way governance door, so it does not ride on somebody else's path filter.
+#
+# Two jobs, deliberately split by cost. The domain suite is pure (no emulator, no network, seconds)
+# and runs first so a broken invariant fails fast. The command suite needs the Firestore emulator
+# because the claim it proves -- that the LOCK is enforced by the backend and not by a disabled
+# button -- is only meaningful against real stored state.
+#
+# NO production, NO deployment, NO credentials, NO repository secrets. Emulator project
+# "taylor-parts", loopback host. Every financialPolicy.profile.* capability is registered
+# `active: false` and granted to no Role; nothing here changes that.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/finance/financialPolicyProfile.ts"
+      - "functions/src/finance/financialPolicyProfileCommand.ts"
+      - "functions/src/finance/inventoryCostEngine.ts"
+      - "functions/src/finance/acquisitionCost.ts"
+      - "functions/src/workOrderConsumption/consumptionActivation.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/test/financialPolicyProfile.test.mjs"
+      - "functions/test/financialPolicyProfileCommand.test.mjs"
+      - "functions/test/permissionCatalog.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/financial-policy-profile-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/finance/financialPolicyProfile.ts"
+      - "functions/src/finance/financialPolicyProfileCommand.ts"
+      - "functions/src/finance/inventoryCostEngine.ts"
+      - "functions/src/finance/acquisitionCost.ts"
+      - "functions/src/workOrderConsumption/consumptionActivation.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/test/financialPolicyProfile.test.mjs"
+      - "functions/test/financialPolicyProfileCommand.test.mjs"
+      - "functions/test/permissionCatalog.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/financial-policy-profile-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  financial-policy-domain-tests:
+    name: Financial policy + cost engine (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      # Pure arithmetic and pure governance: the platform invariants, the supported-method
+      # vocabularies, the lifecycle, and the central proof that the SAME physical history produces
+      # DIFFERENT financial answers under different approved policies while the physical quantities
+      # stay identical.
+      - name: Financial policy profile + inventory cost engine
+        run: node --test test/financialPolicyProfile.test.mjs
+        working-directory: functions
+
+      # The capability guard: financialPolicy.profile.* must stay registered-but-ungranted.
+      - name: Permission catalog (capabilities registered, not granted)
+        run: node test/permissionCatalog.test.mjs
+        working-directory: functions
+
+  financial-policy-command-tests:
+    name: Financial policy command + backend lock (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/financial-policy-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/financial-policy-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/financial-policy-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Financial policy command (lifecycle, company partition, backend lock)
+        run: npm run test:financialPolicyCommand
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-policy-emulator-logs
+          path: |
+            /tmp/financial-policy-emulator.log
+            functions/firestore-debug.log

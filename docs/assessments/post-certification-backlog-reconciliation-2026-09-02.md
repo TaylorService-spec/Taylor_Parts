@@ -29,7 +29,7 @@ touched.
 | CERT-RECV-09 | RETIRED — frozen Certification tooling, reuse condition recorded |
 | CERT-RECV-10 | CLOSED — NOT A DEFECT on current source; both fields refused, with reasons |
 | CERT-FIN-01 | CLOSED — resolved by current source (FIN-BLOCK-003A, Decision #164) |
-| CERT-FIN-02 | OPEN — Owner/accounting policy authority required; already has a governed home |
+| CERT-FIN-02 | PLATFORM CAPABILITY COMPLETE — policy framework implemented; Taylor deployment profile not yet selected |
 | CERT-FIN-03 | FIXED — reporting label now names the collection it binds to |
 | CERT-PURCH-SIG-01 | RETIRED — frozen Certification tooling, reuse condition recorded |
 | CERT-PURCH-DOCDRIFT-01 | RETIRED — frozen Certification tooling, reuse condition recorded |
@@ -203,6 +203,13 @@ margin still returns UNKNOWN"`).
 ---
 
 ## 5. CERT-FIN-02 — no inventory valuation measure exists
+
+> **SUPERSEDED 2026-09-03 — Owner ruled the POLICY PROFILE model.** EOS no longer waits for one
+> permanent method: it implements and tests several, and each customer's accounting team selects a
+> deployment profile that locks at financial activation. The platform capability is COMPLETE; what
+> remains is Taylor's own profile selection and the capability grant. See
+> [`cert-fin-02-policy-framework-reconciliation.md`](cert-fin-02-policy-framework-reconciliation.md).
+> The assessment below is preserved as the measurement that justified the ruling.
 
 **Disposition: OPEN — OWNER / ACCOUNTING POLICY AUTHORITY REQUIRED.** No implementation, and none
 attempted.

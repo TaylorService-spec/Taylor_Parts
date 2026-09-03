@@ -384,6 +384,33 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "record",
     active: false,
   }),
+  // CERT-FIN-02 Financial Policy Profile -- a company's DEPLOYMENT-TIME accounting configuration
+  // (functions/src/finance/financialPolicyProfile.ts). Deliberately NOT a `finance.*` transaction
+  // capability: this is company setup authority, exercised once with the customer's accounting team
+  // during deployment, not routine financial work. Holding finance.read (see AR facts) or admin.*
+  // (manage users and roles) does not and must not confer it.
+  //
+  // BOTH registered active:false and granted to NO Role -- REGISTER != GRANT != ACTIVATE. Which
+  // authority owns deployment-time financial configuration is an OPEN Owner decision, so nothing is
+  // activated here. `financial_policy_profiles` has no firestore.rules match block (deny-all to every
+  // client), and the only write path is the trusted command, so an ungranted capability means the
+  // surface is inert rather than merely hidden.
+  Object.freeze({
+    id: "financialPolicy.profile.read",
+    description:
+      "Read the operating company's governed financial policy profile (inventory cost method, COGS recognition point, treatment choices, lifecycle status) via the trusted read. A READ capability: it configures nothing and widens no client Rule.",
+    resource: "financialPolicy.profile",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "financialPolicy.profile.configure",
+    description:
+      "Configure an operating company's DRAFT/APPROVED financial policy profile during deployment via the trusted command. Never edits a LOCKED profile: once financial authority is activated, changing accounting policy requires a separately governed financial-policy migration, and no capability -- including admin -- bypasses that.",
+    resource: "financialPolicy.profile",
+    action: "configure",
+    active: false,
+  }),
   // Commercial Coverage & Territory (#15) -- create durable Sales Territories + effective-dated coverage
   // assignments via the trusted coverage commands. Records only (no precedence/credit/commission). Registered
   // active:false (fail-closed). sales_territories / commercial_coverage_assignments are Admin-SDK-only.
