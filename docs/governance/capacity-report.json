@@ -5,10 +5,10 @@
   "activationOverrides": 83
  },
  "catalog": {
-  "total": 136,
+  "total": 137,
   "globallyActive": 36,
   "activeInThisEnvironment": 119,
-  "inactiveInThisEnvironment": 17
+  "inactiveInThisEnvironment": 18
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -427,7 +427,7 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 136,
+   "grantedCount": 137,
    "operableCount": 119,
    "assignments": [
     {

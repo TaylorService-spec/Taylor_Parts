@@ -4,7 +4,7 @@
 // Runs the compiled ../lib output. Importing these registries writes NOTHING.
 // Prerequisite: npm run build. Run: node test/receivingCapabilityRegistration.test.mjs
 import assert from "node:assert/strict";
-import { PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
+import { PERMISSION_CATALOG, isActivePermission } from "../lib/access/permissionCatalog.js";
 import { COMPATIBILITY_ROLES } from "../lib/access/compatibilityRoles.js";
 import { GOVERNED_BUSINESS_ROLES } from "../lib/access/governedBusinessRoles.js";
 
@@ -105,11 +105,31 @@ check("NO superuser / wildcard bypass exists (no role grants '*' or the id via w
   }
 });
 
-check("no unrelated capability changed: the added grant is inventory.stock.receive ONLY", () => {
-  // admin/dispatcher share one base; the ONLY receive-related id either holds is inventory.stock.receive.
+check("no unrelated capability changed: inventory.stock.receive is the only ACTIVE stock grant", () => {
+  // admin/dispatcher share one base. This guard exists to catch an unintended real grant, and it
+  // still does -- but it now has to account for how this catalog actually works.
+  //
+  // A compatibility role DERIVES its permission array from the catalog, so registering a new id
+  // makes it appear here automatically, with no explicit grant written anywhere. BIN-P6 /
+  // DECISIONS #169 registered inventory.stock.relocate that way.
+  //
+  // So the assertion is STRENGTHENED rather than relaxed: membership alone is no longer the
+  // interesting fact, and what matters is that exactly one of these ids is ACTIVE. An inert id
+  // denies for every role (reason: inactivePermission); an active one is a real authority. If a
+  // future capability lands active, or relocate is ever flipped on without BIN-P4's activation
+  // gate, this fails -- which is the thing the original check was protecting.
   for (const name of ["admin", "dispatcher"]) {
-    const receiveish = ALL_ROLES[name].permissions.filter((p) => p.startsWith("inventory.stock."));
-    assert.deepEqual(receiveish, ["inventory.stock.receive"], `${name} gained only inventory.stock.receive`);
+    const stockIds = ALL_ROLES[name].permissions.filter((p) => p.startsWith("inventory.stock.")).sort();
+    // Every id present must be one of the two reviewed ones. admin derives both; dispatcher carries
+    // an explicit narrower list and holds only receive -- so membership is asserted as a SUBSET
+    // rather than an exact list that would be wrong for one of the two roles.
+    for (const id of stockIds) {
+      assert.ok(["inventory.stock.receive", "inventory.stock.relocate"].includes(id), `${name} holds an unreviewed ${id}`);
+    }
+    assert.ok(stockIds.includes("inventory.stock.receive"), `${name} still holds inventory.stock.receive`);
+    // The real invariant: exactly one of them confers authority. The rest are inert.
+    const active = stockIds.filter((id) => isActivePermission(id));
+    assert.deepEqual(active, ["inventory.stock.receive"], `${name}: inventory.stock.receive is the only ACTIVE stock capability`);
   }
   // dispatcher gained nothing admin-only; the admin-only extras are unchanged and NOT on dispatcher.
   for (const adminOnly of ["customer.governedField.write", "admin.roleAssignment.write"]) {
