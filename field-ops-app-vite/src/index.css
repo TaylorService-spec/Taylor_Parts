@@ -7900,8 +7900,9 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .fo-preview-list__row:last-child { border-bottom: none; }
 
-.fo-preview-list__link,
-.fo-preview-list__row > .fo-preview-list__primary {
+/* ONE RULE FOR BOTH A LINKED AND AN UNLINKED ROW. They render the same wrapper element, so the
+   layout cannot land on the primary span and stack what should sit on one line. */
+.fo-preview-list__line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -7914,7 +7915,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   color: inherit;
 }
 
-.fo-preview-list__link:hover .fo-preview-list__primary { text-decoration: underline; }
+a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: underline; }
 
 .fo-preview-list__primary {
   font-family: var(--font-interface);

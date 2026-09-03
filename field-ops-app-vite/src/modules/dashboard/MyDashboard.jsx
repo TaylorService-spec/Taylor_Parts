@@ -33,6 +33,7 @@ import EmptyState from "../../shared/ui/EmptyState.jsx";
 import { ReachableDestinations, buildReachableGroups } from "../../navigation/LandingPage.jsx";
 import { composeDashboard, goalTargetsFor, resolvedModuleKeys, MODULE_STATE, SECTION } from "../../domain/dashboardComposition.js";
 import { usePerformanceGoals, goalKey } from "../../hooks/usePerformanceGoals.js";
+import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames.js";
 import { useAccountPortfolioSummary } from "../../hooks/useAccountPortfolioSummary.js";
 import { fetchReorderWarehouseOptions } from "../../services/reorderCallableClient.js";
 import { reportingDayIso } from "../../domain/reportingPeriod.js";
@@ -231,7 +232,8 @@ function BlockedModule({ label, blocker }) {
 }
 
 export default function MyDashboard({ role, allowedLegacyKeys = [], operationalContext = {} }) {
-  const { employeeId, displayName, operationalRoles } = useAuth();
+  const { user, employeeId, displayName, operationalRoles } = useAuth();
+  const authUid = user?.uid ?? null;
   const warehouseIds = useGovernedWarehouseIds();
 
   const ctx = useMemo(
@@ -277,6 +279,14 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   // Nothing below sorts: every list keeps its domain's own order, because a priority invented on the
   // dashboard would disagree with the workspace the "View all" link leads to.
   const reorder = useReorderRequests(moduleKeys.has("reorderQueue"));
+  // A reorder request stores a partId, not a part name. THE SAME RESOLVER the notification panel
+  // uses turns it into the canonical name -- reused rather than re-derived, and never falling back
+  // to the raw id, which #172 s8 forbids and which nobody could match to a shelf label anyway.
+  const { resolveName: resolvePartName } = useCanonicalPartNames({
+    uid: authUid,
+    accessVersion: operationalContext?.accessVersion,
+    enabled: moduleKeys.has("reorderQueue"),
+  });
   const opportunityFeed = useOpportunities(governedOpportunitySource);
   const coordinated = useCoordinatedOperations();
   // DEVICE-LOCAL, and therefore genuinely COMPLETE (#172 §9). This is the one queue whose whole
@@ -378,10 +388,14 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                       viewAll={{ href: reachableHref(destinationGroups, "inventory", "parts"), label: "View in Parts" }}
                       renderRow={(r) => ({
                         key: r.id,
-                        // BUSINESS IDENTITY, never the document id. A part number is what the person
-                        // holding the shelf label can actually match.
-                        primary: r.partNumber || r.sku || r.partName || "Reorder request",
-                        secondary: r.warehouseName || r.requestedByName || null,
+                        // BUSINESS IDENTITY, never the document id (#172 s8). The canonical part
+                        // name comes through the domain's OWN resolver -- the same one the
+                        // notification panel uses -- and if it has not resolved the row SAYS SO
+                        // rather than falling back to an id nobody can match to a shelf label.
+                        primary: resolvePartName(r.partId) || "Part name not resolved",
+                        // `requestedQty` is absent on legacy-shape requests, which is a real state
+                        // and not an error -- the row simply carries no quantity.
+                        secondary: r.requestedQty != null ? `Qty ${r.requestedQty}` : null,
                       })}
                     />
                   </ModuleFrame>

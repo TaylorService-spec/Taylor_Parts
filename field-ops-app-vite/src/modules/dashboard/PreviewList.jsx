@@ -39,15 +39,19 @@ export default function PreviewList({ preview, subject, emptyCopy, viewAll = nul
       <ul className="fo-preview-list">
         {preview.rows.map((row) => {
           const r = renderRow(row);
-          const body = (
-            <>
-              <span className="fo-preview-list__primary">{r.primary}</span>
-              {r.secondary && <span className="fo-preview-list__secondary">{r.secondary}</span>}
-            </>
-          );
+          // ONE WRAPPER IN BOTH CASES. An earlier version rendered a fragment when there was no
+          // href, so the row had no wrapper element at all and the layout rule landed on the
+          // PRIMARY span -- which became a full-width flex container and pushed the secondary onto
+          // its own line. A link and a non-link row must have the same shape, or only one of them
+          // is ever really styled.
+          const Wrapper = r.href ? Link : "div";
+          const wrapperProps = r.href ? { to: r.href } : {};
           return (
             <li key={r.key} className="fo-preview-list__row">
-              {r.href ? <Link to={r.href} className="fo-preview-list__link">{body}</Link> : body}
+              <Wrapper {...wrapperProps} className="fo-preview-list__line">
+                <span className="fo-preview-list__primary">{r.primary}</span>
+                {r.secondary && <span className="fo-preview-list__secondary">{r.secondary}</span>}
+              </Wrapper>
             </li>
           );
         })}
