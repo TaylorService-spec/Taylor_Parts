@@ -252,7 +252,7 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   // WHY THESE ARE HERE RATHER THAN `active: true` IN THE CATALOG. The Owner ruled the capabilities
   // activated; in this architecture a catalogued `active: true` means LIVE IN EVERY ENVIRONMENT,
   // production included, because an override set can only ADD activation and never remove it. That
-  // is precisely the defect DECISIONS #166 corrected for the report.* family one day earlier. So
+  // is precisely the defect DECISIONS #167 corrected for the report.* family one day earlier. So
   // the catalog entries stay `active: false` and activation happens per environment through this
   // seam -- which is what "activate" means in this codebase. Production activation is a separate
   // ruling and this path cannot deliver it: production is triple-blocked above.
