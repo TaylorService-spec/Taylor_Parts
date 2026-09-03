@@ -7960,3 +7960,117 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
+
+/* ── BIN-P5: location labels and export ──────────────────────────────────
+   The printable artifact of the BIN programme. Values come from the token layer;
+   no new colour pairs. */
+
+.fo-labels__controls,
+.fo-labels__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin: var(--space-4) 0;
+}
+
+.fo-labels__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fo-labels__picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-4) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fo-labels__picker label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The label sheet. `auto-fill` with a minimum keeps a label readable rather than
+   letting the grid squeeze the human code into illegibility on a narrow screen. */
+.fo-labelsheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--space-5);
+  margin: var(--space-5) 0;
+}
+
+.fo-labelsheet__label {
+  /* Explicit white/black: a label is printed, and it must not depend on a theme
+     background the printer will drop. */
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
+  padding: var(--space-4);
+  text-align: center;
+  break-inside: avoid;
+}
+
+.fo-binbarcode {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.fo-binbarcode__error {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+/* Visually dominant on purpose: this is what someone reads from across an aisle. */
+.fo-labelsheet__code {
+  margin: var(--space-2) 0 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.fo-labelsheet__context {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+}
+
+.fo-labelsheet__retired {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Print: the label sheet, and nothing else.
+   Everything is hidden, then the sheet and its ancestors are revealed and the sheet
+   is lifted to the top of the page. This is the reliable way to print one subtree
+   without the app shell -- hiding chrome selector-by-selector misses whatever gets
+   added next. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .fo-labelsheet,
+  .fo-labelsheet * {
+    visibility: visible;
+  }
+
+  .fo-labelsheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    margin: 0;
+  }
+
+  .fo-labelsheet__label {
+    /* A label split across a page boundary is a wasted label and a wasted sheet. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

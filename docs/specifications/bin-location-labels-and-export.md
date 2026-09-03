@@ -649,3 +649,90 @@ to clean up, no flag to unset, no printed-state to reconcile. The bins themselve
 ## Approval
 
 Pending review. **Implementation is not authorized by the existence of this document.**
+
+---
+
+## Implementation evidence
+
+Implemented on `claude/bin-p5-location-labels`, based on the approved-spec merge
+`ca2485a63ee8fbcfa9b871ed46a4c6c4e724da01`.
+
+### What was built
+
+| Piece | File | Note |
+|---|---|---|
+| Label projection + scan token + CSV | `field-ops-app-vite/src/domain/binLabel.js` | Pure. No React, no Firebase, no clock, no write |
+| Barcode renderer | `field-ops-app-vite/src/shared/ui/BinBarcode.jsx` | Code 128 → SVG, local, fails visibly |
+| Download helper | `field-ops-app-vite/src/services/downloadFile.js` | First one in the client; generic, not CSV-specific |
+| Labels & Export surface | `field-ops-app-vite/src/modules/administration/BinLabelsAndExport.jsx` | Selection, preview, print, export |
+| Integration + row Label action | `field-ops-app-vite/src/modules/administration/AdminWarehouseRacking.jsx` | Inside the existing P3 screen |
+| Label and print styles | `field-ops-app-vite/src/index.css` | Includes the first `@media print` block in the app |
+
+**Dependency added:** `jsbarcode@3.12.3` — one small maintained renderer. Verified to draw locally
+(59 `<rect>` elements for a real payload) with no network request and no external URL beyond the SVG
+XML namespace.
+
+### The backend was not touched at all
+
+```
+git diff --name-only origin/main -- functions/     →  0 files
+git diff --stat origin/main -- firestore.rules field-ops-app-vite/firestore.rules  →  no changes
+git diff --stat origin/main -- functions/src/access/ field-ops-app-vite/src/access/  →  no changes
+```
+
+`listBins` already returned `binId`, `code`, `name`, `status`, `area`, `aisle`, `bay`, `position`,
+and `normalizeScanToken` already accepted an `EOS-LOC:` prefix. Both census findings held, so P5 is
+entirely client-side and additive.
+
+### Decisions the implementation had to reach
+
+**The authority guards had to read code, not prose.** The static proofs assert that names like
+`labelVersion` and `stock_locations` do not appear in P5 source — but they *do* appear in P5
+comments, which exist to explain why those things are absent. Matching raw text would have punished
+documenting the decision, so the guards strip comments first. A comment saying "there is no
+`labelVersion`" is evidence of care, not a violation.
+
+**Two P3 assertions became ambiguous and were scoped, not weakened.** `A01-003` now legitimately
+appears twice on the page — once in the racking table, once in the label picker — so
+`getByText("A01-003")` began matching two elements. The assertions were always about the *table*, so
+they are now scoped to it rather than relaxed.
+
+**Re-selecting the same bin twice had to keep working.** The row `Label` action passes a request
+object carrying a timestamp rather than a bare `binId`, so asking for the same bin again re-selects
+it even if the operator changed the selection in between.
+
+**The print stylesheet hides everything and then reveals one subtree.** Hiding chrome
+selector-by-selector misses whatever gets added to the page next; `body * { visibility: hidden }`
+followed by revealing `.fo-labelsheet` cannot.
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| `binLabel.test.jsx` (new) | **34/34** |
+| `binLabelsSurface.test.jsx` (new) | **33/33** |
+| `binLabelsIntegration.test.jsx` (new) | **16/16** |
+| `adminWarehouseRacking.test.jsx` (P3 regression) | 27/27 |
+| `rackingLayoutGenerator.test.jsx` (P3 regression) | 30/30 |
+| `stockLocationSurfaceRetired.test.jsx` (P2R regression) | 10/10 |
+| `activeLabelConformance.test.jsx` · `adminRolesPermissions.test.jsx` | pass |
+| **Total vitest in the P5 + regression run** | **163/163** |
+| `cssClassCoverage` · `administrationPortalNav` · `financialsNavStructure` · `ciSuiteCoverage` | **20/20** |
+| Vite build | clean |
+
+All three new suites are registered in `admin-access-surfaces-tests.yml` — the workflow that already
+owns the Administration surfaces — not in a debt allowlist.
+
+### What was deliberately NOT built
+
+No label collection, template store or printed-label registry. No persisted symbology, dimensions,
+font or sheet size. No `labelVersion` / `lastPrintedCode` / `printedAt` / `labelNeeded`. No printer
+driver, print server, ZPL bridge or PDF infrastructure. No second symbology. No formatter-width
+control. No new capability, activation, grant, Rules change, backend callable or client-direct
+Firestore read. No quantity, custody, ledger write or Cycle Count change. **No deployment.**
+
+### Release dependency (unchanged)
+
+BIN-P2R, BIN-P3 and now BIN-P5 are merged and **undeployed**. The safe order remains
+`required Functions → new Hosting bundle → stock_locations-denying Rules`, because old Rules with new
+Hosting is safe and the reverse is not.
