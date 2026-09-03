@@ -20,7 +20,7 @@ const {
   readFinancialPolicyProfile,
   FINANCIAL_POLICY_PROFILES_COLLECTION,
 } = await import("../lib/finance/financialPolicyProfileCommand.js");
-const { FinancialPolicyError } = await import("../lib/finance/financialPolicyProfile.js");
+const { FinancialPolicyError, COGS_RECOGNITION_POINTS } = await import("../lib/finance/financialPolicyProfile.js");
 
 const app = getApps().length ? getApps()[0] : initializeApp({ projectId: process.env.GCLOUD_PROJECT });
 const db = getFirestore(app);
@@ -219,13 +219,46 @@ test("an unsupported method is refused before anything is written", async () => 
   assert.equal(await readFinancialPolicyProfile(co, db), null, "a refused configure stages nothing");
 });
 
-test("a blocked COGS recognition point is refused before anything is written", async () => {
+test("the unavailable-recognition-point rule still holds, and currently has no subject", async () => {
+  // REWRITTEN by Decision #171, and the rewrite is the finding. This used to refuse
+  // WORK_ORDER_CONSUMPTION as its example of a blocked point. Activating physical consumption
+  // lifted that block -- and it was the LAST one, so every recognition point is now available and
+  // the test has no subject.
+  //
+  // Faking one would prove nothing about the product. So the rule is asserted CONDITIONALLY: it must
+  // still refuse any point that is unavailable, and the current fact -- that none is -- is pinned
+  // beside it. The day a blocked point is added, the first branch starts exercising the rule again
+  // rather than the coverage having quietly lapsed.
+  const blocked = COGS_RECOGNITION_POINTS.filter((p) => !p.available);
+  assert.deepEqual(blocked, [], "no recognition point is blocked today -- consumption was the last");
+  for (const point of blocked) {
+    const co = nextCompany();
+    await assert.rejects(
+      () => configureFinancialPolicyProfile(draft(co, { cogsRecognitionPointId: point.id }), deps()),
+      (e) => e instanceof FinancialPolicyError && e.code === "RECOGNITION_UNAVAILABLE",
+    );
+    assert.equal(await readFinancialPolicyProfile(co, db), null);
+  }
+});
+
+test("an UNKNOWN recognition point is still refused before anything is written", async () => {
+  // The neighbouring rule, which does still have a subject -- and which keeps the write-nothing
+  // guarantee covered now that no point is blocked.
   const co = nextCompany();
   await assert.rejects(
-    () => configureFinancialPolicyProfile(draft(co, { cogsRecognitionPointId: "WORK_ORDER_CONSUMPTION" }), deps()),
-    (e) => e instanceof FinancialPolicyError && e.code === "RECOGNITION_UNAVAILABLE",
+    () => configureFinancialPolicyProfile(draft(co, { cogsRecognitionPointId: "WHENEVER" }), deps()),
+    (e) => e instanceof FinancialPolicyError && e.code === "RECOGNITION_UNSUPPORTED",
   );
   assert.equal(await readFinancialPolicyProfile(co, db), null);
+});
+
+test("WORK_ORDER_CONSUMPTION is now configurable, and writes like any other point", async () => {
+  // The other half of the same change: what used to refuse now succeeds, so the repoint above cannot
+  // be hiding a regression behind a different id.
+  const co = nextCompany();
+  await configureFinancialPolicyProfile(draft(co, { cogsRecognitionPointId: "WORK_ORDER_CONSUMPTION" }), deps());
+  const stored = await readFinancialPolicyProfile(co, db);
+  assert.equal(stored.cogsRecognitionPointId, "WORK_ORDER_CONSUMPTION");
 });
 
 // ============================ THE LOCK BEATS ADMIN AND OWNER ============================
