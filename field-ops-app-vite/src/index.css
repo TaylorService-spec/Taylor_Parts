@@ -8022,7 +8022,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 
 .fo-binbarcode__error {
-  color: var(--color-critical-fg, #b3261e);
+  color: var(--color-danger);
   font-weight: 600;
 }
 
