@@ -96,7 +96,7 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly thirteen Administration subnav items now exist", () => {
+ok("exactly fourteen Administration subnav items now exist", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
   // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
   // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
@@ -104,7 +104,24 @@ ok("exactly thirteen Administration subnav items now exist", () => {
   // Warehouse Racking joined them for BIN-P3 (2026-09-02): the physical shape of a warehouse is
   // governed configuration, so it sits with the other configuration surfaces rather than in an
   // Inventory workspace.
-  assert.equal(adminDomain.subnav.length, 13);
+  // Financial Policy joined for CERT-FIN-02 (2026-09-03): a company's accounting method is chosen
+  // once with its accounting team at deployment and locked at financial activation, which makes it
+  // company setup rather than routine financial work. Financials carries a read-only summary that
+  // links here; this is the single editing surface.
+  assert.equal(adminDomain.subnav.length, 14);
+});
+
+ok("Financial Policy is a visible Administration tab, and the only one", () => {
+  const item = adminDomain.subnav.find((i) => i.key === "financialPolicy");
+  assert.ok(item, "financialPolicy subnav item must exist");
+  assert.equal(item.path, "financial-policy");
+  assert.equal(item.label, "Financial Policy");
+  assert.notEqual(item.navHidden, true, "a configuration surface nobody can reach is not a surface");
+  assert.equal(
+    adminDomain.subnav.filter((i) => i.key === "financialPolicy").length,
+    1,
+    "exactly one nav slot may configure financial policy",
+  );
 });
 
 ok("Duplicate Rules is a visible Administration tab, not hidden", () => {
