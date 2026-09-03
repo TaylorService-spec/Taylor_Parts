@@ -3854,7 +3854,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    instead of a status colour the reader has to learn.
    All values come from the token layer; no new colour pairs are introduced. */
 
-.fo-duprules__summary {
+/* Shared with Administration > Warehouse Racking: both are a row of CompactMetrics under a
+   page header, and one rule keeps them from drifting apart visually. */
+.fo-duprules__summary,
+.fo-racking__summary {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-5);
