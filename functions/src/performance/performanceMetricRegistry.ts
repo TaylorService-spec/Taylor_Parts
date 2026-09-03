@@ -654,7 +654,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     rollup: rollsUp("RATIO_OF_SUMS", true),
     censusRef: "I-14",
     ...blocked(
-      "AB-4 activation (inventory.cycleCount.* is catalog-inactive, sandbox-overridden) AND an undefined rate: whether accuracy is counted by line, by part, by unit or by value is a decision, and the value option additionally requires FIN-BLOCK-003. " +
+      "AB-4 activation (inventory.cycleCount.* is catalog-inactive, sandbox-overridden) AND an undefined rate: whether accuracy is counted by line, by part, by unit or by value is a decision, and the value option additionally requires the VALUATION policy that FIN-BLOCK-003A deliberately left open (it closed cost SUPPLY, not which cost a unit on hand carries). " +
         G05_CLOSED,
     ),
   }),
@@ -689,7 +689,7 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     rollup: rollsUp("SUM", true),
     censusRef: "I-15",
     ...blocked(
-      "FIN-BLOCK-003 -- NO GOVERNED COST FACT EXISTS ANYWHERE. part_supplier_items.cost is a quote/term and FIN-001 rules it non-authoritative for margin; unitCost is blocked displayable/reportable/exportable together. Costing method, capture point, labor treatment and valuation authority are four open Owner decisions (ND-27).",
+      "VALUATION_POLICY_REQUIRED. FIN-BLOCK-003A closed cost SUPPLY for purchased goods -- a receipt against a priced purchase order now records a governed acquisition-cost fact. It did NOT close valuation, and this metric needs valuation, not supply: WHICH cost the units on hand carry is a policy nobody has chosen (ND-27, and DECISIONS #145's external accounting authority of record). Two further gaps survive independently: the inventory ledger carries no operatingCompanyId, so a per-company value has no lineage; and units received before this authority, or against an unpriced purchase order, have cost UNKNOWN -- which a total must not silently treat as zero. unitCost remains blocked displayable/reportable/exportable together.",
     ),
   }),
   Object.freeze({
@@ -704,7 +704,12 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("LOCATION", "FIRM"),
     rollup: noRollup("Turns is a ratio of a flow to a level; neither term is defined, so no rollup rule can be stated."),
     censusRef: "I-16",
-    ...blocked("FIN-BLOCK-003 (no value basis) AND " + G05_CLOSED),
+    ...blocked(
+      "COGS_COST_FLOW_REQUIRED and VALUATION_POLICY_REQUIRED -- BOTH terms are still missing, and acquisition cost supplies neither. " +
+        "The FLOW is COGS over a period: consumption is still a quantity-only ledger event, and deciding WHICH receipt's cost leaves inventory on a sale is a cost-flow policy that does not exist. " +
+        "The LEVEL is average inventory value, which needs the valuation policy inventory.value.amount is blocked on, plus a periodic inventory snapshot -- no snapshot of any kind exists. " +
+        G05_CLOSED,
+    ),
   }),
   Object.freeze({
     metricId: "inventory.carryingCost.amount",
@@ -718,7 +723,12 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     supportedScopes: scopes("LOCATION", "FIRM"),
     rollup: rollsUp("SUM", true),
     censusRef: "I-17",
-    ...blocked("FIN-BLOCK-003 (no value basis) AND " + G05_CLOSED),
+    ...blocked(
+      "CARRYING_RATE_REQUIRED and VALUATION_POLICY_REQUIRED. Carrying cost is a RATE applied to a VALUE, and acquisition cost supplies neither. " +
+        "No governed carrying rate exists anywhere -- no cost of capital, storage, insurance, shrink or obsolescence rate -- and adopting an industry-standard percentage is expressly refused: the number would be invented, not measured. " +
+        "The value it would apply to is blocked on the same valuation policy as inventory.value.amount. " +
+        G05_CLOSED,
+    ),
   }),
   Object.freeze({
     metricId: "inventory.wasteAvoided.amount",
@@ -733,7 +743,11 @@ export const PERFORMANCE_METRICS: readonly PerformanceMetric[] = Object.freeze([
     rollup: rollsUp("SUM", false),
     censusRef: "I-11 / G-01",
     ...blocked(
-      "THREE separate things are missing and all three are required. (1) A governed PREVENTION event, or a deterministic derivation of one -- nothing in the model records that waste was avoided. (2) A governed COST/VALUE basis -- FIN-BLOCK-003. (3) A stated COUNTERFACTUAL: 'avoided' is a claim about what would otherwise have happened, and which alternative history is being asserted is an Owner decision, not an implementation detail. A manually-entered wasteSaved figure is expressly refused.",
+      "PREVENTION_EVENT_REQUIRED and COUNTERFACTUAL_REQUIRED. Three things were missing; FIN-BLOCK-003A closed ONE of them and the other two are untouched, which is why this metric did not move. " +
+        "(1) A governed PREVENTION event, or a deterministic derivation of one -- nothing in the model records that waste was avoided. STILL MISSING, and it is the binding constraint. " +
+        "(2) A governed COST basis -- NOW PARTIALLY AVAILABLE for purchased goods via acquisition cost, though not for anything acquired unpriced or before that authority. " +
+        "(3) A stated COUNTERFACTUAL: 'avoided' is a claim about what would otherwise have happened, and which alternative history is being asserted is an Owner decision, not an implementation detail. STILL MISSING. " +
+        "A manually-entered wasteSaved figure is expressly refused.",
     ),
   }),
   Object.freeze({

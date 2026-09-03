@@ -16,6 +16,10 @@ on:
       - "functions/src/purchasing/**"
       - "functions/test/receiveCanonicalMultiLine.test.mjs"
       - "functions/test/purchaseOrderProgressRead.test.mjs"
+      - "functions/src/finance/acquisitionCost.ts"
+      - "functions/test/acquisitionCost.test.mjs"
+      - "functions/test/acquisitionCostReceipt.test.mjs"
+      - "functions/src/reorderRequest/**"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-receiving-command-tests.yml"
@@ -30,6 +34,10 @@ on:
       - "functions/src/purchasing/**"
       - "functions/test/receiveCanonicalMultiLine.test.mjs"
       - "functions/test/purchaseOrderProgressRead.test.mjs"
+      - "functions/src/finance/acquisitionCost.ts"
+      - "functions/test/acquisitionCost.test.mjs"
+      - "functions/test/acquisitionCostReceipt.test.mjs"
+      - "functions/src/reorderRequest/**"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-receiving-command-tests.yml"
@@ -225,6 +233,69 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: progress-read-emulator-logs
+          path: |
+            /tmp/receiving-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # FIN-BLOCK-003A -- receipt-time governed ACQUISITION COST. Its own emulator, for exactly the reason
+  # documented above: it drives real receipts through the governed command, so under the emulator's
+  # coarse transaction locking it must not share an instance with another receiving suite.
+  #
+  # Reproduced while building this package: run back-to-back with the canonical multi-line suite in one
+  # emulator, the SERIAL suite fails three cases with ABORTED: Transaction lock timeout, and each suite
+  # passes alone. Confirmed pre-existing -- the acquisition-cost writes are absent from that suite
+  # entirely (its purchase orders carry no price, so no cost fact is produced).
+  acquisition-cost-receipt:
+    name: Acquisition cost at receipt (isolated emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build
+        run: npm run build
+        working-directory: functions
+
+      - name: Acquisition cost authority (pure — no emulator needed)
+        run: node --test test/acquisitionCost.test.mjs
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/receiving-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/receiving-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/receiving-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Receipt-time acquisition cost evidence
+        run: node test/acquisitionCostReceipt.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acquisition-cost-emulator-logs
           path: |
             /tmp/receiving-emulator.log
             functions/firestore-debug.log

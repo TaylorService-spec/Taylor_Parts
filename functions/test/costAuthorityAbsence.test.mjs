@@ -3,10 +3,25 @@
 // Pure (no emulator, no network). Prerequisite: npm run build.
 //   node --test test/costAuthorityAbsence.test.mjs
 //
+// ============================ WHAT CHANGED, AND WHAT DID NOT (Decision #164) ============================
+//
+// FIN-BLOCK-003A closed ONE of the absences this file was written to guard: EOS now captures a
+// governed ACQUISITION cost fact when priced purchased goods are received
+// (`finance/acquisitionCost.ts`, guarded by `acquisitionCost.test.mjs`). Two assertions here were
+// updated to match — the COGS guard now inspects code with comments and strings stripped, so it stops
+// firing on prose that EXPLAINS the absence, and the metric-blocker guard now requires each metric to
+// name the authority that genuinely remains missing rather than a cost gap that has closed.
+//
+// EVERYTHING ELSE IN THIS FILE STILL HOLDS, and holds more importantly than before. Cost SUPPLY is not
+// valuation, not COGS and not margin recognition. The ledger is still quantity-only, consumption still
+// records no cost, `COST` is still not a financial source type, labour still refuses rates, and
+// nothing still constructs a `GovernedCostFact` — because binding a cost to a revenue line IS the
+// open COGS decision.
+//
 // ============================ WHY A TEST FOR SOMETHING THAT DOES NOT EXIST ============================
 //
 // The 2026-09-02 reconciliation measured every cost-like field in the repository and found that EOS
-// has NO governed cost fact: the inventory ledger is quantity-only, no purchase price reaches
+// had NO governed cost fact: the inventory ledger is quantity-only, no purchase price reached
 // receiving, no COGS concept exists, the labour domain records hours and refuses rates, and
 // `deriveGrossMargin` therefore returns UNKNOWN for every real invocation because nothing constructs
 // a `GovernedCostFact`.
@@ -166,10 +181,24 @@ test("COST is not a financial source type — a cost fact cannot enter FIN-002 a
 });
 
 test("no COGS concept exists anywhere in functions/src", () => {
+  // CODE ONLY. Comments and string literals are stripped first, and that is not a loophole — it is
+  // what keeps the guard aimed at the harm. FIN-BLOCK-003A (Decision #164) closed acquisition cost
+  // SUPPLY, and the modules that did so explain at length why COGS is still open; the metric registry
+  // now carries a COGS_COST_FLOW_REQUIRED blocker LABEL for the same reason. Matching those would make
+  // the guard fire on the documentation of the very absence it protects — and the first false positive
+  // is the commit that deletes the guard.
+  //
+  // What must still not exist is an IMPLEMENTATION: a field, type, constant or function.
+  const stripped = (rel) =>
+    code(rel)
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "")
+      .replace(/"[^"]*"|'[^']*'/g, '""');
   const hits = [];
   for (const file of walk(SRC)) {
     const rel = file.slice(SRC.length).replace(/\\/g, "/");
-    if (/\b(costOfGoodsSold|costOfSales)\b/.test(code(rel)) || /\bcogs\b/i.test(code(rel))) hits.push(rel);
+    const src = stripped(rel);
+    if (/\b(costOfGoodsSold|costOfSales)\b/.test(src) || /\bcogs\b/i.test(src)) hits.push(rel);
   }
   assert.deepEqual(hits, [], `COGS appeared in ${hits.join(", ")}. When cost leaves inventory and becomes cost-of-revenue is a RECOGNITION decision, separate from cost supply and from valuation.`);
 });
@@ -235,7 +264,13 @@ test("no receiving path reads the supplier quote", () => {
 // THE METRIC REGISTRY STAYS HONEST
 // ===========================================================================
 
-test("every cost-dependent metric is still blocked, and still names FIN-BLOCK-003", () => {
+test("every cost-dependent metric is still blocked, and each names the blocker that ACTUALLY survives", () => {
+  // UPDATED by FIN-BLOCK-003A (Decision #164), and deliberately made STRICTER rather than looser.
+  //
+  // These four used to be blocked on "no governed cost fact exists anywhere". One does now, for
+  // purchased goods — so continuing to assert that wording would have pinned a claim that had become
+  // false, which is the failure mode this whole suite exists to prevent. Each must now name the
+  // authority that genuinely remains missing, and must NOT still blame the cost gap that closed.
   for (const metricId of [
     "inventory.value.amount",
     "inventory.turns.ratio",
@@ -245,7 +280,15 @@ test("every cost-dependent metric is still blocked, and still names FIN-BLOCK-00
     const m = findMetric(metricId);
     assert.ok(m, `${metricId} must stay registered — a blocked metric is how the platform says what it would measure`);
     assert.equal(m.activeForGoals, false, `${metricId} must stay blocked while no cost authority exists`);
-    assert.match(m.blockedBy, /FIN-BLOCK-003|cost fact|cost basis|value basis/i, `${metricId} must name the cost blocker`);
+    assert.match(
+      m.blockedBy,
+      /VALUATION_POLICY_REQUIRED|COGS_COST_FLOW_REQUIRED|CARRYING_RATE_REQUIRED|PREVENTION_EVENT_REQUIRED/,
+      `${metricId} must name the authority that actually remains missing`,
+    );
+    assert.ok(
+      !/NO GOVERNED COST FACT EXISTS ANYWHERE/.test(m.blockedBy),
+      `${metricId} still claims no cost fact exists — acquisition cost supply closed that (Decision #164)`,
+    );
   }
 });
 

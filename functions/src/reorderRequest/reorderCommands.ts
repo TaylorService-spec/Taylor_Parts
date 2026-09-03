@@ -27,6 +27,7 @@
 // model.
 
 import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority";
+import { governedPurchasePrice, AcquisitionCostError } from "../finance/acquisitionCost.js";
 
 export type ReorderCommandCode =
   | "INVALID"
@@ -211,6 +212,19 @@ export interface RecordReorderPurchaseOrderInput {
   orderedQuantity: number;
   orderedDate: string;
   expectedArrivalDate?: string | null;
+  /**
+   * FIN-BLOCK-003A -- the acquisition price COMMITTED TO THE VENDOR, in integer minor units, with an
+   * explicit currency. Supplied together or not at all; a partial price is refused.
+   *
+   * OPTIONAL, deliberately, and this is the one judgement worth stating. Recording a purchase order is
+   * a live deployed workflow whose callers predate this authority, and every purchase order already in
+   * Firestore carries no money at all. Making price mandatory here would break receiving for existing
+   * work in order to add a field -- the opposite of the ruling's intent. An unpriced purchase stays
+   * receivable and its cost stays UNKNOWN; it never becomes zero. Requiring a price on NEW commitments
+   * is an activation step, not a code default.
+   */
+  unitPriceMinor?: number;
+  currency?: string;
   /** NOT AN INPUT -- the company is the request's. Declared so supplying it is refused. */
   operatingCompanyId?: never;
 }
@@ -224,6 +238,16 @@ export interface BuiltReorderPurchaseOrder {
   orderedQuantity: number;
   orderedDate: string;
   expectedArrivalDate: string | null;
+  /**
+   * The governed committed price, or null when this purchase carries none. NULL IS NOT ZERO -- it is
+   * the honest statement that no price was governed for this commitment, and every downstream reader
+   * treats it as UNKNOWN rather than free.
+   *
+   * Both fields move together: they are set from one validated value or both left null, so a stored PO
+   * can never carry an amount whose currency is unknown.
+   */
+  unitPriceMinor: number | null;
+  currency: string | null;
   status: "ORDERED";
   createdBy: string;
   createdAt: number;
@@ -299,6 +323,22 @@ export function buildRecordReorderPurchaseOrder(
     throw new ReorderCommandError("PO_FIELD_INVALID", "expectedArrivalDate, when provided, must be a non-empty string");
   }
 
+  // FIN-BLOCK-003A -- THE VENDOR COMMITMENT POINT. Recording the purchase order IS the moment the
+  // price is committed to the supplier: the request moves to ORDERED and the PO becomes immutable. No
+  // new purchasing state was invented for cost; the money is governed at the transition that already
+  // means "placed with the vendor".
+  //
+  // The price authority lives in finance/acquisitionCost.ts, not here. Purchasing decides WHETHER a
+  // price was committed; finance decides what a governed price IS. Re-implementing the integer and
+  // currency checks locally would give the repo two answers to one question.
+  let price: { unitPriceMinor: number; currency: string } | null;
+  try {
+    price = governedPurchasePrice({ unitPriceMinor: input.unitPriceMinor, currency: input.currency });
+  } catch (err) {
+    if (err instanceof AcquisitionCostError) throw new ReorderCommandError("PO_FIELD_INVALID", err.message);
+    throw err;
+  }
+
   const requestId = input.reorderRequestId.trim();
   return {
     purchaseOrder: {
@@ -311,6 +351,8 @@ export function buildRecordReorderPurchaseOrder(
       orderedQuantity: input.orderedQuantity,
       orderedDate: input.orderedDate.trim(),
       expectedArrivalDate: nonEmpty(input.expectedArrivalDate) ? input.expectedArrivalDate.trim() : null,
+      unitPriceMinor: price === null ? null : price.unitPriceMinor,
+      currency: price === null ? null : price.currency,
       status: "ORDERED",
       createdBy: ctx.actorUid,
       createdAt: ctx.nowMillis,

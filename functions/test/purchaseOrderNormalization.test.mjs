@@ -51,7 +51,13 @@ test("a legacy purchase order normalizes to exactly one canonical line", () => {
   assert.equal(po.purchaseOrderId, "REQ-1");
   assert.equal(po.origin, "LEGACY_REORDER");
   assert.equal(po.lines.length, 1);
-  assert.deepEqual({ ...po.lines[0] }, { lineId: LEGACY_LINE_ID, partId: "PRT-1001", quantity: 5 });
+  // FIN-BLOCK-003A: a legacy purchase order carrying no money normalizes to an UNPRICED line. The
+  // nulls are the point of this assertion, not incidental to it — an unpriced line must not arrive
+  // downstream as a zero-cost one.
+  assert.deepEqual(
+    { ...po.lines[0] },
+    { lineId: LEGACY_LINE_ID, partId: "PRT-1001", quantity: 5, unitPriceMinor: null, currency: null },
+  );
 });
 
 test("the legacy line id is DETERMINISTIC — the same for every document, every read", () => {

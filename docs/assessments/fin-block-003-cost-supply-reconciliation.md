@@ -4,6 +4,15 @@
 created, no metric activated, no capability granted, no deployment. Measured 2026-09-02 against
 `225052f3`.
 
+> **SUPERSEDED IN PART, 2026-09-02 — FIN-BLOCK-003A (Decision #164).** The CASE D finding below
+> was the state at `225052f3` and is preserved as the measurement that justified the ruling. EOS now
+> captures a governed ACQUISITION cost fact for purchased physical goods at receipt
+> (`functions/src/finance/acquisitionCost.ts`). **Section 0 is the key to what did and did not change:**
+> question 1 (COST SUPPLY) is CLOSED for purchased goods; questions 2 (VALUATION POLICY) and 3
+> (COGS / MARGIN RECOGNITION) remain **OPEN**, as do labour cost, landed cost, carrying rate,
+> returns/rebates and cost-correction authority. Open Owner decision 5 (company attribution) is closed
+> **for the purchase path only** — the inventory ledger still carries no `operatingCompanyId`.
+
 **Result: CASE D — NO GOVERNED COST SUPPLY.** EOS has no governed cost fact. It is not partially
 present and it is not in conflict with itself: the platform refuses to fabricate cost in several
 independent places, deliberately and with tests. That is a healthy state, not a hole.
