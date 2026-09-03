@@ -2,42 +2,33 @@
 
 **Audience:** technicians recording parts used in the field
 **Applies to:** Work Order → Execution capture → **Parts Used**
-**Training represents:** Decision #168 (merged)
+**Training represents:** Decisions #168 + #171 (merged)
 **Effective date:** 2026-09-02
-**Environment:** none — **this behaviour is NOT ACTIVE in any environment**
+**Environment:** merged and active in code — **not yet deployed to any environment**
 **Owner:** Verenward product training
 
-> **READ THIS FIRST — NOTHING HAS CHANGED FOR YOU YET.**
->
-> The behaviour described here is built and merged but **switched off**. Today, recording parts used
-> works exactly as it always has: **+** and **−** per planned part, and nothing asks you where the
-> part came from.
->
-> This guide exists so the procedure is written down before it is switched on, not because you need
-> to do anything differently now. **Do not train against it yet.** See *Verification receipt*.
+## What this guide helps you do
 
-## What this guide will help you do
-
-Record which parts you actually used on a job — and, once this is switched on, **where each part came
-from**.
+Record which parts you actually used on a job, and **where each part came from**.
 
 ## Why EOS will ask where the part came from
 
-Today EOS knows a part was used but not where it left from, so the stock stays counted as if it were
+Without it, EOS would know a part was used but not where it left from, so the stock would stay counted as if it were
 still on the shelf. Someone else can then be promised a part that is already fitted to a customer's
 machine.
 
 Saying where it came from is what stops that. It is one answer per part, and often EOS already knows
 it and will not ask at all.
 
-## Normal workflow (once active)
+## Normal workflow
 
 1. Open your Work Order and go to **Parts Used**.
 2. Press **+** for each unit of a planned part you fitted.
-3. **If the parts were picked for this job**, EOS already knows the source and shows it — for example
-   *Source: Phoenix Warehouse — from Work Order pick*. Nothing more to do.
-4. **If EOS does not know**, it asks for an **Inventory source** before it will record the usage.
-   Choose where the part actually came from — a warehouse, or your truck.
+3. **If the parts were picked for this job**, EOS already knows the source and pre-selects it, showing
+   *From Work Order pick* beneath it. Nothing more to do.
+4. **If EOS does not know**, an **Inventory source** list appears before it will record the usage.
+   Choose where the part actually came from — a warehouse under *Warehouses*, or your own vehicle
+   under *My truck*.
 5. The usage is recorded and the stock leaves that location.
 
 ## When you must change the source
@@ -95,16 +86,20 @@ Administrator — do not work around it.
 - **New:** you can change the source when the part actually came from elsewhere, including your truck.
 - **New:** reducing a recorded quantity returns the stock to its original source automatically.
 - **Unchanged:** who may record usage, and the **+**/**−** interaction itself.
-- **Known limitation:** the source picker requires location-selection authority that does not yet
-  exist for technicians. **This is why the feature is off.**
+- **Known limitation:** the list shows only ACTIVE warehouses and your own assigned truck. It does
+  not show how much stock is at each place — it is there to record where a part came from, not to
+  look up inventory.
 
 ## Verification receipt
 
-- Training checked against deployed release/SHA: **NOT DEPLOYED, AND NOT ACTIVE.**
-- Workflow exercised/visually verified: **NO.** `PHYSICAL_CONSUMPTION_ACTIVE = false`, so the
-  workflow described here cannot be exercised anywhere — not even in sandbox.
+- Training checked against deployed release/SHA: **NOT DEPLOYED.** Written against merged code
+  (Decisions #168 + #171), verified against nine end-to-end emulator proofs of the real callable.
+- Workflow exercised/visually verified: **NOT IN A DEPLOYED ENVIRONMENT.** The behaviour is active in
+  code and proven against the Firestore emulator, but the sandbox is at an older release, so no user
+  has yet exercised this screen anywhere.
 - Screenshots current where used: not applicable — none used.
-- Known sandbox-only or future behavior present in guide: **YES — the entire guide.**
-- Training status: **DRAFT — PENDING AUTHORITY.** It cannot become `DRAFT — PENDING DEPLOYMENT
-  VERIFICATION` until `CONSUMPTION_SOURCE_SELECTION_AUTHORITY_REQUIRED` is ruled and the feature is
-  activated, and cannot become `COMPLETE` until it is verified against a real deployment.
+- Known sandbox-only or future behavior present in guide: **YES** — the whole guide describes merged
+  but undeployed behaviour.
+- Training status: **DRAFT — PENDING DEPLOYMENT VERIFICATION.** It becomes COMPLETE only after a
+  deployment and a real verification against it, per docs/training/README.md. Merged code is not a
+  verification.

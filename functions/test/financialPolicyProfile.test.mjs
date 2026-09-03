@@ -9,6 +9,9 @@
 // accounting team makes during deployment and is not encoded anywhere in source.
 import test from "node:test";
 import assert from "node:assert/strict";
+// Decision #171: this module DERIVES the WORK_ORDER_CONSUMPTION recognition point's availability
+// from the physical gate rather than restating it, so the gate is imported to assert they agree.
+const { PHYSICAL_CONSUMPTION_ACTIVE } = await import("../lib/workOrderConsumption/consumptionActivation.js");
 
 const {
   PLATFORM_INVARIANTS,
@@ -166,21 +169,36 @@ test("physical movement is never a recognition point", () => {
   }
 });
 
-test("an unavailable recognition point cannot be configured, and says why", () => {
-  const blocked = cogsRecognitionPoint("WORK_ORDER_CONSUMPTION");
-  assert.equal(blocked.available, false);
-  assert.match(blocked.blockedReason, /CONSUMPTION_SOURCE_SELECTION_AUTHORITY_REQUIRED/);
-  assert.match(blocked.blockedReason, /does not remove physical stock/);
-  assert.throws(
-    () => profile({ cogsRecognitionPointId: "WORK_ORDER_CONSUMPTION" }),
-    (e) => e instanceof FinancialPolicyError && e.code === "RECOGNITION_UNAVAILABLE",
-    "service-parts COGS must stay blocked while consumption leaves the item on the shelf",
+test("WORK_ORDER_CONSUMPTION became selectable when physical consumption went live", () => {
+  // UPDATED BY Decision #171, and by this module's OWN design rather than despite it. The
+  // availability here is not restated beside the physical gate -- it READS it, precisely so that
+  // .
+  //
+  // #171 flipped it: a technician can now name the governed location a part came from, consumption
+  // writes a located WORK_ORDER_CONSUMPTION movement, and physical on-hand drops. The condition this
+  // point was blocked on -- "consumption does not remove physical stock" -- is no longer true, so
+  // the block lifted itself.
+  //
+  // SELECTABLE IS NOT RECOGNIZED. Nothing here computes or relieves cost; an operator may now CHOOSE
+  // this as a policy recognition point, which is a configuration option, not a cost flow.
+  const point = cogsRecognitionPoint("WORK_ORDER_CONSUMPTION");
+  assert.equal(point.available, true);
+  assert.equal(point.blockedReason, null);
+  assert.equal(
+    profile({ cogsRecognitionPointId: "WORK_ORDER_CONSUMPTION" }).cogsRecognitionPointId,
+    "WORK_ORDER_CONSUMPTION",
   );
+});
+
+test("availability is DERIVED from the physical gate, never restated beside it", () => {
+  // The property that made the update above automatic. If these two ever disagree, one of them is a
+  // stale copy of a decision the other owns.
+  assert.equal(cogsRecognitionPoint("WORK_ORDER_CONSUMPTION").available, PHYSICAL_CONSUMPTION_ACTIVE);
 });
 
 test("the available recognition points are real governed events", () => {
   const available = COGS_RECOGNITION_POINTS.filter((p) => p.available).map((p) => p.id);
-  assert.deepEqual(available.sort(), ["EQUIPMENT_INSTALL", "INVOICE_ISSUE", "SALES_ORDER_FULFILLMENT"]);
+  assert.deepEqual(available.sort(), ["EQUIPMENT_INSTALL", "INVOICE_ISSUE", "SALES_ORDER_FULFILLMENT", "WORK_ORDER_CONSUMPTION"]);
   for (const id of available) assert.equal(profile({ cogsRecognitionPointId: id }).cogsRecognitionPointId, id);
 });
 

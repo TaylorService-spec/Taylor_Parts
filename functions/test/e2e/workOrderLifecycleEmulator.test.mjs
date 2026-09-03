@@ -25,6 +25,7 @@ import {
   ledgerEntries,
   auditEvents,
   CATALOG_SKUS,
+  E2E_WAREHOUSE,
 } from "./lib/testKit.mjs";
 
 const { createWorkOrder } = await import("../../lib/createWorkOrder.js");
@@ -126,12 +127,18 @@ await check("full chain: create -> plan -> schedule -> dispatch -> accept -> tra
     callReq(techUid, {
       workOrderId,
       qtyUsedUpdates: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, delta: 1 }],
+      // Decision #171: a positive qtyUsed names the governed source it came from. The harness already
+      // seeds this warehouse ACTIVE and stocks it, so this is the source the parts genuinely left.
+      consumptionSources: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, locationId: E2E_WAREHOUSE }],
       executionNote: "Replaced compressor, 1 used of 2 planned.",
       idempotencyKey: execIdemKey,
     }),
   );
   assert.equal(execResult.success, true);
-  assert.deepEqual(execResult.updatedFields.sort(), ["executionLog", "inventorySnapshot", "lastUpdated"]);
+  // Decision #171 adds "physicalConsumption": recording usage now also moved real stock, and the
+  // response says so. Asserted exactly rather than loosened -- if the physical movement ever stops
+  // happening, this field disappears and this line is what notices.
+  assert.deepEqual(execResult.updatedFields.sort(), ["executionLog", "inventorySnapshot", "lastUpdated", "physicalConsumption"]);
 
   wo = await getWorkOrder(workOrderId);
   assert.equal(wo.inventorySnapshot[0].qtyUsed, 1);
@@ -146,6 +153,9 @@ await check("full chain: create -> plan -> schedule -> dispatch -> accept -> tra
     callReq(techUid, {
       workOrderId,
       qtyUsedUpdates: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, delta: 1 }],
+      // Decision #171: a positive qtyUsed names the governed source it came from. The harness already
+      // seeds this warehouse ACTIVE and stocks it, so this is the source the parts genuinely left.
+      consumptionSources: [{ sku: CATALOG_SKUS.COMPRESSOR.sku, locationId: E2E_WAREHOUSE }],
       executionNote: "Replaced compressor, 1 used of 2 planned.",
       idempotencyKey: execIdemKey,
     }),

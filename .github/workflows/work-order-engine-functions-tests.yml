@@ -15,6 +15,8 @@ on:
       - "functions/test/workOrderEquipment.test.mjs"
       - "functions/src/transitionWorkOrder.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"
+      - "functions/src/workOrderConsumption/**"
+      - "functions/test/physicalConsumptionE2E.test.js"
       - "functions/src/callerContext.ts"
       - "functions/src/woNumbering.ts"
       - "functions/src/transitionEngine.ts"
@@ -45,6 +47,8 @@ on:
       - "functions/test/workOrderEquipment.test.mjs"
       - "functions/src/transitionWorkOrder.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"
+      - "functions/src/workOrderConsumption/**"
+      - "functions/test/physicalConsumptionE2E.test.js"
       - "functions/src/callerContext.ts"
       - "functions/src/woNumbering.ts"
       - "functions/src/transitionEngine.ts"
@@ -128,6 +132,15 @@ jobs:
       - name: Inventory ledger governed-sum arithmetic (offline, no emulator)
         run: npm run build && node --test test/woAvailabilityGovernedLedger.test.mjs
         working-directory: functions
+
+      # Customer 1 physical consumption, end to end: receive 5, consume 2, on-hand 3, and Sales
+      # Order availability sees 3. Runs in THIS lane because it drives the same Work Order execution
+      # command the lane already owns, against the emulator this job already starts.
+      - name: Physical consumption end to end (Firestore emulator)
+        run: node --test test/physicalConsumptionE2E.test.js test/updateWorkOrderExecutionDataIdempotency.test.js
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
 
       - name: Sales Order fulfillment write-back tests (unit + emulator)
         run: npm run test:salesOrderFulfillmentWriteBack && npm run test:salesOrderFulfillmentWriteBackEmulator

@@ -8074,3 +8074,20 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     page-break-inside: avoid;
   }
 }
+
+/* Execution Capture -- the consumption source control (Decision #171).
+   Full row width beneath the qty buttons so the label, the select and its hint stack vertically at
+   handheld widths instead of competing with the +/- controls for horizontal space. */
+.fo-execution-capture__source {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+  min-width: 0;
+}
+.fo-execution-capture__source select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+}

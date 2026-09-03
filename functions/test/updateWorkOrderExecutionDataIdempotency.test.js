@@ -34,6 +34,15 @@ function callRequest(data, uid) {
   return { data, auth: uid !== undefined ? { uid, token: {} } : undefined };
 }
 
+// Decision #171: a positive qtyUsed now REQUIRES a governed physical source, so these fixtures seed
+// one ACTIVE warehouse and name it. Without this every positive case below refuses -- which is the
+// new behaviour working, not a defect. The idempotency/clamping properties under test are unchanged.
+const SRC_WH = "wh-exec-test";
+async function seedSourceWarehouse() {
+  await db.collection("warehouses").doc(SRC_WH).set({ name: "Execution Test Warehouse", status: "ACTIVE" });
+}
+const withSource = (sku) => ({ consumptionSources: [{ sku, locationId: SRC_WH }] });
+
 async function seedTechUser(uid, technicianId) {
   await db.collection(USERS).doc(uid).set({ role: "technician", technicianId });
 }
@@ -49,18 +58,19 @@ const readWO = async (woId) => (await db.collection(WOS).doc(woId).get()).data()
 
 test("same idempotencyKey twice -> qtyUsed applied ONCE and replayed:true on the retry", async () => {
   const uid = id("uid"), tech = id("tech"), woId = id("WO"), key = id("key");
+  await seedSourceWarehouse();
   await seedTechUser(uid, tech);
   await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
 
   const first = await updateWorkOrderExecutionData.run(
-    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], idempotencyKey: key }, uid),
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], ...withSource("A"), idempotencyKey: key }, uid),
   );
   assert.equal(first.success, true);
   assert.notEqual(first.replayed, true, "first application is not a replay");
   assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 1);
 
   const retry = await updateWorkOrderExecutionData.run(
-    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], idempotencyKey: key }, uid),
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], ...withSource("A"), idempotencyKey: key }, uid),
   );
   assert.equal(retry.replayed, true, "retry with same key is a no-op replay");
   assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 1, "qtyUsed must NOT double-count on retry");
@@ -68,6 +78,7 @@ test("same idempotencyKey twice -> qtyUsed applied ONCE and replayed:true on the
 
 test("same idempotencyKey twice -> executionLog appended exactly once", async () => {
   const uid = id("uid"), tech = id("tech"), woId = id("WO"), key = id("key");
+  await seedSourceWarehouse();
   await seedTechUser(uid, tech);
   await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
 
@@ -79,20 +90,22 @@ test("same idempotencyKey twice -> executionLog appended exactly once", async ()
 
 test("a DIFFERENT idempotencyKey applies again (distinct logical operations are not collapsed)", async () => {
   const uid = id("uid"), tech = id("tech"), woId = id("WO");
+  await seedSourceWarehouse();
   await seedTechUser(uid, tech);
   await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
 
-  await updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], idempotencyKey: id("k") }, uid));
-  await updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], idempotencyKey: id("k") }, uid));
+  await updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], ...withSource("A"), idempotencyKey: id("k") }, uid));
+  await updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], ...withSource("A"), idempotencyKey: id("k") }, uid));
   assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 2);
 });
 
 test("keyless legacy call still applies (deploy-safe) and writes no idempotency marker", async () => {
   const uid = id("uid"), tech = id("tech"), woId = id("WO");
+  await seedSourceWarehouse();
   await seedTechUser(uid, tech);
   await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
 
-  const r = await updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }] }, uid));
+  const r = await updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1 }], ...withSource("A") }, uid));
   assert.equal(r.success, true);
   assert.notEqual(r.replayed, true);
   assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 1);
@@ -102,6 +115,7 @@ test("keyless legacy call still applies (deploy-safe) and writes no idempotency 
 
 test("empty idempotencyKey is rejected (would collapse distinct calls to one marker)", async () => {
   const uid = id("uid"), tech = id("tech"), woId = id("WO");
+  await seedSourceWarehouse();
   await seedTechUser(uid, tech);
   await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
   await assert.rejects(
@@ -113,10 +127,11 @@ test("empty idempotencyKey is rejected (would collapse distinct calls to one mar
 for (const badDelta of [NaN, Infinity, -Infinity]) {
   test(`non-finite delta (${String(badDelta)}) is rejected with invalid-argument`, async () => {
     const uid = id("uid"), tech = id("tech"), woId = id("WO");
-    await seedTechUser(uid, tech);
+    await seedSourceWarehouse();
+  await seedTechUser(uid, tech);
     await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 0 }]);
     await assert.rejects(
-      updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: badDelta }] }, uid)),
+      updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: badDelta }], ...withSource("A") }, uid)),
       (err) => err.code === "invalid-argument",
     );
     assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 0, "rejected call must not have written qtyUsed");
@@ -125,11 +140,12 @@ for (const badDelta of [NaN, Infinity, -Infinity]) {
 
 test("a delta that would exceed qtyPlanned is clamped, not persisted unbounded", async () => {
   const uid = id("uid"), tech = id("tech"), woId = id("WO");
+  await seedSourceWarehouse();
   await seedTechUser(uid, tech);
   await seedWorkOrder(woId, tech, [{ sku: "A", qtyUsed: 8, qtyPlanned: 10 }]);
 
   const r = await updateWorkOrderExecutionData.run(
-    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1000 }] }, uid),
+    callRequest({ workOrderId: woId, qtyUsedUpdates: [{ sku: "A", delta: 1000 }], ...withSource("A") }, uid),
   );
   assert.equal(r.success, true);
   assert.equal((await readWO(woId)).inventorySnapshot[0].qtyUsed, 10, "qtyUsed must clamp at qtyPlanned (10), never persist unbounded");
@@ -138,7 +154,8 @@ test("a delta that would exceed qtyPlanned is clamped, not persisted unbounded",
 for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
   test(`terminal ${status} Work Order rejects execution-data writes`, async () => {
     const uid = id("uid"), tech = id("tech"), woId = id("WO");
-    await seedTechUser(uid, tech);
+    await seedSourceWarehouse();
+  await seedTechUser(uid, tech);
     await db.collection(WOS).doc(woId).set({ woNumber: woId, status, assignedTechId: tech, inventorySnapshot: [{ sku: "A", qtyUsed: 0 }] });
     await assert.rejects(
       updateWorkOrderExecutionData.run(callRequest({ workOrderId: woId, executionNote: "late edit" }, uid)),
