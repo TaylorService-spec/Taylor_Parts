@@ -7784,9 +7784,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    already established, and nothing here has a hover state of its own (the
    interactive pieces are existing primitives, which carry their own).
 
-   The KPI figure uses --font-size-2xl at 1440 and drops to --font-size-xl on a
-   handheld, matching the visual system's 32/24 scorecard tiers rather than
-   introducing a third size.
+   The KPI figure is 32px at 1440 and 24px on a handheld -- the visual system's
+   scorecard tiers, and the same pair .fin-figure__value already uses.
+
+   THIS COMMENT USED TO SAY --font-size-2xl / --font-size-xl "matching the visual
+   system's 32/24 scorecard tiers". Those tokens are 28px and 22px. The sentence was
+   the defect: it asserted a number the tokens do not carry, so every later reader
+   believed the tier was already correct and stopped measuring it.
    ========================================================================== */
 
 .fo-goal-grid {
@@ -7822,9 +7826,14 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   color: var(--color-text-muted);
 }
 
+/* THE SAME 32/24 KPI TIER as the module figures and the accepted Financials scorecard. This read
+   --font-size-2xl (28px) while a neighbouring comment claimed the "32/24 scorecard tiers"; the token
+   has never carried 32. Set on the COMPONENT rather than scoped to My Dashboard, because the
+   technician performance section renders the same tile outside .fo-dashboard-module -- one goal tile
+   must not be 32px on one screen and 28px on another. */
 .fo-goal-tile__value {
   font-family: var(--font-interface);
-  font-size: var(--font-size-2xl);
+  font-size: 32px;
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);
   color: var(--color-text-primary);
@@ -7920,19 +7929,31 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 .fo-dashboard-module .fo-state--iconic .fo-state-message { max-width: 60ch; }
 
-/* THE KPI TIER, ON THE DASHBOARD'S OWN FIGURES.
-   North Star section 8: "Stat values at the 32px KPI tier", dropping to the 24px handheld tier --
-   the visual system's existing 32/24 scorecard pair, which the goal tile above already uses. The
-   dashboard was rendering every module figure at CompactMetric's dense-row size, which is correct
-   for a dense row and wrong for the headline number of a section: a service-attention count and a
-   line in a table read as the same weight, and the screen flattened into undifferentiated text.
-   Scoped to dashboard modules so CompactMetric keeps its dense-row size everywhere else. */
+/* THE KPI TIER, ON THE DASHBOARD'S OWN FIGURES -- 32/24 EXACTLY.
+   North Star section 8: "Stat values at the 32px KPI tier", dropping to the 24px handheld tier.
+
+   THE TOKENS DO NOT SPELL THAT. --font-size-2xl is 28px and --font-size-xl is 22px, so the first
+   attempt at this rule used them, wrote "matching the visual system's 32/24 scorecard tiers" in its
+   own comment, and shipped 28/22. A comment asserting a number the token does not carry is worse
+   than no comment: the next reader believes the screen is on-spec and stops measuring.
+
+   The literals are the ACCEPTED PRECEDENT, not an invention: .fin-figure__value -- the Financials
+   scorecard the Owner reviewed and accepted -- is 32px dropping to 24px at 640, for this same KPI
+   role. Reusing that pair keeps one KPI tier across the product; promoting 32/24 into a global token
+   would be a site-wide typography mutation this corrective has no authority to make.
+
+   CompactMetric is scoped to the dashboard because it is used ELSEWHERE as a dense summary row,
+   where its smaller size is correct. The goal tile is handled on its own rule below instead of
+   here: `.fo-goal-tile` renders on My Dashboard AND on the technician performance section, and
+   only the first sits inside `.fo-dashboard-module` -- scoping it here would have left the same
+   component at 32px on one screen and 28px on the other, which is precisely the split this
+   correction exists to remove. */
 .fo-dashboard-module .fo-compact-metric__value {
-  font-size: var(--font-size-2xl);
+  font-size: 32px;
 }
 
 @media (max-width: 639.98px) {
-  .fo-dashboard-module .fo-compact-metric__value { font-size: var(--font-size-xl); }
+  .fo-dashboard-module .fo-compact-metric__value { font-size: 24px; }
 }
 
 /* BOUNDED ACTIONABLE PREVIEW (Owner Decision #172) -- rows of real work, never a total.
@@ -7991,7 +8012,7 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
      every unavailable state's REASON. Truncating the reason to fit is how an
      honest state becomes a blank, so nothing here clamps text. */
   .fo-goal-grid { grid-template-columns: 1fr; }
-  .fo-goal-tile__value { font-size: var(--font-size-xl); }
+  .fo-goal-tile__value { font-size: 24px; }
 }
 
 /* --------------------------------------------------------------------------

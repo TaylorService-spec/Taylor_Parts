@@ -23,6 +23,7 @@
 // would imply one.
 import { useEffect, useMemo, useState } from "react";
 import { Compass } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
@@ -499,18 +500,47 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
    * The counts come from the SAME projection the module below renders, so the band and the module
    * can never disagree.
    */
+  // DECLARED BEFORE THE ATTENTION ITEMS THAT READ IT. `const` is not hoisted: leaving this below
+  // the memo that derives its action links would throw on first render, and the error boundary
+  // would swallow it into a blank dashboard.
+  const destinationGroups = useMemo(
+    () => buildReachableGroups(role, allowedLegacyKeys, operationalContext),
+    [role, allowedLegacyKeys, operationalContext],
+  );
+
   const attentionItems = useMemo(() => {
+    // DESTINATIONS ARE DERIVED, NEVER WRITTEN DOWN. `reachableHref` asks the same function the nav
+    // rail and Go To section ask, and returns null when this principal cannot open the surface -- in
+    // which case the row carries no link rather than a door that does not open.
+    const serviceOps = reachableHref(destinationGroups, "serviceOperations", "serviceOperations");
+    const dispatcherBoard = reachableHref(destinationGroups, "service", "dispatcherBoard");
+    const linkTo = (href, label) => (href ? <Link to={href}>{label}</Link> : null);
+
     const items = [];
     for (const s of attentionSections ?? []) {
       if (s.sectionLabel === "Past Due") {
-        items.push({ key: "past-due", severity: "BLOCKING", fact: `${s.items.length} scheduled work order${s.items.length === 1 ? " is" : "s are"} past due` });
+        items.push({
+          key: "past-due",
+          severity: "BLOCKING",
+          fact: `${s.items.length} scheduled work order${s.items.length === 1 ? " is" : "s are"} past due`,
+          // NO OWNER. An aggregate over many work orders has no single responsible person, and
+          // inventing one to fill the optional field would attribute other people's work.
+          link: linkTo(serviceOps, "Open Service Operations"),
+        });
       }
       if (s.sectionLabel === "Scheduling Conflict") {
-        items.push({ key: "conflict", severity: "ATTENTION", fact: `${s.items.length} scheduling conflict${s.items.length === 1 ? "" : "s"} to resolve` });
+        items.push({
+          key: "conflict",
+          severity: "ATTENTION",
+          fact: `${s.items.length} scheduling conflict${s.items.length === 1 ? "" : "s"} to resolve`,
+          // The board is where a conflict is actually resolved, which is what makes this a link
+          // worth having rather than a second way to read the same number.
+          link: linkTo(dispatcherBoard, "Open Dispatcher Board"),
+        });
       }
     }
     return items;
-  }, [attentionSections]);
+  }, [attentionSections, destinationGroups]);
 
   const actualsByKey = useMemo(
     () =>
@@ -522,11 +552,6 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
         goalKey,
       ),
     [attentionSections, portfolio, portfolioState],
-  );
-
-  const destinationGroups = useMemo(
-    () => buildReachableGroups(role, allowedLegacyKeys, operationalContext),
-    [role, allowedLegacyKeys, operationalContext],
   );
 
   if (sections.length === 0) {
