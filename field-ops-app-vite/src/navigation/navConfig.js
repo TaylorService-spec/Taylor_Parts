@@ -559,6 +559,10 @@ export const NAV_DOMAINS = [
       // Configuration people read far more often than they edit, so it sits with
       // the other governed-configuration surfaces rather than in a workspace.
       { key: "duplicateRules", label: "Duplicate Rules", path: "duplicate-rules" },
+      // Warehouse Racking -- the physical shape of a warehouse, alongside the other governed
+      // configuration surfaces. Bins are places, not stock, so this is configuration and not an
+      // Inventory workspace.
+      { key: "warehouseRacking", label: "Warehouse Racking", path: "warehouse-racking" },
       { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],

@@ -1036,7 +1036,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "inventory.location.bin.manage",
     description:
-      "Create, retire or revive a descriptive bin (a physical sub-location within one warehouse) via the trusted bin registry commands. Place identity only: authors no quantity, no ledger movement and no inventory custody.",
+      "Create, rename, retire or revive a descriptive bin (a physical sub-location within one warehouse) via the trusted bin registry commands. Renaming moves the bin code claim and keeps the same bin. Place identity only: authors no quantity, no ledger movement and no inventory custody.",
     resource: "inventory.location.bin",
     action: "manage",
     active: false,
@@ -1044,7 +1044,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "inventory.location.bin.read",
     description:
-      "Resolve a scanned bin code within a warehouse, or list a warehouse's bins, via the trusted bin read services. Resolve-only: does not authorize creating or retiring bins, and grants nothing about inventory.",
+      "Resolve a scanned bin code within a warehouse, list a warehouse's bins, or preview what creating a proposed bin would do, via the trusted bin read services. Read-only: authors nothing, does not authorize creating or retiring bins, and grants nothing about inventory.",
     resource: "inventory.location.bin",
     action: "read",
     active: false,

@@ -596,3 +596,64 @@ SEPARATELY GATED (not P3)
 ## Approval
 
 Pending review. **Implementation is not authorized by the existence of this document.**
+
+---
+
+## Implementation evidence
+
+Implemented on `claude/bin-p3-racking-generator`, based on the approved-spec merge
+`d1ea3b07a75ab133b6838515826a88c886e28b6a`.
+
+### What was built
+
+| Piece | File | Note |
+|---|---|---|
+| Trusted preview read | `functions/src/inventoryLocation/binPreviewService.ts` | Read-only. Composes the SAME `validateBinDraft`, server-owned formatter and `deriveBinId` `createBin` uses. Writes nothing, opens no transaction. Batch bounded at 250 and **refused**, never truncated |
+| Preview callable | `functions/src/inventoryLocation/binCallables.ts`, `functions/src/index.ts` | `previewBinCreates`, gated on the EXISTING `inventory.location.bin.read` — no new capability |
+| Pure generator | `field-ops-app-vite/src/domain/rackingLayoutGenerator.js` | Aisle range or explicit list; per-aisle bay counts; per-bay position counts; explicit position lists. Odd default `2i−1` as GENERATION POLICY only |
+| Deterministic key | same file, `binIdempotencyKey` | `binadm:v1:{warehouseId}:{area}:{aisle}:{bay}:{position}` — inside P1's contract, which validates the key only as non-blank |
+| Bounded apply | `field-ops-app-vite/src/services/rackingApply.js` | N governed `createBin` calls, concurrency 4, per-row outcomes, no aggregate verdict |
+| Screen | `field-ops-app-vite/src/modules/administration/AdminWarehouseRacking.jsx` | Warehouse select, existing bins, add-one, generate, preview, apply, rename, deactivate/reactivate |
+| Route + nav | `field-ops-app-vite/src/App.jsx`, `src/navigation/navConfig.js` | Administration → Warehouse Racking |
+| Catalog description drift | `permissionCatalog.ts` ×2 | `.manage` now names `renameBin` (it predated it); `.read` now names the preview. **Descriptions only** — no `active`, no grant, no resource, no action changed |
+
+### Decisions the implementation had to reach
+
+**The deterministic key is the whole point.** A hand-added bin and a generated one at the same
+structured location derive the SAME key, so they are one bin that replays rather than two bins that
+collide. A random key would have made the generator unusable a second time.
+
+**`ALREADY_EXISTS` means replay, not resemblance.** The preview only says a bin exists when
+`createBin` with *this* request would return `unchanged`: the stored record must agree with the
+request in every identity field, its fingerprint must agree with itself, and its claim must point
+back to it. A bin at the same place under a different historical key is reported **CODE_RESERVED**,
+because that is what an apply would actually hit.
+
+**Re-previewing must not erase the apply result.** Found while testing: applying re-asked the
+registry, and the re-ask cleared the per-row outcomes the operator still needed to read. Clearing
+now belongs to input invalidation, not to the read.
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| `functions/test/binPreviewService.test.mjs` (new, 17) | **17/17** |
+| `functions/test/binRegistry.test.mjs` (P1 regression) | **48/48** |
+| `field-ops-app-vite/test/rackingLayoutGenerator.test.jsx` (new, 30) | **30/30** |
+| `field-ops-app-vite/test/adminWarehouseRacking.test.jsx` (new, 27) | **27/27** |
+| `functions/test/scannerReleaseReadiness.test.mjs` | 19/19 |
+| `functions/test/putAwayCommand.test.mjs` + others in the batch | 130 pass in the combined run |
+| `field-ops-app-vite/test/ciSuiteCoverage.test.mjs` | 5/5 — both new vitest suites are workflow-named |
+| `functions` `tsc` build · Vite build | clean |
+
+**One suite not run locally.** `functions/test/scannerEndToEndContract.test.mjs` requires the
+Firestore emulator on `127.0.0.1:8080`, which is not available in this environment; it was killed by
+a local timeout, not by an assertion. This branch does not touch that file. CI is the verifier.
+
+### What was deliberately NOT built
+
+No bulk write callable. No persisted racking plan (that would be the second configuration authority
+the spec refuses). No quantity, custody or on-hand anywhere on the screen. No bin delete and no claim
+release. No formatter-width control. No `createWarehouse` exposure and no
+`inventory.warehouse.status.set` registration — G10 stays separately gated. No capability activation,
+no role grant, no Rules change, **no deployment**.
