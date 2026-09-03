@@ -11,6 +11,100 @@ same hover contract — into one dashboard family. Where it names a component it
 
 ---
 
+## 0-A. IMPLEMENTATION RECONCILIATION — 2026-09-03
+
+**Status: CODE COMPLETE · AWAITING SANDBOX DEPLOYMENT AND LIVE VERIFICATION.**
+Not `ACCEPTED`, not `CLOSED`, not `LIVE VERIFIED`.
+
+Three merged packages took this design from framework to composed surface. **`NOT_WIRED` is now
+zero**: every module is composed, satisfied on another governed surface, gated on a named activation,
+or unavailable for a named missing authority.
+
+| | PR | What landed |
+|---|---|---|
+| 1 | #1786 | Goal actuals connected; four stale blockers corrected; booked/billed/collected split |
+| 2 | #1787 | **Owner Decision #172** — bounded actionable previews |
+| 3 | this | The last eight modules; role matrix; visual gate |
+
+### The final module matrix — 24 modules
+
+**READY (16)** — composed from governed authority on this surface.
+
+`unverifiedSubmissions` · `serviceAttention` · `reorderQueue` · `receivingQueue` · `adminDecisions` ·
+`myOpportunities` · `ordersRequiringAction` · `myGoals` · `teamGoals` · `workOrdersByStatus` ·
+`technicianComparison` · `technicianAvailability` · `accountPortfolio` · `firmBilled` ·
+`firmCollected` · `goTo`
+
+**SATISFIED_ELSEWHERE (2)** — live on the governed surface that owns them. A new state, added by
+#172 §11, because `NOT_WIRED` is a *work queue* and leaving a deliberately-delegated module in it
+would keep proposing work that must never be done.
+
+| Module | Where it lives |
+|---|---|
+| `myAssignedWork` | `TechnicianDashboard`, against the technician's own identity (PT-002) |
+| `myPerformanceAllTime` | `TechnicianDashboard` |
+
+**GATED (1)** — the authority exists; a named activation does not.
+
+| Module | Blocker |
+|---|---|
+| `governedStockPosition` | Two, and neither is the one this used to claim. `inventory.balance.read` **is** activated in platform-sandbox and `getPartBalance` **is** deployed. What blocks it: the client transport flag `INVENTORY_BALANCE_READ_READY` is false (a separate release decision), and the reads answer **per part** while the tile claims a location |
+
+**UNAVAILABLE (5)** — no authority exists; building one would invent it.
+
+| Module | Blocker |
+|---|---|
+| `technicianQualityMetrics` | On-time, first-time fix and jobs-per-workday each need a business definition nobody has made |
+| `myBooked` | Booked has no governed read, at any period |
+| `firmBooked` | Same, plus consolidated figures have no intercompany elimination rule (FIN-BLOCK-004) |
+| `stockForecast` | **Reclassified from NOT_WIRED.** The engine is real but answers per part, from that part's own history. A location figure built by adding per-part predictions would be a number with no authority behind it. No governed forecast-exception read exists to preview instead |
+| `costImpact` | Acquisition-cost facts now exist (FIN-BLOCK-003A). Valuation does not: no costing method chosen, no carrying rate, and waste avoided still needs a prevention event and a stated counterfactual |
+
+**NOT_WIRED: 0.** A test asserts this, and a second asserts every module resolves to exactly one of
+the four states above.
+
+### Decision #172 — bounded actionable previews
+
+> **A LIST OF REAL WORK IS ALLOWED. A TOTAL DERIVED FROM THAT LIST IS NOT.**
+
+Presentation authority only. It creates no data authority, no permission, no count authority, no
+aggregate authority and no metric definition. A preview shows rows, at most five, in the domain's own
+order, with "More items available" when truncated and a **View all** that is proven reachable through
+the same function the nav rail uses — never a plausible URL. `dashboardPreview.js` has no function
+that returns a length, and `hasMore` is a boolean, so there is nothing to render as a count.
+
+`EMPTY` and `UNKNOWN` are separate states, permanently: one means the queue is clear, the other means
+nobody could read it.
+
+### Corrections to §3 of this document
+
+§3.1–3.3 were measured on 2026-09-02 and three of their blockers have since been disproven. They are
+kept as history; **this section supersedes them**:
+
+- *"no reporting calendar"* — **false since G-05.** DAY/MTD/QTD/YTD/T12M on the America/Phoenix
+  calendar. The period was never booked's real obstruction.
+- *"`INVENTORY_BALANCE_READ_READY` transport flag is false"* — still true, but it was never the whole
+  blocker, and the capability activation it was paired with **is** present.
+- *"AB-3 `opportunity.read` catalog-inactive"* — activated in platform-sandbox; `MyOpportunities` is
+  composed.
+- `MyBilled`/`MyCollected` "awaiting per-environment activation" — activated, and now composed from
+  the server's own per-company, per-currency rollup.
+
+A test fails if any blocker sentence cites one of these closed gaps again.
+
+### What the dashboard still must never do
+
+No client money arithmetic; billed and collected are rendered per company and per currency exactly as
+the server rolled them up, never summed across either. No count from a bounded page. No ranking of
+technicians. No forecast presented as a stock position. No persona branching — composition reads
+governed facts only, proven by a test that gives an unrecognised role string real scope and asserts
+identical composition.
+
+**Training:** [`docs/training/MY_DASHBOARD.md`](../../training/MY_DASHBOARD.md) — DRAFT, pending
+deployment verification.
+
+---
+
 ## 0. A correction to the premise, recorded first
 
 The Owner's direction asked to "update My Dashboard P1v2" and listed six findings against it.

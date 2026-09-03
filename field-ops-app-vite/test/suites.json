@@ -162,6 +162,14 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dashboardRoleMatrix.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/dashboardTeamProjections.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/deniedSubnavRouting.test.mjs",
       "runner": "node"
     },
