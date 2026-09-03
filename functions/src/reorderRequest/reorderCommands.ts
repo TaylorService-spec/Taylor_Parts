@@ -27,7 +27,7 @@
 // model.
 
 import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority";
-import { governedPurchasePrice, AcquisitionCostError } from "../finance/acquisitionCost.js";
+import { governedPurchasePrice, AcquisitionCostError, PRICE_AUTHORITY_VERSION } from "../finance/acquisitionCost.js";
 
 export type ReorderCommandCode =
   | "INVALID"
@@ -46,6 +46,10 @@ export type ReorderCommandCode =
   | "PO_ALREADY_EXISTS"
   | "SUPPLIER_REQUIRED"
   | "PO_FIELD_INVALID"
+  // Its OWN code, not folded into PO_FIELD_INVALID. A refusal a purchasing user can act on ("enter
+  // the price") should not arrive wearing the same label as a malformed field, and a caller that
+  // needs to tell activation apart from a bad payload should not have to parse a message.
+  | "PO_PRICE_REQUIRED"
   | "IDEMPOTENCY_PAYLOAD_MISMATCH";
 
 export class ReorderCommandError extends Error {
@@ -214,14 +218,11 @@ export interface RecordReorderPurchaseOrderInput {
   expectedArrivalDate?: string | null;
   /**
    * FIN-BLOCK-003A -- the acquisition price COMMITTED TO THE VENDOR, in integer minor units, with an
-   * explicit currency. Supplied together or not at all; a partial price is refused.
+   * explicit currency. REQUIRED on every new commitment since activation.
    *
-   * OPTIONAL, deliberately, and this is the one judgement worth stating. Recording a purchase order is
-   * a live deployed workflow whose callers predate this authority, and every purchase order already in
-   * Firestore carries no money at all. Making price mandatory here would break receiving for existing
-   * work in order to add a field -- the opposite of the ruling's intent. An unpriced purchase stays
-   * receivable and its cost stays UNKNOWN; it never becomes zero. Requiring a price on NEW commitments
-   * is an activation step, not a code default.
+   * Still typed optional so that OMITTING them is a runtime REFUSAL with a message the purchasing
+   * user can act on, rather than a compile error in a caller that never sees this type. Zero is a
+   * legal committed price and is not the same as absent.
    */
   unitPriceMinor?: number;
   currency?: string;
@@ -246,8 +247,15 @@ export interface BuiltReorderPurchaseOrder {
    * Both fields move together: they are set from one validated value or both left null, so a stored PO
    * can never carry an amount whose currency is unknown.
    */
-  unitPriceMinor: number | null;
-  currency: string | null;
+  unitPriceMinor: number;
+  currency: string;
+  /**
+   * The governed price-authority stamp. Server-authored, and the ONLY thing that distinguishes a
+   * purchase order written under the price authority from one that predates it. See
+   * PRICE_AUTHORITY_VERSION for why this is a stored version rather than a date or an inference from
+   * a missing field.
+   */
+  priceAuthorityVersion: number;
   status: "ORDERED";
   createdBy: string;
   createdAt: number;
@@ -338,6 +346,25 @@ export function buildRecordReorderPurchaseOrder(
     if (err instanceof AcquisitionCostError) throw new ReorderCommandError("PO_FIELD_INVALID", err.message);
     throw err;
   }
+  // ACTIVATION (Decision #164 §7 → this ruling): price is now MANDATORY on every NEW commitment.
+  //
+  // The optional phase existed so the deployed workflow kept working while the authority was built.
+  // It is over: a purchase this command records is a purchase whose price the business chose, and
+  // recording one without a price would create a new UNKNOWN-cost receipt for no reason.
+  //
+  // This does NOT touch the purchase orders already in Firestore. Those are legacy by their missing
+  // version stamp, not by their missing price, and they stay receivable — see PRICE_AUTHORITY_VERSION.
+  //
+  // Explicit ZERO is accepted and is NOT the same as absent. A no-charge line — a warranty
+  // replacement, a sample, a supplier making good — is a real commercial fact worth recording as
+  // 0, and refusing it would push exactly that case back into the UNKNOWN bucket where it cannot
+  // be told apart from a price nobody entered.
+  if (price === null) {
+    throw new ReorderCommandError(
+      "PO_PRICE_REQUIRED",
+      "a committed purchase order requires unitPriceMinor and currency — enter 0 for a no-charge line rather than omitting the price",
+    );
+  }
 
   const requestId = input.reorderRequestId.trim();
   return {
@@ -351,8 +378,12 @@ export function buildRecordReorderPurchaseOrder(
       orderedQuantity: input.orderedQuantity,
       orderedDate: input.orderedDate.trim(),
       expectedArrivalDate: nonEmpty(input.expectedArrivalDate) ? input.expectedArrivalDate.trim() : null,
-      unitPriceMinor: price === null ? null : price.unitPriceMinor,
-      currency: price === null ? null : price.currency,
+      unitPriceMinor: price.unitPriceMinor,
+      currency: price.currency,
+      // SERVER-AUTHORED, never client-supplied. This stamp is what makes a purchase order recorded
+      // today distinguishable from one recorded before the authority existed — for good, and without
+      // consulting a clock or inferring anything from a missing field.
+      priceAuthorityVersion: PRICE_AUTHORITY_VERSION,
       status: "ORDERED",
       createdBy: ctx.actorUid,
       createdAt: ctx.nowMillis,

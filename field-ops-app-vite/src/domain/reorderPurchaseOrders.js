@@ -1,6 +1,7 @@
 import { doc, runTransaction } from "firebase/firestore";
 import { submitRecordReorderPurchaseOrder } from "../services/reorderCallableClient.js";
 import { db, auth } from "../firebase/firebase";
+import { fromMajorString } from "./money.js";
 import { isWriteBlocked } from "../config/env";
 import {
   PURCHASE_ORDERS_COLLECTION,
@@ -43,7 +44,19 @@ export function recordPurchaseOrder(
   // used: the server reads the part from the reorder request inside its transaction, so a PO can
   // never be recorded against a part the request never named. A client-supplied part would be a
   // second, forgeable answer to a question the request already answers.
-  { partId: _partId, supplierName, externalPoNumber, orderedQuantity, orderedDate, expectedArrivalDate }
+  {
+    partId: _partId,
+    supplierName,
+    externalPoNumber,
+    orderedQuantity,
+    orderedDate,
+    expectedArrivalDate,
+    // FIN-BLOCK-003A ACTIVATION -- the committed unit price, as the MAJOR-unit string the purchasing
+    // user typed ("19.99"), plus its currency. A string, deliberately: a float has already lost the
+    // exactness this conversion exists to preserve by the time it reaches here.
+    unitPriceMajor,
+    currency,
+  }
 ) {
   if (isWriteBlocked()) {
     console.warn("WRITE BLOCKED (recordPurchaseOrder)", reorderRequestId);
@@ -65,6 +78,38 @@ export function recordPurchaseOrder(
   }
   if (!orderedDate) {
     throw new Error("Ordered date is required.");
+  }
+
+  // ==================== THE COMMITTED PRICE (FIN-BLOCK-003A activation) ====================
+  //
+  // Converted here, once, through domain/money.js's `fromMajorString` -- the repo's existing exact
+  // major-to-minor parser. NOT re-implemented: it already rejects more fractional digits than the
+  // currency allows (so "19.999" is refused rather than silently rounded to a price nobody agreed),
+  // reads the string digit-by-digit rather than multiplying a float, and range-checks the result.
+  //
+  // `Number(major) * 100` is the obvious alternative and it is wrong: 19.99 * 100 is 1998.9999...
+  // in IEEE-754, and the rounding needed to rescue it is a decision about someone's money.
+  //
+  // ZERO IS A LEGAL PRICE and must survive every falsy check below -- a no-charge line (warranty
+  // replacement, sample, supplier making good) is a real commercial fact. Only an EMPTY field is
+  // missing, which is why this tests for empty string rather than for falsiness.
+  const trimmedCurrency = (currency ?? "").trim().toUpperCase();
+  const priceText = typeof unitPriceMajor === "string" ? unitPriceMajor.trim() : String(unitPriceMajor ?? "").trim();
+  if (priceText === "") {
+    throw new Error("Unit purchase price is required. Enter 0 for a no-charge line.");
+  }
+  if (!/^[A-Z]{3}$/.test(trimmedCurrency)) {
+    throw new Error("Currency is required (a 3-letter code such as USD).");
+  }
+  let unitPriceMinor;
+  try {
+    unitPriceMinor = fromMajorString(priceText, trimmedCurrency).minor;
+  } catch {
+    // The parser's own message names internals; this one names what the person must change.
+    throw new Error(`Enter the unit purchase price as an amount in ${trimmedCurrency}, for example 19.99.`);
+  }
+  if (unitPriceMinor < 0) {
+    throw new Error("Unit purchase price cannot be negative.");
   }
 
   // WORKSTREAM 2B -- THIS NOW GOES THROUGH THE TRUSTED COMMAND, not a client transaction.
@@ -91,6 +136,10 @@ export function recordPurchaseOrder(
     orderedQuantity: numericQty,
     orderedDate,
     expectedArrivalDate: expectedArrivalDate ?? null,
+    // MINOR UNITS cross the wire, never the typed string. The exact conversion happened once, above,
+    // where the currency that governs the number of decimal places was known.
+    unitPriceMinor,
+    currency: trimmedCurrency,
   });
 }
 

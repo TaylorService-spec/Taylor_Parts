@@ -19,6 +19,7 @@ on:
       - "functions/src/finance/acquisitionCost.ts"
       - "functions/test/acquisitionCost.test.mjs"
       - "functions/test/acquisitionCostReceipt.test.mjs"
+      - "functions/test/acquisitionCostActivation.test.mjs"
       - "functions/src/reorderRequest/**"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -37,6 +38,7 @@ on:
       - "functions/src/finance/acquisitionCost.ts"
       - "functions/test/acquisitionCost.test.mjs"
       - "functions/test/acquisitionCostReceipt.test.mjs"
+      - "functions/test/acquisitionCostActivation.test.mjs"
       - "functions/src/reorderRequest/**"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -269,8 +271,8 @@ jobs:
         run: npm run build
         working-directory: functions
 
-      - name: Acquisition cost authority (pure — no emulator needed)
-        run: node --test test/acquisitionCost.test.mjs
+      - name: Acquisition cost authority + activation (pure — no emulator needed)
+        run: node --test test/acquisitionCost.test.mjs test/acquisitionCostActivation.test.mjs
         working-directory: functions
 
       - name: Start Firestore emulator (background)

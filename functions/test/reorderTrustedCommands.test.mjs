@@ -122,6 +122,13 @@ const PO_INPUT = {
   externalPoNumber: "po-9001",
   orderedQuantity: 4,
   orderedDate: "2026-08-30",
+  // FIN-BLOCK-003A activation: a committed purchase order now carries its price. Added to the SHARED
+  // fixture rather than to individual cases because every test below is about something else —
+  // pairing, company inheritance, supplier identity, field validation — and each needs a valid
+  // commitment to exercise it. The price requirement itself is proven in
+  // acquisitionCostActivation.test.mjs, where it is the subject rather than a precondition.
+  unitPriceMinor: 2500,
+  currency: "USD",
 };
 const poCtx = { ...CTX, purchaseOrderExists: false };
 

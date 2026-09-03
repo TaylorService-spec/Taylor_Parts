@@ -290,15 +290,24 @@ test("the live purchase order accepts a governed price at vendor commitment", ()
   assert.equal(built.purchaseOrder.status, "ORDERED", "the commitment point is the existing ORDERED transition");
 });
 
-test("an UNPRICED live purchase order is still recordable — the workflow is not broken to add a field", () => {
-  const built = buildRecordReorderPurchaseOrder(
-    { reorderRequestId: "REQ-1", supplierName: "ACME", externalPoNumber: "PO-9", orderedQuantity: 10, orderedDate: "2026-09-01" },
-    { status: "PURCHASING_IN_PROGRESS", operatingCompanyId: "taylor", partId: "PRT-1" },
-    { actorUid: "u1", nowMillis: 1, purchaseOrderExists: false },
+test("an unpriced NEW commitment is now REFUSED — activation superseded the optional phase", () => {
+  // SUPERSEDED AND REWRITTEN, not deleted. This assertion used to prove the opposite: that an
+  // unpriced purchase order was still recordable, which was correct while the field was optional so
+  // the deployed workflow could keep running. The activation ruling ended that phase, so leaving the
+  // old assertion would have pinned a behaviour the Owner deliberately changed.
+  //
+  // What the optional phase actually protected — existing unpriced purchase orders — is now
+  // protected by the LEGACY STAMP instead, which is a better mechanism: it grandfathers real history
+  // without leaving a door open for new callers. See acquisitionCostActivation.test.mjs.
+  assert.throws(
+    () =>
+      buildRecordReorderPurchaseOrder(
+        { reorderRequestId: "REQ-1", supplierName: "ACME", externalPoNumber: "PO-9", orderedQuantity: 10, orderedDate: "2026-09-01" },
+        { status: "PURCHASING_IN_PROGRESS", operatingCompanyId: "taylor", partId: "PRT-1" },
+        { actorUid: "u1", nowMillis: 1, purchaseOrderExists: false },
+      ),
+    (e) => e.code === "PO_PRICE_REQUIRED",
   );
-  assert.equal(built.purchaseOrder.unitPriceMinor, null, "UNKNOWN");
-  assert.equal(built.purchaseOrder.currency, null);
-  assert.notEqual(built.purchaseOrder.unitPriceMinor, 0, "an unpriced purchase is not a free one");
 });
 
 test("the live purchase order refuses a float or half-supplied price at commitment", () => {

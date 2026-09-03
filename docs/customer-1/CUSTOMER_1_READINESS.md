@@ -22,7 +22,7 @@ This page is the human-readable view of `CUSTOMER_1_LEDGER.json`. The JSON file 
 | C1-SUPPORT-01 — Support and escalation | OPEN | Yes | Operationalize support intake, severity, escalation, and bug-vs-enhancement boundaries. |
 | C1-TRAINING-01 — Day-1 training | OPEN | Yes | Current role/workflow training exists and designated admins are trained. |
 | C1-CUTOVER-01 — Cutover rehearsal | OPEN | Yes | Rehearse source freeze, final migration, reconciliation, activation, smoke test, and fallback. |
-| C1-COST-01 — CI cost containment | READY | No | Pages path filter merged; ledger automation forbids Windows-hosted Actions. |
+| C1-COST-01 — CI cost containment | IN PROGRESS | No | Pages no longer rebuilds for docs-only changes, but Vite Build Check still does; isolate ledger/training docs from broad app CI. |
 | C1-OWNER-01 — Final production authorization | NOT AUTHORIZED | Yes | All critical gates READY plus explicit Owner authorization. |
 
 ## What is already materially advanced
@@ -40,6 +40,7 @@ The product and security gates are therefore `IN_PROGRESS`, not `OPEN`.
 - **Inventory consumption/on-hand defect:** PR #1749 proved that consumed stock is not physically removed from the on-hand derivation. The Sales Order availability path can therefore overstate available stock after consumption. If this inventory/fulfillment path is in Day 1, it is a Customer 1 product blocker and must be closed before `C1-PRODUCT-01` can become READY.
 - **Legacy stock-location retirement is incomplete:** PR #1759 retired the backend runtime dependency on `stock_locations`, but a client-direct read and active Rules read block remain for a separate Tier-2 retirement gate. This is not silently treated as closed.
 - **Production governed-access adoption is sparse:** PR #1752 found zero principals exposed to the measured R-32 change, but also found production has only two RoleAssignments on one principal, no manager Roles, and no location scopes. That narrows one risk; it does not satisfy `C1-IDENTITY-01` or `C1-SECURITY-01`.
+- **CI cost gate was prematurely closed:** a measured docs-only Customer 1 reconciliation triggered `Vite Build Check` and `Operational Payload Guard`. GitHub Pages correctly stayed quiet, and no Windows runner was introduced, but the ledger's own rule forbids broad application CI for ledger-only changes. `C1-COST-01` is therefore back to `IN_PROGRESS` until those paths are narrowed.
 
 ## What is still mostly unbuilt as a Customer 1 operating system
 

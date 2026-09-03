@@ -34,7 +34,7 @@
 // receipts, and need no migration. They are a proposal under test, not a ratified authority, and
 // Phase C must not proceed on them until §4.1 is answered.
 
-import { governedPurchasePrice, AcquisitionCostError } from "../finance/acquisitionCost.js";
+import { governedPurchasePrice, AcquisitionCostError, isPriceGovernedPurchase } from "../finance/acquisitionCost.js";
 
 /** A line on the canonical purchase order. `quantity` matches types/procurement.ts's PurchaseOrderLineItem. */
 export interface CanonicalPoLine {
@@ -149,6 +149,22 @@ export function normalizeLegacyPurchaseOrder(
       throw new PurchaseOrderNormalizationError("PO_PRICE_INVALID", `legacy purchase order price invalid: ${err.code}`);
     }
     throw err;
+  }
+  // THE LEGACY BOUNDARY IS READ FROM THE STAMP, NOT FROM THE MISSING PRICE.
+  //
+  // A purchase order claiming the price authority must actually carry a price. If it does not, the
+  // document is incoherent — the command that stamps the version is the same one that requires the
+  // price, so the two cannot legitimately disagree — and it is REFUSED rather than quietly read as
+  // unpriced. Reading it as unpriced would turn a corrupt record into a free one, which is the exact
+  // failure this whole authority exists to prevent.
+  //
+  // A document with no stamp is legacy: it may be unpriced, and that is a true and permanent fact
+  // about it. It stays fully receivable, and its cost is UNKNOWN.
+  if (isPriceGovernedPurchase(data) && price === null) {
+    throw new PurchaseOrderNormalizationError(
+      "PO_PRICE_MISSING",
+      "purchase order claims the price authority but carries no governed price",
+    );
   }
   return Object.freeze({
     purchaseOrderId,

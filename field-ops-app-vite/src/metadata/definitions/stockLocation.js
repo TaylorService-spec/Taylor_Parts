@@ -38,16 +38,17 @@ import { makeColumn, makeFilter, makeListViewDefinition, makeSavedView, makeSort
 // fetchStockLocations() (a plain, unbounded, unfiltered `getDocs`, read by
 // modules/operations/Operations.jsx), gated entirely by firestore.rules — never a callable.
 //
-// READ PATH: CLIENT_DIRECT, GATED BY ROLE/RELATIONSHIP, NEVER BY A CAPABILITY THAT ACTUALLY
-// EVALUATES. firestore.rules' `stock_locations/{stockLocationId}` admits isAdminOrDispatcher()
-// OR isAssignedToWarehouse(resource.data.warehouseId) — the identical shape warehouse.js
-// records for the `warehouses` collection itself. `warehouse.stockLocation.read` DOES exist in
-// the real capability catalog (functions/src/access/permissionCatalog.ts: "Read a
-// stock_locations record (bin-level quantity within a warehouse)."), but exactly as
-// inventoryTransaction.js's identical finding for `inventory.transaction.read`: nothing
-// evaluates this id to authorize the actual Firestore read — no callable stands between the
-// client and this collection, Rules alone gate it, and the catalog id lives in the separate,
-// unconsumed governed-effective-access mirror. readCapability stays null.
+// READ PATH: NONE. RETIRED BY BIN-P2R (Decision #160 / ADR-014).
+//
+// This block previously recorded a CLIENT_DIRECT read gated by Rules alone: `stock_locations`
+// admitted isAdminOrDispatcher() OR isAssignedToWarehouse(resource.data.warehouseId), with no
+// capability that actually evaluated. That read arm is GONE from both governed Rules copies, and
+// the client reader (`fetchStockLocations`) and the operator surface it fed went with it.
+//
+// The collection is therefore unreachable from any client, has zero backend readers after BIN-P2,
+// and never had a writer. `warehouse.stockLocation.read` still exists in the capability catalog,
+// relabelled there as a retired authority; nothing evaluates it, and nothing can, because there is
+// no read path left to authorize. readCapability stays null — for a different, stronger reason.
 //
 // IDENTITY IS A nameField ONLY: binCode. Not server-allocated (a plain caller-supplied string
 // on the dead writer's input, and a hand-authored literal in the seed script — "A1", "B3",
