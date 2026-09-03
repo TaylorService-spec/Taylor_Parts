@@ -42,6 +42,15 @@ import {
   IdempotencyKeyAlreadyDeniedError,
 } from "../lib/access/trustedWriterCommands.js";
 
+// 2C.6C (DECISIONS #167): Reporting is ENVIRONMENT-ACTIVATED -- report.* is registered
+// `active: false` so production is fail-closed, and the sandbox override set is what makes it
+// live. these checks assert a granted Role makes report.* reachable through resolveEffectiveAccess,
+// so the environment must be named or every report.* assertion below resolves inactivePermission.
+//
+// Not a workaround: in production these same ids DO deny, which is the point of the correction.
+// The suite now states which environment it is asserting about.
+process.env.GCLOUD_PROJECT = "eos-platform-sandbox";
+
 const PROJECT_ID = "taylor-parts";
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();

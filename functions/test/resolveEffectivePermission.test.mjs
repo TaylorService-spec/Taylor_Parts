@@ -529,6 +529,9 @@ check("D-226: inactive wave-4-deferred accountOwner field capability denies the 
   assert.equal(result.reason, "inactivePermission");
 });
 
+// 2C.6C: report.* became environment-activated, so these two supply the activation the sandbox
+// runtime supplies. What they assert is unchanged -- an ACTIVE granted field capability ALLOWs,
+// and an ACTIVE ungranted one denies as noQualifyingGrant rather than inactivePermission.
 check("D-226: an ACTIVE, registered field capability ALLOWs normally when actually granted (the mechanism works, not just denies)", () => {
   const roles = {
     syntheticGrantsName: {
@@ -543,6 +546,7 @@ check("D-226: an ACTIVE, registered field capability ALLOWs normally when actual
     roles,
     currentAccessVersion: 1,
     target: baseTarget(),
+    activationOverrides: new Set(["report.customer.field.name.read"]),
   });
   assert.equal(result.decision, "ALLOW");
   assert.equal(result.reason, "qualifyingGrant");
@@ -561,6 +565,7 @@ check("D-226: an active, registered field capability with NO grant at all denies
     roles: COMPATIBILITY_ROLES,
     currentAccessVersion: 1,
     target: baseTarget(),
+    activationOverrides: new Set(["report.customer.field.name.read"]),
   });
   assert.equal(result.decision, "DENY");
   assert.equal(result.reason, "noQualifyingGrant");

@@ -5259,6 +5259,108 @@ and the registry still says which authority each blocked metric is actually wait
 `functions/test/acquisitionCostActivation.test.mjs` (24 cases),
 `field-ops-app-vite/test/recordPurchaseOrderPrice.test.mjs` (10 cases), plus the #164 suites which
 were updated where activation legitimately made an assertion false.
+---
+
+## #167 — OWNER RULING (2C.6C): Reporting eligibility and Reporting activation are separate axes
+
+**Date:** 2026-09-02
+**Classification:** ACCESS ARCHITECTURE CORRECTION. Repository only — no deploy, no grant, no
+production action of any kind.
+**Status:** IMPLEMENTED.
+
+### The ruling
+
+`ADMIN_ALL_PERMISSIONS` remains authoritative and admin keeps the **complete** `report.*` family.
+The defect was never eligibility. It was that Reporting had **no activation boundary at all**.
+
+    CAPABILITY ELIGIBILITY   who may exercise a capability     admin: YES, all 39
+    ENVIRONMENT ACTIVATION   is the family live HERE           production: NO
+
+**"Admin can do all things" means admin is eligible for every governed capability that is ACTIVE in
+the environment.** It does not mean admin activates a capability family the environment has never
+adopted. Recording that sentence is the point of this entry: it is what dissolves the apparent
+conflict between a complete admin Role and controlled production activation.
+
+### What was actually wrong
+
+36 of the 39 `report.*` capabilities were catalogued `active: true`. In this architecture that means
+**live in every environment**, production included, because an environment override set can only
+**ADD** activation and never remove it. So Reporting had eligibility control and no activation
+control.
+
+That mattered concretely, and it was measured rather than theorised: **`runReportDefinitionCallable`
+is already deployed in production.** A generic current-main Functions publish would therefore have
+taken production admin from **0** report capabilities to **39** — including 30 field-level reads over
+Customer, Contact, Equipment and Location, among them `billingAddress`, `externalIds`,
+`paymentTerms`, `taxStatus` — with no production activation review. That finding is 2C.6B's, and it
+is why this correction preceded any deployment decision.
+
+### The correction, and why it is this shape
+
+The `report.*` family moves onto the activation pattern the architecture already has: catalogue
+`active: false`, then activate per environment. No new mechanism, no reporting-specific flag
+framework, no callable-local check, and **no change to Role membership** — the ruling forbids
+answering an activation question by damaging eligibility.
+
+| environment | report.* live | why |
+|---|---|---|
+| `taylor-parts` (production) | **0 / 39** | no override set. Fail-closed, pending a separate Reporting activation ruling |
+| `eos-platform-sandbox` | **36 / 39** | exactly the set that was live before — a no-regression re-declaration |
+| `eos-platform-certification` | 0 | see below |
+| `demo-certworld` | 0 | see below |
+
+The three capabilities already inactive before this change stay inactive everywhere.
+
+### Certification was deliberately NOT given the reporting set
+
+Both certification environments pin their activation sets with **exact-set assertions**, whose own
+comments say *"an activation list is not a wish list"* and warn that a subset check would let a future
+edit quietly widen the certification emulator. Spreading 36 ids into them would have broken precisely
+the control those assertions exist to enforce. My first implementation did exactly that and their
+tests caught it.
+
+Certification does name `report.definition.read`, in `certificationWorld/authorityMatrix.mjs`. That
+matrix asserts **Role eligibility** — which Role must hold the capability — not environment
+activation, and Role membership is untouched: admin, owner, `reportViewer` and `reportAuthor` all
+still hold it. Certification therefore loses nothing it was actually asserting.
+
+### Proof
+
+Resolver-level, with the denial **reason** asserted and not merely the decision:
+
+    production, admin, report.customer.read                      DENY  inactivePermission
+    production, admin, report.definition.read                    DENY  inactivePermission
+    production, admin, report.customer.field.billingAddress.read DENY  inactivePermission
+    production, admin, report.definition.create                  DENY  inactivePermission
+    sandbox,    admin, report.customer.read                      ALLOW
+
+`inactivePermission` is the load-bearing detail: the denial comes from ACTIVATION, **before** Role
+eligibility is consulted. A `noQualifyingGrant` there would have meant the problem had been "fixed"
+by taking capabilities away from admin, which is the outcome this ruling forbids.
+
+The governance artifact shows the same split from the other side: `granted` counts are unchanged for
+every Role (eligibility preserved) while `operable` counts drop for the four report-holding Roles
+(activation withdrawn) — owner 72 -> 36, `reportViewer` 27 -> 0, `reportFinanceViewer` 5 -> 0,
+`reportAuthor` 3 -> 0.
+
+`functions/test/reportingActivationBoundary.test.mjs` pins both axes simultaneously, including a test
+that fails if a future change removes `report.*` from admin.
+
+### The future activation ceremony
+
+Production Reporting activation is a **separate Owner-gated tranche**. It must decide the three
+groups explicitly and need not activate them together:
+
+- **report read** (5) — object-level reads
+- **report definition mutation** (4) — create / rename / duplicate / delete
+- **report field reads** (30) — and this group carries the sensitivity: `billingAddress`,
+  `externalIds`, `paymentTerms`, `taxStatus`, `notes`, contact `email`, contact `phone`
+
+### Not closed by this entry
+
+The current-main Functions bundle remains **NOT** authorized. Removing the Reporting blocker does not
+authorize 57 new production Function surfaces, the Reorder three-part cutover, the Rules catch-up or
+the Hosting catch-up. Reorder remains `BLOCKED_BY_DEPENDENCY`.
 
 ## #168 — OWNER RULING: Work Order physical consumption requires a governed source location (2026-09-02)
 
