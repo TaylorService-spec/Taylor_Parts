@@ -17,7 +17,7 @@
     "catalogInactive": 137,
     "eligibleForEnvironmentActivation": 83,
     "activatedInSomeEnvironment": 83,
-    "callableExports": 44,
+    "callableExports": 45,
     "destinations": 90,
     "destinationsHidden": 19,
     "guides": 0,
@@ -4147,6 +4147,14 @@
       "module": "./updateWorkOrderExecutionData",
       "capabilityHints": [],
       "comment": null
+    },
+    {
+      "names": [
+        "listWorkOrderConsumptionSources"
+      ],
+      "module": "./workOrderConsumption/consumptionSourceCallables",
+      "capabilityHints": [],
+      "comment": "Decision #171 -- the ONE narrow trusted read that makes consumption source selection possible without granting technicians any standing inventory or location read."
     },
     {
       "names": [
