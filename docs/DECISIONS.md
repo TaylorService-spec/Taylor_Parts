@@ -5463,7 +5463,99 @@ governed read?*
 on-hand). Suites: `consumptionSource.test.mjs` (21), `consumptionMovement.test.mjs` (15),
 `consumptionCustodyBoundary.test.mjs` (10).
 
-## #169 — OWNER RULING: internal stock relocation is its own authority, and the scanner derives it (2026-09-03)
+---
+
+## #169 — OWNER RULING (2C.6F): production adoption is a DISTINCT authority, not a widened override
+
+**Date:** 2026-09-03
+**Classification:** ACCESS ARCHITECTURE. Repository only — no deploy, no grant, no production action.
+**Status:** IMPLEMENTED. Reporting SET 2 is now **representable**; it is **not live**.
+
+### Why a second mechanism was needed at all
+
+DECISIONS #167 moved the `report.*` family to catalogue `active: false` so production would be
+fail-closed. That was right, and it exposed a gap nobody had needed to look at before:
+
+`capabilityActivationOverrides` carries a **triple production hard-block** — no production env
+carries the field (data), `role === "production"` returns EMPTY unconditionally (code, *"the block
+does not trust the data"*), and results intersect a spine-eligible allow-list. So a capability
+registered `active: false` was, in effect, *"inactive unless a **non-production** environment adopts
+it"*. **Production had no way to adopt a governed capability at all** — short of flipping the
+catalogue globally, which is exactly the unreviewed-widening problem #167 had just fixed.
+
+**The old absolute was a valid security boundary, not a bug.** This entry does not reinterpret it,
+and 2C.6E's implementation attempt — which added 25 ids to production's override list and measured
+them being correctly ignored — is retained as the evidence that the block works as designed.
+
+### The correction (Owner ruling: Option 2)
+
+A **separate field answering a different question**, rather than a widening of the existing one:
+
+| field | question | refusal |
+|---|---|---|
+| `capabilityActivationOverrides` | has this NON-PRODUCTION environment activated it? | refused in production, by role |
+| `productionCapabilityActivations` | has PRODUCTION explicitly **adopted** it? | inert outside production, by role |
+
+They are mirror images: each refuses the other's role, so exactly one can be non-empty for any
+project. `resolveCapabilityOverrides` is **byte-unchanged** — its production refusal survives
+verbatim, asserted against both the real registry and poisoned data.
+
+**A second, narrower eligibility list.** `PRODUCTION_ACTIVATION_ELIGIBLE_IDS` is deliberately not
+derived from the spine set: being registered, or even sandbox-eligible, must not make a capability
+production-adoptable. Exact ids only — no prefix matching, no `report.*` wildcard — so the 14
+deferred Reporting capabilities share the prefix and remain non-adoptable, and a future catalogue
+addition is never silently adoptable.
+
+**Composed in exactly one place.** All eleven runtime consumers read activation through
+`resolveRuntimeCapabilityOverrides()`, so composing the two authorities there makes production
+adoption honoured consistently without touching a single caller. Configuration lives in the trusted
+environment registry: never client-writable, never a callable argument, never a Firestore business
+record.
+
+### Adoption is not eligibility
+
+    ADMIN ELIGIBILITY        39 / 39 report.*  in every environment
+    PRODUCTION ADOPTION      25 / 39
+
+Everything the mechanism returns still has to pass Role membership, scope, conditions and
+accessVersion. Proven both ways: an adopted capability held by a Role that lacks it denies
+`noQualifyingGrant` (eligibility), and an unadopted capability held by admin denies
+`inactivePermission` (activation). **Admin does not bypass activation.** Production's default
+remains zero adoptions.
+
+### The first approved use — Reporting SET 2
+
+25 exact PermissionIds: the 5 entity/execution reads and the 20 ordinary field reads, each re-proved
+present in the canonical catalogue rather than transcribed from prose. Postures after this change:
+
+    production      25 / 39      sandbox        36 / 39
+    certification    0 / 39      demo-certworld  0 / 39
+
+The other 14 stay unadopted and are not even production-*eligible*.
+
+### Two dependencies that ride forward unchanged
+
+**GROUP B — definition mutation (4).** Deferred because no saved-definition callable is deployed in
+production; adopting them today would be inert. **This is a dependency, not a permanent decision:**
+if a future Functions bundle ships those callables, Group B must be re-reviewed **before** that
+deployment and must not be auto-adopted with it. Pinned by keeping them out of the eligibility list
+rather than by baking a production function inventory into the access suite.
+
+**REPORTING_ROW_SCOPE_DEPENDENCY.** Report execution runs an unfiltered collection scan with no
+row-level authority; predicates are applied in memory afterwards. SET 2 is safe for admin **only**
+because admin already holds whole-collection read on accounts/contacts/equipment/locations. A Role
+with narrower source-record authority must not receive Reporting on field permissions alone until
+row scope is proven no broader than that Role's source authority.
+
+### What this entry does NOT do
+
+It does not deploy. `REPORTING_PRODUCTION_TARGET = APPROVED_25, REPRESENTABLE`;
+`REPORTING_PRODUCTION_LIVE = STILL_0`, and stays 0 until a governed production deployment publishes
+this configuration and the behaviour is independently proven. The current-main Functions bundle
+remains unauthorized — 57 new surfaces, the Reorder three-part cutover, the Rules catch-up and the
+Hosting catch-up all stand. Reorder is untouched and remains `BLOCKED_BY_DEPENDENCY`.
+
+## #170 — OWNER RULING: internal stock relocation is its own authority, and the scanner derives it (2026-09-03)
 
 **Context.** BIN-P0 through BIN-P5 built the Bin as a governed *place*: stable identity (P1), an
 Administration generator (P3), and printable labels (P5). None of them moved a single unit of stock —
