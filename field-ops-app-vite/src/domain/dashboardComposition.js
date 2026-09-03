@@ -65,6 +65,18 @@ export const MODULE_STATE = Object.freeze({
    * work. Saying so is the difference between a known boundary and a silent gap.
    */
   NOT_WIRED: "NOT_WIRED",
+  /**
+   * The fact IS composed and live -- on the governed surface that owns it, which is not this one.
+   *
+   * Added by Owner Decision #172 s10. `myAssignedWork` and `myPerformanceAllTime` sat as NOT_WIRED,
+   * which reads as "somebody still has to build this". Nobody does: a technician's assigned work is
+   * live on TechnicianDashboard against a technician-scoped read (PT-002), and duplicating it here
+   * would create the second implementation of a domain read this platform has been bitten by twice.
+   *
+   * The distinction matters because NOT_WIRED is a WORK QUEUE. Leaving a deliberately-delegated
+   * module in it would keep proposing work that must never be done.
+   */
+  SATISFIED_ELSEWHERE: "SATISFIED_ELSEWHERE",
   /** The authority exists; a NAMED activation or grant does not. Renders with its blocker. */
   GATED: "GATED",
   /** No authority exists for this fact yet. Renders with what is missing. */
@@ -108,9 +120,11 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "My work",
     census: "T-1 / T-2",
     needs: hasTechnicianBinding,
-    state: () => MODULE_STATE.NOT_WIRED,
+    // SATISFIED ON THE TECHNICIAN SURFACE (#172 s10) -- deliberately, not pending. Duplicating a
+    // technician-scoped read here would be the second implementation of one domain read.
+    state: () => MODULE_STATE.SATISFIED_ELSEWHERE,
     blocker:
-      "Your assigned work is live on the technician screen. This dashboard does not duplicate that read.",
+      "Your assigned work is live on the technician screen, read against your own technician identity. This dashboard deliberately does not duplicate it.",
   },
   {
     key: "unverifiedSubmissions",
@@ -120,9 +134,9 @@ export const DASHBOARD_MODULES = Object.freeze([
     // Every persona that submits from a handheld, not only technicians. UNVERIFIED is a first-class
     // state and never a spinner, so it belongs where a person will act on it.
     needs: (ctx) => hasTechnicianBinding(ctx) || hasOperationalRole(ctx, "PARTS_ASSOCIATE", "WAREHOUSE_ASSOCIATE", "PARTS_MANAGER", "WAREHOUSE_MANAGER"),
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "Queued submissions are held per device and are shown where you made them.",
+    // DEVICE-LOCAL, and therefore genuinely COMPLETE (#172 s9): the whole truth about this queue
+    // lives on this device, so no server count is needed and none is invented for it.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "serviceAttention",
@@ -141,9 +155,9 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "Reorder requests",
     census: "W-6 / P-5",
     needs: (ctx) => hasLocationScope(ctx) || isOperationsViewer(ctx),
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "The reorder queue is live in the Parts workspace. This dashboard does not yet compose its counts.",
+    // BOUNDED ACTIONABLE PREVIEW (#172). Rows of pending-review requests in the domain's own
+    // order, with no count -- the tile shows work, and "View all" leads to the Parts workspace.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "receivingQueue",
@@ -171,9 +185,9 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "My opportunities",
     census: "S-1 / S-2 / S-3",
     needs: (ctx) => has(ctx, "opportunity.read"),
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "Opportunities are live in the Sales workspace. This dashboard does not yet compose them.",
+    // BOUNDED ACTIONABLE PREVIEW (#172), read through the GOVERNED source -- never the synthetic
+    // fixture source, which is what an unqualified useOpportunities() would have supplied.
+    state: () => MODULE_STATE.READY,
   },
   {
     key: "ordersRequiringAction",
@@ -183,9 +197,9 @@ export const DASHBOARD_MODULES = Object.freeze([
     // Composed only where the capability actually resolved. Not listed as GATED for everyone else:
     // a person with no sales or fulfillment function should not be told a sales surface is locked.
     needs: (ctx) => has(ctx, "fulfillment.coordinatedVisit.read"),
-    state: () => MODULE_STATE.NOT_WIRED,
-    blocker:
-      "Fulfillment exceptions are live in the Sales Order workspace. This dashboard does not yet compose them.",
+    // BOUNDED ACTIONABLE PREVIEW (#172): coordinated visits whose readiness is ATTENTION, in the
+    // attention-first order the domain already sorts them into.
+    state: () => MODULE_STATE.READY,
   },
 
   // ---------------------------------------------------------------- PERFORMANCE
@@ -206,9 +220,10 @@ export const DASHBOARD_MODULES = Object.freeze([
     label: "My record",
     census: "T-4",
     needs: hasTechnicianBinding,
-    state: () => MODULE_STATE.NOT_WIRED,
+    // SATISFIED ON THE TECHNICIAN SURFACE (#172 s10).
+    state: () => MODULE_STATE.SATISFIED_ELSEWHERE,
     blocker:
-      "Your all-time record is live on the technician screen.",
+      "Your all-time record is live on the technician screen, where it is read against your own technician identity.",
   },
   {
     key: "technicianQualityMetrics",

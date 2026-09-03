@@ -42,7 +42,17 @@ import {
   groupWorkOrderAttentionItemsBySection,
 } from "../../domain/workOrderAttentionProjection.js";
 import { dashboardGoalActuals, actualsByGoalKey } from "../../domain/dashboardGoalActuals.js";
+import { boundedPreview, reachableHref } from "../../domain/dashboardPreview.js";
+import { useReorderRequests } from "../../hooks/useReorderRequests.js";
+import { useOpportunities } from "../../hooks/useOpportunities.js";
+import { useCoordinatedOperations } from "../../hooks/useCoordinatedOperations.js";
+import { useSubmissionQueue } from "../../hooks/useSubmissionQueue.js";
+// THE GOVERNED SOURCE, NAMED EXPLICITLY. `DEFAULT_OPPORTUNITY_SOURCE` is the SYNTHETIC fixture
+// source, so `useOpportunities()` with no argument would put sample opportunities on a real person's
+// dashboard -- the precise "trade truth for visual completeness" failure Decision #172 forbids.
+import { governedOpportunitySource } from "../../access/opportunitySource.js";
 import GoalGrid from "./GoalGrid.jsx";
+import PreviewList from "./PreviewList.jsx";
 
 /**
  * The warehouses this principal is governed to.
@@ -261,6 +271,45 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
     return groupWorkOrderAttentionItemsBySection(workOrderAttentionItems({ workOrders: workOrders ?? [] }));
   }, [moduleKeys, workOrders, workOrdersLoading, workOrdersError]);
 
+  // ---- BOUNDED ACTIONABLE PREVIEWS (Owner Decision #172). Rows of real work, never a count.
+  //
+  // Each read is gated on its module resolving, so no viewer opens a query their Rules would deny.
+  // Nothing below sorts: every list keeps its domain's own order, because a priority invented on the
+  // dashboard would disagree with the workspace the "View all" link leads to.
+  const reorder = useReorderRequests(moduleKeys.has("reorderQueue"));
+  const opportunityFeed = useOpportunities(governedOpportunitySource);
+  const coordinated = useCoordinatedOperations();
+  // DEVICE-LOCAL, and therefore genuinely COMPLETE (#172 §9). This is the one queue whose whole
+  // truth lives on this device, so no server count is needed and none is invented for it.
+  const { queue: submissionQueue } = useSubmissionQueue();
+
+  const previews = useMemo(() => {
+    const showOpportunities = moduleKeys.has("myOpportunities");
+    const showOrders = moduleKeys.has("ordersRequiringAction");
+    return {
+      reorderQueue: boundedPreview({
+        rows: reorder.data ?? [],
+        resolved: !reorder.loading && !reorder.error,
+      }),
+      unverifiedSubmissions: boundedPreview({
+        rows: (submissionQueue ?? []).filter((s) => s?.status !== "CONFIRMED"),
+        resolved: Array.isArray(submissionQueue),
+      }),
+      myOpportunities: boundedPreview({
+        rows: showOpportunities ? opportunityFeed.opportunities ?? [] : [],
+        // "unavailable" is a read failure, not an empty pipeline. Synthetic rows are refused
+        // outright: a dashboard is the last place a sample may be mistaken for the book of business.
+        resolved: showOpportunities && !opportunityFeed.loading && opportunityFeed.status === "ready" && !opportunityFeed.synthetic,
+      }),
+      ordersRequiringAction: boundedPreview({
+        // ATTENTION is the domain's own blocked-state readiness, and `visits` already arrives
+        // sorted attention-first by the hook. Filtering preserves that order; nothing re-sorts.
+        rows: showOrders ? (coordinated.visits ?? []).filter((v) => v?.readiness === "ATTENTION") : [],
+        resolved: showOrders && !coordinated.loading && coordinated.status === "ready" && !coordinated.synthetic,
+      }),
+    };
+  }, [moduleKeys, reorder, submissionQueue, opportunityFeed, coordinated]);
+
   const actualsByKey = useMemo(
     () =>
       actualsByGoalKey(
@@ -318,6 +367,80 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                 );
               }
               if (m.key === "accountPortfolio") return <AccountPortfolioModule key={m.key} summary={portfolio} state={portfolioState} />;
+              // ---- BOUNDED PREVIEWS (#172). Rows of real work; no counts, ever.
+              if (m.key === "reorderQueue") {
+                return (
+                  <ModuleFrame key={m.key} label={m.label}>
+                    <PreviewList
+                      preview={previews.reorderQueue}
+                      subject="Reorder requests"
+                      emptyCopy="No reorder requests are waiting for review"
+                      viewAll={{ href: reachableHref(destinationGroups, "inventory", "parts"), label: "View in Parts" }}
+                      renderRow={(r) => ({
+                        key: r.id,
+                        // BUSINESS IDENTITY, never the document id. A part number is what the person
+                        // holding the shelf label can actually match.
+                        primary: r.partNumber || r.sku || r.partName || "Reorder request",
+                        secondary: r.warehouseName || r.requestedByName || null,
+                      })}
+                    />
+                  </ModuleFrame>
+                );
+              }
+              if (m.key === "unverifiedSubmissions") {
+                return (
+                  <ModuleFrame key={m.key} label={m.label}>
+                    <PreviewList
+                      preview={previews.unverifiedSubmissions}
+                      subject="Queued submissions"
+                      emptyCopy="Everything you submitted has been confirmed"
+                      viewAll={null}
+                      renderRow={(s) => ({
+                        key: s.id ?? s.commandKey,
+                        primary: s.label || s.kind || "Queued submission",
+                        secondary: s.status || null,
+                      })}
+                    />
+                  </ModuleFrame>
+                );
+              }
+              if (m.key === "myOpportunities") {
+                return (
+                  <ModuleFrame key={m.key} label={m.label}>
+                    <PreviewList
+                      preview={previews.myOpportunities}
+                      subject="Opportunities"
+                      emptyCopy="No opportunities are open in your reach"
+                      viewAll={{ href: reachableHref(destinationGroups, "customers", "opportunities") }}
+                      renderRow={(o) => ({
+                        key: o.id,
+                        primary: o.name || o.opportunityNumber || "Opportunity",
+                        secondary: opportunityFeed.accountNameById?.[o.accountId] || o.stage || null,
+                        href: reachableHref(destinationGroups, "customers", "opportunities")
+                          ? `/customers/opportunities/${o.id}`
+                          : null,
+                      })}
+                    />
+                  </ModuleFrame>
+                );
+              }
+              if (m.key === "ordersRequiringAction") {
+                return (
+                  <ModuleFrame key={m.key} label={m.label}>
+                    <PreviewList
+                      preview={previews.ordersRequiringAction}
+                      subject="Orders requiring action"
+                      emptyCopy="No coordinated visits need attention right now"
+                      viewAll={{ href: reachableHref(destinationGroups, "service", "coordinatedVisits") }}
+                      renderRow={(v) => ({
+                        key: v.salesOrderId,
+                        primary: coordinated.salesOrderLabelById?.[v.salesOrderId] || "Sales order",
+                        secondary: coordinated.accountNameById?.[v.customerId] || null,
+                      })}
+                    />
+                  </ModuleFrame>
+                );
+              }
               if (m.key === "myGoals" || m.key === "teamGoals") {
                 const scoped = targets.filter((t) =>
                   m.key === "myGoals" ? t.targetScopeType === "EMPLOYEE" : t.targetScopeType !== "EMPLOYEE",

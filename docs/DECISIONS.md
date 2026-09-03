@@ -5872,3 +5872,79 @@ unchanged. No Rules change, no index (every new query is single-field equality).
 `field-ops-app-vite/src/modules/technicianDashboard/ExecutionCapture.jsx`. Suites:
 `consumptionSourceOptions.test.mjs` (16), `physicalConsumptionE2E.test.js` (9, emulator),
 `updateWorkOrderExecutionDataIdempotency.test.js` (12, emulator), plus #168's 46.
+
+## #172 — OWNER RULING: bounded actionable previews on the dashboard (2026-09-03)
+
+**Context.** Most current-work queues in this platform are governed WORKING LISTS: bounded,
+paginated, ordered by their own domain's rule, read at that domain's own scope. None carries a
+complete count. The dashboard therefore rendered every one of them as a blocker sentence pointing at
+the workspace where the real list lives — because the only figure a dashboard tile knew how to show
+was a number, and a number taken from a page is a lie wearing a total's clothes.
+
+That left the dashboard technically honest and practically empty: five modules saying "the queue is
+live somewhere else" is not a dashboard, and waiting for count-aggregate infrastructure to be built
+for every domain was a project, not a release.
+
+### The ruling
+
+**1. A LIST OF REAL WORK IS ALLOWED. A TOTAL DERIVED FROM THAT LIST IS NOT.**
+
+Where a module has an existing governed read, an existing scope, an existing canonical ordering,
+bounded semantics, actionable records and a real governed destination, the dashboard MAY compose a
+bounded preview of those records. It does **not** need a complete aggregate merely to show work.
+
+This is **presentation/composition authority only**. It creates no new data authority, no new
+permission, no new count authority, no new aggregate authority and no new metric definition.
+
+**2. NEVER A COUNT.** Not "7 reorder requests", not a percentage, rate, share, trend or "all clear"
+derived from incomplete rows. `rows.length` is never a business total. `domain/dashboardPreview.js`
+makes this structural rather than a matter of care: it returns `{ state, rows, hasMore }` and has no
+function that returns a length. `hasMore` is a BOOLEAN — there is nothing to accidentally render.
+
+**3. FIVE ROWS, AS A PRESENTATION LIMIT.** Not a data limit and not a metric. Deliberately not
+configurable: a paging system on a dashboard tile would make the tile a second list workspace, and
+the real one is one click away.
+
+**4. THE DOMAIN'S ORDER, EXACTLY.** No priority, urgency, score or ranking invented on the dashboard.
+A rank invented here would disagree with the workspace the "View all" link leads to.
+
+**5. THREE OUTCOMES, NOT TWO.** READY (rows), EMPTY (the read RESOLVED and established there are
+none — "nothing waiting" is a real claim), UNKNOWN (the read failed, was denied, or has not
+resolved). Collapsing EMPTY and UNKNOWN is the most damaging thing this design could do: it tells
+someone their queue is clear when the truth is that nobody could read it.
+
+**6. TRUNCATION SAYS ONLY THAT MORE EXIST.** "More items available." Never how many.
+
+**7. VIEW ALL IS PROVEN REACHABLE, NEVER PLAUSIBLE.** `reachableHref` derives the destination from
+`buildReachableGroups` — the same function the nav rail and the Go To section use — and returns null
+when there is none, in which case NO call to action is rendered. A plausible-looking URL previously
+fell through to Dashboard and nothing failed.
+
+**8. BUSINESS IDENTITY ON EVERY ROW.** A part number, an opportunity name, a customer. Never a raw
+Firestore document id: a person cannot search for one, say it out loud, or match it to the paper on
+their desk.
+
+**9. SCOPE IS THE DOMAIN'S.** The preview uses the same authority as its workspace. The dashboard
+must not fetch broadly and filter afterward, and no role title alone widens reach.
+
+**10. DEVICE-LOCAL WORK IS NOT FORCED INTO THIS PATTERN.** `unverifiedSubmissions` is complete by
+nature — the whole truth about that queue lives on the device — so it is composed from the existing
+offline authority and no server count is invented for it.
+
+**11. A MODULE SATISFIED ON ANOTHER GOVERNED SURFACE IS NOT ENGINEERING DEBT.** `myAssignedWork` and
+`myPerformanceAllTime` are live on TechnicianDashboard against a technician-scoped read, and
+duplicating them on My Dashboard would create the second implementation of a domain read this
+platform has been bitten by twice. They move to a new `SATISFIED_ELSEWHERE` state, because NOT_WIRED
+is a work queue and leaving them in it would keep proposing work that must never be done.
+
+**12. BILLED AND COLLECTED ARE NOT PART OF THIS RULING.** They have a different authority shape —
+`listFinancialFacts` rolls money up server-side per currency and refuses to summarize a truncated
+page at all, so its figure is complete or honestly absent. Booked has no read at any period and must
+not suppress them.
+
+### What this does NOT authorize
+
+No new read, grant, capability or Rules change. No ATP, stockout, valuation, COGS, margin, turns or
+carrying cost. No count aggregate is created, and none is implied to be coming. The final dashboard
+should prefer useful governed work previews over placeholders waiting for future count
+infrastructure — **but it must never trade truth for visual completeness.**
