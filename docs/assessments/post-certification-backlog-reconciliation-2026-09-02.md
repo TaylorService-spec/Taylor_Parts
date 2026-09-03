@@ -69,10 +69,14 @@ There is also no lineage gap to repair. `buildAcquisitionCostFact` already store
 Physical evidence and cost evidence are joinable today, and both are written by the same
 all-or-nothing commit.
 
-Finally, making it a required stored key would break read compatibility. The stored record has a
-strict key allowlist and a fail-closed deserializer (`operationalMovementRepository.ts:102-146`), and
-the fingerprint is computed over the value — so a new required field would make every historical row
-deserialize as malformed rather than merely older.
+Finally, making it a required stored key would break read compatibility — and unlike the `COUNTED`
+deletion in §3, it would do so *harmfully*. The stored record has a strict key allowlist and a
+fail-closed deserializer (`operationalMovementRepository.ts:102-146`), and the fingerprint is computed
+over the value. A newly required field would therefore make every historical row throw
+`MalformedStoredRecordError` on deserialize; each reader catches that and `continue`s, so those rows
+would be silently **dropped from every on-hand balance**. Deleting a type nobody wrote skips rows that
+already contributed nothing; adding a field nobody wrote skips rows that contributed real stock. Same
+mechanism, opposite consequence — which is exactly why the two findings resolve differently.
 
 ### `classification`
 
