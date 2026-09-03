@@ -62,6 +62,49 @@ async function ledgerFor(woId, partId) {
   return snap.docs.map((d) => d.data());
 }
 
+// ── GOVERNED STOCK, because the static catalogue is no longer inventory (DECISIONS #165) ──
+//
+// These tests used to get their stock from data/partsCatalog.ts's static `warehouseQty`, which
+// getAvailableQuantity() added the ledger to. That baseline is gone: a fixture quantity may not
+// decide whether a real dispatch succeeds. Operational on-hand is now ledger evidence at an
+// ACTIVE warehouse, and a part with no evidence is UNKNOWN — not zero, and not committable.
+//
+// So the harness seeds the SAME quantities the catalogue used to supply, as real RECEIVED
+// movements at one eligible warehouse. Every test's arithmetic is unchanged; only where the
+// stock comes from changed, which is the whole point of the ruling.
+const WAREHOUSES = "warehouses";
+const TEST_WAREHOUSE = "wh-inventory-service-test";
+
+/** The catalogue quantities these tests were written against, now seeded as governed movements. */
+const GOVERNED_STOCK = {
+  "TST-1002": 6, "TST-1003": 20, "TST-1004": 4, "TST-1005": 2, "TST-1006": 8,
+  "TST-1007": 2, "TST-1008": 6, "TST-1009": 6, "TST-1010": 4, "TST-1011": 2,
+  "TST-1013": 6, "TST-1014": 10, "TST-1015": 4, "TST-1016": 12, "TST-1017": 20,
+  "TST-1018": 4, "TST-1019": 20, "TST-1020": 2, "TST-1031": 0, "TST-1035": 2,
+  "TST-1040": 4, "TST-1058": 12, "TST-1059": 10, "TST-1060": 12, "TST-1061": 4,
+};
+
+async function seedGovernedStock() {
+  await db.collection(WAREHOUSES).doc(TEST_WAREHOUSE).set({ id: TEST_WAREHOUSE, status: "ACTIVE" }, { merge: true });
+  const batch = db.batch();
+  for (const [partId, quantity] of Object.entries(GOVERNED_STOCK)) {
+    // A zero-quantity RECEIVED is deliberate for TST-1031: it is EVIDENCE that nets to zero (a real
+    // empty shelf), which is a different fact from no evidence at all (UNKNOWN).
+    batch.set(db.collection(LEDGER).doc(), {
+      workOrderId: "",
+      partId,
+      type: "RECEIVED",
+      quantity,
+      trackingMode: "NONE",
+      location: { type: "WAREHOUSE", locationId: TEST_WAREHOUSE },
+      schemaVersion: 2,
+      timestamp: admin.firestore.Timestamp.now(),
+    });
+  }
+  await batch.commit();
+}
+await seedGovernedStock();
+
 async function seedRawLedgerEntry(woId, partId, type, quantity) {
   await db.collection(LEDGER).add({
     workOrderId: woId,

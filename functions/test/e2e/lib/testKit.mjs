@@ -183,17 +183,25 @@ export async function createScheduledWorkOrder({
 
 // ---- Part Master ----
 // Real deployed governed dataset flow: setWorkOrderPartsPlan resolves partId -> canonical
-// internalPartNumber (sku) through parts/{partId}; inventoryService.ts's ledger baseline
-// (getAvailableQuantity) is keyed by that SAME sku against the hardcoded PARTS_CATALOG rows in
-// src/data/partsCatalog.ts. A plan line only reserves/consumes real stock if its sku matches one of
-// those rows -- CATALOG_SKUS below are real rows from that file, chosen for their warehouseQty.
+// internalPartNumber (sku) through parts/{partId}, and inventoryService.ts's availability is keyed
+// by that SAME sku.
+//
+// STOCK IS SEEDED AS GOVERNED LEDGER EVIDENCE (DECISIONS #165). This used to lean on
+// src/data/partsCatalog.ts's static `warehouseQty`, which getAvailableQuantity() added the ledger
+// to — so these SKUs were "chosen for their warehouseQty". That baseline is retired: a fixture
+// quantity may not decide whether a real dispatch succeeds, and a part with no ledger evidence is
+// UNKNOWN rather than stocked. So seedPart() now RECEIVES its stock at an ACTIVE warehouse, which
+// is what the production path actually requires. The quantities are unchanged, so every downstream
+// assertion in the E2E suite still holds; only the provenance of the stock changed.
 export const CATALOG_SKUS = {
-  // { sku, warehouseQty } straight from functions/src/data/partsCatalog.ts.
   COMPRESSOR: { sku: "TST-1003", warehouseQty: 20 },
   BELT: { sku: "TST-1010", warehouseQty: 4 },
 };
 
-export async function seedPart({ sku, name = "Test Part" } = CATALOG_SKUS.COMPRESSOR) {
+/** The one eligible warehouse the E2E ledger stock lives at. */
+export const E2E_WAREHOUSE = "wh-e2e-harness";
+
+export async function seedPart({ sku, name = "Test Part", warehouseQty } = CATALOG_SKUS.COMPRESSOR) {
   const partId = nextId("part");
   await db.collection("parts").doc(partId).set({
     partId,
@@ -208,6 +216,24 @@ export async function seedPart({ sku, name = "Test Part" } = CATALOG_SKUS.COMPRE
     createdBy: "e2e-harness",
     updatedAt: Timestamp.now(),
     updatedBy: "e2e-harness",
+  });
+
+  // The warehouse must be ACTIVE to be eligible; anything else is not committable stock.
+  await db.collection("warehouses").doc(E2E_WAREHOUSE).set(
+    { id: E2E_WAREHOUSE, name: "E2E harness warehouse", status: "ACTIVE" },
+    { merge: true },
+  );
+  const quantity =
+    warehouseQty ?? Object.values(CATALOG_SKUS).find((c) => c.sku === sku)?.warehouseQty ?? 20;
+  await db.collection("inventory_transactions").add({
+    workOrderId: "",
+    partId: sku,
+    type: "RECEIVED",
+    quantity,
+    trackingMode: "NONE",
+    location: { type: "WAREHOUSE", locationId: E2E_WAREHOUSE },
+    schemaVersion: 2,
+    timestamp: Timestamp.now(),
   });
   return partId;
 }
