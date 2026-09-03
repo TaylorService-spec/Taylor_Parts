@@ -23,12 +23,18 @@ import type { Transaction } from "firebase-admin/firestore";
 import { recordPutAway, PlacementInvalidError, PlacementUnauthorizedError, PlacementBinError } from "./putAwayCommand.js";
 import {
   createBin,
+  renameBin,
   setBinStatus,
   resolveBinCode,
+  resolveBinToken,
   listBinsForWarehouse,
   BinInvalidError,
   BinUnauthorizedError,
   BinNotFoundError,
+  BinIdempotencyConflictError,
+  BinCodeReservedError,
+  BinClaimIntegrityError,
+  BinMalformedStoredRecordError,
   BIN_MANAGE_CAPABILITY,
   BIN_READ_CAPABILITY,
 } from "./binCommands.js";
@@ -73,6 +79,24 @@ function mapError(err: unknown): HttpsError {
   if (err instanceof BinNotFoundError) {
     return new HttpsError("not-found", "That bin was not found.", "NOT_FOUND");
   }
+  // Each of these is a DIFFERENT physical fix, so none collapses into another. Telling an operator
+  // "that bin could not be accepted" when the real answer is "that code belongs to another rack"
+  // sends them to change the wrong thing. None of them echoes a stored value.
+  if (err instanceof BinIdempotencyConflictError) {
+    return new HttpsError("already-exists", "That request id was already used for a different bin.", "IDEMPOTENCY_CONFLICT");
+  }
+  if (err instanceof BinCodeReservedError) {
+    return new HttpsError("already-exists", "That bin code is already reserved in this warehouse.", "CODE_RESERVED");
+  }
+  if (err instanceof BinClaimIntegrityError) {
+    // Deliberately NOT invalid-argument: the caller's request was fine, the stored reservation is
+    // not. Nothing was repaired, and an operator retrying will not fix it either.
+    return new HttpsError("failed-precondition", "That bin's code reservation could not be verified.", "CLAIM_INTEGRITY");
+  }
+  if (err instanceof BinMalformedStoredRecordError) {
+    console.error("[bins] malformed stored record", err);
+    return new HttpsError("failed-precondition", "That bin record could not be read.", "MALFORMED_STORED_RECORD");
+  }
   console.error("[bins] command failed", err);
   return new HttpsError("internal", "The request could not be completed.", "INTERNAL");
 }
@@ -88,6 +112,23 @@ export const createBinCallable = onCall(REGION, async (request) => {
   const actorUid = requireAuth(request);
   try {
     return await createBin(request.data, productionDeps(actorUid));
+  } catch (err) {
+    throw mapError(err);
+  }
+});
+
+/**
+ * Correct a mislabelled or renumbered rack.
+ *
+ * Gated on `inventory.location.bin.manage` — the SAME capability as create and retire, because this
+ * is maintaining the physical bin registry, which is exactly what that capability describes and what
+ * `inventoryBinAdministrator` already carries. Registering a new capability merely because a
+ * function name is new would add a rollout step without adding a boundary.
+ */
+export const renameBinCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  try {
+    return await renameBin(request.data, productionDeps(actorUid));
   } catch (err) {
     throw mapError(err);
   }
@@ -126,6 +167,29 @@ export const resolveBinCallable = onCall(REGION, async (request) => {
   if (warehouseId === "") throw new HttpsError("invalid-argument", "A warehouseId is required.");
   try {
     return await resolveBinCode(getFirestore(), data.code, warehouseId);
+  } catch (err) {
+    throw mapError(err);
+  }
+});
+
+/**
+ * Resolve a scanned MACHINE TOKEN — the stable binId — against the operator's warehouse.
+ *
+ * This is the governed lookup the shared scan boundary deliberately does not perform.
+ * `resolveScannedIdentity` is pure: it matches only candidates its caller already read. This
+ * callable PRODUCES the canonical `{ type: "BIN", locationId }` candidate; the pure matcher never
+ * fetches it. That is why there is no client-direct `bins` read and no cross-warehouse preload.
+ *
+ * `WRONG_WAREHOUSE` is answerable here, and only here, because the token identifies one bin globally.
+ */
+export const resolveBinTokenCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  await requireBinRead(actorUid);
+  const data = (request.data ?? {}) as Record<string, unknown>;
+  const warehouseId = typeof data.warehouseId === "string" ? data.warehouseId : "";
+  if (warehouseId === "") throw new HttpsError("invalid-argument", "A warehouseId is required.");
+  try {
+    return await resolveBinToken(getFirestore(), data.token ?? data.binId, warehouseId);
   } catch (err) {
     throw mapError(err);
   }

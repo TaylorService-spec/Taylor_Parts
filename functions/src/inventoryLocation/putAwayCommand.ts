@@ -38,8 +38,14 @@
 
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
-import { BINS_COLLECTION } from "./binCommands.js";
-import { deriveBinDocId, normalizeBinCode, resolveBin } from "./binRegistry.js";
+import { BINS_COLLECTION, BIN_CODE_CLAIMS_COLLECTION } from "./binCommands.js";
+import {
+  deriveBinClaimId,
+  isSafeIdSegment,
+  normalizeBinCode,
+  resolveBinFromClaim,
+  resolveBinFromToken,
+} from "./binRegistry.js";
 
 export const BIN_PLACEMENTS_COLLECTION = "bin_placements";
 
@@ -73,7 +79,10 @@ export interface PlacementOutcome {
   readonly outcome: "recorded" | "replayed";
   readonly placementIds: readonly string[];
   readonly warehouseId: string;
-  readonly binCode: string;
+  /** Manual path: a human code, meaningful only within its warehouse. */
+  readonly binCode?: string;
+  /** Scan path: the stable machine token, which IS the binId. */
+  readonly binId?: string;
   readonly partId: string;
   /** Quantity placed for a NONE-mode part; null for serialized, where the serials are the answer. */
   readonly quantity: number | null;
@@ -96,7 +105,10 @@ export function derivePlacementId(idempotencyKey: string, discriminator: string)
 
 interface PutAwayRequest {
   readonly warehouseId: string;
-  readonly binCode: string;
+  /** Manual path: a human code, meaningful only within its warehouse. Exactly one of these two. */
+  readonly binCode?: string;
+  /** Scan path: the stable machine token, which IS the binId. */
+  readonly binId?: string;
   readonly partId: string;
   readonly quantity?: number;
   readonly serialNumbers?: readonly string[];
@@ -125,7 +137,14 @@ interface PutAwayRequest {
 /** Long enough for a real explanation; short enough that it is a note and not a document. */
 export const MAX_PLACEMENT_NOTE = 500;
 
-/** Shape validation only. What is TRUE about the bin and the serials is checked in the transaction. */
+/**
+ * Shape validation only. What is TRUE about the bin and the serials is checked in the transaction.
+ *
+ * TWO INPUT PATHS, ONE PERSISTED IDENTITY. An operator either types/picks a human code within their
+ * warehouse, or scans a label whose token is the stable `binId`. Exactly one may be supplied — a
+ * request carrying both is ambiguous about which the caller actually meant, and the two are resolved
+ * through different authorities. Both converge on the same stable `binId` before anything is written.
+ */
 export function validatePutAwayRequest(input: unknown): { valid: true; value: PutAwayRequest } | { valid: false; reason: string } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return { valid: false, reason: "not_object" };
   const d = input as Record<string, unknown>;
@@ -134,8 +153,20 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
   if (!isNonBlank(d.partId)) return { valid: false, reason: "part_required" };
   if (!isNonBlank(d.idempotencyKey)) return { valid: false, reason: "idempotency_key_required" };
 
-  const binCode = normalizeBinCode(d.binCode);
-  if (!binCode.valid) return { valid: false, reason: binCode.reason };
+  const hasBinId = d.binId !== undefined;
+  const hasBinCode = d.binCode !== undefined;
+  if (hasBinId === hasBinCode) return { valid: false, reason: "bin_code_or_bin_id_required" };
+
+  let binCode: string | undefined;
+  let binId: string | undefined;
+  if (hasBinId) {
+    if (!isSafeIdSegment(d.binId) || !String(d.binId).startsWith("bin_")) return { valid: false, reason: "bin_id_invalid" };
+    binId = d.binId as string;
+  } else {
+    const normalized = normalizeBinCode(d.binCode);
+    if (!normalized.valid) return { valid: false, reason: normalized.reason };
+    binCode = normalized.value.code;
+  }
 
   let note: string | undefined;
   if (d.note !== undefined && d.note !== null) {
@@ -162,7 +193,8 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
       valid: true,
       value: {
         warehouseId: d.warehouseId, partId: d.partId, idempotencyKey: d.idempotencyKey,
-        binCode: binCode.value.code,
+        ...(binCode !== undefined ? { binCode } : {}),
+        ...(binId !== undefined ? { binId } : {}),
         serialNumbers: (d.serialNumbers as string[]).map((s) => s.trim()),
         ...(isNonBlank(d.pickedForWorkOrderId) ? { pickedForWorkOrderId: d.pickedForWorkOrderId.trim() } : {}),
         ...(note !== undefined ? { note } : {}),
@@ -177,7 +209,9 @@ export function validatePutAwayRequest(input: unknown): { valid: true; value: Pu
     valid: true,
     value: {
       warehouseId: d.warehouseId, partId: d.partId, idempotencyKey: d.idempotencyKey,
-      binCode: binCode.value.code, quantity: d.quantity,
+      ...(binCode !== undefined ? { binCode } : {}),
+      ...(binId !== undefined ? { binId } : {}),
+      quantity: d.quantity,
       ...(isNonBlank(d.pickedForWorkOrderId) ? { pickedForWorkOrderId: d.pickedForWorkOrderId.trim() } : {}),
       ...(note !== undefined ? { note } : {}),
     },
@@ -200,12 +234,41 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
       throw new PlacementUnauthorizedError();
     }
 
-    // THE BIN MUST BE REAL, ACTIVE, AND AT THIS WAREHOUSE — read inside the transaction, so a bin
+    // THE BIN MUST BE REAL, USABLE, AND AT THIS WAREHOUSE — read inside the transaction, so a bin
     // retired mid-stow cannot be stowed into.
-    const binId = deriveBinDocId(req.warehouseId, req.binCode);
-    const binSnap = await txn.get(deps.db.collection(BINS_COLLECTION).doc(binId));
-    const resolution = resolveBin(req.binCode, req.warehouseId, binSnap.exists ? (binSnap.data() ?? null) : null);
-    if (resolution.result !== "FOUND") throw new PlacementBinError(resolution.result);
+    //
+    // BOTH INPUT PATHS CONVERGE HERE on the stable binId, which is what gets persisted. A manual
+    // code goes through the warehouse-scoped reservation index; a scanned token IS the binId and is
+    // checked against the operator's warehouse. Neither path can reach a bin in another building.
+    let binId: string;
+    let binCode: string;
+    if (req.binId !== undefined) {
+      const snap = await txn.get(deps.db.collection(BINS_COLLECTION).doc(req.binId));
+      const resolution = resolveBinFromToken(req.binId, req.warehouseId, snap.exists ? (snap.data() ?? null) : null);
+      if (resolution.result !== "FOUND") throw new PlacementBinError(resolution.result);
+      binId = resolution.binId;
+      binCode = resolution.code;
+    } else {
+      const claimSnap = await txn.get(
+        deps.db.collection(BIN_CODE_CLAIMS_COLLECTION).doc(deriveBinClaimId(req.warehouseId, req.binCode as string)),
+      );
+      const claim = claimSnap.exists ? (claimSnap.data() ?? null) : null;
+      const claimedBinId = claim && typeof claim.binId === "string" ? claim.binId : null;
+      const binSnap = claimedBinId === null
+        ? null
+        : await txn.get(deps.db.collection(BINS_COLLECTION).doc(claimedBinId));
+      const resolution = resolveBinFromClaim(
+        req.binCode, req.warehouseId, claim,
+        binSnap && binSnap.exists ? (binSnap.data() ?? null) : null,
+      );
+      // A SUPERSEDED code is USABLE: the physical bin is correct, and refusing an honest stow
+      // because a label has not been reprinted yet would block real work. The caller is told.
+      if (resolution.result !== "FOUND" && resolution.result !== "FOUND_SUPERSEDED_CODE") {
+        throw new PlacementBinError(resolution.result);
+      }
+      binId = resolution.binId;
+      binCode = resolution.code;
+    }
 
     const serials = req.serialNumbers ?? [];
 
@@ -230,7 +293,7 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
     const base = {
       warehouseId: req.warehouseId,
       binId,
-      binCode: req.binCode,
+      binCode,
       partId: req.partId,
       placedAt: now,
       placedBy: deps.actor.id,
@@ -265,7 +328,7 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
         outcome: "replayed" as const,
         placementIds: entries.map((e) => e.id),
         warehouseId: req.warehouseId,
-        binCode: req.binCode,
+        binCode,
         partId: req.partId,
         quantity: serials.length > 0 ? null : (req.quantity ?? 0),
         serialNumbers: serials,
@@ -282,7 +345,7 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
       outcome: "recorded" as const,
       placementIds: entries.map((e) => e.id),
       warehouseId: req.warehouseId,
-      binCode: req.binCode,
+      binCode,
       partId: req.partId,
       quantity: serials.length > 0 ? null : (req.quantity ?? 0),
       serialNumbers: serials,

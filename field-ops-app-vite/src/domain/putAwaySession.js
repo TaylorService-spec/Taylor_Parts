@@ -30,10 +30,21 @@ export const STOW_STEP = Object.freeze({
   CONTENTS: "CONTENTS",         // what is going in it
 });
 
-/** The server's bin-resolution vocabulary, mirrored so the client never invents one. */
+/**
+ * The server's bin-resolution vocabulary, mirrored so the client never invents one.
+ *
+ * TWO PATHS, TWO VOCABULARIES, ONE UNION. A HUMAN CODE is resolved within a warehouse, so it can
+ * come back FOUND_SUPERSEDED_CODE but can never say WRONG_WAREHOUSE — a scoped lookup cannot see
+ * that another building uses the same code, and must not pretend to. A SCANNED TOKEN identifies one
+ * bin globally, so it can say WRONG_WAREHOUSE but knows nothing about what text is printed on the
+ * label. This constant carries both because one screen consumes both.
+ */
 export const BIN_RESULT = Object.freeze({
   FOUND: "FOUND",
+  /** Human-code path only: the right bin, reached by a code it no longer uses. */
+  FOUND_SUPERSEDED_CODE: "FOUND_SUPERSEDED_CODE",
   INACTIVE: "INACTIVE",
+  /** Scanned-token path only. */
   WRONG_WAREHOUSE: "WRONG_WAREHOUSE",
   NOT_FOUND: "NOT_FOUND",
   MALFORMED: "MALFORMED",
@@ -45,6 +56,18 @@ export const BIN_RESULT_TEXT = Object.freeze({
   [BIN_RESULT.NOT_FOUND]: "No bin is registered with that code here.",
   [BIN_RESULT.MALFORMED]: "That bin code could not be read.",
 });
+
+/**
+ * A superseded code reached the RIGHT shelf, so the stow is fine — the LABEL is what is out of date.
+ * Returns the notice, or null when there is nothing to say. Never a blocker.
+ */
+export function supersededCodeNotice(bin) {
+  if (!bin || bin.result !== BIN_RESULT.FOUND_SUPERSEDED_CODE || typeof bin.code !== "string") return null;
+  return `This label is outdated. Current location code: ${bin.code}.`;
+}
+
+/** Which resolutions an operator may actually stow into. */
+const USABLE_BIN_RESULTS = new Set([BIN_RESULT.FOUND, BIN_RESULT.FOUND_SUPERSEDED_CODE]);
 
 /** What one contents scan turned out to be. */
 export const STOW_OBSERVATION = Object.freeze({
@@ -127,7 +150,9 @@ export function buildStowSession({ session, bin = null, observations = [] } = {}
 
   const blockers = [];
   if (!bin) blockers.push(STOW_BLOCKED.NO_BIN);
-  else if (bin.result !== BIN_RESULT.FOUND) blockers.push(STOW_BLOCKED.BIN_UNUSABLE);
+  // A superseded code is USABLE: it reaches the correct physical bin, and refusing an honest stow
+  // because a label has not been reprinted would block real work for a paperwork reason.
+  else if (!USABLE_BIN_RESULTS.has(bin.result)) blockers.push(STOW_BLOCKED.BIN_UNUSABLE);
   if (unresolved.length > 0) blockers.push(STOW_BLOCKED.UNRESOLVED_SCAN);
   // Unlike a cycle count, an EMPTY stow is not a finding — it is nothing happening. Recording that
   // somebody put no items into a bin would be a placement record that means nothing.

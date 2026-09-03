@@ -49,14 +49,28 @@ test("put-away emits NO location reference a movement command would accept", () 
 test("it writes to the PLACEMENT collection and nothing else", () => {
   const code = codeOnly();
   assert.equal(BIN_PLACEMENTS_COLLECTION, "bin_placements");
-  // The only collections it may reach: placements (write), bins and serialized assets (read).
+  // The only collections it may REACH: placements, bins, the code reservation index, and serialized
+  // assets. BIN_CODE_CLAIMS is read to turn a human code into a stable binId — a read, and the whole
+  // reason a manual stow no longer needs a code-derived document id.
   const collections = [...code.matchAll(/collection\((?:deps\.db|db)?\.?([A-Z_]+|[A-Za-z_]+)\)/g)].map((m) => m[1]);
   for (const c of collections) {
     assert.ok(
-      ["BIN_PLACEMENTS_COLLECTION", "BINS_COLLECTION", "SERIALIZED_ASSETS_COLLECTION"].includes(c),
+      ["BIN_PLACEMENTS_COLLECTION", "BINS_COLLECTION", "BIN_CODE_CLAIMS_COLLECTION", "SERIALIZED_ASSETS_COLLECTION"].includes(c),
       `put-away reached an unexpected collection: ${c}`,
     );
   }
+});
+
+test("every WRITE it makes is a placement — reading a bin or a claim never mutates one", () => {
+  // The allow-list above says what it may touch; this says what it may CHANGE. Widening the read set
+  // must never quietly widen the write set with it.
+  const code = codeOnly();
+  assert.doesNotMatch(code, /txn\.update\(/, "put-away updates nothing");
+  assert.doesNotMatch(code, /txn\.set\(/, "put-away overwrites nothing");
+  assert.doesNotMatch(code, /txn\.delete\(/, "put-away deletes nothing");
+  const created = [...code.matchAll(/txn\.create\(\s*deps\.db\.collection\(([A-Za-z_]+)\)/g)].map((m) => m[1]);
+  assert.ok(created.length > 0, "it must actually create something");
+  for (const c of created) assert.equal(c, "BIN_PLACEMENTS_COLLECTION", `put-away wrote to ${c}`);
 });
 
 test("NO QUARANTINE — DECISIONS #117 keeps condition and inspection out of put-away", () => {
