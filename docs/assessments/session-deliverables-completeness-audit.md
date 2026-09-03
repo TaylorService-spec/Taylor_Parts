@@ -140,7 +140,7 @@ All **18 rulings** implemented and recorded in Decision **#163**.
 | Stockout | OPEN | not defined ✅ |
 | Valuation / COGS / margin / turns / carrying cost | OPEN | registry **37/12/25**, unchanged ✅ |
 | Production | untouched | no deploy command issued to any project ✅ |
-| Firestore Rules | no widening | unchanged ✅ |
+| Firestore Rules | no widening | unchanged **by the six directives** ✅ — the release still carries `#1763`'s narrowing, see §8 |
 
 ---
 
@@ -181,7 +181,39 @@ construction, not a gap.)*
 **Hosting:** `field-ops-app-vite` — **whole-bundle, 19 client-facing commits.** It must not be
 described as "the consumption picker" or "the purchase price UI".
 
-**Rules:** NONE. **Indexes:** NONE (every new query is single-field equality). **Production:** NO.
+**Indexes:** NONE (every new query is single-field equality). **Production:** NO.
+
+### Rules — two different questions, and only one of them is NONE
+
+An earlier draft of this section said simply **"Rules: NONE"**. That was true of the six audited
+directives and **wrong about the release**, because this handoff is an accumulated catch-up from
+`5eaa403a`, not a package-local diff. The two must be stated separately.
+
+**PACKAGE-LOCAL RULES DELTA — NONE.** None of the six audited directives introduces or requires a
+Firestore Rules change. Verified: `firestore.rules` contains **zero** references to
+`inventory_acquisition_costs` or `listWorkOrderConsumptionSources`, and `warehouses` /
+`mobile_locations` reads are byte-for-byte what they were. The consumption source picker was built as
+a trusted command-scoped projection **specifically so that no read had to be widened.**
+
+**ACCUMULATED SANDBOX CATCH-UP — RULES DEPLOYMENT REQUIRED.** `#1763` / `5824df2a` sits inside the
+`5eaa403a → b6c1da49` gap and changed **both** governed `firestore.rules` copies. Measured:
+
+- it is an ancestor of current main, and is **not** an ancestor of the deployed `5eaa403a` — so it is
+  genuinely undeployed;
+- it is the **only** commit touching either rules file in the entire gap;
+- the delta is one removed `match /stock_locations/{stockLocationId}` block whose `allow read` arm is
+  deleted, leaving deny-all-by-absence. **It grants nothing — this is a narrowing;**
+- both governed copies are **identical** on main.
+
+`#1763` retired the last `stock_locations` client read *and* the Rules block that served it, and its
+own release contract requires those to ship **coordinated**. Shipping the Hosting bundle without the
+Rules narrowing would leave a read arm live for a surface that no longer exists; shipping the Rules
+narrowing without the Hosting bundle would break a client still trying to read it.
+
+**Consequences for this handoff:** Rules deployment is **human-operator-only** (Tier 2) and is **not**
+authorized by anything in this session. It belongs to `#1763`'s own release, and this audit records
+the dependency rather than claiming the authority. **This audit does not alter `#1763`'s authority and
+proposes no Rules widening.**
 
 ### Consequences of not deploying
 
@@ -190,6 +222,28 @@ described as "the consumption picker" or "the purchase price UI".
 - **Both training guides = `DRAFT — PENDING DEPLOYMENT VERIFICATION`** (measured). Neither can reach
   COMPLETE: merged code is not a verification, and the sandbox predates both screens.
 - **All live proofs unexecuted** — Taylor cost, Ventana cost, legacy cost, and every inventory proof.
+
+### This handoff EXPIRES — re-measure the delta immediately before deploying
+
+**The six-function list above is a snapshot of one moment, not the release.** It was measured against
+`5eaa403a → b6c1da49`. Main moved eight times during this session alone, and the Rules requirement
+above is the proof of what that costs: it entered the release through a commit no audited directive
+authored, and would have been missed by trusting a package-local view.
+
+So whoever performs the release **re-measures the complete delta at that moment**, against the
+sandbox version read live rather than the SHA written here:
+
+```bash
+curl -s https://eos-platform-sandbox.web.app/version.json          # the REAL deployed SHA
+git log --oneline <deployed>..origin/main -- functions/src         # Functions actually changed
+git log --oneline <deployed>..origin/main -- field-ops-app-vite/src # the whole Hosting bundle
+git log --oneline <deployed>..origin/main -- firestore.rules field-ops-app-vite/firestore.rules
+git log --oneline <deployed>..origin/main -- firestore.indexes.json
+```
+
+Each of those can grow from a package this audit never saw. **A Rules or index requirement arriving
+that way is exactly as binding as one this session created**, and treating the list above as final
+would ship an incomplete release with a confident-looking manifest.
 
 ---
 
