@@ -1,12 +1,93 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "./access/effectiveAccessFeed";
-import { INVENTORY_TRANSACTIONS_COLLECTION, STOCK_LOCATIONS_COLLECTION } from "./constants/collections";
+import {
+  INVENTORY_TRANSACTIONS_COLLECTION,
+  SERIALIZED_ASSETS_COLLECTION,
+  WAREHOUSES_COLLECTION,
+} from "./constants/collections";
 import { normalizeLedgerTransactions } from "./ledgerNormalizer";
 import { generateInventoryHealthDashboard } from "./inventoryAnalyticsService";
+import { sumLedgerEligibleOnHand } from "./fulfillment/fulfillmentAvailability";
 import type { InventoryTransaction } from "./types/inventoryTransaction";
-import type { StockLocation } from "./types/warehouse";
 export const INVENTORY_ANALYTICS_READ_CAPABILITY = "inventory.analytics.read";
+
+// X-ANALYTICS-STOCK-AUTHORITY (BIN-P2). This callable used to sum `stock_locations.quantity` per
+// part for its physical baseline. Nothing in the repository has ever WRITTEN that collection -- it
+// is a seeded legacy projection -- and in the sandbox it diverged from the ledger in BOTH
+// directions: a part with three genuinely received units read as 0, and a part with nothing ever
+// received read as 40. Decision #160 / ADR-014 ruled it retired.
+//
+// The replacement is the SAME authority every other inventory surface already uses, with the SAME
+// movement semantics Transfer, Cycle Count and Sales-Order allocation encode:
+//
+//   NONE-tracked   sumLedgerEligibleOnHand over the operational ledger at status==ACTIVE warehouses
+//                  (RECEIVED/RETURNED/TRANSFER_IN +, TRANSFER_OUT/SCRAPPED -, ADJUSTED signed,
+//                  COUNTED excluded, non-WAREHOUSE locations excluded)
+//   SERIAL-tracked serialized_assets units that are AVAILABLE at an eligible warehouse -- the same
+//                  rule Cycle Count's expected-serial snapshot uses. The ledger deliberately does
+//                  not aggregate serial quantity, so counting the registry is what makes a
+//                  serialized part's figure truthful rather than zero.
+//
+// A part with NO physical evidence anywhere is OMITTED, exactly as a part absent from
+// stock_locations was omitted before. That preserves the response contract: UNKNOWN is still
+// expressed by absence, never fabricated as 0.
+//
+// Reservations are netted OFF this baseline, unchanged and exactly once. RESERVED/RELEASED are
+// logical commitment events, deliberately absent from the physical sum above, so subtracting them
+// here does not double-count.
+
+interface RawLedgerRow {
+  readonly partId?: unknown;
+  readonly type?: unknown;
+  readonly quantity?: unknown;
+  readonly trackingMode?: unknown;
+  readonly location?: { readonly type?: unknown; readonly locationId?: unknown };
+}
+interface RawSerializedAsset {
+  readonly partId?: unknown;
+  readonly currentLocationId?: unknown;
+  readonly inventoryState?: unknown;
+}
+
+/**
+ * The physical baseline per part, from governed current sources only. PURE — the callable supplies
+ * the reads, so this is unit-testable without the emulator and cannot drift from what the callable
+ * would compute.
+ */
+export function computeAnalyticsOnHandByPart(
+  ledgerRows: readonly RawLedgerRow[],
+  serializedAssets: readonly RawSerializedAsset[],
+  eligibleWarehouseIds: ReadonlySet<string>,
+): Map<string, number> {
+  const rowsByPart = new Map<string, RawLedgerRow[]>();
+  for (const row of ledgerRows) {
+    if (typeof row.partId !== "string" || row.partId === "") continue; // malformed rows never inflate
+    const list = rowsByPart.get(row.partId);
+    if (list) list.push(row);
+    else rowsByPart.set(row.partId, [row]);
+  }
+
+  const onHand = new Map<string, number>();
+  for (const [partId, rows] of rowsByPart) {
+    const sum = sumLedgerEligibleOnHand(
+      rows as Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
+      eligibleWarehouseIds as Set<string>,
+    );
+    // null means NO physical evidence at all. Omit the part rather than asserting a zero it has not
+    // earned -- the same distinction the previous stock_locations contract drew.
+    if (sum !== null) onHand.set(partId, sum);
+  }
+
+  for (const asset of serializedAssets) {
+    if (typeof asset.partId !== "string" || asset.partId === "") continue;
+    if (asset.inventoryState !== "AVAILABLE") continue;
+    if (typeof asset.currentLocationId !== "string" || !eligibleWarehouseIds.has(asset.currentLocationId)) continue;
+    onHand.set(asset.partId, (onHand.get(asset.partId) ?? 0) + 1);
+  }
+
+  return onHand;
+}
 
 // X-ANALYTICS-WIRE-ENCODING. The analytics engine models "this part has no usage history, so it
 // never runs out" as `daysRemaining: Infinity`. That is correct IN PROCESS and is why
@@ -85,26 +166,36 @@ export const getInventoryAnalytics = onCall({ region: "us-central1" }, async (re
     allowed = false;
   }
   if (!allowed) throw new HttpsError("permission-denied", "Not authorized to read inventory analytics.");
-  const db = getFirestore(); const [ledger, stock] = await Promise.all([db.collection(INVENTORY_TRANSACTIONS_COLLECTION).get(), db.collection(STOCK_LOCATIONS_COLLECTION).get()]);
+  const db = getFirestore();
+  const [ledger, warehouses, serialized] = await Promise.all([
+    db.collection(INVENTORY_TRANSACTIONS_COLLECTION).get(),
+    // Eligible pool = status==ACTIVE warehouses, the same fence Sales-Order allocation applies.
+    // MOBILE/truck and customer-held stock live in their own collections and are deliberately not
+    // warehouse stock.
+    db.collection(WAREHOUSES_COLLECTION).where("status", "==", "ACTIVE").get(),
+    db.collection(SERIALIZED_ASSETS_COLLECTION).where("inventoryState", "==", "AVAILABLE").get(),
+  ]);
   const transactions = normalizeLedgerTransactions(ledger.docs.map((d) => ({ ...(d.data() as Omit<InventoryTransaction, "id">), id: d.id })));
-  // Physical bin total per part -- the warehouse-wide baseline this
-  // callable reads from real STOCK_LOCATIONS_COLLECTION documents
-  // (more current than data/partsCatalog.ts's static warehouseQty
-  // baseline, which inventoryService.ts's getAvailableQuantity() uses
-  // as its baseline instead). availableStock must still be netted
-  // against outstanding reservations on top of that baseline -- same
-  // "warehouseQty - (grossReserved - released)" definition as
-  // getAvailableQuantity() / computeAvailableStockByPart() -- so this
-  // callable's figure agrees with every other availableStock consumer
-  // instead of overstating it with raw bin totals that ignore
-  // outstanding RESERVED transactions.
-  const binTotals = new Map<string, number>(); stock.docs.forEach((d) => { const s = d.data() as StockLocation; binTotals.set(s.partId, (binTotals.get(s.partId) ?? 0) + s.quantity); });
+
+  // The physical baseline comes from the RAW ledger rows, not the normalized ones: normalization
+  // drops `location` and `trackingMode`, which are exactly the two facts the warehouse fence and the
+  // serial exclusion depend on.
+  const eligibleWarehouseIds = new Set(warehouses.docs.map((d) => d.id));
+  const onHandByPart = computeAnalyticsOnHandByPart(
+    ledger.docs.map((d) => d.data() as RawLedgerRow),
+    serialized.docs.map((d) => d.data() as RawSerializedAsset),
+    eligibleWarehouseIds,
+  );
+
+  // availableStock nets outstanding reservations off that baseline -- the same
+  // "physical - (grossReserved - released)" definition every other availableStock consumer uses, so
+  // this callable's figure agrees with them instead of overstating it.
   const netReservedByPart = new Map<string, number>();
   transactions.forEach((t) => {
     const delta = t.type === "RESERVED" ? t.quantity : t.type === "RELEASED" ? -t.quantity : 0;
     if (delta !== 0) netReservedByPart.set(t.partId, (netReservedByPart.get(t.partId) ?? 0) + delta);
   });
-  const stockSnapshots = [...binTotals].map(([partId, binQty]) => ({ partId, availableStock: binQty - (netReservedByPart.get(partId) ?? 0) }));
+  const stockSnapshots = [...onHandByPart].map(([partId, onHand]) => ({ partId, availableStock: onHand - (netReservedByPart.get(partId) ?? 0) }));
   const health = projectHealthForWire(generateInventoryHealthDashboard(transactions, stockSnapshots));
   try {
     assertWireEncodable({ health });

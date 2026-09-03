@@ -518,7 +518,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "inventory.analytics.read",
     description:
-      "Read the trusted inventory health analytics projection (getInventoryAnalytics) computed over inventory_transactions and stock_locations. Backend-resolved; no client-direct read of either collection.",
+      "Read the trusted inventory health analytics projection (getInventoryAnalytics) computed over inventory_transactions and serialized_assets at ACTIVE warehouses. Backend-resolved; no client-direct read of either collection.",
     resource: "inventory.analytics",
     action: "read",
   }),
@@ -554,7 +554,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   Object.freeze({
     id: "warehouse.stockLocation.read",
-    description: "Read a stock_locations record (bin-level quantity within a warehouse).",
+    description: "LEGACY, RETIRED AUTHORITY. Read a stock_locations record. BIN-P2 (Decision #160 / ADR-014) retired stock_locations as an inventory authority: nothing writes it, no runtime code reads it, and it is NOT bin-level quantity truth. Physical on-hand is inventory_transactions (NONE) and serialized_assets (SERIAL). Retained only because a stock_locations Rules block still exists; its removal is a separate Tier-2 gate.",
     resource: "warehouse.stockLocation",
     action: "read",
   }),
