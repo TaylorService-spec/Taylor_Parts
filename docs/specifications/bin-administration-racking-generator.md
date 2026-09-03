@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-09-03
 owner: Claude Code
 related_adrs: ["ADR-014"]
@@ -246,15 +246,68 @@ reason                              present on anything not NEW
 
 **The generator never authors a `binId`.** Identity remains server-derived by `createBin`. The generator's `idempotencyKey` is an input to that derivation, not a claim on it.
 
-Classification is computed by comparing the proposed set against the warehouse's existing bins (from `listBinsForWarehouse`) and their claims:
+**The client can compute only ONE of these truthfully.** `CONFLICT` — a duplicate *within* the proposed set — is a property of the request and needs no server. Everything else requires reading state the client neither has nor should have. That is the subject of the next section.
 
-| Classification | Meaning |
+---
+
+## Preview classification is a TRUSTED READ
+
+### The correction, and why it was necessary
+
+An earlier draft said classification came from comparing proposals against `listBinsForWarehouse` "and their claims". **Measured against source, that is not possible:**
+
+- `listBinsForWarehouse` reads `bins` **only**. It deliberately does not read `bin_code_claims`, because the claim index is a uniqueness-and-history mechanism, not a Location catalog — listing from it would surface superseded codes as if they were places.
+- Its returned rows carry `binId`, `code`, `name`, `status`, `area`, `aisle`, `bay`, `position` — and **no `idempotencyKey`**. Without that, the client cannot tell "a bin holds this structured identity" from "a bin holds this structured identity *and would replay under this exact key*".
+- `bin_code_claims` has **no Firestore Rules match block** and must keep none.
+
+So the client cannot honestly answer `ALREADY_EXISTS` or `CODE_RESERVED`. Guessing from structured attributes alone would produce the specific lie this programme keeps removing: a screen telling an operator that applying is safe when the registry says otherwise.
+
+### The authority
+
+> A thin **read-only** trusted classification service, `previewBinCreates`, under the **existing** `inventory.location.bin.read` capability.
+
+It is **not** a second writer, **not** a new capability, and **not** a second Location authority. It is a trusted composition over the existing validation, the existing server-owned formatter, `deriveBinId`, `bins` and `bin_code_claims`, answering one question: *what would `createBin` do with this request?*
+
+**It writes nothing** — no document, no transaction. There is no fake create-and-roll-back; a plain trusted read is sufficient and a transaction whose only purpose is pretending to preview would be a write path in disguise.
+
+**No Rules change. The client never reads `bins` or `bin_code_claims` directly, and never derives a `binId`.**
+
+### The classification contract
+
+For each proposed create request, the service:
+
+1. validates the structured input with the **same** governed validation `createBin` uses;
+2. derives the canonical code with the **same** server-owned formatter (`formatBinCode` / `DEFAULT_BIN_CODE_FORMAT`);
+3. takes the client-supplied deterministic Administration `idempotencyKey`;
+4. derives the expected `binId` **server-side** via the existing `deriveBinId`;
+5. reads `bins/{expectedBinId}` and `bin_code_claims/{warehouseId}__{canonicalCode}`;
+6. classifies:
+
+| Classification | Condition |
 |---|---|
-| `NEW` | no existing bin and no claim on this code |
-| `ALREADY_EXISTS` | a bin already holds this structured identity **and** the same derived key — applying replays as `unchanged` |
-| `CODE_RESERVED` | the canonical code is `HELD` or `SUPERSEDED` by a **different** bin — apply would be refused |
-| `CONFLICT` | two proposed rows resolve to the same structured location — a duplicate **within** the request |
-| `INVALID` | fails P1 validation (area, aisle, bay, position or code shape) |
+| `NEW` | no bin at the expected id **and** no claim on the canonical code |
+| `ALREADY_EXISTS` | the expected bin exists, coherently represents **this** create intent, and its code/claim relationship is coherent — meaning **`createBin` with this request would return `unchanged`** |
+| `CODE_RESERVED` | the expected bin does not represent this intent **and** the canonical code is `HELD` or `SUPERSEDED` by a **different** `binId` — apply would be refused |
+| `INVALID` | fails governed shape, warehouse or code validation |
+| `MALFORMED` / `INTEGRITY_ERROR` | stored bin or claim state is internally incoherent |
+
+**`ALREADY_EXISTS` means replay, not resemblance.** It is never asserted because structured attributes merely *look* equal. A bin holding the same structured location under a **different** historical idempotency key is **not** `ALREADY_EXISTS` — its `binId` differs, `createBin` would be refused by the claim, and the truthful answer is `CODE_RESERVED`.
+
+**Incoherent state fails visibly.** A bin or claim that disagrees with itself is never reported as `CODE_RESERVED` or `ALREADY_EXISTS`; it returns its own distinct classification. Preview must fail loudly rather than telling an operator that an inconsistent registry is safe to apply.
+
+`CODE_RESERVED` returns enough sanitized detail for the UI to say *"this location code already belongs to an existing or historical bin"* — and nothing that echoes a stored value beyond the code the operator already typed.
+
+### Batching
+
+Not one round-trip per physical shelf. The service accepts a **bounded batch** — **250 proposals per call**, a conservative ceiling well inside callable payload and runtime limits — and a larger layout is chunked by the client into successive **read-only** calls whose row results are aggregated deterministically.
+
+**No job system, no progress collection, no server-side state.** It is a read.
+
+### Formatter parity
+
+**The preview row shows the exact canonical code `createBin` will author**, derived server-side by the same formatter. The pure client generator may render a preliminary code while the operator is still typing, but the reviewed rows carry the **server-authoritative** code.
+
+The apply payload stays structured — `warehouseId`, `area`, `aisle`, `bay`, `position`, `idempotencyKey`. **The client never sends a canonical `code` into `createBin`**, which continues to refuse a caller-authored one (`code_not_accepted`).
 
 ---
 
@@ -381,73 +434,115 @@ Every control keyboard-reachable and operable in a logical tab order; preview an
 14. `position` integer semantics preserved
 15. an aisle range expands correctly; a malformed range is rejected
 
-**Preview**
+**Trusted preview (emulator)**
 
-16. preview writes nothing — no callable is invoked
-17. the exact human code is visible for every row
-18. `NEW` classified correctly
-19. an existing identical structured location classifies as `ALREADY_EXISTS`
-20. a code held or superseded by another bin classifies as `CODE_RESERVED`
-21. a preview containing `INVALID` cannot be applied
-22. aggregate counts equal the row results
+16. `previewBinCreates` **writes zero documents** — no bin, no claim, no transaction
+17. `NEW` when neither the expected bin nor a claim exists
+18. `ALREADY_EXISTS` **iff** `createBin` with that same request would return `unchanged`
+19. the same structured location under a **different** historical idempotency key does **NOT** classify `ALREADY_EXISTS` — it is `CODE_RESERVED`
+20. a `HELD` claim belonging to another bin → `CODE_RESERVED`
+21. a `SUPERSEDED` claim belonging to another bin → `CODE_RESERVED`
+22. a malformed stored bin → fail-visible (`MALFORMED` / `INTEGRITY_ERROR`), never `ALREADY_EXISTS` or `CODE_RESERVED`
+23. a malformed stored claim → fail-visible
+24. `INVALID` for governed shape / warehouse / code failures
+25. the preview's canonical code **equals** the code `createBin` authors for the same request
+26. the service is gated on `inventory.location.bin.read` and adds no capability
+27. a batch beyond the bounded maximum is refused rather than silently truncated
+
+**Preview UX**
+
+28. the exact server-authoritative code is visible for every row
+29. every classification is rendered as **text**, never colour alone
+30. aggregate counts are derived from the row results
+31. a preview containing `INVALID` / `MALFORMED` / `INTEGRITY_ERROR` blocks apply
+32. changing any input **invalidates the preview** and apply becomes unreachable
+33. apply is unreachable before a preview has been run
+34. a `CODE_RESERVED` row states explicitly that it **will not be created** — never a silent skip
+35. the client never reads `bins` or `bin_code_claims` directly
+36. the client never derives or authors a `binId`
 
 **Apply**
 
-23. explicit confirmation is required
-24. partial completion stays committed — no rollback of earlier rows
-25. a retry is safe and creates only the remainder
-26. no duplicate bin is ever created
-27. existing identities are never renumbered
-28. a failed row is never reported as created
-29. no single transaction spans the layout
+37. explicit confirmation is required
+38. bounded concurrency, not unbounded fan-out
+39. partial completion stays committed — a row-301 failure does not roll back 300 real locations
+40. a retry is safe and creates only the remainder
+41. completed rows replay or skip truthfully
+42. a race after preview surfaces the ACTUAL create result — preview is advisory, never a lock
+43. no duplicate bin is ever created
+44. existing identities are never renumbered
+45. a failed row is never reported as created
+46. no single transaction spans the layout
 
 **Idempotency**
 
-30. the same structured identity yields the same derived key
-31. a manual create and a generator row for the same location yield the same `binId`
-32. different structured identities yield different keys
-33. the derivation is namespaced and versioned
-34. no client code calls `deriveBinId` or authors a `binId`
+47. the same structured identity yields the same derived key
+48. manual create and generator rows use the same shared helper
+49. normalized-equivalent input (`"parts room"` vs `PARTS_ROOM`) yields the same key
+50. different structured identities yield different keys
+51. the key excludes the formatted code
+52. the key excludes `name`, `status` and any padding
+53. the derivation is namespaced and versioned
+54. no client code calls `deriveBinId` or authors a `binId`
 
 **Administration**
 
-35. list existing bins for a warehouse
-36. create one bin
-37. rename preserves `binId`
-38. the old code remains reserved after rename
-39. deactivate
-40. reactivate
-41. **no delete action exists**
-42. **no claim-release action exists**
+55. warehouse selection uses the existing governed warehouse read
+56. list existing bins for a warehouse
+57. create one bin
+58. manual create uses the SAME preview and idempotency path as the generator
+59. rename preserves `binId`
+60. the old code's continued reservation is reflected in the UI
+61. deactivate
+62. reactivate
+63. **no delete action exists**
+64. **no claim-release action exists**
+65. **no warehouse-creation control exists**
+66. **no formatter-width control exists**
+
+**Inert authority**
+
+67. the read-unavailable state is truthful
+68. the manage-unavailable state is truthful
+69. read-allowed / manage-denied is a coherent combination
+70. no fabricated success and no fixture bin list
+71. protected controls state the reason they are disabled
 
 **Authority guards**
 
-43. no quantity field is introduced anywhere in P3
-44. no `inventory_transactions` write
-45. no BIN custody
-46. no Cycle Count change
-47. no `firestore.rules` change
-48. no capability activation
-49. no grant change
-50. **no second configuration collection is created**
-51. `stock_locations` remains absent from runtime (P2R holds)
-52. no visualization, coordinate, map or image field
+72. no quantity field is introduced anywhere in P3
+73. no `inventory_transactions` write
+74. no BIN custody
+75. no Cycle Count change
+76. no `firestore.rules` change
+77. no capability activation
+78. no grant change
+79. **no second configuration collection is created**
+80. `stock_locations` remains absent from runtime (P2R holds)
+81. no visualization, coordinate, map or image field
 
-**UX**
+**Accessibility**
 
-53. apply is unreachable without preview
-54. conflicts are visible per row
-55. the partial-result summary is truthful
-56. controls are keyboard-accessible
-57. no destructive action is disguised as formatting
-58. the unavailable state is truthful when the capability is inert
+82. controls are keyboard-reachable and operable
+83. real table semantics, or an accessible responsive equivalent
+84. modal focus is trapped and returned
+85. progress and result summaries announce via `role="status"`
+86. classification is never conveyed by colour alone
+87. no horizontal PAGE overflow on mobile
 
 ## Acceptance criteria
 
 - [ ] No new persistent configuration collection exists; generator input is transient.
 - [ ] The generator is pure, authors no `binId`, and performs no I/O.
 - [ ] Preview precedes every apply and shows every exact code, with row-level classification.
-- [ ] Apply is resumable, idempotent, and truthful about partial completion.
+- [ ] Classification comes from a **trusted read-only service** under the existing `inventory.location.bin.read`; it writes zero documents and adds no capability.
+- [ ] The client never reads `bins` or `bin_code_claims` directly, and never derives a `binId`.
+- [ ] `ALREADY_EXISTS` is asserted **only** when `createBin` with that same request would return `unchanged` — never from resembling structured attributes.
+- [ ] The same structured location under a different historical idempotency key classifies `CODE_RESERVED`, not `ALREADY_EXISTS`.
+- [ ] Incoherent stored bin or claim state fails visibly, never as `ALREADY_EXISTS` or `CODE_RESERVED`.
+- [ ] The preview's canonical code is server-derived and equals the code `createBin` authors; the client sends no `code` into `createBin`.
+- [ ] Changing any input invalidates the preview, and apply is unreachable until it is re-run.
+- [ ] Apply is resumable, idempotent, and truthful about partial completion; a post-preview race surfaces the actual create result rather than trusting preview as a lock.
 - [ ] Manual and generator creation of the same structured location produce the **same** `binId` and replay.
 - [ ] `deriveBinId`, the fingerprint, and the stored shape are unchanged; no existing bin identity moves.
 - [ ] Odd-number default generation; even positions valid; `position % 2` appears nowhere in the schema or validators.
@@ -456,7 +551,7 @@ Every control keyboard-reachable and operable in a logical tab order; preview an
 - [ ] No quantity, custody, label, Rules, capability, grant or visualization change.
 - [ ] Warehouse creation is **not** included; G10 is recorded as separately gated.
 - [ ] `git diff` touches no `firestore.rules` copy, no capability id, and no role grant.
-- [ ] All 58 tests pass.
+- [ ] All 87 tests pass.
 
 ## Rollback
 
