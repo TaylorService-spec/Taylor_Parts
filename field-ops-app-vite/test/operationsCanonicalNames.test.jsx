@@ -19,7 +19,7 @@ vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" 
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
 vi.mock("../src/services/operationsQueries", () => ({
-  fetchInventoryTransactions: async () => [], fetchStockLocations: async () => [], fetchWarehouses: async () => [],
+  fetchInventoryTransactions: async () => [], fetchWarehouses: async () => [],
   fetchTransferOrders: async () => [], fetchTransferOrderDocs: async () => [], fetchSuppliers: async () => [], fetchSupplierCatalog: async () => [],
   fetchProcurementPurchaseOrders: async () => [],
 }));

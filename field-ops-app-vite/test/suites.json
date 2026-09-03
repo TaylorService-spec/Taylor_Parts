@@ -1006,10 +1006,6 @@
       "runner": "node"
     },
     {
-      "file": "test/warehouseReconciliationEngine.test.mjs",
-      "runner": "node"
-    },
-    {
       "file": "test/warehousesView.test.mjs",
       "runner": "node"
     },

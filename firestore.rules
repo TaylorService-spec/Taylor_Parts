@@ -1178,10 +1178,17 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    match /stock_locations/{stockLocationId} {
-      allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(resource.data.warehouseId);
-      allow create, update, delete: if false;
-    }
+    // stock_locations -- CLIENT READ RETIRED (BIN-P2R, Decision #160 / ADR-014).
+    //
+    // This collection was a per-warehouse, per-part, per-bin quantity row that nothing in this
+    // repository ever wrote, and that disagreed with the ledger in BOTH directions wherever it had
+    // been seeded. BIN-P2 removed every backend reader; BIN-P2R removed the last client reader and
+    // the operator surface it fed. The read arm goes with them, so no principal -- admin,
+    // dispatcher, warehouse manager or anyone else -- can reach it.
+    //
+    // There is deliberately NO match block: absent means deny-all, the same posture `bins`,
+    // `bin_code_claims` and `bin_placements` already use. Physical on-hand is inventory_transactions
+    // (NONE) and serialized_assets (SERIAL). Existing documents are inert legacy data.
 
     // Two-field OR: a transfer touching either endpoint warehouse is
     // readable by a manager assigned to THAT endpoint, even if they are

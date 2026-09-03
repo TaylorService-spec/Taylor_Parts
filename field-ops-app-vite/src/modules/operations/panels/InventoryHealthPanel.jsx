@@ -44,7 +44,6 @@ export default function InventoryHealthPanel({
   // appears in healthEntries at all. Optional/undefined default so callers that don't pass
   // it (or don't have the comparison available) render exactly as before -- no disclosure,
   // not a false "0 omitted" claim.
-  omittedBinStockCount,
   title = "Inventory Health",
   // OD-3: governed canonical partId -> display name resolver supplied by the parent (each of
   // the four parents owns one canonical read and passes a fail-closed resolver). Defaults to
@@ -85,13 +84,6 @@ export default function InventoryHealthPanel({
   return (
     <div className="fo-card">
       <h3>{title}</h3>
-      {omittedBinStockCount > 0 && (
-        <p className="fo-muted" role="status">
-          {omittedBinStockCount} part{omittedBinStockCount === 1 ? "" : "s"} with recorded bin stock but no
-          ledger transaction history {omittedBinStockCount === 1 ? "is" : "are"} not shown below -- this view
-          only covers parts with at least one ledger movement.
-        </p>
-      )}
       {sorted.length === 0 ? (
         <p className="fo-muted">{emptyText}</p>
       ) : (

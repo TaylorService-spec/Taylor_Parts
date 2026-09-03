@@ -14,7 +14,6 @@ import {
 import { buildPurchaseOrdersView } from "../domain/purchaseOrdersView.js";
 
 const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
-const STOCK_LOCATIONS_COLLECTION = "stock_locations";
 const WAREHOUSES_COLLECTION = "warehouses";
 const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
 const SUPPLIERS_COLLECTION = "suppliers";
@@ -28,14 +27,6 @@ export interface RawInventoryTransaction {
   type: "RESERVED" | "RELEASED" | "CONSUMED";
   quantity: number;
   timestamp: Timestamp;
-}
-
-export interface RawStockLocation {
-  id: string;
-  warehouseId: string;
-  partId: string;
-  quantity: number;
-  binCode: string;
 }
 
 export interface RawWarehouse {
@@ -178,7 +169,6 @@ export const fetchTransferOrderDocsPage = async (
 };
 
 export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);
-export const fetchStockLocations = () => listCollection<RawStockLocation>(STOCK_LOCATIONS_COLLECTION);
 export const fetchWarehouses = () => listCollection<RawWarehouse>(WAREHOUSES_COLLECTION);
 export const fetchTransferOrders = () => listCollection<RawTransferOrder>(TRANSFER_ORDERS_COLLECTION);
 export const fetchSuppliers = () => listCollection<RawSupplier>(SUPPLIERS_COLLECTION);
