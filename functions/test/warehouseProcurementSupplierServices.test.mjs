@@ -1,9 +1,12 @@
-// Firestore-emulator regression coverage for the otherwise-uncovered warehouse/procurement/supplier services.
+// Firestore-emulator regression coverage for the otherwise-uncovered procurement/supplier services.
+//
+// BIN-P2: the warehouse-stock case that used to open this file is gone with warehouseService.ts.
+// It proved updateStockLocation refused to drive a stock_locations quantity below zero -- a guard on
+// a writer that Decision #160 retired, over a collection that is no longer an inventory authority.
 process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
-import { updateStockLocation } from "../lib/warehouseService.js";
 import { createPurchaseOrder, updatePurchaseOrderStatus } from "../lib/procurementService.js";
 import { findBestSupplierForPart } from "../lib/supplierService.js";
 
@@ -12,13 +15,6 @@ const db = admin.firestore();
 let sequence = 0;
 const id = (prefix) => `${prefix}-${Date.now()}-${++sequence}`;
 
-test("warehouse stock cannot be reduced below zero", async () => {
-  const warehouseId = id("warehouse"), partId = id("part"), binCode = "A1";
-  await updateStockLocation(warehouseId, partId, binCode, 2);
-  await assert.rejects(updateStockLocation(warehouseId, partId, binCode, -3), /Insufficient stock/);
-  const stock = await db.collection("stock_locations").doc(`${warehouseId}__${partId}__${binCode}`).get();
-  assert.equal(stock.data().quantity, 2);
-});
 
 test("purchase order lifecycle accepts forward transitions and rejects a terminal rewrite", async () => {
   const order = await createPurchaseOrder({ supplierId: id("supplier"), items: [{ partId: id("part"), quantity: 2, unitPrice: 7 }] });

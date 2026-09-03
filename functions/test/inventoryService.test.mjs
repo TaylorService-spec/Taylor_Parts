@@ -62,7 +62,7 @@ async function ledgerFor(woId, partId) {
   return snap.docs.map((d) => d.data());
 }
 
-// ── GOVERNED STOCK, because the static catalogue is no longer inventory (DECISIONS #162) ──
+// ── GOVERNED STOCK, because the static catalogue is no longer inventory (DECISIONS #165) ──
 //
 // These tests used to get their stock from data/partsCatalog.ts's static `warehouseQty`, which
 // getAvailableQuantity() added the ledger to. That baseline is gone: a fixture quantity may not

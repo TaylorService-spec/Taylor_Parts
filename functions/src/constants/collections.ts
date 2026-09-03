@@ -13,11 +13,20 @@ export const COUNTERS_COLLECTION = "counters";
 export const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
 export const INVENTORY_SYNC_STATUS_COLLECTION = "inventory_sync_status";
 
-// Epic 4 Warehouse + Fulfillment System. Admin-SDK-only, same posture
-// as the ledger collections above -- physical-reality layer, not a
-// second source of truth, so no UI writes directly.
+// Warehouse locations and physical movement. Admin-SDK-only, same posture as the ledger
+// collections above -- no UI writes either directly.
+//
+// `warehouses` is the governed §3A eligibility record and the inventory custody parent.
+// `transfer_orders` is the CURRENT Enterprise Inventory Transfer authority
+// (functions/src/inventoryTransfer/*). It is NOT legacy, and must not be confused with the
+// Epic-4 transfer service BIN-P2 retired, which happened to share the collection name.
+//
+// STOCK_LOCATIONS_COLLECTION was removed here by BIN-P2 (Decision #160 / ADR-014). It named a
+// per-warehouse, per-part, per-bin quantity row that nothing in this repository ever wrote, and
+// that diverged from the ledger in BOTH directions wherever it had been seeded. Physical on-hand
+// comes from `inventory_transactions` (NONE) and `serialized_assets` (SERIAL). There is no second
+// balance table, and adding one back would recreate exactly the divergence that retired this one.
 export const WAREHOUSES_COLLECTION = "warehouses";
-export const STOCK_LOCATIONS_COLLECTION = "stock_locations";
 export const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
 
 // Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*). Admin-SDK-only,
@@ -83,3 +92,14 @@ export const SERIALIZED_ASSETS_COLLECTION = "serialized_assets";
 // next-action is a SEPARATE, NOT-YET-authorized roadmap capability (Exception Ownership / Operational
 // Accountability, PART 1.5); this is a deliberate SEAM, not an oversight.
 export const CRM_ACTIVITIES_COLLECTION = "crm_activities";
+
+// Performance Goal Authority -- versioned, effective-dated, approved TARGETS. Admin-SDK-only, the
+// same fail-closed posture as CRM_ACTIVITIES_COLLECTION above and for the same reason: firestore.rules
+// has NO match block for this collection, and a collection no rule matches is DENIED to every client.
+// The only write paths are the trusted commands in performance/performanceGoalCommands.ts.
+//
+// A document here holds a TARGET and never an ACTUAL. Nothing in this collection is computed from
+// business records, nothing caches a measurement, and a goal is never updated in place -- a changed
+// target is a NEW VERSION beside the old one, so a September target stays September's target after
+// October's changes.
+export const PERFORMANCE_GOALS_COLLECTION = "performance_goals";

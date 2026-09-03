@@ -1,4 +1,4 @@
-// RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #162, ruling 3).
+// RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #165, ruling 3).
 //
 // Prerequisite (also how CI runs it):
 //   firebase emulators:start --only firestore --project taylor-parts

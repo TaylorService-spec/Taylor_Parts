@@ -87,7 +87,7 @@ function hasGrantedCapability(item, operationalContext) {
 // from the rail -- this screen does not surface a destination the rail itself keeps out
 // of normal navigation. A domain with no subnav (the `future` placeholders) or with no
 // currently-visible item is omitted entirely rather than shown empty.
-function buildReachableGroups(role, allowedLegacyKeys, operationalContext) {
+export function buildReachableGroups(role, allowedLegacyKeys, operationalContext) {
   const groups = [];
   for (const domain of NAV_DOMAINS) {
     if (domain.key === "dashboard") continue;
@@ -100,6 +100,43 @@ function buildReachableGroups(role, allowedLegacyKeys, operationalContext) {
     groups.push({ domain, items });
   }
   return groups;
+}
+
+/**
+ * The destination grid, extracted so My Dashboard's GO TO section is the SAME component rather than
+ * a second rendering of the same idea.
+ *
+ * That extraction is the whole reason it exists: two implementations of "which destinations can this
+ * person open" would agree on the day they were written and drift on the first nav change, and the
+ * drift would be silent in the direction that matters -- a dashboard offering a door that does not
+ * open. One component, one answer.
+ */
+export function ReachableDestinations({ groups, operationalContext }) {
+  return groups.map(({ domain, items }) => {
+    const DomainIcon = DOMAIN_ICON[domain.key];
+    return (
+      <section key={domain.key} className="fo-landing-group">
+        <SectionHeader
+          title={
+            <span className="fo-landing-group__title">
+              {DomainIcon && <Icon icon={DomainIcon} size="dense" />}
+              {domain.label}
+            </span>
+          }
+        />
+        <div className="fo-landing-grid">
+          {items.map((item) => (
+            <Link key={item.key} to={itemHref(domain, item)} className="fo-landing-card">
+              <span className="fo-landing-card-title">{item.label}</span>
+              {hasGrantedCapability(item, operationalContext) && (
+                <StatusIndicator tone="info" label="Capability granted" />
+              )}
+            </Link>
+          ))}
+        </div>
+      </section>
+    );
+  });
 }
 
 export default function LandingPage({ role, allowedLegacyKeys = [], operationalContext = {} }) {
@@ -122,38 +159,16 @@ export default function LandingPage({ role, allowedLegacyKeys = [], operationalC
           message="Your account doesn't currently resolve access to any business area. If this looks wrong, ask an administrator to check your role and employment status in Administration > Employees."
         />
       ) : (
-        groups.map(({ domain, items }) => {
-          const DomainIcon = DOMAIN_ICON[domain.key];
-          return (
-            <section key={domain.key} className="fo-landing-group">
-              <SectionHeader
-                title={
-                  <span className="fo-landing-group__title">
-                    {DomainIcon && <Icon icon={DomainIcon} size="dense" />}
-                    {domain.label}
-                  </span>
-                }
-              />
-              <div className="fo-landing-grid">
-                {items.map((item) => (
-                  <Link key={item.key} to={itemHref(domain, item)} className="fo-landing-card">
-                    <span className="fo-landing-card-title">{item.label}</span>
-                    {hasGrantedCapability(item, operationalContext) && (
-                      <StatusIndicator tone="info" label="Capability granted" />
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          );
-        })
+        <ReachableDestinations groups={groups} operationalContext={operationalContext} />
       )}
     </div>
   );
 }
 
-// WIRING NOTE for whoever mounts this (see this branch's report -- App.jsx is out of this
-// component's file scope): `<DashboardIndex>` in App.jsx currently only receives `role`;
-// mounting this component in its non-technician branch also needs `allowedLegacyKeys` and
-// `operationalContext` threaded through, exactly as `AppRoutes`/`AppShell` already receive
-// them from `App()`.
+// WIRING NOTE, RESOLVED. This previously said App.jsx still needed `allowedLegacyKeys` and
+// `operationalContext` threaded into `DashboardIndex`. That wiring landed, and the note had gone
+// stale -- corrected here rather than left to mislead the next reader into re-doing it.
+//
+// SUPERSEDED AS THE DASHBOARD INDEX. `MyDashboard` is now the non-technician dashboard, and this
+// component's destination grid is its GO TO section via `ReachableDestinations` above. This file
+// remains the authority for WHICH destinations are reachable; it is no longer the whole screen.

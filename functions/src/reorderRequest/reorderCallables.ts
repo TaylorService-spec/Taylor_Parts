@@ -259,6 +259,12 @@ export async function persistRecordedReorderPurchaseOrder(
     input.orderedQuantity ?? null,
     input.orderedDate ?? null,
     input.expectedArrivalDate ?? null,
+    // FIN-BLOCK-003A -- the committed price is part of WHAT WAS COMMITTED, so it belongs in the
+    // fingerprint. Without it, a retry of the same idempotency key carrying a DIFFERENT price would
+    // be accepted as an exact replay and silently keep the first price, which is a financial defect
+    // rather than an idempotency nicety. Now it conflicts, and says so.
+    input.unitPriceMinor ?? null,
+    input.currency ?? null,
   ]);
   if (prior.exists) {
     assertReplayMatches(prior, fingerprint);

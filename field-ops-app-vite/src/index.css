@@ -7772,3 +7772,188 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
   .fin-scorecard__slot { padding: 14px 10px; }
   .fin-figure__value { font-size: 24px; }
 }
+
+/* ==========================================================================
+   MY DASHBOARD — goal tiles and module states.
+
+   Composition only. No new token, no new colour, no change to the hover
+   contract: every value below resolves from the :root layer the visual system
+   already established, and nothing here has a hover state of its own (the
+   interactive pieces are existing primitives, which carry their own).
+
+   The KPI figure uses --font-size-2xl at 1440 and drops to --font-size-xl on a
+   handheld, matching the visual system's 32/24 scorecard tiers rather than
+   introducing a third size.
+   ========================================================================== */
+
+.fo-goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.fo-goal-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* An absence is quieter than a figure, and says so with weight rather than with
+   a colour: a red "no target set" would read as a fault, and nobody set one is
+   not a fault. */
+.fo-goal-tile--quiet {
+  background: var(--color-surface-sunken);
+  border-style: dashed;
+}
+
+.fo-goal-tile__label {
+  font-family: var(--font-interface);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.fo-goal-tile__value {
+  font-family: var(--font-interface);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+}
+
+.fo-goal-tile__target {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+}
+
+/* The bar is a SECOND reading of the number above it, never the only one. It is
+   clamped at 100% in JS, so the fill can never overflow its track and stop
+   being a bar; the figure carries any overshoot. */
+.fo-goal-bar {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.fo-goal-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-text-muted);
+}
+
+/* Tone is always PAIRED with a word by the component (StatusIndicator sits
+   beneath every bar), so these colours carry no meaning on their own — which is
+   what keeps the tile readable to someone who cannot distinguish them. */
+.fo-goal-bar__fill--positive  { background: var(--color-success); }
+.fo-goal-bar__fill--attention { background: var(--color-warning); }
+.fo-goal-bar__fill--neutral   { background: var(--color-text-muted); }
+
+.fo-dashboard-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fo-dashboard-module__label {
+  font-family: var(--font-interface);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+/* A blocked module is inset rather than boxed: it is a sentence about why a
+   number is absent, and a card around it would give the absence the visual
+   weight of a figure. */
+.fo-dashboard-module--blocked {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border);
+}
+
+@media (max-width: 639.98px) {
+  /* Single column, and the handheld KPI tier. What must survive this width is
+     fixed by the design: every action item, every target-and-actual pair, and
+     every unavailable state's REASON. Truncating the reason to fit is how an
+     honest state becomes a blank, so nothing here clamps text. */
+  .fo-goal-grid { grid-template-columns: 1fr; }
+  .fo-goal-tile__value { font-size: var(--font-size-xl); }
+}
+
+/* --------------------------------------------------------------------------
+   RAIL IDENTITY — who is signed in, at the foot of the rail.
+
+   `margin-top: auto` pushes it to the bottom of the rail's flex column without
+   absolute positioning, so it never overlaps navigation when the domain list is
+   long and never floats when the list is short.
+
+   ON THE EVERGREEN CHROME. The rail is --color-brand-primary with inverse text,
+   so this block inherits that pair rather than re-declaring a background --
+   which is also why the sign-out button below pins BOTH halves of its hover:
+   the global `button:hover` supplies an evergreen fill against white text, and
+   a rule that moved only one half would leave the other behind. That is the
+   hover contract the visual system fixed in #1739/#1741, applied here rather
+   than rediscovered later.
+   -------------------------------------------------------------------------- */
+
+.fo-rail-identity {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.fo-rail-identity__name {
+  font-family: var(--font-interface);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-inverse);
+  /* One line. A long display name truncates rather than pushing sign-out out of
+     reach; the full value stays available through the title attribute. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fo-rail-identity__role {
+  font-family: var(--font-interface);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.fo-rail-identity__signout {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  color: var(--color-text-inverse);
+}
+
+.fo-rail-identity__signout:hover,
+.fo-rail-identity__signout:focus-visible {
+  /* BOTH halves, in one rule, at one specificity. */
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--color-text-inverse);
+}
+
+/* The Financials period note — explanatory text beside the control, not a warning.
+   Muted and small on purpose: it explains a preset's meaning, and styling it like the
+   adjacent invalid-range message would make a working selection read as a fault. */
+.fin-period__note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

@@ -1,7 +1,7 @@
 // CONSUMED STOCK NEVER LEAVES ON-HAND — the defect that blocks one commitment pool.
 // Run: node --test test/inventoryConsumptionOnHandGap.test.mjs   (no emulator)
 //
-// Found while implementing DECISIONS #162's "one commitment pool". It is PRE-EXISTING and it is
+// Found while implementing DECISIONS #165's "one commitment pool". It is PRE-EXISTING and it is
 // NOT fixed here; these tests pin it so the next change cannot be built on top of it unknowingly.
 //
 // THE FACT. Nothing in this platform removes consumed stock from physical on-hand:

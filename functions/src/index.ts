@@ -453,9 +453,16 @@ export {
 // so it is deny-all to every client; these run on the Admin SDK. EXPORT != DEPLOY.
 export {
   createBinCallable as createBin,
+  // BIN-P1: correcting a mislabelled rack keeps the same stable binId, so placement history survives
+  // it. Same inventory.location.bin.manage capability -- a new command shape, not new authority.
+  renameBinCallable as renameBin,
   deactivateBinCallable as deactivateBin,
   reactivateBinCallable as reactivateBin,
   resolveBinCallable as resolveBin,
+  // BIN-P1: the trusted machine-token lookup, gated on the same inventory.location.bin.read as the
+  // human-code resolve. It is the barcode path's governed read, and the reason the pure scan
+  // boundary needs no Firestore access of its own.
+  resolveBinTokenCallable as resolveBinToken,
   listBinsCallable as listBins,
   // Scanner Phase L. Gated on inventory.placement.record -- its own capability. Writes a placement
   // record and nothing else: no ledger event, no quantity change, no balance (DECISIONS #116).
@@ -494,3 +501,24 @@ export {
 // default deny); these two trusted callables are the only read/write path.
 export { createCrmActivity } from "./crmActivity/crmActivityCallables";
 export { getCrmActivities } from "./crmActivity/crmActivityReadService";
+
+// PERFORMANCE GOAL AUTHORITY (docs/governance/eos-dashboard-composition-authority.md, Rule 3). The
+// governed TARGET authority: versioned, effective-dated, approved goals a dashboard compares against
+// domain-owned actuals. Reconciles FIN-003 rather than competing with it -- a goal whose metric
+// declares a financialBasis IS a FIN-003 plan and is compared by that core, and approval composes
+// FIN-007's PLAN_APPROVAL invariants.
+//
+// EXPORT != DEPLOY, REGISTER != GRANT != ACTIVATE. All five `performance.goal.*` capabilities are
+// registered active:false, and production resolves its activation override set to EMPTY
+// unconditionally, so a deployed callable still denies for every principal there. `performance_goals`
+// is Admin-SDK-only (no firestore.rules match block, default deny) -- these callables are the only
+// read/write path. Firebase deploys each callable under its exported index property name, so the
+// suffixed impl consts are aliased to frozen public names here.
+export {
+  createPerformanceGoalDraftCallable as createPerformanceGoalDraft,
+  approvePerformanceGoalCallable as approvePerformanceGoal,
+  retirePerformanceGoalCallable as retirePerformanceGoal,
+  listCurrentPerformanceGoalsCallable as listCurrentPerformanceGoals,
+  listPerformanceGoalVersionsCallable as listPerformanceGoalVersions,
+  listGoalSubjectsCallable as listGoalSubjects,
+} from "./performance/performanceGoalCallables";

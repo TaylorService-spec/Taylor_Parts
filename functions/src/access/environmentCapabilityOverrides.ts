@@ -154,6 +154,15 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   // regardless of data, no production entry carries an override key, and a test asserts both.
   // Certification declares no overrides and is untouched.
   "finance.visibility.consolidated",
+  // PERFORMANCE GOAL AUTHORITY. Eligible for environment activation; eligibility is not
+  // activation and activation is not a grant. Present here so a registry entry for these ids is
+  // POSSIBLE at all -- the intersection below is what stops a careless registry edit sweeping in
+  // an unrelated capability.
+  "performance.goal.read",
+  "performance.goal.create",
+  "performance.goal.approve",
+  "performance.goal.supersede",
+  "performance.goal.retire",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -335,6 +344,19 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         // hold it in their Role definitions, and lifting the inactive-permission denial is the only
         // effect. A Role that does not hold it still resolves DENY noQualifyingGrant.
         "finance.visibility.consolidated",
+        // PERFORMANCE GOAL AUTHORITY, sandbox only. Mirrors config/environments.json, which is
+        // canonical; the drift guard compares them.
+        //
+        // ACTIVATION IS NOT A GRANT. All five stay active:false in the catalog. Lifting the
+        // inactive-permission denial is the ONLY effect: a principal whose Role does not carry the
+        // verb still resolves DENY noQualifyingGrant, and the goal authority then asks three more
+        // questions after that one -- the target's own scope, authority over the metric's actual,
+        // and hierarchical visibility for an EMPLOYEE target. Activating these widens none of them.
+        "performance.goal.read",
+        "performance.goal.create",
+        "performance.goal.approve",
+        "performance.goal.supersede",
+        "performance.goal.retire",
       ]),
     }),
     // DEPLOYABLE SYNTHETIC CERTIFICATION RUNTIME. Provisioned 2026-08-30.
@@ -342,15 +364,40 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
     // A real Firebase project, unlike demo-certworld -- which is why it is declared in
     // config/environments.json too, and why the drift guard compares it position for position.
     //
-    // It activates NO capabilities. The sandbox's list exists so the commercial spine is testable
-    // there; nothing is deployed here yet, so an override set would be a list of permissions for
-    // code that does not exist. It also holds NO private-AI classification: the flag turns true only
-    // once the certification dataset is actually installed and proven synthetic, and an empty
-    // project is not synthetic data, it is no data.
+    // ACTIVATION IS NARROW AND OWNER-RULED, and the note above it used to say the opposite.
+    //
+    // It read "It activates NO capabilities ... nothing is deployed here yet, so an override set
+    // would be a list of permissions for code that does not exist." That was true when the project
+    // was empty. It is now factually stale: this environment holds a governed synthetic Firestore
+    // world built from the certification-world fixture authority, and it has run the Purchasing and
+    // Receiving ceremonies through the real product commands.
+    //
+    // What has NOT changed is the deployment posture. No Functions, no Hosting, no browser surface,
+    // every readiness flag false, and privateAiSyntheticOperationalInterpretation false. The world
+    // is exercised by BOUNDED REPOSITORY-OWNED OPERATOR TOOLS, not by a client -- so an activation
+    // here opens a capability to a governed script acting as a named employee, and to nothing else.
+    //
+    // THREE IDS, AND DELIBERATELY NOT FOUR (Owner ruling CERT-CYCLE-11, 2026-09-02). The G07
+    // ceremony opens a count, submits it, and reconciles it. It never cancels one, so
+    // inventory.cycleCount.cancel stays inactive: certification authority is widened only as far as
+    // the scenario requires, and an activation list is not a wish list. inventory.transfer.* and
+    // inventory.returns.intake likewise remain separate future decisions, even though the
+    // demo-certworld emulator entry below activates all three families together.
+    //
+    // THE CATALOG POSTURE IS UNCHANGED. permissionCatalog still registers every cycleCount id
+    // active:false, and the resolver still denies an inactive permission ahead of any grant. This
+    // per-environment override is the governed activation seam -- and it opens the family only;
+    // WHO may perform each act is still decided by Role, which is why the Counter/Reconciler split
+    // survives this change untouched.
     Object.freeze({
       role: "sandbox",
       firebase: Object.freeze({ projectId: "eos-platform-certification" }),
       privateAiSyntheticOperationalInterpretation: false,
+      capabilityActivationOverrides: Object.freeze([
+        "inventory.cycleCount.create",
+        "inventory.cycleCount.submit",
+        "inventory.cycleCount.reconcile",
+      ]),
     }),
     // CERTIFICATION WORLD EMULATOR. Owner-approved 2026-08-22.
     //

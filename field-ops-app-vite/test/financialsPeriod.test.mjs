@@ -14,22 +14,58 @@ import {
   validateCustomRange,
   periodLabel,
   periodRequestFields,
+  periodNote,
 } from "../src/domain/financialsPeriod.js";
 
-// Local-time helpers, matching the module's own convention (see its header on timezone).
-const at = (y, m, d, h = 12) => new Date(y, m, d, h).getTime();
-const day = (ms) => {
-  const x = new Date(ms);
-  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-};
+// REPORTING-ZONE helpers, replacing host-local ones (G-05, Decision #163).
+//
+// The previous versions built instants with `new Date(y, m, d)` and formatted them with
+// `.getFullYear()` — both host-local. That agreed with the module while the module was also
+// host-local, so the suite passed everywhere and asserted nothing about WHICH timezone was right.
+//
+// It stopped agreeing the moment boundaries became America/Phoenix, and the failure was invisible on
+// a Phoenix development machine and total on a UTC CI runner: eleven of seventeen tests. Measured,
+// not guessed — `TZ=UTC node --test` on this file.
+//
+// So the helpers now speak the REPORTING zone explicitly. The suite asserts the authority's
+// behaviour rather than the host's, and it gives the same answer on every machine.
+const REPORTING_TZ = "America/Phoenix";
+/** An instant, given as a Phoenix wall-clock time. Phoenix is UTC-7 year round. */
+const at = (y, m, d, h = 12) =>
+  Date.parse(`${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}T${String(h).padStart(2, "0")}:00:00-07:00`);
+const partsIn = (ms) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORTING_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3, hourCycle: "h23",
+  }).formatToParts(new Date(ms));
+const partIn = (ms, type) => partsIn(ms).find((x) => x.type === type)?.value;
+const day = (ms) => `${partIn(ms, "year")}-${partIn(ms, "month")}-${partIn(ms, "day")}`;
 const span = (w) => [day(w.startMillis), day(w.endMillis)];
 
 test("the preset list is the approved vocabulary, defaulting to all activity", () => {
   assert.deepEqual(
     PERIOD_PRESETS.map((p) => p.key),
-    ["all", "thisMonth", "lastMonth", "thisQuarter", "lastQuarter", "yearToDate", "last12Months", "custom"],
+    // Two ADDITIVE presets since G-05: the ruling names MTD and QTD as required vocabulary, and the
+    // family had only to-date YEAR. The existing full-period presets are untouched and still mean
+    // the whole month / whole quarter.
+    ["all", "monthToDate", "thisMonth", "lastMonth", "quarterToDate", "thisQuarter", "lastQuarter", "yearToDate", "last12Months", "custom"],
   );
   assert.equal(DEFAULT_PERIOD_KEY, "all");
+});
+
+test("only the preset whose meaning CHANGED carries an explanatory note", () => {
+  // Owner-approved follow-up to G-05. T12M moved from "first of the month eleven months back" to a
+  // rolling twelve months, so a reader who knew the old behaviour sees a number change with no
+  // transaction behind it. One sentence beside the control is the cheapest honest explanation.
+  //
+  // The assertion that matters is the SECOND one: exactly one preset has a note. A note on every
+  // preset would train the reader to skip all of them, which is how explanatory text stops working.
+  assert.match(periodNote("last12Months"), /rolling 12-calendar-month window/i);
+  assert.equal(PERIOD_PRESETS.filter((p) => p.note).length, 1);
+  for (const k of ["all", "monthToDate", "thisMonth", "lastMonth", "quarterToDate", "thisQuarter", "lastQuarter", "yearToDate", "custom"]) {
+    assert.equal(periodNote(k), null, `${k} needs no note — it means what it says`);
+  }
+  assert.equal(periodNote("nonsense"), null, "an unknown preset yields no note rather than throwing");
 });
 
 test("ALL ACTIVITY is the ABSENCE of a period, not a very wide one", () => {
@@ -71,16 +107,40 @@ test("year to date ends TODAY, not at the end of the year", () => {
   assert.deepEqual(span(w), ["2026-01-01", "2026-09-02"]);
 });
 
-test("last 12 months starts at the first of the month eleven months back", () => {
-  assert.deepEqual(span(resolvePeriod("last12Months", {}, at(2026, 8, 2))), ["2025-10-01", "2026-09-02"]);
+test("last 12 months is a ROLLING twelve months ending today — a DELIBERATE change", () => {
+  // BEHAVIOUR CHANGED, and it is the one preset whose meaning G-05 required moving. This used to
+  // start at the first of the month eleven months back (2025-10-01), which is a twelve-month span
+  // measured in whole months. The ruling defines T12M as "the 12 calendar months ending at asOf" and
+  // says explicitly: one canonical definition repo-wide, no metric keeping its own rolling-year
+  // interpretation. The old behaviour WAS a second interpretation.
+  //
+  // The window is now ~29 days longer at the start of a month and identical at the end of one.
+  assert.deepEqual(span(resolvePeriod("last12Months", {}, at(2026, 8, 2))), ["2025-09-02", "2026-09-02"]);
+});
+
+test("month to date and quarter to date end at the as-of day, not the end of the period", () => {
+  assert.deepEqual(span(resolvePeriod("monthToDate", {}, at(2026, 8, 2))), ["2026-09-01", "2026-09-02"]);
+  assert.deepEqual(span(resolvePeriod("quarterToDate", {}, at(2026, 8, 2))), ["2026-07-01", "2026-09-02"]);
+  // And they differ from the full-period presets, which is the whole reason both exist.
+  assert.deepEqual(span(resolvePeriod("thisMonth", {}, at(2026, 8, 2))), ["2026-09-01", "2026-09-30"]);
+  assert.deepEqual(span(resolvePeriod("thisQuarter", {}, at(2026, 8, 2))), ["2026-07-01", "2026-09-30"]);
+});
+
+test("boundaries are the REPORTING zone's, not the host's", () => {
+  // 1 September 2026 00:00:00 in Phoenix is 07:00 UTC. A host-local implementation on a UTC runner
+  // would return 00:00 UTC and be seven hours early, silently pulling in records from 31 August.
+  const w = resolvePeriod("thisMonth", {}, at(2026, 8, 15));
+  assert.equal(w.startMillis, Date.parse("2026-09-01T07:00:00Z"));
 });
 
 test("the window is INCLUSIVE of both days — the end is the last millisecond", () => {
   const w = resolvePeriod("thisMonth", {}, at(2026, 2, 15));
-  const lastInstant = new Date(w.endMillis);
-  assert.equal(lastInstant.getHours(), 23);
-  assert.equal(lastInstant.getMinutes(), 59);
-  assert.equal(lastInstant.getMilliseconds(), 999);
+  // Asserted in the REPORTING zone: the last instant is 23:59:59.999 in Phoenix, whatever the host
+  // thinks the hour is. Under the old host-local assertion this line passed in Phoenix and failed in
+  // UTC, which is not a property worth having in a boundary test.
+  assert.equal(partIn(w.endMillis, "hour"), "23");
+  assert.equal(partIn(w.endMillis, "minute"), "59");
+  assert.equal(partIn(w.endMillis, "fractionalSecond"), "999");
   // A record stamped late on the final day falls INSIDE the window. An end-exclusive boundary
   // would drop a whole day of records, on exactly the day the user named.
   assert.ok(at(2026, 2, 31, 22) <= w.endMillis);

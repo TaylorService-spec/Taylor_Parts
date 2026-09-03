@@ -4544,9 +4544,524 @@ resolved reach, and TEAM/SELF binding) and the exact-equality parity proof in
 `functions/test/governedBusinessRoles.test.mjs`. Record:
 `docs/assessments/fin004-reach-reconciliation.md` §6–§9.
 
+## #160 — OWNER RULING: warehouse/bin inventory custody — Model A (roll-up), amending #116 (2026-09-02)
+
+**Context.** The client requires an aisle/bay/bin process with labels, scanning, and the ability to
+cycle count a scanned physical bin. The BIN-001 reconciliation
+(`docs/implementation-plans/bin-location-authority-and-scanning.md`, measured against `c54cd218`)
+found that most of that chain already exists — `functions/src/inventoryLocation/` holds a governed
+bin registry, lifecycle commands, mounted callables and an append-only `bin_placements` put-away —
+and that the one missing link was excluded on purpose. **Decision #116** (2026-08-20) ruled the
+warehouse the custody authority and the bin descriptive, to protect the invariant that stowing stock
+must not remove it from warehouse on-hand. #116 stated its own cost: *"'how many are in rack 14' is
+only as good as the last placement recorded."* That cost is now being asked for.
+
+**Ruling O-1 — Model A, warehouse roll-up.** The warehouse **remains the custody parent**. A BIN
+becomes an **authoritative physical inventory position beneath it**. A warehouse's inventory is
+`direct/unbinned WAREHOUSE balance + Σ(child BIN balances)`. Model B (descriptive) is rejected —
+it cannot support an authoritative expected quantity for a scanned bin. Model C (bin replaces
+warehouse custody) is rejected — unnecessary, and its claim that binned stock is not warehouse stock
+is exactly what #116 exists to prevent. Moving stock `WAREHOUSE↔BIN` or `BIN↔BIN` inside one
+warehouse **does not change the warehouse aggregate**; crossing a warehouse boundary remains a
+governed Transfer, never a bin shortcut. The substantive shift consumers must absorb: the
+`type === "WAREHOUSE"` term stops being the warehouse total and becomes its **direct/unbinned**
+component. Recorded in **ADR-014**.
+
+**#116 is amended, not erased.** Its ruling on the phase it governed stands as recorded, and the
+put-away implementation built under it remains correct for that phase. This entry supersedes only
+the forward posture: `BIN` may now become eligible for warehouse custody calculations, under
+roll-up, once BIN-P6 delivers it.
+
+**Ruling O-2 — history is never rewritten.** Existing WAREHOUSE-level ledger evidence remains
+authoritative exactly as recorded; no historical bin precision is manufactured. This is coherent
+under Model A precisely because the WAREHOUSE component becomes the direct/unbinned balance — stock
+recorded at a warehouse and never binned *is* unbinned stock, so every historical row stays truthful
+without reinterpretation. Later bin assignment is **new governed evidence** with no change to
+warehouse aggregate quantity. The ledger event vocabulary is deliberately **not** invented here; the
+existing `TRANSFER_OUT`/`TRANSFER_IN` pair already expresses the required semantics, and BIN-P6 must
+confirm whether put-away may use it given Transfer's exclusive movement authority, or whether a
+distinct governed type is required.
+
+**Ruling O-3 — stable surrogate bin identity.** The human code must not remain the database identity.
+`deriveBinDocId(warehouseId, code)` means correcting a mislabelled rack creates a different document
+and orphans its placement history. Required invariant: **changing a legitimate physical or business
+code must not change the stable location identity** — placements, ledger evidence, cycle counts and
+audit keep pointing at the same bin. A renamed code stays traceable and a stale printed label must
+not silently resolve to the wrong place; the smallest correct mechanism is a BIN-P1 decision and
+**must not be a second Location authority**. Structured Area/Aisle/Bay/Bin attributes are stored so
+the display formatter, not the schema, produces the code convention — bay width is therefore a
+display and policy question, never a schema migration.
+
+**Ruling O-4 — countable location-type policy is GOVERNED.** Location records and physical racking
+configuration may be Administration data. Changing Cycle Count eligibility from `WAREHOUSE`/`MOBILE`
+to include `BIN` changes stock-integrity authority and remains governed and audited. A future
+implementation may store that policy as data, but ordinary Admin preference editing is not
+sufficient authority. Consistent with Cycle Count ruling D0(ii).
+
+**Ruling O-5 — activation deferred.** `inventory.location.bin.*`, `inventory.placement.record` and
+related bin authority stay `active: false` and ungranted until the identity, configuration and
+custody model is operationally coherent. Activation moves **after** BIN-P6 in the execution order,
+not before bin custody is usable. Consistent with #119: rollout is separate from repository work.
+
+**Ruling O-6 — retire the legacy competing authority, in sequence.** `stock_locations` and the Epic 4
+`StockLocation`/bin-transfer model are retired as quantity authority: census every remaining reader
+and writer, replace required readers with the ledger derivation, prove no required production path
+depends on the old model, then remove or deprecate. **Nothing is retired merely because nothing
+writes it** — `inventoryAnalyticsCallables.ts` still reads `stock_locations`, and
+`permissionCatalog.ts` still describes it as "bin-level quantity within a warehouse". Nothing is
+deleted in this step.
+
+**Ruling O-7 — bin code uniqueness is scoped to the warehouse**, not the operating company.
+`Phoenix / A01-001` and `Seattle / A01-001` are both valid and are different bins. Within one
+warehouse, two ACTIVE governed bins must not share the same canonical code.
+
+**Also ruled.** Site/Area posture: no generic facility or real-estate hierarchy — Operating Company →
+Warehouse → Area → Aisle → Bay → Bin, with the warehouse as the physical and custody parent and Area
+an attribute beneath it. Warehouse/floor-map **visualization is deferred** — no map schema,
+coordinates, CAD layout, visual editor or floor plan until a later reviewed requirement establishes
+one. Decision **#117** (no quarantine as a side effect of put-away) is unchanged.
+
+**Still blocked.** BIN Cycle Count eligibility requires all three: BIN-P6 delivering authoritative
+bin-level quantity; the target warehouse's initial inventory conversion complete enough that expected
+quantity at a bin is truthful; and Cycle Count's own activation and durable-read dependencies
+satisfied. A partially converted warehouse must not pretend BIN-level expected quantity is complete.
+
+**Scope of this step.** Documentation and governance only — this decision, ADR-014, and the amended
+implementation plan. No application, backend, Rules or capability change; no activation, no grants,
+no deploy, no legacy deletion, no BIN-P1 implementation.
+
+**Client questions still open** (none block BIN-P1): Warehouse bay width — one digit or two, which
+must close before mass label printing; final Phoenix area codes; default barcode symbology; label
+medium; part-to-bin rules; whether irregular/deep/oversized positions need recorded attributes.
+
+**Evidence:** `docs/architecture/ADR-014-warehouse-and-bin-inventory-custody-model.md`;
+`docs/implementation-plans/bin-location-authority-and-scanning.md`;
+`docs/assessments/inventory-location-registry-2026-08-20.md` §4 (the three options as originally framed).
+## #161 — OWNER RULING: EOS dashboards compose authority, and derived information may appear on one (2026-09-02)
+
+**Context:** the dashboard reporting authority census (#1740) classified 132 dashboard fact families
+and closed with four formalization items and four Owner decisions still open. Three of those
+formalization items and one of the decisions were about the same subject — what a dashboard is
+allowed to be — and none could be answered by reading more code. The Owner answered them as one
+ruling while directing the dashboard + performance-management program.
+
+**Ruling, in two parts.**
+
+1. **"EOS dashboards compose existing domain authority. A dashboard is never a second permission
+   layer."** A tile reads through the SAME read authority, at the SAME scope, that the domain's own
+   workspace uses. It holds no capability of its own, widens none, and narrows none — a fact a
+   person's authority would refuse is ABSENT, not empty and not zero. No `dashboard.*` capability
+   exists and none is to be minted. Personalization may compose only governed context that already
+   exists (principal, Roles, capabilities, employee identity, governed position, ownership,
+   assignment, technician binding, location scope, business-unit / operating-company scope, and each
+   domain's own read authority) — and never a persona NAME, following `deriveScanWorkflows`, which is
+   capability-derived and cannot receive a persona.
+
+2. **Clearly identified derived informational projections MAY appear on a dashboard** where the
+   derivation already exists and is already governed. This extends ND-28, which ruled for a RECORD
+   PAGE and expressly did not address a dashboard tile. Conditions, all required: the derivation
+   already exists; it is unmistakably labelled `DERIVED` / `FORECAST` / `PREDICTION` / `INSIGHT`; it
+   does not replace, rename or visually impersonate authoritative operational truth; and it does not
+   carry the visual weight of a governed principal quantity. Refused by name: calling a forecast "On
+   hand", calling a prediction "Available", treating derived inventory as ATP, and presenting UNKNOWN
+   as zero. `NEEDS_PLANNING` means "the engine had nothing to compute", never "risk is low".
+   **UNKNOWN remains UNKNOWN.**
+
+**The product model recorded alongside it.** Every primary persona dashboard provides, WHERE GOVERNED
+FACTS EXIST: CURRENT WORK · PERFORMANCE AGAINST GOAL · BUSINESS IMPACT · GO TO. Management dashboards
+may add TEAM PERFORMANCE and DRIVERS / EXCEPTIONS at the manager's existing governed scope. "Where
+governed facts exist" is load-bearing: a section with no governed fact behind it renders an honest
+unavailable state naming what is missing, and is never filled with something adjacent.
+
+**Closes:** census §7 F-01 (dashboard read/scope rule), F-02 (the attention taxonomy ACTION_ITEM /
+NOTIFICATION as the platform-wide dashboard vocabulary, including the no-ALERT and no-re-badging
+rules), F-11 (truncation/completeness honesty), and §9 Owner decision 4.
+
+**Does NOT close:** census §9 decisions 2 (reporting-period authority) and 3 (the cost supply). Both
+remain open, and every fact family behind them stays honestly unavailable.
+
+Decision 1 (FIN-004 has no carrying Role) was **WITHDRAWN by #1743** as a measurement error, and
+closed for admin/owner in sandbox by #1744 — after this ruling was drafted. The dashboard modules
+and metric registry entries that cited it were corrected to name their REAL blockers, which for the
+period-based financial figures is the reporting-period authority rather than reach.
+
+**Enforced by:** `docs/governance/eos-dashboard-composition-authority.md` (canonical text).
+
+## #162 — OWNER DIRECTION: a governed Performance Goal Authority, reconciling FIN-003 (2026-09-02)
+
+**Context:** EOS could state what happened and never what should have happened. FIN-003
+(`finance/planVsActual.ts`) already defined a versioned GOAL/BUDGET plan with a
+DRAFT to APPROVED to SUPERSEDED lifecycle, an explicit measurement basis and a never-blend comparison
+core — merged, tested, and dormant since it landed for want of storage and an approval authority (its
+own §2 names both as deliberately undecided). The Owner directed a general performance-goal authority
+and named the constraint: "reconcile FIN-003 rather than creating two competing goal systems."
+
+**Decision — the invariant.** DOMAIN AUTHORITY OWNS THE ACTUAL. PERFORMANCE GOAL AUTHORITY OWNS THE
+TARGET. THE DASHBOARD COMPARES THEM. No goal record carries, caches or recomputes an actual, and no
+dashboard recomputes either half.
+
+**The reconciliation runs in ONE direction.** `functions/src/performance/` is the GENERAL authority
+(a target may be a count, a percentage, a duration or an amount). A goal whose metric declares a
+`financialBasis` **IS** a FIN-003 plan: `planRecordForGoal()` projects it through `buildPlanRecord`,
+and its comparison runs through `comparePlanToActual`. There is no second money path, no second
+never-blend rule, and no second definition of what BOOKED means. Approval composes FIN-007, whose
+`APPROVABLE_ACTION_TYPES` already reserved `PLAN_APPROVAL` with a nullable amount expressly "for
+non-monetary actions (e.g. plan approval)" — FIN-007 supplies the mechanical invariants
+(self-approval forbidden under any policy, a reason mandatory), and WHO may approve is the one thing
+FIN-007 leaves to its composer. **FIN-003 did not change to receive its missing halves.**
+
+**A metric registry, not free-form ids.** A goal may reference only a registered metric.
+THIRTY-SEVEN are registered; TEN were active when this was recorded, and TWELVE are active after G-05 closed (#163). The other twenty-one are registered WITH THEIR BLOCKER NAMED, because
+what the platform would measure and exactly what stops it is more useful than silence. Every WINDOWED
+metric is inactive — G-05, no reporting-period authority — which is the single rule keeping the
+registry honest.
+
+**Management authority is four factors, none of them a title.** The Owner's rule was "holding a
+manager title alone must not widen scope", so nothing reads a Role name: (1) the goal capability
+resolved AT THE TARGET'S OWN SCOPE; (2) authority over the metric's own actual — *you may not set a
+target on a number you are not authorized to see*, which keeps a Sales Manager out of warehouse goals
+without a rule about sales managers and warehouses; (3) governed hierarchical visibility for an
+EMPLOYEE target; (4) FIN-007's self-approval refusal. Plus: an employee does not author their own
+target — necessary because `visibleEmployeeIdsFor` deliberately includes the viewer's own employeeId,
+so factor 3 alone would permit it.
+
+**Scopes are activated only where the binding can be PROVEN.** EMPLOYEE, LOCATION, BUSINESS_UNIT,
+OPERATING_COMPANY and FIRM bind to existing governed authorities. **TEAM is registered and
+deliberately NOT bindable**: no `teams` collection and no `reportsTo` edge exist, and
+`roleHierarchy.ts` records its own limit — every salesManager sees every salesperson, so "the team
+beneath manager X" is not distinguishable from manager Y's. A manager may still VIEW a rollup across
+the employees hierarchy grants them; that is a per-viewer visibility set, not a team, and it cannot be
+the durable target of a stored goal.
+
+**Rollups are declared, never assumed.** A rate rolls up as sum(numerator) / sum(denominator), never
+average(percentages) — which would weight a technician who closed two jobs equally with one who closed
+forty. A metric whose rollup rule is not declared does not roll up at all.
+
+**Capabilities:** five, all registered `active:false` — `performance.goal.read` / `.create` /
+`.approve` / `.supersede` / `.retire`. Authoring and approval are separate ids so one person cannot
+set and bless their own team's numbers in a single act; supersede is separate because it is the only
+operation that closes an existing version's window. Granted per the Owner's §E policy table to owner,
+generalManager, operationsManager, salesManager, fieldManager, partsManager, warehouseManager and
+purchasingManager (all five verbs), and read-only to salesperson, partsAssociate and
+warehouseAssociate.
+
+**CORRECTION, same day — admin and owner ALSO hold all five, and not by any grant written here.**
+The first version of this entry claimed "admin is deliberately NOT granted", reasoning that
+administering access is a different job from setting targets. That claim was false about this
+codebase. `ADMIN_ROLE.permissions` is DERIVED as `ADMIN_CURATED_PERMISSIONS` plus the ENTIRE
+`PERMISSION_CATALOG` (Owner ruling 2026-08-19: "Admin and Owner have full access to all possible
+features and permissions"), so **registering a capability grants it to admin — and to owner, which
+composes admin's set — the moment it is registered.** Measured by resolver, not by reading: admin
+resolves all five goal verbs.
+
+This is the SAME derivation that defeated the dashboard census's grep-based FIN-004 measurement
+(#1743, withdrawn), met twice in one week. The lesson is recorded rather than the symptom patched:
+**a claim about who holds a capability is measured by the resolver, never by searching Role
+sources** — admin's grants appear as literals nowhere. An explicit owner grant added on the false
+premise has been removed, because a duplicate that reads as a deliberate distinction encodes one
+that does not exist.
+
+The practical consequence is small and acceptable: admin can author and approve goals. FIN-007's
+self-approval prohibition still applies to them unconditionally, and every act is audited.
+
+**One new Role: `performanceGoalSubject`**, carrying exactly `performance.goal.read`. It exists
+because `technician` and `dispatcher` are COMPATIBILITY Roles whose contract is to reproduce today's
+matrix EXACTLY — they are the parity oracle the shadow harness scores against, and adding a capability
+to one in order to ship a feature would corrupt the measuring instrument.
+
+**`salesManager` and `salesperson` are no longer identical**, for the first time. The manager holds the
+four write verbs; the salesperson holds only read. The asymmetry is load-bearing rather than drift:
+without it a salesperson could author their own quota.
+
+**History is not rewritten.** Superseding does not edit a goal — it closes the predecessor's window and
+writes a new version beside it, in the SAME transaction as the approval that makes the successor
+authoritative, so no instant exists in which two approved versions cover one date (which
+`currentGoalFor` refuses rather than resolving by array order). The close may SHORTEN a window and
+never LENGTHEN one.
+
+**No Rules change.** `performance_goals` has no `firestore.rules` match block and is denied to every
+client by rule absence — the posture `crm_activities` already relies on. The explicit deny-all block is
+prepared for the Owner rather than merged, since a Rules edit is Tier-2 and would force a deploy cycle
+for a change with no behavioural effect.
+
+**Activation:** the five ids are declared for `platform-sandbox` in all three registries that must
+agree (`config/environments.json`, the Functions snapshot, and `scripts/resolveEnvironment.mjs`, which
+the frontend bakes into its bundle). Production is untouched and resolves EMPTY unconditionally.
+**Deploy remains Owner-executed.**
+
+**Enforced by:** `functions/src/performance/*`; suite `functions/test/performanceGoal.test.mjs`
+(37 cases); workflow `.github/workflows/performance-goal-tests.yml`.
+## #163 — OWNER RULING (G-05 CLOSED): the EOS reporting-period authority (2026-09-02)
+
+**Context.** Twenty-seven of the thirty-seven registered performance metrics were blocked on one
+missing answer: what MTD, QTD, YTD and T12M mean, in which timezone, and what an incomplete period is
+fairly measured against. The dashboard census recorded it as G-05 and as the single highest-leverage
+open decision. This ruling closes it.
+
+**It is a SHARED DOMAIN AUTHORITY.** Dashboards, performance goals and reports all compose the same
+resolver. It is not dashboard helper logic, not goal-only logic and not financial logic — had it been
+any of those, the other two would have grown their own copy, which is the state it replaces.
+
+### What was measured first, because it decided whether this was a ruling or a conflict
+
+**Nothing in the repository asserted a reporting calendar.** `finance/financialPeriods.ts` (FIN-008)
+is a CLOSE authority — per-company OPEN/CLOSED windows someone declares — and its own header defers
+cadence to the Owner; it carries no year start, no quarter structure and no timezone. The only IANA
+timezone authority is per-technician scheduling. `America/Phoenix` appeared exactly once, as an
+example string in a doc comment. **No fiscal year other than January was asserted anywhere**, so this
+ruling contradicts nothing and there is no authority conflict to report.
+
+**One thing WAS already shipped, ungoverned.** `field-ops-app-vite/src/domain/financialsPeriod.js`
+was a real MTD/QTD/YTD/T12M implementation wired into six live Financials screens, computing
+boundaries in whatever timezone the browser happened to be in. G-05 is therefore not a greenfield
+authority; it is an incumbent being replaced.
+
+### The ruling
+
+**1. REPORTING TIMEZONE IS EXPLICIT.** Every reporting scope resolves an IANA reporting timezone. For
+Taylor and Ventana it is **America/Phoenix**. Never the browser's zone, never the developer machine's,
+never UTC calendar boundaries. Storage stays UTC; only the BOUNDARY is evaluated in the reporting
+zone, using `Intl` rather than a stored offset — a stored offset is right for half the year and
+silently wrong for the other half.
+
+**2. REPORTING CALENDAR IS EXPLICIT.** Taylor/Ventana reporting year begins **January 1**; quarters
+are Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec. This is a REPORTING calendar, not an accounting one. It lives
+as configuration on the governed operating-company authority, keyed per company and measured FROM the
+declared start month, so a future company with a July start needs no metric rewritten.
+
+**3. BOUNDARIES ARE HALF-OPEN:** `start <= eventTime < end`. No 23:59:59.999 arithmetic.
+
+*Two existing contracts compare INCLUSIVELY and neither is wrong* — FIN-003 compares ISO date strings,
+`financialReportingRead` compares millis with a strict greater-than. Rather than rewrite two shipped
+authorities in service of a convention, the resolver owns ONE exclusive boundary and DERIVES what they
+need from it: `endInclusiveMillis` and `lastDayInclusiveIso`. One calculation, three shapes, no way for
+two consumers to disagree.
+
+**4. MTD / 5. QTD / 6. YTD** run from the start of the current reporting month / quarter / year through
+the end of the as-of DAY. The window ends at the start of the day after as-of, not at the as-of instant,
+so two reads minutes apart cannot return different totals for "today".
+
+**7. T12M is ROLLING** — the twelve calendar months ending at as-of. It is NOT fiscal YTD, and there is
+ONE canonical definition repo-wide. *This changed a shipped behaviour:* the Financials "last 12 months"
+preset previously started at the first of the month eleven months back, which was a second rolling-year
+interpretation of exactly the kind this rule forbids.
+
+**8. PRIOR FULL PERIOD** — for a complete current period, the immediately preceding complete period.
+
+**9. PRIOR COMPARABLE PERIOD** — for an INCOMPLETE current period, only the equivalent elapsed portion
+of the preceding one. Sep 1–22 against Aug 1–22, never against all of August. Comparing 22 days of
+activity against 31 would report a collapse every month, in every business, forever.
+
+**10. A COMPARISON THAT CANNOT BE MADE IS SAID, NOT ZEROED.** Where the preceding period supplies no
+genuinely comparable interval the comparison is UNAVAILABLE with a stated reason. Never 0%, never
+"flat", never "unchanged".
+
+**11. CALENDAR EDGE CASES belong to the resolver, not to metrics.** Month-length differences need no
+special rule — day N is N days from the first on both sides. The one judgement is clamping: day 31
+against a 28-day February stops at 28 February rather than spilling into March. Leap years fall out of
+the platform's own calendar rather than a rule anyone wrote.
+
+**12. A REPORTING DAY** begins at 00:00 local reporting time and ends at the next local reporting
+midnight, via timezone-aware conversion. A day is never approximated as 86,400,000 ms: a
+spring-forward day is 23 hours and is still one day.
+
+**13. GOAL PACING USES ELAPSED CALENDAR DAYS.** "Day 22 of 31" is permitted. A metric may not silently
+switch to weekdays, working days or scheduled employee days — each is a different denominator needing
+its own governed authority, and none exists.
+
+**14. DOMAIN EVENT TIME WINS.** Period attribution uses the canonical business event timestamp for the
+fact being measured — `bookedAtMillis`, `eventAtMillis`, `recordedAtMillis`, `completedAt`. **Never
+`createdAt` or `updatedAt` because they happen to exist.** A metric with no governed event time stays
+blocked; G-05 does not manufacture one. The resolver refuses rather than falling back, and a test
+asserts the fallback is absent from the code rather than merely unused.
+
+**15. AS-OF IS ALWAYS EXPLICIT.** Every resolution takes an `asOfMillis`. `Date.now()` is never buried
+in metric arithmetic, so tests, certification fixtures and historical reporting are reproducible.
+
+**16. MULTI-COMPANY SCOPES REQUIRE A SHARED CALENDAR.** A consolidated period-relative figure resolves
+only when its operating companies share a compatible reporting calendar; otherwise it REFUSES rather
+than picking one. Two companies whose years start in different months produce a "Q3" covering different
+months, and summing those is two questions added together. Taylor + Ventana share the basis.
+**This creates no accounting elimination** — a Taylor + Ventana figure remains the already-governed
+`UNELIMINATED_SUM` wherever it was one. G-05 makes the WINDOW legitimate; it does not make the SUM
+clean.
+
+**17. CALENDAR CHANGES ARE PROSPECTIVE.** Changing a timezone, year start or quarter structure must not
+retroactively redefine historical reports. The configuration declares only the CURRENT calendar and must
+not grow a history by mutation; the governed precedent for change-over-time is the effective-dated,
+versioned, transactionally-superseded pattern the Performance Goal Authority already uses. That
+precedent is NAMED rather than built — an effective-dated calendar subsystem for a value that has never
+changed, across two companies sharing one calendar, would be speculative architecture. The seam is
+recorded so the day it changes is known work.
+
+**18. G-05 DEFINES *WHEN*, NEVER *WHAT*.** It closes no metric-definition gap. AOV, pipeline value,
+stockout, inventory aging, on-time service, repeat visits, the utilisation denominator, receiving
+discrepancy population, emergency purchase, cost, margin, inventory value, turns, carrying cost and
+waste avoided all remain blocked by their own authorities.
+
+### Measured result
+
+**Metric registry: 37 registered, 10 active → 12 active, 25 blocked.** Exactly TWO metrics were
+unblocked, and they are the two whose ONLY remaining blocker was the period: `sales.billed.amount` and
+`sales.collected.amount`. Each already had a real read (`listFinancialFacts`), a governed event time,
+and reach. Every other windowed metric mentioned G-05 alongside a second blocker that survives it, and
+each blocker label was rewritten to name what actually remains rather than a calendar that now exists.
+
+The count is pinned by test, and the two unblocked metrics are pinned BY NAME, so an accidental
+activation shows up as a name a reader can argue with rather than as a number.
+
+**Enforced by:** `functions/src/reportingPeriod/reportingCalendar.ts`,
+`functions/src/reportingPeriod/reportingPeriod.ts`,
+`functions/src/performance/goalReportingPeriod.ts`,
+`field-ops-app-vite/src/domain/reportingPeriod.js` (client mirror, held to identical observable results
+by a 720-case parity corpus); suites `functions/test/reportingPeriod.test.mjs`,
+`functions/test/reportingPeriodParity.test.mjs`, `field-ops-app-vite/test/financialsPeriod.test.mjs`;
+workflow `.github/workflows/performance-goal-tests.yml`, which runs the reporting suites under
+**TZ=UTC** deliberately — a reporting-period test that only passes on a machine already set to the
+reporting timezone proves the host agreed, not that the authority is right.
+
+## #164 — OWNER RULING: EOS captures governed ACQUISITION COST for purchased goods (FIN-BLOCK-003A) (2026-09-02)
+
+**Context.** FIN-BLOCK-003 (PR #1755) measured **CASE D — no governed cost supply**. The inventory
+ledger was quantity-only, no purchase price reached receiving, `COST` was not a financial source type,
+and nothing anywhere constructed a cost fact. Every margin, valuation, turns and business-impact
+question was therefore truthfully UNKNOWN, and correctly so.
+
+This ruling closes **exactly one** of the three questions that reconciliation kept separate:
+
+| | Question | After this ruling |
+|---|---|---|
+| **1. COST SUPPLY** | What did the item actually cost, per governed evidence? | **CLOSED for purchased physical goods** |
+| **2. VALUATION POLICY** | Which cost does reporting assign to units on hand? | **OPEN** |
+| **3. COGS / MARGIN RECOGNITION** | When does cost leave inventory and become cost against revenue? | **OPEN** |
+
+**FIN-BLOCK-003 is NOT fully closed.** This is FIN-BLOCK-003A: cost supply.
+
+### The ruling
+
+**1. EOS CAPTURES ACQUISITION COST FOR PURCHASED PHYSICAL GOODS.** A governed historical
+acquisition-cost fact is operational cost EVIDENCE — what the business committed to a vendor and
+received against. It is **not** book inventory value, GAAP valuation, tax basis, COGS, landed cost or
+replacement cost.
+
+**2. THE LIVE `reorder_purchase_orders` PATH IS CANONICAL.** Money is added there.
+
+**3. THE DORMANT EPIC-5 `purchase_orders` PATH IS NOT, AND ITS DEFECTS ARE NOT MIGRATED.** Its
+`unitPrice` is a **float**, carries **no currency**, and its purchase order carries **no
+operatingCompanyId** — any one of which disqualifies it. The normalizer therefore reads a canonical
+line as **UNPRICED**, deliberately: a number is present and is not adopted, so a canonical receipt
+produces no cost fact and its cost is UNKNOWN. It is **not deleted** (that is a data decision, Owner
+decision 2); it is simply not the cost authority, and a test asserts nothing in the cost chain
+imports it.
+
+**4. THE SUPPLIER QUOTE IS AN INPUT, NEVER THE COST EVENT.** `part_supplier_items.cost` remains a
+quote/contract term. It is a decimal string and is refused outright by the price authority. Changing
+a quote can never rewrite a committed purchase price or a historical receipt cost — proven
+structurally: nothing in the purchasing, receiving or cost path reads it at all.
+
+**5. PRICE BECOMES GOVERNED AT VENDOR COMMITMENT — an EXISTING transition, not a new one.**
+`recordReorderPurchaseOrder` is the moment the order is placed with the supplier: the request moves to
+ORDERED and the purchase order becomes immutable. No purchasing state was invented for cost.
+
+**6. MONEY IS INTEGER MINOR UNITS WITH AN EXPLICIT CURRENCY, SUPPLIED TOGETHER OR NOT AT ALL.** Floats
+are **refused, not rounded** — 19.99 is not 1999 minor units by any rule this code may choose. A
+partial price (an amount with no currency) is refused rather than defaulted to USD. Negative money is
+refused: direction is carried by TYPE everywhere in this repo, so a rebate or return credit needs its
+own governed type.
+
+**7. PRICE IS OPTIONAL AT THE COMMAND, AND THAT IS DELIBERATE.** Recording a purchase order is a live
+deployed workflow, and **every** purchase order now in Firestore carries no money. Making price
+mandatory would break receiving for existing work in order to add a field. **An unpriced purchase
+stays receivable and its cost stays UNKNOWN — never $0.** Requiring a price on new commitments is an
+ACTIVATION step, not a code default, and is not performed here.
+
+**8. RECEIPT CREATES IMMUTABLE HISTORICAL EVIDENCE, IN THE SAME TRANSACTION AS THE STOCK.** One fact
+per receipt line, in the receiving command own all-or-nothing commit, so quantity and cost cannot
+disagree because one write succeeded and the other did not.
+
+**9. IDEMPOTENCY IS STRUCTURAL, NOT DEFENDED.** The document id is derived from
+`(receivingId, lineId)` and the write is a `create`. A retry cannot duplicate a cost event, and a
+replayed receipt returns before the write flush. A duplicated cost event is a financial defect, so it
+is prevented by identity rather than by a check someone can forget to run.
+
+**10. PARTIAL RECEIPTS NEED NO RULE OF THEIR OWN.** A fact prices the quantity received NOW. Receiving
+4 of 10 records evidence for 4; the remaining 6 record their own fact against whatever price governs
+then. Nothing recomputes the first — nothing can, because it is a separate document keyed by its own
+receipt.
+
+**11. COST FACTS ARE IMMUTABLE EVENTS.** Never overwritten in place. **Correction authority is OPEN**
+and was not invented here; a future correction must be ADDITIVE (reversing or superseding), never a
+mutation.
+
+**12. `operatingCompanyId` IS REQUIRED, AND FAILS CLOSED.** It comes from the governed purchase
+transaction — which already inherits it from the reorder request and refuses a client-supplied value.
+It is **never** inferred from location, warehouse, vendor, SKU, employee, customer or a UI selector.
+A priced purchase with no governed company produces **no fact**: an acquisition cost that cannot say
+whether it belongs to Taylor or to Ventana is not evidence. This closes open question 5 from the
+FIN-BLOCK-003 reconciliation **for the purchase path only** — the inventory ledger still carries no
+company, and that remains open.
+
+**13. ONE BASIS: `PURCHASE_ORDER_LINE_PRICE`.** The basis says WHAT THE FACT IS, not which valuation
+policy applies. WEIGHTED_AVERAGE, FIFO, LIFO, STANDARD_COST, REPLACEMENT_COST and LABOR_BURDEN are
+deliberately **absent as values** — pre-registering one would suggest a costing method had been
+chosen. A test fails if any appears.
+
+**14. FREIGHT, DUTY, TAX, INSURANCE, INSTALLATION, RECEIVING LABOUR AND OVERHEAD ARE OUT OF V1.** No
+landed-cost allocation exists, and none is hidden inside unit price.
+
+**15. LABOUR COST REMAINS OUT.** No wage, hourly cost, burden, role cost, travel cost or subcontractor
+cost. The FIN-BLOCK-003 labour question is untouched; operational duration stays separate from money.
+
+**16. INVENTORY VALUATION REMAINS OPEN.** EOS does **not** gain authority to declare book inventory
+value. No weighted average, moving average, FIFO, LIFO, standard cost or current-cost valuation was
+implemented. The external accounting authority of record (#145) remains controlling.
+
+**17. COGS REMAINS OPEN.** A receipt cost does not answer which cost belongs to a later sale. For
+fungible stock that needs a cost-flow policy, and none exists. Consumption stays a quantity-only
+ledger event, and **`COST` is still not a `FINANCIAL_SOURCE_TYPE`**.
+
+**18. MARGIN REMAINS UNKNOWN.** An acquisition fact is **not** a `GovernedCostFact`. The two answer
+different questions at different times: `GovernedCostFact.lineRef` binds a cost to a REVENUE line,
+which at receipt time does not exist — binding one would BE the COGS decision. `deriveGrossMargin`
+therefore still returns UNKNOWN, and a test asserts nothing constructs a `GovernedCostFact`.
+
+**19. TRANSFERS AND ADJUSTMENTS DO NOT INVENT COST.** RECEIPT is the only producer, asserted by test.
+No new acquisition price arises at a warehouse, truck or van transfer, a put-away, a pick or a stage;
+an adjustment of unknown-cost units leaves the cost UNKNOWN rather than applying the latest PO price,
+the supplier quote or an average of known costs.
+
+**20. RETURNS AND REBATES REMAIN OPEN.** No purchase-return reversal, customer-return restoration,
+vendor rebate allocation or credit application was decided.
+
+### Measured result
+
+**Metric registry: 37 registered, 12 active, 25 blocked — UNCHANGED.** No metric was activated, which
+is the correct outcome: cost SUPPLY is not what those metrics were missing. Four blocker labels became
+more precise, and each now names what actually survives rather than a cost gap that has closed:
+
+| Metric | Was | Now |
+|---|---|---|
+| `inventory.value.amount` | "NO GOVERNED COST FACT EXISTS ANYWHERE" | `VALUATION_POLICY_REQUIRED` |
+| `inventory.turns.ratio` | "FIN-BLOCK-003 (no value basis)" | `COGS_COST_FLOW_REQUIRED` + `VALUATION_POLICY_REQUIRED` |
+| `inventory.carryingCost.amount` | "FIN-BLOCK-003 (no value basis)" | `CARRYING_RATE_REQUIRED` + `VALUATION_POLICY_REQUIRED` |
+| `inventory.wasteAvoided.amount` | three missing pieces | `PREVENTION_EVENT_REQUIRED` + `COUNTERFACTUAL_REQUIRED` (cost now partially available) |
+
+**Read authority.** `inventory_acquisition_costs` has **no Firestore Rules match block**, so every
+client read is denied by default — the strongest available answer to "do not create broad
+client-readable raw cost documents", and the reason this package needs no Rules change. No capability
+was registered, no grant was made, FIN-004 reach is unchanged, and SELF/TEAM activation is untouched.
+
+**Enforced by:** `functions/src/finance/acquisitionCost.ts`,
+`functions/src/reorderRequest/reorderCommands.ts`,
+`functions/src/purchasing/purchaseOrderNormalization.ts`,
+`functions/src/inventoryReceiving/receiveInventoryStockCommand.ts`; suites
+`functions/test/acquisitionCost.test.mjs` (43 cases, pure) and
+`functions/test/acquisitionCostReceipt.test.mjs` (10 cases, emulator); workflow
+`.github/workflows/inventory-receiving-command-tests.yml`, in a job with **its own emulator** for the
+reason that file already documents.
 ---
 
-## #162 — OWNER RULING: one inventory commitment authority (2026-09-02)
+## #165 — OWNER RULING: one inventory commitment authority (2026-09-02)
 
 **Number note:** #160 and #161 are claimed by the concurrently-open PR #1745. This entry takes the
 next free number rather than colliding with it.

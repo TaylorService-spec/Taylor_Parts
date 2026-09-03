@@ -9,7 +9,7 @@
 //
 // Truth boundary (load-bearing, don't blur this):
 // - data/partsCatalog.ts is METADATA ONLY -- name/category/unit. It has NO stock authority, is
-//   never written to, and as of DECISIONS #162 its static `warehouseQty` NO LONGER PARTICIPATES IN
+//   never written to, and as of DECISIONS #165 its static `warehouseQty` NO LONGER PARTICIPATES IN
 //   ANY OPERATIONAL AVAILABILITY DECISION. It used to be the baseline this file's
 //   getAvailableQuantity() added the ledger to, which meant a fixture number decided whether a real
 //   Work Order dispatch succeeded -- against the same catalogue whose own header says
@@ -20,7 +20,7 @@
 //   this project's "derive aggregates on read, never cache a second mutable total" default
 //   (docs/architecture/ADR-001-retired-operational-core-branch.md).
 //
-// ONE ON-HAND, AND ONE COMMITMENT POOL IT CAN SEE (DECISIONS #162, PARTIAL).
+// ONE ON-HAND, AND ONE COMMITMENT POOL IT CAN SEE (DECISIONS #165, PARTIAL).
 //
 // LANDED: this file and the Sales Order path now derive physical on-hand from the SAME function
 // (sumLedgerEligibleOnHand) over the same eligible warehouses, so they can no longer disagree about
@@ -49,7 +49,7 @@ import {
   WAREHOUSES_COLLECTION,
 } from "./constants/collections";
 // The ONE on-hand and ONE commitment derivation, shared with the Sales Order path so the two
-// families cannot drift into disagreeing about the same physical stock (DECISIONS #162).
+// families cannot drift into disagreeing about the same physical stock (DECISIONS #165).
 import { sumLedgerEligibleOnHand } from "./fulfillment/fulfillmentAvailability";
 import type { WorkOrder, WorkOrderStatus } from "./types/workOrder";
 import type { InventoryTransaction, InventorySyncStatus } from "./types/inventoryTransaction";
@@ -64,7 +64,7 @@ const RESERVATION_LOCKS_COLLECTION = "inventory_reservation_locks";
 // transaction's ledger query result and forces Firestore to retry it.
 const reservationLockRef = (partId: string) => db().collection(RESERVATION_LOCKS_COLLECTION).doc(partId);
 
-// sumGovernedLedger() WAS HERE, and is deleted (DECISIONS #162).
+// sumGovernedLedger() WAS HERE, and is deleted (DECISIONS #165).
 //
 // It was a second on-hand derivation: quantity-summed across ALL locations, with no notion of
 // warehouse eligibility, feeding a formula that also added the static catalogue baseline. Its whole
@@ -94,7 +94,7 @@ const reservationLockRef = (partId: string) => db().collection(RESERVATION_LOCKS
  *                              claim on the stock, including ones raised by the Sales Order it
  *                              belongs to.
  *
- * WHAT CHANGED AND WHY (DECISIONS #162). This used to be
+ * WHAT CHANGED AND WHY (DECISIONS #165). This used to be
  * `staticCatalogWarehouseQty + governedLedgerAcrossAllLocations − netReserved`. Two defects in one
  * line: a fixture quantity decided real dispatches, and "all locations" counted truck stock as
  * committable. Both are gone. CONSUMED is still not subtracted twice — it converts an existing
@@ -138,7 +138,7 @@ async function getAvailableQuantity(tx: Transaction, partId: string): Promise<nu
  * remain. That is a REAL PRE-EXISTING OVER-AVAILABILITY DEFECT in a ratified derivation, proven in
  * `inventoryConsumptionOnHandGap.test.mjs`, and it is NOT fixed here: the fix is either a physical
  * removal movement at consumption or a change to that ratified derivation, both of which are
- * inventory-semantics decisions this package is not authorised to make (DECISIONS #162 records it
+ * inventory-semantics decisions this package is not authorised to make (DECISIONS #165 records it
  * as the blocking open question).
  *
  * Adopting `openWorkOrderReserved` here would have imported that defect into the live Work Order
@@ -291,7 +291,7 @@ async function outstandingByPart(tx: Transaction, workOrderId: string): Promise<
 
 // CANCELLED trigger. Releases whatever is still outstanding for this WO, per part.
 //
-// ORPHAN FIX (DECISIONS #162): this used to iterate the CURRENT inventorySnapshot, so a requirement
+// ORPHAN FIX (DECISIONS #165): this used to iterate the CURRENT inventorySnapshot, so a requirement
 // REMOVED from the plan after dispatch kept its reservation forever — the loop had nothing to
 // iterate for it. It now iterates the LEDGER's outstanding-by-part instead, which is the record of
 // what was actually committed rather than what is currently planned. Still safe to call when
@@ -308,7 +308,7 @@ export async function releaseParts(workOrderId: string): Promise<void> {
 }
 
 /**
- * RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #162, ruling 3).
+ * RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #165, ruling 3).
  *
  * A reservation made at DISPATCH used to be frozen at that moment's `qtyPlanned`. Change the plan
  * afterwards and the commitment stayed stale until a terminal state repaired it: a decrease left

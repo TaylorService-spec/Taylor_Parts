@@ -6,13 +6,13 @@
 // was invisible. Live evidence at the time (platform-sandbox): PRT-1001 held 3 units and the formula
 // returned 0, refusing the Work Order as "Insufficient stock".
 //
-// That was fixed by ADDING the governed types on top of the static baseline. DECISIONS #162 finished
+// That was fixed by ADDING the governed types on top of the static baseline. DECISIONS #165 finished
 // the job by REMOVING the baseline: a fixture quantity may not decide a real dispatch at all.
 //
 // Run: node --test functions/test/woAvailabilityGovernedLedger.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
-// RETARGETED (DECISIONS #162). These cases used to exercise `sumGovernedLedger`, a Work-Order-only
+// RETARGETED (DECISIONS #165). These cases used to exercise `sumGovernedLedger`, a Work-Order-only
 // on-hand sum that added a STATIC catalogue baseline and counted every location. That function is
 // deleted and the static baseline is gone: operational on-hand is now the SAME ledger derivation the
 // Sales Order path uses, so there is one answer rather than two that could disagree.
@@ -82,7 +82,7 @@ test("CONSUMED is still NOT subtracted -- it finalizes what RESERVED already rem
 
 // THE TWO STATIC-BASELINE CASES THAT USED TO SIT HERE ARE DELETED, not ported.
 // They asserted that a Part's static catalogue `warehouseQty` still produced reservable stock, and
-// that governed stock COMPOSED with it (10 static + 5 received − 2 reserved = 13). DECISIONS #162
+// that governed stock COMPOSED with it (10 static + 5 received − 2 reserved = 13). DECISIONS #165
 // retires that: a fixture quantity may not decide a real dispatch. There is no ported equivalent
 // because the behaviour they described no longer exists — and keeping them green against a retired
 // authority would be worse than having no test at all.

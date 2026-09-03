@@ -6,7 +6,7 @@ one code change in this pass is a new test file.
 
 **Starting SHA:** `2c7c343d` (`origin/main` at start; unchanged during the run).
 
-> ## ⚠ SUPERSEDED IN PART — Owner ruling DECISIONS #162, 2026-09-02
+> ## ⚠ SUPERSEDED IN PART — Owner ruling DECISIONS #165, 2026-09-02
 >
 > This reconciliation was accepted and acted on. What changed:
 >
@@ -22,7 +22,7 @@ one code change in this pass is a new test file.
 > on-hand, and the two paths compensate differently — so the ratified Sales Order derivation reports
 > 5 available after 5 were received and 2 consumed. Proven in
 > `functions/test/inventoryConsumptionOnHandGap.test.mjs`. This must be ruled before Sales Order
-> commitments may join the ledger. Details: DECISIONS #162.
+> commitments may join the ledger. Details: DECISIONS #165.
 >
 > Everything below is the measurement as it stood at `2c7c343d`, kept because the ruling is only
 > legible against it.

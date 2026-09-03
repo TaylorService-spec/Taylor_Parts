@@ -1,8 +1,8 @@
 {
  "catalog": {
-  "total": 129,
+  "total": 134,
   "active": 72,
-  "inactive": 57
+  "inactive": 62
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
@@ -125,9 +125,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 129,
+   "grantedCount": 134,
    "operableCount": 72,
-   "blockedCount": 57,
+   "blockedCount": 62,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -187,6 +187,11 @@
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
     "reorder.purchaseOrder.void",
@@ -377,6 +382,11 @@
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "report.customer.field.accountOwner.read",
     "report.customer.field.notes.read",
     "report.location.field.accessNotes.read",
@@ -397,9 +407,9 @@
    "roleId": "generalManager",
    "label": "General Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 31,
+   "grantedCount": 36,
    "operableCount": 13,
-   "blockedCount": 18,
+   "blockedCount": 23,
    "granted": [
     "audit.event.read",
     "customer.record.create",
@@ -420,6 +430,11 @@
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
     "reorder.request.postPurchasingUpdate",
@@ -461,6 +476,11 @@
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "salesAgreement.accept",
     "salesAgreement.create",
     "salesAgreement.read",
@@ -542,9 +562,9 @@
    "composedFunctionalRoles": [
     "crmActivityContributor"
    ],
-   "grantedCount": 20,
+   "grantedCount": 25,
    "operableCount": 5,
-   "blockedCount": 15,
+   "blockedCount": 20,
    "granted": [
     "audit.event.read",
     "crm.activity.create",
@@ -560,6 +580,11 @@
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "salesAgreement.accept",
     "salesAgreement.create",
     "salesAgreement.read",
@@ -584,60 +609,11 @@
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
-    "salesAgreement.accept",
-    "salesAgreement.create",
-    "salesAgreement.read",
-    "salesAgreement.updateDraft",
-    "salesOrder.read",
-    "salesOrder.write"
-   ]
-  },
-  {
-   "roleId": "salesperson",
-   "label": "Salesperson",
-   "composedFunctionalRoles": [
-    "crmActivityContributor"
-   ],
-   "grantedCount": 19,
-   "operableCount": 4,
-   "blockedCount": 15,
-   "granted": [
-    "crm.activity.create",
-    "crm.activity.read",
-    "customer.record.create",
-    "customer.record.read",
-    "customer.record.update",
-    "finance.read",
-    "finance.visibility.self",
-    "inventory.balance.read",
-    "inventory.catalog.read",
-    "inventory.transaction.read",
-    "opportunity.createSalesOrder",
-    "opportunity.read",
-    "opportunity.write",
-    "salesAgreement.accept",
-    "salesAgreement.create",
-    "salesAgreement.read",
-    "salesAgreement.updateDraft",
-    "salesOrder.read",
-    "salesOrder.write"
-   ],
-   "operableNow": [
-    "customer.record.create",
-    "customer.record.read",
-    "customer.record.update",
-    "inventory.transaction.read"
-   ],
-   "grantedButInactive": [
-    "crm.activity.create",
-    "crm.activity.read",
-    "finance.read",
-    "finance.visibility.self",
-    "inventory.balance.read",
-    "inventory.catalog.read",
-    "opportunity.createSalesOrder",
-    "opportunity.read",
-    "opportunity.write",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "salesAgreement.accept",
     "salesAgreement.create",
     "salesAgreement.read",
@@ -652,9 +628,9 @@
    "composedFunctionalRoles": [
     "inventoryLookupReader"
    ],
-   "grantedCount": 18,
+   "grantedCount": 23,
    "operableCount": 9,
-   "blockedCount": 9,
+   "blockedCount": 14,
    "granted": [
     "audit.event.read",
     "customer.record.read",
@@ -668,6 +644,11 @@
     "inventory.location.display.read",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "reorder.request.assign",
     "reorder.request.create.manual",
     "reorder.request.read.queue",
@@ -695,6 +676,175 @@
     "inventory.catalog.read",
     "inventory.location.display.read",
     "inventory.serializedAsset.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
+    "salesOrder.read"
+   ]
+  },
+  {
+   "roleId": "salesperson",
+   "label": "Salesperson",
+   "composedFunctionalRoles": [
+    "crmActivityContributor"
+   ],
+   "grantedCount": 20,
+   "operableCount": 4,
+   "blockedCount": 16,
+   "granted": [
+    "crm.activity.create",
+    "crm.activity.read",
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
+    "finance.read",
+    "finance.visibility.self",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.transaction.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "performance.goal.read",
+    "salesAgreement.accept",
+    "salesAgreement.create",
+    "salesAgreement.read",
+    "salesAgreement.updateDraft",
+    "salesOrder.read",
+    "salesOrder.write"
+   ],
+   "operableNow": [
+    "customer.record.create",
+    "customer.record.read",
+    "customer.record.update",
+    "inventory.transaction.read"
+   ],
+   "grantedButInactive": [
+    "crm.activity.create",
+    "crm.activity.read",
+    "finance.read",
+    "finance.visibility.self",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "opportunity.createSalesOrder",
+    "opportunity.read",
+    "opportunity.write",
+    "performance.goal.read",
+    "salesAgreement.accept",
+    "salesAgreement.create",
+    "salesAgreement.read",
+    "salesAgreement.updateDraft",
+    "salesOrder.read",
+    "salesOrder.write"
+   ]
+  },
+  {
+   "roleId": "operationsManager",
+   "label": "Operations Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 20,
+   "operableCount": 14,
+   "blockedCount": 6,
+   "granted": [
+    "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
+    "reorder.purchaseOrder.read",
+    "reorder.request.read.queue",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "audit.event.read",
+    "customer.record.create",
+    "customer.record.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "reorder.request.read.queue",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "fulfillment.coordinatedVisit.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede"
+   ]
+  },
+  {
+   "roleId": "warehouseManager",
+   "label": "Warehouse Manager",
+   "composedFunctionalRoles": [
+    "inventoryLookupReader"
+   ],
+   "grantedCount": 19,
+   "operableCount": 8,
+   "blockedCount": 11,
+   "granted": [
+    "audit.event.read",
+    "customer.record.read",
+    "inventory.action.read",
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
+    "reorder.purchaseOrder.read",
+    "reorder.request.create.manual",
+    "salesOrder.read",
+    "warehouse.transferOrder.read"
+   ],
+   "operableNow": [
+    "audit.event.read",
+    "customer.record.read",
+    "inventory.action.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "reorder.purchaseOrder.read",
+    "reorder.request.create.manual",
+    "warehouse.transferOrder.read"
+   ],
+   "grantedButInactive": [
+    "inventory.balance.read",
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
     "salesOrder.read"
    ]
   },
@@ -799,6 +949,56 @@
    ]
   },
   {
+   "roleId": "fieldManager",
+   "label": "Service Manager",
+   "composedFunctionalRoles": [],
+   "grantedCount": 18,
+   "operableCount": 7,
+   "blockedCount": 11,
+   "granted": [
+    "audit.event.read",
+    "customer.record.read",
+    "finance.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.balance.read",
+    "inventory.catalog.manage",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "inventory.transaction.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
+    "salesOrder.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "operableNow": [
+    "audit.event.read",
+    "customer.record.read",
+    "inventory.catalog.manage",
+    "inventory.transaction.read",
+    "workOrder.cancel",
+    "workOrder.create",
+    "workOrder.transition"
+   ],
+   "grantedButInactive": [
+    "finance.read",
+    "fulfillment.coordinatedVisit.read",
+    "inventory.balance.read",
+    "inventory.catalog.read",
+    "inventory.serializedAsset.read",
+    "performance.goal.approve",
+    "performance.goal.create",
+    "performance.goal.read",
+    "performance.goal.retire",
+    "performance.goal.supersede",
+    "salesOrder.read"
+   ]
+  },
+  {
    "roleId": "controller",
    "label": "Controller",
    "composedFunctionalRoles": [],
@@ -889,103 +1089,15 @@
    ]
   },
   {
-   "roleId": "operationsManager",
-   "label": "Operations Manager",
-   "composedFunctionalRoles": [],
-   "grantedCount": 15,
-   "operableCount": 14,
-   "blockedCount": 1,
-   "granted": [
-    "audit.event.read",
-    "customer.record.create",
-    "customer.record.read",
-    "fulfillment.coordinatedVisit.read",
-    "inventory.action.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "reorder.purchaseOrder.read",
-    "reorder.request.read.queue",
-    "warehouse.record.read",
-    "warehouse.stockLocation.read",
-    "warehouse.transferOrder.read",
-    "workOrder.cancel",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "operableNow": [
-    "audit.event.read",
-    "customer.record.create",
-    "customer.record.read",
-    "inventory.action.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "reorder.purchaseOrder.read",
-    "reorder.request.read.queue",
-    "warehouse.record.read",
-    "warehouse.stockLocation.read",
-    "warehouse.transferOrder.read",
-    "workOrder.cancel",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "grantedButInactive": [
-    "fulfillment.coordinatedVisit.read"
-   ]
-  },
-  {
-   "roleId": "warehouseManager",
-   "label": "Warehouse Manager",
-   "composedFunctionalRoles": [
-    "inventoryLookupReader"
-   ],
-   "grantedCount": 14,
-   "operableCount": 8,
-   "blockedCount": 6,
-   "granted": [
-    "audit.event.read",
-    "customer.record.read",
-    "inventory.action.read",
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.catalog.manage",
-    "inventory.catalog.read",
-    "inventory.location.display.read",
-    "inventory.serializedAsset.read",
-    "inventory.transaction.read",
-    "reorder.purchaseOrder.read",
-    "reorder.request.create.manual",
-    "salesOrder.read",
-    "warehouse.transferOrder.read"
-   ],
-   "operableNow": [
-    "audit.event.read",
-    "customer.record.read",
-    "inventory.action.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "reorder.purchaseOrder.read",
-    "reorder.request.create.manual",
-    "warehouse.transferOrder.read"
-   ],
-   "grantedButInactive": [
-    "inventory.balance.read",
-    "inventory.catalog.alias.read",
-    "inventory.catalog.read",
-    "inventory.location.display.read",
-    "inventory.serializedAsset.read",
-    "salesOrder.read"
-   ]
-  },
-  {
    "roleId": "partsAssociate",
    "label": "Parts Associate",
    "composedFunctionalRoles": [
     "inventoryLookupReader",
     "inventoryPutAwayOperator"
    ],
-   "grantedCount": 13,
+   "grantedCount": 14,
    "operableCount": 4,
-   "blockedCount": 9,
+   "blockedCount": 10,
    "granted": [
     "customer.record.read",
     "finance.read",
@@ -997,6 +1109,7 @@
     "inventory.placement.record",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    "performance.goal.read",
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition"
@@ -1016,46 +1129,7 @@
     "inventory.location.display.read",
     "inventory.placement.record",
     "inventory.serializedAsset.read",
-    "salesOrder.read"
-   ]
-  },
-  {
-   "roleId": "fieldManager",
-   "label": "Service Manager",
-   "composedFunctionalRoles": [],
-   "grantedCount": 13,
-   "operableCount": 7,
-   "blockedCount": 6,
-   "granted": [
-    "audit.event.read",
-    "customer.record.read",
-    "finance.read",
-    "fulfillment.coordinatedVisit.read",
-    "inventory.balance.read",
-    "inventory.catalog.manage",
-    "inventory.catalog.read",
-    "inventory.serializedAsset.read",
-    "inventory.transaction.read",
-    "salesOrder.read",
-    "workOrder.cancel",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "operableNow": [
-    "audit.event.read",
-    "customer.record.read",
-    "inventory.catalog.manage",
-    "inventory.transaction.read",
-    "workOrder.cancel",
-    "workOrder.create",
-    "workOrder.transition"
-   ],
-   "grantedButInactive": [
-    "finance.read",
-    "fulfillment.coordinatedVisit.read",
-    "inventory.balance.read",
-    "inventory.catalog.read",
-    "inventory.serializedAsset.read",
+    "performance.goal.read",
     "salesOrder.read"
    ]
   },
@@ -1066,9 +1140,9 @@
     "inventoryLookupReader",
     "inventoryPutAwayOperator"
    ],
-   "grantedCount": 12,
+   "grantedCount": 13,
    "operableCount": 4,
-   "blockedCount": 8,
+   "blockedCount": 9,
    "granted": [
     "inventory.action.read",
     "inventory.balance.read",
@@ -1079,6 +1153,7 @@
     "inventory.placement.record",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    "performance.goal.read",
     "reorder.purchaseOrder.read",
     "salesOrder.read",
     "warehouse.transferOrder.read"
@@ -1097,6 +1172,7 @@
     "inventory.location.display.read",
     "inventory.placement.record",
     "inventory.serializedAsset.read",
+    "performance.goal.read",
     "salesOrder.read"
    ]
   },
@@ -1550,6 +1626,21 @@
    "operableNow": [],
    "grantedButInactive": [
     "workOrder.labor.correct"
+   ]
+  },
+  {
+   "roleId": "performanceGoalSubject",
+   "label": "Performance Goal Subject",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "performance.goal.read"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "performance.goal.read"
    ]
   },
   {

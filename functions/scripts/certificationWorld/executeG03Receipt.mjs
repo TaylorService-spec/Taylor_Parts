@@ -48,7 +48,7 @@ const FIXED_NOW = new Date("2026-08-22T15:00:00.000Z");
  * Returns the outcome or the governed refusal. A refusal is a RESULT here, not a crash: several
  * steps of this lifecycle exist specifically to prove that the service says no.
  */
-export async function receiveAs(db, employeeId, request) {
+export async function receiveAs(db, employeeId, request, { now = () => FIXED_NOW } = {}) {
   const principalIndex = await loadPrincipalIndex(db);
   const uid = principalIndex.get(employeeId);
   if (!uid) throw new Error(`${employeeId} has no principal -- cannot act`);
@@ -59,7 +59,11 @@ export async function receiveAs(db, employeeId, request) {
       authorize: (txn, actorId, capability) => resolveReceivePermissionThroughTxn(txn, db, actorId, capability),
       resolvePart: (txn, partId) => resolveReceivePartThroughTxn(txn, db, partId),
       stageAudit: (txn, audit) => stageReceiveAuditEvent(txn, audit),
-      now: () => FIXED_NOW,
+      // FIXED_NOW by default so the emulator lifecycle stays byte-reproducible. A LIVE ceremony
+      // passes the real clock: stamping a real receipt with a pinned 2026-08-22 would record a
+      // time the receipt did not happen at, which is the provenance defect CERT-UPGRADE-
+      // PROVENANCE-03 was about, one domain over.
+      now,
     });
     return { ok: true, actorEmployeeId: employeeId, actorUid: uid, outcome };
   } catch (err) {

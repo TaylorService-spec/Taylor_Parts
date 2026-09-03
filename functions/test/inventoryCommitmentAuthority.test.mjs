@@ -140,7 +140,7 @@ test("the WORK ORDER path is BLIND to Sales Order allocations — the asymmetry,
 test("CLOSED — both paths now derive on-hand from the SAME function over the same eligible warehouses", () => {
   // This test previously pinned the DIVERGENCE: the Work Order path added a static catalogue
   // baseline and summed all locations, while the Sales Order path used the ledger at ACTIVE
-  // warehouses. DECISIONS #162 retired the baseline, so the assertion is inverted rather than
+  // warehouses. DECISIONS #165 retired the baseline, so the assertion is inverted rather than
   // deleted — it now fails if a second on-hand derivation reappears.
   const service = code(INVENTORY_SERVICE);
   assert.ok(!service.includes("getCatalogItem"), "the WO path must not read the static catalogue");
@@ -167,7 +167,7 @@ test("UNKNOWN reaches the refusal — a dispatch cannot commit stock nobody has 
 });
 
 test("STILL OPEN — Sales Order commitments are not yet ledger events", () => {
-  // The honest half of DECISIONS #162. On-hand converged; the commitment pool has not, because
+  // The honest half of DECISIONS #165. On-hand converged; the commitment pool has not, because
   // consumption never leaves on-hand (inventoryConsumptionOnHandGap.test.mjs). This fails when
   // that is fixed, which is the point — it forces the record forward rather than going quiet.
   const alloc = code(ALLOCATE_SO);

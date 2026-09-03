@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { X } from "lucide-react";
-import AppRail, { RailBrand } from "./AppRail";
+import AppRail, { RailBrand, RailIdentity } from "./AppRail";
 import { NAV_DOMAINS, isNavItemVisible } from "./navConfig";
 import AppHeader from "../shared/ui/AppHeader";
 import MobileTabBar from "./MobileTabBar.jsx";
@@ -139,6 +139,9 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
       <aside className="fo-rail" aria-label="Application navigation">
         <RailBrand />
         {rail}
+        {/* Identity sits OUTSIDE the <nav> the rail renders, deliberately: who you are is not a
+            destination, and putting it inside navigation would announce it as one. */}
+        <RailIdentity />
       </aside>
 
       {isDrawer && drawerOpen && (

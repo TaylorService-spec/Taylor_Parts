@@ -26,7 +26,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { WORK_ORDERS_COLLECTION } from "../constants/collections";
 // The canonical commitment authority — this command does not reserve, it asks the one authority
-// that does to re-derive the commitment from the current plan (DECISIONS #162).
+// that does to re-derive the commitment from the current plan (DECISIONS #165).
 import { reconcileReservation, hasAppliedReservation } from "../inventoryService";
 import { PARTS_COLLECTION } from "../partMaster/partMasterRepository";
 import { TERMINAL_STATUSES } from "../transitionEngine";
@@ -245,7 +245,7 @@ export const setWorkOrderPartsPlan = onCall({ region: "us-central1" }, async (re
       return nextSnapshot.length;
     });
 
-    // RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #162, ruling 3).
+    // RESERVATION FOLLOWS CURRENT DEMAND (DECISIONS #165, ruling 3).
     //
     // PLAN PARTS != RESERVE PARTS still holds, and this does not weaken it: planning a part on a
     // Work Order that has not yet dispatched commits nothing, exactly as before. What changed is
