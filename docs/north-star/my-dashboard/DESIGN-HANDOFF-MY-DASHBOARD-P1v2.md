@@ -11,6 +11,73 @@ same hover contract — into one dashboard family. Where it names a component it
 
 ---
 
+## 0-B. LIVE OWNER REVIEW — 2026-09-03, amendment
+
+The dashboard was deployed to platform-sandbox at `6ac99d90` and the Owner reviewed the running Admin
+screen. Verdict: **"its not super great but manageable"** — manageable, not accepted. This amendment
+records what that review changed. Sections 0-A and 3 below are kept as written; where they disagree
+with this section, **this section is current**.
+
+### GO TO IS REMOVED FROM THE DASHBOARD
+
+Owner: *"not sure we really need the links at the bottom."*
+
+The rail and drawer already own navigation. Repeating the site map beneath the business content
+duplicated that job and consumed most of the page. `goTo` and the `GO_TO` section are gone from the
+composition — **not** from the application: `buildReachableGroups` still decides whether a
+destination genuinely opens, and every "View all" and attention link still asks it.
+
+The census is 23 modules, not 24. The historical count is preserved in 0-A as history; the current
+number is the current truth.
+
+### NO EMPTY SECTION HEADINGS, EVER
+
+The live screen showed **"Performance against goal" with nothing under it**. `myGoals` resolves for
+anyone with an employee identity, so the section was kept — and then the render returned `null`,
+because EMPLOYEE-scope targets only exist for a technician binding and this surface carries none.
+
+A module that RESOLVES must render something. It now says *"No individual goals are set for you."*
+An unset goal is a management gap worth naming, not a blank.
+
+### ABSENCE MUST NOT OUTWEIGH PERFORMANCE
+
+Every metric a viewer's scope can carry a goal for is asked about, so with few targets configured the
+grid became a wall of identical *"No target has been set."* tiles. Configured targets keep their full
+tile; metrics with **no goal at all** collapse to one counted line. The distinction between "target
+exists" and "target absent" is preserved — it is simply no longer the loudest thing on the screen.
+
+A metric asked at several scopes is now **labelled by scope**. "Open reorder requests" and "Awaiting
+receipt" appeared once per governed warehouse: legitimately distinct targets that looked like
+duplicates because the warehouse name was fetched and discarded.
+
+### UNRESOLVED IDENTITY IS A DATA-QUALITY STATE
+
+Two rows read **"Unknown technician"**, which reads as a person whose name is missing. The truth is
+that the Work Order names a technician id no technician record carries. Such rows now read
+**"Technician identity unavailable"**, are visually distinguished, sort last, and keep their counts —
+the work is real; the record it points at is not.
+
+### DASHBOARD COPY IS CONCISE; THE REASONING STAYS IN THE METADATA
+
+Stock forecast and Cost and waste avoided each had a paragraph on the tile. Modules may now carry a
+`displayBlocker` — one or two sentences for the screen — while `blocker` keeps the full, exact
+statement that docs, tests and this document read. Neither overstates readiness.
+
+### TWO DEFECTS THE LIVE REVIEW EXPOSED
+
+- **Awaiting receipt** reported *"could not be read just now"* on every load. `RECEIVING_OUTCOME.READY`
+  is the lowercase `"ready"`; the dashboard compared against `"READY"`, so the check could never
+  pass — including on a perfectly successful callable. Client-only; no receiving authority changed.
+- **Account portfolio** showed `103` beside three dashes. The summary returns
+  `byStatus.{ACTIVE,PROSPECT,INACTIVE,ARCHIVED}`; the module read `summary.active`, which has never
+  existed. The same wrong field silently disabled the `crm.account.active.count` goal actual from the
+  day it was "connected", and the test fixtures encoded the same wrong shape, which is why they
+  agreed. One known figure now leads; the breakdown is a line, not four competing KPI slots.
+
+**Status: CODE COMPLETE · AWAITING SANDBOX DEPLOYMENT AND OWNER ACCEPTANCE.** Not accepted, not closed.
+
+---
+
 ## 0-A. IMPLEMENTATION RECONCILIATION — 2026-09-03
 
 **Status: CODE COMPLETE · AWAITING SANDBOX DEPLOYMENT AND LIVE VERIFICATION.**

@@ -37,7 +37,11 @@ import EmptyState from "../../shared/ui/EmptyState.jsx";
 // as ordinary counts among the other counts -- so nothing on the screen said "this one needs you".
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import AttentionBand from "../../shared/ui/AttentionBand.jsx";
-import { ReachableDestinations, buildReachableGroups } from "../../navigation/LandingPage.jsx";
+// buildReachableGroups only -- GO TO was REMOVED from the dashboard after the Owner reviewed it
+// live: "not sure we really need the links at the bottom". The rail and drawer already own
+// navigation, and repeating the site map below the business content cost most of the page.
+// The function stays, because reachableHref still asks it whether a destination genuinely opens.
+import { buildReachableGroups } from "../../navigation/LandingPage.jsx";
 import { composeDashboard, goalTargetsFor, resolvedModuleKeys, MODULE_STATE, SECTION } from "../../domain/dashboardComposition.js";
 import { usePerformanceGoals, goalKey } from "../../hooks/usePerformanceGoals.js";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames.js";
@@ -60,6 +64,7 @@ import { useSubmissionQueue } from "../../hooks/useSubmissionQueue.js";
 // dashboard -- the precise "trade truth for visual completeness" failure Decision #172 forbids.
 import { governedOpportunitySource } from "../../access/opportunitySource.js";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient.js";
+import { RECEIVING_OUTCOME } from "../../domain/receivingTransport.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection.js";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants.js";
@@ -71,6 +76,7 @@ import {
   workOrdersByStatus as projectWorkOrdersByStatus,
   technicianComparison as projectTechnicianComparison,
   TECHNICIAN_QUALITY_UNAVAILABLE,
+  TECHNICIAN_IDENTITY_UNAVAILABLE,
 } from "../../domain/dashboardTeamProjections.js";
 import GoalGrid from "./GoalGrid.jsx";
 import PreviewList from "./PreviewList.jsx";
@@ -85,6 +91,23 @@ import PreviewList from "./PreviewList.jsx";
  * `resolved` is the whole contract: false means the answer is UNKNOWN, and #172 forbids rendering
  * that as an empty queue.
  */
+/**
+ * The canonical account statuses, in reading order, with their display words.
+ *
+ * ARCHIVED is included because the server counts it: omitting a status the summary carries would
+ * make the visible categories look like the whole book of business when they are not.
+ */
+// EVERY LABEL NAMES THE CONCEPT -- ADR-012 section 2.2a, enforced by activeLabelConformance, which
+// caught a bare "Active" here. The rule earns its keep on this screen specifically: a dashboard also
+// surfaces role-assignment state and capability state, and three different things sharing one
+// unqualified status word on one page is the ambiguity the ADR exists to stop.
+const ACCOUNT_STATUS_LABELS = Object.freeze([
+  ["ACTIVE", "Active accounts"],
+  ["PROSPECT", "Prospect accounts"],
+  ["INACTIVE", "Inactive accounts"],
+  ["ARCHIVED", "Archived accounts"],
+]);
+
 function useOneShot(load, enabled) {
   const [state, setState] = useState({ data: null, resolved: false });
   useEffect(() => {
@@ -112,17 +135,25 @@ function useOneShot(load, enabled) {
  * An empty list is a real answer: a principal may legitimately be governed to no warehouse.
  */
 function useGovernedWarehouseIds() {
+  // The LABELS are kept as well as the ids. They were being discarded, which is why every
+  // location goal rendered under a bare metric name and the screen showed the same two tiles
+  // repeated once per warehouse with nothing to tell them apart.
   const [ids, setIds] = useState([]);
+  const [nameById, setNameById] = useState({});
   useEffect(() => {
     let cancelled = false;
     fetchReorderWarehouseOptions()
-      .then(({ options }) => { if (!cancelled) setIds(options.map((o) => o.value)); })
+      .then(({ options }) => {
+        if (cancelled) return;
+        setIds(options.map((o) => o.value));
+        setNameById(Object.fromEntries(options.map((o) => [o.value, o.label])));
+      })
       // A failure here narrows the dashboard (no location goals) rather than widening it or
       // breaking the screen. Fail closed, quietly: the person still sees everything else.
-      .catch(() => { if (!cancelled) setIds([]); });
+      .catch(() => { if (!cancelled) { setIds([]); setNameById({}); } });
     return () => { cancelled = true; };
   }, []);
-  return ids;
+  return { ids, nameById };
 }
 
 /**
@@ -188,13 +219,29 @@ function AccountPortfolioModule({ summary, state }) {
           quoting the bare word it is about -- tripping the guard that proves the point would be a
           poor joke to leave in the build.) */}
       <CompactMetric value={summary.total ?? "—"} label="All accounts" />
-      <CompactMetric value={summary.active ?? "—"} label="Active accounts" />
-      <CompactMetric value={summary.prospect ?? "—"} label="Prospect accounts" />
-      <CompactMetric value={summary.inactive ?? "—"} label="Inactive accounts" />
-      {typeof summary.unclassified === "number" && summary.unclassified > 0 && (
-        <CompactMetric value={summary.unclassified} label="Unclassified accounts" />
-      )}
     </div>
+    {/* THE BREAKDOWN IS A LINE, NOT FOUR MORE KPI SLOTS.
+        This rendered `summary.active` / `.prospect` / `.inactive` -- fields the server has NEVER
+        returned; the summary carries `byStatus.ACTIVE` and friends. So three KPI-sized slots
+        rendered "—" beside one real number, and the screen read as unfinished when the data was
+        there all along. Reading the right field fixes the values; giving them one line rather than
+        equal weight is what stops one known figure and three others competing for the eye. */}
+    <p className="fo-muted">
+      {ACCOUNT_STATUS_LABELS.map(([key, label], i) => {
+        const n = summary.byStatus?.[key];
+        return (
+          <span key={key}>
+            {i > 0 ? " · " : ""}
+            {label} {typeof n === "number" ? n : "not available"}
+          </span>
+        );
+      })}
+      {/* Non-zero means the four statuses do not add up to the book of business. Saying so is the
+          whole reason the server computes it by subtraction rather than by summing the statuses. */}
+      {typeof summary.unclassified === "number" && summary.unclassified > 0
+        ? ` · Unclassified ${summary.unclassified}`
+        : null}
+    </p>
     </ModuleFrame>
   );
 }
@@ -282,7 +329,7 @@ function BlockedModule({ label, blocker }) {
 export default function MyDashboard({ role, allowedLegacyKeys = [], operationalContext = {} }) {
   const { user, employeeId, displayName, operationalRoles } = useAuth();
   const authUid = user?.uid ?? null;
-  const warehouseIds = useGovernedWarehouseIds();
+  const { ids: warehouseIds, nameById: warehouseNameById } = useGovernedWarehouseIds();
 
   const ctx = useMemo(
     () => ({
@@ -362,14 +409,20 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   // A technician id is NOT a user id. Same collection ControlTower reads, same resolver, same shape.
   const { data: technicians, loading: techniciansLoading, error: techniciansError } =
     useFirestoreCollection(TECHNICIANS_COLLECTION, wantsTeam);
-  const resolveTechName = useMemo(
+  // The WHOLE identity, not just its name: the projection needs the STATE to tell a person from a
+  // Work Order pointing at a technician record that does not exist.
+  const resolveTechIdentity = useMemo(
     () => (technicianId) =>
       resolveTechnicianIdentity(technicianId, {
         technicians: technicians ?? [],
         loading: techniciansLoading,
         error: techniciansError,
-      }).name,
+      }),
     [technicians, techniciansLoading, techniciansError],
+  );
+  const resolveTechName = useMemo(
+    () => (technicianId) => resolveTechIdentity(technicianId).name,
+    [resolveTechIdentity],
   );
 
   // FINANCIALS. The reporting period is the GOVERNED one (G-05) -- month to date on the
@@ -429,9 +482,9 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
     const resolvedWorkOrders = !workOrdersLoading && !workOrdersError ? workOrders ?? null : null;
     return {
       byStatus: moduleKeys.has("workOrdersByStatus") ? projectWorkOrdersByStatus(resolvedWorkOrders) : null,
-      technicians: wantsTeam ? projectTechnicianComparison(resolvedWorkOrders, resolveTechName) : null,
+      technicians: wantsTeam ? projectTechnicianComparison(resolvedWorkOrders, resolveTechIdentity) : null,
     };
-  }, [moduleKeys, wantsTeam, workOrders, workOrdersLoading, workOrdersError, resolveTechName]);
+  }, [moduleKeys, wantsTeam, workOrders, workOrdersLoading, workOrdersError, resolveTechIdentity]);
 
   const previews = useMemo(() => {
     const showOpportunities = moduleKeys.has("myOpportunities");
@@ -455,7 +508,11 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
         rows: receiving.data?.purchaseOrders ?? [],
         // The client returns READY only for a well-formed answer; anything else -- denied, transport
         // off, malformed -- is UNAVAILABLE and must not read as an empty queue.
-        resolved: receiving.resolved && receiving.data?.status === "READY",
+        // THE CONSTANT, NOT A LITERAL. This compared against "READY" while RECEIVING_OUTCOME.READY
+        // is the lowercase "ready", so the check could never pass: the tile reported "could not be
+        // read just now" on every load, including a perfectly successful callable. The module
+        // composed, the read worked, and the screen said it had failed.
+        resolved: receiving.resolved && receiving.data?.status === RECEIVING_OUTCOME.READY,
       }),
       adminDecisions: boundedPreview({
         rows: Array.isArray(adminDecisions.data) ? adminDecisions.data : [],
@@ -542,6 +599,22 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
     return items;
   }, [attentionSections, destinationGroups]);
 
+  /**
+   * What to append to a metric name when the same metric is asked at more than one scope.
+   *
+   * FIRM targets get nothing -- there is only ever one, and "Past due scheduled work — Firm" is
+   * noise. LOCATION targets get the warehouse's own name, which is what makes two otherwise
+   * identical tiles distinguishable. An id that has not resolved to a name says so rather than
+   * printing the id, which nobody can match to a building.
+   */
+  const goalScopeLabel = useMemo(
+    () => (t) => {
+      if (t?.targetScopeType !== "LOCATION" || !t?.targetScopeId) return null;
+      return warehouseNameById[t.targetScopeId] ?? "Location name unavailable";
+    },
+    [warehouseNameById],
+  );
+
   const actualsByKey = useMemo(
     () =>
       actualsByGoalKey(
@@ -577,10 +650,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
       <AttentionBand items={attentionItems} ariaLabel="Work needing attention" />
       {sections.map(({ section, label, modules }) => (
         <RuledSection key={section} title={label} id={`dashboard-${section.toLowerCase()}`}>
-          {section === SECTION.GO_TO ? (
-            <ReachableDestinations groups={destinationGroups} operationalContext={operationalContext} />
-          ) : (
-            // MODULES SIT IN A GRID, not a stack. At 1440 a one-module-per-row dashboard leaves two
+          {// MODULES SIT IN A GRID, not a stack. At 1440 a one-module-per-row dashboard leaves two
             // thirds of the width empty and reads as a column of unrelated sentences; the section
             // rules stop doing their job because everything inside them is equally spaced. This is
             // NOT a card farm -- the modules remain unboxed, exactly as the design requires. It is
@@ -588,7 +658,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
             <div className="fo-dashboard-grid">
             {modules.map((m) => {
               if (m.state !== MODULE_STATE.READY) {
-                return <BlockedModule key={m.key} label={m.label} blocker={m.blocker} />;
+                return <BlockedModule key={m.key} label={m.label} blocker={m.displayBlocker ?? m.blocker} />;
               }
               if (m.key === "serviceAttention") {
                 return (
@@ -756,9 +826,23 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                           {rows.map((t) => (
                             <li key={t.technicianId} className="fo-preview-list__row">
                               <div className="fo-preview-list__line">
-                                <span className="fo-preview-list__primary">{t.name}</span>
+                                {/* A row whose identity did not resolve is a DATA QUALITY state, not
+                                    a person. It keeps its counts -- the work is real -- but says
+                                    plainly that the Work Order points at a technician record that
+                                    does not exist, rather than sitting among colleagues under a
+                                    name-shaped label. */}
+                                <span
+                                  className={
+                                    t.identityResolved
+                                      ? "fo-preview-list__primary"
+                                      : "fo-preview-list__primary fo-preview-list__primary--unresolved"
+                                  }
+                                >
+                                  {t.name}
+                                </span>
                                 <span className="fo-preview-list__secondary">
                                   {t.open} open · {t.completed} completed
+                                  {t.identityResolved ? null : " · no matching technician record"}
                                 </span>
                               </div>
                             </li>
@@ -790,7 +874,23 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                           {rows.map((v) => (
                             <li key={v.technicianId} className="fo-preview-list__row">
                               <div className="fo-preview-list__line">
-                                <span className="fo-preview-list__primary">{resolveTechName(v.technicianId) || "Name not resolved"}</span>
+                                {/* THE SAME DATA-QUALITY TREATMENT as the comparison table. This
+                                    read the resolver's `.name` directly, which yields the literal
+                                    "Unknown technician" for an id no technician record carries --
+                                    a name-shaped label for something that is not a person. It was
+                                    still leaking one such row on the live screen after the
+                                    comparison table had been corrected. */}
+                                <span
+                                  className={
+                                    resolveTechIdentity(v.technicianId).state === "resolved"
+                                      ? "fo-preview-list__primary"
+                                      : "fo-preview-list__primary fo-preview-list__primary--unresolved"
+                                  }
+                                >
+                                  {resolveTechIdentity(v.technicianId).state === "resolved"
+                                    ? resolveTechIdentity(v.technicianId).name
+                                    : TECHNICIAN_IDENTITY_UNAVAILABLE}
+                                </span>
                                 <span className="fo-preview-list__secondary">
                                   {/* ABSENT IS NOT EMPTY. `availableMinutes: null` means NO RECORDED
                                       SCHEDULE, and rendering it as 0 would state that someone is
@@ -859,10 +959,36 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                 const scoped = targets.filter((t) =>
                   m.key === "myGoals" ? t.targetScopeType === "EMPLOYEE" : t.targetScopeType !== "EMPLOYEE",
                 );
-                if (scoped.length === 0) return null;
+                if (scoped.length === 0) {
+                  // NEVER null. Returning nothing here is what put an empty "Performance against
+                  // goal" heading on the live Admin dashboard: the module resolved (an employee
+                  // identity exists), the section was therefore kept, and then nothing rendered.
+                  //
+                  // For a non-technician the EMPLOYEE-scope targets are genuinely empty --
+                  // goalTargetsFor only emits them for a technician binding, and this surface
+                  // deliberately carries none. That is a real answer and it is worth saying: an
+                  // unset goal is a management gap, not a system limitation.
+                  return (
+                    <ModuleFrame key={m.key} label={m.label}>
+                      <HonestState
+                        state={HONEST_STATE.EMPTY}
+                        detail={
+                          m.key === "myGoals"
+                            ? "No individual goals are set for you."
+                            : "No goals are set for your area."
+                        }
+                      />
+                    </ModuleFrame>
+                  );
+                }
                 return (
                   <ModuleFrame key={m.key} label={m.label}>
-                    <GoalGrid targets={scoped} feed={goalFeed} actualsByKey={actualsByKey} />
+                    <GoalGrid
+                      targets={scoped}
+                      feed={goalFeed}
+                      actualsByKey={actualsByKey}
+                      scopeLabelFor={goalScopeLabel}
+                    />
                   </ModuleFrame>
                 );
               }
@@ -878,7 +1004,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
               );
           })}
             </div>
-          )}
+          }
         </RuledSection>
       ))}
     </WorkspaceShell>

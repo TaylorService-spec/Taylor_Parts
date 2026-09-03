@@ -122,12 +122,17 @@ export function dashboardGoalActuals({ attentionSections = null, portfolio = nul
   // `getAccountPortfolioSummary` is a server-side count over the complete authorized scope and takes
   // no bound by design -- "an aggregate that accepted a bound would be able to produce a partial
   // number under a complete name". That is exactly the property a goal actual requires.
-  if (portfolio && typeof portfolio.active === "number" && Number.isFinite(portfolio.active)) {
+  // THE SERVER'S SHAPE IS `byStatus.ACTIVE`, NOT `active`. This read `portfolio.active`, which the
+  // summary has never carried, so the actual was silently absent from the moment it was "connected"
+  // -- the tile showed a target beside a missing measurement and nothing failed. The fixtures in
+  // the test suite encoded the same wrong shape, which is why they agreed.
+  const active = portfolio?.byStatus?.ACTIVE;
+  if (typeof active === "number" && Number.isFinite(active)) {
     entries.push({
       metricId: "crm.account.active.count",
       targetScopeType: "FIRM",
       targetScopeId: null,
-      value: portfolio.active,
+      value: active,
     });
   }
 

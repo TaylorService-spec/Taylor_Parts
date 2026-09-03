@@ -7996,6 +7996,15 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
   color: var(--color-text);
 }
 
+/* A row whose identity did not resolve is DATA TO FIX, not a person. Muted and italic so it does
+   not read as a colleague's name, and deliberately NOT an error colour: the Work Order is real and
+   its counts are real -- what is missing is the technician record it points at. */
+.fo-preview-list__primary--unresolved {
+  font-style: italic;
+  font-weight: var(--font-weight-regular, 400);
+  color: var(--color-text-muted);
+}
+
 .fo-preview-list__secondary {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);

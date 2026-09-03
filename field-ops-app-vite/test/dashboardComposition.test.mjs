@@ -60,9 +60,11 @@ test("a malformed context removes modules rather than crashing or widening", () 
   for (const bad of [null, undefined, {}, { hasCapability: "not a function" }, { warehouseIds: "wh-north" }]) {
     const sections = composeDashboard(bad);
     const keys = sections.flatMap((s) => s.modules.map((m) => m.key));
-    // GO TO always resolves -- it is the destination list, which is computed per principal
-    // downstream and is itself fail-closed. Nothing ELSE may appear from a malformed context.
-    assert.deepEqual(keys, ["goTo"], `malformed context ${JSON.stringify(bad)} must compose nothing but Go to`);
+    // NOTHING resolves from a malformed context. GO TO used to survive here because it needed no
+    // scope at all; it was removed from the dashboard entirely after the live Owner review, so a
+    // malformed context now composes an empty dashboard -- which the surface renders as its
+    // "nothing to show yet" state rather than as a screen of modules nobody can use.
+    assert.deepEqual(keys, [], `malformed context ${JSON.stringify(bad)} must compose nothing`);
   }
 });
 
@@ -267,10 +269,16 @@ test("CURRENT WORK precedes PERFORMANCE at every composition -- work before scor
   }
 });
 
-test("Go to is always present -- a dashboard never strands its reader", () => {
+test("GO TO IS GONE -- navigation belongs to the rail, not to the dashboard", () => {
+  // INVERTED after the live Owner review: "not sure we really need the links at the bottom". The
+  // rail and drawer already own navigation, and repeating the site map below the business content
+  // cost most of the page. The assertion is kept and reversed rather than deleted, because the
+  // failure it guards is real: a dashboard that quietly grows a second navigation surface.
   for (const ctx of [TECHNICIAN, DISPATCHER, PARTS_BOTH, SALESPERSON, {}]) {
-    assert.ok(resolvedModuleKeys(ctx).includes("goTo"));
+    assert.ok(!resolvedModuleKeys(ctx).includes("goTo"), "the dashboard must not compose a Go to module");
   }
+  assert.equal(DASHBOARD_MODULES.find((m) => m.key === "goTo"), undefined, "the goTo module must not exist");
+  assert.ok(!Object.keys(SECTION).includes("GO_TO"), "the GO_TO section must not exist");
 });
 
 // ===========================================================================

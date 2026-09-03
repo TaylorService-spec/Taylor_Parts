@@ -53,7 +53,10 @@ test("a signal the projection omitted is a CONFIRMED zero once the read resolved
 });
 
 test("active accounts come from the complete portfolio aggregate", () => {
-  const entries = dashboardGoalActuals({ portfolio: { total: 90, active: 42, prospect: 8, inactive: 40 } });
+  // THE SERVER'S REAL SHAPE. These fixtures previously used a flat `active`, which the summary has
+  // never returned -- so the test agreed with the bug and the actual was silently absent in
+  // production from the day it was "connected".
+  const entries = dashboardGoalActuals({ portfolio: { total: 90, byStatus: { ACTIVE: 42, PROSPECT: 8, INACTIVE: 40 }, unclassified: 0 } });
   const active = find(entries, "crm.account.active.count");
   assert.equal(active.value, 42);
   assert.equal(active.targetScopeType, "FIRM");
@@ -71,7 +74,7 @@ test("an unresolved work-order read yields NO entries, never zeros", () => {
 });
 
 test("an unresolved or malformed portfolio yields no active-account actual", () => {
-  for (const portfolio of [null, {}, { active: null }, { active: "42" }, { active: Number.NaN }]) {
+  for (const portfolio of [null, {}, { byStatus: {} }, { byStatus: { ACTIVE: null } }, { byStatus: { ACTIVE: "42" } }, { byStatus: { ACTIVE: Number.NaN } }, { active: 42 }]) {
     const entries = dashboardGoalActuals({ portfolio });
     assert.equal(find(entries, "crm.account.active.count"), undefined, `leaked from ${JSON.stringify(portfolio)}`);
   }
@@ -106,7 +109,7 @@ test("a connected actual of zero is a REAL result and still compares", () => {
 
 test("entries index by the same key format the goal feed uses", () => {
   const keyFor = (metricId, scopeType, scopeId) => `${metricId}::${scopeType}::${scopeId ?? ""}`;
-  const byKey = actualsByGoalKey(dashboardGoalActuals({ portfolio: { active: 12 } }), keyFor);
+  const byKey = actualsByGoalKey(dashboardGoalActuals({ portfolio: { byStatus: { ACTIVE: 12 } } }), keyFor);
   assert.equal(byKey["crm.account.active.count::FIRM::"], 12);
   // A LOCATION goal for the same metric must NOT pick up the firm number.
   assert.equal(byKey["crm.account.active.count::LOCATION::wh-1"], undefined);
