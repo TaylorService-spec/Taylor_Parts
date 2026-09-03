@@ -135,7 +135,10 @@ await check("full chain: create -> plan -> schedule -> dispatch -> accept -> tra
     }),
   );
   assert.equal(execResult.success, true);
-  assert.deepEqual(execResult.updatedFields.sort(), ["executionLog", "inventorySnapshot", "lastUpdated"]);
+  // Decision #171 adds "physicalConsumption": recording usage now also moved real stock, and the
+  // response says so. Asserted exactly rather than loosened -- if the physical movement ever stops
+  // happening, this field disappears and this line is what notices.
+  assert.deepEqual(execResult.updatedFields.sort(), ["executionLog", "inventorySnapshot", "lastUpdated", "physicalConsumption"]);
 
   wo = await getWorkOrder(workOrderId);
   assert.equal(wo.inventorySnapshot[0].qtyUsed, 1);
