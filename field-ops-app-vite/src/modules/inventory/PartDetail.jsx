@@ -689,6 +689,19 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
   const [orderedQuantity, setOrderedQuantity] = useState("");
   const [orderedDate, setOrderedDate] = useState("");
   const [expectedArrivalDate, setExpectedArrivalDate] = useState("");
+  // FIN-BLOCK-003A activation: the committed unit price, entered as the amount the purchasing person
+  // agreed with the vendor. Held as the TYPED STRING, not a number -- the exact conversion to minor
+  // units happens once, in domain/reorderPurchaseOrders.js, where the currency is known.
+  //
+  // NO PREFILL TODAY, and the field says so rather than pretending. The supplier quote
+  // (part_supplier_items.cost) is the governed prefill source the ruling permits, but it has NO
+  // client read: the repo exposes only write callables for supplier items, and the cost projection is
+  // gated behind inventory.catalog.cost.read with no surface that serves it here. Building that read
+  // would be a new gated visibility surface, which is a separate authority decision. So the honest
+  // state is manual entry with the source named -- never a blank field the reader might assume was
+  // filled from a quote.
+  const [unitPriceMajor, setUnitPriceMajor] = useState("");
+  const [currency, setCurrency] = useState("USD");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -712,6 +725,8 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
         orderedQuantity,
         orderedDate,
         expectedArrivalDate,
+        unitPriceMajor,
+        currency,
       });
       onRecorded();
     } catch (err) {
@@ -750,6 +765,36 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion 
           type="number"
           value={orderedQuantity}
           onChange={(e) => setOrderedQuantity(e.target.value)}
+          required
+        />
+
+        {/* THE COMMITTED PRICE. Placed directly after quantity because that is the pair a purchasing
+            person reads together -- how many, at what each -- and separating them would invite the
+            price to be checked against the wrong line. */}
+        <label htmlFor="po-unit-price">Unit purchase price</label>
+        <input
+          id="po-unit-price"
+          type="text"
+          inputMode="decimal"
+          value={unitPriceMajor}
+          onChange={(e) => setUnitPriceMajor(e.target.value)}
+          placeholder="0.00"
+          aria-describedby="po-unit-price-note"
+          required
+        />
+        <p id="po-unit-price-note" className="fo-muted">
+          The amount committed to the supplier, per unit. Entered manually — no supplier quote is
+          available on this screen. Enter 0 for a no-charge line.
+        </p>
+
+        <label htmlFor="po-currency">Currency</label>
+        <input
+          id="po-currency"
+          type="text"
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+          maxLength={3}
+          size={4}
           required
         />
 
