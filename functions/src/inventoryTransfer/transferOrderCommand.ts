@@ -128,11 +128,11 @@ function serialLedgerIdKey(transferOrderId: string, suffix: string, serialNo: st
 // -------- NONE-mode on-hand sufficiency: sum the OPERATIONAL ledger at (partId, location) --------
 // Bounded, honest, and single-source-of-truth (the ledger IS the movement authority): RECEIVED /
 // RETURNED / TRANSFER_IN are +; TRANSFER_OUT / SCRAPPED are -; ADJUSTED is its own signed delta.
-// LIMITATION (documented, not silently resolved): COUNTED (a snapshot type) is not reconciled into
-// this sum -- there is no existing on-hand/available aggregation authority in the repository to build
-// on (the ledger module's own header explicitly authors none), and building one is out of scope for
-// this transfer authority. A location whose on-hand has drifted from a physical count will not be
-// reflected here until a future counted-reconciliation authority exists.
+// LIMITATION (documented, not silently resolved): a physical count is an observation and moves no
+// stock; only the manager-approved cycle-count reconciliation does, as a signed ADJUSTED that this
+// sum already reads. So a location whose on-hand has drifted from a count that was never reconciled
+// will not be reflected here. Reconciling it is the count workflow's job, not this transfer
+// authority's -- and there is no on-hand/available aggregation authority here to build one on.
 async function computeNoneOnHandThroughTxn(txn: Transaction, db: Firestore, partId: string, location: TransferLocationRef): Promise<number> {
   const snap = await txn.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   let onHand = 0;

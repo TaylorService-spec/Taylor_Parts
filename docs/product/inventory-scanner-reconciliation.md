@@ -130,14 +130,14 @@ slice" until §4.1 is settled and the location model is decided.
 
 ### 4.3 — Movement vocabulary (§15 reconciliation)
 
-Authoritative operational set (`operationalMovementTypes.ts:12`):
-`RECEIVED, ADJUSTED, TRANSFER_OUT, TRANSFER_IN, COUNTED, RETURNED, SCRAPPED`.
+Authoritative operational set (`operationalMovementTypes.ts`):
+`RECEIVED, ADJUSTED, TRANSFER_OUT, TRANSFER_IN, RETURNED, SCRAPPED`.
 
 | Program event | Status |
 |---|---|
 | `RECEIVED` | **exists** |
 | `RETURNED` | **exists** (source object `RMA`) |
-| `COUNTED` | **exists** (source object `COUNT_SHEET`) |
+| `COUNTED` | **does not exist as a movement.** It was declared and never written, and CERT-LEDGER-COUNTED-08 retired it along with the `SNAPSHOT` direction and the `COUNT_SHEET` source. A count is an observation; the reconciliation writes `ADJUSTED`. `COUNTED` survives only as a Cycle Count *status* |
 | `ADJUSTED` | **exists** (source object `ADJUSTMENT`) |
 | `SCRAPPED` | **exists** (source object `SCRAP`) |
 | `IN_TRANSIT` | not an event — modelled as the `TRANSFER_OUT` / `TRANSFER_IN` pair |

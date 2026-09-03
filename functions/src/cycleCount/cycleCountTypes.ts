@@ -12,9 +12,11 @@
 // AVAILABLE units at a location (the same rule transferOrderCommand.ts's SERIAL sufficiency check uses),
 // not a ledger sum.
 //
-// LIFECYCLE (new vocabulary -- COUNTED/ADJUSTED already existed as INERT OPERATIONAL_MOVEMENT_TYPES
-// members with zero writers before this module; this is their first live producer for COUNTED semantics
-// on the count-sheet side, and ADJUSTED's first live producer for count-driven reconciliation):
+// LIFECYCLE. COUNTED below is a STATUS ON THIS RECORD, not a ledger movement. There was once a
+// COUNTED member of OPERATIONAL_MOVEMENT_TYPES; it never had a writer -- not even this module, which
+// stages the real stock correction as ADJUSTED -- and CERT-LEDGER-COUNTED-08 retired it. This module
+// is ADJUSTED's first live producer for count-driven reconciliation, and the only producer of the
+// COUNTED status:
 //   createCycleCount    : (none) -> OPEN        (snapshots expected quantity/serials at creation time)
 //   submitCycleCount    : OPEN -> COUNTED        (records counted quantity/serials, computes variance)
 //   reconcileCycleCount : COUNTED -> RECONCILED  (manager APPROVES; stages ADJUSTED ledger evidence;

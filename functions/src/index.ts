@@ -463,6 +463,9 @@ export {
   // human-code resolve. It is the barcode path's governed read, and the reason the pure scan
   // boundary needs no Firestore access of its own.
   resolveBinTokenCallable as resolveBinToken,
+  // BIN-P3: the trusted READ-ONLY preview. Same inventory.location.bin.read as the resolves and
+  // the list -- it answers what createBin WOULD do, and writes nothing.
+  previewBinCreatesCallable as previewBinCreates,
   listBinsCallable as listBins,
   // Scanner Phase L. Gated on inventory.placement.record -- its own capability. Writes a placement
   // record and nothing else: no ledger event, no quantity change, no balance (DECISIONS #116).

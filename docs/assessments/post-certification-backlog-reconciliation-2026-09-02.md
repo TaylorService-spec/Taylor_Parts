@@ -1,7 +1,8 @@
 # Post-Certification Backlog Reconciliation — 2026-09-02
 
-**Status:** RECONCILIATION. One product change (a reporting label), no schema change, no authority
-change, no Rules/capability/grant change, no deployment, no Certification mutation.
+**Status:** RECONCILIATION. Two product changes (a reporting label; the deletion of a never-written
+ledger movement type), no authority change, no Rules/capability/grant change, no deployment, no
+Certification mutation.
 
 Measured against `origin/main` = `ba4d5f8e` (`docs(customer-1): reopen CI cost-containment gate on
 measured docs-only build`). The formal Certification closeout `a81e5b47` **is** an ancestor of that
@@ -33,7 +34,7 @@ touched.
 | CERT-PURCH-SIG-01 | RETIRED — frozen Certification tooling, reuse condition recorded |
 | CERT-PURCH-DOCDRIFT-01 | RETIRED — frozen Certification tooling, reuse condition recorded |
 | CERT-GRANT-DRYRUN-01 | RETIRED — frozen Certification tooling, reuse condition recorded |
-| CERT-LEDGER-COUNTED-08 | OPEN — EVIDENCE. Deadness proven in code; stored-data census not performed |
+| CERT-LEDGER-COUNTED-08 | FIXED — the dead `COUNTED` movement vocabulary is deleted |
 
 ---
 
@@ -68,10 +69,14 @@ There is also no lineage gap to repair. `buildAcquisitionCostFact` already store
 Physical evidence and cost evidence are joinable today, and both are written by the same
 all-or-nothing commit.
 
-Finally, making it a required stored key would break read compatibility. The stored record has a
-strict key allowlist and a fail-closed deserializer (`operationalMovementRepository.ts:102-146`), and
-the fingerprint is computed over the value — so a new required field would make every historical row
-deserialize as malformed rather than merely older.
+Finally, making it a required stored key would break read compatibility — and unlike the `COUNTED`
+deletion in §3, it would do so *harmfully*. The stored record has a strict key allowlist and a
+fail-closed deserializer (`operationalMovementRepository.ts:102-146`), and the fingerprint is computed
+over the value. A newly required field would therefore make every historical row throw
+`MalformedStoredRecordError` on deserialize; each reader catches that and `continue`s, so those rows
+would be silently **dropped from every on-hand balance**. Deleting a type nobody wrote skips rows that
+already contributed nothing; adding a field nobody wrote skips rows that contributed real stock. Same
+mechanism, opposite consequence — which is exactly why the two findings resolve differently.
 
 ### `classification`
 
@@ -113,8 +118,15 @@ distinct from `"Reorder Request"`.
 
 ## 3. CERT-LEDGER-COUNTED-08 — the `COUNTED` movement type
 
-**Disposition: OPEN — EVIDENCE (`DATA_CENSUS_REQUIRED`).** No code change. Deletion is the right
-eventual answer and three of its four preconditions are proven; the fourth was not safely obtainable.
+**Disposition: FIXED — deleted.** The type, its `SNAPSHOT` direction and its `COUNT_SHEET` source
+object are gone from both mirrors.
+
+> **This disposition was corrected during the pass.** It was first recorded as
+> `OPEN — EVIDENCE (DATA_CENSUS_REQUIRED)` on the belief that a stored `COUNTED` row would start
+> throwing `MalformedStoredRecordError` in live readers once the type was removed. That was wrong.
+> Every reader guards with `classifyLedgerDoc(...) !== "operational" → continue` **and** catches a
+> deserialize throw with `continue`, so a stored row cannot fail a read — it can only be skipped.
+> The census was never needed. The corrected reasoning is below.
 
 **Producer census — dead, proven.** `stageOperationalMovement` has exactly three call sites
 (`inventoryReceiving/receiveInventoryStockCommand.ts:365`,
@@ -132,19 +144,42 @@ is dead.
 `certificationUnobservedSemantics.test.mjs:61-64` asserts a `COUNTED` row of any quantity contributes
 nothing to on-hand.
 
-**Why deletion was not performed.** Removing `COUNTED` from `OPERATIONAL_MOVEMENT_TYPES` also removes
-the `SNAPSHOT` direction, the `COUNT_SHEET` source type, the parity-mirrored frontend contract
-(`field-ops-app-vite/src/domain/inventoryLedgerEvent.js`), and the defensive exclusions listed above.
-`classifyLedgerDoc` would then class any stored `COUNTED` row as `"malformed"`, and readers would
-throw `MalformedStoredRecordError` where they currently return a correct zero contribution. That
-converts a harmless dead enum into a live read failure — for rows nobody has proven do not exist.
+**No reader contract required it — this is what made the census unnecessary.** Every consumer treats
+an unrecognised operational type exactly as it treated `COUNTED`: as nothing.
 
-**What is needed to close it:** a read-only count of `inventory_transactions` documents with
-`schemaVersion: 2` and `type: "COUNTED"` in a non-Certification environment. The frozen Certification
-evidence already answers it for that world only — `certificationUnobservedSemantics.test.mjs:95`
-asserts *"no COUNTED movement anywhere"* — which is not authority over any other environment. No such
-read was performed here: production data is outside this pass's authority, and fixture data cannot
-prove production absence.
+- The three deserializing readers (`cycleCountExpectedQuantity.ts`, `mobileLocationPresenceProbe.ts`,
+  `transferOrderCommand.ts`) each guard with `classifyLedgerDoc(data) !== "operational" → continue`
+  **before** deserializing, and wrap the deserialize itself in `try { … } catch { continue }`. A
+  stored `COUNTED` row cannot fail a read; it is skipped.
+- Their arithmetic is an **allowlist** of `if/else if` branches over the six surviving types, not a
+  filter with exceptions. A row that matched no branch before now never reaches the branches at all.
+  The contribution is zero either way.
+- `fulfillmentAvailability.ts:95` is likewise an allowlist (`PHYSICAL` set) reading the raw stored
+  string; it never imported the enum and is untouched.
+- Nothing counts or reports `"malformed"` rows in this subsystem, so the reclassification is not
+  visible on any surface. (`malformedOmitted` belongs to `equipmentCompatibility`, unrelated.)
+- The UI already agreed: `metadata/definitions/inventoryTransaction.js` omitted `COUNTED` from the
+  stored `type` enum, and its header already documented that the type had no live writer.
+
+So the §6 precondition "no stored historical rows requiring compatibility" is satisfied on **source**
+evidence rather than data evidence: compatibility is not required, because no reader's behaviour
+depends on the type being declared. A row-count in a live environment would have changed nothing.
+
+**What was deleted**
+
+- `COUNTED` from `OPERATIONAL_MOVEMENT_TYPES`, `MOVEMENT_DIRECTION` and `MOVEMENT_SOURCE_TYPE`
+- the `SNAPSHOT` movement direction and its `quantity >= 0` validator branch — it existed only for
+  `COUNTED`
+- `COUNT_SHEET` from `SOURCE_OBJECT_TYPES` — likewise
+- `SNAPSHOT` from the `direction` enum in `metadata/definitions/inventoryTransaction.js`
+
+in both mirrors (`functions/src/inventoryLedger/operationalMovementTypes.ts` +
+`operationalMovementValidation.ts`, and `field-ops-app-vite/src/domain/inventoryLedgerEvent.js`),
+with a comment at each declaration saying why it must not come back. A new test —
+*"COUNTED is retired — the type, its direction and its source are all gone"* — is the guard.
+
+**Not changed:** the Cycle Count workflow status `COUNTED` (`CYCLE_COUNT_STATUSES`), its
+capabilities, its state transitions, and every number every aggregation produces.
 
 ---
 
@@ -178,19 +213,27 @@ No approved valuation or cost-flow policy exists in source. The absence is delib
 a method was chosen, and a test fails if any appears. DECISIONS #164 rulings 16–18 hold valuation,
 COGS and margin open explicitly.
 
-**It already has a governed home, so no new decision package was created.** The questions live in
+**The ruling instrument now exists:**
+[`../financials/CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md`](../financials/CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md)
+— the Owner's 16-decision sheet, recorded **unsigned**, with an engineering reconciliation measured
+from source. It does not change this disposition: `CERT-FIN-02` stays OPEN until that sheet carries an
+accountant sign-off and an Owner ruling. It also closes the two residual questions noted below, which
+are now Decisions 9 and 10 on the sheet.
+
+**The underlying analysis already had a governed home.** The questions live in
 [`../financials/FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md`](../financials/FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md)
 §4 (basis vocabulary and admissibility; capture point and the Epic-5 question; labour cost policy;
 ND-27 valuation authority; freight-in D-6) and in the re-measurement
 [`fin-block-003-cost-supply-reconciliation.md`](fin-block-003-cost-supply-reconciliation.md).
 
-Two questions the finding implies are **not** in that §4 list, recorded here rather than added to an
-Owner-facing package by this pass:
+Two questions the finding implies were **not** in that §4 list. Both are now carried by the decision
+sheet, and both are still unanswered:
 
-1. **Cost-correction authority.** DECISIONS #164 ruling 11 states corrections must be additive and
-   that the authority is OPEN. Nothing names who may issue one, or on what evidence.
-2. **Retroactive cost change.** Whether a later-discovered price error may produce a superseding fact
-   at all, and what a downstream reader is required to do with the pair.
+1. **Cost-correction authority** — sheet Decision 9. DECISIONS #164 ruling 11 states corrections must
+   be additive and that the authority is OPEN. Nothing names who may issue one, or on what evidence;
+   those are the sheet's two blanks.
+2. **Retroactive cost change** — sheet Decision 10. Whether a later-discovered price error may produce
+   a superseding fact at all, and what a downstream reader must do with the pair.
 
 Currency treatment beyond a single currency, and historical opening inventory value, are subsumed by
 ND-27 and by the "no cost backfill under any outcome" constraint already recorded in the package.
@@ -268,6 +311,7 @@ transactional or audit surface was modified. No collection was merged or migrate
 used as evidence of production state. No environment was written to, and nothing was deployed. The
 Certification world was not opened.
 
-**Deployment required: NO.** The only behavioural artifact is a display label in a pure data catalog
-that ships with the client bundle and the Functions build; it activates nothing and changes no
-authorization decision.
+**Deployment required: NO.** The two artifacts are a display label in a pure data catalog, and the
+removal of a movement type that no writer ever produced and no reader's arithmetic depended on.
+Neither activates anything or changes an authorization decision, and neither alters a number any
+existing surface reports.

@@ -9,14 +9,29 @@
 // valid, readable, and untouched; new operational-movement records carry a schema discriminator so
 // the two are never conflated. This module authors NO on-hand/available/reserved/valuation math.
 
+// COUNTED WAS REMOVED (CERT-LEDGER-COUNTED-08). It was declared here and never written once: a
+// cycle count records its counted quantity on the count record, and the reconciliation writes the
+// real stock correction as ADJUSTED (cycleCountCommand.ts). Its SNAPSHOT direction and COUNT_SHEET
+// source type went with it, because they existed only to serve it. Do not re-add any of the three
+// to make a future count "look complete" -- a count that moves no stock must not author a movement.
+// The Cycle Count workflow STATUS "COUNTED" (cycleCountTypes.ts) is a different thing and is live.
 export const OPERATIONAL_MOVEMENT_TYPES = [
   "RECEIVED",
   "ADJUSTED",
   "TRANSFER_OUT",
   "TRANSFER_IN",
-  "COUNTED",
   "RETURNED",
   "SCRAPPED",
+  // Decision (Customer 1 physical consumption): inventory permanently leaves physical custody
+  // because a Work Order used it. SIGNED, and deliberately so -- a correction to recorded usage is
+  // the SAME fact with the opposite sign, restoring the quantity to the location it left. That
+  // follows ADJUSTED's existing signed precedent rather than inventing a second reversal type, and
+  // it means the on-hand derivation needs one rule, not two.
+  //
+  // NOT named CONSUMED. The location-less CONSUMED in LEGACY_TRANSACTION_TYPES below is a
+  // commitment/reservation event and stays exactly what it is; naming this the same thing would
+  // collapse two facts that must remain separable -- one reconciles a promise, this one moves stock.
+  "WORK_ORDER_CONSUMPTION",
 ] as const;
 export type OperationalMovementType = (typeof OPERATIONAL_MOVEMENT_TYPES)[number];
 
@@ -25,7 +40,7 @@ export type OperationalMovementType = (typeof OPERATIONAL_MOVEMENT_TYPES)[number
 export const LEGACY_TRANSACTION_TYPES = ["RESERVED", "RELEASED", "CONSUMED"] as const;
 export type LegacyTransactionType = (typeof LEGACY_TRANSACTION_TYPES)[number];
 
-export type MovementDirection = "IN" | "OUT" | "SIGNED" | "SNAPSHOT";
+export type MovementDirection = "IN" | "OUT" | "SIGNED";
 export const MOVEMENT_DIRECTION: Readonly<Record<OperationalMovementType, MovementDirection>> = {
   RECEIVED: "IN",
   RETURNED: "IN",
@@ -33,14 +48,13 @@ export const MOVEMENT_DIRECTION: Readonly<Record<OperationalMovementType, Moveme
   TRANSFER_OUT: "OUT",
   SCRAPPED: "OUT",
   ADJUSTED: "SIGNED",
-  COUNTED: "SNAPSHOT",
+  WORK_ORDER_CONSUMPTION: "SIGNED",
 };
 
 export const SOURCE_OBJECT_TYPES = [
   "WORK_ORDER",
   "RECEIVING_ORDER",
   "TRANSFER_ORDER",
-  "COUNT_SHEET",
   "ADJUSTMENT",
   "RMA",
   "SCRAP",
@@ -54,9 +68,13 @@ export const MOVEMENT_SOURCE_TYPE: Readonly<Record<OperationalMovementType, Sour
   RETURNED: "RMA",
   TRANSFER_OUT: "TRANSFER_ORDER",
   TRANSFER_IN: "TRANSFER_ORDER",
-  COUNTED: "COUNT_SHEET",
   ADJUSTED: "ADJUSTMENT",
   SCRAPPED: "SCRAP",
+  // THE BOUNDARY THIS RULING MOVED. WORK_ORDER was a declared source-object type that deliberately
+  // produced no physical movement -- "it belongs to the deferred reservation/consumption ledger".
+  // The Owner ruling makes physical consumption a governed movement, so the mapping is added on
+  // purpose. Nothing else about the reservation ledger changed.
+  WORK_ORDER_CONSUMPTION: "WORK_ORDER",
 };
 
 export const ACTOR_KINDS = ["USER", "SYSTEM"] as const;

@@ -49,8 +49,10 @@ export async function computeExpectedQuantityThroughTxn(
     if (v.type === "RECEIVED" || v.type === "RETURNED" || v.type === "TRANSFER_IN") onHand += v.quantity;
     else if (v.type === "TRANSFER_OUT" || v.type === "SCRAPPED") onHand -= v.quantity;
     else if (v.type === "ADJUSTED") onHand += v.quantity; // ADJUSTED is already signed (direction SIGNED)
-    // COUNTED (SNAPSHOT direction) is intentionally excluded from this sum -- a prior count's own
-    // snapshot event is evidence, not a movement, and must never compound with itself.
+    // The branches above are an ALLOWLIST, not a filter with exceptions: a type this sum does not
+    // name contributes nothing. That is what let CERT-LEDGER-COUNTED-08 retire the never-written
+    // COUNTED movement type without changing a single number here -- a stored COUNTED row now fails
+    // classifyLedgerDoc and is skipped above, exactly as it previously matched no branch.
   }
   return Math.max(onHand, 0);
 }

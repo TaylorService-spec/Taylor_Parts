@@ -19,6 +19,9 @@ export const BIN_CALLABLES = Object.freeze({
   // The MACHINE-TOKEN resolve. A scanned label carries the stable binId, which identifies one bin
   // globally — so this is the only path that can honestly answer WRONG_WAREHOUSE.
   resolveToken: "resolveBinToken",
+  // BIN-P3: the trusted READ-ONLY classification of proposed bins. Same bin.read capability;
+  // it answers what createBin WOULD do and writes nothing.
+  preview: "previewBinCreates",
   list: "listBins",
   putAway: "recordPutAway",
 });
@@ -32,6 +35,7 @@ export const binCommandClient = Object.freeze({
   renameBin: (request) => call(BIN_CALLABLES.rename, request),
   resolveBin: (request) => call(BIN_CALLABLES.resolve, request),
   resolveBinToken: (request) => call(BIN_CALLABLES.resolveToken, request),
+  previewBinCreates: (request) => call(BIN_CALLABLES.preview, request),
   listBins: (request) => call(BIN_CALLABLES.list, request),
   recordPutAway: (request) => call(BIN_CALLABLES.putAway, request),
 });

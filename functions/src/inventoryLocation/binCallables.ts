@@ -39,6 +39,7 @@ import {
   BIN_READ_CAPABILITY,
 } from "./binCommands.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
+import { previewBinCreates, BinPreviewInvalidError } from "./binPreviewService.js";
 
 const REGION = { region: "us-central1" } as const;
 
@@ -191,6 +192,31 @@ export const resolveBinTokenCallable = onCall(REGION, async (request) => {
   try {
     return await resolveBinToken(getFirestore(), data.token ?? data.binId, warehouseId);
   } catch (err) {
+    throw mapError(err);
+  }
+});
+
+/**
+ * Classify what createBin WOULD do with a batch of proposed bins. READ-ONLY.
+ *
+ * Gated on `inventory.location.bin.read` -- the SAME capability as resolving a scanned bin and
+ * listing a warehouse's racking. Asking the registry what it says about a PROPOSED location is
+ * the same audience as asking what it says about a scanned one, and it confers nothing about
+ * creating anything.
+ *
+ * It writes nothing. BIN-P3 Administration needs it because the client cannot honestly classify
+ * ALREADY_EXISTS or CODE_RESERVED on its own: listBins reads `bins` only and returns no
+ * idempotencyKey, and `bin_code_claims` is deny-all to every client and stays that way.
+ */
+export const previewBinCreatesCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  await requireBinRead(actorUid);
+  try {
+    return await previewBinCreates(getFirestore(), request.data);
+  } catch (err) {
+    if (err instanceof BinPreviewInvalidError) {
+      throw new HttpsError("invalid-argument", "That preview request could not be accepted.", err.message || "INVALID");
+    }
     throw mapError(err);
   }
 });

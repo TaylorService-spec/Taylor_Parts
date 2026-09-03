@@ -92,7 +92,13 @@ export function sumLedgerEligibleOnHand(
   let sawAnyPhysical = false;
   let sawEligible = false;
   let onHand = 0;
-  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED", "RETURNED", "SCRAPPED"]);
+  // WORK_ORDER_CONSUMPTION joins the physical set (Customer 1 ruling). This is the line that closes
+  // the defect: stock fitted to a machine now leaves on-hand, at the location it actually left.
+  //
+  // It is SIGNED, exactly like ADJUSTED — a consumption is negative, and a correction to recorded
+  // usage is the same fact positive, restoring the quantity to the location it came from. One rule
+  // covers both, so a reversal cannot drift from the movement it reverses.
+  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED", "RETURNED", "SCRAPPED", "WORK_ORDER_CONSUMPTION"]);
   for (const r of rows) {
     const isNoneModeQuantity = r.trackingMode === undefined || r.trackingMode === "NONE";
     if (PHYSICAL.has(r.type)) sawAnyPhysical = true;
@@ -103,9 +109,10 @@ export function sumLedgerEligibleOnHand(
     const q = num0(r.quantity);
     if (r.type === "RECEIVED" || r.type === "TRANSFER_IN" || r.type === "RETURNED") { sawEligible = true; onHand += q; }
     else if (r.type === "TRANSFER_OUT" || r.type === "SCRAPPED") { sawEligible = true; onHand -= q; }
-    else if (r.type === "ADJUSTED") {
-      // ADJUSTED carries its own sign (negative when a reconciled Cycle Count came up short), so num0()'s
-      // positive-only guard would silently drop the shortage. Read the raw value.
+    else if (r.type === "ADJUSTED" || r.type === "WORK_ORDER_CONSUMPTION") {
+      // Both carry their own sign, so num0()'s positive-only guard would silently drop exactly the
+      // cases that matter: an ADJUSTED shortage from a reconciled Cycle Count, and a
+      // WORK_ORDER_CONSUMPTION removal. Read the raw value.
       const signed = typeof r.quantity === "number" && Number.isFinite(r.quantity) ? r.quantity : 0;
       sawEligible = true; onHand += signed;
     }

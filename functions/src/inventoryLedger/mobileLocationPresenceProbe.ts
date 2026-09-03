@@ -19,13 +19,13 @@
 // direction semantics for a per-PART query; this module queries the COMPLEMENTARY dimension --
 // per-LOCATION -- because the truck-registry probes only have a locationId in hand, not a partId).
 //
-// WHAT REMAINS GENUINELY UNPROVABLE (documented, not silently resolved): COUNTED (cycle-count/
-// reconciliation) ledger entries are OBSERVATIONS ONLY and are excluded from the balance sum --
-// consistent with the governance invariant stated in mobileLocationInventoryProjection.js ("CYCLE
-// COUNT / RECONCILIATION IS AN OBSERVATION ONLY ... NEVER mutates or emits stock"). A location
-// whose true on-hand has drifted from the ledger-derived balance (e.g. an un-reconciled physical
-// loss) will not be reflected here -- this probe reports what the LEDGER says, which is the only
-// governed authority that exists, not physical ground truth.
+// WHAT REMAINS GENUINELY UNPROVABLE (documented, not silently resolved): a cycle count is an
+// OBSERVATION and emits no movement -- the invariant stated in mobileLocationInventoryProjection.js
+// ("CYCLE COUNT / RECONCILIATION IS AN OBSERVATION ONLY ... NEVER mutates or emits stock"). Only the
+// manager-approved reconciliation moves stock, as a signed ADJUSTED. So a location whose true on-hand
+// has drifted from the ledger-derived balance (e.g. an un-reconciled physical loss) will not be
+// reflected here -- this probe reports what the LEDGER says, which is the only governed authority
+// that exists, not physical ground truth.
 //
 // Every read is bounded to an EQUALITY filter (no orderBy, no composite index) on either
 // `serialized_assets.currentLocationId` or `inventory_transactions.location.locationId` -- both are
@@ -86,8 +86,8 @@ export async function probeSerializedAssetsReferencedAtLocation(
 
 // ---- NONE-mode ledger net balance at a location, summed per partId ----
 // Mirrors transferOrderCommand.ts's computeNoneOnHandThroughTxn direction semantics exactly
-// (RECEIVED/RETURNED/TRANSFER_IN +; TRANSFER_OUT/SCRAPPED -; ADJUSTED already signed; COUNTED
-// excluded as an observation), but queries by `location.locationId` (a single equality filter) rather
+// (RECEIVED/RETURNED/TRANSFER_IN +; TRANSFER_OUT/SCRAPPED -; ADJUSTED already signed), but it
+// queries by `location.locationId` (a single equality filter) rather
 // than `partId`, then groups by partId in memory -- the complementary access pattern this probe needs.
 export async function probeNoneStockPresentAtLocation(
   txn: Transaction,
@@ -119,7 +119,9 @@ export async function probeNoneStockPresentAtLocation(
       } else if (v.type === "ADJUSTED") {
         balanceByPart.set(v.partId, prior + v.quantity); // ADJUSTED is already signed (direction SIGNED)
       }
-      // COUNTED: excluded -- observation only, never balance-affecting (governance invariant).
+      // The branches above are an ALLOWLIST: a type this balance does not name contributes nothing.
+      // A stored COUNTED row (the type retired by CERT-LEDGER-COUNTED-08, never written by anything)
+      // is skipped by classifyLedgerDoc above, exactly as it previously matched no branch here.
     }
     for (const balance of balanceByPart.values()) {
       if (balance > 0) return "PRESENT";

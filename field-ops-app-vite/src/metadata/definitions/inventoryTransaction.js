@@ -30,17 +30,19 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 //   header mirrors: schemaVersion === 2 ⇒ operational, schemaVersion undefined + a legacy type
 //   ⇒ legacy, anything else ⇒ malformed.
 //
-//   COUNTED / RETURNED / SCRAPPED do NOT appear in the storage type union at all.
+//   RETURNED / SCRAPPED do NOT appear in the storage type union at all.
 //   functions/src/inventoryLedger/operationalMovementTypes.ts's OPERATIONAL_MOVEMENT_TYPES
-//   (the design-time taxonomy) includes all seven operational names, but the actual STORED
+//   (the design-time taxonomy) includes all six operational names, but the actual STORED
 //   type — functions/src/types/inventoryTransaction.ts's InventoryTransactionType — is a
 //   narrower union of exactly seven values total: RESERVED | RELEASED | CONSUMED | RECEIVED |
-//   TRANSFER_IN | TRANSFER_OUT | ADJUSTED. COUNTED has no live writer (cycleCountCommand.ts's
-//   reconcile step writes ADJUSTED, never a COUNTED ledger entry — "COUNTED" only ever names a
-//   cycle-count document's own status). RETURNED/SCRAPPED have no live writer anywhere (no
+//   TRANSFER_IN | TRANSFER_OUT | ADJUSTED. RETURNED/SCRAPPED have no live writer anywhere (no
 //   RMA or Scrap command exists in this repository). The enum below is the seven-value STORED
-//   union, not the nine/ten-value design taxonomy — declaring the wider taxonomy would assert
-//   values this collection has never actually held.
+//   union, not the wider design taxonomy — declaring the wider taxonomy would assert values this
+//   collection has never actually held.
+//
+//   COUNTED was in that design taxonomy and was retired by CERT-LEDGER-COUNTED-08 for exactly the
+//   reason this header already gave: it never had a live writer. A cycle count's reconcile step
+//   writes ADJUSTED, and "COUNTED" now names only a cycle-count document's own status.
 //
 // EMBEDDED OBJECTS ARE DELIBERATELY ABSENT — NO v1 FIELD_TYPE FITS A STRUCT. location
 // {type, locationId}, sourceObject {type, id}, actor {kind, id} and counterpartyLocation
@@ -250,8 +252,8 @@ export const inventoryTransactionEntity = makeEntityDefinition({
       entityId: "inventoryTransaction",
       label: "Direction",
       type: "ENUM",
-      enumValues: ["IN", "OUT", "SIGNED", "SNAPSHOT"],
-      enumLabels: { IN: "In", OUT: "Out", SIGNED: "Adjustment", SNAPSHOT: "Count" },
+      enumValues: ["IN", "OUT", "SIGNED"],
+      enumLabels: { IN: "In", OUT: "Out", SIGNED: "Adjustment" },
       description: "Operational-only. Derived from type at write time and independently re-validated for consistency on read. Absent on every legacy document.",
     }),
     // Operational-only.

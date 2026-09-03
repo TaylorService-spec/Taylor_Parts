@@ -23,8 +23,8 @@ const loc2 = { type: "MOBILE", locationId: "1" };
 const partNone = { partId: "P1", trackingMode: "NONE" };
 const partSerial = { partId: "P1", trackingMode: "SERIAL" };
 const partLot = { partId: "P1", trackingMode: "LOT" };
-const SRC = { RECEIVED: { type: "RECEIVING_ORDER", id: "RO-1" }, RETURNED: { type: "RMA", id: "RMA-1" }, TRANSFER_OUT: { type: "TRANSFER_ORDER", id: "TO-1" }, TRANSFER_IN: { type: "TRANSFER_ORDER", id: "TI-1" }, COUNTED: { type: "COUNT_SHEET", id: "CS-1" }, ADJUSTED: { type: "ADJUSTMENT", id: "ADJ-1" }, SCRAPPED: { type: "SCRAP", id: "SC-1" } };
-const QTY = { RECEIVED: 5, RETURNED: 5, TRANSFER_OUT: 2, TRANSFER_IN: 2, COUNTED: 0, ADJUSTED: -2, SCRAPPED: 1 };
+const SRC = { RECEIVED: { type: "RECEIVING_ORDER", id: "RO-1" }, RETURNED: { type: "RMA", id: "RMA-1" }, TRANSFER_OUT: { type: "TRANSFER_ORDER", id: "TO-1" }, TRANSFER_IN: { type: "TRANSFER_ORDER", id: "TI-1" }, COUNTED: { type: "COUNT_SHEET", id: "CS-1" }, ADJUSTED: { type: "ADJUSTMENT", id: "ADJ-1" }, SCRAPPED: { type: "SCRAP", id: "SC-1" }, WORK_ORDER_CONSUMPTION: { type: "WORK_ORDER", id: "WO-1" } };
+const QTY = { RECEIVED: 5, RETURNED: 5, TRANSFER_OUT: 2, TRANSFER_IN: 2, COUNTED: 0, ADJUSTED: -2, SCRAPPED: 1, WORK_ORDER_CONSUMPTION: -2 };
 function ev(type, over = {}) {
   const e = { type, partId: "P1", location: loc, quantity: QTY[type], sourceObject: SRC[type], idempotencyKey: `idem-${type}-0001`, actor: { kind: "USER", id: "u1" }, occurredAt: 1000, ...over };
   if ((type === "TRANSFER_OUT" || type === "TRANSFER_IN") && !("counterpartyLocation" in over)) e.counterpartyLocation = loc2;
