@@ -177,6 +177,31 @@ behavioural("DEFAULT (no flag) still deploys Functions AND Hosting -- unchanged"
   assert.match(commands, /npm run build/, "the default refresh must still build the functions lib");
 });
 
+// ═════════════════════════════════════════ the release builds from the tree it declares
+
+behavioural("the app's installed tree is verified in BOTH modes, before anything is built", () => {
+  // Attempt 2 of the 2026-09-03 refresh died in [3a/5] because the operator's node_modules predated
+  // #1774 and lacked `jsbarcode`. Both modes build the app, so both must check it -- and the check
+  // has to precede every build, or it is just a slower way to fail.
+  for (const args of [[], ["--hosting-only"]]) {
+    const { commands } = runRunbook({ args });
+    const check = commands.indexOf("verifyInstalledDeps.mjs field-ops-app-vite");
+    assert.ok(check > -1, `the app dependency check did not run (args: ${args.join(" ") || "none"})`);
+    const firstBuild = commands.search(/npm run (build|verify:build-base)/);
+    assert.ok(firstBuild === -1 || check < firstBuild, "a build ran before the dependency check");
+  }
+});
+
+behavioural("--hosting-only does NOT check the functions tree it will never build", () => {
+  // A refusal over a tree the release does not consume would be a false refusal, and the first
+  // false refusal during a release is the commit that deletes the guard.
+  const { commands } = runRunbook({ args: ["--hosting-only"] });
+  assert.ok(!commands.includes("verifyInstalledDeps.mjs functions"), "checked a tree it does not build");
+  // ...but the full mode does, because it builds functions/lib from it.
+  const full = runRunbook();
+  assert.ok(full.commands.includes("verifyInstalledDeps.mjs functions"), "full mode must check it");
+});
+
 // ═════════════════════════════════════════ the secret-bound function must not block the refresh
 
 behavioural("the default refresh NEVER issues an unfiltered `--only functions`", () => {

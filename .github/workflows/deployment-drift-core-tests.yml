@@ -19,6 +19,13 @@ on:
       - "scripts/Invoke-SandboxRefresh.ps1"
       - "scripts/sandboxRefreshWrapper.test.mjs"
       - "scripts/_sandboxRefresh.run.sh"
+      - "scripts/verifyInstalledDeps.mjs"
+      - "scripts/verifyInstalledDeps.test.mjs"
+      - "field-ops-app-vite/test/verifyBuildBase.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
       - "scripts/sandboxHostingOnlyMode.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
@@ -53,6 +60,13 @@ on:
       - "scripts/Invoke-SandboxRefresh.ps1"
       - "scripts/sandboxRefreshWrapper.test.mjs"
       - "scripts/_sandboxRefresh.run.sh"
+      - "scripts/verifyInstalledDeps.mjs"
+      - "scripts/verifyInstalledDeps.test.mjs"
+      - "field-ops-app-vite/test/verifyBuildBase.mjs"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
       - "scripts/sandboxHostingOnlyMode.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
@@ -112,6 +126,16 @@ jobs:
       # and an unrecognised flag refuses before anything happens. Nothing is deployed by this suite.
       - name: Hosting-only sandbox release mode
         run: node --test scripts/sandboxHostingOnlyMode.test.mjs
+      # A release must build from the dependency tree it DECLARES. CI installs with `npm ci` before
+      # every build, so CI's tree is never stale and could not have caught the 2026-09-03 operator
+      # failure -- a missing `jsbarcode` reported as a Rolldown binding stack. The axis is not
+      # Linux-vs-Windows (a Windows checkout with a current install passes fine); it is
+      # CI-installs-from-the-lockfile vs operator-builds-from-whatever-is-on-disk.
+      #
+      # Hermetic: no npm, no network, no builds, no platform assumptions. The real-build invariants
+      # stay in verify:build-base, which vite-build-check.yml runs on every pull request.
+      - name: Release builds from the declared dependency tree
+        run: node --test scripts/verifyInstalledDeps.test.mjs
       # O-3 — locks the environment-configuration invariants: no production
       # hard-coding, no wildcard project acceptance, no role/deployment
       # conflation, no weakened production guard.

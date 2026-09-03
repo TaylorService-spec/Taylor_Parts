@@ -156,6 +156,18 @@ node scripts/_sandboxDeployGuard.mjs   # asserts role!=production, projectId==eo
 # from an unmerged branch head whose tree happened to be byte-identical to the main commit that
 # followed -- safe by luck, unprovable by process. See scripts/releaseProvenance.mjs.
 node scripts/_releaseProvenanceGuard.mjs "$@"
+# WHAT the release was built from includes its DEPENDENCIES, not only its commit.
+#
+# The two guards above prove the commit. Nothing proved the node_modules the build would actually
+# consume, and the runbook installs nothing -- so a release built from a stale operator checkout was
+# free to fail with an unrelated-looking bundler stack (2026-09-03, second attempt: a missing
+# `jsbarcode` surfaced as sixty lines of Rolldown binding errors in [3a/5]) or, worse, to SUCCEED at
+# the wrong dependency versions and ship an artifact nobody approved.
+#
+# Both release modes build the app, so the app is checked here for both. This REFUSES rather than
+# installing: `npm ci` from inside a deploy would delete and rebuild the operator's node_modules as
+# a side effect of a protected action.
+node scripts/verifyInstalledDeps.mjs field-ops-app-vite
 # THE APPROVED COMMIT IS NAMED ONCE and carried to every later check, rather than each step asking
 # git again -- "ask git again" is what let the approved commit and the built commit diverge.
 APPROVED_COMMIT="$(git rev-parse HEAD)"
@@ -180,6 +192,9 @@ if [ "$HOSTING_ONLY" -eq 1 ]; then
 else
 
 echo "== [1/5] build functions lib =="
+# Checked here rather than at [0/5] because hosting-only mode never builds functions, and refusing
+# a Hosting release over a tree it will not consume would be a false refusal.
+node scripts/verifyInstalledDeps.mjs functions
 ( cd functions && npm run build )
 
 echo "== [2/5] deploy Functions -> eos-platform-sandbox =="
