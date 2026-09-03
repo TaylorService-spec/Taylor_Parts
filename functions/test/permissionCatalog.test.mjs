@@ -343,7 +343,7 @@ check("every financialPolicy.profile.* entry stays catalogue-inactive, so activa
   );
   // The Owner ACTIVATED both. `active: false` here is how that is delivered, not a contradiction of
   // it: a catalogued `active: true` means live in EVERY environment including production, because an
-  // override set can only ADD activation (DECISIONS #166). Activation therefore happens in
+  // override set can only ADD activation (DECISIONS #167). Activation therefore happens in
   // environmentCapabilityOverrides.ts + config/environments.json, where production is triple-blocked.
   // Flipping either of these to true would activate deployment-time financial configuration in
   // production without a production activation ruling.

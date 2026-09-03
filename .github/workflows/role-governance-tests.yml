@@ -78,6 +78,13 @@ on:
       - "functions/scripts/sandboxDispatchFixtures.js"
       - "functions/scripts/seedSandboxTransactional.js"
       - "functions/scripts/certificationWorld/reconcileGrants.mjs"
+      # The capability graph is a GENERATED artifact with no other guard. Its inputs are already
+      # in this filter (the access catalogs, the resolver, DECISIONS.md), so only the generator,
+      # the artifacts themselves and the drift suite need adding.
+      - "scripts/buildCapabilityGraph.mjs"
+      - "docs/architecture/capability-graph.json"
+      - "docs/architecture/capability-graph.md"
+      - "functions/test/capabilityGraphDrift.test.mjs"
       - "functions/scripts/certificationWorld/dataContractParity.mjs"
       - "functions/scripts/certificationWorld/state.mjs"
       - "functions/scripts/certificationWorld/verify.mjs"
@@ -156,6 +163,13 @@ on:
       - "functions/scripts/sandboxDispatchFixtures.js"
       - "functions/scripts/seedSandboxTransactional.js"
       - "functions/scripts/certificationWorld/reconcileGrants.mjs"
+      # The capability graph is a GENERATED artifact with no other guard. Its inputs are already
+      # in this filter (the access catalogs, the resolver, DECISIONS.md), so only the generator,
+      # the artifacts themselves and the drift suite need adding.
+      - "scripts/buildCapabilityGraph.mjs"
+      - "docs/architecture/capability-graph.json"
+      - "docs/architecture/capability-graph.md"
+      - "functions/test/capabilityGraphDrift.test.mjs"
       - "functions/scripts/certificationWorld/dataContractParity.mjs"
       - "functions/scripts/certificationWorld/state.mjs"
       - "functions/scripts/certificationWorld/verify.mjs"

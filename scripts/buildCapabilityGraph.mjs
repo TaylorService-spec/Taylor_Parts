@@ -179,9 +179,14 @@ export function parseRegister(src) {
 
 // The eligibility allow-list bounds what ANY environment may activate. Parsed from the resolver so the
 // graph cannot drift from the code that enforces it.
+// ANCHOR ON `export const`, NOT on the bare name. The file opens with a prose comment naming
+// SPINE_OVERRIDE_ELIGIBLE_IDS, and #1779 later inserted PRODUCTION_ACTIVATION_ELIGIBLE_IDS -- a
+// SECOND, deliberately narrower set -- between that comment and the declaration. A non-greedy
+// match from the comment then captured the PRODUCTION list, and the graph reported 25 sandbox-
+// eligible ids instead of the real spine set. Silent, and wrong in the under-reporting direction.
 export function parseEligibleIds(src) {
   if (!src) return [];
-  const block = /SPINE_OVERRIDE_ELIGIBLE_IDS[\s\S]*?\[([\s\S]*?)\]\s*\)/.exec(src);
+  const block = /export const SPINE_OVERRIDE_ELIGIBLE_IDS[\s\S]*?\[([\s\S]*?)\]\s*\)/.exec(src);
   if (!block) return [];
   return [...block[1].matchAll(/"([a-z][a-zA-Z]*(?:\.[a-zA-Z]+)+)"/g)].map((m) => m[1]);
 }

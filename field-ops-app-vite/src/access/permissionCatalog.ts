@@ -392,7 +392,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // OWNER RULING (financial-policy authority). Both are now ACTIVATED -- through the per-environment
   // seam, NOT by flipping `active` here. A catalogued `active: true` means LIVE IN EVERY ENVIRONMENT
   // including production, because an override set can only ADD activation and never remove it; that
-  // is the exact defect DECISIONS #166 corrected for the report.* family. So these stay
+  // is the exact defect DECISIONS #167 corrected for the report.* family. So these stay
   // `active: false` and environmentCapabilityOverrides.ts activates them per environment. Production
   // activation is a separate ruling and that path cannot deliver it (production is triple-blocked).
   //
