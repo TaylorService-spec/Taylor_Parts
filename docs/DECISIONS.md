@@ -4919,3 +4919,143 @@ by a 720-case parity corpus); suites `functions/test/reportingPeriod.test.mjs`,
 workflow `.github/workflows/performance-goal-tests.yml`, which runs the reporting suites under
 **TZ=UTC** deliberately — a reporting-period test that only passes on a machine already set to the
 reporting timezone proves the host agreed, not that the authority is right.
+
+## #164 — OWNER RULING: EOS captures governed ACQUISITION COST for purchased goods (FIN-BLOCK-003A) (2026-09-02)
+
+**Context.** FIN-BLOCK-003 (PR #1755) measured **CASE D — no governed cost supply**. The inventory
+ledger was quantity-only, no purchase price reached receiving, `COST` was not a financial source type,
+and nothing anywhere constructed a cost fact. Every margin, valuation, turns and business-impact
+question was therefore truthfully UNKNOWN, and correctly so.
+
+This ruling closes **exactly one** of the three questions that reconciliation kept separate:
+
+| | Question | After this ruling |
+|---|---|---|
+| **1. COST SUPPLY** | What did the item actually cost, per governed evidence? | **CLOSED for purchased physical goods** |
+| **2. VALUATION POLICY** | Which cost does reporting assign to units on hand? | **OPEN** |
+| **3. COGS / MARGIN RECOGNITION** | When does cost leave inventory and become cost against revenue? | **OPEN** |
+
+**FIN-BLOCK-003 is NOT fully closed.** This is FIN-BLOCK-003A: cost supply.
+
+### The ruling
+
+**1. EOS CAPTURES ACQUISITION COST FOR PURCHASED PHYSICAL GOODS.** A governed historical
+acquisition-cost fact is operational cost EVIDENCE — what the business committed to a vendor and
+received against. It is **not** book inventory value, GAAP valuation, tax basis, COGS, landed cost or
+replacement cost.
+
+**2. THE LIVE `reorder_purchase_orders` PATH IS CANONICAL.** Money is added there.
+
+**3. THE DORMANT EPIC-5 `purchase_orders` PATH IS NOT, AND ITS DEFECTS ARE NOT MIGRATED.** Its
+`unitPrice` is a **float**, carries **no currency**, and its purchase order carries **no
+operatingCompanyId** — any one of which disqualifies it. The normalizer therefore reads a canonical
+line as **UNPRICED**, deliberately: a number is present and is not adopted, so a canonical receipt
+produces no cost fact and its cost is UNKNOWN. It is **not deleted** (that is a data decision, Owner
+decision 2); it is simply not the cost authority, and a test asserts nothing in the cost chain
+imports it.
+
+**4. THE SUPPLIER QUOTE IS AN INPUT, NEVER THE COST EVENT.** `part_supplier_items.cost` remains a
+quote/contract term. It is a decimal string and is refused outright by the price authority. Changing
+a quote can never rewrite a committed purchase price or a historical receipt cost — proven
+structurally: nothing in the purchasing, receiving or cost path reads it at all.
+
+**5. PRICE BECOMES GOVERNED AT VENDOR COMMITMENT — an EXISTING transition, not a new one.**
+`recordReorderPurchaseOrder` is the moment the order is placed with the supplier: the request moves to
+ORDERED and the purchase order becomes immutable. No purchasing state was invented for cost.
+
+**6. MONEY IS INTEGER MINOR UNITS WITH AN EXPLICIT CURRENCY, SUPPLIED TOGETHER OR NOT AT ALL.** Floats
+are **refused, not rounded** — 19.99 is not 1999 minor units by any rule this code may choose. A
+partial price (an amount with no currency) is refused rather than defaulted to USD. Negative money is
+refused: direction is carried by TYPE everywhere in this repo, so a rebate or return credit needs its
+own governed type.
+
+**7. PRICE IS OPTIONAL AT THE COMMAND, AND THAT IS DELIBERATE.** Recording a purchase order is a live
+deployed workflow, and **every** purchase order now in Firestore carries no money. Making price
+mandatory would break receiving for existing work in order to add a field. **An unpriced purchase
+stays receivable and its cost stays UNKNOWN — never $0.** Requiring a price on new commitments is an
+ACTIVATION step, not a code default, and is not performed here.
+
+**8. RECEIPT CREATES IMMUTABLE HISTORICAL EVIDENCE, IN THE SAME TRANSACTION AS THE STOCK.** One fact
+per receipt line, in the receiving command own all-or-nothing commit, so quantity and cost cannot
+disagree because one write succeeded and the other did not.
+
+**9. IDEMPOTENCY IS STRUCTURAL, NOT DEFENDED.** The document id is derived from
+`(receivingId, lineId)` and the write is a `create`. A retry cannot duplicate a cost event, and a
+replayed receipt returns before the write flush. A duplicated cost event is a financial defect, so it
+is prevented by identity rather than by a check someone can forget to run.
+
+**10. PARTIAL RECEIPTS NEED NO RULE OF THEIR OWN.** A fact prices the quantity received NOW. Receiving
+4 of 10 records evidence for 4; the remaining 6 record their own fact against whatever price governs
+then. Nothing recomputes the first — nothing can, because it is a separate document keyed by its own
+receipt.
+
+**11. COST FACTS ARE IMMUTABLE EVENTS.** Never overwritten in place. **Correction authority is OPEN**
+and was not invented here; a future correction must be ADDITIVE (reversing or superseding), never a
+mutation.
+
+**12. `operatingCompanyId` IS REQUIRED, AND FAILS CLOSED.** It comes from the governed purchase
+transaction — which already inherits it from the reorder request and refuses a client-supplied value.
+It is **never** inferred from location, warehouse, vendor, SKU, employee, customer or a UI selector.
+A priced purchase with no governed company produces **no fact**: an acquisition cost that cannot say
+whether it belongs to Taylor or to Ventana is not evidence. This closes open question 5 from the
+FIN-BLOCK-003 reconciliation **for the purchase path only** — the inventory ledger still carries no
+company, and that remains open.
+
+**13. ONE BASIS: `PURCHASE_ORDER_LINE_PRICE`.** The basis says WHAT THE FACT IS, not which valuation
+policy applies. WEIGHTED_AVERAGE, FIFO, LIFO, STANDARD_COST, REPLACEMENT_COST and LABOR_BURDEN are
+deliberately **absent as values** — pre-registering one would suggest a costing method had been
+chosen. A test fails if any appears.
+
+**14. FREIGHT, DUTY, TAX, INSURANCE, INSTALLATION, RECEIVING LABOUR AND OVERHEAD ARE OUT OF V1.** No
+landed-cost allocation exists, and none is hidden inside unit price.
+
+**15. LABOUR COST REMAINS OUT.** No wage, hourly cost, burden, role cost, travel cost or subcontractor
+cost. The FIN-BLOCK-003 labour question is untouched; operational duration stays separate from money.
+
+**16. INVENTORY VALUATION REMAINS OPEN.** EOS does **not** gain authority to declare book inventory
+value. No weighted average, moving average, FIFO, LIFO, standard cost or current-cost valuation was
+implemented. The external accounting authority of record (#145) remains controlling.
+
+**17. COGS REMAINS OPEN.** A receipt cost does not answer which cost belongs to a later sale. For
+fungible stock that needs a cost-flow policy, and none exists. Consumption stays a quantity-only
+ledger event, and **`COST` is still not a `FINANCIAL_SOURCE_TYPE`**.
+
+**18. MARGIN REMAINS UNKNOWN.** An acquisition fact is **not** a `GovernedCostFact`. The two answer
+different questions at different times: `GovernedCostFact.lineRef` binds a cost to a REVENUE line,
+which at receipt time does not exist — binding one would BE the COGS decision. `deriveGrossMargin`
+therefore still returns UNKNOWN, and a test asserts nothing constructs a `GovernedCostFact`.
+
+**19. TRANSFERS AND ADJUSTMENTS DO NOT INVENT COST.** RECEIPT is the only producer, asserted by test.
+No new acquisition price arises at a warehouse, truck or van transfer, a put-away, a pick or a stage;
+an adjustment of unknown-cost units leaves the cost UNKNOWN rather than applying the latest PO price,
+the supplier quote or an average of known costs.
+
+**20. RETURNS AND REBATES REMAIN OPEN.** No purchase-return reversal, customer-return restoration,
+vendor rebate allocation or credit application was decided.
+
+### Measured result
+
+**Metric registry: 37 registered, 12 active, 25 blocked — UNCHANGED.** No metric was activated, which
+is the correct outcome: cost SUPPLY is not what those metrics were missing. Four blocker labels became
+more precise, and each now names what actually survives rather than a cost gap that has closed:
+
+| Metric | Was | Now |
+|---|---|---|
+| `inventory.value.amount` | "NO GOVERNED COST FACT EXISTS ANYWHERE" | `VALUATION_POLICY_REQUIRED` |
+| `inventory.turns.ratio` | "FIN-BLOCK-003 (no value basis)" | `COGS_COST_FLOW_REQUIRED` + `VALUATION_POLICY_REQUIRED` |
+| `inventory.carryingCost.amount` | "FIN-BLOCK-003 (no value basis)" | `CARRYING_RATE_REQUIRED` + `VALUATION_POLICY_REQUIRED` |
+| `inventory.wasteAvoided.amount` | three missing pieces | `PREVENTION_EVENT_REQUIRED` + `COUNTERFACTUAL_REQUIRED` (cost now partially available) |
+
+**Read authority.** `inventory_acquisition_costs` has **no Firestore Rules match block**, so every
+client read is denied by default — the strongest available answer to "do not create broad
+client-readable raw cost documents", and the reason this package needs no Rules change. No capability
+was registered, no grant was made, FIN-004 reach is unchanged, and SELF/TEAM activation is untouched.
+
+**Enforced by:** `functions/src/finance/acquisitionCost.ts`,
+`functions/src/reorderRequest/reorderCommands.ts`,
+`functions/src/purchasing/purchaseOrderNormalization.ts`,
+`functions/src/inventoryReceiving/receiveInventoryStockCommand.ts`; suites
+`functions/test/acquisitionCost.test.mjs` (43 cases, pure) and
+`functions/test/acquisitionCostReceipt.test.mjs` (10 cases, emulator); workflow
+`.github/workflows/inventory-receiving-command-tests.yml`, in a job with **its own emulator** for the
+reason that file already documents.

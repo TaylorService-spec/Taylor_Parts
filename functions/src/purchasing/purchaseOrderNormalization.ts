@@ -34,11 +34,25 @@
 // receipts, and need no migration. They are a proposal under test, not a ratified authority, and
 // Phase C must not proceed on them until §4.1 is answered.
 
+import { governedPurchasePrice, AcquisitionCostError } from "../finance/acquisitionCost.js";
+
 /** A line on the canonical purchase order. `quantity` matches types/procurement.ts's PurchaseOrderLineItem. */
 export interface CanonicalPoLine {
   readonly lineId: string;
   readonly partId: string;
   readonly quantity: number;
+  /**
+   * FIN-BLOCK-003A -- the GOVERNED committed price for this line, or null.
+   *
+   * Null for every line that carries no governed price, which today is every canonical line and every
+   * legacy line recorded before this authority existed. Null means UNKNOWN, never zero, and receiving
+   * writes no cost fact for a null-priced line.
+   *
+   * Both fields move together by construction below, so a line can never carry an amount whose
+   * currency is unknown.
+   */
+  readonly unitPriceMinor: number | null;
+  readonly currency: string | null;
 }
 
 export interface CanonicalPurchaseOrder {
@@ -53,6 +67,16 @@ export interface CanonicalPurchaseOrder {
   readonly supplierName: string | null;
   readonly status: string | null;
   readonly lines: readonly CanonicalPoLine[];
+  /**
+   * FIN-BLOCK-003A -- the governed operating company that owns this purchase, or null.
+   *
+   * Present on the LIVE reorder purchase order, which inherits it from its reorder request and refuses
+   * a client-supplied value. Null on the canonical `purchase_orders`, which has no company field at
+   * all -- and a null here is why a canonical receipt can produce no cost fact even if it somehow
+   * carried a price: an acquisition cost that cannot say whether it is Taylor's or Ventana's is not
+   * evidence. Never inferred from warehouse, vendor, SKU, user or customer.
+   */
+  readonly operatingCompanyId: string | null;
   /** Which shape this came from. Stated rather than inferred by the caller. */
   readonly origin: "LEGACY_REORDER" | "CANONICAL";
 }
@@ -79,6 +103,13 @@ export class PurchaseOrderNormalizationError extends Error {
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
 const posInt = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v) && v > 0;
 
+// The DERIVED line shape receiving reads its cost from. Kept next to the derivation rather than
+// re-looked-up, so the price a receipt prices against is the price on the line it validated against.
+export interface DerivedLinePrice {
+  readonly unitPriceMinor: number | null;
+  readonly currency: string | null;
+}
+
 /**
  * A legacy `reorder_purchase_orders` document → the canonical shape.
  *
@@ -102,6 +133,23 @@ export function normalizeLegacyPurchaseOrder(
   if (!posInt(data.orderedQuantity)) {
     throw new PurchaseOrderNormalizationError("PO_QUANTITY_INVALID", "legacy purchase order orderedQuantity invalid");
   }
+  // FIN-BLOCK-003A -- the governed committed price, where this purchase order carries one.
+  //
+  // Validated through the finance authority rather than copied. A stored document is untrusted input
+  // to a reader: these fields were written by the current command, but a document from any other
+  // origin -- an import, a fixture, a hand-edit, a future writer -- must not be able to put a float or
+  // a currency-less amount into the cost path just because it reached Firestore. A malformed price is
+  // refused rather than dropped, because silently reading it as "unpriced" would turn a corrupt
+  // purchase order into a free one.
+  let price: { unitPriceMinor: number; currency: string } | null;
+  try {
+    price = governedPurchasePrice({ unitPriceMinor: data.unitPriceMinor, currency: data.currency });
+  } catch (err) {
+    if (err instanceof AcquisitionCostError) {
+      throw new PurchaseOrderNormalizationError("PO_PRICE_INVALID", `legacy purchase order price invalid: ${err.code}`);
+    }
+    throw err;
+  }
   return Object.freeze({
     purchaseOrderId,
     // See CanonicalPurchaseOrder.supplierId -- a legacy PO has a name, not an id.
@@ -109,8 +157,16 @@ export function normalizeLegacyPurchaseOrder(
     supplierName: str(data.supplierName),
     status: str(data.status),
     lines: Object.freeze([
-      Object.freeze({ lineId: LEGACY_LINE_ID, partId, quantity: data.orderedQuantity as number }),
+      Object.freeze({
+        lineId: LEGACY_LINE_ID,
+        partId,
+        quantity: data.orderedQuantity as number,
+        unitPriceMinor: price === null ? null : price.unitPriceMinor,
+        currency: price === null ? null : price.currency,
+      }),
     ]),
+    // The one path that HAS a governed company: the live PO inherits it from its reorder request.
+    operatingCompanyId: str(data.operatingCompanyId),
     origin: "LEGACY_REORDER" as const,
   });
 }
@@ -154,7 +210,23 @@ export function normalizeCanonicalPurchaseOrder(
     if (!posInt(item.quantity)) {
       throw new PurchaseOrderNormalizationError("PO_QUANTITY_INVALID", `line ${lineId} quantity invalid`);
     }
-    return Object.freeze({ lineId, partId, quantity: item.quantity as number });
+    // FIN-BLOCK-003A -- THE EPIC-5 PRICE IS DELIBERATELY NOT READ. `PurchaseOrderLineItem.unitPrice`
+    // exists on this shape, and mapping it here is the single most tempting way to give EOS a cost
+    // supply "for free". It is refused, for three measured reasons, any one of which is sufficient:
+    //
+    //   1. It is a FLOAT. Money in this repository is integer minor units; adopting it would introduce
+    //      floating-point money on the one path whose purpose is exact cost.
+    //   2. It carries NO CURRENCY. There is no field, so the only way to use the number is to assume
+    //      one -- the implicit-USD assumption every governed money path here refuses.
+    //   3. Its purchase order carries NO operatingCompanyId, so the resulting cost could not be
+    //      attributed to Taylor or Ventana.
+    //
+    // The Owner ruling is explicit that this path must not become the cost authority and that its
+    // defects must not be migrated into the live one. So a canonical line is UNPRICED here -- not
+    // because no number is present, but because no GOVERNED price is. A canonical receipt therefore
+    // produces no cost fact, and its cost is UNKNOWN. Whether this layer is retired or converted is
+    // Owner decision 2; converting it is a data decision, not a normalization detail.
+    return Object.freeze({ lineId, partId, quantity: item.quantity as number, unitPriceMinor: null, currency: null });
   });
   return Object.freeze({
     purchaseOrderId,
@@ -162,6 +234,9 @@ export function normalizeCanonicalPurchaseOrder(
     supplierName: str(data.supplierName),
     status: str(data.status),
     lines: Object.freeze(lines),
+    // No company field exists on this shape. Null is the true statement; inferring one would be the
+    // inference ruling 7 forbids.
+    operatingCompanyId: null,
     origin: "CANONICAL" as const,
   });
 }
@@ -199,6 +274,15 @@ export interface DerivedLine {
   readonly receivedQuantity: number;
   readonly remainingQuantity: number;
   readonly state: string;
+  /**
+   * FIN-BLOCK-003A -- the governed price carried through from the PO line, unchanged.
+   *
+   * Carried rather than re-read so that the price a receipt is COSTED at is the same price it was
+   * VALIDATED against, from one read of one document inside one transaction. A second lookup could
+   * observe a different value and produce a cost fact for a price the receipt never checked.
+   */
+  readonly unitPriceMinor: number | null;
+  readonly currency: string | null;
 }
 
 export interface DerivedPurchaseOrder {
@@ -251,6 +335,8 @@ export function deriveReceiptState(
       receivedQuantity: received,
       remainingQuantity: remaining,
       state,
+      unitPriceMinor: l.unitPriceMinor,
+      currency: l.currency,
     });
   });
 

@@ -44,6 +44,12 @@ import {
 import { resolveReceivingSource } from "./receivingSourceResolver.js";
 import { validateReceivingBatch, type ResolvedPartAuthority } from "./receivingBatchValidation.js";
 import { allocateReceivingOrderNumber } from "./receivingOrderNumbering.js";
+import {
+  ACQUISITION_COST_COLLECTION,
+  acquisitionCostDocId,
+  buildAcquisitionCostFact,
+  governedPurchasePrice,
+} from "../finance/acquisitionCost.js";
 
 const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
 const REORDER_REQUESTS_COLLECTION = "reorder_requests";
@@ -325,6 +331,9 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     const ledgerStore = bufferedStore(INVENTORY_TRANSACTIONS_COLLECTION);
     const ledgerOutcomes: Array<{ outcome: string; docId: string }> = [];
     const serializedAssetIds: string[] = [];
+    // FIN-BLOCK-003A -- the acquisition-cost facts this receipt produced. Empty is a legitimate and
+    // common outcome (an unpriced purchase order), and it means UNKNOWN, not free.
+    const acquisitionCostIds: string[] = [];
     let anySerial = false;
 
     for (const line of value.lines) {
@@ -387,6 +396,68 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
           }
           serializedAssetIds.push(assetId);
         }
+      }
+
+      // ---- 9c. GOVERNED ACQUISITION COST EVIDENCE (FIN-BLOCK-003A) ----
+      //
+      // ONE immutable fact per receipt line, for the quantity received NOW, priced at the price
+      // governing THIS receipt. Partial receipts therefore need no rule of their own: receiving 4 of
+      // 10 records evidence for 4, and the remaining 6 later record their own fact against whatever
+      // price governs then. Nothing recomputes the earlier one -- nothing can, because it is a
+      // separate document keyed by its own receipt.
+      //
+      // IN THIS TRANSACTION, BY CONSTRUCTION. The quantity and its cost evidence cannot disagree
+      // because one write succeeded and the other did not: this is buffered into the same `writes`
+      // array as the receipt and the ledger events and flushed by the same all-or-nothing commit.
+      //
+      // IDEMPOTENT BY IDENTITY, not by a check. The document id is derived from (receivingId,
+      // lineId), and the write is a `create`. A replayed receipt returns before the flush (step 11),
+      // so a retry writes nothing at all -- and even if it reached the flush, the deterministic id
+      // plus `create` would refuse the duplicate. A duplicated cost event is a financial defect, so
+      // it is prevented by the shape rather than by remembering to look.
+      //
+      // NO PRICE MEANS UNKNOWN, NEVER ZERO. A line with no governed price -- every canonical line,
+      // and every legacy purchase order recorded before this authority existed -- produces NO fact.
+      // The stock is still received and the workflow is untouched; the cost of that receipt is simply
+      // not known, and the absence of a document is how that is said. Writing a zero-cost fact would
+      // be the single worst outcome available here: it reads as "this was free" and would silently
+      // inflate every margin computed from it.
+      const poLine = resolved.isCanonical
+        ? resolved.derived.lines.find((l) => l.lineId === line.lineId)
+        : resolved.derived.lines[0];
+      // Re-validated rather than trusted: the price crossed a stored-document boundary, and the
+      // finance authority is the only thing entitled to say what a governed price is.
+      const linePrice = poLine === undefined ? null : governedPurchasePrice({ unitPriceMinor: poLine.unitPriceMinor, currency: poLine.currency });
+      // A price with no governed company yields no fact. An acquisition cost that cannot say whether
+      // it is Taylor's or Ventana's is not evidence, and the company is never inferred from the
+      // receiving warehouse -- which is precisely the inference that would look most reasonable here.
+      if (linePrice !== null && poLine !== undefined && resolved.canonical.operatingCompanyId !== null) {
+        const costFact = buildAcquisitionCostFact({
+          price: linePrice,
+          operatingCompanyId: resolved.canonical.operatingCompanyId,
+          purchaseOrderId: resolved.purchaseOrderId,
+          purchaseOrderLineId: poLine.lineId,
+          purchaseOrderSourceType: resolved.sourceType,
+          // Legacy is immutable by Rules and has no revisions, so null is the true statement.
+          purchaseOrderVersion: resolved.isCanonical ? resolved.version : null,
+          supplierId: resolved.canonical.supplierId,
+          supplierName: resolved.canonical.supplierName,
+          partId: line.partId,
+          receivedQuantity: line.receivedQuantity,
+          receivingId,
+          receivingLineId: line.lineId,
+          // The receipt's own governed business event time -- the same instant the ledger events
+          // carry, never a write clock (G-05 ruling 14).
+          receivedAtMillis: occurredAtMillis,
+          receivingLocationType: value.receivingLocation.type,
+          receivingLocationId: value.receivingLocation.locationId,
+        });
+        writes.push({
+          op: "create",
+          ref: deps.db.collection(ACQUISITION_COST_COLLECTION).doc(acquisitionCostDocId(receivingId, line.lineId)),
+          data: { ...costFact, createdAt: Timestamp.fromDate(now), createdBy: actor.id },
+        });
+        acquisitionCostIds.push(acquisitionCostDocId(receivingId, line.lineId));
       }
     }
 
@@ -498,6 +569,15 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
       else if (w.op === "set") txn.set(w.ref, w.data);
       else txn.update(w.ref, w.data);
     }
-    return { outcome: "applied", ...replayResult, storedStatus: storedStatusAfter };
+    // acquisitionCostIds is reported on the APPLY path only. On a replay the ids would be derivable
+    // (they are deterministic), but a receipt committed before this authority existed has no cost
+    // facts to point at -- and naming documents that do not exist is exactly the kind of confident
+    // falsehood a cost surface must not produce.
+    return {
+      outcome: "applied",
+      ...replayResult,
+      storedStatus: storedStatusAfter,
+      ...(acquisitionCostIds.length > 0 ? { acquisitionCostIds } : {}),
+    };
   });
 }
