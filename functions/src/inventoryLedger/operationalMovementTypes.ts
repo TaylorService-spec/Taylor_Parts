@@ -22,6 +22,16 @@ export const OPERATIONAL_MOVEMENT_TYPES = [
   "TRANSFER_IN",
   "RETURNED",
   "SCRAPPED",
+  // Decision (Customer 1 physical consumption): inventory permanently leaves physical custody
+  // because a Work Order used it. SIGNED, and deliberately so -- a correction to recorded usage is
+  // the SAME fact with the opposite sign, restoring the quantity to the location it left. That
+  // follows ADJUSTED's existing signed precedent rather than inventing a second reversal type, and
+  // it means the on-hand derivation needs one rule, not two.
+  //
+  // NOT named CONSUMED. The location-less CONSUMED in LEGACY_TRANSACTION_TYPES below is a
+  // commitment/reservation event and stays exactly what it is; naming this the same thing would
+  // collapse two facts that must remain separable -- one reconciles a promise, this one moves stock.
+  "WORK_ORDER_CONSUMPTION",
 ] as const;
 export type OperationalMovementType = (typeof OPERATIONAL_MOVEMENT_TYPES)[number];
 
@@ -38,6 +48,7 @@ export const MOVEMENT_DIRECTION: Readonly<Record<OperationalMovementType, Moveme
   TRANSFER_OUT: "OUT",
   SCRAPPED: "OUT",
   ADJUSTED: "SIGNED",
+  WORK_ORDER_CONSUMPTION: "SIGNED",
 };
 
 export const SOURCE_OBJECT_TYPES = [
@@ -59,6 +70,11 @@ export const MOVEMENT_SOURCE_TYPE: Readonly<Record<OperationalMovementType, Sour
   TRANSFER_IN: "TRANSFER_ORDER",
   ADJUSTED: "ADJUSTMENT",
   SCRAPPED: "SCRAP",
+  // THE BOUNDARY THIS RULING MOVED. WORK_ORDER was a declared source-object type that deliberately
+  // produced no physical movement -- "it belongs to the deferred reservation/consumption ledger".
+  // The Owner ruling makes physical consumption a governed movement, so the mapping is added on
+  // purpose. Nothing else about the reservation ledger changed.
+  WORK_ORDER_CONSUMPTION: "WORK_ORDER",
 };
 
 export const ACTOR_KINDS = ["USER", "SYSTEM"] as const;

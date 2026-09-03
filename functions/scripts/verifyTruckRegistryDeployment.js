@@ -70,7 +70,18 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 //     its comments were corrected. The canonical-key-set functions turned out to be UNREACHABLE once
 //     the create rule became , and the comment there still read as though listing a key
 //     permitted something. A comment-only change, but it moves the hash, so the pin moves with it.
-const GOVERNED_RULES_SHA256 = "0ad3ab1d00252692db0e490cc7be25fb78c46baed491a8f0b573814c2a57f70b";
+//   0ad3ab1d00252692db0e490cc7be25fb78c46baed491a8f0b573814c2a57f70b -- the ruleset before BIN-P2R
+//     (#1763 / 5824df2a) removed the legacy stock_locations match block. That change NARROWED the
+//     ruleset: a read arm was deleted so the collection falls back to deny-all-by-absence, the same
+//     posture bins/bin_code_claims/bin_placements already use. It granted nothing. The pin was not
+//     moved with it, which is what broke this verifier on main.
+//
+//     RE-PINNED by synchronisation, never by editing Rules to fit a hash. Proven before moving it:
+//     both governed copies are byte-identical; the OLD pin matched the pre-#1763 ruleset EXACTLY, so
+//     the ONLY delta this pin now blesses is that one hunk; and the whole remaining diff is comment
+//     lines. If a future mismatch cannot be explained that precisely, fix the Rules or ask -- do not
+//     move this constant.
+const GOVERNED_RULES_SHA256 = "cb449226148d5766a3674b8dbc9a88e2706e68ea70360cc9f0e4bf08707407a0";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

@@ -166,15 +166,22 @@ test("the consumption path carries NO source location at ANY of its three layers
   assert.ok(!/location/i.test(consumeBlock.slice(0, consumeBlock.indexOf("\n}\n"))), "consumeParts must not already write a location");
 });
 
-test("the operational movement model deliberately produces NO movement for a WORK_ORDER", () => {
-  // WORK_ORDER is a declared source-object type, and is deliberately absent from the map that says
-  // which source object produces which physical movement. That absence IS the boundary this package
-  // is asking the Owner to move — it is a designed decision, not an oversight, so a fix must change
-  // it on purpose rather than by adding an entry that looks like a gap-fill.
+test("a WORK_ORDER now produces EXACTLY ONE physical movement, and no more", () => {
+  // THE BOUNDARY THE RULING MOVED. This assertion previously proved the opposite — that WORK_ORDER
+  // was a declared source type deliberately producing no movement — which was true and load-bearing
+  // right up until the Owner decided physical consumption is a governed movement.
+  //
+  // Inverted rather than deleted, and tightened while inverting: EXACTLY ONE. If a second
+  // WORK_ORDER-sourced movement type ever appears, this fails and whoever added it has to say which
+  // physical fact it represents that consumption does not already cover.
   const model = src("inventoryLedger/operationalMovementTypes.ts");
-  const map = model.slice(model.indexOf("MOVEMENT_SOURCE_TYPE"), model.indexOf("ACTOR_KINDS"));
-  assert.ok(!/WORK_ORDER/.test(map), "no operational movement is produced by a Work Order today");
-  assert.match(model, /SOURCE_OBJECT_TYPES[\s\S]{0,200}WORK_ORDER/, "though WORK_ORDER is a declared source type");
+  const map = model.slice(model.indexOf("export const MOVEMENT_SOURCE_TYPE"), model.indexOf("ACTOR_KINDS"));
+  const workOrderSourced = [...map.matchAll(/^\s*(\w+):\s*"WORK_ORDER"/gm)].map((m) => m[1]);
+  assert.deepEqual(workOrderSourced, ["WORK_ORDER_CONSUMPTION"]);
+  // And the location-less commitment vocabulary stays disjoint — CONSUMED is still not a movement.
+  assert.match(model, /LEGACY_TRANSACTION_TYPES = \["RESERVED", "RELEASED", "CONSUMED"\]/);
+  const operational = model.slice(model.indexOf("OPERATIONAL_MOVEMENT_TYPES"), model.indexOf("export type OperationalMovementType"));
+  assert.ok(!/"CONSUMED"/.test(operational), "CONSUMED must never become an operational movement type");
 });
 
 test("the defect itself, restated at the boundary: consumption moves no physical stock anywhere", () => {

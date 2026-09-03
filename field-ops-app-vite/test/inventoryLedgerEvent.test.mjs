@@ -51,10 +51,17 @@ function ev(type, mode, over = {}) {
 }
 
 // --- constants / governance ---
-ok("operational movement types are the six-member frozen subset", () => {
-  assert.deepEqual(OPERATIONAL_MOVEMENT_TYPES, ["RECEIVED", "ADJUSTED", "TRANSFER_OUT", "TRANSFER_IN", "RETURNED", "SCRAPPED"]);
+ok("operational movement types are the seven-member frozen subset", () => {
+  // WORK_ORDER_CONSUMPTION added by the Customer 1 physical-consumption ruling: stock that
+  // permanently leaves custody because a Work Order used it. The list stays pinned exactly, so a
+  // future addition is an argued change rather than a quiet one.
+  assert.deepEqual(OPERATIONAL_MOVEMENT_TYPES, [
+    "RECEIVED", "ADJUSTED", "TRANSFER_OUT", "TRANSFER_IN", "RETURNED", "SCRAPPED", "WORK_ORDER_CONSUMPTION",
+  ]);
   assert.equal(Object.isFrozen(OPERATIONAL_MOVEMENT_TYPES), true);
-  // Reservation/consumption + opening-balance are deliberately NOT members.
+  // The location-less COMMITMENT vocabulary stays out, and that is the whole point of the new name:
+  // CONSUMED reconciles a reservation, WORK_ORDER_CONSUMPTION moves physical stock. Both exist, and
+  // they must never be the same member.
   for (const excluded of ["RESERVED", "RELEASED", "CONSUMED", "OPENING_BALANCE"]) {
     assert.equal(OPERATIONAL_MOVEMENT_TYPES.includes(excluded), false, excluded);
   }
@@ -75,16 +82,27 @@ ok("COUNTED is retired -- the type, its direction and its source are all gone", 
 ok("direction metadata classifies each type (no sign inference)", () => {
   assert.deepEqual(MOVEMENT_DIRECTION, {
     RECEIVED: "IN", RETURNED: "IN", TRANSFER_IN: "IN",
-    TRANSFER_OUT: "OUT", SCRAPPED: "OUT", ADJUSTED: "SIGNED",
+    TRANSFER_OUT: "OUT", SCRAPPED: "OUT", ADJUSTED: "SIGNED", WORK_ORDER_CONSUMPTION: "SIGNED",
   });
 });
 
-ok("source taxonomy declared ahead; WORK_ORDER present but unused by operational types", () => {
+ok("source taxonomy; WORK_ORDER now produces exactly ONE operational movement", () => {
+  // THE BOUNDARY THIS RULING MOVED, and the assertion is inverted rather than deleted.
+  //
+  // WORK_ORDER was declared as a source-object type for two years while deliberately producing NO
+  // physical movement — "it belongs to the deferred reservation/consumption ledger". The Customer 1
+  // ruling makes physical consumption a governed movement, so it now produces exactly one.
+  //
+  // EXACTLY ONE is the point. If a second WORK_ORDER-sourced movement type ever appears, this fails,
+  // and whoever added it has to say which physical fact it represents that consumption does not.
   assert.deepEqual(SOURCE_OBJECT_TYPES, ["WORK_ORDER", "RECEIVING_ORDER", "TRANSFER_ORDER", "ADJUSTMENT", "RMA", "SCRAP"]);
-  assert.equal(Object.values(MOVEMENT_SOURCE_TYPE).includes("WORK_ORDER"), false);
+  assert.deepEqual(
+    Object.entries(MOVEMENT_SOURCE_TYPE).filter(([, source]) => source === "WORK_ORDER").map(([type]) => type),
+    ["WORK_ORDER_CONSUMPTION"],
+  );
   assert.deepEqual(MOVEMENT_SOURCE_TYPE, {
     RECEIVED: "RECEIVING_ORDER", RETURNED: "RMA", TRANSFER_OUT: "TRANSFER_ORDER",
-    TRANSFER_IN: "TRANSFER_ORDER", ADJUSTED: "ADJUSTMENT", SCRAPPED: "SCRAP",
+    TRANSFER_IN: "TRANSFER_ORDER", ADJUSTED: "ADJUSTMENT", SCRAPPED: "SCRAP", WORK_ORDER_CONSUMPTION: "WORK_ORDER",
   });
 });
 

@@ -44,6 +44,11 @@ export const OPERATIONAL_MOVEMENT_TYPES = Object.freeze([
   "TRANSFER_IN",
   "RETURNED",
   "SCRAPPED",
+  // MIRROR of the backend set. Physical stock leaving custody because a Work Order used it.
+  // SIGNED: a correction to recorded usage is the same fact with the opposite sign, restoring the
+  // quantity to the location it left. Deliberately NOT named CONSUMED -- that is the location-less
+  // commitment event, and collapsing the two would merge a promise with a stock movement.
+  "WORK_ORDER_CONSUMPTION",
 ]);
 
 // Direction is metadata carried by the TYPE (never inferred from a quantity sign). IN/OUT
@@ -56,6 +61,7 @@ export const MOVEMENT_DIRECTION = Object.freeze({
   TRANSFER_OUT: "OUT",
   SCRAPPED: "OUT",
   ADJUSTED: "SIGNED",
+  WORK_ORDER_CONSUMPTION: "SIGNED",
 });
 
 // Bounded source-object taxonomy, DECLARED AHEAD of persistence. WORK_ORDER and
@@ -82,6 +88,7 @@ export const MOVEMENT_SOURCE_TYPE = Object.freeze({
   TRANSFER_IN: "TRANSFER_ORDER",
   ADJUSTED: "ADJUSTMENT",
   SCRAPPED: "SCRAP",
+  WORK_ORDER_CONSUMPTION: "WORK_ORDER",
 });
 
 export const ACTOR_KINDS = Object.freeze(["USER", "SYSTEM"]);
