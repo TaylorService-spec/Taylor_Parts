@@ -8268,3 +8268,21 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
   max-width: 100%;
   min-height: 44px;
 }
+
+/* =============================================================================
+   ADMINISTRATION -> DATA IMPORT
+   =============================================================================
+   Four stacked panels in the order the work happens (file, contents, preview,
+   approve) plus history. No new layout vocabulary: the panels are .fo-panel and
+   the tables are .fo-table like every other administration surface. These rules
+   exist only for the two things those do not cover -- a preview that can be long
+   enough to need its own scroll, and per-row findings rendered as a list inside
+   a table cell. */
+.fo-data-import { display: flex; flex-direction: column; gap: 12px; }
+.fo-data-import__summary { margin: 0; }
+/* Bounded so a 500-row preview does not push Approve off the bottom of the page.
+   Approving something you have to scroll past the end of the world to reach is
+   how an operator approves without looking. */
+.fo-data-import__preview { max-height: 360px; overflow: auto; }
+.fo-data-import__findings { margin: 0; padding-left: 0; list-style: none; }
+.fo-data-import__findings li { font-size: 13px; }

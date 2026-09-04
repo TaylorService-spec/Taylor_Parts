@@ -12,28 +12,28 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 137,
+    "capabilities": 139,
     "catalogActive": 0,
-    "catalogInactive": 137,
-    "eligibleForEnvironmentActivation": 83,
-    "activatedInSomeEnvironment": 83,
+    "catalogInactive": 139,
+    "eligibleForEnvironmentActivation": 85,
+    "activatedInSomeEnvironment": 85,
     "callableExports": 45,
-    "destinations": 90,
+    "destinations": 91,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 137,
-    "parsed": 137,
+    "raw": 139,
+    "parsed": 139,
     "ok": true
   },
   "implementationEvidence": {
     "SERVER_REFERENCED": 111,
     "EXPORTED": 20,
-    "CLIENT_ONLY": 2,
-    "NO_IMPLEMENTATION_EVIDENCE": 4
+    "CLIENT_ONLY": 3,
+    "NO_IMPLEMENTATION_EVIDENCE": 5
   },
   "guideStatuses": {},
   "flows": [
@@ -1443,7 +1443,7 @@
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
+          "field-ops-app-vite/src/shared/ui/NotificationControl.jsx"
         ],
         "serverReferenceCount": 4,
         "clientReferenceCount": 6,
@@ -3089,6 +3089,50 @@
       "environmentActivation": {
         "eligible": false,
         "environments": []
+      }
+    },
+    {
+      "id": "admin.dataImport.stage",
+      "resource": "admin.dataImport",
+      "action": "stage",
+      "description": "Upload a file, choose or confirm the entity, map columns, and see the validated preview of what an import would do. Writes no operational record and cannot: the staging path has no write capability of any kind.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/navigation/navConfig.js"
+        ],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 1,
+        "evidence": "CLIENT_ONLY"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "admin.dataImport.execute",
+      "resource": "admin.dataImport",
+      "action": "execute",
+      "description": "Approve a validated import preview and execute it through the governed EOS commands. Creates records only: never overwrites an existing one, and never bypasses the command that owns the record it writes.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
       }
     },
     {
@@ -5269,6 +5313,15 @@
       "placeholderExplanation": null
     },
     {
+      "key": "dataImport",
+      "label": "Data Import",
+      "path": "data-import",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
       "key": "integrations",
       "label": "Integrations",
       "path": "integrations",
@@ -5526,7 +5579,9 @@
     "performance.goal.supersede",
     "performance.goal.retire",
     "financialPolicy.profile.read",
-    "financialPolicy.profile.configure"
+    "financialPolicy.profile.configure",
+    "admin.dataImport.stage",
+    "admin.dataImport.execute"
   ],
   "parityIssues": []
 }

@@ -266,6 +266,14 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   // amount of activation here reaches a locked policy.
   "financialPolicy.profile.read",
   "financialPolicy.profile.configure",
+  // DATA IMPORT P1. Eligible so an environment CAN activate import at all; without this both ids
+  // are permanently denied everywhere and the Administration -> Data Import screen has nothing
+  // behind it. Eligibility is not activation and activation is not a grant, unchanged. Production
+  // is additionally blocked a FOURTH time for this feature specifically: importTargetGuard.ts
+  // refuses the production project by name inside the command, so even a hypothetical activation
+  // defect could not land a row in it.
+  "admin.dataImport.stage",
+  "admin.dataImport.execute",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -529,6 +537,11 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "performance.goal.approve",
         "performance.goal.supersede",
         "performance.goal.retire",
+        // DATA IMPORT P1, sandbox only. Mirrors config/environments.json, which is canonical.
+        // Import is a sandbox capability for P1 by design -- certification and production declare
+        // neither id, and the command refuses the production project regardless.
+        "admin.dataImport.stage",
+        "admin.dataImport.execute",
       ]),
     }),
     // DEPLOYABLE SYNTHETIC CERTIFICATION RUNTIME. Provisioned 2026-08-30.

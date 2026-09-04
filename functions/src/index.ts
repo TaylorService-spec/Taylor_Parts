@@ -529,3 +529,21 @@ export {
   listPerformanceGoalVersionsCallable as listPerformanceGoalVersions,
   listGoalSubjectsCallable as listGoalSubjects,
 } from "./performance/performanceGoalCallables";
+
+// --- EOS Data Import P1 (sandbox-only native file import) ---
+// Administration -> Data Import. Three callables: stage a file into a previewed job, execute an
+// approved job, and list history. SANDBOX ONLY, and enforced in the code rather than by deployment
+// discipline: every one of them calls assertNonProductionImportTarget FIRST, which refuses the
+// production project by name from the runtime's own GCLOUD_PROJECT before any authority is even
+// evaluated. Both capabilities (admin.dataImport.stage / .execute) are registered active:false and
+// activated only where config/environments.json says so.
+//
+// EXECUTION ADDS NO WRITE AUTHORITY. It calls the same governed partMaster createPart a human uses,
+// which enforces inventory.catalog.manage, validates, keys idempotency and audits inside its own
+// transaction. Import cannot write anything a person with the same capabilities could not have
+// written one record at a time. Frozen public names, no "Callable" suffix, per the convention above.
+export {
+  stageDataImportCallable as stageDataImport,
+  executeDataImportCallable as executeDataImport,
+  listDataImportJobsCallable as listDataImportJobs,
+} from "./dataImport/dataImportCallables";

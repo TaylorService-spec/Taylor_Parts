@@ -1843,5 +1843,20 @@ service cloud.firestore {
     match /refunds/{refundId} {
       allow read, write: if false;
     }
+    // EOS Data Import P1 -- staged import jobs (Administration -> Data Import). Admin-SDK-only, same
+    // fail-closed posture as every block above. ALL direct client read/write denied: staging, executing
+    // and reading history all go through the trusted callables (functions/src/dataImport/
+    // dataImportCallables.ts), which gate on environment FIRST and capability second.
+    //
+    // A job document carries the previewed rows, INCLUDING the source values of rows that failed. That
+    // is customer data an admin uploaded, and it must not become client-readable merely because it is
+    // stored -- which is exactly why history is a callable and not a collection read.
+    //
+    // This block GRANTS NOTHING and widens nothing: an unmatched collection already denies. It is
+    // written explicitly because every other Admin-SDK-only collection here is, and a silent omission
+    // reads identically to an oversight.
+    match /data_import_jobs/{jobId} {
+      allow read, write: if false;
+    }
   }
 }

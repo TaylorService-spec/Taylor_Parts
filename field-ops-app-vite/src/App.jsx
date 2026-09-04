@@ -68,6 +68,7 @@ const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminR
 const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
 const AdminWarehouseRacking = lazy(() => import("./modules/administration/AdminWarehouseRacking"));
 const AdminFinancialPolicy = lazy(() => import("./modules/administration/AdminFinancialPolicy"));
+const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const EmployeesList = lazy(() => import("./modules/administration/EmployeesList.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
@@ -623,6 +624,13 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // is configured. Financials links here and never edits. Both capabilities are registered
   // active:false and granted to no Role, so the screen renders its honest ungated state today; the
   // backend command enforces the lock regardless of what this screen renders.
+  // Administration > Data Import -- the native file import surface. Both capabilities are gated by
+  // the SAME previewer the nav uses, so the screen and the destination agree: an environment where
+  // import is inactive shows no tab, and a principal who reaches the URL directly gets the screen's
+  // own honest ungated state rather than a blank page.
+  if (domain.key === "administration" && item.key === "dataImport") {
+    return <AdminDataImport hasCapability={operationalContext?.hasCapability} />;
+  }
   if (domain.key === "administration" && item.key === "financialPolicy") {
     return <AdminFinancialPolicy hasCapability={operationalContext?.hasCapability} />;
   }

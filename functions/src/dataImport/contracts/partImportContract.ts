@@ -405,3 +405,49 @@ export function normalizePartRow(values: Readonly<Record<string, unknown>>): Nor
     findings: Object.freeze(findings),
   });
 }
+
+// ---------------------------------------------------------------------------
+// partId derivation
+// ---------------------------------------------------------------------------
+
+/**
+ * Characters a governed partId accepts (partMaster/validation.ts ID_PATTERN).
+ * Duplicated as a constant rather than imported, because importing it would pull this
+ * module across the portability boundary for a five-character regex.
+ */
+const PART_ID_ALLOWED = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * The partId an imported Part will be created under.
+ *
+ * WHY IT IS DERIVED AND NOT GENERATED. partId is opaque, so a random id would be equally
+ * valid -- and would make importing the same file twice create two Parts with one Internal
+ * Part Number. Deriving it from the IPN is what makes the governed command's own
+ * already-exists check the duplicate guard: a re-import lands on the same id and is
+ * refused by createPart, without import needing a query, an index, or a second uniqueness
+ * authority of its own.
+ *
+ * WHY A HASH SUFFIX WHEN THE IPN IS NOT ID-SHAPED. The IPN alphabet is wider than the
+ * partId alphabet, so sanitizing is lossy: "A/B" and "A-B" both flatten to "A-B". A short
+ * deterministic digest of the ORIGINAL IPN is appended in exactly that case, so two
+ * different IPNs cannot collide while an IPN that is already id-shaped keeps its readable
+ * id unchanged.
+ *
+ * Deterministic and dependency-free: same IPN, same id, in every runtime.
+ */
+export function derivePartId(internalPartNumber: string): string {
+  const ipn = internalPartNumber.trim().toUpperCase();
+  if (PART_ID_ALLOWED.test(ipn)) return ipn;
+  const sanitized = ipn.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 55).replace(/-+$/, "");
+  return `${sanitized || "PART"}-${shortDigest(ipn)}`;
+}
+
+/** FNV-1a, 32-bit, base36. Not a security hash -- a collision-resistant-enough suffix. */
+function shortDigest(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36).toUpperCase().padStart(7, "0");
+}

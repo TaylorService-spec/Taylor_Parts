@@ -209,6 +209,9 @@ test("no existing domain's routes changed — every non-financials domain path s
     // setup chosen once with the accounting team and locked at financial activation. Financials
     // carries a read-only summary that links here and edits nothing.
     "/administration/financial-policy",
+    // DATA IMPORT P1. Administration, for the same reason as Financial Policy: loading a data set
+    // is an implementation activity, not routine operational work.
+    "/administration/data-import",
     "/administration/integrations", "/administration/audit-logs",
   ]);
 });

@@ -96,7 +96,7 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly fourteen Administration subnav items now exist", () => {
+ok("exactly fifteen Administration subnav items now exist", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
   // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
   // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
@@ -108,7 +108,11 @@ ok("exactly fourteen Administration subnav items now exist", () => {
   // once with its accounting team at deployment and locked at financial activation, which makes it
   // company setup rather than routine financial work. Financials carries a read-only summary that
   // links here; this is the single editing surface.
-  assert.equal(adminDomain.subnav.length, 14);
+  // Data Import joined for DATA IMPORT P1 (2026-09-04): loading a customer's existing records is an
+  // implementation activity an administrator performs once per data set, which is the same kind of
+  // thing as Roles and Racking. It is the first Administration item gated by capabilityAccess rather
+  // than by role, because its capabilities are activated per environment.
+  assert.equal(adminDomain.subnav.length, 15);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {
