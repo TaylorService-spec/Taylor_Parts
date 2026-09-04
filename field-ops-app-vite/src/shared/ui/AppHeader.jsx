@@ -5,7 +5,6 @@ import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssig
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../../domain/partsAttentionProjection.js";
 import NotificationPanel from "./NotificationPanel";
-import Button from "./primitives/Button.jsx";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
@@ -44,7 +43,7 @@ const previewHasPermission = createPermissionPreviewer(
 // utilities. At drawer widths it also hosts the navigation toggle, because the
 // rail is off-canvas there and needs an opener.
 export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRef = null, navOpen = false } = {}) {
-  const { user, role, logout } = useAuth();
+  const { user, role } = useAuth();
   // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
   // sec12: never authoritative, UI visibility stays convenience only).
   // Legacy admin/dispatcher check retained as the `fallback` in case the
@@ -114,6 +113,23 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
     return groupPartsAttentionItemsBySection(items);
   }, [pendingReorderRequests, partsManagerRequests, assignedToYouRequests, purchasingStartedRequests]);
 
+  // NOTHING TO CARRY, NOTHING TO RENDER.
+  //
+  // The signed-in email and Logout moved to the rail's identity block, which is now the one
+  // place a person signs out. Removing them from here leaves this strip with exactly two
+  // remaining jobs: the notification bell, and the navigation opener at drawer widths where the
+  // rail is off-canvas.
+  //
+  // For a technician on a desktop it has NEITHER -- no bell (no reorder-queue permission) and no
+  // toggle (the rail is docked). Rendering the element anyway would leave a 48px band with its
+  // own surface and a bottom border above every page: chrome that announces a region containing
+  // nothing. It collapses instead, and the page begins under the rail.
+  //
+  // Deliberately AFTER the hooks. Returning early above them would change hook order between
+  // renders; the reads themselves are already gated by canSeeReorderRequests, so an unauthorized
+  // principal still issues none of them.
+  if (!onOpenNav && !canSeeReorderRequests) return null;
+
   return (
     <div className="fo-appheader">
       <div className="fo-appheader-left">
@@ -152,8 +168,6 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
             resolveName={resolveName}
           />
         )}
-        <span className="fo-appheader-email">{user?.email}</span>
-        <Button variant="tertiary" onClick={logout}>Logout</Button>
       </div>
     </div>
   );

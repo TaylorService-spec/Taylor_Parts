@@ -365,11 +365,11 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 /* .fo-appheader-title removed with the duplicate product name it carried. */
 .fo-appheader a { color: var(--color-text-secondary); text-decoration: none; }
 .fo-appheader a:hover { color: var(--color-brand-primary); text-decoration: underline; }
-.fo-appheader-email { color: var(--color-text-muted); }
 .fo-appheader button {
   background: transparent; color: var(--color-text-secondary);
   border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
-  /* 44px minimum -- Logout measured 61x24 in field testing. */
+  /* 44px minimum. The reading that set it was taken on Logout, which has since moved to the
+     rail; the rule now governs the notification bell, the one button left in this strip. */
   min-height: 44px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .fo-appheader button:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
@@ -784,7 +784,6 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
      would otherwise overflow horizontally. */
   .fo-appheader { flex-wrap: wrap; gap: 8px; }
   .fo-appheader-right { flex-wrap: wrap; }
-  .fo-appheader-email { display: none; }
 }
 
 .fo-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
