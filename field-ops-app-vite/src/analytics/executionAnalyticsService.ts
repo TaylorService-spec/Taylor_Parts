@@ -108,6 +108,12 @@ export interface TechnicianExecutionStats {
   totalWorkOrdersCompleted: number;
   totalPartsConsumed: number;
   averageCompletionTimeMs: number | null;
+  /**
+   * WHY THE AVERAGE IS ABSENT, when it is. "No job has both timestamps yet" and "a job's
+   * timestamps contradict the lifecycle" are different facts, and a bare null cannot tell them
+   * apart. Counted, never rendered as a duration.
+   */
+  completionEvidence: { valid: number; inverted: number };
   workOrderVolumeByStatus: Record<string, number>;
 }
 
@@ -129,20 +135,51 @@ export async function getTechnicianExecutionStats(technicianId: string): Promise
   let totalPartsConsumed = 0;
   let totalWorkOrdersCompleted = 0;
   const completionDurations: number[] = [];
+  let invertedDurations = 0;
 
   for (const wo of workOrders) {
     workOrderVolumeByStatus[wo.status] = (workOrderVolumeByStatus[wo.status] ?? 0) + 1;
     totalPartsConsumed += normalizeQtyUsed(wo.inventorySnapshot).reduce((sum, p) => sum + p.quantity, 0);
     if (wo.completedAt) totalWorkOrdersCompleted += 1;
-    if (wo.workStartedAt?.toMillis && wo.completedAt?.toMillis) {
-      completionDurations.push(wo.completedAt.toMillis() - wo.workStartedAt.toMillis());
+    // INVERTED EVIDENCE IS NOT A DURATION.
+    //
+    // This pushed the difference unconditionally, so a Work Order whose completedAt precedes its
+    // workStartedAt contributed a NEGATIVE number to the mean -- and the technician screen
+    // reported "-1686m" as a performance fact about a person. The direction of the subtraction was
+    // always right; what was missing is that the pair can contradict the lifecycle.
+    //
+    // Deliberately NOT Math.abs(), NOT Math.max(0, ...), and NOT a silent swap of the two
+    // timestamps. Each of those turns evidence the platform cannot explain into a plausible
+    // number, which is worse than showing nothing: it is unfalsifiable.
+    const startedAt = wo.workStartedAt?.toMillis?.();
+    const completedAtMs = wo.completedAt?.toMillis?.();
+    if (Number.isFinite(startedAt) && Number.isFinite(completedAtMs)) {
+      const ms = (completedAtMs as number) - (startedAt as number);
+      // Zero is a real measurement (start and completion recorded at the same instant) and is
+      // kept. Only a NEGATIVE span is contradictory.
+      if (ms < 0) invertedDurations += 1;
+      else completionDurations.push(ms);
     }
   }
 
+  // ONE contradictory record withdraws the whole figure. Averaging the rest would report a number
+  // over a population this projection KNOWS is partly untrustworthy, under a name ("Avg. Job
+  // Duration") that claims to describe all of it -- the partial-figure-under-a-complete-name
+  // failure this platform has been bitten by before. N/A is the honest answer; the count below is
+  // what makes the reason recoverable instead of mysterious.
   const averageCompletionTimeMs =
-    completionDurations.length > 0 ? completionDurations.reduce((a, b) => a + b, 0) / completionDurations.length : null;
+    invertedDurations > 0 || completionDurations.length === 0
+      ? null
+      : completionDurations.reduce((a, b) => a + b, 0) / completionDurations.length;
 
-  return { technicianId, totalWorkOrdersCompleted, totalPartsConsumed, averageCompletionTimeMs, workOrderVolumeByStatus };
+  return {
+    technicianId,
+    totalWorkOrdersCompleted,
+    totalPartsConsumed,
+    averageCompletionTimeMs,
+    completionEvidence: { valid: completionDurations.length, inverted: invertedDurations },
+    workOrderVolumeByStatus,
+  };
 }
 
 export interface PartConsumption {

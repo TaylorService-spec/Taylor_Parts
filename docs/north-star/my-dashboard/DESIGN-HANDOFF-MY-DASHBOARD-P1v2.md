@@ -229,6 +229,52 @@ at 375 and 320 show the fixed `fo-tabbar` over mid-page content. That is how a f
 renders a fixed element, not an overlap. Measured at the bottom of the scroll: the bar's top is
 739px, the last content ends at 710px, `occluded: false` at both widths.
 
+### LIVE OWNER REVIEW — 2026-09-04. Acceptance HELD on one correctness defect.
+
+The technician surface was reviewed on the running sandbox at `f05d3327`. Work-first layout, the
+human-readable statuses, all four buckets, goal-grid honesty and the responsive structure all passed.
+One item blocked acceptance:
+
+> **Avg Job Duration = -1686m**
+
+A negative span was being presented as a performance fact about a person.
+
+**Root cause: an eligible record with contradictory evidence, admitted without validation.** The
+subtraction was always the right way round (`completedAt - workStartedAt`, the governed lifecycle pair
+written by `transitionWorkOrder()`) and the units were consistent. What was missing is that the pair
+can CONTRADICT the lifecycle: a Work Order whose `completedAt` precedes its `workStartedAt` pushed a
+negative number straight into the mean. Not a reversed calculation, not a wrong timestamp pair, not
+mixed units, and **no new duration definition was invented** — the governed one already existed and
+is unchanged.
+
+**Reproduced before it was fixed**, rather than argued: a Work Order carrying an inverted pair was
+seeded through the existing emulator fixture path, and the running screen rendered `-795m` — the same
+shape as the live `-1686m`. With the corrective it renders **N/A**.
+
+**The fix is in the projection, not the render.** `Math.max(0, ...)`, `Math.abs(...)` and silently
+swapping the two timestamps were all rejected and are each individually mutation-tested: every one
+turns evidence the platform cannot explain into a plausible number, which is worse than showing
+nothing because it is unfalsifiable. A negative span is now counted as INVERTED evidence, and one
+contradictory record withdraws the whole figure — averaging the trustworthy remainder would report a
+number over a population the projection knows is partly untrustworthy, under a name ("Avg. Job
+Duration") that claims to describe all of it.
+
+`completionEvidence: { valid, inverted }` is returned alongside, so "no job has both timestamps yet"
+and "a job's timestamps contradict the lifecycle" stay distinguishable. It is counted, never
+rendered as a duration.
+
+**The sandbox fixture sources were checked and are not the cause.** `seedSandboxPerformanceStory.mjs`
+and `seedSandboxTransactional.js` set every reached lifecycle timestamp to the same `now`, which
+yields a zero-length span, not an inverted one. The contradictory records are in the live
+platform-sandbox dataset, which is production-derived; the exact documents were **not** identified,
+because that would mean reading the live dataset ad hoc and no such authorization was given. The
+projection is now correct whether or not those records are ever repaired.
+
+**Status is unchanged: AWAITING OWNER ACCEPTANCE.** The corrective is code-complete and not
+deployed; acceptance waits on a refreshed live screen.
+
+---
+
 ### Open, and deliberately not resolved here
 
 `usePerformanceGoals` returned **"This target is outside your access"** for the technician's own
