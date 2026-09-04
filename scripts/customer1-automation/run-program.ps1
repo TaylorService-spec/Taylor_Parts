@@ -332,7 +332,7 @@ while ($executed -lt $MaxItems -and $laneIndex -lt $candidates.Count) {
         -LaneId $lane.id -WorktreePath $worktree -PromptPath $promptPath -LogDir $logDir `
         -ClaudeExe $cfg.claudeExe -PermissionMode $cfg.claudePermissionMode `
         -TimeoutSec $cfg.claudeTimeoutSec -ResultFileName $cfg.resultFileName `
-        -DisallowedTools @($cfg.claudeDisallowedTools) -StrictMcpConfig:([bool]$cfg.strictMcpConfig)
+        -DisallowedTools @($cfg.claudeDisallowedTools) -AllowedTools @($cfg.claudeAllowedTools) -StrictMcpConfig:([bool]$cfg.strictMcpConfig)
     $runRecord.claudeSessions++
 
     # ---- 12-14. independent verification and declared proofs

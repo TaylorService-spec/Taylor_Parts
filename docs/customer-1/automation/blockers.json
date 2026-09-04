@@ -14,5 +14,30 @@
     "RESOLVED",
     "WITHDRAWN"
   ],
-  "blockers": []
+  "blockers": [
+    {
+      "id": "BLK-canary-A-1",
+      "lane": "A",
+      "workItem": "C1-SCOPE-01/A1 — Day-1 scope matrix: classify every EOS family with cited evidence",
+      "category": "TAYLOR",
+      "question": "S-1 — Does Taylor operate a CRM pipeline (Opportunity, families 4/4b) and sell under Sales Agreements (family 5) from Day 1, or does the Day-1 commercial flow begin at Sales Order?",
+      "whyAutomationCannotDecide": "The families are built and partly Owner-accepted, so this is not a readiness question. It is a fact about how Taylor actually sells, which is not in the repository.",
+      "blockingScope": "Classification of families 4, 4b and 5, and therefore the C1-PRODUCT-01 Day-1 workflow remainder.",
+      "remainingExecutableWork": "All other family classifications are proposed and the acceptance evidence index can proceed.",
+      "createdAt": "2026-09-04T08:34:00Z",
+      "status": "OPEN"
+    },
+    {
+      "id": "BLK-canary-A-2",
+      "lane": "A",
+      "workItem": "C1-SCOPE-01/A1 — Day-1 scope matrix: classify every EOS family with cited evidence",
+      "category": "OWNER",
+      "question": "S-2 — Is Reporting a Day-1 commitment, a pilot, or post-Day-1 for Customer 1?",
+      "whyAutomationCannotDecide": "PRs #1768/#1779 make production adoption representable in configuration but explicitly not live production evidence. Whether Taylor is promised Reporting on Day 1 is a commercial/contractual boundary, not a technical readiness state.",
+      "blockingScope": "The Reporting row in the scope matrix and any Reporting entry in the Day-1 training and acceptance scope.",
+      "remainingExecutableWork": "Everything else in the matrix is classified.",
+      "createdAt": "2026-09-04T08:34:00Z",
+      "status": "OPEN"
+    }
+  ]
 }

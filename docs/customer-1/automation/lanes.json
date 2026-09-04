@@ -32,6 +32,19 @@
       "WebFetch",
       "WebSearch"
     ],
+    "claudeAllowedTools": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-files:*)",
+      "Bash(node --test:*)",
+      "Bash(npm test)",
+      "Bash(npm run:*)"
+    ],
     "strictMcpConfig": true,
     "proofPolicy": {
       "note": "Positive allowlist. A worker may SUGGEST a proof; the harness decides whether it runs. This policy is read from the HARNESS worktree, never from the lane worktree, so a lane cannot authorize its own command. Every path here is also in harnessOwnedPaths, so a lane that edits it fails verification.",

@@ -20,6 +20,7 @@ param(
     [int]$TimeoutSec = 3600,
     [string]$ResultFileName = '.orchestrator-result.json',
     [string[]]$DisallowedTools = @(),
+    [string[]]$AllowedTools = @(),
     [switch]$StrictMcpConfig,
     [switch]$ReadOnly
 )
@@ -57,6 +58,13 @@ $deny = @($DisallowedTools)
 if ($ReadOnly) { $deny += @('Edit', 'Write', 'NotebookEdit', 'Bash', 'Task', 'Agent') }
 $deny = @($deny | Where-Object { $_ } | Sort-Object -Unique)
 if ($deny.Count -gt 0) { $args += @('--disallowed-tools') + $deny }
+
+# acceptEdits auto-approves file edits but NOT Bash, so an unattended worker
+# cannot commit its own work -- it has no one to ask. Name the narrow set of
+# commands a worker legitimately needs. This is an allowlist, not a bypass:
+# everything unnamed is still refused, and bypassPermissions stays forbidden.
+$allow = @($AllowedTools | Where-Object { $_ })
+if (-not $ReadOnly -and $allow.Count -gt 0) { $args += @('--allowed-tools') + $allow }
 
 Write-Step "Lane $LaneId : starting Claude session (timeout ${TimeoutSec}s). Args: $($args -join ' ')"
 $started = Get-UtcStamp

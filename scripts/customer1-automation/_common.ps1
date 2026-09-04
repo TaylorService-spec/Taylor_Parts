@@ -141,14 +141,19 @@ function Test-PathMatch {
     return $false
 }
 
+# The leading comma is load-bearing. A function that outputs an empty array has
+# it unrolled to nothing, so the caller's variable becomes $null and every
+# later .Count throws under StrictMode. Wrapping the result in an outer
+# single-element array defeats the unroll; PowerShell then hands back the inner
+# array intact, empty or not.
 function Select-UnownedPaths {
     param([string[]]$Paths, [string[]]$OwnedPatterns)
-    @($Paths | Where-Object { -not (Test-PathMatch -Path $_ -Patterns $OwnedPatterns) })
+    ,@($Paths | Where-Object { -not (Test-PathMatch -Path $_ -Patterns $OwnedPatterns) })
 }
 
 function Select-ForbiddenPaths {
     param([string[]]$Paths, [string[]]$ForbiddenPatterns)
-    @($Paths | Where-Object { Test-PathMatch -Path $_ -Patterns $ForbiddenPatterns })
+    ,@($Paths | Where-Object { Test-PathMatch -Path $_ -Patterns $ForbiddenPatterns })
 }
 
 function Test-ProofCommand {
