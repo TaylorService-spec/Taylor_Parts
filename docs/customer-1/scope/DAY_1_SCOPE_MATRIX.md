@@ -58,6 +58,61 @@ omitting them would make the gate close on a narrower census than it claims.
 | Reporting | `C1-SECURITY-01` evidence (PRs #1768, #1779) | `BLOCKED` | Depends on open blocker `BLK-canary-A-2`. |
 | Administration / access management | Gate `C1-ADMIN-01` | `DAY_1` | `C1-ADMIN-01` is independently launch-critical; Taylor cannot depend on EOS without ordinary self-service administration. |
 
+## Business capability register census
+
+The two sections above cover the North Star migration ledger. The repository's other candidate
+register is [`docs/roadmaps/business-capability-register.md`](../../roadmaps/business-capability-register.md),
+which is capability-shaped rather than page-shaped. Every one of its entries is classified below, so
+the census is complete under **either** reading of "every EOS family" and the governance question
+about which register is authoritative no longer blocks coverage — only wording.
+
+One repository fact drives most of these proposals: the register records what EOS *will likely need*
+and is explicitly **not** an implementation backlog. Seventeen of its eighteen entries are
+`IDENTIFIED` — recognized, not built. Taylor cannot depend on Day 1 on a capability that has no
+implementation, so the honest proposal for an `IDENTIFIED` entry is `POST_DAY_1`. Where the entry
+also has a Day-1 *slice* that is already shipped and classified above, the slice is named; the
+capability itself still defers.
+
+| Register entry | Register maturity | Proposed Day-1 class | Basis |
+|---|---|---|---|
+| CAP-1 — Service Contracts / Preventive Maintenance | `IDENTIFIED` | `POST_DAY_1` | Contract/PM authority is greenfield. Reactive Work Orders (family 1) run service Day 1 without it. |
+| CAP-2 — Warranty / Service Entitlement | `IDENTIFIED` | `POST_DAY_1` | Entitlement authority is greenfield; a `warranty` nav item exists as a label only. |
+| CAP-3 — Installed Base / Customer Equipment Lifecycle | `IDENTIFIED` | `POST_DAY_1` | Day-1 slice is family 8 — Equipment (the serialized-asset authority and its timeline read foundation). The longitudinal sale→install→retirement chain is not built. |
+| CAP-4 — Returns / RMA / Credits / Reverse Commerce | `IDENTIFIED` | `POST_DAY_1` | Reverse/credit authority is greenfield; its own roadmap trigger places it after Sales Order fulfillment authority exists. |
+| CAP-5 — Purchasing Economics + Vendor Performance | `IDENTIFIED` | `POST_DAY_1` | Day-1 slice is the Purchasing row above (governed PO and price entry). Cost/performance analytics is greenfield. |
+| CAP-6 — Accounts Receivable / Collections | `IDENTIFIED` | `BLOCKED` | Same blocker as the Financials / AR row above (`BLK-run-20260904-065957-A-2`). Classifying this separately would answer that blocker by the back door. |
+| CAP-7 — Sales Credit / Commissions | `IDENTIFIED` | `POST_DAY_1` | Commission authority is greenfield and depends on CAP-6. If Taylor requires Day-1 commission calculation, that is new scope, not a reclassification of existing capability. |
+| CAP-8 — Technician Skills / Certifications / Work Eligibility | `IDENTIFIED` | `POST_DAY_1` | Dispatch & Scheduling is proposed Day 1 on availability-based assignment; skills-based eligibility is greenfield above it. |
+| CAP-9 — Capacity + Customer Promise | `IDENTIFIED` | `POST_DAY_1` | Promise authority is greenfield and the register explicitly forbids building a generalized promise engine now. |
+| CAP-10 — Exception Ownership / Operational Accountability | `IDENTIFIED` | `POST_DAY_1` | Per-domain ATTENTION derivations exist and ship inside the Day-1 families; the cross-domain ownership authority above them is greenfield. |
+| CAP-11 — Operational Commitment (watch item) | `IDENTIFIED` (watch) | `EXCLUDED` | The register marks it **DO NOT DESIGN OR IMPLEMENT**; it exists to prevent premature abstraction. Excluding it explicitly is what the register already says. |
+| CAP-12 — Temporary Equipment Placement / Custody | `IDENTIFIED` | `POST_DAY_1` | The business relationship is ratified but the persistence shape is unresolved pending formal Assessment; there is no authority to depend on. |
+| CAP-13 — Technician Labor + Cost Accounting | `IDENTIFIED` | `POST_DAY_1` | The labor-cost-rate authority is greenfield. Work Order lifecycle events (Day 1, family 1) capture the evidence this capability would later consume. Related to `BLK-run-20260904-065957-A-2`. |
+| CAP-14 — Multi-Equipment Fulfillment / Coordinated Field Execution | `IDENTIFIED` | `POST_DAY_1` | The register records that Taylor today writes one Work Order per machine. That is cumbersome, not blocking; family 1 supports it Day 1. |
+| CAP-15 — Commercial Coverage & Territory Management | `IDENTIFIED` | `POST_DAY_1` | Territory and Coverage Assignment are both greenfield; the register's own runway protection is to keep using `ownerEmployeeId` + Channel. |
+| CAP-16 — Tenant Metadata Configuration & Governed Self-Service | `IDENTIFIED` | `POST_DAY_1` | Architecture recorded, four workstreams scheduled, **none built**. See finding F-1 — `C1-ADMIN-01` must be satisfiable without it. |
+| CAP-17 — EOS Contextual Assistant | `PLANNED` | `EXCLUDED` | Phases A/B are repository-only with no production AI and no conversational writes. No authorization exists for Taylor production data to reach an AI provider, so it cannot be a Day-1 dependency. |
+| CAP-18 — Multi-Currency + FX Governance | `IDENTIFIED` | `EXCLUDED` | `salesAgreementCommands.ts` and `salesOrderCommands.ts` hardcode `currency: "USD"` and accept no parameter that could produce anything else. No Day-1 transaction can be non-USD. |
+
+This table is machine-checked by [`verify-scope-matrix.mjs`](verify-scope-matrix.mjs): every `### N.`
+entry in the capability register must have a `CAP-N` row here. A new register entry fails the check
+until it is classified.
+
+### Findings from the census
+
+- **F-1 — `C1-ADMIN-01` and CAP-16 must not be conflated.** Administration / access management is
+  proposed `DAY_1` above because Taylor needs ordinary self-service administration. CAP-16 — the
+  tenant metadata configuration platform that would let an administrator add a field or build a
+  report without engineering — is unbuilt and proposed `POST_DAY_1`. `C1-ADMIN-01` therefore has to
+  close on a *bounded* Day-1 administration set that is achievable without CAP-16. Which actions are
+  in that set is Lane C's gate, not this matrix's.
+- **F-2 — three explicit exclusions now exist.** CAP-11, CAP-17 and CAP-18 are the first rows
+  proposed `EXCLUDED`. `C1-SCOPE-01` closes only when exclusions are *accepted*, so these three are
+  the minimum exclusion set Taylor and Verenward must sign, not a formality.
+- **F-3 — no row is proposed `PILOT`.** Nothing in the repository designates a named subset of
+  Taylor users who would exercise a capability the business does not depend on. If Taylor wants a
+  pilot posture for any row, that is a business decision that would add rows here.
+
 ## What this page does not do
 
 - It does not move `C1-SCOPE-01`. The gate closes on Taylor and Verenward acceptance, not on the
@@ -74,6 +129,11 @@ omitting them would make the gate close on a narrower census than it claims.
 
 The census boundary itself is undecided. `C1-SCOPE-01` says "every EOS family", and the repository
 holds two candidate registers: the North Star migration ledger (13 family rows) and the business
-capability register (broader, capability-shaped, not page-shaped). This matrix covers the first and
-names the four largest surfaces outside it, but which register is authoritative for the gate's close
-condition is a governance decision, not an engineering one.
+capability register (18 entries, capability-shaped, not page-shaped). Which one is authoritative for
+the gate's close condition is a governance decision, not an engineering one, and it stays recorded as
+a blocker.
+
+What has changed is that the answer no longer gates coverage: this matrix now classifies the union —
+13 family rows, 4 surfaces outside the family register, and all 18 capability register entries. Under
+either reading, and under both, every row is classified. The residual governance question is which
+set the gate's *close statement* should name, not whether anything is missing.

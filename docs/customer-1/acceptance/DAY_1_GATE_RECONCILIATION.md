@@ -42,6 +42,11 @@ Two things this page is not:
 | Purchasing | PASSED — cost activation, Decision #166 | PASSED — bounded live Purchasing ceremony evidence in the certification closeout (PR #1761) | **N/A** — not a North Star family row | **REMAINS** — no Owner visual acceptance recorded | — |
 | Administration / access management | **REMAINS** — no Day-1 administration proof set identified | **REMAINS** | **N/A** — not a North Star family row | **REMAINS** | — |
 
+The row set above is machine-checked against the scope matrix by
+[`../scope/verify-scope-matrix.mjs`](../scope/verify-scope-matrix.mjs): every `DAY_1` proposal must
+have exactly one row here, and every row here must be a `DAY_1` proposal. If a blocked row is later
+classified `DAY_1`, that check fails until this table grows the row.
+
 Source for every Functional / Sandbox / North Star / Acceptance cell is the family's own row in
 [`../../design/north-star-migration-ledger.md`](../../design/north-star-migration-ledger.md), except
 Purchasing and Administration, whose evidence is the `C1-PRODUCT-01` and `C1-ADMIN-01` entries in
@@ -64,8 +69,8 @@ Against the *proposed* Day-1 set, the gate cannot close until at least:
 3. Family 11 gets a sandbox gate, or the migration ledger records why one is not applicable.
 4. Purchasing and Administration are either given an applicable-gate set or classified out of the
    Day-1 workflow set by `C1-SCOPE-01`.
-5. The four `BLOCKED` scope rows (families 4, 4b, 5, Financials/AR, Reporting) are classified. If
-   any lands in Day 1, this reconciliation grows rows.
+5. The six `BLOCKED` scope rows (families 4, 4b, 5, Financials/AR, Reporting, CAP-6 Accounts
+   Receivable) are classified. If any lands in Day 1, this reconciliation grows rows.
 
 ## Recorded gaps
 

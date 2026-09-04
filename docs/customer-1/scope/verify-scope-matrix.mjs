@@ -1,5 +1,6 @@
-// Lane A proof: ledger parses, ledger/readiness agree, and every relative link in the
-// Customer 1 scope docs resolves to a real file. Exits non-zero on the first failure.
+// Lane A proof: ledger parses, ledger/readiness agree, every relative link in the
+// Customer 1 scope docs resolves to a real file, and every PROPOSED Day-1 row in the
+// scope matrix has exactly one reconciliation row (and vice versa). Exits non-zero on failure.
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,4 +28,37 @@ for (const file of ['CUSTOMER_1_READINESS.md', 'scope/DAY_1_SCOPE_MATRIX.md', 'a
   }
 }
 
-if (!process.exitCode) console.log(`OK ${ledger.gates.length} gates, links resolve`);
+// Row identity = the first table cell, minus any parenthetical qualifier ("Purchasing (purchase
+// orders, price entry)" and "Purchasing" are the same row).
+const rowKey = (line) => line.split('|')[1].split('(')[0].trim();
+const isRow = (line) => line.startsWith('|') && !/^\|\s*[-:` ]+\|/.test(line);
+
+const matrix = readFileSync(resolve(c1, 'scope/DAY_1_SCOPE_MATRIX.md'), 'utf8');
+const proposed = new Set(
+  matrix.split('\n').filter((l) => isRow(l) && l.includes('`DAY_1`')).map(rowKey).filter((k) => !k.includes('`')),
+);
+
+const recon = readFileSync(resolve(c1, 'acceptance/DAY_1_GATE_RECONCILIATION.md'), 'utf8');
+const reconTable = recon.split(/^## /m).find((s) => s.startsWith('Reconciliation')) ?? '';
+const reconciled = new Set(
+  reconTable.split('\n').filter(isRow).map(rowKey).filter((k) => k && k !== 'Proposed Day-1 row'),
+);
+
+for (const key of proposed) if (!reconciled.has(key)) fail(`proposed DAY_1 row "${key}" has no reconciliation row`);
+for (const key of reconciled) if (!proposed.has(key)) fail(`reconciliation row "${key}" is not a proposed DAY_1 row`);
+
+// Census completeness: every numbered entry in the business capability register must carry a
+// CAP-<n> classification row in the matrix. A new register entry fails until it is classified.
+const register = readFileSync(resolve(c1, '../roadmaps/business-capability-register.md'), 'utf8');
+const capabilities = [...register.matchAll(/^### (\d+)\./gm)].map(([, n]) => n);
+if (capabilities.length === 0) fail('business capability register: no `### N.` entries found');
+for (const n of capabilities) {
+  if (!matrix.includes(`CAP-${n} —`)) fail(`capability register entry #${n} has no CAP-${n} row in the scope matrix`);
+}
+
+if (!process.exitCode) {
+  console.log(
+    `OK ${ledger.gates.length} gates, links resolve, ${proposed.size} Day-1 rows reconciled, ` +
+      `${capabilities.length} capability register entries classified`,
+  );
+}
