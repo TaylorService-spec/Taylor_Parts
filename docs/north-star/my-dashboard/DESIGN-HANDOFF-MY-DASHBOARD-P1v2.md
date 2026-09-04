@@ -270,6 +270,11 @@ platform-sandbox dataset, which is production-derived; the exact documents were 
 because that would mean reading the live dataset ad hoc and no such authorization was given. The
 projection is now correct whether or not those records are ever repaired.
 
+The underlying data finding is carried separately as SANDBOX DATA QUALITY in
+[`docs/assessments/sandbox-inverted-work-order-completion-evidence.md`](../../assessments/sandbox-inverted-work-order-completion-evidence.md).
+It is non-blocking now that the dashboard fails honestly, and "the screen no longer shows a
+negative" is explicitly not the same as those records being correct.
+
 **Status is unchanged: AWAITING OWNER ACCEPTANCE.** The corrective is code-complete and not
 deployed; acceptance waits on a refreshed live screen.
 
