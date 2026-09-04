@@ -17,7 +17,7 @@
 // reads users/{uid}.role, never inspects Role names, and never builds a Role definition -- a raw
 // role can never confer a governed capability (the W1 correction; this keeps it true).
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "./reportAccess.js";
-import { GOVERNED_SURFACE_CAPABILITY_IDS } from "./governedSurfaceCapabilities.js";
+import { GOVERNED_SURFACE_CAPABILITY_IDS, DASHBOARD_MODULE_CAPABILITY_IDS } from "./governedSurfaceCapabilities.js";
 
 // The capabilities the trusted feed is asked to decide, in ONE consistent request (all resolved
 // against the same accessVersion): the four wave-1 Report Builder object-read ids, plus the five
@@ -31,6 +31,9 @@ export const REPORT_CAPABILITY_REQUEST = Object.freeze([
   ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
   ...REPORT_DEFINITION_CAPABILITY_IDS,
   ...GOVERNED_SURFACE_CAPABILITY_IDS,
+  // My Dashboard module composition. Without these the feed is never asked, and an unasked
+  // capability is indistinguishable from a denied one -- see DASHBOARD_MODULE_CAPABILITY_IDS.
+  ...DASHBOARD_MODULE_CAPABILITY_IDS,
 ]);
 
 // Observed-version subscription status. hasCapability requires `ready` with a valid version.

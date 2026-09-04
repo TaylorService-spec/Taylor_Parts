@@ -428,3 +428,84 @@ test("no blocker cites an authority gap that has since been closed", () => {
     }
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// THE CAPABILITY REQUEST SET -- the defect this file could not see.
+//
+// `hasCapability(id)` answers from `feed.decisions[id]`, and the effective-access feed only decides
+// the ids it is ASKED for. An id absent from REPORT_CAPABILITY_REQUEST comes back `undefined`,
+// which is `false`, for every principal, forever -- including one who genuinely holds it.
+//
+// Six of this table's ids were absent. `myOpportunities`, `myBooked`, `ordersRequiringAction`,
+// `firmBilled`, `firmCollected`, `firmBooked` and `governedStockPosition` could therefore not
+// resolve for ANYONE, and `accountPortfolio` survived only through a legacy operations-viewer path.
+// Every test in this file passed throughout, because they all supply their own `hasCapability` and
+// so never observe the request set at all. Caught by signing in as a governed persona and reading
+// the feed's own response.
+//
+// This is the guard that closes that gap: the two lists must agree.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
+import { readFileSync as readSrc } from "node:fs";
+
+/** Every capability id the composition table actually gates a module on. */
+function capabilityIdsUsedByComposition() {
+  const src = readSrc(new URL("../src/domain/dashboardComposition.js", import.meta.url), "utf8")
+    // Comments first: this file DISCUSSES capability ids it does not gate on, and a guard that reads
+    // its own prose is a guard that reports ids nobody asks for.
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const ids = new Set();
+  for (const m of src.matchAll(/has\(ctx,\s*"([^"]+)"\)/g)) ids.add(m[1]);
+  // FINANCE_REACH_SCOPES is a list, not a has(ctx, "...") call site.
+  for (const m of src.matchAll(/"(finance\.visibility\.[a-zA-Z]+)"/g)) ids.add(m[1]);
+  return [...ids].sort();
+}
+
+test("every capability the dashboard gates on is one the access feed is ASKED to decide", () => {
+  const used = capabilityIdsUsedByComposition();
+  assert.ok(used.length >= 10, "the extractor found suspiciously few ids -- has the call shape changed?");
+  const requested = new Set(REPORT_CAPABILITY_REQUEST);
+  const unasked = used.filter((id) => !requested.has(id));
+  assert.deepEqual(
+    unasked,
+    [],
+    `these gate a module but are never requested, so they deny for everyone forever:\n  ${unasked.join("\n  ")}`,
+  );
+});
+
+test("the request set stays within the feed's input bound", () => {
+  // effectiveAccessFeed.ts: MAX_PERMISSION_IDS = 100. Exceeding it fails the WHOLE request, which
+  // would take every capability-gated module down with it rather than just the new one.
+  assert.ok(REPORT_CAPABILITY_REQUEST.length <= 100, `${REPORT_CAPABILITY_REQUEST.length} ids exceeds the feed's bound`);
+  assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length, "duplicate ids");
+});
+
+test("FIN-004: money needs REACH, not just the fact-family gate", () => {
+  // `finance.read` alone confers no reach -- listFinancialFacts refuses a principal holding no
+  // finance.visibility.* scope. Gating on it alone composed a Billed tile that could only ever say
+  // "could not be read".
+  const familyOnly = { role: "user", employeeId: "e", warehouseIds: [], operationalRoles: [], hasCapability: (id) => id === "finance.read" };
+  const withReach = { ...familyOnly, hasCapability: (id) => id === "finance.read" || id === "finance.visibility.self" };
+  for (const m of ["firmBilled", "firmCollected", "firmBooked"]) {
+    assert.ok(!resolvedModuleKeys(familyOnly).includes(m), `${m} composed on the family gate alone`);
+    assert.ok(resolvedModuleKeys(withReach).includes(m), `${m} did not compose for a principal with real reach`);
+  }
+  // A reach scope WITHOUT the family gate grants nothing either -- both halves, or neither.
+  const scopeOnly = { ...familyOnly, hasCapability: (id) => id === "finance.visibility.consolidated" };
+  assert.ok(!resolvedModuleKeys(scopeOnly).includes("firmBilled"), "a scope alone composed the money module");
+});
+
+test("a capability-governed CALLABLE is never gated on the legacy operations-viewer role", () => {
+  // getAccountPortfolioSummary resolves customer.record.read; listReceivablePurchaseOrders resolves
+  // inventory.stock.receive. Neither honours a role bypass, so `|| isOperationsViewer(ctx)` widened
+  // only the client and produced a permanent, load-time 403 behind a "could not be read" tile.
+  const bareDispatcher = { role: "dispatcher", employeeId: "e", warehouseIds: [], operationalRoles: [], hasCapability: () => false };
+  const keys = resolvedModuleKeys(bareDispatcher);
+  assert.ok(!keys.includes("accountPortfolio"), "accountPortfolio follows the bare title again");
+  assert.ok(!keys.includes("receivingQueue"), "receivingQueue follows the bare title again");
+  // The genuinely Rules-role-governed Firestore reads DO still compose -- this is a narrowing of one
+  // specific wrong disjunct, not a removal of the legacy surface.
+  assert.ok(keys.includes("serviceAttention") && keys.includes("reorderQueue"));
+});

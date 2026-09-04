@@ -13,7 +13,7 @@ import {
   SIGNED_OUT_VERSION, IDLE_FEED, isValidObservedVersion, interpretAccessResult, buildHasCapability,
 } from "../src/access/reportCapabilityAccess.js";
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "../src/access/reportAccess.js";
-import { GOVERNED_SURFACE_CAPABILITY_IDS } from "../src/access/governedSurfaceCapabilities.js";
+import { GOVERNED_SURFACE_CAPABILITY_IDS, DASHBOARD_MODULE_CAPABILITY_IDS } from "../src/access/governedSurfaceCapabilities.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -29,16 +29,25 @@ ok("requests the report ids PLUS the governed surface ids -- a closed, declared 
   // resolved in the SAME request against the SAME accessVersion, which is the consistency property
   // this request exists to guarantee. Still closed and declared: the assertion below is exact, so an
   // arbitrary or accidental id cannot be slipped into the feed request without failing here.
+  //
+  // EXTENDED AGAIN (dashboard persona sweep): My Dashboard gates modules on six governed
+  // capabilities that were NOT in this request, and `hasCapability` answers from
+  // `feed.decisions[id]` -- so an unrequested id is `undefined`, which is `false`, for every
+  // principal forever. Seven modules could not resolve for anyone, including the Owner. The five
+  // FIN-004 `finance.visibility.*` reach scopes come with them: `finance.read` is only the
+  // fact-family gate and `listFinancialFacts` refuses a principal holding no scope, so asking for
+  // the gate alone produced a money tile that could only ever say "could not be read".
   assert.deepEqual([...REPORT_CAPABILITY_REQUEST], [
     ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
     ...REPORT_DEFINITION_CAPABILITY_IDS,
     ...GOVERNED_SURFACE_CAPABILITY_IDS,
+    ...DASHBOARD_MODULE_CAPABILITY_IDS,
   ]);
   assert.deepEqual([...REPORT_DEFINITION_CAPABILITY_IDS].sort(), [
     "report.definition.create", "report.definition.delete", "report.definition.duplicate",
     "report.definition.read", "report.definition.rename",
   ]);
-  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length);
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length);
   // No duplicates: a repeated id would be a silent sign two concerns had drifted into one list.
   assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length);
 });

@@ -30,15 +30,24 @@ const NONE = () => false;
 
 const base = { role: "user", employeeId: "emp-x", technicianId: null, operationalRoles: [], warehouseIds: [], hasCapability: NONE };
 
-/** The thirteen governed contexts, described by the facts that constitute them. */
+/**
+ * The thirteen governed contexts, described by the facts that constitute them.
+ *
+ * FIN-004: a finance-reaching principal is TWO facts, not one. `finance.read` is the fact-family
+ * gate and confers no reach alone; a `finance.visibility.*` scope is what `listFinancialFacts`
+ * actually requires. These fixtures modelled only the first half, so they agreed with a dashboard
+ * that composed Billed and Collected for principals the server would always deny -- and the screen
+ * said "could not be read" forever. The scope on each context below is the one its real governed
+ * role would carry, not a blanket grant.
+ */
 const CONTEXTS = {
-  admin: { ...base, role: "admin", employeeId: "emp-admin", hasCapability: caps("customer.record.read", "finance.read", "opportunity.read", "salesOrder.read", "inventory.stock.receive", "fulfillment.coordinatedVisit.read", "inventory.balance.read") },
+  admin: { ...base, role: "admin", employeeId: "emp-admin", hasCapability: caps("customer.record.read", "finance.read", "finance.visibility.consolidated", "opportunity.read", "salesOrder.read", "inventory.stock.receive", "fulfillment.coordinatedVisit.read", "inventory.balance.read") },
   // Owner is admin-equivalent by DERIVED grant (the resolver holds the whole catalog); modelled by
   // the same governed facts rather than by a name nothing stores.
-  owner: { ...base, role: "admin", employeeId: "emp-owner", hasCapability: caps("customer.record.read", "finance.read", "opportunity.read", "salesOrder.read", "inventory.balance.read") },
-  generalManager: { ...base, role: "dispatcher", employeeId: "emp-gm", hasCapability: caps("customer.record.read", "finance.read", "opportunity.read") },
-  financeManager: { ...base, employeeId: "emp-fin", hasCapability: caps("finance.read", "customer.record.read") },
-  accountingManager: { ...base, employeeId: "emp-acct", hasCapability: caps("finance.read") },
+  owner: { ...base, role: "admin", employeeId: "emp-owner", hasCapability: caps("customer.record.read", "finance.read", "finance.visibility.consolidated", "opportunity.read", "salesOrder.read", "inventory.balance.read") },
+  generalManager: { ...base, role: "dispatcher", employeeId: "emp-gm", hasCapability: caps("customer.record.read", "finance.read", "finance.visibility.company", "opportunity.read") },
+  financeManager: { ...base, employeeId: "emp-fin", hasCapability: caps("finance.read", "finance.visibility.team", "customer.record.read") },
+  accountingManager: { ...base, employeeId: "emp-acct", hasCapability: caps("finance.read", "finance.visibility.self") },
   salesManager: { ...base, employeeId: "emp-sm", hasCapability: caps("opportunity.read", "salesOrder.read", "customer.record.read", "fulfillment.coordinatedVisit.read") },
   salesperson: { ...base, employeeId: "emp-rep", hasCapability: caps("opportunity.read", "customer.record.read") },
   dispatcher: { ...base, role: "dispatcher", employeeId: "emp-disp" },
@@ -213,14 +222,21 @@ test("a role title alone widens nothing", () => {
     assert.ok(!keys.includes(m), `a bare dispatcher must not compose ${m}`);
   }
 
-  // reorderQueue, receivingQueue, accountPortfolio and the service modules DO compose here, and that
-  // is the existing design rather than a leak: their `needs` deliberately admit the legacy
-  // admin/dispatcher operations surface, which is the same predicate Firestore Rules still use to
-  // gate the underlying reads. Composition can only ever REMOVE a module a viewer could not use --
-  // the server remains the authority, and a dispatcher whose Rules deny the read gets an honest
-  // unavailable state rather than data.
-  for (const m of ["reorderQueue", "receivingQueue", "accountPortfolio", "serviceAttention"]) {
+  // THE LEGACY DISJUNCT IS NOW ONLY WHERE IT IS TRUE. `serviceAttention` and `reorderQueue` read
+  // Firestore directly and Rules really do gate those reads on the admin/dispatcher role, so a bare
+  // dispatcher composing them is correct.
+  //
+  // `receivingQueue` and `accountPortfolio` USED TO SIT HERE TOO, on the reasoning that a denied read
+  // would degrade to an honest unavailable state. It did not. Both are capability-governed CALLABLES
+  // -- `listReceivablePurchaseOrders` on inventory.stock.receive, `getAccountPortfolioSummary` on
+  // customer.record.read -- and neither honours a legacy-role bypass, so a bare dispatcher composed
+  // the tiles, took a 403, and read "could not be read just now" on every load, forever. Observed on
+  // the rendered screen; the composition tests agreed with it because they never issue the call.
+  for (const m of ["reorderQueue", "serviceAttention"]) {
     assert.ok(keys.includes(m), `${m} composes for an operations viewer by design`);
+  }
+  for (const m of ["receivingQueue", "accountPortfolio"]) {
+    assert.ok(!keys.includes(m), `${m} is capability-governed and must not follow the bare title`);
   }
 });
 

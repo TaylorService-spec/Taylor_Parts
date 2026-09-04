@@ -288,3 +288,98 @@ test("dashboard blocker copy is concise; the full reasoning lives in the module 
     }
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// THE TECHNICIAN SURFACE
+//
+// TechnicianDashboard is a DIFFERENT SCREEN, chosen by DashboardIndex, and nothing above this line
+// reads it -- every guard in this file so far reads MyDashboard.jsx. So the one dashboard whose
+// audience is standing in front of a machine had no design guard at all, and its acceptance was
+// silently riding on a screen it does not share a single component tree with.
+//
+// The invariant these protect: WORK COMES FIRST, PERFORMANCE COMES AFTER, and the measures the
+// platform has not defined stay named and empty rather than becoming a score.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const TECH_DASHBOARD = code(read("../src/modules/technicianDashboard/TechnicianDashboard.jsx"));
+const TECH_PERFORMANCE = code(read("../src/modules/technicianDashboard/TechnicianPerformance.jsx"));
+const TECH_CARD = code(read("../src/modules/technicianDashboard/TechnicianWorkOrderCard.jsx"));
+const APP = code(read("../src/App.jsx"));
+
+test("a technician is routed to the technician surface, never to MyDashboard", () => {
+  // The branch is the whole reason this file must read two component trees. If it goes, a technician
+  // silently inherits a composition built for someone with an operations or commercial scope.
+  assert.match(APP, /role === "technician"\s*\)\s*return\s*<TechnicianDashboard/);
+  assert.match(APP, /<MyDashboard/, "the non-technician branch must still exist");
+});
+
+test("WORK COMES FIRST -- every work bucket renders above the performance section", () => {
+  // Owner direction, and the reason it is a test rather than a comment: a technician opening this
+  // screen needs what to DO above what they are MEASURED ON, and a later refactor reordering JSX
+  // would not look like a product change to anybody reviewing the diff.
+  const perfAt = TECH_DASHBOARD.indexOf("<TechnicianPerformance");
+  assert.ok(perfAt > 0, "the performance section is gone");
+  for (const bucket of ["Ready to Start", "In Progress", "Waiting", "Completed Today"]) {
+    const at = TECH_DASHBOARD.indexOf(`title="${bucket}"`);
+    assert.ok(at > 0, `the "${bucket}" bucket is gone`);
+    assert.ok(at < perfAt, `"${bucket}" renders BELOW the performance section`);
+  }
+});
+
+test("the technician's goals go through the SAME governed GoalGrid, not a second implementation", () => {
+  assert.match(TECH_PERFORMANCE, /import GoalGrid from "\.\.\/dashboard\/GoalGrid\.jsx"/);
+  assert.match(TECH_PERFORMANCE, /<GoalGrid\s+targets=\{targets\}\s+feed=\{feed\}/);
+  // EMPLOYEE scope, and only the two governed technician metrics -- not a firm figure re-labelled.
+  assert.match(TECH_PERFORMANCE, /targetScopeType: "EMPLOYEE"/);
+  assert.match(TECH_PERFORMANCE, /technician\.workOrder\.completed\.cumulative\.count/);
+  assert.match(TECH_PERFORMANCE, /technician\.workOrder\.open\.count/);
+});
+
+test("the undefined quality measures stay NAMED and EMPTY -- never a zero, never a percentage", () => {
+  // "Do not reward throughput alone." Only productivity is governed, so the slots that are not
+  // stand as an explicit statement that the picture is incomplete.
+  for (const phrase of ["On-time completion", "first-time fix", "jobs per workday"]) {
+    assert.ok(TECH_PERFORMANCE.includes(phrase), `${phrase} is no longer named`);
+  }
+  assert.match(TECH_PERFORMANCE, /not measured yet/);
+  // A number beside those words would turn a declared absence into a score.
+  assert.ok(!/(on-?time|first-?time)[^.]{0,40}\b\d+\s*%/i.test(TECH_PERFORMANCE), "a quality percentage appeared");
+});
+
+test("a deliberate absence is NOT_ENABLED, so a screen reader is not told it is an alert", () => {
+  // HonestState's UNAVAILABLE branch carries role="alert". A definition nobody has written yet is
+  // not an alert -- announcing it as one would interrupt a technician for a governance gap.
+  assert.match(TECH_PERFORMANCE, /NOT_ENABLED/);
+  assert.ok(!/state=\{?["']?UNAVAILABLE/.test(TECH_PERFORMANCE), "the quality slot became an alert");
+});
+
+test("technician identity comes from the governed binding and fails closed", () => {
+  assert.match(TECH_DASHBOARD, /useCurrentTechnician/);
+  // No technician record -> an explicit error surface, never an empty board that reads as "no work".
+  assert.match(TECH_DASHBOARD, /technicianError/);
+  assert.ok(!/employees\//.test(TECH_DASHBOARD), "the employee directory is not the technician identity");
+});
+
+test("the technician surface composes no management, finance or admin module", () => {
+  // Cross-surface leakage would arrive as an import, so this reads imports rather than prose.
+  for (const forbidden of ["technicianComparison", "TechnicianComparison", "firmBilled", "useFinancialFacts",
+                           "privilegedApprovalClient", "useAccountPortfolioSummary", "adminDecisions"]) {
+    assert.ok(!TECH_DASHBOARD.includes(forbidden), `${forbidden} leaked onto the technician surface`);
+  }
+});
+
+test("a technician reads their status as words, not as the stored machine value", () => {
+  // This card was on workOrderStatusLabelConformance's known-raw allowlist, so a technician saw
+  // "WORK_IN_PROGRESS" and "EN_ROUTE" on their own work. The CLASS keeps the machine value -- it is
+  // a selector, not prose -- and only the text a person reads goes through the helper.
+  assert.match(TECH_CARD, /workOrderStatusLabel\(workOrder\.status\)/);
+  assert.ok(!/>\{workOrder\.status\}</.test(TECH_CARD), "the raw status is rendered again");
+  assert.match(TECH_CARD, /status \$\{workOrderStatusLabel\(workOrder\.status\)\}/, "the aria-label must say it too");
+});
+
+test("the technician layout carries no desktop-only assumption", () => {
+  // The surface is used on a handheld more often than not.
+  assert.ok(!/min-width:\s*\d+px/.test(TECH_DASHBOARD), "a width gate appeared in the component");
+  assert.ok(!/window\.innerWidth/.test(TECH_DASHBOARD), "layout branched on a measured viewport");
+  assert.match(TECH_DASHBOARD, /WorkspaceShell/, "it must stay inside the shared responsive shell");
+});

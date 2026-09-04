@@ -99,6 +99,46 @@ export const WAREHOUSE_HANDHELD_CAPABILITIES = Object.freeze([
   ...RETURNS_SURFACE_CAPABILITIES,
 ]);
 
+/**
+ * MY DASHBOARD MODULE COMPOSITION — the capabilities `dashboardComposition.js` gates modules on.
+ *
+ * These are NOT route-visibility ids and are deliberately kept out of the list above. They exist for
+ * one reason: `hasCapability` answers from `feed.decisions[id]`, and the feed only decides the ids
+ * it is ASKED for. An id that is never requested comes back `undefined` — which is `false` — for
+ * every principal, forever, including one who genuinely holds the capability.
+ *
+ * That is what had happened. My Dashboard gated six modules on six real, registered capabilities
+ * that were absent from the request set, so `myOpportunities`, `myBooked`, `ordersRequiringAction`,
+ * `firmBilled`, `firmCollected`, `firmBooked` and `governedStockPosition` could not resolve for
+ * anyone — and `accountPortfolio` survived only because admin and dispatcher reach it through the
+ * legacy operations-viewer path instead. The composition tests passed throughout: they call the
+ * predicates with a `hasCapability` of their own, so they never observe the request set.
+ *
+ * NO NEW CAPABILITY IS MINTED HERE and nothing is granted. Every id below is already registered in
+ * the server permission catalog; asking for a decision is not the same as receiving a positive one,
+ * and a principal without the capability still gets `false` — from the server, on the evidence,
+ * rather than from an absent answer.
+ */
+export const DASHBOARD_MODULE_CAPABILITY_IDS = Object.freeze([
+  "customer.record.read",
+  "finance.read",
+  "opportunity.read",
+  "salesOrder.read",
+  "fulfillment.coordinatedVisit.read",
+  "inventory.balance.read",
+  // FIN-004 REACH. `finance.read` is the fact-FAMILY gate and confers no reach on its own
+  // (permissionCatalog.ts, id finance.read): a principal also needs at least one
+  // `finance.visibility.*` scope, or `listFinancialFacts` refuses them outright. Gating the money
+  // modules on `finance.read` alone composed a Billed/Collected tile for principals the server
+  // would always deny, and the screen reported a permanent "could not be read" where the honest
+  // answer is that this person has no financial reach at all.
+  "finance.visibility.self",
+  "finance.visibility.team",
+  "finance.visibility.businessUnit",
+  "finance.visibility.company",
+  "finance.visibility.consolidated",
+]);
+
 export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...TRANSFER_SURFACE_CAPABILITIES,
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
