@@ -27,20 +27,35 @@ This page is the human-readable view of `CUSTOMER_1_LEDGER.json`. The JSON file 
 
 ## What is already materially advanced
 
-EOS is not starting from zero. Existing repository evidence shows substantial work in governed authorization, Rules/Functions boundaries, sandbox personas, certification, North Star migration, service/work orders, dispatch/scheduling, sales, inventory/scanning, and deployment controls.
+EOS is not starting from zero. Existing repository evidence shows substantial work in governed authorization, Rules/Functions boundaries, sandbox personas, certification, North Star migration, service/work orders, dispatch/scheduling, sales, inventory/scanning, dashboards, financial-policy authority, and deployment controls.
 
-Certification is now formally closed in its bounded certification world: PR #1761 records world 1.8.0 at 1093/1093 with the final applied-inventory verifier 38/38 PASS and live Purchasing, Receiving, and Cycle Count ceremony evidence. That is strong product evidence, but the closeout explicitly does **not** claim production deployment or close the transferred post-certification findings.
+Certification is formally closed in its bounded certification world: PR #1761 records world 1.8.0 at 1093/1093 with the final applied-inventory verifier 38/38 PASS and live Purchasing, Receiving, and Cycle Count ceremony evidence. That is strong product evidence, but the closeout explicitly does **not** claim production deployment or close transferred post-certification findings.
+
+The physical-consumption Day-1 blocker that PR #1749 exposed is now closed in running sandbox behavior. PR #1775 implemented the governed source-selection path without granting technicians broad inventory visibility and proved receive 5 / consume 2 → on-hand 3 / Sales Order availability 3, including the truck double-subtraction guard. The applicable Functions estate was subsequently deployed to platform-sandbox, and the accepted sandbox build is downstream of that fix. This removes that blocker from the Customer 1 critical path, but it is not production evidence.
+
+My Dashboard is also materially closed as a family. PR #1792 records Owner acceptance against live platform-sandbox commit `50792fef`, with 23 modules classified as 15 READY, 2 SATISFIED_ELSEWHERE, 1 GATED, 5 UNAVAILABLE, and `NOT_WIRED = 0`. Its training guide is `COMPLETE — LIVE VERIFIED`. Remaining unavailable/gated dashboard facts were transferred to the existing domain-authority backlog rather than hidden or misclassified as dashboard debt.
 
 That evidence remains authoritative in its original files. This ledger does not duplicate hundreds of proof lines; it points at them and asks the Customer 1 question: **is the evidence sufficient for Taylor to depend on this in production?**
 
-The product and security gates are therefore `IN_PROGRESS`, not `OPEN`.
+The product and security gates therefore remain `IN_PROGRESS`, not `OPEN`.
 
-## Newly recorded Customer 1 blockers / cautions
+## Current Customer 1 blockers / cautions
 
-- **Inventory consumption/on-hand defect:** PR #1749 proved that consumed stock is not physically removed from the on-hand derivation. The Sales Order availability path can therefore overstate available stock after consumption. If this inventory/fulfillment path is in Day 1, it is a Customer 1 product blocker and must be closed before `C1-PRODUCT-01` can become READY.
-- **Legacy stock-location retirement is incomplete:** PR #1759 retired the backend runtime dependency on `stock_locations`, but a client-direct read and active Rules read block remain for a separate Tier-2 retirement gate. This is not silently treated as closed.
+- **Day-1 scope is still not frozen.** Until each family is explicitly Day 1, post-Day-1, pilot, or excluded, the product gate cannot honestly be declared complete even when individual families close.
+- **Legacy stock-location runtime authority is retired, but legacy data remains:** PR #1763 removed the final client reader and Rules read arm. The remaining `stock_locations` documents are inert and await separately authorized disposition; they are not an active read/write dependency.
 - **Production governed-access adoption is sparse:** PR #1752 found zero principals exposed to the measured R-32 change, but also found production has only two RoleAssignments on one principal, no manager Roles, and no location scopes. That narrows one risk; it does not satisfy `C1-IDENTITY-01` or `C1-SECURITY-01`.
-- **CI cost gate was prematurely closed:** a measured docs-only Customer 1 reconciliation triggered `Vite Build Check` and `Operational Payload Guard`. GitHub Pages correctly stayed quiet, and no Windows runner was introduced, but the ledger's own rule forbids broad application CI for ledger-only changes. `C1-COST-01` is therefore back to `IN_PROGRESS` until those paths are narrowed.
+- **Reporting production adoption is representable, not live:** PRs #1768 and #1779 separated eligibility from activation/adoption and made the approved production set representable without widening the non-production override mechanism. That is architecture/governance progress, not production verification.
+- **Financial policy is governed but Taylor's actual profile is still a deployment/customer choice:** PRs #1776 and #1778 provide multiple tested costing strategies, ruled configure/read authority, and an absolute lock. The specific Taylor profile is not inferred by this ledger.
+- **CI cost gate remains open:** docs-only Customer 1 reconciliation no longer triggers GitHub Pages, but the measured docs-only change still triggered `Vite Build Check` and `Operational Payload Guard`. No Windows runner was introduced; broad application CI still needs tighter path isolation before `C1-COST-01` can close.
+
+## Training progress
+
+Training is no longer merely a future requirement. The permanent close rule is active, and individual guides are beginning to close against running behavior.
+
+- `docs/training/MY_DASHBOARD.md` — **COMPLETE — LIVE VERIFIED** against the final Owner-accepted sandbox behavior.
+- `docs/training/PURCHASING_RECORD_PURCHASE_ORDER.md` — guide exists for the governed purchasing price-entry workflow; its final completion remains tied to live deployment verification.
+
+`C1-TRAINING-01` remains `OPEN` because its close condition is broader: every agreed Day-1 role/workflow must have current training and designated Taylor administrators must be trained.
 
 ## What is still mostly unbuilt as a Customer 1 operating system
 
@@ -52,7 +67,7 @@ The largest remaining gaps are not simply more screens. They are:
 4. Taylor administrator self-service;
 5. backup/restore and interruption procedures;
 6. support and escalation;
-7. training;
+7. complete role-based Day-1 training;
 8. implementation/subscription pricing;
 9. contracts and responsibility boundaries;
 10. cutover rehearsal and final production authorization.
@@ -66,7 +81,7 @@ The next work should be prioritized in this order unless a dependency forces a c
 3. **C1-ADMIN-01** — identify ordinary admin actions Taylor must perform without Verenward engineering.
 4. **C1-COMM-01 / C1-SUPPORT-01** — convert platform/support scope into sustainable pricing and operating boundaries.
 5. **C1-RECOVERY-01** — establish and prove recovery before customer dependency.
-6. **C1-TRAINING-01** — build role-based training as Day-1 workflows stabilize.
+6. **C1-TRAINING-01** — continue closing role-based training as Day-1 workflows stabilize.
 7. **C1-CUTOVER-01** — rehearse the actual launch procedure.
 
 ## Permanent deployment-close rule
