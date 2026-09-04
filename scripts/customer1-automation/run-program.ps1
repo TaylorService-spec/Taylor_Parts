@@ -242,7 +242,10 @@ while ($executed -lt $MaxItems -and $laneIndex -lt $candidates.Count) {
     $lane = $candidates[$laneIndex]
     $laneIndex++
 
-    $branch = "$($lane.branchPrefix)$($runId -replace '^run-', '')"
+    # ONE branch per lane, not one per item. A lane's items build on each other:
+    # a fresh branch off main per item would make every item redo the previous
+    # item's work, which is exactly what happened before this changed.
+    $branch = "$($lane.branchPrefix)work"
     $worktree = Join-Path $cfg.worktreeRoot $lane.id
     $runRecord.lanesAttempted += $lane.id
 
@@ -309,12 +312,22 @@ while ($executed -lt $MaxItems -and $laneIndex -lt $candidates.Count) {
     } else {
         $cur = (Invoke-Git -Directory $worktree -Arguments @('branch', '--show-current')).Output -join ''
         if ($cur -ne $branch) {
-            # Never discard existing lane work: only switch when the tree is clean.
+            # Never discard existing lane work. Leftover changes from an
+            # interrupted run get committed on the branch they belong to before
+            # anything switches away from it.
             $dirty = @((Invoke-Git -Directory $worktree -Arguments @('status', '--porcelain')).Output | Where-Object { $_ })
             if ($dirty.Count -gt 0) {
-                throw "STOP: lane worktree $worktree is dirty on branch '$cur'. Refusing to touch pre-existing work."
+                Write-Step "Lane $($lane.id): committing leftover work on '$cur' before switching." 'WARN'
+                Invoke-Git -Directory $worktree -Arguments @('add', '-A') | Out-Null
+                Invoke-Git -Directory $worktree -Arguments @('commit', '-q', '-m', "wip(customer-1): preserve lane $($lane.id) work from an interrupted run") | Out-Null
             }
-            Invoke-Git -Directory $worktree -Arguments @('checkout', '-B', $branch, $cfg.mainRef) | Out-Null
+            # Resume the lane's own branch if it exists; only start from main when it does not.
+            $exists = (Invoke-Git -Directory $worktree -Arguments @('rev-parse', '--verify', "refs/heads/$branch") -AllowFail).ExitCode -eq 0
+            if ($exists) {
+                Invoke-Git -Directory $worktree -Arguments @('checkout', $branch) | Out-Null
+            } else {
+                Invoke-Git -Directory $worktree -Arguments @('checkout', '-B', $branch, $cfg.mainRef) | Out-Null
+            }
         }
     }
 
