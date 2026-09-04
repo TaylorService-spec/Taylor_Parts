@@ -47,6 +47,20 @@ const reconciled = new Set(
 for (const key of proposed) if (!reconciled.has(key)) fail(`proposed DAY_1 row "${key}" has no reconciliation row`);
 for (const key of reconciled) if (!proposed.has(key)) fail(`reconciliation row "${key}" is not a proposed DAY_1 row`);
 
+// Acceptance evidence index: an ACCEPTED row must name the deployed build it was accepted
+// against, or cite a recorded gap explaining why no build is recorded.
+for (const line of reconTable.split('\n').filter(isRow)) {
+  const cells = line.split('|');
+  if (!/^\s*ACCEPTED/.test(cells[5] ?? '')) continue;
+  const against = (cells[6] ?? '').trim();
+  const gap = against.match(/G-\d+/);
+  if (gap) {
+    if (!recon.includes(`**${gap[0]} —`)) fail(`${rowKey(line)}: cites gap ${gap[0]}, which has no entry under Recorded gaps`);
+  } else if (!/`[0-9a-f]{8}`/.test(against)) {
+    fail(`${rowKey(line)}: ACCEPTED but names no deployed build and no recorded gap`);
+  }
+}
+
 // Census completeness: every numbered entry in the business capability register must carry a
 // CAP-<n> classification row in the matrix. A new register entry fails until it is classified.
 const register = readFileSync(resolve(c1, '../roadmaps/business-capability-register.md'), 'utf8');

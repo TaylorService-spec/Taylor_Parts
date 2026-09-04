@@ -4,7 +4,7 @@
   "product": "Enterprise Operations OS (EOS)",
   "provider": "Verenward LLC",
   "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
-  "lastReconciled": "2026-09-03",
+  "lastReconciled": "2026-09-04",
   "statusVocabulary": [
     "READY",
     "IN_PROGRESS",
@@ -32,9 +32,9 @@
       "authority": "Verenward + Taylor",
       "closeWhen": "Every EOS family is classified as Day 1, post-Day-1, pilot, or excluded; explicit exclusions are accepted.",
       "evidence": [
-        "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md: proposed classification for all 13 North Star family rows plus four surfaces outside the family register. Nine families and two non-family surfaces are proposed DAY_1; four rows (Opportunity 4, Opportunity 4b, Sales Agreement 5, Financials/AR, Reporting) are BLOCKED on existing Taylor/Owner blockers rather than guessed.",
-        "These are Verenward proposals derived from repository evidence only. The gate remains OPEN: it closes on Taylor and Verenward acceptance of the classification and of the explicit exclusions, not on the existence of the matrix.",
-        "The matrix also surfaces an undecided census boundary: whether 'every EOS family' means the North Star migration ledger's family rows or the broader business capability register."
+        "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md: proposed classification for the union of both candidate registers — all 13 North Star family rows, 4 surfaces outside that register, and all 18 business capability register entries. Nine families and two non-family surfaces are proposed DAY_1; six rows (Opportunity 4, Opportunity 4b, Sales Agreement 5, Financials/AR, Reporting, CAP-6 Accounts Receivable) are BLOCKED on existing Taylor/Owner blockers rather than guessed; three rows (CAP-11 Operational Commitment, CAP-17 Contextual Assistant, CAP-18 Multi-Currency) are proposed EXCLUDED; no row is proposed PILOT.",
+        "These are Verenward proposals derived from repository evidence only. The gate remains OPEN: it closes on Taylor and Verenward acceptance of the classification and of the explicit exclusions, not on the existence of the matrix. The three proposed exclusions are the minimum set that must be explicitly accepted.",
+        "The census boundary is still an undecided governance question — whether 'every EOS family' means the North Star migration ledger's family rows, the business capability register, or both — but it no longer gates coverage, because the matrix classifies the union. docs/customer-1/scope/verify-scope-matrix.mjs machine-checks that every capability register entry carries a classification row and that every proposed DAY_1 row is reconciled."
       ]
     },
     {
