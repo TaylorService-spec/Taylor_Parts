@@ -43,7 +43,16 @@ acceptance on sandbox, **not** production readiness and **not** `C1-PRODUCT-01`.
 | 8 — Equipment | Closed 2026-08-31 | `DAY_1` | Serialized customer equipment is the object service and warranty attach to. |
 | 9 — Receiving | Closed 2026-08-31 | `DAY_1` | Without receiving, on-hand inventory cannot be maintained after opening balances. |
 | 10 — My Dashboard | ACCEPTED (Owner, 2026-09-03) | `DAY_1` | The general landing surface; training is already `COMPLETE — LIVE VERIFIED`. |
-| 11 — Technician Dashboard | `AWAITING_OWNER_VISUAL_ACCEPTANCE` | `DAY_1` | Technicians are a Day-1 persona and this is their entry surface. |
+| 11 — Technician Dashboard | ACCEPTED (Owner, 2026-09-04) | `DAY_1` | Technicians are a Day-1 persona and this is their entry surface. |
+
+This table is machine-checked by [`verify-scope-matrix.mjs`](verify-scope-matrix.mjs) in both
+directions against the migration ledger: every `## Family N` heading there must have a numbered row
+here, and every numbered row here must correspond to such a heading. A newly migrated family fails
+the check until it is classified, so the census cannot silently narrow. Dispatch & Scheduling is
+carried as a family row without a family number, so it participates in neither direction. The check
+also refuses an
+`AWAITING_OWNER_VISUAL_ACCEPTANCE` cell for a family whose ledger heading now reads `ACCEPTED` —
+that staleness is what this pass corrected for family 11.
 
 ## Surfaces outside the family register
 
@@ -119,8 +128,8 @@ until it is classified.
   existence of this matrix.
 - It does not declare Owner visual acceptance for any family. The acceptance column is copied from
   the migration ledger, which is the only place that state is set.
-- It does not resolve the four blocked rows. Those are Taylor and Owner business decisions and are
-  recorded as blockers rather than guessed.
+- It does not resolve the six blocked rows (families 4, 4b, 5, Financials / AR, Reporting, CAP-6).
+  Those are Taylor and Owner business decisions and are recorded as blockers rather than guessed.
 - It does not assert that a `DAY_1` proposal is *ready*. Readiness is `C1-PRODUCT-01`; the per-family
   gate reconciliation against these proposals lives in
   [`../acceptance/DAY_1_GATE_RECONCILIATION.md`](../acceptance/DAY_1_GATE_RECONCILIATION.md).

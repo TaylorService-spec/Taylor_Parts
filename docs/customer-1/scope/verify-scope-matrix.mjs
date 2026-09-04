@@ -68,6 +68,30 @@ for (const line of reconTable.split('\n').filter(isRow)) {
   }
 }
 
+// Census completeness, North Star side: every `## Family N` heading in the migration ledger must
+// have a numbered row in the matrix's family register, and vice versa. Dispatch & Scheduling is a
+// family row without a family number and participates in neither direction. Where a ledger heading
+// already declares ACCEPTED, the matrix row must not still say it awaits acceptance — that is the
+// staleness class this check exists for.
+const ledgerMd = readFileSync(resolve(c1, '../design/north-star-migration-ledger.md'), 'utf8');
+const familyTable = matrix.split(/^## /m).find((s) => s.startsWith('North Star family register')) ?? '';
+const familyRows = new Map(
+  familyTable.split('\n').filter(isRow).map((l) => [rowKey(l).match(/^(\d+b?)\s*—/)?.[1], l]),
+);
+
+for (const [, n] of ledgerMd.matchAll(/^## Family (\d+b?) —/gm)) {
+  if (!familyRows.has(n)) fail(`migration ledger family ${n} has no row in the scope matrix family register`);
+}
+for (const n of familyRows.keys()) {
+  if (n && !new RegExp(`^## Family ${n} —`, 'm').test(ledgerMd)) {
+    fail(`scope matrix family row ${n} matches no "## Family ${n}" heading in the migration ledger`);
+  }
+}
+for (const [, n] of ledgerMd.matchAll(/^## Family (\d+b?) —.*\*\*ACCEPTED\*\*/gm)) {
+  const cell = familyRows.get(n)?.split('|')[2] ?? '';
+  if (/AWAITING/.test(cell)) fail(`family ${n} is ACCEPTED in the migration ledger but the scope matrix still says awaiting`);
+}
+
 // Census completeness: every numbered entry in the business capability register must carry a
 // CAP-<n> classification row in the matrix. A new register entry fails until it is classified.
 const register = readFileSync(resolve(c1, '../roadmaps/business-capability-register.md'), 'utf8');
@@ -80,6 +104,6 @@ for (const n of capabilities) {
 if (!process.exitCode) {
   console.log(
     `OK ${ledger.gates.length} gates, links resolve, ${proposed.size} Day-1 rows reconciled, ` +
-      `${capabilities.length} capability register entries classified`,
+      `${familyRows.size - 1} numbered families censused, ${capabilities.length} capability register entries classified`,
   );
 }

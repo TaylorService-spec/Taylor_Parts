@@ -38,7 +38,7 @@ Two things this page is not:
 | 8 — Equipment | PASSED — 3 new suites + 9 re-anchored | PASSED — Quick Gate 35/0/3 vs deployed `9848ec9d` | PASSED | ACCEPTED 2026-08-31 | `f33dd113` (see gap G-2) |
 | 9 — Receiving | PASSED — behavior anchored by existing receiving suites | PASSED — Quick Gate 20/20 vs the deployed release | PASSED — six frames | ACCEPTED 2026-08-31 | `0abc2353` |
 | 10 — My Dashboard | PASSED — 6 suites | PASSED — corrected build, gate 245/245 | PASSED — `DESIGN-HANDOFF-MY-DASHBOARD-P1v2` | ACCEPTED 2026-09-03 | `50792fef` (per `CUSTOMER_1_LEDGER.json`, PR #1792) |
-| 11 — Technician Dashboard | PASSED — 9 technician tests + 4 mutation proofs | **REMAINS** — no family Quick Gate recorded | PASSED — shares the Family 10 design authority, §4.1 | **REMAINS** — `AWAITING_OWNER_VISUAL_ACCEPTANCE` | — |
+| 11 — Technician Dashboard | PASSED — 9 technician tests + 4 mutation proofs | **REMAINS** — no family Quick Gate recorded (see gap G-4) | PASSED — shares the Family 10 design authority, §4.1 | ACCEPTED 2026-09-04 | `6b281cd5` |
 | Purchasing | PASSED — cost activation, Decision #166 | PASSED — bounded live Purchasing ceremony evidence in the certification closeout (PR #1761) | **N/A** — not a North Star family row | **REMAINS** — no Owner visual acceptance recorded | — |
 | Administration / access management | **REMAINS** — no Day-1 administration proof set identified | **REMAINS** | **N/A** — not a North Star family row | **REMAINS** | — |
 
@@ -54,7 +54,7 @@ Purchasing and Administration, whose evidence is the `C1-PRODUCT-01` and `C1-ADM
 
 ## Acceptance evidence index
 
-Seven proposed Day-1 rows carry Owner visual acceptance. Six of them name the live build the
+Eight proposed Day-1 rows carry Owner visual acceptance. Seven of them name the live build the
 acceptance was given against; those SHAs are the `Accepted against` column above and are the index
 this lane maintains. All are `platform-sandbox`. **No row on this page is production evidence.**
 
@@ -69,11 +69,12 @@ which only the migration ledger grants.
 
 Against the *proposed* Day-1 set, the gate cannot close until at least:
 
-1. Families 2, 3 and 11 receive Owner visual acceptance — Owner authority, not schedulable here.
+1. Families 2 and 3 receive Owner visual acceptance — Owner authority, not schedulable here.
 2. Family 3's sandbox gate is refreshed from `7b6eaf14`; the recorded Quick Gate certified an
    earlier commit and says nothing about the second pass. `scripts/_sandboxRefresh.run.sh` is
    human-triggered by design.
-3. Family 11 gets a sandbox gate, or the migration ledger records why one is not applicable.
+3. Family 11 gets a sandbox gate, or the migration ledger records why one is not applicable — see
+   gap G-4. Its acceptance is now given; only the gate column remains.
 4. Purchasing and Administration are either given an applicable-gate set or classified out of the
    Day-1 workflow set by `C1-SCOPE-01`.
 5. The six `BLOCKED` scope rows (families 4, 4b, 5, Financials/AR, Reporting, CAP-6 Accounts
@@ -92,3 +93,8 @@ Against the *proposed* Day-1 set, the gate cannot close until at least:
 - **G-3 — accepted builds may not be current.** Acceptance is pinned to a build, and sandbox has
   been redeployed since (the EOS visual system landed on `5eaa403a`, 2026-09-02). An accepted
   family is accepted against its named SHA, not against whatever sandbox runs today.
+- **G-4 — family 11 is accepted without a sandbox gate.** The Owner accepted family 11 on
+  `platform-sandbox` Hosting `6b281cd5` and the migration ledger records it `LIVE VERIFIED`, but no
+  North Star Quick Gate or Full Sandbox Regression Gate is recorded for the family. Owner live
+  verification is acceptance evidence, not a gate run, so the Sandbox column stays `REMAINS`. Whether
+  a gate is owed or not applicable is the family's authority to record, not this reconciliation's.
