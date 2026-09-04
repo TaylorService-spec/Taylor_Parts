@@ -410,13 +410,14 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 7,
-        "clientReferenceCount": 6,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -738,6 +739,7 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js",
           "field-ops-app-vite/src/metadata/definitions/account.js",
@@ -746,7 +748,7 @@
           "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 8,
+        "clientReferenceCount": 9,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -924,6 +926,7 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js",
           "field-ops-app-vite/src/metadata/definitions/account.js",
@@ -932,7 +935,7 @@
           "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 8,
+        "clientReferenceCount": 9,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -1146,6 +1149,7 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js",
           "field-ops-app-vite/src/metadata/definitions/accountPage.js",
@@ -1153,7 +1157,7 @@
           "field-ops-app-vite/src/metadata/pageDefinition.js"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 7,
+        "clientReferenceCount": 8,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -1176,10 +1180,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1200,10 +1206,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1222,9 +1230,12 @@
         "serverReferences": [
           "functions/src/finance/financialVisibility.ts"
         ],
-        "clientReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/domain/dashboardComposition.js"
+        ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1243,9 +1254,12 @@
         "serverReferences": [
           "functions/src/finance/financialVisibility.ts"
         ],
-        "clientReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/domain/dashboardComposition.js"
+        ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1266,10 +1280,12 @@
           "functions/src/finance/financialVisibility.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 1,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3357,11 +3373,12 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
@@ -3949,11 +3966,12 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 5,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {
