@@ -21,7 +21,13 @@ param(
     [string[]]$Proofs = @(),
     [Parameter(Mandatory)]$ProofPolicy,
     [string]$ClaimedResult = 'NO_WORK',
-    [int]$ProofTimeoutSec = 900
+    [int]$ProofTimeoutSec = 900,
+    # Proof results computed earlier, before the harness commit. The orchestrator
+    # proves the work first so the write-ahead transaction can record a real
+    # verification result; passing them back in avoids running each proof twice.
+    # An empty array is a legitimate "no proofs declared" -- $null means "not
+    # supplied, run them here" (the standalone path this script still supports).
+    $ProofResults = $null
 )
 
 . (Join-Path (Split-Path -Parent $PSCommandPath) '_common.ps1')
@@ -29,10 +35,14 @@ param(
 $headAfter = (Invoke-Git -Directory $WorktreePath -Arguments @('rev-parse', 'HEAD')).Output[0]
 
 # Committed changes since the session started.
+#
+# The @() is load-bearing: a commit touching exactly ONE file yields a bare
+# string, and `.Count` on a scalar throws under StrictMode Latest. A one-file
+# item is the common case for this program, not an edge case.
 $changed = @()
 if ($headAfter -ne $HeadShaBefore) {
-    $changed = (Invoke-Git -Directory $WorktreePath `
-        -Arguments @('diff', '--name-only', "$HeadShaBefore..$headAfter")).Output | Where-Object { $_ }
+    $changed = @((Invoke-Git -Directory $WorktreePath `
+        -Arguments @('diff', '--name-only', "$HeadShaBefore..$headAfter")).Output | Where-Object { $_ })
 }
 
 # Anything left uncommitted is an unexpected modification: a work item must stop
@@ -47,56 +57,22 @@ $missingExpected = @($ExpectedFiles | Where-Object {
     -not (Test-Path (Join-Path $WorktreePath $_))
 })
 
-# Run the declared targeted proofs.
+# The declared targeted proofs.
 #
 # The worker SUGGESTED these. The harness decides. Every command is validated
 # against the central policy BEFORE execution -- a rejected command is never
 # run, not run-and-then-judged.
-$proofResults = @()
-$rejectedProofs = @()
-foreach ($proof in @($Proofs)) {
-    if (-not $proof) { continue }
-
-    $ruling = Test-ProofCommand -Command $proof -Policy $ProofPolicy
-    if (-not $ruling.allowed) {
-        Write-Step "Proof REJECTED (not executed): $proof -- $($ruling.reason)" 'WARN'
-        $rejectedProofs += $ruling
-        $proofResults += [pscustomobject]@{
-            command  = $proof
-            exitCode = $null
-            passed   = $false
-            executed = $false
-            reason   = $ruling.reason
-            tail     = ''
-        }
-        continue
-    }
-
-    Write-Step "Proof: $proof"
-    Push-Location $WorktreePath
-    try {
-        $parts = $proof.Trim() -split '\s+'
-        $exe = $parts[0]
-        $rest = @($parts | Select-Object -Skip 1)
-        # Direct invocation, no shell. There is no interpreter to trick.
-        $output = & $exe @rest 2>&1
-        $code = $LASTEXITCODE
-    } catch {
-        $output = $_.Exception.Message
-        $code = 1
-    } finally {
-        Pop-Location
-    }
-    $proofResults += [pscustomobject]@{
-        command  = $proof
-        exitCode = $code
-        passed   = ($code -eq 0)
-        executed = $true
-        reason   = $ruling.reason
-        tail     = (@($output) | Select-Object -Last 20) -join "`n"
-    }
+#
+# The orchestrator normally runs them pre-commit and passes the results in here.
+# When it does not, this script runs them itself, which keeps verify-result.ps1
+# usable on its own for a one-off inspection.
+$proofResults = if ($null -ne $ProofResults) {
+    @($ProofResults)
+} else {
+    @(Invoke-C1Proofs -WorktreePath $WorktreePath -Proofs $Proofs -ProofPolicy $ProofPolicy)
 }
 
+$rejectedProofs = @($proofResults | Where-Object { -not $_.executed })
 $failedProofs = @($proofResults | Where-Object { -not $_.passed })
 
 $violations = @()

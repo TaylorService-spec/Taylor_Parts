@@ -3,6 +3,14 @@
 
 Set-StrictMode -Version Latest
 
+# Write-Step used to print straight to the console, which is how run ids and
+# SHAs became the operator's primary view of the program. It now lives in
+# progress.ps1 and routes to the durable diagnostic log instead. Loading it here
+# means every script that already dot-sources _common.ps1 -- including the ones
+# invoked in a child scope -- gets the same routing without a single call-site
+# change.
+. (Join-Path (Split-Path -Parent $PSCommandPath) 'progress.ps1')
+
 function Get-C1Context {
     <#
         Resolves the harness worktree root and the paths of the state files.
@@ -22,6 +30,17 @@ function Get-C1Context {
         LedgerFile = Join-Path $root 'docs\customer-1\CUSTOMER_1_LEDGER.json'
         ReportsDir = Join-Path $automation 'reports'
         LogsDir    = Join-Path $automation 'reports\logs'
+        # One receipt file per bounded work item. This is the durable record
+        # that survives a reboot mid-sweep, and it doubles as the completed-work
+        # history that keeps a later worker from rebuilding the same artifact.
+        ItemsDir   = Join-Path $automation 'items'
+        # Write-ahead receipt for the one interruption window that matters:
+        # between "verification passed" and "state checkpoint written".
+        PendingFile = Join-Path $automation 'pending-transaction.json'
+        # Where a pending transaction goes when recovery could NOT establish what
+        # happened. Deleting the only forensic evidence of an ambiguous crash is
+        # how an unexplained branch becomes permanently unexplainable.
+        RecoveryDir = Join-Path $automation 'reports\recovery'
     }
 }
 
@@ -36,18 +55,34 @@ function Read-JsonFile {
 }
 
 function Write-JsonFile {
+    <#
+        Atomic by construction. A half-written state file that still parses is
+        worse than no state file at all: startup recovery would trust it. Serialize
+        fully, write a sibling temp file, flush it, then replace in one operation.
+
+        Same-directory temp is deliberate -- Move-Item is only atomic within a volume.
+    #>
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)]$Object
     )
     $json = $Object | ConvertTo-Json -Depth 20
-    Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+
+    $tmp = "$Path.tmp-$PID-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    try {
+        # WriteAllText closes and flushes to the OS before returning.
+        [System.IO.File]::WriteAllText($tmp, $json, [System.Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $tmp -Destination $Path -Force
+    } finally {
+        if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+    }
 }
 
-function Write-Step {
-    param([string]$Message, [string]$Level = 'INFO')
-    $stamp = (Get-Date).ToString('HH:mm:ss')
-    Write-Host "[$stamp] [$Level] $Message"
+function Remove-JsonFile {
+    param([Parameter(Mandatory)][string]$Path)
+    if (Test-Path $Path) { Remove-Item -LiteralPath $Path -Force }
 }
 
 function Invoke-Git {
@@ -84,7 +119,16 @@ function Assert-HarnessIdentity {
     #>
     param(
         [Parameter(Mandatory)][string]$Root,
-        [string]$ExpectedBranch = 'automation/customer1-orchestrator',
+        # A FAMILY, not one name. The guard's job is "this is a sanctioned
+        # harness worktree" -- not main, not a lane branch, not an arbitrary
+        # checkout. One hardcoded name was too narrow: the program needs both an
+        # orchestrator worktree and a separate clean controller, and git cannot
+        # check out one branch in two worktrees at once. Framework repair happens
+        # on its own branch too, and must be able to dry-run itself.
+        #
+        # Lane branches are customer1/<x>-work and match NEITHER pattern, which is
+        # the property that actually matters here.
+        [string[]]$ExpectedBranchPattern = @('automation/customer1-*', 'fix/customer1-*'),
         [string]$ExpectedRemoteFragment = 'Taylor_Parts'
     )
 
@@ -94,8 +138,13 @@ function Assert-HarnessIdentity {
     }
 
     $branch = (Invoke-Git -Directory $Root -Arguments @('branch', '--show-current')).Output -join ''
-    if ($branch -ne $ExpectedBranch) {
-        throw "STOP: harness worktree is on branch '$branch', expected '$ExpectedBranch'."
+    $matched = @($ExpectedBranchPattern | Where-Object { $branch -like $_ })
+    if ($matched.Count -eq 0) {
+        throw "STOP: harness worktree is on branch '$branch', expected one matching: $($ExpectedBranchPattern -join ', ')."
+    }
+    # Belt-and-braces: never operate the harness directly on an integration branch.
+    if ($branch -in @('main', 'master')) {
+        throw "STOP: the harness must never run from branch '$branch'."
     }
 
     [pscustomobject]@{ Remote = $remote; Branch = $branch }
@@ -132,14 +181,29 @@ function Test-PathMatch {
     return $false
 }
 
+# CONVENTION, and it matters in both directions.
+#
+# These two return a real empty collection even with zero results, because their
+# callers ASSIGN the result and then read .Count -- which throws on $null under
+# StrictMode. The leading comma defeats PowerShell's unroll-on-output.
+#
+# The cost is that `@(Select-UnownedPaths ...)` would wrap the empty array in
+# ANOTHER array and report Count 1. So these are never called inside @(). Every
+# OTHER collection helper in this harness does the opposite: it returns plainly
+# and every call site wraps with @(). Mixing the two idioms is what made an empty
+# result look like one pending change.
+#
+# Wrapping the result in an outer
+# single-element array defeats the unroll; PowerShell then hands back the inner
+# array intact, empty or not.
 function Select-UnownedPaths {
     param([string[]]$Paths, [string[]]$OwnedPatterns)
-    @($Paths | Where-Object { -not (Test-PathMatch -Path $_ -Patterns $OwnedPatterns) })
+    ,@($Paths | Where-Object { -not (Test-PathMatch -Path $_ -Patterns $OwnedPatterns) })
 }
 
 function Select-ForbiddenPaths {
     param([string[]]$Paths, [string[]]$ForbiddenPatterns)
-    @($Paths | Where-Object { Test-PathMatch -Path $_ -Patterns $ForbiddenPatterns })
+    ,@($Paths | Where-Object { Test-PathMatch -Path $_ -Patterns $ForbiddenPatterns })
 }
 
 function Test-ProofCommand {
@@ -195,6 +259,136 @@ function Test-ProofCommand {
     Deny 'not on the approved proof allowlist'
 }
 
+function Invoke-C1Proofs {
+    <#
+        Validate and run the worker's suggested proof commands, in the lane
+        worktree, BEFORE anything is committed.
+
+        Order matters. Proving the work and then committing it means the pending
+        transaction can carry a real verification result; committing first and
+        proving afterwards would leave a commit standing on an unproven claim.
+
+        Every command is checked against the central policy first. A rejected
+        command is never executed -- not executed-then-judged.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [string[]]$Proofs = @(),
+        [Parameter(Mandatory)]$ProofPolicy
+    )
+    $results = @()
+    foreach ($proof in @($Proofs)) {
+        if (-not $proof) { continue }
+
+        $ruling = Test-ProofCommand -Command $proof -Policy $ProofPolicy
+        if (-not $ruling.allowed) {
+            Write-Step "Proof REJECTED (not executed): $proof -- $($ruling.reason)" 'WARN'
+            $results += [pscustomobject]@{
+                command = $proof; exitCode = $null; passed = $false
+                executed = $false; reason = $ruling.reason; tail = ''
+            }
+            continue
+        }
+
+        Write-Step "Proof: $proof"
+        Push-Location $WorktreePath
+        try {
+            $parts = $proof.Trim() -split '\s+'
+            $exe = $parts[0]
+            $rest = @($parts | Select-Object -Skip 1)
+            # Direct invocation, no shell. There is no interpreter to trick.
+            $output = & $exe @rest 2>&1
+            $code = $LASTEXITCODE
+        } catch {
+            $output = $_.Exception.Message
+            $code = 1
+        } finally {
+            Pop-Location
+        }
+        $results += [pscustomobject]@{
+            command = $proof; exitCode = $code; passed = ($code -eq 0)
+            executed = $true; reason = $ruling.reason
+            tail = (@($output) | Select-Object -Last 20) -join "`n"
+        }
+    }
+    @($results)
+}
+
+function Test-C1NegativeAnswer {
+    <#
+        True when a free-text field amounts to "nothing". Workers phrase this a
+        dozen ways, and reading any of them as real work is what keeps a lane
+        selectable while it waits on a person.
+    #>
+    param([string]$Text)
+    $n = (($Text -replace '[^A-Za-z0-9 ]', ' ') -replace '\s+', ' ').Trim().ToLowerInvariant()
+    if (-not $n) { return $true }
+    if ($n -in @('none', 'nothing', 'n a', 'na', 'no', 'nil', 'tbd', 'unknown', 'not applicable')) { return $true }
+    if ($n -match '^(none|nothing|no|not)\b') { return $true }
+    if ($n -match '\b(no safe work|no remaining work|no further work|no additional work|nothing further|nothing else|nothing remaining|none identified|waiting (for|on))\b') { return $true }
+    $false
+}
+
+function Test-C1HasRemainingWork {
+    <#
+        Does a BLOCKED worker say safe work can proceed WITHOUT the decision?
+
+        This reads blocker.remainingExecutableWork and NOTHING ELSE. That field
+        has exactly the required meaning: what is still doable without the
+        answer.
+
+        nextSuggestedItem is deliberately excluded. It legitimately describes
+        what to do AFTER the Owner or Taylor answers -- "update the matrix once
+        the Owner picks Day-1 scope" is not work that can proceed now. Treating
+        it as availability kept blocked lanes selectable and spent a session per
+        pass rediscovering the same question. It stays useful for operator
+        display and for the next item's continuity, but it never makes a blocked
+        lane executable.
+    #>
+    param($Claim)
+    if (-not $Claim) { return $false }
+    if (-not $Claim.PSObject.Properties['blockers']) { return $false }
+
+    foreach ($b in @($Claim.blockers)) {
+        if (-not $b -or -not $b.PSObject.Properties['remainingExecutableWork']) { continue }
+        if (-not (Test-C1NegativeAnswer -Text "$($b.remainingExecutableWork)")) { return $true }
+    }
+    $false
+}
+
+function Get-C1WaitStateForClaim {
+    <#
+        Which wait state a lane belongs in, from the category of the blockers it
+        actually raised. Falls back to the result class, then to the Owner --
+        never to "keep going".
+    #>
+    param($Claim, [string]$Result)
+
+    $cats = @()
+    if ($Claim -and $Claim.PSObject.Properties['blockers']) {
+        $cats = @(@($Claim.blockers) | Where-Object { $_ -and $_.PSObject.Properties['category'] } |
+            ForEach-Object { "$($_.category)".ToUpperInvariant() })
+    }
+    $first = if ($cats.Count -gt 0) { $cats[0] } else { '' }
+
+    switch ($first) {
+        'OWNER'      { return 'WAITING_FOR_OWNER' }
+        'TAYLOR'     { return 'WAITING_FOR_TAYLOR' }
+        'GOVERNANCE' { return 'WAITING_FOR_GOVERNANCE' }
+        'LEGAL'      { return 'WAITING_FOR_EXTERNAL' }
+        'EXTERNAL'   { return 'WAITING_FOR_EXTERNAL' }
+        'COLLISION'  { return 'WAITING_FOR_MAIN' }
+    }
+    switch ($Result) {
+        'BLOCKED_OWNER'      { 'WAITING_FOR_OWNER' }
+        'BLOCKED_TAYLOR'     { 'WAITING_FOR_TAYLOR' }
+        'BLOCKED_GOVERNANCE' { 'WAITING_FOR_GOVERNANCE' }
+        'BLOCKED_EXTERNAL'   { 'WAITING_FOR_EXTERNAL' }
+        'BLOCKED_COLLISION'  { 'WAITING_FOR_MAIN' }
+        default              { 'WAITING_FOR_OWNER' }
+    }
+}
+
 function New-RunId {
     'run-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
 }
@@ -217,7 +411,16 @@ function Test-LaneExecutable {
     )
     if (-not $Lane.enabled) { return $false }
 
-    $nonExecutable = @('RUNNING', 'BLOCKED', 'COMPLETE', 'WAITING_FOR_OWNER', 'WAITING_FOR_TAYLOR', 'WAITING_FOR_MAIN')
+    # FAILED_RECOVERY and RETRY_EXHAUSTED are terminal for automation until a
+    # human intervenes. Leaving them selectable meant the next pass cheerfully
+    # started a worker on a lane whose state could not be established, or one
+    # that had already burned its retry budget.
+    $nonExecutable = @(
+        'RUNNING', 'BLOCKED', 'COMPLETE',
+        'WAITING_FOR_OWNER', 'WAITING_FOR_TAYLOR', 'WAITING_FOR_MAIN',
+        'WAITING_FOR_LEGAL', 'WAITING_FOR_EXTERNAL', 'WAITING_FOR_GOVERNANCE',
+        'FAILED_RECOVERY', 'RETRY_EXHAUSTED'
+    )
     if ($nonExecutable -contains $Lane.state) { return $false }
 
     foreach ($depId in @($Lane.dependencies)) {
