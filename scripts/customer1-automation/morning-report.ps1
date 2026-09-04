@@ -60,13 +60,13 @@ $failed  = @($items | Where-Object { $_.result -eq 'FAILED_TECHNICAL' })
 $changed = @($items | ForEach-Object { $_.changedPaths } | Where-Object { $_ } | Sort-Object -Unique)
 
 $proofLines = foreach ($i in $items) {
-    foreach ($p in @($i.proofs)) {
+    foreach ($p in @($i.proofResults)) {
         "lane $($i.laneId): ``$($p.command)`` -> exit $($p.exitCode) ($(if ($p.passed) { 'PASS' } else { 'FAIL' }))"
     }
 }
 
 $reconciled = foreach ($i in $items) {
-    if ($i.reconcile) { "lane $($i.laneId): $($i.reconcile.classification) -- $($i.reconcile.message)" }
+    if ($i.reconcileClassification) { "lane $($i.laneId): $($i.reconcileClassification)" }
 }
 
 $open = @($Blockers.blockers | Where-Object { $_.status -eq 'OPEN' })
