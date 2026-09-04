@@ -225,6 +225,29 @@ switch ($env:FAKE_CLAUDE_MODE) {
         })
         exit 0
     }
+    'workblocked' {
+        # Commits real owned work AND raises an Owner blocker with no safe work
+        # left. Used by the crash-window tests: the recovered checkpoint must
+        # restore the commit, the blocker AND the wait state.
+        New-Item -ItemType Directory -Force -Path $owned | Out-Null
+        $f = "$owned/blocked-item-$([guid]::NewGuid().ToString('N').Substring(0,6)).md"
+        Set-Content -LiteralPath $f -Value '# committed, then blocked' -Encoding UTF8
+        Save-Result ([pscustomobject]@{
+            workItem = "$lane-committed-then-blocked"; result = 'BLOCKED_OWNER'
+            summary = 'Committed the drafted section, then hit an Owner decision.'
+            purpose = 'Proves a crash cannot lose the blocker or the wait state.'
+            expectedFiles = @($f); proofs = @()
+            blockers = @(@{
+                category = 'OWNER'
+                question = 'Which contract template governs Day-1 support?'
+                whyAutomationCannotDecide = 'Contract choice is an Owner decision.'
+                blockingScope = 'All remaining lane work.'
+                remainingExecutableWork = 'none'
+            })
+            nextSuggestedItem = 'none'
+        })
+        exit 0
+    }
     'partialnocommit' {
         # PARTIAL, but nothing changed on disk and nothing can proceed.
         Save-Result ([pscustomobject]@{
@@ -286,12 +309,17 @@ function Invoke-Sandbox {
         Run the sandboxed orchestrator with a chosen fake-worker scenario and
         return its console output plus the exception, if any.
     #>
-    param([string]$Mode = 'work', [int]$ExitCode = 0, [string[]]$ExtraArgs = @())
+    param([string]$Mode = 'work', [int]$ExitCode = 0, [string[]]$ExtraArgs = @(), [string]$Fault = '')
     $env:FAKE_CLAUDE_ARGV = $argvOut
     $env:FAKE_CLAUDE_CALLS = $callsOut
     $env:FAKE_CLAUDE_BEHAVIOR = $fakeBehavior
     $env:FAKE_CLAUDE_MODE = $Mode
     $env:FAKE_CLAUDE_EXIT = "$ExitCode"
+    # Crash the supervisor at a named point, so the interruption tests inspect
+    # REAL half-written state rather than state a test fabricated and hoped was
+    # accurate.
+    if ($Fault) { $env:C1_FAULT_INJECT = $Fault }
+    else { Remove-Item Env:\C1_FAULT_INJECT -ErrorAction SilentlyContinue }
     if (-not (Test-Path $callsOut)) { New-Item -ItemType File -Force -Path $callsOut | Out-Null }
 
     $script = Join-Path $harnessDir 'scripts\customer1-automation\run-program.ps1'
@@ -1098,6 +1126,285 @@ try {
         $r = @((Read-JsonFile $sbx.StateFile).runs)[-1]
         # Real commits on pass 1 mean pass 1 cannot be the exhausting pass.
         $r.passes -ge 2 -and $r.exhausted -eq $true
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'T. Crash windows around finalization (review 4 items 1, 6, 7)'
+
+    function Get-LaneObj { param($Id) @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq $Id })[0] }
+
+    function Invoke-CrashWindow {
+        <#
+            Crash a real run at a named fault point, then finish the item through
+            recovery alone. Returns everything the assertions need.
+        #>
+        param([string]$Fault)
+        Reset-SandboxLanes
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '*-A-*' } | Remove-Item -Force
+        Reset-FakeCounters
+
+        $crash = Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -Fault $Fault -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A')
+        $callsAfterCrash = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+        $headAfterCrash = Get-LaneHead 'A'
+
+        # Recovery only. No supervisor, so no possibility of a new worker.
+        # The two Write-JsonFile calls mirror exactly what run-program.ps1 does
+        # once recovery reports something recovered.
+        $lanesDoc = Read-JsonFile $sbx.LanesFile
+        $laneObj = @($lanesDoc.lanes | Where-Object { $_.id -eq 'A' })[0]
+        $blockersDoc = Read-JsonFile $sbx.BlockersFile
+        $rec = Invoke-C1LaneRecovery -Context $sbx -Lane $laneObj -WorktreePath (Join-Path $lanesDir 'A') `
+            -Branch 'customer1/a-work' -ForbiddenPaths $forbidden -BlockersDoc $blockersDoc
+        Write-JsonFile $sbx.LanesFile $lanesDoc
+        Write-JsonFile $sbx.BlockersFile $blockersDoc
+
+        [pscustomobject]@{
+            crash           = $crash
+            callsAfterCrash = $callsAfterCrash
+            callsAfterRecov = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+            headAfterCrash  = $headAfterCrash
+            headAfterRecov  = Get-LaneHead 'A'
+            recovery        = $rec
+            lane            = $laneObj
+            receipts        = @(Get-C1ItemReceipts -Context $sbx -LaneId 'A')
+            blockers        = @((Read-JsonFile $sbx.BlockersFile).blockers | Where-Object { $_.status -eq 'OPEN' })
+        }
+    }
+
+    $wA = Invoke-CrashWindow -Fault 'AFTER_COMMIT'
+    Check 'R4-7A. crash after commit, before receipt: item finished by recovery, no new worker' {
+        $wA.recovery.status -eq 'RECOVERED_COMMIT' -and
+        $wA.callsAfterRecov -eq $wA.callsAfterCrash -and
+        $wA.headAfterRecov -eq $wA.headAfterCrash -and
+        @($wA.receipts | Where-Object { $_.commitSha -eq $wA.headAfterCrash }).Count -eq 1
+    }
+    Check 'R4-3. a recovered receipt ALWAYS has a non-null result' {
+        @($wA.receipts | Where-Object { -not $_.result }).Count -eq 0 -and
+        @($wA.receipts | Where-Object { $_.recovered -and $_.result }).Count -gt 0
+    }
+    Check 'R4-3b. recovered work appears in completed-history context' {
+        $h = Get-C1CompletedWorkSummary -Context $sbx -LaneId 'A'
+        (@($h.completedTitles) -join ' ') -match 'committed-then-blocked'
+    }
+    Check 'R4-1A. the blocker survives a crash before the blockers write' {
+        @($wA.blockers | Where-Object { $_.question -match 'contract template governs Day-1 support' }).Count -eq 1
+    }
+    Check 'R4-1B. the recovered receipt records the blocker id it raised' {
+        $r = @($wA.receipts | Where-Object { $_.commitSha -eq $wA.headAfterCrash })[0]
+        $ids = @($r.blockersRaised)
+        $ids.Count -gt 0 -and
+        @($wA.blockers | Where-Object { $_.id -eq $ids[0] }).Count -eq 1
+    }
+
+    $wB = Invoke-CrashWindow -Fault 'AFTER_RECEIPT'
+    Check 'R4-7B. crash after receipt, before lanes.json: finished by recovery, no new worker' {
+        $wB.callsAfterRecov -eq $wB.callsAfterCrash -and
+        $wB.headAfterRecov -eq $wB.headAfterCrash -and
+        $wB.recovery.status -in @('RECOVERED_COMMIT', 'NOTHING_TO_RECOVER') -and
+        (Get-LaneObj 'A').state -eq 'WAITING_FOR_OWNER'
+    }
+    Check 'R4-7B2. no duplicate receipt for the same commit' {
+        @($wB.receipts | Where-Object { $_.commitSha -eq $wB.headAfterCrash }).Count -eq 1
+    }
+
+    $wC = Invoke-CrashWindow -Fault 'AFTER_LANES'
+    Check 'R4-7C. crash after lanes.json, before blockers.json: blocker restored' {
+        $wC.callsAfterRecov -eq $wC.callsAfterCrash -and
+        @($wC.blockers | Where-Object { $_.question -match 'contract template governs Day-1 support' }).Count -eq 1 -and
+        (Get-LaneObj 'A').state -eq 'WAITING_FOR_OWNER'
+    }
+
+    $wD = Invoke-CrashWindow -Fault 'AFTER_BLOCKERS'
+    Check 'R4-7D. crash after blockers.json, before pending clear: pending was still present' {
+        # The whole point of clearing last: at this window the guard still existed.
+        $wD.callsAfterRecov -eq $wD.callsAfterCrash -and
+        $wD.recovery.status -eq 'RECOVERED_COMMIT' -and
+        @($wD.receipts | Where-Object { $_.commitSha -eq $wD.headAfterCrash }).Count -eq 1 -and
+        (Get-LaneObj 'A').state -eq 'WAITING_FOR_OWNER'
+    }
+    Check 'R4-1. pending-transaction.json is cleared LAST, after every durable write' {
+        $code = Get-Content -LiteralPath (Join-Path $here 'run-program.ps1') -Raw
+        $iReceipt  = $code.IndexOf('Save-C1ItemReceipt -Context $ctx -Receipt $receipt | Out-Null')
+        $iLanes    = $code.IndexOf('Write-JsonFile $ctx.LanesFile $lanesDoc' + "`r`n" + '        Invoke-C1FaultPoint ''AFTER_LANES''')
+        if ($iLanes -lt 0) { $iLanes = $code.IndexOf("Invoke-C1FaultPoint 'AFTER_LANES'") }
+        $iBlockers = $code.IndexOf("Invoke-C1FaultPoint 'AFTER_BLOCKERS'")
+        $iClear    = $code.IndexOf('Clear-C1PendingTransaction -Context $ctx' + "`r`n" + '        Invoke-C1FaultPoint')
+        if ($iClear -lt 0) { $iClear = $code.IndexOf("Invoke-C1FaultPoint 'AFTER_PENDING_CLEAR'") }
+        $iReceipt -gt 0 -and $iLanes -gt $iReceipt -and $iBlockers -gt $iLanes -and $iClear -gt $iBlockers
+    }
+
+    $wE = Invoke-CrashWindow -Fault 'AFTER_PENDING_CLEAR'
+    Check 'R4-7E. crash after the pending clear: nothing left to recover for that item' {
+        $wE.callsAfterRecov -eq $wE.callsAfterCrash -and
+        $wE.recovery.status -eq 'NOTHING_TO_RECOVER' -and
+        @($wE.receipts | Where-Object { $_.commitSha -eq $wE.headAfterCrash }).Count -eq 1
+    }
+
+    Check 'R4-6. a normal BLOCKED_OWNER item persists blockersRaised in its receipt' {
+        Reset-SandboxLanes
+        Reset-FakeCounters
+        Invoke-Sandbox -Mode 'blockedowner' -ExitCode 0 -ExtraArgs @('-MaxItems', '1', '-LaneId', 'B') | Out-Null
+        $r = @(Get-C1ItemReceipts -Context $sbx -LaneId 'B' | Where-Object { $_.result -eq 'BLOCKED_OWNER' })
+        $open = @((Read-JsonFile $sbx.BlockersFile).blockers | Where-Object { $_.status -eq 'OPEN' })
+        $r.Count -gt 0 -and @($r[-1].blockersRaised).Count -eq 1 -and
+        @($open | Where-Object { $_.id -eq @($r[-1].blockersRaised)[0] }).Count -eq 1 -and
+        (Get-LaneObj 'B').state -eq 'WAITING_FOR_OWNER'
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'U. A recovered commit does not bless later HEAD (review 4 item 4)'
+
+    Check 'R4-4A. a later OWNED commit is reconciled separately, not folded in' {
+        Reset-SandboxLanes
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '*-A-*' -or $_.Name -like 'recovered-A-*' -or $_.Name -like 'legacy-A-*' } | Remove-Item -Force
+        Reset-FakeCounters
+
+        # Crash right after the commit, leaving pending in place.
+        Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -Fault 'AFTER_COMMIT' -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A') | Out-Null
+        $marked = Get-LaneHead 'A'
+
+        # Then a further owned commit lands on the branch before recovery runs.
+        $wt = Join-Path $lanesDir 'A'
+        Set-Content -LiteralPath (Join-Path $wt 'docs/customer-1/scope/later-owned.md') -Value '# landed after the marked commit' -Encoding UTF8
+        Invoke-Git -Directory $wt -Arguments @('add', '--', 'docs/customer-1/scope/later-owned.md') | Out-Null
+        Invoke-Git -Directory $wt -Arguments @('commit', '-q', '-m', 'later owned lane work') | Out-Null
+        $laterHead = Get-LaneHead 'A'
+
+        $laneObj = Get-LaneObj 'A'
+        $bd = Read-JsonFile $sbx.BlockersFile
+        $rec = Invoke-C1LaneRecovery -Context $sbx -Lane $laneObj -WorktreePath $wt `
+            -Branch 'customer1/a-work' -ForbiddenPaths $forbidden -BlockersDoc $bd
+
+        $receipts = @(Get-C1ItemReceipts -Context $sbx -LaneId 'A')
+        $markedReceipt = @($receipts | Where-Object { $_.commitSha -eq $marked })
+        $laterReceipt = @($receipts | Where-Object { $_.commitSha -eq $laterHead })
+
+        ($rec.status -eq 'RECOVERED_COMMIT') -and
+        ($markedReceipt.Count -eq 1) -and
+        # THE DEFECT: headShaAfter must stop at the marked commit.
+        ($markedReceipt[0].headShaAfter -eq $marked) -and
+        ($markedReceipt[0].headShaAfter -ne $laterHead) -and
+        # The later commit is recovered on its own evidence, as its own receipt.
+        ($laterReceipt.Count -eq 1) -and
+        ($laterReceipt[0].recovered -eq 'BRANCH_AHEAD_OF_STATE')
+    }
+
+    Check 'R4-4B. a later UNOWNED commit fails closed instead of becoming verified state' {
+        Reset-SandboxLanes
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '*-A-*' -or $_.Name -like 'recovered-A-*' -or $_.Name -like 'legacy-A-*' } | Remove-Item -Force
+        Reset-FakeCounters
+
+        Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -Fault 'AFTER_COMMIT' -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A') | Out-Null
+        $marked = Get-LaneHead 'A'
+
+        $wt = Join-Path $lanesDir 'A'
+        New-Item -ItemType Directory -Force -Path (Join-Path $wt 'docs/customer-1/commercial') | Out-Null
+        Set-Content -LiteralPath (Join-Path $wt 'docs/customer-1/commercial/not-lane-a.md') -Value '# outside lane A' -Encoding UTF8
+        Invoke-Git -Directory $wt -Arguments @('add', '--', 'docs/customer-1/commercial/not-lane-a.md') | Out-Null
+        Invoke-Git -Directory $wt -Arguments @('commit', '-q', '-m', 'unowned change after the marked commit') | Out-Null
+        $laterHead = Get-LaneHead 'A'
+
+        $laneObj = Get-LaneObj 'A'
+        $bd = Read-JsonFile $sbx.BlockersFile
+        $rec = Invoke-C1LaneRecovery -Context $sbx -Lane $laneObj -WorktreePath $wt `
+            -Branch 'customer1/a-work' -ForbiddenPaths $forbidden -BlockersDoc $bd
+
+        $receipts = @(Get-C1ItemReceipts -Context $sbx -LaneId 'A')
+        $markedReceipt = @($receipts | Where-Object { $_.commitSha -eq $marked })
+        $laterReceipt = @($receipts | Where-Object { $_.commitSha -eq $laterHead })
+        $ok = ($rec.status -eq 'FAILED_RECOVERY') -and $rec.blocked -and
+              # the marked transaction still recovers, bounded to its own commit
+              ($markedReceipt.Count -eq 1) -and ($markedReceipt[0].headShaAfter -eq $marked) -and
+              # the unowned range never becomes verified state
+              ($laterReceipt.Count -eq 0) -and
+              # and nothing was reset
+              ((Get-LaneHead 'A') -eq $laterHead)
+        Invoke-Git -Directory $wt -Arguments @('reset', '--hard', '-q', $marked) | Out-Null
+        $ok
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'V. Legacy bootstrap is crash-resumable (review 4 item 5)'
+
+    Check 'R4-5. an interrupted bootstrap resumes and represents every legacy commit' {
+        $wt = Join-Path $lanesDir 'B'
+        $laneB3 = Get-LaneObj 'B'
+
+        # Three pre-receipt commits, and no lane-B receipts at all.
+        Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue | ForEach-Object {
+            $j = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+            if ($j.laneId -eq 'B') { Remove-Item -LiteralPath $_.FullName -Force }
+        }
+        $shas = @()
+        foreach ($i in 1, 2, 3) {
+            $rel = "docs/customer-1/data/legacy-$i-$([guid]::NewGuid().ToString('N').Substring(0,6)).md"
+            Set-Content -LiteralPath (Join-Path $wt $rel) -Value "# legacy artifact $i" -Encoding UTF8
+            Invoke-Git -Directory $wt -Arguments @('add', '--', $rel) | Out-Null
+            Invoke-Git -Directory $wt -Arguments @('commit', '-q', '-m', "docs(customer-1): B-legacy-$i previous runner work") | Out-Null
+            $shas += (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+        }
+
+        $stateDoc = Read-JsonFile $sbx.StateFile
+
+        # Simulate a bootstrap that died after writing the FIRST receipt: run the
+        # real thing, then delete all but one of its receipts.
+        Invoke-C1LegacyBootstrap -Context $sbx -Lane $laneB3 -WorktreePath $wt `
+            -Branch 'customer1/b-work' -StateDoc $stateDoc -ForbiddenPaths $forbidden | Out-Null
+        $written = @(Get-ChildItem -Path $sbx.ItemsDir -Filter 'legacy-B-*.json' | Sort-Object Name)
+        if ($written.Count -lt 3) { return $false }
+        $written | Select-Object -Skip 1 | Remove-Item -Force
+
+        # Restart: bootstrap must notice the gap rather than say "already done".
+        $again = Invoke-C1LegacyBootstrap -Context $sbx -Lane $laneB3 -WorktreePath $wt `
+            -Branch 'customer1/b-work' -StateDoc $stateDoc -ForbiddenPaths $forbidden
+
+        $rec = @(Get-C1ItemReceipts -Context $sbx -LaneId 'B' | Where-Object { $_.recovered -eq 'LEGACY_PRE_RECEIPT' })
+        $coveredShas = @($rec | ForEach-Object { $_.commitSha } | Select-Object -Unique)
+        $missing = @($shas | Where-Object { $coveredShas -notcontains $_ })
+
+        ($again.status -eq 'BOOTSTRAPPED') -and
+        ($missing.Count -eq 0) -and
+        # exactly one receipt per legacy commit, no duplicates
+        ($rec.Count -eq $coveredShas.Count) -and
+        (@($rec | Where-Object { $_.result -ne 'RECOVERED' }).Count -eq 0)
+    }
+
+    Check 'R4-5b. a fully-covered lane reports ALREADY_BOOTSTRAPPED and adds nothing' {
+        $wt = Join-Path $lanesDir 'B'
+        $laneB3 = Get-LaneObj 'B'
+        $before = @(Get-C1ItemReceipts -Context $sbx -LaneId 'B').Count
+        $ledgerBefore = (Get-FileHash $sbx.LedgerFile).Hash
+        $r = Invoke-C1LegacyBootstrap -Context $sbx -Lane $laneB3 -WorktreePath $wt `
+            -Branch 'customer1/b-work' -StateDoc (Read-JsonFile $sbx.StateFile) -ForbiddenPaths $forbidden
+        ($r.status -eq 'ALREADY_BOOTSTRAPPED') -and
+        (@(Get-C1ItemReceipts -Context $sbx -LaneId 'B').Count -eq $before) -and
+        ((Get-FileHash $sbx.LedgerFile).Hash -eq $ledgerBefore)
+    }
+
+    Check 'R4-2. the pending transaction carries the evidence needed to finalize' {
+        # Crash before the commit so phase 1 is on disk, then read it.
+        Reset-SandboxLanes
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        Reset-FakeCounters
+        Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -Fault 'AFTER_COMMIT' -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A') | Out-Null
+        if (-not (Test-Path $sbx.PendingFile)) { return $false }
+        $p = Get-Content -LiteralPath $sbx.PendingFile -Raw | ConvertFrom-Json
+
+        $hasPhase2 = $p.phase -eq 'COMMITTED_PENDING_CHECKPOINT' -and $p.commitSha -and
+                     $p.finalReceipt -and $p.finalReceipt.result -and
+                     $p.intendedLaneState -eq 'WAITING_FOR_OWNER' -and
+                     @($p.normalizedBlockers).Count -eq 1
+        $snap = $p.finalReceipt
+        $hasEvidence = $snap.workItem -and @($snap.blockersRaised).Count -eq 1
+        $ok = $hasPhase2 -and $hasEvidence
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        $ok
     }
     Section 'I. Repository-level guarantees'
 

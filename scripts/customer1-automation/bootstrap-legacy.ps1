@@ -122,9 +122,6 @@ function Invoke-C1LegacyBootstrap {
         }
     }
 
-    if (@(Get-C1ItemReceipts -Context $Context -LaneId $Lane.id).Count -gt 0) {
-        return (New-BootstrapResult 'ALREADY_BOOTSTRAPPED' "Lane $($Lane.id) already has item receipts.")
-    }
     if (-not (Test-Path $WorktreePath)) {
         return (New-BootstrapResult 'NOTHING_TO_BOOTSTRAP' 'Lane worktree does not exist yet.')
     }
@@ -133,6 +130,34 @@ function Invoke-C1LegacyBootstrap {
     if ($commits.Count -eq 0) {
         return (New-BootstrapResult 'NOTHING_TO_BOOTSTRAP' "Lane $($Lane.id) branch carries no commits beyond main.")
     }
+
+    # COVERAGE, not "has any receipt at all".
+    #
+    # The old rule -- one receipt means the lane is done -- was not crash-safe.
+    # Bootstrap writes receipts one at a time, so a reboot after the second of
+    # four left the lane looking bootstrapped and commits three and four
+    # unrepresented forever. Compare the actual commits against what receipts
+    # already cover, and reconstruct only the gap.
+    $existing = @(Get-C1ItemReceipts -Context $Context -LaneId $Lane.id)
+    $covered = @{}
+    foreach ($r in $existing) {
+        if ($r.commitSha) { $covered[$r.commitSha] = $true }
+        # Legacy ids are deterministic (legacy-<lane>-<sha8>), so a receipt whose
+        # commitSha was lost is still recognisable by its id.
+        if ($r.itemId -match '^legacy-[A-G]-([0-9a-f]{8})$') { $covered["short:$($Matches[1])"] = $true }
+    }
+
+    # A receipt-era commit carries its own item id and is not bootstrap's business.
+    $eligible = @($commits | Where-Object { -not $_.itemId })
+    $missing = @($eligible | Where-Object {
+        -not ($covered.ContainsKey($_.sha) -or $covered.ContainsKey("short:$($_.sha.Substring(0,8))"))
+    })
+
+    if ($missing.Count -eq 0) {
+        return (New-BootstrapResult 'ALREADY_BOOTSTRAPPED' ("Lane $($Lane.id): all $($eligible.Count) pre-receipt commit(s) " +
+            'are already represented by receipts.'))
+    }
+    Write-Step "Lane $($Lane.id): $($missing.Count) of $($eligible.Count) pre-receipt commit(s) still need reconstruction."
 
     # Validate the whole branch first. Bootstrapping half a lane would leave a
     # completed-item list that is worse than none: confidently incomplete.
@@ -151,7 +176,7 @@ function Invoke-C1LegacyBootstrap {
     # --- evidence 1: historical records that name a commit actually on this branch
     foreach ($h in $history) {
         if (-not $h.headShaAfter -or $h.headShaAfter -notmatch '^[0-9a-f]{40}$') { continue }
-        $hit = @($commits | Where-Object { $_.sha -eq $h.headShaAfter })
+        $hit = @($missing | Where-Object { $_.sha -eq $h.headShaAfter })
         if ($hit.Count -eq 0) { continue }
         if ($matched.ContainsKey($h.headShaAfter)) { continue }
         $matched[$h.headShaAfter] = $true
@@ -175,9 +200,8 @@ function Invoke-C1LegacyBootstrap {
     }
 
     # --- evidence 2+3: remaining branch commits, subject carried as a LABEL only
-    foreach ($c in $commits) {
+    foreach ($c in $missing) {
         if ($matched.ContainsKey($c.sha)) { continue }
-        if ($c.itemId) { continue }   # already a receipt-era commit
 
         $r = New-C1ItemReceipt -RunId 'legacy' -PassId 0 -Attempt 0 -Lane $Lane -Branch $Branch `
             -ItemId "legacy-$($Lane.id)-$($c.sha.Substring(0,8))"

@@ -360,7 +360,8 @@ if ($DryRun) {
             $boot
         } else {
             Invoke-C1LaneRecovery -Context $ctx -Lane $lane -WorktreePath $wt -Branch $br `
-                -ForbiddenPaths $laneForbidden -ResultFileName $cfg.resultFileName
+                -ForbiddenPaths $laneForbidden -ResultFileName $cfg.resultFileName `
+                -BlockersDoc $blockersDoc
         }
         Write-Diag "recovery lane $($lane.id): $($rec.status) -- $($rec.message)"
 
@@ -368,6 +369,11 @@ if ($DryRun) {
             Write-Host "  Recovered -- $($lane.name): $($rec.message)"
         }
         if (@($rec.recovered).Count -gt 0) {
+            # Recovery just restored receipts, blockers and a lane state in
+            # memory. Persist them before anything else runs, or a second crash
+            # would repeat the same reconstruction.
+            Write-JsonFile $ctx.LanesFile $lanesDoc
+            Write-JsonFile $ctx.BlockersFile $blockersDoc
             $stateAdvanced = $true
             $anyCommit = $true
         }
@@ -667,6 +673,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 "@
                 Save-C1PendingTransaction -Context $ctx -Transaction ([pscustomobject]@{
                     schemaVersion        = 1
+                    phase                = 'PRE_COMMIT'
                     itemId               = $itemId
                     runId                = $runId
                     passId               = $passId
@@ -681,6 +688,13 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
                     commitMarker         = $marker
                     commitMessage        = $commitMessage
                     itemReceipt          = $receipt
+                    # The receipt above is still mid-flight -- its result is null
+                    # until post-commit verification runs. This snapshot is the
+                    # immutable worker evidence, so a crash between the commit and
+                    # phase 2 can still reconstruct a real result and the worker's
+                    # blockers instead of persisting a null.
+                    claimSnapshot        = (New-C1ClaimSnapshot -Claim $claim -ClaimedResult $claimedResult `
+                                              -ExpectedPaths @($expected) -ProofResults @($proofResults))
                     createdAt            = Get-UtcStamp
                 }) | Out-Null
 
@@ -805,17 +819,139 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
             break
         }
 
-        # ---- persist the item receipt IMMEDIATELY, then clear the transaction
+        # ---- FINALIZATION
+        #
+        # ORDER IS THE WHOLE POINT. The pending transaction is the recovery
+        # guard, so it is cleared LAST -- only once the item's receipt, the lane
+        # state and the blockers are all durably on disk.
+        #
+        # Clearing it right after the commit (as this used to) left a window
+        # where a reboot kept the commit and the receipt but lost the blockers
+        # and the wait state, and the next run had no evidence that anything was
+        # unfinished.
+
+        # Does this lane still have work that can proceed WITHOUT a human answer?
+        # Read from blocker.remainingExecutableWork only -- see Test-C1HasRemainingWork.
+        $hasRemainingWork = Test-C1HasRemainingWork -Claim $session.claim
+
+        # ---- 1. normalize the worker's blockers and fold them into the register
+        $claim = $session.claim
+        $normalizedBlockers = @()
+        if ($claim -and $claim.PSObject.Properties['blockers']) {
+            $n = 0
+            foreach ($b in @($claim.blockers)) {
+                $n++
+                $rec = New-C1LaneBlocker -Lane $lane -RunId $runId -PassId $passId -Suffix "w$n" `
+                    -WorkItem $receipt.workItem `
+                    -Category $(if ($b.PSObject.Properties['category']) { $b.category } else { 'GOVERNANCE' }) `
+                    -Question $(if ($b.PSObject.Properties['question']) { $b.question } else { '(unstated)' }) `
+                    -Why $(if ($b.PSObject.Properties['whyAutomationCannotDecide']) { $b.whyAutomationCannotDecide } else { '' }) `
+                    -Scope $(if ($b.PSObject.Properties['blockingScope']) { $b.blockingScope } else { '' }) `
+                    -Remaining $(if ($b.PSObject.Properties['remainingExecutableWork']) { $b.remainingExecutableWork } else { '' })
+
+                # Deduped on a stable fingerprint, not the run/pass-stamped id.
+                # The same Owner question asked on three passes is one blocker.
+                $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $rec
+                $normalizedBlockers += $added.blocker
+                if ($receipt.blockersRaised -notcontains $added.blocker.id) {
+                    $receipt.blockersRaised += $added.blocker.id
+                }
+            }
+        }
+
+        # ---- 2. the lane state this item implies
+        $waitState = Get-C1WaitStateForClaim -Claim $session.claim -Result $receipt.result
+
+        $intendedLaneState = switch ($receipt.result) {
+            'DONE'            { 'PR_READY' }
+            'NO_WORK'         { 'IDLE' }
+            'FAILED_RECOVERY' { 'FAILED_RECOVERY' }
+
+            'PARTIAL' {
+                # A PARTIAL that committed something is real progress and the lane
+                # continues. A PARTIAL that committed nothing and names no
+                # remaining work is not progress: park it rather than pay for the
+                # same empty result on every future pass.
+                if ($receipt.commitSha -or $hasRemainingWork) { 'BLOCKED_PARTIAL' }
+                elseif (@($receipt.blockersRaised).Count -gt 0) { $waitState }
+                else { 'IDLE' }
+            }
+
+            'BLOCKED_OWNER'      { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_TAYLOR'     { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_GOVERNANCE' { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_EXTERNAL'   { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_COLLISION'  { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+
+            'FAILED_TECHNICAL'   { if ($lane.state -in @('RETRY_EXHAUSTED', 'FAILED_RECOVERY')) { $lane.state } else { 'BLOCKED_PARTIAL' } }
+            default              { 'BLOCKED_PARTIAL' }
+        }
+
+        # ---- 3. the receipt is now complete
         $receipt.completedAt = Get-UtcStamp
+
+        # ---- 4. advance the write-ahead transaction to phase 2
+        #
+        # The commit exists but nothing else is on disk yet. This snapshot holds
+        # everything recovery needs to finish the item WITHOUT rerunning Claude:
+        # the final receipt, the blockers as they were normalized, and the lane
+        # state this item implies. Claude's stdout is not a recovery source.
+        if ($receipt.commitSha) {
+            Save-C1PendingTransaction -Context $ctx -Transaction ([pscustomobject]@{
+                schemaVersion     = 1
+                phase             = 'COMMITTED_PENDING_CHECKPOINT'
+                itemId            = $receipt.itemId
+                runId             = $runId
+                passId            = $passId
+                laneId            = $lane.id
+                branch            = $branch
+                worktree          = $worktree
+                preCommitHead     = $receipt.headShaBefore
+                commitSha         = $receipt.commitSha
+                commitMarker      = (Get-C1ItemMarker -ItemId $receipt.itemId)
+                finalReceipt      = $receipt
+                normalizedBlockers = @($normalizedBlockers)
+                intendedLaneState = $intendedLaneState
+                createdAt         = Get-UtcStamp
+            }) | Out-Null
+        }
+
+        Invoke-C1FaultPoint 'AFTER_COMMIT'
+
+        # ---- 5. persist everything durable
         Save-C1ItemReceipt -Context $ctx -Receipt $receipt | Out-Null
+        Invoke-C1FaultPoint 'AFTER_RECEIPT'
+
+        $lane.state = $intendedLaneState
+        $lane.currentWorkItem = $receipt.workItem
+        $lane.lastRun = $runId
+        $lane.lastResult = $receipt.result
+        $lane.lastReconciledMain = $mainShaPass
+
+        # Mark a lane that produced nothing AND named nothing further it can do
+        # without a human. Asking it again inside the same run buys the same empty
+        # answer at the price of a full session -- whether it said NO_WORK or
+        # dressed the same emptiness up as PARTIAL.
+        $madeProgress = [bool]$receipt.commitSha -or $hasRemainingWork
+        if (-not $lane.PSObject.Properties['noProgressInRun']) {
+            $lane | Add-Member -NotePropertyName noProgressInRun -NotePropertyValue $null
+        }
+        $lane.noProgressInRun = if ($madeProgress) { $null } else { $runId }
+
+        Write-JsonFile $ctx.LanesFile $lanesDoc
+        Invoke-C1FaultPoint 'AFTER_LANES'
+
+        Write-JsonFile $ctx.BlockersFile $blockersDoc
+        Invoke-C1FaultPoint 'AFTER_BLOCKERS'
+
+        # ---- 6. and ONLY NOW is the item genuinely checkpointed
         Clear-C1PendingTransaction -Context $ctx
+        Invoke-C1FaultPoint 'AFTER_PENDING_CLEAR'
+
         $stateAdvanced = $true
         $allReceipts += $receipt
         $passReceipts += $receipt
         $runRecord.items += $receipt
-        # Does this lane still have work that can proceed WITHOUT a human answer?
-        # Read from blocker.remainingExecutableWork only -- see Test-C1HasRemainingWork.
-        $hasRemainingWork = Test-C1HasRemainingWork -Claim $session.claim
 
         if ($receipt.commitSha) { $verifiedCommitsThisPass++ }
 
@@ -830,45 +966,12 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
             $newItemsThisPass++
         }
 
-        # Mark a lane that produced nothing AND named nothing further it can do
-        # without a human. Asking it again inside the same run buys the same empty
-        # answer at the price of a full session -- whether it said NO_WORK or
-        # dressed the same emptiness up as PARTIAL.
-        $madeProgress = [bool]$receipt.commitSha -or $hasRemainingWork
-        if (-not $lane.PSObject.Properties['noProgressInRun']) {
-            $lane | Add-Member -NotePropertyName noProgressInRun -NotePropertyValue $null
-        }
-        $lane.noProgressInRun = if ($madeProgress) { $null } else { $runId }
-
-        # ---- blockers the worker raised
-        $claim = $session.claim
-        if ($claim -and $claim.PSObject.Properties['blockers']) {
-            $n = 0
-            foreach ($b in @($claim.blockers)) {
-                $n++
-                $rec = [pscustomobject]@{
-                    id = "BLK-$runId-p$passId-$($lane.id)-$n"
-                    lane = $lane.id
-                    workItem = $receipt.workItem
-                    category = $b.category
-                    question = $b.question
-                    whyAutomationCannotDecide = $b.whyAutomationCannotDecide
-                    blockingScope = $b.blockingScope
-                    remainingExecutableWork = $b.remainingExecutableWork
-                    createdAt = Get-UtcStamp
-                    status = 'OPEN'
-                }
-                # Deduped on a stable fingerprint, not the run/pass-stamped id.
-                # The same Owner question asked on three passes is one blocker,
-                # announced once. Re-printing it trains the operator to stop
-                # reading the console.
-                $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $rec
-                $receipt.blockersRaised += $added.blocker.id
-                if ($added.isNew) { Write-C1Blocker -Blocker $added.blocker -Lane $lane }
-            }
+        # ---- 7. operator output, after the durable state it describes
+        foreach ($nb in $normalizedBlockers) {
+            if ($nb.PSObject.Properties['seenCount'] -and [int]$nb.seenCount -gt 1) { continue }
+            Write-C1Blocker -Blocker $nb -Lane $lane
         }
 
-        # ---- operator receipt
         $counts = Get-C1BlockerOwnerCounts -Blockers $blockersDoc
         $gate0 = @($ledger.gates | Where-Object { $_.id -eq @($lane.gates)[0] })
         $whyOpen = if ($claim -and $claim.PSObject.Properties['whyGateStillOpen'] -and $claim.whyGateStillOpen) {
@@ -896,45 +999,6 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
                 Write-Host ""
             }
         }
-
-        # ---- lane state + durable persistence, after EVERY item
-        # A blocked lane keeps working ONLY if a blocker says real work can proceed
-        # without the answer. Mapping every non-DONE result to BLOCKED_PARTIAL kept
-        # lanes executable forever, so each pass spent a Claude session
-        # rediscovering the same Owner question.
-        $waitState = Get-C1WaitStateForClaim -Claim $session.claim -Result $receipt.result
-
-        $lane.state = switch ($receipt.result) {
-            'DONE'            { 'PR_READY' }
-            'NO_WORK'         { 'IDLE' }
-            'FAILED_RECOVERY' { 'FAILED_RECOVERY' }
-
-            'PARTIAL' {
-                # A PARTIAL that committed something is real progress and the lane
-                # continues. A PARTIAL that committed nothing and names no
-                # remaining work is not progress: park it rather than pay for the
-                # same empty result on every future pass.
-                if ($receipt.commitSha -or $hasRemainingWork) { 'BLOCKED_PARTIAL' }
-                elseif (@($receipt.blockersRaised).Count -gt 0) { $waitState }
-                else { 'IDLE' }
-            }
-
-            'BLOCKED_OWNER'      { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
-            'BLOCKED_TAYLOR'     { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
-            'BLOCKED_GOVERNANCE' { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
-            'BLOCKED_EXTERNAL'   { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
-            'BLOCKED_COLLISION'  { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
-
-            'FAILED_TECHNICAL'   { if ($lane.state -in @('RETRY_EXHAUSTED', 'FAILED_RECOVERY')) { $lane.state } else { 'BLOCKED_PARTIAL' } }
-            default              { 'BLOCKED_PARTIAL' }
-        }
-        $lane.currentWorkItem = $receipt.workItem
-        $lane.lastRun = $runId
-        $lane.lastResult = $receipt.result
-        $lane.lastReconciledMain = $mainShaPass
-
-        Write-JsonFile $ctx.LanesFile $lanesDoc
-        Write-JsonFile $ctx.BlockersFile $blockersDoc
 
         $executedTotal++
         $executedThisPass++

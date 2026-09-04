@@ -34,7 +34,12 @@ function Invoke-C1LaneRecovery {
         [Parameter(Mandatory)][string]$WorktreePath,
         [Parameter(Mandatory)][string]$Branch,
         [string[]]$ForbiddenPaths = @(),
-        [string]$ResultFileName = '.orchestrator-result.json'
+        [string]$ResultFileName = '.orchestrator-result.json',
+        # Supplied by the supervisor so a crash before the blockers write can be
+        # finished here. Recovery restores the blockers the interrupted item
+        # raised; without them the lane's wait state would be reconstructed from
+        # nothing and the Owner's question would be silently dropped.
+        $BlockersDoc = $null
     )
 
     function New-RecoveryResult {
@@ -86,23 +91,119 @@ function Invoke-C1LaneRecovery {
                     "Branch preserved. Evidence preserved at $ev.") @() -Blocked)
             }
 
-            $drift = @(Get-C1PathDrift -Actual $paths -Expected @($pending.verifiedChangedPaths))
+            # What the transaction said this commit would contain. Phase 1 records
+            # it as verifiedChangedPaths; by phase 2 the final receipt carries the
+            # verified set. Either way the commit must match, or the situation is
+            # not the one the transaction described.
+            $expectedPaths = if ($pending.PSObject.Properties['verifiedChangedPaths']) {
+                @($pending.verifiedChangedPaths)
+            } elseif ($pending.PSObject.Properties['finalReceipt'] -and $pending.finalReceipt) {
+                @($pending.finalReceipt.changedPaths)
+            } else { @() }
+
+            $drift = @(Get-C1PathDrift -Actual $paths -Expected $expectedPaths)
             if ($drift.Count -gt 0) {
                 $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $itemId
                 return (New-RecoveryResult 'FAILED_RECOVERY' ("Recovered commit $($marked.Substring(0,8)) does not match the pending transaction " +
                     "(differs on: $($drift -join ', ')). Branch preserved; nothing rerun. Evidence preserved at $ev.") @() -Blocked)
             }
 
-            $receipt = $pending.itemReceipt
-            $receipt.headShaAfter = $head
+            # Phase 2 means the harness had already finished verifying and had
+            # assembled the whole checkpoint before it died. Replay that exactly.
+            $phase = if ($pending.PSObject.Properties['phase']) { $pending.phase } else { 'PRE_COMMIT' }
+
+            $receipt = if ($phase -eq 'COMMITTED_PENDING_CHECKPOINT' -and $pending.PSObject.Properties['finalReceipt']) {
+                $pending.finalReceipt
+            } else {
+                # Phase 1: the commit landed but verification never completed, so
+                # the in-flight receipt still has a null result. Rebuild from the
+                # immutable claim snapshot rather than persisting a null or
+                # re-reading Claude's stdout, which is gone.
+                $r = $pending.itemReceipt
+                $snap = if ($pending.PSObject.Properties['claimSnapshot']) { $pending.claimSnapshot } else { $null }
+                if ($snap) {
+                    if (-not $r.workItem) { $r.workItem = $snap.workItem }
+                    if (-not $r.purpose) { $r.purpose = $snap.purpose }
+                    if (-not $r.nextSuggestedItem) { $r.nextSuggestedItem = $snap.nextSuggestedItem }
+                    if (@($r.proofResults).Count -eq 0) { $r.proofResults = @($snap.proofResults) }
+                }
+                # The commit is proven to exist and to be within the lane's
+                # ownership, but the post-commit verdict never ran. RECOVERED is
+                # the honest result; DONE would be manufactured.
+                $r.result = 'RECOVERED'
+                $r
+            }
+
+            # The recovered item ends AT ITS OWN COMMIT.
+            #
+            # Setting headShaAfter to the branch head would silently attribute any
+            # later commit to this transaction and mark that unverified head as
+            # the lane's last verified SHA. Later commits are reconciled below, on
+            # their own evidence.
+            $receipt.headShaAfter = $marked
             $receipt.commitSha    = $marked
             $receipt.changedPaths = @($paths)
-            $receipt.recovered    = 'COMMIT_WITHOUT_CHECKPOINT'
+            $receipt.recovered    = if ($phase -eq 'COMMITTED_PENDING_CHECKPOINT') { 'CHECKPOINT_INTERRUPTED' } else { 'COMMIT_WITHOUT_CHECKPOINT' }
             $receipt.completedAt  = Get-UtcStamp
+
+            # Restore the blockers and the wait state this item implied, so a
+            # crash before the lanes/blockers write does not lose them.
+            $restoredBlockers = @()
+            if ($phase -eq 'COMMITTED_PENDING_CHECKPOINT' -and $pending.PSObject.Properties['normalizedBlockers']) {
+                $restoredBlockers = @($pending.normalizedBlockers)
+            } elseif ($pending.PSObject.Properties['claimSnapshot'] -and $pending.claimSnapshot) {
+                $n = 0
+                foreach ($bc in @($pending.claimSnapshot.blockerClaims)) {
+                    $n++
+                    $restoredBlockers += New-C1LaneBlocker -Lane $Lane -RunId $pending.runId `
+                        -PassId $(if ($pending.PSObject.Properties['passId']) { [int]$pending.passId } else { 0 }) `
+                        -Suffix "w$n" -WorkItem $receipt.workItem `
+                        -Category $bc.category -Question $bc.question -Why $bc.whyAutomationCannotDecide `
+                        -Scope $bc.blockingScope -Remaining $bc.remainingExecutableWork
+                }
+            }
+
+            $receipt.blockersRaised = @()
+            if ($BlockersDoc) {
+                foreach ($rb in $restoredBlockers) {
+                    # Dedupe makes this idempotent: replaying a checkpoint that
+                    # partially landed adds nothing twice.
+                    $added = Add-C1Blocker -BlockersDoc $BlockersDoc -Blocker $rb
+                    if ($receipt.blockersRaised -notcontains $added.blocker.id) {
+                        $receipt.blockersRaised += $added.blocker.id
+                    }
+                }
+            }
+
             Save-C1ItemReceipt -Context $Context -Receipt $receipt | Out-Null
+
+            if ($phase -eq 'COMMITTED_PENDING_CHECKPOINT' -and $pending.PSObject.Properties['intendedLaneState'] -and $pending.intendedLaneState) {
+                $Lane.state = $pending.intendedLaneState
+            }
+            $Lane.currentWorkItem = $receipt.workItem
+            $Lane.lastRun = $receipt.runId
+            $Lane.lastResult = $receipt.result
+
             Clear-C1PendingTransaction -Context $Context
-            return (New-RecoveryResult 'RECOVERED_COMMIT' ("Lane $($Lane.id): commit $($marked.Substring(0,8)) was already made and verifies. " +
-                'Checkpoint finalized; the worker was NOT rerun.') @($receipt))
+
+            # Anything committed AFTER the marked commit is a separate question,
+            # answered by the ordinary branch-ahead rule on its own evidence.
+            $trailing = $null
+            if ($head -ne $marked) {
+                $trailing = Resolve-C1BranchAhead -Context $Context -Lane $Lane -WorktreePath $WorktreePath `
+                    -Branch $Branch -FromSha $marked -ToSha $head -ForbiddenPaths $ForbiddenPaths
+            }
+
+            $msg = "Lane $($Lane.id): commit $($marked.Substring(0,8)) was already made and verifies. " +
+                   'Checkpoint finalized; the worker was NOT rerun.'
+            if ($trailing) {
+                $msg += " $($trailing.message)"
+                if ($trailing.blocked) {
+                    return (New-RecoveryResult 'FAILED_RECOVERY' $msg (@($receipt) + @($trailing.recovered)) -Blocked)
+                }
+                return (New-RecoveryResult 'RECOVERED_COMMIT' $msg (@($receipt) + @($trailing.recovered)))
+            }
+            return (New-RecoveryResult 'RECOVERED_COMMIT' $msg @($receipt))
         }
 
         if ($head -eq $pre) {
@@ -141,12 +242,43 @@ function Invoke-C1LaneRecovery {
 
             $newHead = (Invoke-Git -Directory $WorktreePath -Arguments @('rev-parse', 'HEAD')).Output[0]
             $receipt = $pending.itemReceipt
+            $snap = if ($pending.PSObject.Properties['claimSnapshot']) { $pending.claimSnapshot } else { $null }
+            if ($snap) {
+                if (-not $receipt.workItem) { $receipt.workItem = $snap.workItem }
+                if (-not $receipt.purpose) { $receipt.purpose = $snap.purpose }
+                if (-not $receipt.nextSuggestedItem) { $receipt.nextSuggestedItem = $snap.nextSuggestedItem }
+                if (@($receipt.proofResults).Count -eq 0) { $receipt.proofResults = @($snap.proofResults) }
+            }
             $receipt.headShaAfter = $newHead
             $receipt.commitSha    = $newHead
             $receipt.changedPaths = @($dirty)
             $receipt.recovered    = 'COMMIT_COMPLETED_ON_RECOVERY'
+            # Never null. The work is proven present; the original post-commit
+            # verdict is not, so RECOVERED rather than a manufactured DONE.
+            $receipt.result       = 'RECOVERED'
             $receipt.completedAt  = Get-UtcStamp
+
+            $receipt.blockersRaised = @()
+            if ($BlockersDoc -and $snap) {
+                $n = 0
+                foreach ($bc in @($snap.blockerClaims)) {
+                    $n++
+                    $rb = New-C1LaneBlocker -Lane $Lane -RunId $pending.runId `
+                        -PassId $(if ($pending.PSObject.Properties['passId']) { [int]$pending.passId } else { 0 }) `
+                        -Suffix "w$n" -WorkItem $receipt.workItem `
+                        -Category $bc.category -Question $bc.question -Why $bc.whyAutomationCannotDecide `
+                        -Scope $bc.blockingScope -Remaining $bc.remainingExecutableWork
+                    $added = Add-C1Blocker -BlockersDoc $BlockersDoc -Blocker $rb
+                    if ($receipt.blockersRaised -notcontains $added.blocker.id) {
+                        $receipt.blockersRaised += $added.blocker.id
+                    }
+                }
+            }
+
             Save-C1ItemReceipt -Context $Context -Receipt $receipt | Out-Null
+            $Lane.currentWorkItem = $receipt.workItem
+            $Lane.lastRun = $receipt.runId
+            $Lane.lastResult = $receipt.result
             Clear-C1PendingTransaction -Context $Context
             return (New-RecoveryResult 'COMPLETED_TRANSACTION' ("Lane $($Lane.id): re-verified the interrupted work and completed the commit as " +
                 "$($newHead.Substring(0,8)). The worker was NOT rerun.") @($receipt))
@@ -172,20 +304,52 @@ function Invoke-C1LaneRecovery {
     }
 
     # CASE C. Recover only what the repository establishes as valid lane work.
-    $paths = @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha $lastKnown -ToSha $head)
+    $r = Resolve-C1BranchAhead -Context $Context -Lane $Lane -WorktreePath $WorktreePath -Branch $Branch `
+        -FromSha $lastKnown -ToSha $head -ForbiddenPaths $ForbiddenPaths
+    if ($r.blocked) {
+        return (New-RecoveryResult 'FAILED_RECOVERY' $r.message @() -Blocked)
+    }
+    New-RecoveryResult 'RECOVERED_BRANCH_AHEAD' $r.message @($r.recovered)
+}
+
+function Resolve-C1BranchAhead {
+    <#
+        Reconcile one commit range that persisted state does not account for,
+        strictly on repository evidence.
+
+        Shared by the ordinary branch-ahead case and by the tail of a recovered
+        transaction. That sharing is the point: commits made after a recovered
+        harness commit must be judged on their own merits, never inherited by the
+        transaction that happened to precede them.
+    #>
+    param(
+        [Parameter(Mandatory)]$Context,
+        [Parameter(Mandatory)]$Lane,
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string]$FromSha,
+        [Parameter(Mandatory)][string]$ToSha,
+        [string[]]$ForbiddenPaths = @()
+    )
+    $paths = @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha $FromSha -ToSha $ToSha)
     $ruling = Test-C1PathsAcceptable -Paths $paths -OwnedPaths @($Lane.ownedPaths) -ForbiddenPaths $ForbiddenPaths
     if (-not $ruling.acceptable) {
-        return (New-RecoveryResult 'FAILED_RECOVERY' ("Lane $($Lane.id): branch is ahead by changes this lane may not own " +
-            "(forbidden: $($ruling.forbiddenPaths -join ', '); out-of-scope: $($ruling.unownedPaths -join ', ')). Branch preserved; lane stopped.") @() -Blocked)
+        return [pscustomobject]@{
+            blocked   = $true
+            recovered = @()
+            message   = ("Lane $($Lane.id): commits between $($FromSha.Substring(0,8)) and $($ToSha.Substring(0,8)) " +
+                         "change paths this lane may not own (forbidden: $($ruling.forbiddenPaths -join ', '); " +
+                         "out-of-scope: $($ruling.unownedPaths -join ', ')). Branch preserved; lane stopped.")
+        }
     }
 
     $receipt = New-C1ItemReceipt -RunId 'recovered' -PassId 0 -Attempt 0 -Lane $Lane -Branch $Branch `
-        -ItemId "recovered-$($Lane.id)-$($head.Substring(0,8))"
+        -ItemId "recovered-$($Lane.id)-$($ToSha.Substring(0,8))"
     $receipt.workItem           = '(recovered from branch history)'
     $receipt.purpose            = 'Verified lane commits present on the branch but absent from persisted state.'
-    $receipt.headShaBefore      = $lastKnown
-    $receipt.headShaAfter       = $head
-    $receipt.commitSha          = $head
+    $receipt.headShaBefore      = $FromSha
+    $receipt.headShaAfter       = $ToSha
+    $receipt.commitSha          = $ToSha
     $receipt.changedPaths       = @($paths)
     $receipt.ownedPathCheck     = 'PASS'
     $receipt.forbiddenPathCheck = 'PASS'
@@ -194,6 +358,10 @@ function Invoke-C1LaneRecovery {
     $receipt.completedAt        = Get-UtcStamp
     Save-C1ItemReceipt -Context $Context -Receipt $receipt | Out-Null
 
-    New-RecoveryResult 'RECOVERED_BRANCH_AHEAD' ("Lane $($Lane.id): recovered $($paths.Count) verified path(s) committed between " +
-        "$($lastKnown.Substring(0,8)) and $($head.Substring(0,8)).") @($receipt)
+    [pscustomobject]@{
+        blocked   = $false
+        recovered = @($receipt)
+        message   = ("Lane $($Lane.id): independently recovered $($paths.Count) verified path(s) committed between " +
+                     "$($FromSha.Substring(0,8)) and $($ToSha.Substring(0,8)).")
+    }
 }

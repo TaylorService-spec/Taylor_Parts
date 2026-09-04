@@ -41,20 +41,83 @@ function New-C1ItemId {
 
 # ------------------------------------------------------------------- receipts
 
+function Invoke-C1FaultPoint {
+    <#
+        Deliberate crash seam for the regression suite, so the interruption tests
+        exercise REAL half-written on-disk state rather than a state a test
+        fabricated and hoped was accurate.
+
+        Fail-closed by construction: the only thing it can ever do is throw. It
+        cannot skip a check, bypass a gate, or commit anything, so an environment
+        variable set by accident stops the run rather than weakening it.
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+    if ($env:C1_FAULT_INJECT -and $env:C1_FAULT_INJECT -eq $Name) {
+        throw "C1_FAULT_INJECT: deliberate crash at fault point '$Name'."
+    }
+}
+
 function Save-C1ItemReceipt {
     <#
         Persist one bounded item, atomically, the moment it finishes. This is
         called after EVERY item -- never batched to the end of a sweep.
+
+        A receipt with a null result is unusable: completed-history, the pass
+        board and exhaustion all read it. New-C1ItemReceipt starts result null,
+        so a recovery path that forgot to set one would otherwise persist a
+        receipt nobody can interpret. RECOVERED is the honest floor -- the work
+        exists on the branch, and we decline to guess that it was DONE.
     #>
     param(
         [Parameter(Mandatory)]$Context,
         [Parameter(Mandatory)]$Receipt
     )
+    if (-not $Receipt.result) {
+        Write-Step "Item $($Receipt.itemId) had no result; recording RECOVERED rather than persisting a null." 'WARN'
+        $Receipt.result = 'RECOVERED'
+    }
     if (-not (Test-Path $Context.ItemsDir)) {
         New-Item -ItemType Directory -Force -Path $Context.ItemsDir | Out-Null
     }
     Write-JsonFile (Join-Path $Context.ItemsDir "$($Receipt.itemId).json") $Receipt
     $Receipt
+}
+
+function New-C1ClaimSnapshot {
+    <#
+        The immutable worker evidence a crash recovery needs, captured at commit
+        time and stored inside the write-ahead transaction.
+
+        Claude's stdout is not a recovery source: the process is gone, the log is
+        prose, and re-reading it would be guessing. Everything required to
+        reconstruct the final checkpoint deterministically is copied here.
+    #>
+    param($Claim, [string]$ClaimedResult, [string[]]$ExpectedPaths = @(), $ProofResults = @())
+
+    $blockerClaims = @()
+    if ($Claim -and $Claim.PSObject.Properties['blockers']) {
+        foreach ($b in @($Claim.blockers)) {
+            if (-not $b) { continue }
+            $blockerClaims += [pscustomobject]@{
+                category                  = if ($b.PSObject.Properties['category']) { $b.category } else { 'GOVERNANCE' }
+                question                  = if ($b.PSObject.Properties['question']) { $b.question } else { '(unstated)' }
+                whyAutomationCannotDecide = if ($b.PSObject.Properties['whyAutomationCannotDecide']) { $b.whyAutomationCannotDecide } else { '' }
+                blockingScope             = if ($b.PSObject.Properties['blockingScope']) { $b.blockingScope } else { '' }
+                remainingExecutableWork   = if ($b.PSObject.Properties['remainingExecutableWork']) { $b.remainingExecutableWork } else { '' }
+            }
+        }
+    }
+
+    [pscustomobject]@{
+        claimedResult     = $ClaimedResult
+        workItem          = if ($Claim -and $Claim.PSObject.Properties['workItem']) { $Claim.workItem } else { $null }
+        purpose           = if ($Claim -and $Claim.PSObject.Properties['purpose']) { $Claim.purpose } else { $null }
+        summary           = if ($Claim -and $Claim.PSObject.Properties['summary']) { $Claim.summary } else { $null }
+        nextSuggestedItem = if ($Claim -and $Claim.PSObject.Properties['nextSuggestedItem']) { $Claim.nextSuggestedItem } else { $null }
+        expectedPaths     = @($ExpectedPaths)
+        proofResults      = @($ProofResults)
+        blockerClaims     = @($blockerClaims)
+    }
 }
 
 function Get-C1ItemReceipts {
@@ -115,12 +178,14 @@ function Get-C1CompletedWorkSummary {
         [Parameter(Mandatory)][string]$LaneId,
         [int]$Max = 25
     )
-    # RECOVERED counts. Work reconstructed by the legacy bootstrap, or recovered
-    # after a crash, exists on the branch just as surely as work this harness
-    # watched being made -- and telling a worker otherwise is telling it to build
-    # the thing again.
+    # Anything with a COMMIT counts, whatever the result said.
+    #
+    # Work reconstructed by the legacy bootstrap, recovered after a crash, or
+    # committed by an item that then hit an Owner blocker all exist on the branch
+    # just as surely as work this harness watched being made. Telling a worker
+    # otherwise is telling it to build the thing again.
     $done = @(Get-C1ItemReceipts -Context $Context -LaneId $LaneId |
-        Where-Object { $_.result -in @('DONE', 'PARTIAL', 'RECOVERED') -and $_.workItem })
+        Where-Object { $_.workItem -and ($_.commitSha -or $_.result -in @('DONE', 'PARTIAL', 'RECOVERED')) })
 
     $titles = @($done | ForEach-Object { $_.workItem } | Select-Object -Unique)
     if ($titles.Count -gt $Max) { $titles = @($titles | Select-Object -Last $Max) }

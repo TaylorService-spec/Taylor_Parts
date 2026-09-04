@@ -110,6 +110,33 @@ may or may not exist, the checkpoint is not yet written. A write-ahead
 `C1-Item-Id:` trailer so "did my commit land?" is a git question with a
 deterministic answer rather than a guess from commit prose.
 
+**The pending transaction is cleared LAST**, after the item receipt, the lane
+state and the blockers are all durably on disk. Clearing it right after the
+commit left a window where a reboot kept the commit and the receipt but lost the
+blockers and the wait state, with no evidence that anything was unfinished.
+
+It has two phases:
+
+| Phase | Written | Carries |
+| --- | --- | --- |
+| `PRE_COMMIT` | before `git add` | pre-commit head, verified paths, proofs, commit message and marker, and an immutable **claim snapshot** — result, work item, purpose, next item, expected paths, proof results, and every blocker claim |
+| `COMMITTED_PENDING_CHECKPOINT` | after post-commit verification | commit SHA, the complete final receipt, the normalized blockers, and the lane state this item implies |
+
+The claim snapshot exists because Claude's stdout is not a recovery source: after
+a crash the process is gone and the log is prose. Everything needed to
+reconstruct the checkpoint deterministically is copied into the transaction while
+the worker's answer is still in hand.
+
+A recovered receipt never carries a null result. Where the original verdict
+cannot be safely asserted it records `RECOVERED` — the work is proven present on
+the branch, and `DONE` would be manufactured.
+
+A recovered item ends **at its own commit**. If the branch head is later than the
+marked commit, the marked transaction is finalized first and the range
+`marked..HEAD` is then reconciled independently by the ordinary branch-ahead
+rule. Later commits are never inherited by the transaction that preceded them,
+and an unowned later range fails closed rather than becoming verified state.
+
 **Every live execution recovers before it selects new work.** Four cases:
 
 | Situation | Action |
@@ -140,8 +167,15 @@ commits have no item receipt. A lane in that state must not report "nothing to
 recover" and hand the next worker an empty completed-item list — that is an
 instruction to rebuild what is already on the branch.
 
-A one-time bootstrap runs per lane, before recovery and before work selection,
-and only when the lane has no receipts at all. Evidence order:
+A bootstrap runs per lane, before recovery and before work selection. It works
+on **coverage, not "has any receipt"**: it compares the lane's actual commits
+against what receipts already account for and reconstructs only the gap. The
+older rule was not crash-safe — receipts are written one at a time, so a reboot
+partway through left the lane looking bootstrapped and the remaining commits
+unrepresented forever. Legacy item ids are deterministic
+(`legacy-<lane>-<sha8>`), so re-running creates no duplicates.
+
+Evidence order:
 
 1. the previous runner's `run-state.json` item records (work item, lane, head
    SHA, changed paths);
@@ -579,6 +613,8 @@ pwsh -File scripts/customer1-automation/run-program.ps1 -MaxItems 1
 pwsh -File scripts/customer1-automation/run-program.ps1 -UntilExhausted
 
 # Prove the framework itself. Uses a fake worker; costs no Claude session.
+# Interruption tests crash real runs at named fault points via C1_FAULT_INJECT,
+# a seam whose only possible effect is to throw -- it can never skip a check.
 pwsh -File scripts/customer1-automation/test-framework.ps1
 pwsh -File scripts/customer1-automation/test-proof-policy.ps1
 
