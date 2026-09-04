@@ -173,16 +173,30 @@ $harnessUntracked = @($untracked | Where-Object {
     Test-PathMatch -Path $_ -Patterns @($cfg.harnessOwnedPaths)
 })
 
+# The question that actually matters is not "is it untracked in THIS worktree"
+# -- a lane worktree is branched from the base ref, so that is the only tree
+# whose contents reach a worker. Publishing to a side branch does not change
+# this; only a merge to the base ref does.
+$probeFiles = @(
+    'docs/customer-1/automation/PROGRAM.md',
+    'docs/customer-1/automation/lanes.json',
+    '.claude/skills/customer1-program/SKILL.md'
+)
+$missingOnBase = @($probeFiles | Where-Object {
+    # './' prefix: git on Windows mangles 'rev:.claude/...' into a path.
+    (Invoke-Git -Directory $ctx.Root -Arguments @('cat-file', '-e', "$($cfg.mainRef):./$_") -AllowFail).ExitCode -ne 0
+})
+
 # ------------------------------------------------------------ REQUIREMENTS
 $missingRequired = @()
 $missingOptional = @()
 
-if ($harnessUntracked.Count -gt 0) {
+if ($missingOnBase.Count -gt 0) {
     $missingRequired += [pscustomobject]@{
-        capability = 'Orchestrator framework on origin/main'
-        detail = "$($harnessUntracked.Count) harness file(s) are untracked and exist only in this worktree. A lane worktree branched from $($cfg.mainRef) would NOT contain PROGRAM.md, the lane charters, or the customer1-program skill."
+        capability = "Orchestrator framework on $($cfg.mainRef)"
+        detail = "$($missingOnBase.Count) of $($probeFiles.Count) probe file(s) are absent from $($cfg.mainRef): $($missingOnBase -join ', '). A lane worktree is branched from $($cfg.mainRef), so a worker would not see PROGRAM.md, the lane charters, or the customer1-program skill. Publishing to a side branch does not change this -- only a merge does."
         blocksLanes = 'ALL'
-        mitigation = 'The harness now inlines the lane charter into the worker prompt, so a lane can run without them. Committing the framework to main removes the gap entirely.'
+        mitigation = 'Non-blocking in practice: the harness inlines the full lane charter into the worker prompt, so a lane runs correctly without them. Merging the framework branch removes the gap entirely.'
     }
 }
 
@@ -299,6 +313,7 @@ $result = [pscustomobject]@{
     mcpConfigError = $globalRead.error
     mcpIsolationEnabled = [bool]$cfg.strictMcpConfig
     worktreeLocalOnly = @($harnessUntracked)
+    harnessMissingOnBase = @($missingOnBase)
     missingRequired = @($missingRequired)
     missingOptional = @($missingOptional)
     probe = $probeResult
@@ -352,8 +367,9 @@ if (-not $Probe) {
 }
 
 & $w 'WORKTREE-LOCAL-ONLY CAPABILITIES'
-if ($harnessUntracked.Count -eq 0) { Write-Host '  (none)' }
-foreach ($f in $harnessUntracked) { Write-Host "  $f" }
+Write-Host "  untracked in THIS worktree            : $($harnessUntracked.Count) file(s)"
+Write-Host "  absent from $($cfg.mainRef) (what a lane sees) : $(if ($missingOnBase.Count -eq 0) { 'none - framework reaches lane worktrees' } else { "$($missingOnBase.Count)/$($probeFiles.Count) probe files" })"
+foreach ($f in $missingOnBase) { Write-Host "      absent on base: $f" }
 
 & $w 'MISSING OPTIONAL CAPABILITIES'
 if ($missingOptional.Count -eq 0) { Write-Host '  (none)' }
