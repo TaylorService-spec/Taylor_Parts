@@ -112,8 +112,14 @@ export interface TechnicianExecutionStats {
    * WHY THE AVERAGE IS ABSENT, when it is. "No job has both timestamps yet" and "a job's
    * timestamps contradict the lifecycle" are different facts, and a bare null cannot tell them
    * apart. Counted, never rendered as a duration.
+   *
+   * `missing` counts COMPLETED Work Orders outside the eligible duration population -- the one
+   * this service has always defined as "only where both timestamps exist". Averaging over that
+   * population is authorised, but it means "Avg. Job Duration" can describe fewer jobs than the
+   * completion count beside it. That gap is now COUNTED rather than silent: a partial figure may
+   * not wear a complete-population name without the reader being able to find out.
    */
-  completionEvidence: { valid: number; inverted: number };
+  completionEvidence: { valid: number; inverted: number; missing: number };
   workOrderVolumeByStatus: Record<string, number>;
 }
 
@@ -136,6 +142,7 @@ export async function getTechnicianExecutionStats(technicianId: string): Promise
   let totalWorkOrdersCompleted = 0;
   const completionDurations: number[] = [];
   let invertedDurations = 0;
+  let missingDurationEvidence = 0;
 
   for (const wo of workOrders) {
     workOrderVolumeByStatus[wo.status] = (workOrderVolumeByStatus[wo.status] ?? 0) + 1;
@@ -159,6 +166,11 @@ export async function getTechnicianExecutionStats(technicianId: string): Promise
       // kept. Only a NEGATIVE span is contradictory.
       if (ms < 0) invertedDurations += 1;
       else completionDurations.push(ms);
+    } else if (wo.completedAt) {
+      // Completed, but outside the eligible duration population: it never recorded both
+      // timestamps. Absence of evidence, not contradictory evidence -- a different fact, and one
+      // the completion count alone would hide.
+      missingDurationEvidence += 1;
     }
   }
 
@@ -177,7 +189,11 @@ export async function getTechnicianExecutionStats(technicianId: string): Promise
     totalWorkOrdersCompleted,
     totalPartsConsumed,
     averageCompletionTimeMs,
-    completionEvidence: { valid: completionDurations.length, inverted: invertedDurations },
+    completionEvidence: {
+      valid: completionDurations.length,
+      inverted: invertedDurations,
+      missing: missingDurationEvidence,
+    },
     workOrderVolumeByStatus,
   };
 }

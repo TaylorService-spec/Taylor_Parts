@@ -68,7 +68,7 @@ describe("execution analytics service", () => {
       totalWorkOrdersCompleted: 2,
       totalPartsConsumed: 7,
       averageCompletionTimeMs: 50,
-      completionEvidence: { valid: 2, inverted: 0 },
+      completionEvidence: { valid: 2, inverted: 0, missing: 0 },
       workOrderVolumeByStatus: { CLOSED: 2, DISPATCHED: 1 },
     });
   });
@@ -90,7 +90,7 @@ describe("execution analytics service", () => {
       ]));
       const stats = await getTechnicianExecutionStats("tech-1");
       expect(stats.averageCompletionTimeMs).toBe(300); // (600 + 0) / 2
-      expect(stats.completionEvidence).toEqual({ valid: 2, inverted: 0 });
+      expect(stats.completionEvidence).toEqual({ valid: 2, inverted: 0, missing: 0 });
     })();
   });
 
@@ -102,7 +102,7 @@ describe("execution analytics service", () => {
     ]));
     const stats = await getTechnicianExecutionStats("tech-1");
     expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 1, inverted: 1 });
+    expect(stats.completionEvidence).toEqual({ valid: 1, inverted: 1, missing: 0 });
   });
 
   it("an inverted pair is neither absolute-valued nor clamped to zero", async () => {
@@ -126,7 +126,7 @@ describe("execution analytics service", () => {
     ]));
     const stats = await getTechnicianExecutionStats("tech-1");
     expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 0, inverted: 0 });
+    expect(stats.completionEvidence).toEqual({ valid: 0, inverted: 0, missing: 1 });
     // The completion COUNT is a different fact and is unaffected -- one Work Order has a completedAt.
     expect(stats.totalWorkOrdersCompleted).toBe(1);
   });
@@ -143,7 +143,7 @@ describe("execution analytics service", () => {
     ]));
     const stats = await getTechnicianExecutionStats("tech-1");
     expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 3, inverted: 1 });
+    expect(stats.completionEvidence).toEqual({ valid: 3, inverted: 1, missing: 0 });
   });
 
   it("a malformed timestamp is missing evidence, not a duration", async () => {
@@ -153,9 +153,35 @@ describe("execution analytics service", () => {
     ]));
     const stats = await getTechnicianExecutionStats("tech-1");
     expect(stats.averageCompletionTimeMs).toBeNull();
-    expect(stats.completionEvidence).toEqual({ valid: 0, inverted: 0 });
+    expect(stats.completionEvidence).toEqual({ valid: 0, inverted: 0, missing: 2 });
   });
 
+
+  it("a valid + missing population averages the ELIGIBLE records, and counts what it left out", () => {
+    // THE MIXED-POPULATION QUESTION. This service has always defined the eligible duration
+    // population as "only Work Orders where BOTH timestamps exist" -- that authority predates this
+    // corrective and is unchanged. Averaging over it is therefore authorised, NOT a silent choice.
+    //
+    // What was silent is that "Avg. Job Duration" can describe fewer jobs than the completion count
+    // beside it. `missing` makes that recoverable: here the figure describes 2 of 4 completed jobs,
+    // and a reader can find that out instead of assuming it covers all of them.
+    return (async () => {
+      firestore.getDocs.mockResolvedValueOnce(docs([
+        { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
+        { id: "b", status: "CLOSED", completedAt: stamp(3000), workStartedAt: stamp(1000) },
+        { id: "c", status: "CLOSED", completedAt: stamp(5000) },
+        { id: "d", status: "CLOSED", completedAt: stamp(6000) },
+        { id: "e", status: "DISPATCHED" },
+      ]));
+      const stats = await getTechnicianExecutionStats("tech-1");
+      expect(stats.averageCompletionTimeMs).toBe(1300); // (600 + 2000) / 2
+      expect(stats.totalWorkOrdersCompleted).toBe(4);
+      expect(stats.completionEvidence).toEqual({ valid: 2, inverted: 0, missing: 2 });
+      // A never-completed Work Order is not "missing duration evidence" -- it is not yet in the
+      // population at all.
+      expect(stats.completionEvidence.missing).not.toBe(3);
+    })();
+  });
   it("builds system-wide part consumption and technician volume rankings", async () => {
     const snapshot = docs([
       { id: "a", assignedTechId: "tech-1", inventorySnapshot: [{ sku: "P-1", qtyUsed: 2 }, { sku: "P-2", qtyUsed: 1 }], completedAt: stamp(1) },

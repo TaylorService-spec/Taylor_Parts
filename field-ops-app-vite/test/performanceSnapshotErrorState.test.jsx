@@ -76,7 +76,7 @@ describe("PerformanceSnapshot -- Avg Job Duration is never a negative fact", () 
       totalWorkOrdersCompleted: 11,
       totalPartsConsumed: 7,
       averageCompletionTimeMs: null,
-      completionEvidence: { valid: 3, inverted: 1 },
+      completionEvidence: { valid: 3, inverted: 1, missing: 0 },
       workOrderVolumeByStatus: {},
     });
 
@@ -97,7 +97,7 @@ describe("PerformanceSnapshot -- Avg Job Duration is never a negative fact", () 
       totalWorkOrdersCompleted: 2,
       totalPartsConsumed: 0,
       averageCompletionTimeMs: 3_600_000,
-      completionEvidence: { valid: 2, inverted: 0 },
+      completionEvidence: { valid: 2, inverted: 0, missing: 0 },
       workOrderVolumeByStatus: {},
     });
 
