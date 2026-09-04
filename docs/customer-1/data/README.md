@@ -23,8 +23,12 @@ here closes a gate on its own.
   validator.
 - `../../../scripts/customer1-migration/validate-opening-inventory.mjs` — the
   opening-inventory validator.
+- `export-intake-contract.json` — the file-shape contract a Taylor export must satisfy
+  before the dry run can read it.
 - `../../../scripts/customer1-migration/dry-run.mjs` — the migration dry-run harness
   (objective 4).
+- `../../../scripts/customer1-migration/read-export.mjs` — the export intake reader
+  that turns a directory of CSV exports into the harness's source-record shape.
 - `seeded/` — SEEDED / SYNTHETIC fixtures the harness rehearses against. Not Taylor data.
 
 ## What the census is
@@ -202,10 +206,62 @@ whose defects are chosen to make each exception kind fire.
 customers, and it does not advance `C1-DATA-01` past the point where Taylor's own export
 is required.
 
+## What the export intake contract is
+
+The dry run consumes source records as JSON. Taylor will not hand over JSON; Taylor
+will hand over files. `export-intake-contract.json` is the shape those files must
+have — UTF-8 CSV, no byte order mark, a header row, one file per domain and source
+system named `<domain>__<sourceSystemId>.csv`, and a `RECORD_ID` column carrying each
+row's identity — and `read-export.mjs` is the reader that enforces it.
+
+Intake runs **before** mapping. A file that is unreadable, wrongly encoded, badly
+named, or whose header does not match the manifest is reported without a single value
+being transformed, so "your export is unreadable" and "your data has a problem" never
+arrive as the same message.
+
+Two decisions worth knowing:
+
+- **Spreadsheets are not read directly.** A workbook is a rendering — cell types,
+  hidden sheets, and display formatting change what a reader sees — and reading one
+  means adding a third-party parser to the migration path. Taylor or the vendor
+  exports each sheet to CSV, and that CSV is the artifact of record.
+- **The column manifest is derived, not written down twice.** The expected columns for
+  a domain are exactly the source fields the accepted mapping table names for it;
+  the required ones are exactly those dispositioned `MAPPED`. A hand-maintained column
+  list beside the mapping table would drift, and the drift would show up as a silently
+  dropped column.
+
+File-level exceptions reject the whole file — the header is what tells the mapping
+table which value is which, so a misread header misfiles every value beneath it.
+Row-level exceptions reject only their row.
+
+File-level kinds: `UNREADABLE_FILE`, `UNSUPPORTED_FORMAT`, `ENCODING_NOT_UTF8`,
+`MALFORMED_DELIMITED`, `UNPARSEABLE_FILE_NAME`, `UNDECLARED_SOURCE`, `EMPTY_FILE`,
+`MISSING_RECORD_ID_COLUMN`, `DUPLICATE_COLUMN`, `UNEXPECTED_COLUMN`, `MISSING_COLUMN`.
+Row-level kinds: `RAGGED_ROW`, `BLANK_RECORD_ID`.
+
+Run it with:
+
+```
+node scripts/customer1-migration/read-export.mjs
+```
+
+With no arguments it rehearses against `seeded/export/`, which is a deliberately
+defective SEEDED / SYNTHETIC export directory — see `seeded/export/SEEDED-README.md`
+for what each file is there to break. Pass a directory, a contract path, and a mapping
+path to run it against anything else.
+
+**PROPOSED.** The contract is Verenward's requirement on the export, not a Taylor fact.
+Taylor has not confirmed its systems can produce UTF-8 CSV, can emit a stable per-record
+identity column, or who performs the export during the rehearsal-to-cutover window.
+Those three questions are recorded in the contract's `openWithTaylor` list.
+
 ## Not yet done
 
 The census, tiering, mapping, and opening-inventory instruments all exist and the dry-run
 harness runs end to end, but the real records hold no decisions: every census field is
 `UNKNOWN`, every domain is `UNDECIDED`, the mapping table is empty, and every custody
-scope is `UNKNOWN` — all pending Taylor's answers to the census. The rehearsal that
-counts is the one run against a Taylor export, which has not arrived.
+scope is `UNKNOWN` — all pending Taylor's answers to the census. The intake path from a
+file on disk to a mapped record now exists end to end, but it has only ever been run on
+seeded files. The rehearsal that counts is the one run against a Taylor export, which
+has not arrived.

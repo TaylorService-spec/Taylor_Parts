@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "gate": "C1-DATA-01",
+  "status": "PROPOSED",
+  "taylorAcceptance": "UNKNOWN",
+  "lastReconciled": "2026-09-04",
+  "file": {
+    "format": "CSV",
+    "encoding": "UTF-8",
+    "byteOrderMark": "FORBIDDEN",
+    "delimiter": ",",
+    "quote": "\"",
+    "escapedQuote": "\"\"",
+    "lineEnding": "LF or CRLF",
+    "headerRow": "REQUIRED",
+    "fileNamePattern": "<domain>__<sourceSystemId>.csv",
+    "recordIdColumn": "RECORD_ID",
+    "spreadsheetPolicy": "XLS and XLSX are not read at intake. A spreadsheet is a rendering, not a data interchange format: cell types, hidden sheets, merged cells, and display formatting all change what a reader sees. Taylor (or the vendor) exports each sheet to CSV as specified above, and that CSV is the artifact of record for the rehearsal. Reading a workbook directly would also mean adding a third-party parser to the migration path, which is not warranted for a one-time export."
+  },
+  "columnManifest": {
+    "source": "DERIVED",
+    "from": "docs/customer-1/data/field-mappings.json",
+    "expectedColumns": "every sourceField the mapping table names for that domain and source system, in any disposition",
+    "requiredColumns": "every sourceField whose disposition is MAPPED",
+    "note": "The manifest is not written down a second time here. A hand-maintained column list beside the mapping table is a second source of truth that drifts, and the drift shows up as a silently dropped column. The reader computes the manifest from the accepted mappings at intake time, so the only way to change what an export must contain is to change the mapping that says what the column is for."
+  },
+  "exceptionKinds": {
+    "file": [
+      "UNREADABLE_FILE",
+      "UNSUPPORTED_FORMAT",
+      "ENCODING_NOT_UTF8",
+      "MALFORMED_DELIMITED",
+      "UNPARSEABLE_FILE_NAME",
+      "UNDECLARED_SOURCE",
+      "EMPTY_FILE",
+      "MISSING_RECORD_ID_COLUMN",
+      "DUPLICATE_COLUMN",
+      "UNEXPECTED_COLUMN",
+      "MISSING_COLUMN"
+    ],
+    "row": [
+      "RAGGED_ROW",
+      "BLANK_RECORD_ID"
+    ]
+  },
+  "rules": [
+    "A file-level exception yields zero records from that file. A file whose shape does not match the contract cannot be partially trusted: the columns are what tell the mapping table which value is which, so a misread header misfiles every value beneath it.",
+    "A row-level exception rejects that row only. The rest of a well-formed file still reads.",
+    "The record-id column is intake metadata, not source data. It is stripped before the records reach the mapping stage, so it never appears as an unmapped source field.",
+    "A column the mapping table does not name is an exception, not a silent extra. The export and the mapping table must agree on the column set before any value is transformed.",
+    "Intake runs before mapping. An unreadable file, a wrong encoding, or a header that does not match the manifest is reported without a single value being transformed."
+  ],
+  "openWithTaylor": [
+    "Whether Taylor's systems can export UTF-8 CSV at all, or only fixed-width, XLSX, or a vendor-proprietary dump.",
+    "Whether each source system can emit a stable per-record identity column, and what it is called there.",
+    "Who performs the export and on what cadence during the rehearsal-to-cutover window."
+  ],
+  "notes": "This is Verenward's requirement on the shape of the export, not a Taylor fact. It is PROPOSED because Taylor has not confirmed its systems can produce it; nothing here asserts that they can. The reader is scripts/customer1-migration/read-export.mjs and rehearses against docs/customer-1/data/seeded/export/."
+}

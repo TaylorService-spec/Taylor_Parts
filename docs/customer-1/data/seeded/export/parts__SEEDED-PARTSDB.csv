@@ -1,0 +1,4 @@
+RECORD_ID,PART_NO,DESCR,LIST_PRICE,OBSOLETE_FLAG
+PART-1, SEED-001 ,"  Seeded compressor  ","1,250.00",N
+PART-2,SEED-002,,40.00,N
+PART-3,SEED-003,"Seeded gasket, 2"" bore",n/a,Y
