@@ -82,6 +82,26 @@ export interface ImportJobStore {
   listRecent(limit: number): Promise<readonly ImportJob[]>;
 }
 
+/**
+ * Drop undefined values, recursively.
+ *
+ * A canonical draft leaves its optional fields undefined -- which is the right shape for a
+ * domain value and an ILLEGAL one for Firestore, which rejects the whole write. This is
+ * exactly the kind of storage-specific concession that belongs on this side of the
+ * portability boundary and nowhere else: the job model must not learn to avoid undefined
+ * because one data plane cannot store it.
+ */
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((v) => stripUndefined(v)) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) out[k] = stripUndefined(v);
+    }
+    return out as T;
+  }
+  return value;
+}
 export function firestoreImportJobStore(db: Firestore = getFirestore()): ImportJobStore {
   const col = () => db.collection(IMPORT_JOBS_COLLECTION);
 
@@ -92,7 +112,7 @@ export function firestoreImportJobStore(db: Firestore = getFirestore()): ImportJ
     },
 
     async put(job) {
-      await col().doc(job.jobId).set(job);
+      await col().doc(job.jobId).set(stripUndefined(job));
     },
 
     async claimForExecution(job) {
@@ -101,7 +121,7 @@ export function firestoreImportJobStore(db: Firestore = getFirestore()): ImportJ
         const snap = await txn.get(ref);
         if (!snap.exists) return false;
         if ((snap.data() ?? {}).status !== "STAGED") return false;
-        txn.set(ref, job);
+        txn.set(ref, stripUndefined(job));
         return true;
       });
     },
