@@ -1,0 +1,41 @@
+{
+  "banner": "SEEDED / SYNTHETIC — this is not Taylor data. It exists only to exercise the migration dry-run harness. Nothing here is a Taylor fact and nothing here closes a gate.",
+  "status": "COMPLETE",
+  "requiredDomains": [
+    "parts",
+    "customers",
+    "equipment",
+    "inventory",
+    "purchasing",
+    "serviceHistory"
+  ],
+  "unsourcedDomains": [],
+  "systems": [
+    {
+      "id": "SEEDED-PARTSDB",
+      "name": "SEEDED Parts Database",
+      "vendor": "SEEDED Synthetic Vendor",
+      "kind": "on-prem database",
+      "holds": ["parts", "inventory", "purchasing"],
+      "accessMethod": "operator-run CSV export",
+      "exportFormat": "CSV, one file per table",
+      "recordVolume": "parts ~4 rows, inventory ~4 rows (synthetic)",
+      "identityKeys": ["PART_NO"],
+      "taylorOwner": "SEEDED — no real owner",
+      "notes": "Synthetic stand-in for whatever Taylor names as its parts/inventory system of record."
+    },
+    {
+      "id": "SEEDED-SERVICE-XLS",
+      "name": "SEEDED Service Workbook",
+      "vendor": "SEEDED Synthetic Vendor",
+      "kind": "spreadsheet",
+      "holds": ["customers", "equipment", "serviceHistory"],
+      "accessMethod": "manual workbook copy",
+      "exportFormat": "XLSX, one sheet per domain",
+      "recordVolume": "customers ~3 rows, equipment ~2 rows (synthetic)",
+      "identityKeys": ["CUST_ID", "SERIAL"],
+      "taylorOwner": "SEEDED — no real owner",
+      "notes": "Synthetic stand-in for whatever Taylor names as its customer/equipment record."
+    }
+  ]
+}

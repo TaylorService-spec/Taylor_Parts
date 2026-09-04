@@ -23,6 +23,9 @@ here closes a gate on its own.
   validator.
 - `../../../scripts/customer1-migration/validate-opening-inventory.mjs` — the
   opening-inventory validator.
+- `../../../scripts/customer1-migration/dry-run.mjs` — the migration dry-run harness
+  (objective 4).
+- `seeded/` — SEEDED / SYNTHETIC fixtures the harness rehearses against. Not Taylor data.
 
 ## What the census is
 
@@ -154,10 +157,55 @@ node scripts/customer1-migration/validate-opening-inventory.mjs
 
    It exits non-zero on any structural error or on a dishonest status.
 
+## What the dry run is (objective 4)
+
+A rehearsal on paper. The harness reads a census/tiering/mapping chain plus a set of
+source records, applies the mappings, and prints an exception report. It writes nothing,
+holds no credentials, and has no notion of a target database.
+
+The report is deterministic — same inputs, byte-identical output — so running it twice
+proves idempotency rather than merely proving it ran again.
+
+Three fail-closed rules:
+
+- **The chain validates first.** A dry run over a mapping chain that does not validate
+  proves nothing, so the harness refuses to read a single record until it does.
+- **A record migrates whole or not at all.** Any exception on any field rejects the
+  entire record. Half a migrated part is worse than an absent one.
+- **An undispositioned source field is an exception.** If a column shows up that no
+  mapping row accounts for, it is reported. The mapping table decides what gets left
+  behind, on the record, in words — the harness never drops a column quietly.
+
+Exception kinds: `DOMAIN_DOES_NOT_MOVE`, `UNEXPECTED_SOURCE_SYSTEM`, `DUPLICATE_RECORD_ID`,
+`UNMAPPED_SOURCE_FIELD`, `MISSING_VALUE`, `UNSUPPORTED_TRANSFORM`, `TRANSFORM_FAILED`.
+
+Supported transforms: `trim`, `upper`, `money`, `integer`. A mapping naming anything else
+is reported as `UNSUPPORTED_TRANSFORM`, never silently applied as a copy.
+
+Run it with:
+
+```
+node scripts/customer1-migration/dry-run.mjs
+```
+
+With no arguments it rehearses against `seeded/`. Pass real paths in the order
+mappings, tiering, census, records to run it against anything else.
+
+### The seeded fixtures
+
+`seeded/` holds a SEEDED / SYNTHETIC census, tiering, mapping table, and source-record
+set. Every file carries a banner saying so. They are invented, deliberately dirty rows
+whose defects are chosen to make each exception kind fire.
+
+**Seeded data proves the process. It cannot prove Taylor's data.** A green dry run over
+`seeded/` says the harness works. It says nothing about Taylor's parts, balances, or
+customers, and it does not advance `C1-DATA-01` past the point where Taylor's own export
+is required.
+
 ## Not yet done
 
-The dry-run harness (objective 4) depends on at least one real mapping to exercise, and
-is not started. The census, tiering, mapping, and opening-inventory instruments now all
-exist, but they hold no decisions: every census field is `UNKNOWN`, every domain is
-`UNDECIDED`, the mapping table is empty, and every custody scope is `UNKNOWN` — all
-pending Taylor's answers to the census.
+The census, tiering, mapping, and opening-inventory instruments all exist and the dry-run
+harness runs end to end, but the real records hold no decisions: every census field is
+`UNKNOWN`, every domain is `UNDECIDED`, the mapping table is empty, and every custody
+scope is `UNKNOWN` — all pending Taylor's answers to the census. The rehearsal that
+counts is the one run against a Taylor export, which has not arrived.

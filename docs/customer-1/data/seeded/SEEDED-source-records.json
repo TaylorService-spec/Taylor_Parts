@@ -1,0 +1,76 @@
+{
+  "banner": "SEEDED / SYNTHETIC — invented source rows, not a Taylor export. Deliberately dirty: every defect below exists to make the dry-run harness produce a known exception. No number here is a Taylor number.",
+  "records": [
+    {
+      "domain": "inventory",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "recordId": "INV-2",
+      "values": { "PART_NO": "SEED-002", "WHSE": "mesa", "QTY_ON_HAND": "12.5" }
+    },
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "recordId": "PART-1",
+      "values": {
+        "PART_NO": " SEED-001 ",
+        "DESCR": "  Seeded compressor  ",
+        "LIST_PRICE": "1,250.00",
+        "OBSOLETE_FLAG": "N"
+      }
+    },
+    {
+      "domain": "serviceHistory",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "recordId": "SVC-1",
+      "values": { "WO_NO": "W-1001" }
+    },
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "recordId": "PART-2",
+      "values": { "PART_NO": "SEED-002", "DESCR": "", "LIST_PRICE": "40.00", "OBSOLETE_FLAG": "N" }
+    },
+    {
+      "domain": "customers",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "recordId": "CUST-1",
+      "values": { "CUST_ID": "C-100", "CUST_NAME": "Seeded Diner", "TERMS_CODE": "NET30" }
+    },
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "recordId": "PART-3",
+      "values": {
+        "PART_NO": "SEED-003",
+        "DESCR": "Seeded gasket",
+        "LIST_PRICE": "n/a",
+        "OBSOLETE_FLAG": "Y",
+        "SUPERSEDED_BY": "SEED-004"
+      }
+    },
+    {
+      "domain": "inventory",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "recordId": "INV-1",
+      "values": { "PART_NO": "SEED-001", "WHSE": "phx", "QTY_ON_HAND": "7" }
+    },
+    {
+      "domain": "equipment",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "recordId": "EQ-9",
+      "values": { "SERIAL": "SN-9", "MODEL": "m-9" }
+    },
+    {
+      "domain": "customers",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "recordId": "CUST-1",
+      "values": { "CUST_ID": "C-101", "CUST_NAME": "Seeded Diner (dup key)", "TERMS_CODE": "NET30" }
+    },
+    {
+      "domain": "equipment",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "recordId": "EQ-1",
+      "values": { "SERIAL": " SN-1 ", "MODEL": "tf-200" }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "banner": "SEEDED / SYNTHETIC — not Taylor's tiering. Exercises the dry-run harness only.",
+  "status": "ACCEPTED",
+  "tiers": ["DAY_1", "HISTORICAL_REFERENCE", "NOT_MIGRATED"],
+  "domains": [
+    {
+      "domain": "parts",
+      "tier": "DAY_1",
+      "sourceSystemIds": ["SEEDED-PARTSDB"],
+      "rationale": "SEEDED — a parts catalog is assumed present on Day 1 so the harness has a DAY_1 domain to run.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "inventory",
+      "tier": "DAY_1",
+      "sourceSystemIds": ["SEEDED-PARTSDB"],
+      "rationale": "SEEDED — opening balances are assumed Day 1 so the harness exercises numeric transforms.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "customers",
+      "tier": "DAY_1",
+      "sourceSystemIds": ["SEEDED-SERVICE-XLS"],
+      "rationale": "SEEDED — a customer list is assumed Day 1 so the harness spans two source systems.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "equipment",
+      "tier": "HISTORICAL_REFERENCE",
+      "sourceSystemIds": ["SEEDED-SERVICE-XLS"],
+      "rationale": "SEEDED — exercises a domain that moves but is not Day 1.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "purchasing",
+      "tier": "NOT_MIGRATED",
+      "sourceSystemIds": [],
+      "rationale": "SEEDED — exercises a domain that does not move at all.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "serviceHistory",
+      "tier": "NOT_MIGRATED",
+      "sourceSystemIds": [],
+      "rationale": "SEEDED — exercises rejection of source records for a domain that does not move.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    }
+  ]
+}

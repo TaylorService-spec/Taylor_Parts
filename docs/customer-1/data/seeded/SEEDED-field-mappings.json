@@ -1,0 +1,128 @@
+{
+  "banner": "SEEDED / SYNTHETIC — not Taylor's mappings. Exercises the dry-run harness only.",
+  "status": "ACCEPTED",
+  "dispositions": ["MAPPED", "NOT_MIGRATED", "NO_TARGET", "UNRESOLVED"],
+  "domainsWithoutMappings": [],
+  "fields": [
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "PART_NO",
+      "disposition": "MAPPED",
+      "targetField": "parts.partNumber",
+      "transform": "trim",
+      "rationale": "SEEDED — identity of the part row.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "DESCR",
+      "disposition": "MAPPED",
+      "targetField": "parts.description",
+      "transform": "trim",
+      "rationale": "SEEDED — exercises a required field that a record can be missing.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "LIST_PRICE",
+      "disposition": "MAPPED",
+      "targetField": "parts.listPrice",
+      "transform": "money",
+      "rationale": "SEEDED — exercises a transform that can fail on real-world junk.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "parts",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "OBSOLETE_FLAG",
+      "disposition": "NOT_MIGRATED",
+      "targetField": null,
+      "transform": null,
+      "rationale": "SEEDED — exercises a field that is deliberately left behind rather than reported as unmapped.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "inventory",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "PART_NO",
+      "disposition": "MAPPED",
+      "targetField": "inventoryBalances.partNumber",
+      "transform": "trim",
+      "rationale": "SEEDED — the part a balance is held against.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "inventory",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "WHSE",
+      "disposition": "MAPPED",
+      "targetField": "inventoryBalances.locationCode",
+      "transform": "upper",
+      "rationale": "SEEDED — exercises a normalising transform.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "inventory",
+      "sourceSystemId": "SEEDED-PARTSDB",
+      "sourceField": "QTY_ON_HAND",
+      "disposition": "MAPPED",
+      "targetField": "inventoryBalances.quantityOnHand",
+      "transform": "integer",
+      "rationale": "SEEDED — exercises an integer transform.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "customers",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "sourceField": "CUST_ID",
+      "disposition": "MAPPED",
+      "targetField": "customers.externalId",
+      "transform": "trim",
+      "rationale": "SEEDED — identity of the customer row.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "customers",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "sourceField": "CUST_NAME",
+      "disposition": "MAPPED",
+      "targetField": "customers.name",
+      "transform": "trim",
+      "rationale": "SEEDED — exercises a second mapped field on the same row.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "customers",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "sourceField": "TERMS_CODE",
+      "disposition": "NO_TARGET",
+      "targetField": null,
+      "transform": null,
+      "rationale": "SEEDED — exercises a field nothing in the target holds.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "equipment",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "sourceField": "SERIAL",
+      "disposition": "MAPPED",
+      "targetField": "equipment.serialNumber",
+      "transform": "trim",
+      "rationale": "SEEDED — identity of the equipment row.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    },
+    {
+      "domain": "equipment",
+      "sourceSystemId": "SEEDED-SERVICE-XLS",
+      "sourceField": "MODEL",
+      "disposition": "MAPPED",
+      "targetField": "equipment.modelNumber",
+      "transform": "upper",
+      "rationale": "SEEDED — exercises a HISTORICAL_REFERENCE domain running through the same path as DAY_1.",
+      "taylorAcceptance": "SEEDED — not a Taylor acceptance"
+    }
+  ]
+}
