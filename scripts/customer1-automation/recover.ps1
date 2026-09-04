@@ -39,7 +39,8 @@ function Invoke-C1LaneRecovery {
         # finished here. Recovery restores the blockers the interrupted item
         # raised; without them the lane's wait state would be reconstructed from
         # nothing and the Owner's question would be silently dropped.
-        $BlockersDoc = $null
+        $BlockersDoc = $null,
+        [string]$MainRef = 'origin/main'
     )
 
     function New-RecoveryResult {
@@ -202,7 +203,7 @@ function Invoke-C1LaneRecovery {
             $trailing = $null
             if ($head -ne $marked) {
                 $trailing = Resolve-C1BranchAhead -Context $Context -Lane $Lane -WorktreePath $WorktreePath `
-                    -Branch $Branch -FromSha $marked -ToSha $head -ForbiddenPaths $ForbiddenPaths
+                    -Branch $Branch -FromSha $marked -ToSha $head -ForbiddenPaths $ForbiddenPaths -MainRef $MainRef
             }
 
             $msg = "Lane $($Lane.id): commit $($marked.Substring(0,8)) was already made and verifies. " +
@@ -320,9 +321,14 @@ function Invoke-C1LaneRecovery {
 
     # CASE C. Recover only what the repository establishes as valid lane work.
     $r = Resolve-C1BranchAhead -Context $Context -Lane $Lane -WorktreePath $WorktreePath -Branch $Branch `
-        -FromSha $lastKnown -ToSha $head -ForbiddenPaths $ForbiddenPaths
+        -FromSha $lastKnown -ToSha $head -ForbiddenPaths $ForbiddenPaths -MainRef $MainRef
     if ($r.blocked) {
         return (New-RecoveryResult 'FAILED_RECOVERY' $r.message @() -Blocked)
+    }
+    if ($r.PSObject.Properties['integrationOnly'] -and $r.integrationOnly) {
+        # Nothing was lost and nothing needs reconstructing; the branch simply
+        # carries upstream code the harness merged in.
+        return (New-RecoveryResult 'RECOVERED_INTEGRATION' $r.message @($r.recovered))
     }
     New-RecoveryResult 'RECOVERED_BRANCH_AHEAD' $r.message @($r.recovered)
 }
@@ -344,9 +350,20 @@ function Resolve-C1BranchAhead {
         [Parameter(Mandatory)][string]$Branch,
         [Parameter(Mandatory)][string]$FromSha,
         [Parameter(Mandatory)][string]$ToSha,
-        [string[]]$ForbiddenPaths = @()
+        [string[]]$ForbiddenPaths = @(),
+        [string]$MainRef = 'origin/main'
     )
-    $paths = @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha $FromSha -ToSha $ToSha)
+    # Judge LANE-AUTHORED commits only.
+    #
+    # A plain two-dot diff across an upstream merge reports everything main
+    # changed as though the lane had done it, so a lane that had merely
+    # reconciled with main failed its own ownership check. Upstream commits are
+    # excluded from the range, and integration merges contribute no paths.
+    $authored = @(Get-C1LaneAuthoredCommits -WorktreePath $WorktreePath -FromSha $FromSha -ToSha $ToSha -MainRef $MainRef)
+    $domain = @($authored | Where-Object { -not $_.isIntegration })
+    $integrations = @($authored | Where-Object { $_.isIntegration })
+    $paths = @($domain | ForEach-Object { @($_.paths) } | Where-Object { $_ } | Select-Object -Unique)
+
     $ruling = Test-C1PathsAcceptable -Paths $paths -OwnedPaths @($Lane.ownedPaths) -ForbiddenPaths $ForbiddenPaths
     if (-not $ruling.acceptable) {
         return [pscustomobject]@{
@@ -355,6 +372,42 @@ function Resolve-C1BranchAhead {
             message   = ("Lane $($Lane.id): commits between $($FromSha.Substring(0,8)) and $($ToSha.Substring(0,8)) " +
                          "change paths this lane may not own (forbidden: $($ruling.forbiddenPaths -join ', '); " +
                          "out-of-scope: $($ruling.unownedPaths -join ', ')). Branch preserved; lane stopped.")
+        }
+    }
+
+    if ($domain.Count -eq 0) {
+        # The branch moved, but not by lane work -- an upstream integration, or
+        # nothing this lane authored. There is no item to reconstruct and nothing
+        # is wrong.
+        #
+        # A receipt is still written, for one reason: it advances the lane's last
+        # verified SHA. Without it every subsequent start would re-discover the
+        # same merge and re-report it forever, and persisted state would never
+        # catch up to the branch.
+        $what = if ($integrations.Count -gt 0) {
+            "$($integrations.Count) upstream integration merge(s) ($(@($integrations | ForEach-Object { $_.sha.Substring(0,8) }) -join ', '))"
+        } else { 'no lane-authored commits' }
+
+        $ir = New-C1ItemReceipt -RunId 'recovered' -PassId 0 -Attempt 0 -Lane $Lane -Branch $Branch `
+            -ItemId "integration-$($Lane.id)-$($ToSha.Substring(0,8))"
+        $ir.workItem           = '(upstream integration, not lane work)'
+        $ir.purpose            = "Records that the branch advanced to $($ToSha.Substring(0,8)) by $what."
+        $ir.headShaBefore      = $FromSha
+        $ir.headShaAfter       = $ToSha
+        $ir.commitSha          = $ToSha
+        $ir.changedPaths       = @()
+        $ir.ownedPathCheck     = 'PASS'
+        $ir.forbiddenPathCheck = 'PASS'
+        $ir.result             = 'RECOVERED'
+        $ir.recovered          = 'MAIN_INTEGRATION'
+        $ir.completedAt        = Get-UtcStamp
+        Save-C1ItemReceipt -Context $Context -Receipt $ir | Out-Null
+
+        return [pscustomobject]@{
+            blocked         = $false
+            recovered       = @($ir)
+            integrationOnly = $true
+            message         = "Lane $($Lane.id): branch advanced by $what; no lane work to recover."
         }
     }
 

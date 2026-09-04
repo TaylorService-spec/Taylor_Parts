@@ -46,13 +46,23 @@ function Get-C1LaneCommits {
             -Arguments @('log', '-1', '--format=%s', $sha)).Output -join ''
         $body = (Invoke-Git -Directory $WorktreePath -AllowFail `
             -Arguments @('log', '-1', '--format=%B', $sha)).Output -join "`n"
+        # An integration merge is not lane work. Its first-parent diff is
+        # "everything main changed", harness-owned paths included, so treating it
+        # as pre-receipt lane work condemned the lane over the harness's own
+        # reconciliation. Flagged here; the caller excludes it.
+        $isIntegration = Test-C1IntegrationMerge -WorktreePath $WorktreePath -Sha $sha -MainRef $MainRef
+
         [pscustomobject]@{
             sha     = $sha
             subject = $subject
             # A commit the new harness made already carries its item id, so a
             # partially-migrated lane is not re-bootstrapped.
             itemId  = if ($body -match '(?m)^\s*C1-Item-Id:\s*(\S+)\s*$') { $Matches[1] } else { $null }
-            paths   = @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha "$sha^" -ToSha $sha)
+            isIntegration = $isIntegration
+            # Legible evidence only. Nothing depends on it: the merges that
+            # stranded lanes predate this marker entirely.
+            reconcileMarker = if ($body -match '(?m)^\s*C1-Reconcile-Main:\s*(\S+)\s*$') { $Matches[1] } else { $null }
+            paths   = if ($isIntegration) { @() } else { @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha "$sha^" -ToSha $sha) }
         }
     }
     @($out)
@@ -147,8 +157,16 @@ function Invoke-C1LegacyBootstrap {
         if ($r.itemId -match '^legacy-[A-G]-([0-9a-f]{8})$') { $covered["short:$($Matches[1])"] = $true }
     }
 
-    # A receipt-era commit carries its own item id and is not bootstrap's business.
-    $eligible = @($commits | Where-Object { -not $_.itemId })
+    # A receipt-era commit carries its own item id and is not bootstrap's
+    # business. Neither is an integration merge: it is upstream code arriving,
+    # not lane work, and reconstructing it as a legacy item would both invent an
+    # item that never existed and fail the ownership check on main's own files.
+    $eligible = @($commits | Where-Object { -not $_.itemId -and -not $_.isIntegration })
+    $integrations = @($commits | Where-Object { $_.isIntegration })
+    if ($integrations.Count -gt 0) {
+        Write-Step ("Lane $($Lane.id): skipping $($integrations.Count) upstream integration merge(s) -- " +
+                    "$(@($integrations | ForEach-Object { $_.sha.Substring(0,8) }) -join ', ')") 'INFO'
+    }
     $missing = @($eligible | Where-Object {
         -not ($covered.ContainsKey($_.sha) -or $covered.ContainsKey("short:$($_.sha.Substring(0,8))"))
     })
@@ -161,7 +179,11 @@ function Invoke-C1LegacyBootstrap {
 
     # Validate the whole branch first. Bootstrapping half a lane would leave a
     # completed-item list that is worse than none: confidently incomplete.
-    $allPaths = @($commits | ForEach-Object { @($_.paths) } | Where-Object { $_ } | Select-Object -Unique)
+    #
+    # Judged over LANE-AUTHORED commits only. Including an integration merge here
+    # meant every file main had ever touched was weighed against the lane's
+    # ownership, which no lane can pass.
+    $allPaths = @($eligible | ForEach-Object { @($_.paths) } | Where-Object { $_ } | Select-Object -Unique)
     $ruling = Test-C1PathsAcceptable -Paths $allPaths -OwnedPaths @($Lane.ownedPaths) -ForbiddenPaths $ForbiddenPaths
     if (-not $ruling.acceptable) {
         return (New-BootstrapResult 'FAILED_BOOTSTRAP' ("Lane $($Lane.id) has pre-receipt commits touching paths it may not own " +

@@ -59,6 +59,39 @@ param(
     [ValidateRange(0, 5)][int]$MaxTransientRetries = 2
 )
 
+# ---------------------------------------------------------------- HOST GUARD
+#
+# PowerShell 7+ only, checked BEFORE anything is dot-sourced, read, or written.
+#
+# invoke-lane.ps1 launches the worker through ProcessStartInfo.ArgumentList,
+# which does not exist in Windows PowerShell 5.1. Under 5.1 the run got all the
+# way through legacy bootstrap, reconciliation and a main merge before dying at
+# the process launch with "The property 'ArgumentList' cannot be found on this
+# object" -- persistent state mutated, no worker ever started. 5.1 also treats
+# native stderr differently, which stopped the regression suite on a harmless
+# git warning.
+#
+# Deliberately inline and dependency-free: it must run and report on the very
+# host it is rejecting, so it cannot rely on anything this repository defines.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $msg = @"
+STOP: this orchestrator requires PowerShell 7 or newer.
+
+  Detected: $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion) ($($PSVersionTable.PSVersion.Major).x)
+  Required: PowerShell 7.0+ (pwsh)
+
+Windows PowerShell 5.1 lacks ProcessStartInfo.ArgumentList, which is how the
+harness passes worker arguments without them being re-split, and it handles
+native-command stderr differently.
+
+Nothing has been read or written. Re-run with pwsh, for example:
+
+  pwsh -File $PSCommandPath
+"@
+    Write-Host $msg -ForegroundColor Red
+    throw 'STOP: unsupported PowerShell host (requires 7+).'
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -453,6 +486,21 @@ do {
             -OwnedPaths @($lane.ownedPaths) -ForbiddenPaths $laneForbidden `
             -MainRef $cfg.mainRef -Apply:(-not $DryRun)
         Write-Diag "lane $($lane.id) reconcile = $($reconcile.classification). $($reconcile.message)"
+
+        # Persist the reconcile point AS SOON AS THE MERGE LANDS, not at the end
+        # of the item.
+        #
+        # The merge is a real commit on the lane branch. Recording it only after
+        # the worker finished meant a crash in between left a branch that had
+        # moved and a state file that had never heard of it -- exactly the
+        # evidence gap this framework exists to close.
+        if ($reconcile.integrated -and -not $DryRun) {
+            $lane.lastReconciledMain = $reconcile.mainSha
+            Write-JsonFile $ctx.LanesFile $lanesDoc
+            $stateAdvanced = $true
+            Write-Diag "lane $($lane.id): persisted lastReconciledMain = $($reconcile.mainSha.Substring(0,8)) before worker launch."
+            Invoke-C1FaultPoint 'AFTER_RECONCILE_PERSIST'
+        }
 
         if ($reconcile.classification -eq 'AUTHORITY_COLLISION') {
             $blk = [pscustomobject]@{

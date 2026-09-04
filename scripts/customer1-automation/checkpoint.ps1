@@ -184,8 +184,12 @@ function Get-C1CompletedWorkSummary {
     # committed by an item that then hit an Owner blocker all exist on the branch
     # just as surely as work this harness watched being made. Telling a worker
     # otherwise is telling it to build the thing again.
+    # An upstream integration carries a commit but is not work anyone did in this
+    # lane. Listing it as "already completed" would be noise in the worker's
+    # prompt at best and misleading at worst.
     $done = @(Get-C1ItemReceipts -Context $Context -LaneId $LaneId |
-        Where-Object { $_.workItem -and ($_.commitSha -or $_.result -in @('DONE', 'PARTIAL', 'RECOVERED')) })
+        Where-Object { $_.workItem -and $_.recovered -ne 'MAIN_INTEGRATION' -and
+                       ($_.commitSha -or $_.result -in @('DONE', 'PARTIAL', 'RECOVERED')) })
 
     $titles = @($done | ForEach-Object { $_.workItem } | Select-Object -Unique)
     if ($titles.Count -gt $Max) { $titles = @($titles | Select-Object -Last $Max) }
@@ -381,6 +385,104 @@ function Find-C1MarkedCommit {
     $hit = @($r.Output | Where-Object { $_ -match '^[0-9a-f]{40}$' })
     if ($hit.Count -eq 0) { return $null }
     $hit[0]
+}
+
+$script:C1ReconcileMarkerPrefix = 'C1-Reconcile-Main:'
+
+function Get-C1ReconcileMarker {
+    param([Parameter(Mandatory)][string]$MainSha)
+    "$script:C1ReconcileMarkerPrefix $MainSha"
+}
+
+function Test-C1IntegrationMerge {
+    <#
+        Is this commit an integration of upstream INTO a lane, rather than lane
+        work?
+
+        It matters because such a merge's first-parent diff contains everything
+        main changed -- harness-owned paths included. Legacy bootstrap read one as
+        unauthorized pre-receipt lane work and would have blocked the lane
+        permanently over a merge the harness had just made itself.
+
+        Judged STRUCTURALLY, from the repository, on three facts:
+
+          1. it has more than one parent;
+          2. a non-first parent is an ancestor of the main ref, so it integrated
+             upstream rather than some unrelated branch;
+          3. its combined diff (`diff-tree --cc`) is EMPTY, meaning it took every
+             path cleanly from one side or the other and contributed nothing of
+             its own.
+
+        Fact 3 is what keeps real work visible. An "evil merge" carrying its own
+        edits has a non-empty combined diff and is NOT excluded, and neither is a
+        domain merge of a feature branch (fact 2). Work must never become
+        invisible merely because it arrived through a merge.
+
+        Structural rather than marker-based on purpose: the merges stranding lanes
+        today were made before any marker existed. New reconciliations are also
+        stamped with a C1-Reconcile-Main trailer, but only as legible evidence --
+        nothing depends on it.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)][string]$Sha,
+        [string]$MainRef = 'origin/main'
+    )
+    $parents = @((Invoke-Git -Directory $WorktreePath -AllowFail `
+        -Arguments @('rev-list', '--parents', '-n', '1', $Sha)).Output -split '\s+' | Where-Object { $_ })
+    if ($parents.Count -lt 3) { return $false }   # sha + at least two parents
+
+    $mergedIn = @($parents | Select-Object -Skip 2)
+    $fromUpstream = $false
+    foreach ($p in $mergedIn) {
+        if ((Invoke-Git -Directory $WorktreePath -AllowFail `
+                -Arguments @('merge-base', '--is-ancestor', $p, $MainRef)).ExitCode -eq 0) {
+            $fromUpstream = $true; break
+        }
+    }
+    if (-not $fromUpstream) { return $false }
+
+    # A clean integration shows no combined diff at all.
+    $cc = @((Invoke-Git -Directory $WorktreePath -AllowFail `
+        -Arguments @('diff-tree', '--cc', '--name-only', '--no-commit-id', $Sha)).Output |
+        Where-Object { $_ -and $_ -notmatch '^[0-9a-f]{40}$' })
+    ($cc.Count -eq 0)
+}
+
+function Get-C1LaneAuthoredCommits {
+    <#
+        Commits in a range that the LANE authored, oldest first, each classified.
+
+        Two exclusions matter:
+
+          - `--not <MainRef>` drops upstream commits. A two-dot range spanning a
+            merge otherwise sweeps in every commit main has made, and judging
+            those against a lane's ownership fails by construction.
+          - integration merges are FLAGGED, not silently dropped, so each caller
+            decides what to do with them.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)][string]$FromSha,
+        [Parameter(Mandatory)][string]$ToSha,
+        [string]$MainRef = 'origin/main'
+    )
+    $shas = @((Invoke-Git -Directory $WorktreePath -AllowFail `
+        -Arguments @('rev-list', '--reverse', "$FromSha..$ToSha", '--not', $MainRef)).Output |
+        Where-Object { $_ -match '^[0-9a-f]{40}$' })
+
+    $out = foreach ($sha in $shas) {
+        $isIntegration = Test-C1IntegrationMerge -WorktreePath $WorktreePath -Sha $sha -MainRef $MainRef
+        [pscustomobject]@{
+            sha           = $sha
+            subject       = (Invoke-Git -Directory $WorktreePath -AllowFail -Arguments @('log', '-1', '--format=%s', $sha)).Output -join ''
+            isIntegration = $isIntegration
+            # An integration merge's first-parent diff is "everything main did".
+            # That is never lane-authored change.
+            paths         = if ($isIntegration) { @() } else { @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha "$sha^" -ToSha $sha) }
+        }
+    }
+    @($out)
 }
 
 function Get-C1CommitPaths {
