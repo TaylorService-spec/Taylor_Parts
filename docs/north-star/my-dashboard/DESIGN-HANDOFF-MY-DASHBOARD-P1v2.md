@@ -11,6 +11,78 @@ same hover contract — into one dashboard family. Where it names a component it
 
 ---
 
+## 0-F. POST-ACCEPTANCE LIVE CORRECTIVE — 2026-09-04
+
+Appended to the closure history; the family stays CLOSED and is not reopened. Two items the Owner
+saw on the live Admin screen at `f05d3327`, after the persona corrective shipped.
+
+### 1. Team performance rendered the stored Work Order status — FIXED
+
+The tile read `WORK_IN_PROGRESS`. #1793 had corrected the technician card, so the same record
+read "In Progress" on one surface and its enum on another.
+
+The counts-by-status aggregate rendered `label={r.status}` directly. Now routed through the
+canonical `workOrderStatusLabel()` — no second map, no vocabulary of its own. The aggregate KEYS stay
+canonical stored values; only the words a person reads changed. Population, counting and terminal
+classification are untouched.
+
+**Why the repo-wide guard missed it.** `workOrderStatusLabelConformance` sweeps for raw status renders
+keyed on the variable name — `wo`, `workOrder`, `selectedWorkOrder`, `job`. This is an aggregate, so its
+row variable is `r`, and the sweep was structurally blind to it. Widening the sweep to any
+identifier was **measured and rejected**: it flags `truck.status`, `tech.status`, `account.status` and
+`part.status` — other governed vocabularies. A Work Order guard that fires on a truck is a guard
+that gets weakened. A named-site check was added instead, alongside a behavioural test that every
+value in the enum has words and none renders as its own token.
+
+Verified on the running screen: **zero underscored tokens anywhere on the Admin dashboard**, all
+thirteen status tiles reading as words at 1440 and 375.
+
+**One observation, not fixed.** A seeded work order carries status `ASSIGNED`, which the canonical
+vocabulary does not contain, so it passes through verbatim — exactly as `workOrderStatusLabel` is
+designed to behave, so a vocabulary gap stays visible instead of being relabelled into something
+reassuring. Whether `ASSIGNED` is a real status is a data/vocabulary question, not a presentation
+one, and adding it here would have been an authority change.
+
+### 2. Two opportunity rows read "Opportunity" — INVESTIGATED, NOT A DEFECT
+
+The governed projection (`opportunityReadService.ts`) carries `name` and `opportunityNumber` as
+independently nullable fields; the client reads exactly those two and the callable's payload is
+passed through untouched. **Nothing is dropped.** Those rows are records that genuinely carry
+neither identifier.
+
+Proved against all three cases rather than argued:
+
+| Source record | Renders |
+|---|---|
+| name + number | `Harbor Grill - two ice machines` |
+| number only | `OPP-2026-000001` |
+| neither (legacy) | `Opportunity` |
+
+No document id appears in any row. The id keys the row and builds the href — an identity and a URL,
+never prose.
+
+**A judgment call the Owner may overrule.** The rule prefers the NAME over the number where both
+exist. Flipping to number-first would make a well-named opportunity display as `OPP-2026-000002`,
+which is worse for the reader and a visible change to accepted rows with no defect behind it. The
+generic fallback was left exactly as it is: making legacy data look more complete than it is would
+be the actual defect.
+
+### Authority
+
+UNCHANGED. No Functions, Rules, indexes, capability, role, metric registry, goal or finance
+authority touched. One client render line, plus tests.
+
+### Carried forward, not addressed here
+
+`adminDecisions` composes on the raw `role === "admin"` while `listPrivilegedRoleRequests` is
+capability-gated — the same shape as the `receivingQueue`/`accountPortfolio` disjuncts corrected in
+#1793. In this run it denied for a fixture admin holding no governed role assignment, so it is very
+likely invisible in the live sandbox where an administrator holds the catalog by derivation. Named
+here rather than fixed: it is outside this package's two items, and guessing the required capability
+would be inventing authority.
+
+---
+
 ## 0-D. POST-CLOSURE PERSONA VERIFICATION AND POST-ACCEPTANCE CORRECTIVE — 2026-09-04
 
 **My Dashboard remains CLOSED / OWNER ACCEPTED.** This section records a verification sweep run
