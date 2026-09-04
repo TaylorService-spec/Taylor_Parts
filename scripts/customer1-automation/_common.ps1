@@ -84,7 +84,12 @@ function Assert-HarnessIdentity {
     #>
     param(
         [Parameter(Mandatory)][string]$Root,
-        [string]$ExpectedBranch = 'automation/customer1-orchestrator',
+        # A FAMILY, not one name. The guard's job is "this is a sanctioned
+        # harness worktree" -- not main, not a lane branch, not an arbitrary
+        # checkout. One hardcoded name was too narrow: the program needs both an
+        # orchestrator worktree and a separate clean controller, and git cannot
+        # check out one branch in two worktrees at once.
+        [string]$ExpectedBranchPattern = 'automation/customer1-*',
         [string]$ExpectedRemoteFragment = 'Taylor_Parts'
     )
 
@@ -94,8 +99,12 @@ function Assert-HarnessIdentity {
     }
 
     $branch = (Invoke-Git -Directory $Root -Arguments @('branch', '--show-current')).Output -join ''
-    if ($branch -ne $ExpectedBranch) {
-        throw "STOP: harness worktree is on branch '$branch', expected '$ExpectedBranch'."
+    if ($branch -notlike $ExpectedBranchPattern) {
+        throw "STOP: harness worktree is on branch '$branch', expected one matching '$ExpectedBranchPattern'."
+    }
+    # Belt-and-braces: never operate the harness directly on an integration branch.
+    if ($branch -in @('main', 'master')) {
+        throw "STOP: the harness must never run from branch '$branch'."
     }
 
     [pscustomobject]@{ Remote = $remote; Branch = $branch }
