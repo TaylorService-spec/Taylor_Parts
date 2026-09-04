@@ -1,0 +1,4 @@
+# Run reports are transient evidence, not repository state.
+# Commit one explicitly (git add -f) only when it is a receipt worth keeping.
+*
+!.gitignore
