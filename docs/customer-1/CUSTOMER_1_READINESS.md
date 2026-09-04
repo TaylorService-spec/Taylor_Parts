@@ -41,7 +41,7 @@ The product and security gates therefore remain `IN_PROGRESS`, not `OPEN`.
 
 ## Current Customer 1 blockers / cautions
 
-- **Day-1 scope is still not frozen.** Until each family is explicitly Day 1, post-Day-1, pilot, or excluded, the product gate cannot honestly be declared complete even when individual families close.
+- **Day-1 scope is proposed but not frozen.** [`scope/DAY_1_SCOPE_MATRIX.md`](./scope/DAY_1_SCOPE_MATRIX.md) now classifies every EOS family and states the proposed exclusions, but every row is a Verenward proposal. Until Taylor accepts the classifications and the exclusions, `C1-SCOPE-01` stays OPEN and the product gate cannot honestly be declared complete even when individual families close. Two rows are `UNCLASSIFIED` on purpose: whether Taylor operates Opportunity and Sales Agreement on Day 1 (S-1), and whether Reporting is a Day-1 commitment (S-2).
 - **Legacy stock-location runtime authority is retired, but legacy data remains:** PR #1763 removed the final client reader and Rules read arm. The remaining `stock_locations` documents are inert and await separately authorized disposition; they are not an active read/write dependency.
 - **Production governed-access adoption is sparse:** PR #1752 found zero principals exposed to the measured R-32 change, but also found production has only two RoleAssignments on one principal, no manager Roles, and no location scopes. That narrows one risk; it does not satisfy `C1-IDENTITY-01` or `C1-SECURITY-01`.
 - **Reporting production adoption is representable, not live:** PRs #1768 and #1779 separated eligibility from activation/adoption and made the approved production set representable without widening the non-production override mechanism. That is architecture/governance progress, not production verification.
@@ -76,7 +76,7 @@ The largest remaining gaps are not simply more screens. They are:
 
 The next work should be prioritized in this order unless a dependency forces a change:
 
-1. **C1-SCOPE-01** — freeze proposed Day-1 and exclusions.
+1. **C1-SCOPE-01** — get Taylor acceptance of the proposed classifications and exclusions in [`scope/DAY_1_SCOPE_MATRIX.md`](./scope/DAY_1_SCOPE_MATRIX.md), and answers to S-1 and S-2.
 2. **C1-DATA-01** — obtain real source-system/data facts and define migration tiers.
 3. **C1-ADMIN-01** — identify ordinary admin actions Taylor must perform without Verenward engineering.
 4. **C1-COMM-01 / C1-SUPPORT-01** — convert platform/support scope into sustainable pricing and operating boundaries.

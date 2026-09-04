@@ -4,7 +4,7 @@
   "product": "Enterprise Operations OS (EOS)",
   "provider": "Verenward LLC",
   "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
-  "lastReconciled": "2026-09-03",
+  "lastReconciled": "2026-09-04",
   "statusVocabulary": [
     "READY",
     "IN_PROGRESS",
@@ -31,7 +31,10 @@
       "launchCritical": true,
       "authority": "Verenward + Taylor",
       "closeWhen": "Every EOS family is classified as Day 1, post-Day-1, pilot, or excluded; explicit exclusions are accepted.",
-      "evidence": []
+      "evidence": [
+        "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md: proposed classification for every EOS family, derived from the North Star family ledger and the business capability register. Every row is a Verenward proposal; no row is a Taylor acceptance, so this gate remains OPEN.",
+        "Two classifications are deliberately left UNCLASSIFIED pending decisions that are not engineering's: S-1 (whether Taylor operates Opportunity and Sales Agreement on Day 1) and S-2 (whether Reporting is a Day-1 commitment)."
+      ]
     },
     {
       "id": "C1-COMM-01",
