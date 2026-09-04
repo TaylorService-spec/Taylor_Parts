@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "lastRunId": "run-20260904-142339",
+  "lastRunId": "run-20260904-145728",
   "runs": [
     {
       "runId": "run-20260904-125539",
@@ -104,6 +104,485 @@
       "productionActions": [],
       "exhausted": false,
       "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-142339\\diagnostic.log"
+    },
+    {
+      "runId": "run-20260904-142934",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T21:29:35Z",
+      "endedAt": "2026-09-04T21:35:05Z",
+      "mainShaStart": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "mainShaEnd": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "B"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-142934-p1-B-a0",
+          "runId": "run-20260904-142934",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "B",
+          "laneName": "Data / Inventory",
+          "gates": [
+            "C1-DATA-01",
+            "C1-INV-01"
+          ],
+          "workItem": "B-06: Export intake contract and CSV reader for C1-DATA-01",
+          "purpose": "When Taylor's export finally arrives, Day 1 depends on knowing within minutes whether the FILES are wrong or the DATA is wrong, and those are different conversations with different people.",
+          "branch": "customer1/b-work",
+          "mainSha": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+          "headShaBefore": "ceb22193e0874e61574499f5bc8b6359f3b9db62",
+          "headShaAfter": "dd86a86e64a516ab01b49dcc397493fed3386fac",
+          "commitSha": "dd86a86e64a516ab01b49dcc397493fed3386fac",
+          "changedPaths": [
+            "docs/customer-1/data/README.md",
+            "docs/customer-1/data/export-intake-contract.json",
+            "docs/customer-1/data/seeded/export/SEEDED-README.md",
+            "docs/customer-1/data/seeded/export/SEEDED-loose-export.csv",
+            "docs/customer-1/data/seeded/export/customers__SEEDED-SERVICE-XLS.csv",
+            "docs/customer-1/data/seeded/export/equipment__SEEDED-SERVICE-XLS.csv",
+            "docs/customer-1/data/seeded/export/inventory__SEEDED-PARTSDB.csv",
+            "docs/customer-1/data/seeded/export/parts__SEEDED-PARTSDB.csv",
+            "docs/customer-1/data/seeded/export/serviceHistory__SEEDED-SERVICE-XLS.csv",
+            "scripts/customer1-migration/read-export.mjs",
+            "scripts/customer1-migration/read-export.test.mjs"
+          ],
+          "proofCommands": [
+            "node --test scripts/customer1-migration/read-export.test.mjs",
+            "node --test scripts/customer1-migration/dry-run.test.mjs",
+            "node scripts/customer1-migration/read-export.mjs"
+          ],
+          "proofResults": [
+            {
+              "command": "node --test scripts/customer1-migration/read-export.test.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node --test( [A-Za-z0-9._/*@-]+)+$'",
+              "tail": "ok 13 - parseDelimited handles CRLF, quoted newlines, and a trailing blank line\n  ---\n  duration_ms: 0.1001\n  type: 'test'\n  ...\n# Subtest: intake output feeds the dry-run harness unchanged\nok 14 - intake output feeds the dry-run harness unchanged\n  ---\n  duration_ms: 3.0837\n  type: 'test'\n  ...\n1..14\n# tests 14\n# suites 0\n# pass 14\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 127.2776"
+            },
+            {
+              "command": "node --test scripts/customer1-migration/dry-run.test.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node --test( [A-Za-z0-9._/*@-]+)+$'",
+              "tail": "ok 6 - an unvalidated mapping chain refuses to run at all\n  ---\n  duration_ms: 0.23\n  type: 'test'\n  ...\n# Subtest: a mapping naming an unimplemented transform is an exception, not a crash\nok 7 - a mapping naming an unimplemented transform is an exception, not a crash\n  ---\n  duration_ms: 0.3246\n  type: 'test'\n  ...\n1..7\n# tests 7\n# suites 0\n# pass 7\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 108.4119"
+            },
+            {
+              "command": "node scripts/customer1-migration/read-export.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "          \"PART_NO\": \"SEED-002\",\n          \"DESCR\": \"\",\n          \"LIST_PRICE\": \"40.00\",\n          \"OBSOLETE_FLAG\": \"N\"\n        }\n      },\n      {\n        \"domain\": \"parts\",\n        \"sourceSystemId\": \"SEEDED-PARTSDB\",\n        \"recordId\": \"PART-3\",\n        \"values\": {\n          \"PART_NO\": \"SEED-003\",\n          \"DESCR\": \"Seeded gasket, 2\\\" bore\",\n          \"LIST_PRICE\": \"n/a\",\n          \"OBSOLETE_FLAG\": \"Y\"\n        }\n      }\n    ]\n  }\n}"
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_ADVANCE",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [],
+          "nextSuggestedItem": "B-07: a cutover delta reader — the same intake path run twice against a first and a second export of the same domain, reporting what changed, appeared, and disappeared between them, so the gap between the rehearsal export and the go-live export is a measured list rather than a hope. Alternatively B-07-alt: the C1-INV-01 opening-inventory count sheet generator, producing the per-scope sheets Taylor's counters physically fill in and the reconciliation reads back.",
+          "recovered": null,
+          "startedAt": "2026-09-04T21:29:45Z",
+          "completedAt": "2026-09-04T21:35:04Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-142934\\diagnostic.log"
+    },
+    {
+      "runId": "run-20260904-144437",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T21:44:38Z",
+      "endedAt": "2026-09-04T21:49:04Z",
+      "mainShaStart": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "mainShaEnd": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "C"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-144437-p1-C-a0",
+          "runId": "run-20260904-144437",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "C",
+          "laneName": "Admin / Identity / Security",
+          "gates": [
+            "C1-IDENTITY-01",
+            "C1-ADMIN-01",
+            "C1-SECURITY-01"
+          ],
+          "workItem": "C1-IDENTITY-01-B: committed roster reconciliation classifier (R1-R5 exception rules, executable and tested)",
+          "purpose": "When Taylor's roster is finally read under Owner authorization, the rules that decide what counts as an orphan account, a broken employee link, or live access on a terminated employee will already be written down and tested, instead of being invented during the run.",
+          "branch": "customer1/c-work",
+          "mainSha": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+          "headShaBefore": "a8e71d62f404661b41d76e6bf2679847f41ab41a",
+          "headShaAfter": "e9921614f1fa4e8d33afa974cea927a35bc34cbc",
+          "commitSha": "e9921614f1fa4e8d33afa974cea927a35bc34cbc",
+          "changedPaths": [
+            "docs/customer-1/identity/PRODUCTION_ROSTER_RECONCILIATION.md",
+            "docs/customer-1/identity/rosterReconciliation.mjs",
+            "docs/customer-1/identity/rosterReconciliation.test.mjs"
+          ],
+          "proofCommands": [
+            "node --test docs/customer-1/identity/rosterReconciliation.test.mjs",
+            "node docs/customer-1/identity/verify-roster-reconciliation.mjs"
+          ],
+          "proofResults": [
+            {
+              "command": "node --test docs/customer-1/identity/rosterReconciliation.test.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node --test( [A-Za-z0-9._/*@-]+)+$'",
+              "tail": "ok 9 - a terminated employee with live access is reported, and a fully closed one is not\n  ---\n  duration_ms: 0.5035\n  type: 'test'\n  ...\n# Subtest: legacy and governed location scopes that disagree are contradictory; absence is not\nok 10 - legacy and governed location scopes that disagree are contradictory; absence is not\n  ---\n  duration_ms: 0.3931\n  type: 'test'\n  ...\n1..10\n# tests 10\n# suites 0\n# pass 10\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 113.6337"
+            },
+            {
+              "command": "node docs/customer-1/identity/verify-roster-reconciliation.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "PASS -- roster reconciliation procedure re-measured (9 cited paths; R1 Auth-read gap, roleAssignments-only denominator, and securityRole non-authorization all still hold)."
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_OVERLAP",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [
+            "BLK-run-20260904-144437-p1-C-w1"
+          ],
+          "nextSuggestedItem": "C1-SECURITY-01-B: build the V3 effective-capability resolver as a pure, tested classifier under docs/customer-1/security/ -- given a principal's governed Roles, users.role and employees.operationalRoles/assignedWarehouseIds, compute the resolved capability set that LP3 needs, with the production read left as a named adapter residue.",
+          "recovered": null,
+          "startedAt": "2026-09-04T21:44:49Z",
+          "completedAt": "2026-09-04T21:49:02Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-144437\\diagnostic.log"
+    },
+    {
+      "runId": "run-20260904-144905",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T21:49:07Z",
+      "endedAt": "2026-09-04T21:51:24Z",
+      "mainShaStart": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "mainShaEnd": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "D"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-144905-p1-D-a0",
+          "runId": "run-20260904-144905",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "D",
+          "laneName": "Recovery / Continuity",
+          "gates": [
+            "C1-RECOVERY-01",
+            "C1-CONTINUITY-01"
+          ],
+          "workItem": "D-5 Outage paper forms pack (C1-CONTINUITY-01)",
+          "purpose": "During a Day-1 EOS interruption a technician needs a sheet in the truck with the right boxes on it, not a runbook telling them a sheet exists somewhere.",
+          "branch": "customer1/d-work",
+          "mainSha": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+          "headShaBefore": "ef1a1f40fa5982f00ba9933a82ed1585234f6404",
+          "headShaAfter": "1866430c32f8d7eaed03dbbf62a0389ccfbe8103",
+          "commitSha": "1866430c32f8d7eaed03dbbf62a0389ccfbe8103",
+          "changedPaths": [
+            "docs/customer-1/continuity/OUTAGE_PAPER_FORMS.md",
+            "scripts/customer1-continuity/check-forms.mjs"
+          ],
+          "proofCommands": [
+            "node scripts/customer1-continuity/check-forms.mjs"
+          ],
+          "proofResults": [
+            {
+              "command": "node scripts/customer1-continuity/check-forms.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "Outage paper forms check passed: 19 fields, 2 companions."
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_OVERLAP",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [],
+          "nextSuggestedItem": "D-6: a facilitator script for the Taylor fallback walk required by OUTAGE_FALLBACK_RUNBOOK.md §7 and POST_OUTAGE_RECONCILIATION.md §8 — the simulated-outage scenario, who plays which role, what paper it must produce, and the observation sheet that turns every question a walker asks into a recorded defect. It is the last piece Verenward can write before Taylor's participation and the pending Taylor decisions become the only remaining blockers on C1-CONTINUITY-01.",
+          "recovered": null,
+          "startedAt": "2026-09-04T21:49:18Z",
+          "completedAt": "2026-09-04T21:51:23Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-144905\\diagnostic.log"
+    },
+    {
+      "runId": "run-20260904-145126",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T21:51:27Z",
+      "endedAt": "2026-09-04T21:54:50Z",
+      "mainShaStart": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "mainShaEnd": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "E"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-145126-p1-E-a0",
+          "runId": "run-20260904-145126",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "E",
+          "laneName": "Commercial / Legal / Support",
+          "gates": [
+            "C1-COMM-01",
+            "C1-CONTRACT-01",
+            "C1-SUPPORT-01"
+          ],
+          "workItem": "E-03 Support operating model tied to real Day-1 workflows (C1-SUPPORT-01 objective 3)",
+          "purpose": "When something breaks on Taylor's first Tuesday live, this decides who they call, how badly it counts, who fixes it, and who pays - before anyone is arguing about it under pressure.",
+          "branch": "customer1/e-work",
+          "mainSha": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+          "headShaBefore": "0075b0c55712f3b43195509a12d405f347796985",
+          "headShaAfter": "56c19405caf25c2d5c451e72ad740a1e2ace3faf",
+          "commitSha": "56c19405caf25c2d5c451e72ad740a1e2ace3faf",
+          "changedPaths": [
+            "docs/customer-1/commercial/DECISION_REGISTER.md",
+            "docs/customer-1/support/SUPPORT_OPERATING_MODEL.md"
+          ],
+          "proofCommands": [
+            "node docs/customer-1/commercial/verify-draft-consistency.mjs",
+            "git diff --check"
+          ],
+          "proofResults": [
+            {
+              "command": "node docs/customer-1/commercial/verify-draft-consistency.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "4/4 drafts consistent"
+            },
+            {
+              "command": "git diff --check",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^git diff( --(check|name-only|stat|cached))*( [A-Za-z0-9._/^~@:=-]+)*$'",
+              "tail": "warning: in the working copy of 'docs/customer-1/commercial/DECISION_REGISTER.md', LF will be replaced by CRLF the next time Git touches it"
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_OVERLAP",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [
+            "BLK-run-20260904-145126-p1-E-w1",
+            "BLK-run-20260904-145126-p1-E-w2",
+            "BLK-run-20260904-145126-p1-E-w3"
+          ],
+          "nextSuggestedItem": "E-04: draft the agreement set for C1-CONTRACT-01 (subscription/service terms, implementation SOW, data/confidentiality, support terms sourced from the support model), each marked DRAFT - NOT LEGAL ADVICE, NOT EXECUTED, with its own open-issues list and new register rows.",
+          "recovered": null,
+          "startedAt": "2026-09-04T21:51:39Z",
+          "completedAt": "2026-09-04T21:54:48Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-145126\\diagnostic.log"
+    },
+    {
+      "runId": "run-20260904-145451",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T21:54:53Z",
+      "endedAt": "2026-09-04T21:57:26Z",
+      "mainShaStart": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "mainShaEnd": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "F"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-145451-p1-F-a0",
+          "runId": "run-20260904-145451",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "F",
+          "laneName": "Training",
+          "gates": [
+            "C1-TRAINING-01"
+          ],
+          "workItem": "F-03 — Day-1 close-condition register + matrix/guide revision-parity check",
+          "purpose": "Taylor's training evidence must name the exact deployed revision each guide was checked against, and must not let a full coverage table imply Day-1 readiness that administrator training, the support path, and production-behavior parity do not yet support.",
+          "branch": "customer1/f-work",
+          "mainSha": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+          "headShaBefore": "be928ce7ab51b923f8a58e136ea97aca2223b921",
+          "headShaAfter": "4616202ccc0039b7a4893be131ee925795552828",
+          "commitSha": "4616202ccc0039b7a4893be131ee925795552828",
+          "changedPaths": [
+            "docs/customer-1/training/DAY_1_TRAINING_MATRIX.md",
+            "docs/customer-1/training/verify-training-index.mjs"
+          ],
+          "proofCommands": [
+            "node docs/customer-1/training/verify-training-index.mjs"
+          ],
+          "proofResults": [
+            {
+              "command": "node docs/customer-1/training/verify-training-index.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "OK: 7 guide rows checked, all present and truthfully statused\nOK: 0 deployment close record(s) checked"
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_OVERLAP",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [],
+          "nextSuggestedItem": "Write docs/training/TAYLOR_EOS_ADMINISTRATOR.md against the deployed sandbox admin surfaces (Administration → Employees, roles, capabilities, locations), stating its verification basis plainly; that is condition 3's writable half and the largest MISSING row.",
+          "recovered": null,
+          "startedAt": "2026-09-04T21:55:05Z",
+          "completedAt": "2026-09-04T21:57:25Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-145451\\diagnostic.log"
+    },
+    {
+      "runId": "run-20260904-145728",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T21:57:29Z",
+      "endedAt": "2026-09-04T21:59:25Z",
+      "mainShaStart": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "mainShaEnd": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "G"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-145728-p1-G-a0",
+          "runId": "run-20260904-145728",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "G",
+          "laneName": "Cutover / Launch",
+          "gates": [
+            "C1-CUTOVER-01",
+            "C1-OWNER-01"
+          ],
+          "workItem": "G-3: Non-destructive cutover rehearsal plan with per-step rehearsability classification",
+          "purpose": "It tells Taylor and the Owner, before launch day, exactly which cutover steps have actually been practised and which ones will be attempted for the first time in production.",
+          "branch": "customer1/g-work",
+          "mainSha": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+          "headShaBefore": "137c63e521311ade17b5d2d27fcc0c08b3a67dc0",
+          "headShaAfter": "5a99184cb108f4cae288351407b8f41562ba01a2",
+          "commitSha": "5a99184cb108f4cae288351407b8f41562ba01a2",
+          "changedPaths": [
+            "docs/customer-1/cutover/REHEARSAL_PLAN.md",
+            "docs/customer-1/cutover/RUNBOOK.md",
+            "docs/customer-1/cutover/rehearsal-check.mjs"
+          ],
+          "proofCommands": [
+            "node docs/customer-1/cutover/rehearsal-check.mjs",
+            "node docs/customer-1/cutover/runbook-check.mjs"
+          ],
+          "proofResults": [
+            {
+              "command": "node docs/customer-1/cutover/rehearsal-check.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "rehearsal plan OK: 15 steps classified (REHEARSABLE 3, PARTIAL 8, NOT_REHEARSABLE 4)"
+            },
+            {
+              "command": "node docs/customer-1/cutover/runbook-check.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "runbook OK: 15 steps, all four fields present, 13 undesignated-role markers"
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_OVERLAP",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [
+            "BLK-run-20260904-145728-p1-G-w1"
+          ],
+          "nextSuggestedItem": "G-4: first-hour smoke-test plan referenced by G-STEP-11, with per-test business observable and pass criterion, checked for coverage of the Day-1 scope families.",
+          "recovered": null,
+          "startedAt": "2026-09-04T21:57:42Z",
+          "completedAt": "2026-09-04T21:59:23Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-145728\\diagnostic.log"
     }
   ]
 }

@@ -209,7 +209,7 @@
       "name": "Data / Inventory",
       "priority": 20,
       "enabled": true,
-      "state": "READY",
+      "state": "PR_READY",
       "charter": "docs/customer-1/automation/lanes/B-data-inventory.md",
       "gates": [
         "C1-DATA-01",
@@ -231,11 +231,11 @@
         "Accept physical opening inventory on behalf of Taylor."
       ],
       "dependencies": [],
-      "currentWorkItem": "B-05 Migration dry-run harness and deterministic exception report for C1-DATA-01",
+      "currentWorkItem": "B-06: Export intake contract and CSV reader for C1-DATA-01",
       "branchPrefix": "customer1/b-",
       "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
-      "lastRun": "run-20260904-125539",
-      "lastResult": null,
+      "lastRun": "run-20260904-142934",
+      "lastResult": "DONE",
       "noProgressInRun": null
     },
     {
@@ -243,7 +243,7 @@
       "name": "Admin / Identity / Security",
       "priority": 30,
       "enabled": true,
-      "state": "READY",
+      "state": "PR_READY",
       "charter": "docs/customer-1/automation/lanes/C-admin-security.md",
       "gates": [
         "C1-IDENTITY-01",
@@ -269,18 +269,19 @@
         "Weaken fail-closed behavior."
       ],
       "dependencies": [],
-      "currentWorkItem": null,
+      "currentWorkItem": "C1-IDENTITY-01-B: committed roster reconciliation classifier (R1-R5 exception rules, executable and tested)",
       "branchPrefix": "customer1/c-",
-      "lastReconciledMain": null,
-      "lastRun": null,
-      "lastResult": null
+      "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "lastRun": "run-20260904-144437",
+      "lastResult": "DONE",
+      "noProgressInRun": null
     },
     {
       "id": "D",
       "name": "Recovery / Continuity",
       "priority": 40,
       "enabled": true,
-      "state": "READY",
+      "state": "PR_READY",
       "charter": "docs/customer-1/automation/lanes/D-recovery-continuity.md",
       "gates": [
         "C1-RECOVERY-01",
@@ -300,18 +301,19 @@
         "Perform a destructive production restore automatically."
       ],
       "dependencies": [],
-      "currentWorkItem": null,
+      "currentWorkItem": "D-5 Outage paper forms pack (C1-CONTINUITY-01)",
       "branchPrefix": "customer1/d-",
-      "lastReconciledMain": null,
-      "lastRun": null,
-      "lastResult": null
+      "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "lastRun": "run-20260904-144905",
+      "lastResult": "DONE",
+      "noProgressInRun": null
     },
     {
       "id": "E",
       "name": "Commercial / Legal / Support",
       "priority": 50,
       "enabled": true,
-      "state": "READY",
+      "state": "PR_READY",
       "charter": "docs/customer-1/automation/lanes/E-commercial-support.md",
       "gates": [
         "C1-COMM-01",
@@ -335,18 +337,19 @@
         "Sign or approve anything."
       ],
       "dependencies": [],
-      "currentWorkItem": null,
+      "currentWorkItem": "E-03 Support operating model tied to real Day-1 workflows (C1-SUPPORT-01 objective 3)",
       "branchPrefix": "customer1/e-",
-      "lastReconciledMain": null,
-      "lastRun": null,
-      "lastResult": null
+      "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "lastRun": "run-20260904-145126",
+      "lastResult": "DONE",
+      "noProgressInRun": null
     },
     {
       "id": "F",
       "name": "Training",
       "priority": 60,
       "enabled": true,
-      "state": "READY",
+      "state": "PR_READY",
       "charter": "docs/customer-1/automation/lanes/F-training.md",
       "gates": [
         "C1-TRAINING-01"
@@ -366,18 +369,19 @@
         "Close a deployment as trained without live verification or a verified no-user-impact finding."
       ],
       "dependencies": [],
-      "currentWorkItem": null,
+      "currentWorkItem": "F-03 — Day-1 close-condition register + matrix/guide revision-parity check",
       "branchPrefix": "customer1/f-",
-      "lastReconciledMain": null,
-      "lastRun": null,
-      "lastResult": null
+      "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "lastRun": "run-20260904-145451",
+      "lastResult": "DONE",
+      "noProgressInRun": null
     },
     {
       "id": "G",
       "name": "Cutover / Launch",
       "priority": 70,
       "enabled": true,
-      "state": "READY",
+      "state": "PR_READY",
       "charter": "docs/customer-1/automation/lanes/G-cutover.md",
       "gates": [
         "C1-CUTOVER-01",
@@ -399,11 +403,12 @@
         "Perform any destructive customer action."
       ],
       "dependencies": [],
-      "currentWorkItem": null,
+      "currentWorkItem": "G-3: Non-destructive cutover rehearsal plan with per-step rehearsability classification",
       "branchPrefix": "customer1/g-",
-      "lastReconciledMain": null,
-      "lastRun": null,
-      "lastResult": null
+      "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
+      "lastRun": "run-20260904-145728",
+      "lastResult": "DONE",
+      "noProgressInRun": null
     }
   ]
 }

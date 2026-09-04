@@ -29,6 +29,71 @@
       "fingerprint": "B|governance|origin/main moved a governed authority path. how should lane b reconcile? main moved a governed authority path: docs/customer-1/automation/program.md, docs/customer-1/automation/lanes/b-data-inventory.md, scripts/customer1-automation/run-program.ps1, scripts/customer1-automation/test-framework.ps1. automation must not reconcile this.|lane b branch integration.",
       "resolvedAt": "2026-09-04T21:29:30.7140211Z",
       "resolution": "OWNER AUTHORIZED exact main f84bd955b2e79520a3acb00828292e8d78925a3b. Delta proved limited to reviewed PR #1802 and PR #1803. No broader governed-path or production authorization granted."
+    },
+    {
+      "id": "BLK-run-20260904-144437-p1-C-w1",
+      "lane": "C",
+      "workItem": "C1-IDENTITY-01-B: committed roster reconciliation classifier (R1-R5 exception rules, executable and tested)",
+      "category": "GOVERNANCE",
+      "question": "May lane C place the read adapter for this classifier (Firebase Auth enumeration plus the four collection reads, read-only and --projectId-pinned) in functions/scripts/, or must a lane that owns that path build it?",
+      "whyAutomationCannotDecide": "functions/scripts/ is outside this lane's owned paths and the harness rejects changes there; the charter permits outside-path implementation only when an existing ruling names it, and no such ruling exists for this instrument.",
+      "blockingScope": "R1 and therefore the entire roster denominator; every C1-IDENTITY-01 reconciliation step and the LP1/LP5 least-privilege checks that join onto it.",
+      "remainingExecutableWork": "The C1-SECURITY-01 V3 effective-capability resolver and V6 cross-company denial classifier have the same pure-classifier shape and can be built inside docs/customer-1/security/** without this answer.",
+      "createdAt": "2026-09-04T21:49:02Z",
+      "status": "OPEN",
+      "fingerprint": "C|governance|may lane c place the read adapter for this classifier (firebase auth enumeration plus the four collection reads, read-only and --projectid-pinned) in functions/scripts/, or must a lane that owns that path build it?|r1 and therefore the entire roster denominator; every c1-identity-01 reconciliation step and the lp1/lp5 least-privilege checks that join onto it."
+    },
+    {
+      "id": "BLK-run-20260904-145126-p1-E-w1",
+      "lane": "E",
+      "workItem": "E-03 Support operating model tied to real Day-1 workflows (C1-SUPPORT-01 objective 3)",
+      "category": "OWNER",
+      "question": "CD-13/CD-28/CD-29: what response times, business-hours window, and unavailability coverage will Verenward commit to contractually, given a single Level 1/2 responder?",
+      "whyAutomationCannotDecide": "It is a commitment of the Owner's own labor and availability, priced against a loaded rate (CD-01) the Owner has not set.",
+      "blockingScope": "Every number in section 3 of the support model, worksheet W-3 support pricing, and the support terms in C1-CONTRACT-01.",
+      "remainingExecutableWork": "Draft support terms and the SOW structure around the undecided numbers, and draft the agreement set.",
+      "createdAt": "2026-09-04T21:54:48Z",
+      "status": "OPEN",
+      "fingerprint": "E|owner|cd-13/cd-28/cd-29: what response times, business-hours window, and unavailability coverage will verenward commit to contractually, given a single level 1/2 responder?|every number in section 3 of the support model, worksheet w-3 support pricing, and the support terms in c1-contract-01."
+    },
+    {
+      "id": "BLK-run-20260904-145126-p1-E-w2",
+      "lane": "E",
+      "workItem": "E-03 Support operating model tied to real Day-1 workflows (C1-SUPPORT-01 objective 3)",
+      "category": "TAYLOR",
+      "question": "CD-26/CD-31: who at Taylor may file, escalate and accept a resolution, and does Taylor have an IT function to own devices, network, printers, email and identity?",
+      "whyAutomationCannotDecide": "These are facts about Taylor's organization; inventing them would fabricate a customer fact.",
+      "blockingScope": "Intake, escalation, and the entire third-party IT responsibility boundary in section 6.",
+      "remainingExecutableWork": "The model already states the proposal for Taylor to accept or amend; drafting continues on agreements.",
+      "createdAt": "2026-09-04T21:54:48Z",
+      "status": "OPEN",
+      "fingerprint": "E|taylor|cd-26/cd-31: who at taylor may file, escalate and accept a resolution, and does taylor have an it function to own devices, network, printers, email and identity?|intake, escalation, and the entire third-party it responsibility boundary in section 6."
+    },
+    {
+      "id": "BLK-run-20260904-145126-p1-E-w3",
+      "lane": "E",
+      "workItem": "E-03 Support operating model tied to real Day-1 workflows (C1-SUPPORT-01 objective 3)",
+      "category": "GOVERNANCE",
+      "question": "CD-27/CD-30: severity definitions cannot be accepted while Day-1 scope is unfrozen (C1-SCOPE-01), and the bug-vs-enhancement test has no durable acceptance baseline to point at.",
+      "whyAutomationCannotDecide": "Depends on Lane A freezing Day-1 scope and on an acceptance record this lane does not own.",
+      "blockingScope": "Section 2 examples and the section 5 classification test.",
+      "remainingExecutableWork": "The model is written to be reissued against a frozen scope; nothing else waits on it.",
+      "createdAt": "2026-09-04T21:54:48Z",
+      "status": "OPEN",
+      "fingerprint": "E|governance|cd-27/cd-30: severity definitions cannot be accepted while day-1 scope is unfrozen (c1-scope-01), and the bug-vs-enhancement test has no durable acceptance baseline to point at.|section 2 examples and the section 5 classification test."
+    },
+    {
+      "id": "BLK-run-20260904-145728-p1-G-w1",
+      "lane": "G",
+      "workItem": "G-3: Non-destructive cutover rehearsal plan with per-step rehearsability classification",
+      "category": "TAYLOR",
+      "question": "Which named Taylor individuals hold the cutover lead, inventory authority, EOS administrator, and source-system owner roles?",
+      "whyAutomationCannotDecide": "These are Taylor staffing designations; naming an individual would be inventing a Taylor fact.",
+      "blockingScope": "Rehearsing G-STEP-03, G-STEP-08, G-STEP-10, and G-STEP-14 with their real owners.",
+      "remainingExecutableWork": "The smoke-test plan, fallback plan, and authorization package index can all be drafted without these designations.",
+      "createdAt": "2026-09-04T21:59:23Z",
+      "status": "OPEN",
+      "fingerprint": "G|taylor|which named taylor individuals hold the cutover lead, inventory authority, eos administrator, and source-system owner roles?|rehearsing g-step-03, g-step-08, g-step-10, and g-step-14 with their real owners."
     }
   ]
 }
