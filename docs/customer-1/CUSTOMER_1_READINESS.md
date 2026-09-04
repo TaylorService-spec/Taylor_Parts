@@ -41,7 +41,7 @@ The product and security gates therefore remain `IN_PROGRESS`, not `OPEN`.
 
 ## Current Customer 1 blockers / cautions
 
-- **Day-1 scope is still not frozen.** Until each family is explicitly Day 1, post-Day-1, pilot, or excluded, the product gate cannot honestly be declared complete even when individual families close.
+- **Day-1 scope is still not frozen.** Until each family is explicitly Day 1, post-Day-1, pilot, or excluded, the product gate cannot honestly be declared complete even when individual families close. A **proposed** classification for the whole family universe now exists at [`scope/DAY_1_SCOPE_MATRIX.md`](./scope/DAY_1_SCOPE_MATRIX.md) — 14 rows proposed Day 1, 4 left undetermined pending Taylor/Owner decisions. Proposals are not acceptances; `C1-SCOPE-01` stays `OPEN` until Taylor and Verenward accept them.
 - **Legacy stock-location runtime authority is retired, but legacy data remains:** PR #1763 removed the final client reader and Rules read arm. The remaining `stock_locations` documents are inert and await separately authorized disposition; they are not an active read/write dependency.
 - **Production governed-access adoption is sparse:** PR #1752 found zero principals exposed to the measured R-32 change, but also found production has only two RoleAssignments on one principal, no manager Roles, and no location scopes. That narrows one risk; it does not satisfy `C1-IDENTITY-01` or `C1-SECURITY-01`.
 - **Reporting production adoption is representable, not live:** PRs #1768 and #1779 separated eligibility from activation/adoption and made the approved production set representable without widening the non-production override mechanism. That is architecture/governance progress, not production verification.

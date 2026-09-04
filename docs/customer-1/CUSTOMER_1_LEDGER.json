@@ -4,7 +4,7 @@
   "product": "Enterprise Operations OS (EOS)",
   "provider": "Verenward LLC",
   "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
-  "lastReconciled": "2026-09-03",
+  "lastReconciled": "2026-09-04",
   "statusVocabulary": [
     "READY",
     "IN_PROGRESS",
@@ -31,7 +31,11 @@
       "launchCritical": true,
       "authority": "Verenward + Taylor",
       "closeWhen": "Every EOS family is classified as Day 1, post-Day-1, pilot, or excluded; explicit exclusions are accepted.",
-      "evidence": []
+      "evidence": [
+        "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md — Verenward-PROPOSED classification for all 18 rows of the family universe (12 numbered North Star page families plus 4b and Dispatch & Scheduling, plus 5 operational areas that Customer 1 evidence already depends on but that hold no numbered family row). 14 proposed DAY_1, 4 UNDETERMINED. Proposals are not acceptances: this gate stays OPEN until Taylor and Verenward accept a classification for every row and accept the exclusions.",
+        "Four rows are deliberately unclassified pending decisions outside Verenward engineering: Opportunity (families 4/4b) and Sales Agreement (family 5) on BLK-canary-A-1; Reporting on BLK-canary-A-2; Financials/AR on BLK-A-3, which asks whether EOS or Taylor's existing accounting system is the Day-1 authority for money.",
+        "Verified by docs/customer-1/scope/verify-scope-matrix.mjs."
+      ]
     },
     {
       "id": "C1-COMM-01",
