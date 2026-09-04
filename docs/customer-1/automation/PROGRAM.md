@@ -24,12 +24,32 @@ gate state. This orchestrator reads that ledger; it does not replace it.
 
 ## Execution model
 
-`MAX_CONCURRENT_CLAUDE = 1`.
+**PowerShell is the supervisor. Claude is a bounded worker.** `MAX_CONCURRENT_CLAUDE = 1`.
 
-The orchestrator rotates through lanes. Each rotation selects **one** bounded
-work item, runs **one** bounded non-interactive `claude -p` session against an
-isolated git worktree, independently verifies what actually changed on disk,
-records the result, reconciles `origin/main`, and moves to the next item.
+The orchestrator rotates through lanes. Each rotation recovers any interrupted
+state, selects **one** bounded work item, runs **one** bounded non-interactive
+`claude -p` session against an isolated git worktree, independently verifies
+what actually changed on disk, **commits the verified work itself**,
+checkpoints the item durably, reconciles `origin/main`, and moves on.
+
+### The harness owns commits
+
+The worker edits files inside its owned paths, writes a result receipt, and
+stops. It holds **no git write permission at all** — no `git add`, no
+`git commit` — and `invoke-lane.ps1` refuses to start a session if such a
+permission ever reappears in `config.claudeAllowedTools`.
+
+The harness inspects the real diff, checks every path against the lane's
+ownership and the forbidden set, runs the approved proofs, and only then stages
+and commits. This is strictly safer than letting the worker commit: the gate
+runs **before** the commit exists, not after. An attempt to touch a governed
+path halts the program even though nothing was committed — the attempt itself
+is the security event.
+
+### One stable branch per lane
+
+Lane `X` always works on `customer1/<x>-work`, and items accumulate on that one
+branch. A fresh branch per item made every item redo the previous item's work.
 
 Program knowledge lives in repository state files, not in one long Claude
 conversation:
@@ -39,11 +59,39 @@ conversation:
 | `lanes.json` | Lane registry, per-lane state, ownership, config |
 | `run-state.json` | Run history: run IDs, SHAs, items attempted, results |
 | `blockers.json` | Open questions that automation is not permitted to answer |
+| `items/<itemId>.json` | One durable receipt per bounded work item |
+| `pending-transaction.json` | Write-ahead receipt; present only mid-commit |
 | `lanes/*.md` | Per-lane charter handed to the worker as its context |
-| `reports/` | Dated run reports |
+| `reports/` | Dated run reports and the durable diagnostic log |
 
-A worker session receives its lane charter, the relevant gate text, and the
-prior state for that lane. It does not re-census the repository each time.
+A worker session receives its lane charter, the relevant gate text, the list of
+items this lane has **already completed**, and the last suggested next step. It
+does not receive a growing transcript, and it does not re-census the repository.
+
+## Durability and recovery
+
+State is persisted **after every bounded item**, never batched to the end of a
+sweep. All state writes are atomic: serialize fully, write a sibling temp file,
+then replace in one operation. A half-written file that still parses is worse
+than no file at all, because recovery would trust it.
+
+One interruption window is genuinely ambiguous — verification passed, the commit
+may or may not exist, the checkpoint is not yet written. A write-ahead
+`pending-transaction.json` covers it, and every harness commit carries a
+`C1-Item-Id:` trailer so "did my commit land?" is a git question with a
+deterministic answer rather than a guess from commit prose.
+
+**Every live execution recovers before it selects new work.** Four cases:
+
+| Situation | Action |
+| --- | --- |
+| Pending open, branch head unchanged | The commit never happened. Re-verify the tree under the same ownership rule and finish the transaction, or preserve it and block. Never claim completion. |
+| Pending open, marked commit present | The commit landed, the checkpoint did not. Inspect the commit independently and finalize the receipt. **Do not rerun Claude.** |
+| No pending, branch ahead of persisted head | Recover only what the repository itself establishes. Commit prose and Claude narrative prove nothing. |
+| Persisted head not an ancestor of the branch | Abnormal. Reset nothing, stop that lane, let the other six run. |
+
+Ambiguity is never resolved by guessing. An unrecoverable lane records a blocker
+and stops; the rest of the program continues.
 
 ## `origin/main` is authoritative
 
@@ -102,7 +150,8 @@ directory.
   and the state files, and no lane implementation work.
 - A worktree containing unmerged work is never deleted.
 
-Lane branches are named `customer1/<lane-letter>-<slug>`.
+Lane branches are named `customer1/<lane-letter>-work` — **one stable branch per
+lane, for the life of the program.**
 
 Because every worktree shares one `.git` object store, two lane sessions must
 never run concurrently. `MAX_CONCURRENT_CLAUDE = 1` is a correctness
@@ -115,7 +164,13 @@ The harness shells out to the installed Claude Code CLI
 any other paid model, or `--dangerously-skip-permissions`.
 
 The prompt is delivered on stdin. The harness captures stdout, stderr, and the
-process exit code to `reports/logs/<runId>/`.
+process exit code to `reports/logs/<runId>/`, unfiltered.
+
+The process is started through `ProcessStartInfo.ArgumentList`, which applies
+the real Windows argument-escaping rules per element, so one element is always
+one argv token. `Start-Process` joins its argument list with spaces and lets the
+child re-parse, which split an allowed-tool rule such as `Bash(git status:*)`
+into two tokens and made the CLI reject the fragment.
 
 **Claude narrative output is not proof.** After every session the harness
 independently checks:
@@ -215,32 +270,59 @@ headless configuration visibility.
 `run-program.ps1` performs, in order:
 
 1. verify repository and worktree identity
-2. `git fetch origin`
-3. resolve current `origin/main`
-4. load `lanes.json`
-5. load `blockers.json`
-6. determine executable lanes
-7. apply dependency ordering
-8. apply priority ordering
-9. select one bounded work item
-10. reconcile that lane with current `origin/main`
-11. invoke exactly one Claude worker
-12. capture process results
-13. independently verify actual repository changes
-14. run declared targeted proofs
-15. record the lane result
-16. update persistent state
+2. open the durable diagnostic log
+3. `git fetch origin`, resolve current `origin/main`
+4. load `lanes.json`, `blockers.json`, `run-state.json`, the ledger
+5. **startup recovery for every lane, before any work is selected**
+6. determine executable lanes; apply dependency then priority ordering
+7. reconcile that lane with current `origin/main`
+8. invoke exactly one Claude worker (with bounded transient retry)
+9. capture process results, stdout and stderr in full
+10. check every dirty path against ownership and the forbidden set
+11. run the declared targeted proofs — **before** committing
+12. persist the write-ahead pending transaction
+13. stage and commit the verified work, with an item marker
+14. independently verify the committed result
+15. **checkpoint the item receipt, then clear the pending transaction**
+16. update lane and blocker state
 17. re-fetch and reconcile `origin/main` before the next item
 18. continue around blockers
-19. generate the consolidated report
+19. print the end-of-pass Customer 1 board
+20. repeat the pass while safe work remains (`-UntilExhausted`)
+21. generate the consolidated report
+
+### Safe-work exhaustion
+
+Completion is **not** a cycle count, elapsed time, `PR_READY`, `-MaxItems`, or a
+lane saying `DONE` once. `SAFE_WORK_EXHAUSTED` may be declared only after a
+complete A–G pass in which zero new verified commits were produced, zero new
+executable bounded items were found, and zero retryable transient failures
+remain.
+
+It means automation has nothing further it may safely do. It does **not** mean
+production ready, production authorized, Owner accepted, Taylor approved, or
+deploy allowed.
+
+### Transient retry
+
+A worker that times out, dies, or produces no result receipt is retried: the
+initial attempt plus at most two retries, with short bounded backoff. After
+that the lane records `FAILED_TECHNICAL`, keeps all prior verified work, and the
+other lanes continue.
+
+Security, governance, ownership and proof-policy failures are **never** retried.
+Repeating a forbidden action is not a recovery strategy.
 
 ### Parameters
 
 | Parameter | Effect |
 | --- | --- |
-| `-DryRun` | Invoke no Claude process, change no implementation file, make no commit or push. Report what would run next. |
-| `-MaxItems <int>` | Execute at most this many bounded work items. Default 1. |
+| `-DryRun` | Invoke no Claude process, change no implementation file, make no commit or push, and write **no persistent state**. Report what would run next. |
+| `-MaxItems <int>` | Execute at most this many bounded work items in a single pass. Default 1. |
 | `-LaneId <A..G>` | Restrict selection to one lane. |
+| `-UntilExhausted` | Native continuous mode: repeat complete A–G passes until safe work is exhausted. Replaces the external `cycle.sh` / `nohup` / `tail` / `grep` loop entirely. |
+| `-MaxPasses <int>` | Absolute safety ceiling on continuous mode. Not a completion criterion. |
+| `-MaxTransientRetries <int>` | Retries after the initial attempt. Default 2. |
 | `-Report` | Generate the run report at the end (default on for non-dry runs). |
 
 ### Work item derivation
@@ -326,6 +408,31 @@ Claude capacity is the binding constraint: one bounded item per invocation,
 minimal per-invocation context, persisted discoveries, no repeated whole-repo
 census, no verbose self-analysis in generated prompts.
 
+## Operator console vs diagnostic log
+
+> THE MACHINE TRACKS CYCLES. THE OPERATOR TRACKS ACCOMPLISHMENTS.
+
+The **console** is for the person running the program. It shows what is being
+worked on and why it matters, a heartbeat while a worker is active, what
+completed and what that accomplished, which gate moved and why it is still
+open, what is blocked and who owns the decision, and what automation will do
+next. Each pass ends with the Customer 1 progress board; exhaustion prints the
+final report.
+
+Heartbeats report only measurable facts — elapsed wall clock and how many files
+have actually changed on disk. Progress is never inferred from a worker's prose.
+
+The **diagnostic log** (`reports/logs/<runId>/diagnostic.log`) is secondary and
+holds the machine detail: run ids, PIDs, timeouts, branches, SHAs, retry
+numbers, exact commands, full stdout and stderr, state transitions and stack
+traces. Set `C1_VERBOSE=1` to mirror it to the console.
+
+**Failures are never filtered.** A temporary `grep` wrapper once swallowed a
+fatal PowerShell error and left the operator with an empty log and a dead sweep.
+Every failure prints the component, lane, exit code, the unfiltered error,
+whether verified work was committed, whether persistent state advanced, and how
+to resume. The durable log keeps the complete unfiltered output.
+
 ## Reports
 
 `morning-report.ps1` writes a dated markdown report to
@@ -333,14 +440,28 @@ census, no verbose self-analysis in generated prompts.
 are not committed by default; commit one only when it is a receipt worth
 keeping.
 
+## Production authority
+
+Production authority remains human-held. This program deploys nothing, mutates
+no production data, creates no production identity, opens no PR automatically,
+and merges nothing. Training documentation remains required before any
+user-impacting deployment can be considered closed.
+
 ## Commands
 
 ```powershell
-# See what would run next. Invokes no Claude process.
+# See what would run next. Invokes no Claude process, writes no state.
 pwsh -File scripts/customer1-automation/run-program.ps1 -DryRun
 
 # Execute exactly one bounded work item.
 pwsh -File scripts/customer1-automation/run-program.ps1 -MaxItems 1
+
+# Run continuously until safe automated work is exhausted.
+pwsh -File scripts/customer1-automation/run-program.ps1 -UntilExhausted
+
+# Prove the framework itself. Uses a fake worker; costs no Claude session.
+pwsh -File scripts/customer1-automation/test-framework.ps1
+pwsh -File scripts/customer1-automation/test-proof-policy.ps1
 
 # Regenerate the report for the most recent run.
 pwsh -File scripts/customer1-automation/morning-report.ps1
