@@ -64,3 +64,46 @@ describe("PerformanceSnapshot -- errors are routed through the safe copy helper"
     });
   });
 });
+
+describe("PerformanceSnapshot -- Avg Job Duration is never a negative fact", () => {
+  // THE LIVE DEFECT, at the surface it reached: the technician screen rendered "-1686m" under
+  // "Avg. Job Duration". The projection no longer produces a negative, and this is the render-side
+  // proof that nothing downstream can reintroduce one -- a component reading a raw stored figure,
+  // a future formatter, or a change of mind about clamping.
+  it("renders N/A, never a negative span, when the projection withholds the figure", async () => {
+    getTechnicianExecutionStats.mockResolvedValue({
+      technicianId: "tech-1",
+      totalWorkOrdersCompleted: 11,
+      totalPartsConsumed: 7,
+      averageCompletionTimeMs: null,
+      completionEvidence: { valid: 3, inverted: 1, missing: 0 },
+      workOrderVolumeByStatus: {},
+    });
+
+    render(<PerformanceSnapshot technicianId="tech-1" />);
+
+    await waitFor(() => expect(screen.getByText("N/A")).toBeTruthy());
+    // The counts that ARE trustworthy still show -- withholding the duration must not blank the card.
+    expect(screen.getByText("11")).toBeTruthy();
+    expect(screen.getByText("7")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/-[0-9]+ *(m|h)/);
+  });
+
+  it("no rendered figure carries a minus sign, whatever the projection returns", async () => {
+    // Defence in depth: even if a negative ever reached this component again, it must not read as a
+    // duration. Asserting on the RENDERED text rather than on the input is what makes that provable.
+    getTechnicianExecutionStats.mockResolvedValue({
+      technicianId: "tech-1",
+      totalWorkOrdersCompleted: 2,
+      totalPartsConsumed: 0,
+      averageCompletionTimeMs: 3_600_000,
+      completionEvidence: { valid: 2, inverted: 0, missing: 0 },
+      workOrderVolumeByStatus: {},
+    });
+
+    render(<PerformanceSnapshot technicianId="tech-1" />);
+
+    await waitFor(() => expect(screen.getByText("1.0h")).toBeTruthy());
+    expect(document.body.textContent).not.toMatch(/-[0-9]/);
+  });
+});
