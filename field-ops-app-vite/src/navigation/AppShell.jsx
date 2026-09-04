@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import AppRail, { RailBrand, RailIdentity } from "./AppRail";
 import { NAV_DOMAINS, isNavItemVisible } from "./navConfig";
 import AppHeader from "../shared/ui/AppHeader";
+import NotificationControl from "../shared/ui/NotificationControl.jsx";
 import MobileTabBar from "./MobileTabBar.jsx";
 import { buildMobileNav } from "./mobilePrimaryNav.js";
 import Icon from "../shared/ui/Icon";
@@ -139,9 +140,26 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
       <aside className="fo-rail" aria-label="Application navigation">
         <RailBrand />
         {rail}
-        {/* Identity sits OUTSIDE the <nav> the rail renders, deliberately: who you are is not a
-            destination, and putting it inside navigation would announce it as one. */}
-        <RailIdentity />
+        {/* THE RAIL FOOTER: the things that are about YOU rather than about where you are going.
+            Both sit OUTSIDE the <nav> deliberately -- neither your notifications nor your identity
+            is a destination, and putting either inside navigation would announce it as one.
+
+            Notifications sits ABOVE identity, and is NOT part of it: RailIdentity states who you
+            are and how to leave. Folding a live queue into that component would put changing state
+            inside the one block that must never be anything but a name, a role and a way out.
+
+            MOUNTED ON `!isDrawer`, NOT HIDDEN BY CSS. At drawer widths this rail is
+            `display: none` -- and a hidden component is still a MOUNTED one. Left unconditional,
+            an authorized principal with the drawer open would hold TWO NotificationControls and
+            therefore two copies of every governed reorder subscription: double the reads, two
+            listeners racing the same data, for a surface nobody can see. `isDrawer` is real state
+            rather than a media query's opinion, so the mount can follow the shell mode exactly. */}
+        {!isDrawer && (
+          <div className="fo-rail__footer">
+            <NotificationControl accessVersion={operationalContext?.accessVersion} />
+            <RailIdentity />
+          </div>
+        )}
       </aside>
 
       {isDrawer && drawerOpen && (
@@ -169,13 +187,25 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
               </button>
             </div>
             {rail}
+            {/* THE SAME FOOTER, and it is not optional. The docked rail is off-canvas at these
+                widths, so without this the notification control would have no reachable home at
+                all once it left the top strip -- moving the bell would have DELETED it on a
+                handheld. Identity comes with it: the drawer is the rail here, and the rail's
+                footer is where a person's own things live.
+
+                This is the ONLY footer mounted at drawer widths: the docked one above is gated on
+                `!isDrawer`, so exactly one NotificationControl exists per shell mode and the
+                governed reads are never instantiated twice. */}
+            <div className="fo-rail__footer">
+              <NotificationControl accessVersion={operationalContext?.accessVersion} />
+              <RailIdentity />
+            </div>
           </aside>
         </>
       )}
 
       <div className="fo-workspace">
         <AppHeader
-          accessVersion={operationalContext?.accessVersion}
           onOpenNav={isDrawer ? () => setDrawerOpen(true) : null}
           navToggleRef={toggleRef}
           navOpen={drawerOpen}
