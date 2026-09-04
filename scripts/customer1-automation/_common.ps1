@@ -314,6 +314,81 @@ function Invoke-C1Proofs {
     @($results)
 }
 
+function Test-C1NegativeAnswer {
+    <#
+        True when a free-text field amounts to "nothing". Workers phrase this a
+        dozen ways, and reading any of them as real work is what keeps a lane
+        selectable while it waits on a person.
+    #>
+    param([string]$Text)
+    $n = (($Text -replace '[^A-Za-z0-9 ]', ' ') -replace '\s+', ' ').Trim().ToLowerInvariant()
+    if (-not $n) { return $true }
+    if ($n -in @('none', 'nothing', 'n a', 'na', 'no', 'nil', 'tbd', 'unknown', 'not applicable')) { return $true }
+    if ($n -match '^(none|nothing|no|not)\b') { return $true }
+    if ($n -match '\b(no safe work|no remaining work|no further work|no additional work|nothing further|nothing else|nothing remaining|none identified|waiting (for|on))\b') { return $true }
+    $false
+}
+
+function Test-C1HasRemainingWork {
+    <#
+        Does a BLOCKED worker say safe work can proceed WITHOUT the decision?
+
+        This reads blocker.remainingExecutableWork and NOTHING ELSE. That field
+        has exactly the required meaning: what is still doable without the
+        answer.
+
+        nextSuggestedItem is deliberately excluded. It legitimately describes
+        what to do AFTER the Owner or Taylor answers -- "update the matrix once
+        the Owner picks Day-1 scope" is not work that can proceed now. Treating
+        it as availability kept blocked lanes selectable and spent a session per
+        pass rediscovering the same question. It stays useful for operator
+        display and for the next item's continuity, but it never makes a blocked
+        lane executable.
+    #>
+    param($Claim)
+    if (-not $Claim) { return $false }
+    if (-not $Claim.PSObject.Properties['blockers']) { return $false }
+
+    foreach ($b in @($Claim.blockers)) {
+        if (-not $b -or -not $b.PSObject.Properties['remainingExecutableWork']) { continue }
+        if (-not (Test-C1NegativeAnswer -Text "$($b.remainingExecutableWork)")) { return $true }
+    }
+    $false
+}
+
+function Get-C1WaitStateForClaim {
+    <#
+        Which wait state a lane belongs in, from the category of the blockers it
+        actually raised. Falls back to the result class, then to the Owner --
+        never to "keep going".
+    #>
+    param($Claim, [string]$Result)
+
+    $cats = @()
+    if ($Claim -and $Claim.PSObject.Properties['blockers']) {
+        $cats = @(@($Claim.blockers) | Where-Object { $_ -and $_.PSObject.Properties['category'] } |
+            ForEach-Object { "$($_.category)".ToUpperInvariant() })
+    }
+    $first = if ($cats.Count -gt 0) { $cats[0] } else { '' }
+
+    switch ($first) {
+        'OWNER'      { return 'WAITING_FOR_OWNER' }
+        'TAYLOR'     { return 'WAITING_FOR_TAYLOR' }
+        'GOVERNANCE' { return 'WAITING_FOR_GOVERNANCE' }
+        'LEGAL'      { return 'WAITING_FOR_EXTERNAL' }
+        'EXTERNAL'   { return 'WAITING_FOR_EXTERNAL' }
+        'COLLISION'  { return 'WAITING_FOR_MAIN' }
+    }
+    switch ($Result) {
+        'BLOCKED_OWNER'      { 'WAITING_FOR_OWNER' }
+        'BLOCKED_TAYLOR'     { 'WAITING_FOR_TAYLOR' }
+        'BLOCKED_GOVERNANCE' { 'WAITING_FOR_GOVERNANCE' }
+        'BLOCKED_EXTERNAL'   { 'WAITING_FOR_EXTERNAL' }
+        'BLOCKED_COLLISION'  { 'WAITING_FOR_MAIN' }
+        default              { 'WAITING_FOR_OWNER' }
+    }
+}
+
 function New-RunId {
     'run-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
 }

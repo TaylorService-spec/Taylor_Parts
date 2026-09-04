@@ -308,35 +308,6 @@ If you did nothing, say NO_WORK. Do not claim DONE for work you did not do.
 "@
 }
 
-function Test-C1HasRemainingWork {
-    <#
-        Does a blocked worker say there is still safe work in its lane?
-
-        Only an explicit, non-empty statement counts. Silence, "none", or a
-        missing field means the lane is waiting on somebody, and re-running a
-        worker would just rediscover the same blocker at full cost.
-    #>
-    param($Claim)
-    if (-not $Claim) { return $false }
-
-    $texts = @()
-    if ($Claim.PSObject.Properties['blockers']) {
-        foreach ($b in @($Claim.blockers)) {
-            if ($b -and $b.PSObject.Properties['remainingExecutableWork']) { $texts += "$($b.remainingExecutableWork)" }
-        }
-    }
-    if ($Claim.PSObject.Properties['nextSuggestedItem']) { $texts += "$($Claim.nextSuggestedItem)" }
-
-    foreach ($t in $texts) {
-        $n = ($t -replace '[^A-Za-z0-9 ]', ' ') -replace '\s+', ' '
-        $n = $n.Trim().ToLowerInvariant()
-        if ($n -and $n -notin @('none', 'n a', 'na', 'nothing', 'no', 'none identified', 'nothing further', 'unknown')) {
-            return $true
-        }
-    }
-    $false
-}
-
 function Test-C1TransientFailure {
     <#
         Transient means "the worker process died or produced nothing", not "the
@@ -439,6 +410,10 @@ do {
 
     $candidates = Get-ExecutableLanes -Lanes $lanesDoc.lanes
     if ($LaneId) { $candidates = @($candidates | Where-Object { $_.id -eq $LaneId }) }
+    # Do not re-ask, inside one run, a lane that already answered with nothing.
+    $candidates = @($candidates | Where-Object {
+        -not ($_.PSObject.Properties['noProgressInRun'] -and $_.noProgressInRun -eq $runId)
+    })
     Write-Diag "pass $passId executable lanes: $(if ($candidates) { ($candidates | ForEach-Object { $_.id }) -join ', ' } else { '(none)' })"
 
     $passReceipts = @()
@@ -543,7 +518,11 @@ do {
         # ---------------------------------------------- bounded item + retries
         $attempt = 0
         $receipt = $null
+        $verify = $null
         while ($true) {
+            # Reset per attempt: an early break must never leave the previous
+            # attempt's verification standing in for this one.
+            $verify = $null
             $headBefore = (Invoke-Git -Directory $worktree -Arguments @('rev-parse', 'HEAD')).Output[0]
             $itemId = New-C1ItemId -RunId $runId -LaneId $lane.id -PassId $passId -Attempt $attempt
 
@@ -618,6 +597,45 @@ do {
             $receipt.ownedPathCheck = if (@($ruling.unownedPaths).Count -eq 0) { 'PASS' } else { 'FAIL' }
             $receipt.forbiddenPathCheck = if (@($ruling.forbiddenPaths).Count -eq 0) { 'PASS' } else { 'FAIL' }
 
+            # ---- RESULT ELIGIBILITY
+            #
+            # A healthy process is not the same thing as work worth committing.
+            # DONE and PARTIAL are the productive results. A BLOCKED result may
+            # still carry verified partial work, so it commits only when there is
+            # something to commit.
+            #
+            # NO_WORK and FAILED_TECHNICAL may NEVER produce a domain commit:
+            # the worker itself is saying there is no completed work here.
+            $committableResults = @('DONE', 'PARTIAL', 'BLOCKED_OWNER', 'BLOCKED_TAYLOR',
+                                    'BLOCKED_GOVERNANCE', 'BLOCKED_COLLISION', 'BLOCKED_EXTERNAL')
+            $neverCommitResults = @('NO_WORK', 'FAILED_TECHNICAL')
+
+            # A worker that reports "I did nothing" while leaving changes on disk
+            # has broken its own contract, and the harness cannot tell which
+            # statement is true. Commit nothing, preserve everything, stop the
+            # lane, and do not run another worker over the top of it.
+            if ($sessionOk -and $claimedResult -in $neverCommitResults -and $dirty.Count -gt 0) {
+                $receipt.result = 'FAILED_RECOVERY'
+                $receipt.headShaAfter = $headBefore
+                $receipt.violations = @("worker reported $claimedResult but left $($dirty.Count) uncommitted path(s)")
+                $lane.state = 'FAILED_RECOVERY'
+                $blk = New-C1LaneBlocker -Lane $lane -RunId $runId -PassId $passId -Suffix 'nowork-dirty' `
+                    -WorkItem $receipt.workItem -Category 'GOVERNANCE' `
+                    -Question ("Lane $($lane.id) worker reported $claimedResult but left $($dirty.Count) uncommitted path(s): " +
+                               "$($dirty -join ', '). Keep, discard, or complete this work?") `
+                    -Why 'The worker''s own result contradicts the working tree; automation cannot decide which is correct.' `
+                    -Scope "Lane $($lane.id) execution." `
+                    -Remaining 'All other lanes remain executable.'
+                $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $blk
+                if ($added.isNew) {
+                    Write-C1Blocker -Blocker $added.blocker -Lane $lane
+                    $receipt.blockersRaised += $added.blocker.id
+                }
+                Write-Diag ("lane $($lane.id): $claimedResult with a dirty tree -- contract violation. " +
+                            'Nothing committed, nothing reset, no retry.') 'WARN'
+                break
+            }
+
             # ---- proofs run on the working tree, before the commit.
             # Skipped entirely for a failed session: there is nothing to prove,
             # and an empty proof set must never read as "all proofs passed".
@@ -629,7 +647,8 @@ do {
 
             # ---- write-ahead transaction, then commit
             $commitSha = $null
-            if ($sessionOk -and $dirty.Count -gt 0 -and $ruling.acceptable -and $proofsOk) {
+            if ($sessionOk -and $claimedResult -in $committableResults -and
+                $dirty.Count -gt 0 -and $ruling.acceptable -and $proofsOk) {
                 $marker = Get-C1ItemMarker -ItemId $itemId
                 $sm = if ($claim -and $claim.PSObject.Properties['summary']) { $claim.summary } else { '' }
                 $commitMessage = @"
@@ -794,12 +813,32 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
         $allReceipts += $receipt
         $passReceipts += $receipt
         $runRecord.items += $receipt
+        # Does this lane still have work that can proceed WITHOUT a human answer?
+        # Read from blocker.remainingExecutableWork only -- see Test-C1HasRemainingWork.
+        $hasRemainingWork = Test-C1HasRemainingWork -Claim $session.claim
+
         if ($receipt.commitSha) { $verifiedCommitsThisPass++ }
-        # "New executable work" means the lane actually DID a bounded item.
-        # Counting every non-NO_WORK result made a BLOCKED_OWNER receipt look
-        # like progress, so a program waiting entirely on the Owner could never
-        # reach exhaustion and kept spending sessions to rediscover that.
-        if ($receipt.result -in @('DONE', 'PARTIAL')) { $newItemsThisPass++ }
+
+        # "New executable work" means the lane actually MOVED something.
+        #
+        # Counting every non-NO_WORK result made a BLOCKED_OWNER receipt look like
+        # progress, so a program waiting entirely on the Owner never reached
+        # exhaustion. The same trap exists one level in: a PARTIAL that produced
+        # no commit and names no remaining work is a pass spent for nothing, and
+        # counting it would keep the loop alive forever on empty results.
+        if ($receipt.result -in @('DONE', 'PARTIAL') -and ($receipt.commitSha -or $hasRemainingWork)) {
+            $newItemsThisPass++
+        }
+
+        # Mark a lane that produced nothing AND named nothing further it can do
+        # without a human. Asking it again inside the same run buys the same empty
+        # answer at the price of a full session -- whether it said NO_WORK or
+        # dressed the same emptiness up as PARTIAL.
+        $madeProgress = [bool]$receipt.commitSha -or $hasRemainingWork
+        if (-not $lane.PSObject.Properties['noProgressInRun']) {
+            $lane | Add-Member -NotePropertyName noProgressInRun -NotePropertyValue $null
+        }
+        $lane.noProgressInRun = if ($madeProgress) { $null } else { $runId }
 
         # ---- blockers the worker raised
         $claim = $session.claim
@@ -851,7 +890,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
             default {
                 Write-Host ""
                 Write-Host "  $($lane.name): $($receipt.result) -- $($receipt.workItem)"
-                if (@($verify.violations).Count -gt 0) {
+                if ($verify -and @($verify.violations).Count -gt 0) {
                     foreach ($v in @($verify.violations)) { Write-Host "    $v" }
                 }
                 Write-Host ""
@@ -859,24 +898,33 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
         }
 
         # ---- lane state + durable persistence, after EVERY item
-        # A blocked lane keeps working ONLY if it says it still has safe work.
-        #
-        # Mapping every non-DONE result to BLOCKED_PARTIAL kept lanes executable
-        # forever, so each pass spent a Claude session rediscovering the same
-        # Owner question. When the worker reports nothing left to do without an
-        # answer, the lane moves to the wait state that names who owes it.
-        $hasRemainingWork = Test-C1HasRemainingWork -Claim $session.claim
+        # A blocked lane keeps working ONLY if a blocker says real work can proceed
+        # without the answer. Mapping every non-DONE result to BLOCKED_PARTIAL kept
+        # lanes executable forever, so each pass spent a Claude session
+        # rediscovering the same Owner question.
+        $waitState = Get-C1WaitStateForClaim -Claim $session.claim -Result $receipt.result
 
         $lane.state = switch ($receipt.result) {
-            'DONE'               { 'PR_READY' }
-            'PARTIAL'            { 'BLOCKED_PARTIAL' }
-            'NO_WORK'            { 'IDLE' }
-            'FAILED_RECOVERY'    { 'FAILED_RECOVERY' }
-            'BLOCKED_OWNER'      { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_OWNER' } }
-            'BLOCKED_TAYLOR'     { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_TAYLOR' } }
-            'BLOCKED_GOVERNANCE' { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_GOVERNANCE' } }
-            'BLOCKED_EXTERNAL'   { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_EXTERNAL' } }
-            'BLOCKED_COLLISION'  { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_MAIN' } }
+            'DONE'            { 'PR_READY' }
+            'NO_WORK'         { 'IDLE' }
+            'FAILED_RECOVERY' { 'FAILED_RECOVERY' }
+
+            'PARTIAL' {
+                # A PARTIAL that committed something is real progress and the lane
+                # continues. A PARTIAL that committed nothing and names no
+                # remaining work is not progress: park it rather than pay for the
+                # same empty result on every future pass.
+                if ($receipt.commitSha -or $hasRemainingWork) { 'BLOCKED_PARTIAL' }
+                elseif (@($receipt.blockersRaised).Count -gt 0) { $waitState }
+                else { 'IDLE' }
+            }
+
+            'BLOCKED_OWNER'      { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_TAYLOR'     { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_GOVERNANCE' { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_EXTERNAL'   { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+            'BLOCKED_COLLISION'  { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { $waitState } }
+
             'FAILED_TECHNICAL'   { if ($lane.state -in @('RETRY_EXHAUSTED', 'FAILED_RECOVERY')) { $lane.state } else { 'BLOCKED_PARTIAL' } }
             default              { 'BLOCKED_PARTIAL' }
         }
@@ -918,12 +966,13 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
         $_.lastResult -eq 'FAILED_TECHNICAL'
     }).Count
 
-    # A lane that reported NO_WORK this run is terminal for automation even
-    # though its IDLE state stays selectable for a future run: it has already
-    # been asked, this run, and answered "nothing safe left".
+    # A lane that already produced nothing this run is terminal for automation
+    # even though its IDLE or BLOCKED_PARTIAL state stays selectable for a future
+    # run: it has been asked, this run, and had nothing safe to offer.
     $stillExecutable = @($lanesDoc.lanes | Where-Object {
         (Test-LaneExecutable -Lane $_ -AllLanes $lanesDoc.lanes) -and
-        -not ($_.lastRun -eq $runId -and $_.lastResult -eq 'NO_WORK')
+        -not ($_.lastRun -eq $runId -and $_.lastResult -eq 'NO_WORK') -and
+        -not ($_.PSObject.Properties['noProgressInRun'] -and $_.noProgressInRun -eq $runId)
     })
 
     $exhausted = ($verifiedCommitsThisPass -eq 0 -and $newItemsThisPass -eq 0 -and

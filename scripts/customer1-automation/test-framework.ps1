@@ -185,6 +185,56 @@ switch ($env:FAKE_CLAUDE_MODE) {
         })
         exit 0
     }
+    'noworkdirty' {
+        # Contract violation: "I did nothing" while leaving an owned file behind.
+        New-Item -ItemType Directory -Force -Path $owned | Out-Null
+        Set-Content -LiteralPath "$owned/nowork-but-dirty.md" -Value '# left behind' -Encoding UTF8
+        Save-Result ([pscustomobject]@{
+            workItem = "$lane-claims-nothing"; result = 'NO_WORK'
+            summary = 'Claims nothing was done, yet a file is sitting there.'
+            expectedFiles = @(); proofs = @(); blockers = @(); nextSuggestedItem = 'none'
+        })
+        exit 0
+    }
+    'failedtechdirty' {
+        New-Item -ItemType Directory -Force -Path $owned | Out-Null
+        Set-Content -LiteralPath "$owned/failedtech-but-dirty.md" -Value '# left behind' -Encoding UTF8
+        Save-Result ([pscustomobject]@{
+            workItem = "$lane-self-reported-failure"; result = 'FAILED_TECHNICAL'
+            summary = 'Reports its own technical failure but leaves changes behind.'
+            expectedFiles = @(); proofs = @(); blockers = @(); nextSuggestedItem = 'none'
+        })
+        exit 0
+    }
+    'blockednextonly' {
+        # The trap: NO remaining executable work, but a nextSuggestedItem that
+        # describes what to do AFTER the Owner answers. That must not make the
+        # lane executable.
+        Save-Result ([pscustomobject]@{
+            workItem = "$lane-owner-gated"; result = 'BLOCKED_OWNER'
+            summary = 'Blocked pending an Owner ruling on Day-1 scope.'
+            expectedFiles = @(); proofs = @()
+            blockers = @(@{
+                category = 'OWNER'
+                question = 'Which EOS families are in Day-1 scope?'
+                whyAutomationCannotDecide = 'Scope is an Owner decision.'
+                blockingScope = 'All remaining lane work.'
+                remainingExecutableWork = 'none'
+            })
+            nextSuggestedItem = 'Update the matrix after Owner chooses Day-1 scope'
+        })
+        exit 0
+    }
+    'partialnocommit' {
+        # PARTIAL, but nothing changed on disk and nothing can proceed.
+        Save-Result ([pscustomobject]@{
+            workItem = "$lane-partial-empty"; result = 'PARTIAL'
+            summary = 'Reports partial progress without changing anything.'
+            expectedFiles = @(); proofs = @(); blockers = @()
+            nextSuggestedItem = 'none'
+        })
+        exit 0
+    }
     'blockedtaylor' {
         Save-Result ([pscustomobject]@{
             workItem = "$lane-taylor-question"; result = 'BLOCKED_TAYLOR'
@@ -915,6 +965,139 @@ try {
         $src = Get-Content -LiteralPath (Join-Path $here 'progress.ps1') -Raw
         ($src -notmatch 'No safety/governance issue detected') -and
         ($src -match 'Safety/governance verification runs before any commit')
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'Q. NO_WORK / FAILED_TECHNICAL may never commit (review 3 item 1)'
+
+    Reset-SandboxLanes
+    $headA = Get-LaneHead 'A'
+    Reset-FakeCounters
+    $nwd = Invoke-Sandbox -Mode 'noworkdirty' -ExitCode 0 -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A')
+
+    Check 'R3-1A. NO_WORK with an owned dirty file -> ZERO commit, file preserved, lane stopped' {
+        $noCommit = (Get-LaneHead 'A') -eq $headA
+        $preserved = @(Get-C1DirtyPaths -WorktreePath (Join-Path $lanesDir 'A')) -contains 'docs/customer-1/scope/nowork-but-dirty.md'
+        $l = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        $noCommit -and $preserved -and $l.state -eq 'FAILED_RECOVERY'
+    }
+    Check 'R3-1A2. the NO_WORK-with-dirty-tree contradiction is not retried' {
+        @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count -eq 1
+    }
+
+    Reset-SandboxLanes
+    $headA = Get-LaneHead 'A'
+    Reset-FakeCounters
+    $ftd = Invoke-Sandbox -Mode 'failedtechdirty' -ExitCode 0 -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A')
+
+    Check 'R3-1B. FAILED_TECHNICAL with an owned dirty file -> ZERO commit, file preserved' {
+        $noCommit = (Get-LaneHead 'A') -eq $headA
+        $preserved = @(Get-C1DirtyPaths -WorktreePath (Join-Path $lanesDir 'A')) -contains 'docs/customer-1/scope/failedtech-but-dirty.md'
+        $l = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        $noCommit -and $preserved -and $l.state -eq 'FAILED_RECOVERY' -and
+        @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count -eq 1
+    }
+
+    Reset-SandboxLanes
+    $headA = Get-LaneHead 'A'
+    Reset-FakeCounters
+    $cnw = Invoke-Sandbox -Mode 'nowork' -ExitCode 0 -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A')
+
+    Check 'R3-1C. a CLEAN NO_WORK is the ordinary no-work outcome, not a failure' {
+        $l = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        (Get-LaneHead 'A') -eq $headA -and $l.state -eq 'IDLE' -and $l.lastResult -eq 'NO_WORK' -and
+        (-not (Test-Path $sbx.PendingFile))
+    }
+
+    Check 'R3-1D. NO_WORK and FAILED_TECHNICAL are absent from the committable set' {
+        $code = Get-Content -LiteralPath (Join-Path $here 'run-program.ps1') -Raw
+        # The eligibility list is the gate; assert it literally excludes both.
+        ($code -match "committableResults = @\('DONE', 'PARTIAL', 'BLOCKED_OWNER'") -and
+        ($code -match "neverCommitResults = @\('NO_WORK', 'FAILED_TECHNICAL'\)") -and
+        ($code -match '\$claimedResult -in \$committableResults')
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'R. remainingExecutableWork controls blocked execution (review 3 item 2)'
+
+    Check 'R3-2A. nextSuggestedItem alone does NOT make a blocked lane executable' {
+        # remainingExecutableWork = "none", but nextSuggestedItem names post-decision work.
+        $claim = [pscustomobject]@{
+            result = 'BLOCKED_OWNER'
+            blockers = @([pscustomobject]@{ category = 'OWNER'; remainingExecutableWork = 'none' })
+            nextSuggestedItem = 'Update the matrix after Owner chooses Day-1 scope'
+        }
+        -not (Test-C1HasRemainingWork -Claim $claim)
+    }
+    Check 'R3-2B. a blocker naming real parallel work DOES keep the lane executable' {
+        $claim = [pscustomobject]@{
+            result = 'BLOCKED_OWNER'
+            blockers = @([pscustomobject]@{ category = 'OWNER'; remainingExecutableWork = 'The exclusions appendix can still be drafted.' })
+            nextSuggestedItem = 'none'
+        }
+        Test-C1HasRemainingWork -Claim $claim
+    }
+    Check 'R3-2C. negative phrasings all normalize to "no remaining work"' {
+        $negatives = @('none', 'None.', 'nothing', 'n/a', 'N/A', '', '  ', 'no safe work remains',
+                       'Waiting for the Owner', 'nothing further', 'None identified', 'not applicable',
+                       'No remaining work in this lane')
+        $bad = @($negatives | Where-Object {
+            Test-C1HasRemainingWork -Claim ([pscustomobject]@{
+                blockers = @([pscustomobject]@{ category = 'OWNER'; remainingExecutableWork = $_ })
+            })
+        })
+        $bad.Count -eq 0
+    }
+    Check 'R3-2D. Test-C1HasRemainingWork never reads nextSuggestedItem' {
+        $code = Get-Content -LiteralPath (Join-Path $here '_common.ps1') -Raw
+        $fn = [regex]::Match($code, '(?s)function Test-C1HasRemainingWork \{.*?\n\}').Value
+        $fn -and ($fn -notmatch "PSObject\.Properties\['nextSuggestedItem'\]") -and ($fn -match 'remainingExecutableWork')
+    }
+
+    Reset-SandboxLanes
+    Reset-FakeCounters
+    $nxt = Invoke-Sandbox -Mode 'blockednextonly' -ExitCode 0 -ExtraArgs @('-UntilExhausted', '-MaxPasses', '5')
+    $nxtRun = @((Read-JsonFile $sbx.StateFile).runs)[-1]
+    $nxtCalls = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+
+    Check 'R3-2E. BLOCKED_OWNER + "none" + a post-decision nextSuggestedItem -> WAITING_FOR_OWNER' {
+        @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.state -eq 'WAITING_FOR_OWNER' }).Count -gt 0
+    }
+    Check 'R3-2F. that lane gets ZERO further worker sessions on the next pass' {
+        # Two lanes, one session each on pass 1, then nothing.
+        $nxtCalls -eq 2
+    }
+    Check 'R3-2G. and it is eligible for safe-work exhaustion' {
+        $nxtRun.exhausted -eq $true -and $nxtRun.passes -lt 5
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'S. A zero-commit PARTIAL is not endless progress (review 3 item 3)'
+
+    Reset-SandboxLanes
+    Reset-FakeCounters
+    $pnc = Invoke-Sandbox -Mode 'partialnocommit' -ExitCode 0 -ExtraArgs @('-UntilExhausted', '-MaxPasses', '6')
+    $pncRun = @((Read-JsonFile $sbx.StateFile).runs)[-1]
+    $pncCalls = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+
+    Check 'R3-3A. PARTIAL with zero commit and no remaining work still reaches SAFE_WORK_EXHAUSTED' {
+        $pncRun.exhausted -eq $true -and $pncRun.passes -lt 6
+    }
+    Check 'R3-3B. it does not burn a session per pass forever' {
+        # One session per lane on the first pass; nothing after that.
+        $pncCalls -eq 2
+    }
+    Check 'R3-3C. an empty PARTIAL parks the lane instead of leaving it selectable' {
+        $l = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.lastResult -eq 'PARTIAL' })
+        $l.Count -gt 0 -and @($l | Where-Object { $_.state -eq 'BLOCKED_PARTIAL' }).Count -eq 0
+    }
+    Check 'R3-3D. a PARTIAL that DID commit still counts as progress and stays executable' {
+        Reset-SandboxLanes
+        Reset-FakeCounters
+        Invoke-Sandbox -Mode 'workonce' -ExitCode 0 -ExtraArgs @('-UntilExhausted', '-MaxPasses', '6') | Out-Null
+        $r = @((Read-JsonFile $sbx.StateFile).runs)[-1]
+        # Real commits on pass 1 mean pass 1 cannot be the exhausting pass.
+        $r.passes -ge 2 -and $r.exhausted -eq $true
     }
     Section 'I. Repository-level guarantees'
 

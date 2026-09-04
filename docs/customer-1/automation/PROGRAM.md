@@ -51,9 +51,18 @@ A harness commit is eligible **only** when every one of these holds:
 - the worker process completed and did not time out;
 - its exit code is zero;
 - a result receipt exists, parses, and satisfies the result contract;
+- **the declared result is one that may commit** — `DONE`, `PARTIAL`, or a
+  `BLOCKED_*` result that carries verified partial work;
 - every changed path is inside the lane's `ownedPaths`;
 - no forbidden path was touched;
 - every declared proof was approved by policy and passed.
+
+`NO_WORK` and `FAILED_TECHNICAL` may **never** produce a domain commit: the
+worker is itself saying there is no completed work here. Either of them arriving
+with a dirty tree is a contract violation — the result and the working tree
+contradict each other and the harness cannot tell which is true. Nothing is
+committed, nothing is reset, the changes are preserved exactly, the lane stops
+as `FAILED_RECOVERY`, and no second worker is run over the top.
 
 The session is classified **before** the write-ahead transaction and before any
 `git add`. A crashed or malformed worker never produces a domain commit, and an
@@ -352,12 +361,17 @@ Completion is **not** a cycle count, elapsed time, `PR_READY`, `-MaxItems`, or a
 lane saying `DONE` once. Both halves must hold:
 
 1. the pass produced zero verified commits, zero genuinely new executable
-   bounded items (`DONE` or `PARTIAL` — **a blocker is not executable work**),
-   and zero still-retryable technical attempts; **and**
+   bounded items, and zero still-retryable technical attempts; **and**
 2. every remaining lane is terminal for automation: `COMPLETE`, idle with no
    work, `WAITING_FOR_OWNER`, `WAITING_FOR_TAYLOR`, `WAITING_FOR_MAIN`,
    `WAITING_FOR_GOVERNANCE`, `WAITING_FOR_EXTERNAL`, `FAILED_RECOVERY`, or
    `RETRY_EXHAUSTED`.
+
+"Genuinely new executable work" means a `DONE` or `PARTIAL` item that either
+produced a verified commit or named real remaining executable work. **A blocker
+is not executable work**, and neither is a `PARTIAL` that changed nothing and
+offers nothing. A lane that has already answered with nothing this run is not
+asked again in the same run.
 
 It means automation has nothing further it may safely do. It does **not** mean
 production ready, production authorized, Owner accepted, Taylor approved, or
@@ -365,12 +379,29 @@ deploy allowed.
 
 ### Lane wait states
 
-A blocked result does not automatically mean "keep going". If the worker names
-real remaining safe work, the lane stays `BLOCKED_PARTIAL` and is still
-selectable. If it does not, the lane moves to the state that names who owes the
-answer — `WAITING_FOR_OWNER`, `WAITING_FOR_TAYLOR`, `WAITING_FOR_GOVERNANCE`,
-`WAITING_FOR_EXTERNAL`, `WAITING_FOR_MAIN` — and stops being selected. Spending
-a Claude session per pass to rediscover the same Owner question is not progress.
+A blocked result does not automatically mean "keep going".
+
+Executability is read from **`blocker.remainingExecutableWork` and nothing
+else** — that field has exactly the required meaning: *what can still be done
+without the answer*. If at least one blocker names real work that can proceed
+now, the lane stays `BLOCKED_PARTIAL`. Otherwise it moves to the state that
+names who owes the answer — `WAITING_FOR_OWNER`, `WAITING_FOR_TAYLOR`,
+`WAITING_FOR_GOVERNANCE`, `WAITING_FOR_EXTERNAL`, `WAITING_FOR_MAIN` — and stops
+being selected.
+
+`nextSuggestedItem` is deliberately **not** consulted for this. It legitimately
+describes what to do *after* a decision lands — "update the matrix once the
+Owner picks Day-1 scope" is not work that can proceed now. It stays useful for
+operator display and for the next item's continuity, but it never makes a
+blocked lane executable. Spending a session per pass to rediscover the same
+Owner question is not progress.
+
+Values such as `none`, `nothing`, `n/a`, `no safe work remains`, `waiting for
+the Owner` and the empty string all normalize to *no remaining work*.
+
+A `PARTIAL` is progress when it produced a verified commit. A `PARTIAL` with no
+commit and no remaining executable work is not progress and does not keep the
+loop alive: the lane is parked and is not asked again in the same run.
 
 `FAILED_RECOVERY` and `RETRY_EXHAUSTED` are terminal for automation until a
 human intervenes, and are never selected.
