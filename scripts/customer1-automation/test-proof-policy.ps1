@@ -6,6 +6,39 @@
 
     pwsh -File scripts/customer1-automation/test-proof-policy.ps1
 #>
+# ---------------------------------------------------------------- HOST GUARD
+#
+# PowerShell 7+ only, checked BEFORE anything is dot-sourced, read, or written.
+#
+# invoke-lane.ps1 launches the worker through ProcessStartInfo.ArgumentList,
+# which does not exist in Windows PowerShell 5.1. Under 5.1 the run got all the
+# way through legacy bootstrap, reconciliation and a main merge before dying at
+# the process launch with "The property 'ArgumentList' cannot be found on this
+# object" -- persistent state mutated, no worker ever started. 5.1 also treats
+# native stderr differently, which stopped the regression suite on a harmless
+# git warning.
+#
+# Deliberately inline and dependency-free: it must run and report on the very
+# host it is rejecting, so it cannot rely on anything this repository defines.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $msg = @"
+STOP: this orchestrator requires PowerShell 7 or newer.
+
+  Detected: $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion) ($($PSVersionTable.PSVersion.Major).x)
+  Required: PowerShell 7.0+ (pwsh)
+
+Windows PowerShell 5.1 lacks ProcessStartInfo.ArgumentList, which is how the
+harness passes worker arguments without them being re-split, and it handles
+native-command stderr differently.
+
+Nothing has been read or written. Re-run with pwsh, for example:
+
+  pwsh -File $PSCommandPath
+"@
+    Write-Host $msg -ForegroundColor Red
+    throw 'STOP: unsupported PowerShell host (requires 7+).'
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 

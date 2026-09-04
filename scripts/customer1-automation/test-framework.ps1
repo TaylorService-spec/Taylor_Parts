@@ -16,6 +16,39 @@
 [CmdletBinding()]
 param([switch]$KeepSandbox)
 
+# ---------------------------------------------------------------- HOST GUARD
+#
+# PowerShell 7+ only, checked BEFORE anything is dot-sourced, read, or written.
+#
+# invoke-lane.ps1 launches the worker through ProcessStartInfo.ArgumentList,
+# which does not exist in Windows PowerShell 5.1. Under 5.1 the run got all the
+# way through legacy bootstrap, reconciliation and a main merge before dying at
+# the process launch with "The property 'ArgumentList' cannot be found on this
+# object" -- persistent state mutated, no worker ever started. 5.1 also treats
+# native stderr differently, which stopped the regression suite on a harmless
+# git warning.
+#
+# Deliberately inline and dependency-free: it must run and report on the very
+# host it is rejecting, so it cannot rely on anything this repository defines.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $msg = @"
+STOP: this orchestrator requires PowerShell 7 or newer.
+
+  Detected: $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion) ($($PSVersionTable.PSVersion.Major).x)
+  Required: PowerShell 7.0+ (pwsh)
+
+Windows PowerShell 5.1 lacks ProcessStartInfo.ArgumentList, which is how the
+harness passes worker arguments without them being re-split, and it handles
+native-command stderr differently.
+
+Nothing has been read or written. Re-run with pwsh, for example:
+
+  pwsh -File $PSCommandPath
+"@
+    Write-Host $msg -ForegroundColor Red
+    throw 'STOP: unsupported PowerShell host (requires 7+).'
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -463,7 +496,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'D. Human-readable progress (§12, §14, §17)'
+    Section 'D. Human-readable progress (Sections 12, 14, 17)'
 
     Check '18. item-start output names lane, gate, work item and why it matters' {
         ($run1.Output -match 'NOW WORKING') -and ($run1.Output -match 'Customer 1 gate:') -and
@@ -488,7 +521,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'E. Crash recovery (§5, §6)'
+    Section 'E. Crash recovery (Sections 5, 6)'
 
     $laneA = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
     $wtA = Join-Path $lanesDir 'A'
@@ -616,7 +649,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'F. Retry policy (§10)'
+    Section 'F. Retry policy (Section 10)'
 
     # Lane A is now blocked by the ambiguous-recovery fixture above, which is
     # itself the correct behaviour. Restore it so the retry tests can run.
@@ -658,7 +691,7 @@ try {
     Remove-Item -LiteralPath (Join-Path $lanesDir 'B\firestore.rules') -Force -ErrorAction SilentlyContinue
 
     # ------------------------------------------------------------------------
-    Section 'G. Continuous mode and safe-work exhaustion (§8, §9)'
+    Section 'G. Continuous mode and safe-work exhaustion (Sections 8, 9)'
 
     Reset-FakeCounters
     # Reset lane state so both lanes are executable again for the continuous run.
@@ -696,7 +729,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'H. DryRun is inert (§22)'
+    Section 'H. DryRun is inert (Section 22)'
 
     $before = @{
         lanes = (Get-FileHash $sbx.LanesFile).Hash
@@ -1529,6 +1562,230 @@ try {
               (-not $r.pendingReadyToClear) -and ($archived.Count -eq 1)
         Invoke-Git -Directory $wt -AllowFail -Arguments @('clean', '-fdq') | Out-Null
         $ok
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'X. PowerShell host requirement (canary defect 1)'
+
+    $winPs = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+    Check 'R6-1. every entry point guards the host BEFORE it touches anything' {
+        $entries = @('run-program.ps1', 'test-framework.ps1', 'test-proof-policy.ps1', 'preflight.ps1')
+        $bad = @($entries | Where-Object {
+            $src = Get-Content -LiteralPath (Join-Path $here $_) -Raw
+            $iGuard = $src.IndexOf('STOP: unsupported PowerShell host')
+            $iWork  = $src.IndexOf('. (Join-Path')       # first dot-source = first real work
+            ($iGuard -lt 0) -or ($iWork -ge 0 -and $iGuard -gt $iWork)
+        })
+        $bad.Count -eq 0
+    }
+
+    if (Test-Path $winPs) {
+        $before = @{
+            lanes    = (Get-FileHash $sbx.LanesFile).Hash
+            state    = (Get-FileHash $sbx.StateFile).Hash
+            blockers = (Get-FileHash $sbx.BlockersFile).Hash
+            items    = @(Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue).Count
+        }
+        Reset-FakeCounters
+        $wpsOut = & $winPs -NoProfile -ExecutionPolicy Bypass `
+            -File (Join-Path $harnessDir 'scripts\customer1-automation\run-program.ps1') -DryRun 2>&1
+        $wpsExit = $LASTEXITCODE
+        $wpsText = (@($wpsOut) | ForEach-Object { "$_" }) -join "`n"
+
+        Check 'R6-2. Windows PowerShell 5.1 is refused, with an actionable message' {
+            ($wpsText -match 'requires PowerShell 7 or newer') -and
+            ($wpsText -match 'ProcessStartInfo.ArgumentList') -and
+            ($wpsText -match 'pwsh -File')
+        }
+        Check 'R6-3. the refusal happens BEFORE any persistent mutation' {
+            ((Get-FileHash $sbx.LanesFile).Hash -eq $before.lanes) -and
+            ((Get-FileHash $sbx.StateFile).Hash -eq $before.state) -and
+            ((Get-FileHash $sbx.BlockersFile).Hash -eq $before.blockers) -and
+            (@(Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue).Count -eq $before.items) -and
+            (@(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count -eq 0)
+        }
+        Check 'R6-4. the refusal is a failure, not a silent no-op' { $wpsExit -ne 0 }
+    } else {
+        Check 'R6-2. Windows PowerShell 5.1 is refused (SKIPPED: powershell.exe absent)' { $true }
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'Y. Reconciliation merge vs legacy bootstrap (canary defect 2)'
+
+    function Add-SandboxMainCommit {
+        <#
+            Advance the sandbox's main with BOTH an ordinary path and a
+            harness-owned path, which is what makes a later integration merge
+            look like a lane touching files it must not.
+        #>
+        param([string]$Tag)
+        $mainWork = Join-Path $sandbox "mainwork-$Tag"
+        & git clone $originDir $mainWork --quiet 2>&1 | Out-Null
+        Git-In $mainWork @('config', 'user.email', 'main@example.invalid') | Out-Null
+        Git-In $mainWork @('config', 'user.name', 'Upstream') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $mainWork 'docs\design') | Out-Null
+        Set-Content -LiteralPath (Join-Path $mainWork "docs\design\upstream-$Tag.md") -Value "# upstream $Tag" -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $mainWork "scripts\customer1-automation\UPSTREAM_NOTE_$Tag.md") -Value "# harness-owned upstream change $Tag" -Encoding UTF8
+        Git-In $mainWork @('add', '-A') | Out-Null
+        Git-In $mainWork @('commit', '-q', '-m', "upstream: ordinary and harness-owned change $Tag") | Out-Null
+        Git-In $mainWork @('push', '-q', 'origin', 'main') | Out-Null
+        $sha = (Invoke-Git -Directory $mainWork -Arguments @('rev-parse', 'HEAD')).Output[0]
+        Invoke-Git -Directory $harnessDir -AllowFail -Arguments @('fetch', 'origin', '--quiet') | Out-Null
+        Invoke-Git -Directory (Join-Path $lanesDir 'B') -AllowFail -Arguments @('fetch', 'origin', '--quiet') | Out-Null
+        $sha
+    }
+
+    Check 'R6-5. an integration merge is NOT reconstructed as legacy lane work' {
+        # --- 1. legacy lane commits in owned paths
+        $wt = Join-Path $lanesDir 'B'
+        Reset-SandboxLanes
+        Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue | ForEach-Object {
+            $j = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+            if ($j.laneId -eq 'B') { Remove-Item -LiteralPath $_.FullName -Force }
+        }
+        $laneShas = @()
+        foreach ($i in 1, 2) {
+            $rel = "docs/customer-1/data/legacy-recon-$i.md"
+            Set-Content -LiteralPath (Join-Path $wt $rel) -Value "# legacy $i" -Encoding UTF8
+            Invoke-Git -Directory $wt -Arguments @('add', '--', $rel) | Out-Null
+            Invoke-Git -Directory $wt -Arguments @('commit', '-q', '-m', "docs(customer-1): B-legacy-recon-$i") | Out-Null
+            $laneShas += (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+        }
+
+        # --- 2. bootstrap them successfully
+        $laneB = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'B' })[0]
+        $boot1 = Invoke-C1LegacyBootstrap -Context $sbx -Lane $laneB -WorktreePath $wt `
+            -Branch 'customer1/b-work' -StateDoc (Read-JsonFile $sbx.StateFile) -ForbiddenPaths $forbidden
+        if ($boot1.status -ne 'BOOTSTRAPPED') { return $false }
+        $receiptsAfterBoot = @(Get-C1ItemReceipts -Context $sbx -LaneId 'B')
+
+        # --- 3. advance main with ordinary AND harness-owned paths
+        $newMain = Add-SandboxMainCommit -Tag 'r6'
+
+        # --- 4. let reconcile-main integrate main into the lane.
+        #        LastReconciledMain empty mirrors the real first reconcile, which
+        #        is exactly how the production merge came to contain harness paths.
+        $rec = & (Join-Path $harnessDir 'scripts\customer1-automation\reconcile-main.ps1') `
+            -LaneId 'B' -WorktreePath $wt -Branch 'customer1/b-work' `
+            -LastReconciledMain '' -OwnedPaths @($laneB.ownedPaths) -ForbiddenPaths $forbidden `
+            -MainRef 'origin/main' -Apply
+        if (-not $rec.integrated) { return $false }
+        $mergeSha = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+
+        # Persist the reconcile point exactly as run-program.ps1 now does the
+        # moment a merge lands. Without it, the next reconcile sees main's
+        # harness-owned change as a fresh authority move and refuses -- correct
+        # behaviour, but not what this test is about.
+        $ld = Read-JsonFile $sbx.LanesFile
+        @($ld.lanes | Where-Object { $_.id -eq 'B' })[0].lastReconciledMain = $rec.mainSha
+        Write-JsonFile $sbx.LanesFile $ld
+
+        # the merge really does carry harness-owned paths on its first parent
+        $mergePaths = @(Get-C1CommitPaths -WorktreePath $wt -FromSha "$mergeSha^" -ToSha $mergeSha)
+        $carriesForbidden = @(Select-ForbiddenPaths -Paths $mergePaths -ForbiddenPatterns $forbidden).Count -gt 0
+        if (-not $carriesForbidden) { return $false }
+
+        # --- 5/6. restart: run bootstrap + recovery again, as startup does
+        $laneB2 = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'B' })[0]
+        $boot2 = Invoke-C1LegacyBootstrap -Context $sbx -Lane $laneB2 -WorktreePath $wt `
+            -Branch 'customer1/b-work' -StateDoc (Read-JsonFile $sbx.StateFile) -ForbiddenPaths $forbidden
+        $bd = Read-JsonFile $sbx.BlockersFile
+        $rec2 = Invoke-C1LaneRecovery -Context $sbx -Lane $laneB2 -WorktreePath $wt `
+            -Branch 'customer1/b-work' -ForbiddenPaths $forbidden -BlockersDoc $bd
+        $receiptsAfter = @(Get-C1ItemReceipts -Context $sbx -LaneId 'B')
+
+        # --- 7. startup must not misclassify, duplicate, block or reset
+        $notFailed     = $boot2.status -ne 'FAILED_BOOTSTRAP' -and -not $boot2.blocked
+        $notReconstructed = @($receiptsAfter | Where-Object { $_.commitSha -eq $mergeSha -and $_.recovered -eq 'LEGACY_PRE_RECEIPT' }).Count -eq 0
+        $noDuplicates  = @($receiptsAfter | Where-Object { $_.recovered -eq 'LEGACY_PRE_RECEIPT' }).Count -eq @($receiptsAfterBoot | Where-Object { $_.recovered -eq 'LEGACY_PRE_RECEIPT' }).Count
+        $notBlocked    = -not $rec2.blocked
+        $noForbidUse   = ($boot2.message -notmatch 'may not own') -and ($rec2.message -notmatch 'may not own')
+
+        # --- 8. lane work and the merge are intact
+        $headIntact    = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0] -eq $mergeSha
+        $laneWorkIntact = @($laneShas | Where-Object {
+            (Invoke-Git -Directory $wt -AllowFail -Arguments @('merge-base', '--is-ancestor', $_, 'HEAD')).ExitCode -eq 0
+        }).Count -eq $laneShas.Count
+
+        $notFailed -and $notReconstructed -and $noDuplicates -and $notBlocked -and
+        $noForbidUse -and $headIntact -and $laneWorkIntact
+    }
+
+    Check 'R6-6. after the restart a real next worker can still be selected' {
+        # --- 9. the lane is executable and a worker actually runs and commits.
+        $wt = Join-Path $lanesDir 'B'
+        $headBefore = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+        Reset-SandboxLanes
+        Reset-FakeCounters
+        $run = Invoke-Sandbox -Mode 'work' -ExitCode 0 -ExtraArgs @('-MaxItems', '1', '-LaneId', 'B')
+        $calls = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue | Where-Object { $_ -like 'B *' }).Count
+        $headAfter = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+        ($calls -eq 1) -and ($headAfter -ne $headBefore) -and
+        ($run.Output -notmatch 'may not own') -and ($run.Output -notmatch 'FAILURE')
+    }
+
+    Check 'R6-7. a DOMAIN merge carrying real work stays visible' {
+        # The exclusion must be narrow. A merge of a side branch -- not upstream --
+        # is lane work and must never disappear from bootstrap.
+        $wt = Join-Path $lanesDir 'B'
+        Invoke-Git -Directory $wt -Arguments @('checkout', '-q', '-b', 'tmp/side') | Out-Null
+        Set-Content -LiteralPath (Join-Path $wt 'docs/customer-1/data/side-work.md') -Value '# real side work' -Encoding UTF8
+        Invoke-Git -Directory $wt -Arguments @('add', '--', 'docs/customer-1/data/side-work.md') | Out-Null
+        Invoke-Git -Directory $wt -Arguments @('commit', '-q', '-m', 'docs(customer-1): side work') | Out-Null
+        Invoke-Git -Directory $wt -Arguments @('checkout', '-q', 'customer1/b-work') | Out-Null
+        Invoke-Git -Directory $wt -Arguments @('merge', '--no-ff', '--no-edit', '-q', 'tmp/side') | Out-Null
+        $domainMerge = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+
+        $isIntegration = Test-C1IntegrationMerge -WorktreePath $wt -Sha $domainMerge -MainRef 'origin/main'
+        $sideCommit = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'tmp/side')).Output[0]
+        $sideVisible = Test-C1IntegrationMerge -WorktreePath $wt -Sha $sideCommit -MainRef 'origin/main'
+
+        Invoke-Git -Directory $wt -AllowFail -Arguments @('branch', '-D', 'tmp/side') | Out-Null
+        # Neither the merge of a side branch nor the work on it is treated as an
+        # upstream integration.
+        (-not $isIntegration) -and (-not $sideVisible)
+    }
+
+    Check 'R6-8. an integration merge is recognised structurally, without a marker' {
+        # The merges stranding lanes today predate the C1-Reconcile-Main trailer,
+        # so recognition must not depend on it.
+        $wt = Join-Path $lanesDir 'C'
+        if (-not (Test-Path $wt)) {
+            Invoke-Git -Directory $harnessDir -Arguments @('worktree', 'add', '-B', 'customer1/c-work', $wt, 'origin/main') | Out-Null
+        }
+        Invoke-Git -Directory $wt -AllowFail -Arguments @('fetch', 'origin', '--quiet') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $wt 'docs/customer-1/security') | Out-Null
+        Set-Content -LiteralPath (Join-Path $wt 'docs/customer-1/security/c-work.md') -Value '# lane C work' -Encoding UTF8
+        Invoke-Git -Directory $wt -Arguments @('add', '-A') | Out-Null
+        Invoke-Git -Directory $wt -Arguments @('commit', '-q', '-m', 'docs(customer-1): C work') | Out-Null
+
+        Add-SandboxMainCommit -Tag 'r6b' | Out-Null
+        Invoke-Git -Directory $wt -AllowFail -Arguments @('fetch', 'origin', '--quiet') | Out-Null
+        # A bare git merge with NO marker at all -- exactly the production shape.
+        Invoke-Git -Directory $wt -Arguments @('merge', '--no-edit', '-q', 'origin/main') | Out-Null
+        $bare = (Invoke-Git -Directory $wt -Arguments @('rev-parse', 'HEAD')).Output[0]
+
+        $body = (Invoke-Git -Directory $wt -Arguments @('log', '-1', '--format=%B', $bare)).Output -join "`n"
+        (Test-C1IntegrationMerge -WorktreePath $wt -Sha $bare -MainRef 'origin/main') -and
+        ($body -notmatch 'C1-Reconcile-Main')
+    }
+
+    Check 'R6-9. lastReconciledMain is persisted BEFORE the worker launches' {
+        # Crash immediately after the reconcile persist and confirm the merge point
+        # survived in lanes.json with no worker having run.
+        Reset-SandboxLanes
+        $d = Read-JsonFile $sbx.LanesFile
+        foreach ($l in $d.lanes) { $l.lastReconciledMain = $null }
+        Write-JsonFile $sbx.LanesFile $d
+        Add-SandboxMainCommit -Tag 'r6c' | Out-Null
+        Reset-FakeCounters
+
+        Invoke-Sandbox -Mode 'work' -ExitCode 0 -Fault 'AFTER_RECONCILE_PERSIST' -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A') | Out-Null
+        $laneA = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        $calls = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+        # The reconcile point is durable, and no worker ever started.
+        ($laneA.lastReconciledMain) -and ($laneA.lastReconciledMain -match '^[0-9a-f]{40}$') -and ($calls -eq 0)
     }
     Section 'I. Repository-level guarantees'
 
