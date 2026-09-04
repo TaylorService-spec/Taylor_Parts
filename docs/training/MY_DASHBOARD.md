@@ -8,7 +8,9 @@
 **Owner:** Verenward product training
 
 > **Status: COMPLETE — LIVE VERIFIED.** Checked against the running screen in `platform-sandbox` at
-> live commit `50792fef`, Owner accepted 2026-09-03.
+> live commit `6b281cd5`, Owner accepted 2026-09-04. Covers both surfaces: My Dashboard and the
+> technician screen. (First accepted at `50792fef` on 2026-09-03; re-verified here against the build
+> carrying the correctives that followed.)
 
 ## What this guide helps you do
 
@@ -144,6 +146,13 @@ hours. EOS does not know they are unavailable; it knows nothing has been recorde
 You have your own screen rather than the general dashboard: your assigned work, your buckets (ready
 to start, in progress, waiting, completed today), your all-time record, and your goals.
 
+**Avg. Job Duration can read N/A, and that is deliberate.** It is measured from when work started to
+when the job was completed, over the jobs that recorded both. If any of your completed jobs carries
+timestamps that contradict each other — a completion recorded *before* the work started — EOS
+withholds the whole figure rather than quietly dropping that job and averaging the rest. A number
+averaged over records the platform knows are wrong would look ordinary and mean nothing. If you see
+N/A persistently, that is worth reporting: it usually means a work order's timestamps need fixing.
+
 Work comes first and performance comes after, at every screen size. That is deliberate — the screen
 is for doing the job, not for watching yourself do it.
 
@@ -155,6 +164,17 @@ identity, and having it in two places would eventually mean two answers.
 Use the navigation rail on the left (or the menu on a handheld). **The dashboard no longer repeats
 the list of destinations** — it was duplicating what the rail already does, and it pushed the
 business content off the screen.
+
+**Everything about *you* is at the bottom of that rail**: your notifications, then your name, your
+role, and **Sign out**. There is no strip across the top of the screen any more — it was showing your
+email address and a second Logout button that did the same thing as Sign out, so the page now starts
+at the top.
+
+On a phone or tablet the rail is hidden until you need it. Tap the menu button at the top left; the
+rail slides in with the same things at the bottom, notifications included.
+
+**Notifications only appear if you are governed to see that queue.** If you do not have one, nothing
+is hidden from you — there is nothing there for your account to look at.
 
 Panels still link where they should: an action item links to the workspace where you resolve it, and
 a work list links to the full queue behind **View all**. A link only appears when your account can
