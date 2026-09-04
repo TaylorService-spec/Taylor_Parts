@@ -56,7 +56,7 @@ per action.
 
 | Step | Procedure | Instrument today |
 | --- | --- | --- |
-| R1 | Enumerate every Firebase Auth account in the production project. This is the denominator; every later step is a join onto it. | **NONE.** No committed procedure reads production Auth. |
+| R1 | Enumerate every Firebase Auth account in the production project. This is the denominator; every later step is a join onto it. | **NONE.** No committed procedure reads production Auth. The classifier below accepts the enumeration and reports its absence as a stated limit; it cannot produce it. |
 | R2 | For each `uid`, resolve `users/{uid}`; record accounts with no `users` document. | Partial — `r32ProductionExposureCensus.js` reads the whole `users` collection, but only as a join map. |
 | R3 | Verify the two-way link: `users/{uid}.employeeId` resolves, and that employee's `.userId` points back at the same `uid`. | Partial — the census resolves the forward direction and flags an unresolvable join; it does not assert the back-link. |
 | R4 | Enumerate `roleAssignments` per principal; validate `status`, `roleId` against the Role catalog, and `scope` against `warehouses`. | `r32ProductionExposureCensus.js`. |
@@ -105,6 +105,34 @@ exception is never resolved by granting access.
 | `ACCESS_ON_TERMINATED_EMPLOYEE` | Active assignment or Auth account on a non-`ACTIVE` employee | partial — the census discounts operational roles on non-`ACTIVE` employees but does not report the Auth account | Taylor |
 | `SECURITY_ROLE_MIRROR_DRIFT` | `employees.securityRole` ≠ `users.role` | `auditSecurityRoleMirror.js` | Verenward |
 | `CONTRADICTORY_LOCATION_SCOPE` | `assignedWarehouseIds` and governed location scopes disagree | census `assignedWarehouseComparison: CONTRADICTORY` | Verenward + Taylor |
+
+### The committed classifier
+
+`docs/customer-1/identity/rosterReconciliation.mjs` is the exception table above made
+executable: `reconcileRoster(state)` takes already-read state for the five stores and returns the
+exception list a reconciliation run would report, plus the denominator it was computed from.
+Tested by `node --test docs/customer-1/identity/rosterReconciliation.test.mjs` against synthetic
+fixtures only — no Taylor person, production uid or role assignment appears in that file, and none
+may be added to it.
+
+Three properties are deliberate.
+
+**It is pure.** It opens no connection, holds no credential and imports no Firebase SDK, so the
+classification rules are reviewable and provable before any production authorization is requested.
+
+**It refuses to imply a roster it did not read.** Omitting `authAccounts` is legitimate — R1 has no
+instrument — and produces the limit `AUTH_NOT_READ` and a null `authAccountsRead` rather than a
+clean orphan result. An absent denominator is reported, never assumed empty.
+
+**It reuses the census.** `assignmentState` and `compareAssignedWarehouseIds` are imported from
+`functions/scripts/r32ProductionExposureCensus.js` rather than restated. A second definition of
+"what counts as an active assignment" would be a second answer, and the census is the one that has
+already been run against production.
+
+The residue is the read adapter: the R1 Auth enumeration and the four collection reads that feed
+this function belong in `functions/scripts/`, where `firebase-admin` and the
+`--projectId`/`assertProjectTarget` production-pinning contract already live. That path is outside
+this lane's owned paths, so it is named here rather than built.
 
 ## Least-privilege verification per persona
 
@@ -173,13 +201,15 @@ repository work provable against the emulator.
 - No production roster is reconciled, and no count of production identities is claimed.
 - No persona is designated, verified, or accepted; no Taylor person is named.
 - "Instrument today" means a committed read-only procedure exists, never that it has run.
+- The classifier has never been fed production state. A tested classifier is not a reconciliation.
 - The `PR #1752` figures are quoted as that PR measured them and are not re-measured here.
 
 ## Next work in this lane
 
-Build the R1 production Auth enumeration — read-only, `--projectId`-pinned with the same
-refusal-to-consult-`.firebaserc` contract the R-32 census already enforces, joining Auth
-accounts to `users/{uid}` and reporting `ORPHAN_AUTH_ACCOUNT` / `UNGOVERNED_PRINCIPAL`. It
-is the smallest missing piece, it unblocks the denominator every later step joins onto, and
-it is worth more than requesting production authorization for instruments that can only
-report the principals the governed model already knows about.
+The classification half of R1–R5 is now committed and tested. What remains is the read adapter:
+a read-only, `--projectId`-pinned entry point carrying the same refusal-to-consult-`.firebaserc`
+contract the R-32 census already enforces, which enumerates Firebase Auth, reads the four
+collections, and hands the joined state to `reconcileRoster`. It belongs in
+`functions/scripts/`, which is outside this lane's owned paths — so the next lane-C item is
+either an authority to place it there, or the `C1-SECURITY-01` V3 effective-capability
+resolver, which has the same pure-classifier shape and the same LP3 dependency.
