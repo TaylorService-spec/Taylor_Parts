@@ -46,7 +46,7 @@ writing.
 
 | Role family | Workflow(s) covered | Guide | Status | Represents | Verification method |
 |---|---|---|---|---|---|
-| Every user (cross-role) | Reading My Dashboard; technician profile screen | `docs/training/MY_DASHBOARD.md` | `COMPLETE_LIVE_VERIFIED` | `platform-sandbox` live commit `50792fef` | Exercised against the running deployed screen; Owner accepted 2026-09-03 |
+| Every user (cross-role) | Reading My Dashboard; technician profile screen | `docs/training/MY_DASHBOARD.md` | `COMPLETE_LIVE_VERIFIED` | `platform-sandbox` live commit `6b281cd5` | Exercised against the running deployed screen; Owner accepted 2026-09-04 (first accepted at `50792fef` 2026-09-03) |
 | Taylor EOS Administrator | — | — | `MISSING` | — | — |
 | General Manager / Operations Manager | — | — | `MISSING` | — | — |
 | Dispatcher | — | — | `MISSING` | — | — |
@@ -66,12 +66,29 @@ name its verification basis is not COMPLETE.
 
 | Guide | Deployed revision represented | Verification method | Status |
 |---|---|---|---|
-| `docs/training/MY_DASHBOARD.md` | `50792fef` (deployed to `platform-sandbox`) | Exercised against the running screen; Owner accepted 2026-09-03 | `COMPLETE_LIVE_VERIFIED` |
+| `docs/training/MY_DASHBOARD.md` | `6b281cd5` (deployed to `platform-sandbox`) | Exercised against the running screen; Owner accepted 2026-09-04 | `COMPLETE_LIVE_VERIFIED` |
 | `docs/training/TECHNICIAN_RECORDING_PART_USAGE.md` | none — merged code only | Emulator proofs of the callable; guide states plainly it is written against undeployed behavior | `DRAFT_PENDING_DEPLOYMENT` |
 | `docs/training/PURCHASING_RECORD_PURCHASE_ORDER.md` | none — merged code only | None; guide states plainly it is written against undeployed behavior | `DRAFT_PENDING_DEPLOYMENT` |
 
 `docs/training/README.md` and `docs/training/USER_GUIDE_TEMPLATE.md` are excluded: the first is the
 close-rule authority and the second is a template. Neither is user training.
+
+## The five Day-1 close conditions — where each one stands
+
+`C1-TRAINING-01` does not close when the coverage matrix above is full. `docs/training/README.md`
+states five Day-1 conditions, and the matrix measures **only the first**. Reading a full matrix as a
+closed gate would be wrong, so all five are tracked here.
+
+| # | Condition (Day-1 gate) | Status | What it still needs |
+|---|---|---|---|
+| 1 | Every Day-1 role/workflow has current training | NOT MET | The matrix above: 8 `MISSING`, 2 `DRAFT_PENDING_DEPLOYMENT`. Also depends on `C1-SCOPE-01` fixing the role set. |
+| 2 | Training matches the exact production behavior intended for cutover | NOT MET | No guide represents a production revision. `MY_DASHBOARD.md` is verified against `platform-sandbox`, not production. |
+| 3 | Designated Taylor EOS administrators have administrator training | NOT MET | Two parts: the administrator guide does not exist (Verenward, writable now against deployed admin behavior), and delivery to named administrators is Taylor's (`BLOCKED_TAYLOR`). |
+| 4 | Taylor knows the official support/escalation path | NOT MET | The path itself is not decided. `USER_GUIDE_TEMPLATE.md` requires every guide to state it, so each guide currently carries a hole. Owner/Taylor to name it. |
+| 5 | Training ownership after initial handoff is explicit | STATED, NOT AGREED | The close-rule authority states the split (Verenward owns product-training accuracy; Taylor owns internal scheduling and ongoing onboarding). Taylor agreement to that split is not recorded and is not Verenward's to record. |
+
+The permanent deployment training-close gate — the sixth thing named in the gate's close condition —
+is operational: `docs/customer-1/training/DEPLOYMENT_TRAINING_CLOSE_LOG.md` plus its checker.
 
 ## What blocks progress, and what does not
 
@@ -88,8 +105,10 @@ the live sandbox revision — that is how `MY_DASHBOARD.md` reached COMPLETE.
 ## Keeping this file honest
 
 `docs/customer-1/training/verify-training-index.mjs` checks this document against the guides it
-names: that every referenced guide exists, and that nothing is claimed `COMPLETE_LIVE_VERIFIED` here
-unless the guide itself carries a live-verification receipt. The same check validates every record in
+names: that every referenced guide exists, that nothing is claimed `COMPLETE_LIVE_VERIFIED` here
+unless the guide itself carries a live-verification receipt, and that a `COMPLETE_LIVE_VERIFIED` row
+names a revision the guide actually carries — a guide re-verified against a newer deployment must not
+leave a stale revision claimed here. The same check validates every record in
 `docs/customer-1/training/DEPLOYMENT_TRAINING_CLOSE_LOG.md`, the register where a deployment records
 the training receipt that lets it reach `CLOSED`. Run it with `node` after any change to this matrix,
 a guide's status, or the close log.

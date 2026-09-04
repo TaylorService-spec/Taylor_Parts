@@ -24,6 +24,8 @@ const rows = matrix
   .map((line) => ({
     guide: line.match(/docs\/training\/[A-Z0-9_]+\.md/)?.[0],
     complete: line.includes('COMPLETE_LIVE_VERIFIED'),
+    // Backticked hex tokens in the row are the revision(s) the row claims the training represents.
+    revisions: [...line.matchAll(/`([0-9a-f]{7,40})`/g)].map((m) => m[1]),
   }))
   .filter((row) => row.guide);
 
@@ -33,7 +35,7 @@ if (rows.length === 0) {
   errors.push(`${matrixPath}: no guide rows found — the table shape changed and this check went blind`);
 }
 
-for (const { guide, complete } of rows) {
+for (const { guide, complete, revisions } of rows) {
   if (!existsSync(join(repoRoot, guide))) {
     errors.push(`${matrixPath} references ${guide}, which does not exist`);
     continue;
@@ -42,6 +44,17 @@ for (const { guide, complete } of rows) {
   const body = readFileSync(join(repoRoot, guide), 'utf8');
   if (!/LIVE VERIFIED/.test(body)) {
     errors.push(`${matrixPath} claims ${guide} is COMPLETE_LIVE_VERIFIED, but the guide carries no live-verification receipt`);
+  }
+  // A row that cannot name the revision it represents is not COMPLETE, and a row
+  // naming a revision the guide does not carry is stale — the matrix and the guide
+  // must agree on what was verified.
+  if (revisions.length === 0) {
+    errors.push(`${matrixPath} claims ${guide} is COMPLETE_LIVE_VERIFIED but names no verified revision`);
+  }
+  for (const revision of revisions) {
+    if (!body.includes(revision)) {
+      errors.push(`${matrixPath} says ${guide} represents ${revision}, but the guide does not mention that revision`);
+    }
   }
 }
 
