@@ -46,6 +46,25 @@ runs **before** the commit exists, not after. An attempt to touch a governed
 path halts the program even though nothing was committed — the attempt itself
 is the security event.
 
+A harness commit is eligible **only** when every one of these holds:
+
+- the worker process completed and did not time out;
+- its exit code is zero;
+- a result receipt exists, parses, and satisfies the result contract;
+- every changed path is inside the lane's `ownedPaths`;
+- no forbidden path was touched;
+- every declared proof was approved by policy and passed.
+
+The session is classified **before** the write-ahead transaction and before any
+`git add`. A crashed or malformed worker never produces a domain commit, and an
+empty proof set never reads as "all proofs passed".
+
+There is no path anywhere in the harness that commits to get around a problem.
+A dirty worktree found on an **unexpected branch** is not staged, committed,
+reset, or checked out: it is preserved exactly, the lane is stopped as
+`FAILED_RECOVERY`, and the other lanes continue. Committing a "wip" to tidy up
+would route unverified changes around the very gate this framework exists for.
+
 ### One stable branch per lane
 
 Lane `X` always works on `customer1/<x>-work`, and items accumulate on that one
@@ -61,6 +80,7 @@ conversation:
 | `blockers.json` | Open questions that automation is not permitted to answer |
 | `items/<itemId>.json` | One durable receipt per bounded work item |
 | `pending-transaction.json` | Write-ahead receipt; present only mid-commit |
+| `reports/recovery/` | Pending transactions preserved when recovery was ambiguous |
 | `lanes/*.md` | Per-lane charter handed to the worker as its context |
 | `reports/` | Dated run reports and the durable diagnostic log |
 
@@ -92,6 +112,41 @@ deterministic answer rather than a guess from commit prose.
 
 Ambiguity is never resolved by guessing. An unrecoverable lane records a blocker
 and stops; the rest of the program continues.
+
+**Unreadable evidence fails closed.** A `pending-transaction.json` that exists
+but does not parse is crash evidence that cannot be read — which is not the same
+thing as no crash evidence. The file is left exactly as found, its path is
+reported, no new work is selected, and the run stops.
+
+**Ambiguous recovery never destroys evidence.** When recovery cannot establish
+what happened, the pending transaction is archived to
+`reports/recovery/pending-failed-<timestamp>-<itemId>.json` and that path goes
+into the blocker. A pending transaction is deleted only after a successful
+deterministic recovery or a normal checkpoint finalization.
+
+### Legacy bootstrap
+
+This framework arrives **after** real lane work already exists, and those
+commits have no item receipt. A lane in that state must not report "nothing to
+recover" and hand the next worker an empty completed-item list — that is an
+instruction to rebuild what is already on the branch.
+
+A one-time bootstrap runs per lane, before recovery and before work selection,
+and only when the lane has no receipts at all. Evidence order:
+
+1. the previous runner's `run-state.json` item records (work item, lane, head
+   SHA, changed paths);
+2. actual branch ancestry and each commit's changed paths;
+3. commit subjects — carried **only** as human labels.
+
+Every reconstructed receipt is validated against the lane's ownership and the
+forbidden-path set exactly as live verification would; a commit that would have
+been refused when made is not accepted now because it is old. If any lane commit
+fails that check, the lane is **not** bootstrapped: the branch is preserved and
+the ambiguity is reported.
+
+Reconstructed receipts are marked `recovered = LEGACY_PRE_RECEIPT` and record
+`RECOVERED`, never `DONE`. **No gate status is ever changed.**
 
 ## `origin/main` is authoritative
 
@@ -294,24 +349,53 @@ headless configuration visibility.
 ### Safe-work exhaustion
 
 Completion is **not** a cycle count, elapsed time, `PR_READY`, `-MaxItems`, or a
-lane saying `DONE` once. `SAFE_WORK_EXHAUSTED` may be declared only after a
-complete A–G pass in which zero new verified commits were produced, zero new
-executable bounded items were found, and zero retryable transient failures
-remain.
+lane saying `DONE` once. Both halves must hold:
+
+1. the pass produced zero verified commits, zero genuinely new executable
+   bounded items (`DONE` or `PARTIAL` — **a blocker is not executable work**),
+   and zero still-retryable technical attempts; **and**
+2. every remaining lane is terminal for automation: `COMPLETE`, idle with no
+   work, `WAITING_FOR_OWNER`, `WAITING_FOR_TAYLOR`, `WAITING_FOR_MAIN`,
+   `WAITING_FOR_GOVERNANCE`, `WAITING_FOR_EXTERNAL`, `FAILED_RECOVERY`, or
+   `RETRY_EXHAUSTED`.
 
 It means automation has nothing further it may safely do. It does **not** mean
 production ready, production authorized, Owner accepted, Taylor approved, or
 deploy allowed.
 
+### Lane wait states
+
+A blocked result does not automatically mean "keep going". If the worker names
+real remaining safe work, the lane stays `BLOCKED_PARTIAL` and is still
+selectable. If it does not, the lane moves to the state that names who owes the
+answer — `WAITING_FOR_OWNER`, `WAITING_FOR_TAYLOR`, `WAITING_FOR_GOVERNANCE`,
+`WAITING_FOR_EXTERNAL`, `WAITING_FOR_MAIN` — and stops being selected. Spending
+a Claude session per pass to rediscover the same Owner question is not progress.
+
+`FAILED_RECOVERY` and `RETRY_EXHAUSTED` are terminal for automation until a
+human intervenes, and are never selected.
+
 ### Transient retry
 
-A worker that times out, dies, or produces no result receipt is retried: the
-initial attempt plus at most two retries, with short bounded backoff. After
-that the lane records `FAILED_TECHNICAL`, keeps all prior verified work, and the
-other lanes continue.
+A worker that times out, dies, or produces no valid result receipt is retried:
+the initial attempt plus at most two, with short bounded backoff.
+
+**A retry is only safe when the failed attempt left the worktree clean.** If a
+failed worker left any uncommitted path, the tree is preserved untouched, no
+second worker is started on top of it, and the lane is stopped for recovery.
+Blending two incomplete attempts into one tree would have the harness commit the
+mixture as a single verified item.
 
 Security, governance, ownership and proof-policy failures are **never** retried.
 Repeating a forbidden action is not a recovery strategy.
+
+### Blockers
+
+Blocker ids carry the run and pass, so identity comes from a fingerprint
+instead: lane, category, and the normalized question and blocking scope. An
+identical open blocker is folded into the existing one and is **not**
+re-announced. The same Owner question asked on five passes is one blocker,
+printed once.
 
 ### Parameters
 
@@ -420,7 +504,11 @@ next. Each pass ends with the Customer 1 progress board; exhaustion prints the
 final report.
 
 Heartbeats report only measurable facts — elapsed wall clock and how many files
-have actually changed on disk. Progress is never inferred from a worker's prose.
+have actually changed on disk. Progress is never inferred from a worker's prose,
+and the heartbeat never reports a safety verdict: while a worker is still
+running the harness has not made its ownership judgement yet, so it says
+*"Safety/governance verification runs before any commit"* rather than claiming a
+check has passed.
 
 The **diagnostic log** (`reports/logs/<runId>/diagnostic.log`) is secondary and
 holds the machine detail: run ids, PIDs, timeouts, branches, SHAs, retry

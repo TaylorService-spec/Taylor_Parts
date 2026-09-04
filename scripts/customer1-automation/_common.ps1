@@ -37,6 +37,10 @@ function Get-C1Context {
         # Write-ahead receipt for the one interruption window that matters:
         # between "verification passed" and "state checkpoint written".
         PendingFile = Join-Path $automation 'pending-transaction.json'
+        # Where a pending transaction goes when recovery could NOT establish what
+        # happened. Deleting the only forensic evidence of an ambiguous crash is
+        # how an unexplained branch becomes permanently unexplainable.
+        RecoveryDir = Join-Path $automation 'reports\recovery'
     }
 }
 
@@ -332,7 +336,16 @@ function Test-LaneExecutable {
     )
     if (-not $Lane.enabled) { return $false }
 
-    $nonExecutable = @('RUNNING', 'BLOCKED', 'COMPLETE', 'WAITING_FOR_OWNER', 'WAITING_FOR_TAYLOR', 'WAITING_FOR_MAIN')
+    # FAILED_RECOVERY and RETRY_EXHAUSTED are terminal for automation until a
+    # human intervenes. Leaving them selectable meant the next pass cheerfully
+    # started a worker on a lane whose state could not be established, or one
+    # that had already burned its retry budget.
+    $nonExecutable = @(
+        'RUNNING', 'BLOCKED', 'COMPLETE',
+        'WAITING_FOR_OWNER', 'WAITING_FOR_TAYLOR', 'WAITING_FOR_MAIN',
+        'WAITING_FOR_LEGAL', 'WAITING_FOR_EXTERNAL', 'WAITING_FOR_GOVERNANCE',
+        'FAILED_RECOVERY', 'RETRY_EXHAUSTED'
+    )
     if ($nonExecutable -contains $Lane.state) { return $false }
 
     foreach ($depId in @($Lane.dependencies)) {

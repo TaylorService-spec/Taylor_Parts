@@ -66,6 +66,7 @@ $here = Split-Path -Parent $PSCommandPath
 . (Join-Path $here '_common.ps1')
 . (Join-Path $here 'checkpoint.ps1')
 . (Join-Path $here 'recover.ps1')
+. (Join-Path $here 'bootstrap-legacy.ps1')
 
 $script:ctx = Get-C1Context
 $ctx = $script:ctx
@@ -307,6 +308,35 @@ If you did nothing, say NO_WORK. Do not claim DONE for work you did not do.
 "@
 }
 
+function Test-C1HasRemainingWork {
+    <#
+        Does a blocked worker say there is still safe work in its lane?
+
+        Only an explicit, non-empty statement counts. Silence, "none", or a
+        missing field means the lane is waiting on somebody, and re-running a
+        worker would just rediscover the same blocker at full cost.
+    #>
+    param($Claim)
+    if (-not $Claim) { return $false }
+
+    $texts = @()
+    if ($Claim.PSObject.Properties['blockers']) {
+        foreach ($b in @($Claim.blockers)) {
+            if ($b -and $b.PSObject.Properties['remainingExecutableWork']) { $texts += "$($b.remainingExecutableWork)" }
+        }
+    }
+    if ($Claim.PSObject.Properties['nextSuggestedItem']) { $texts += "$($Claim.nextSuggestedItem)" }
+
+    foreach ($t in $texts) {
+        $n = ($t -replace '[^A-Za-z0-9 ]', ' ') -replace '\s+', ' '
+        $n = $n.Trim().ToLowerInvariant()
+        if ($n -and $n -notin @('none', 'n a', 'na', 'nothing', 'no', 'none identified', 'nothing further', 'unknown')) {
+            return $true
+        }
+    }
+    $false
+}
+
 function Test-C1TransientFailure {
     <#
         Transient means "the worker process died or produced nothing", not "the
@@ -338,12 +368,32 @@ if ($DryRun) {
 } else {
     Write-Diag 'Startup recovery: reconciling persisted state with lane branches before selecting work.'
     foreach ($lane in @($lanesDoc.lanes)) {
-        $rec = Invoke-C1LaneRecovery -Context $ctx -Lane $lane `
-            -WorktreePath (Get-LaneWorktree $lane) -Branch (Get-LaneBranch $lane) `
-            -ForbiddenPaths $laneForbidden -ResultFileName $cfg.resultFileName
+        $wt = Get-LaneWorktree $lane
+        $br = Get-LaneBranch $lane
+
+        # BOOTSTRAP FIRST. This framework arrives after real lane work already
+        # exists, and a lane whose history predates the receipt system would
+        # otherwise hand the next worker an empty completed-item list -- an
+        # instruction to rebuild what is already on the branch.
+        $boot = Invoke-C1LegacyBootstrap -Context $ctx -Lane $lane -WorktreePath $wt -Branch $br `
+            -StateDoc $stateDoc -ForbiddenPaths $laneForbidden -MainRef $cfg.mainRef
+        Write-Diag "bootstrap lane $($lane.id): $($boot.status) -- $($boot.message)"
+        if (@($boot.recovered).Count -gt 0) {
+            Write-Host "  Recovered history -- $($lane.name): $($boot.message)"
+            $stateAdvanced = $true
+        }
+
+        $rec = if ($boot.blocked) {
+            # Do not attempt ordinary recovery on a lane whose own history could
+            # not be established.
+            $boot
+        } else {
+            Invoke-C1LaneRecovery -Context $ctx -Lane $lane -WorktreePath $wt -Branch $br `
+                -ForbiddenPaths $laneForbidden -ResultFileName $cfg.resultFileName
+        }
         Write-Diag "recovery lane $($lane.id): $($rec.status) -- $($rec.message)"
 
-        if ($rec.status -ne 'NOTHING_TO_RECOVER') {
+        if ($rec.status -notin @('NOTHING_TO_RECOVER', 'NOTHING_TO_BOOTSTRAP', 'ALREADY_BOOTSTRAPPED')) {
             Write-Host "  Recovered -- $($lane.name): $($rec.message)"
         }
         if (@($rec.recovered).Count -gt 0) {
@@ -354,18 +404,14 @@ if ($DryRun) {
             # Per-lane stop. The other six lanes are unaffected.
             $lane.state = 'FAILED_RECOVERY'
             $lane.lastResult = 'FAILED_RECOVERY'
-            $blockersDoc.blockers += [pscustomobject]@{
-                id = "BLK-$runId-$($lane.id)-recovery"
-                lane = $lane.id
-                workItem = '(startup recovery)'
-                category = 'GOVERNANCE'
-                question = "Lane $($lane.id) could not be recovered deterministically. $($rec.message) How should this branch be reconciled?"
-                whyAutomationCannotDecide = 'Recovery was ambiguous. Automation must not manufacture a success or reset a branch.'
-                blockingScope = "Lane $($lane.id) execution."
-                remainingExecutableWork = 'All other lanes remain executable.'
-                createdAt = Get-UtcStamp
-                status = 'OPEN'
-            }
+            $blk = New-C1LaneBlocker -Lane $lane -RunId $runId -PassId 0 -Suffix 'recovery' `
+                -WorkItem '(startup recovery)' -Category 'GOVERNANCE' `
+                -Question "Lane $($lane.id) could not be recovered deterministically. $($rec.message) How should this branch be reconciled?" `
+                -Why 'Recovery was ambiguous. Automation must not manufacture a success or reset a branch.' `
+                -Scope "Lane $($lane.id) execution." `
+                -Remaining 'All other lanes remain executable.'
+            $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $blk
+            if ($added.isNew) { Write-C1Blocker -Blocker $added.blocker -Lane $lane }
             Write-JsonFile $ctx.BlockersFile $blockersDoc
             Write-JsonFile $ctx.LanesFile $lanesDoc
             $stateAdvanced = $true
@@ -376,8 +422,8 @@ if ($DryRun) {
 # ----------------------------------------------------------------- passes
 
 $allReceipts = @()
-$announced = @{}
-foreach ($b in @($blockersDoc.blockers)) { $announced[$b.id] = $true }
+# Announce-once is now a property of Add-C1Blocker: a blocker is printed only
+# when its fingerprint is genuinely new, which also survives across runs.
 
 $passId = 0
 $exhausted = $false
@@ -429,8 +475,8 @@ do {
                 createdAt = Get-UtcStamp
                 status = 'OPEN'
             }
-            $blockersDoc.blockers += $blk
-            if (-not $announced.ContainsKey($blk.id)) { Write-C1Blocker -Blocker $blk -Lane $lane; $announced[$blk.id] = $true }
+            $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $blk
+            if ($added.isNew) { Write-C1Blocker -Blocker $added.blocker -Lane $lane }
             $lane.state = 'BLOCKED_PARTIAL'
             if (-not $DryRun) { Write-JsonFile $ctx.BlockersFile $blockersDoc; Write-JsonFile $ctx.LanesFile $lanesDoc; $stateAdvanced = $true }
             continue
@@ -454,15 +500,35 @@ do {
         } else {
             $cur = (Invoke-Git -Directory $worktree -Arguments @('branch', '--show-current')).Output -join ''
             if ($cur -ne $branch) {
-                # Never discard existing lane work. Leftover changes from an
-                # interrupted run get committed on the branch they belong to
-                # before anything switches away from it.
                 $dirty = @(Get-C1DirtyPaths -WorktreePath $worktree -ResultFileName $cfg.resultFileName)
                 if ($dirty.Count -gt 0) {
-                    Write-Diag "lane $($lane.id): committing leftover work on '$cur' before switching." 'WARN'
-                    Invoke-Git -Directory $worktree -Arguments @('add', '-A') | Out-Null
-                    Invoke-Git -Directory $worktree -Arguments @('commit', '-q', '-m', "wip(customer-1): preserve lane $($lane.id) work from an interrupted run") | Out-Null
+                    # A dirty worktree on an UNEXPECTED branch is an unexplained
+                    # state, and there is exactly one safe response: touch nothing.
+                    #
+                    # This used to `git add -A` and commit a "wip" -- which routed
+                    # unverified changes around the ownership and proof gate this
+                    # whole framework exists to enforce, on a branch nobody chose.
+                    # Preserving work is not a reason to bypass the gate.
+                    $blk = New-C1LaneBlocker -Lane $lane -RunId $runId -PassId $passId -Suffix 'dirty-branch' `
+                        -Category 'GOVERNANCE' `
+                        -Question ("Lane $($lane.id) worktree is on unexpected branch '$cur' with $($dirty.Count) uncommitted path(s): " +
+                                   "$($dirty -join ', '). How should this be reconciled?") `
+                        -Why 'Committing or discarding unverified changes on an unexpected branch would bypass the harness ownership and proof gate.' `
+                        -Scope "Lane $($lane.id) execution." `
+                        -Remaining 'All other lanes remain executable.'
+                    $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $blk
+                    if ($added.isNew) { Write-C1Blocker -Blocker $added.blocker -Lane $lane }
+
+                    $lane.state = 'FAILED_RECOVERY'
+                    $lane.lastResult = 'FAILED_RECOVERY'
+                    Write-JsonFile $ctx.LanesFile $lanesDoc
+                    Write-JsonFile $ctx.BlockersFile $blockersDoc
+                    $stateAdvanced = $true
+                    Write-Diag ("lane $($lane.id): unexpected branch '$cur' with dirty tree. Nothing staged, committed, " +
+                                'reset or checked out. Lane stopped.') 'WARN'
+                    continue
                 }
+                # Clean tree: switching branches discards nothing.
                 $exists = (Invoke-Git -Directory $worktree -Arguments @('rev-parse', '--verify', "refs/heads/$branch") -AllowFail).ExitCode -eq 0
                 if ($exists) {
                     Invoke-Git -Directory $worktree -Arguments @('checkout', $branch) | Out-Null
@@ -511,13 +577,40 @@ do {
             $receipt.workerExitCode = $session.exitCode
 
             $claim = $session.claim
-            $claimedResult = if ($claim -and $claim.PSObject.Properties['result']) { $claim.result } else { 'NO_WORK' }
-            $expected = if ($claim -and $claim.PSObject.Properties['expectedFiles']) { @($claim.expectedFiles) } else { @() }
-            $proofs = if ($claim -and $claim.PSObject.Properties['proofs']) { @($claim.proofs) } else { @() }
-            $receipt.workItem = if ($claim -and $claim.PSObject.Properties['workItem']) { $claim.workItem } else { '(unnamed)' }
-            $receipt.purpose = if ($claim -and $claim.PSObject.Properties['purpose']) { $claim.purpose } else { $null }
-            $receipt.nextSuggestedItem = if ($claim -and $claim.PSObject.Properties['nextSuggestedItem']) { $claim.nextSuggestedItem } else { $null }
+
+            # ---- SESSION CLASSIFICATION, BEFORE ANYTHING TOUCHES GIT
+            #
+            # A commit is eligible only when the WORKER ITSELF succeeded. Judging
+            # the session after committing meant a crashed or malformed worker
+            # whose half-finished edits happened to sit inside owned paths -- with
+            # an empty proof set that trivially "passed" -- got its work committed,
+            # and was only then classified FAILED_TECHNICAL. A domain commit must
+            # never come out of a failed worker.
+            $sessionFailure = $null
+            if ($session.timedOut) {
+                $sessionFailure = "worker timed out after $($cfg.claudeTimeoutSec)s"
+            } elseif ($session.exitCode -ne 0) {
+                $sessionFailure = "worker exited $($session.exitCode)"
+            } elseif (-not $claim) {
+                $sessionFailure = 'worker produced no result receipt, or one that does not parse'
+            } elseif (-not $claim.PSObject.Properties['result'] -or [string]::IsNullOrWhiteSpace($claim.result)) {
+                $sessionFailure = 'result receipt has no result field'
+            } elseif ($claim.result -notin @('DONE','PARTIAL','BLOCKED_OWNER','BLOCKED_TAYLOR','BLOCKED_GOVERNANCE',
+                                             'BLOCKED_COLLISION','BLOCKED_EXTERNAL','FAILED_TECHNICAL','NO_WORK')) {
+                $sessionFailure = "result receipt declares an unknown result '$($claim.result)'"
+            } elseif (-not $claim.PSObject.Properties['workItem'] -or [string]::IsNullOrWhiteSpace($claim.workItem)) {
+                $sessionFailure = 'result receipt names no work item'
+            }
+            $sessionOk = ($null -eq $sessionFailure)
+
+            $claimedResult = if ($sessionOk) { $claim.result } else { 'FAILED_TECHNICAL' }
+            $expected = if ($sessionOk -and $claim.PSObject.Properties['expectedFiles']) { @($claim.expectedFiles) } else { @() }
+            $proofs = if ($sessionOk -and $claim.PSObject.Properties['proofs']) { @($claim.proofs) } else { @() }
+            $receipt.workItem = if ($sessionOk) { $claim.workItem } else { "(worker failure: $sessionFailure)" }
+            $receipt.purpose = if ($sessionOk -and $claim.PSObject.Properties['purpose']) { $claim.purpose } else { $null }
+            $receipt.nextSuggestedItem = if ($sessionOk -and $claim.PSObject.Properties['nextSuggestedItem']) { $claim.nextSuggestedItem } else { $null }
             $receipt.proofCommands = @($proofs)
+            if (-not $sessionOk) { Write-Diag "lane $($lane.id): session NOT eligible to commit -- $sessionFailure" 'WARN' }
 
             # ---- ownership gate, BEFORE any commit exists
             $dirty = @(Get-C1DirtyPaths -WorktreePath $worktree -ResultFileName $cfg.resultFileName)
@@ -525,14 +618,18 @@ do {
             $receipt.ownedPathCheck = if (@($ruling.unownedPaths).Count -eq 0) { 'PASS' } else { 'FAIL' }
             $receipt.forbiddenPathCheck = if (@($ruling.forbiddenPaths).Count -eq 0) { 'PASS' } else { 'FAIL' }
 
-            # ---- proofs run on the working tree, before the commit
-            $proofResults = @(Invoke-C1Proofs -WorktreePath $worktree -Proofs $proofs -ProofPolicy $cfg.proofPolicy)
+            # ---- proofs run on the working tree, before the commit.
+            # Skipped entirely for a failed session: there is nothing to prove,
+            # and an empty proof set must never read as "all proofs passed".
+            $proofResults = if ($sessionOk) {
+                @(Invoke-C1Proofs -WorktreePath $worktree -Proofs $proofs -ProofPolicy $cfg.proofPolicy)
+            } else { @() }
             $receipt.proofResults = @($proofResults)
-            $proofsOk = (@($proofResults | Where-Object { -not $_.passed }).Count -eq 0)
+            $proofsOk = $sessionOk -and (@($proofResults | Where-Object { -not $_.passed }).Count -eq 0)
 
             # ---- write-ahead transaction, then commit
             $commitSha = $null
-            if ($dirty.Count -gt 0 -and $ruling.acceptable -and $proofsOk) {
+            if ($sessionOk -and $dirty.Count -gt 0 -and $ruling.acceptable -and $proofsOk) {
                 $marker = Get-C1ItemMarker -ItemId $itemId
                 $sm = if ($claim -and $claim.PSObject.Properties['summary']) { $claim.summary } else { '' }
                 $commitMessage = @"
@@ -633,15 +730,47 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 
             # ---- bounded transient retry
             if (Test-C1TransientFailure -Session $session -Verify $verify) {
+
+                # A retry is only safe when the failed attempt left NOTHING behind.
+                #
+                # Starting a second worker on top of a first worker's abandoned
+                # edits blends two incomplete attempts into one indistinguishable
+                # tree, and the harness would then commit the mixture as a single
+                # verified item. The uncommitted work is preserved exactly as the
+                # failed worker left it, and a human decides.
+                $leftBehind = @(Get-C1DirtyPaths -WorktreePath $worktree -ResultFileName $cfg.resultFileName)
+                if ($leftBehind.Count -gt 0) {
+                    $receipt.result = 'FAILED_RECOVERY'
+                    $lane.state = 'FAILED_RECOVERY'
+                    $blk = New-C1LaneBlocker -Lane $lane -RunId $runId -PassId $passId -Suffix 'dirty-transient' `
+                        -WorkItem $receipt.workItem -Category 'GOVERNANCE' `
+                        -Question ("Lane $($lane.id) worker failed ($sessionFailure) and left $($leftBehind.Count) uncommitted path(s): " +
+                                   "$($leftBehind -join ', '). Keep, discard, or complete this partial work?") `
+                        -Why 'Retrying on top of an incomplete attempt would blend two attempts into one commit; discarding it would destroy work.' `
+                        -Scope "Lane $($lane.id) execution." `
+                        -Remaining 'All other lanes remain executable.'
+                    $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $blk
+                    if ($added.isNew) {
+                        Write-C1Blocker -Blocker $added.blocker -Lane $lane
+                        $receipt.blockersRaised += $added.blocker.id
+                    }
+                    Write-C1Failure -Component 'Claude lane worker' -LaneId $lane.id `
+                        -ExitCode $session.exitCode `
+                        -ActualError $(if ($session.stderr) { $session.stderr } else { $sessionFailure }) `
+                        -Committed 'NO' -StateAdvanced 'YES' `
+                        -RecoveryStatus ("Not retried: the failed attempt left uncommitted work, preserved untouched at $worktree. " +
+                                         'Other lanes continue.')
+                    break
+                }
+
                 if ($attempt -lt $MaxTransientRetries) {
                     $attempt++
                     $backoff = 5 * $attempt
-                    Write-Host "  Transient worker failure in $($lane.name) (exit $($session.exitCode)). Retry $attempt of $MaxTransientRetries in ${backoff}s."
-                    Write-Diag "lane $($lane.id): transient failure, retry $attempt of $MaxTransientRetries after ${backoff}s." 'WARN'
+                    Write-Host "  Transient worker failure in $($lane.name) (exit $($session.exitCode)). Worktree is clean. Retry $attempt of $MaxTransientRetries in ${backoff}s."
+                    Write-Diag "lane $($lane.id): transient failure with a clean tree, retry $attempt of $MaxTransientRetries after ${backoff}s." 'WARN'
                     $receipt.result = 'RETRIED'
                     $receipt.completedAt = Get-UtcStamp
                     Save-C1ItemReceipt -Context $ctx -Receipt $receipt | Out-Null
-                    Clear-C1PendingTransaction -Context $ctx
                     Start-Sleep -Seconds $backoff
                     continue
                 }
@@ -666,7 +795,11 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
         $passReceipts += $receipt
         $runRecord.items += $receipt
         if ($receipt.commitSha) { $verifiedCommitsThisPass++ }
-        if ($receipt.result -ne 'NO_WORK') { $newItemsThisPass++ }
+        # "New executable work" means the lane actually DID a bounded item.
+        # Counting every non-NO_WORK result made a BLOCKED_OWNER receipt look
+        # like progress, so a program waiting entirely on the Owner could never
+        # reach exhaustion and kept spending sessions to rediscover that.
+        if ($receipt.result -in @('DONE', 'PARTIAL')) { $newItemsThisPass++ }
 
         # ---- blockers the worker raised
         $claim = $session.claim
@@ -686,14 +819,13 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
                     createdAt = Get-UtcStamp
                     status = 'OPEN'
                 }
-                $blockersDoc.blockers += $rec
-                $receipt.blockersRaised += $rec.id
-                # Announce once. Re-printing the same open blocker every pass
-                # trains the operator to stop reading the console.
-                if (-not $announced.ContainsKey($rec.id)) {
-                    Write-C1Blocker -Blocker $rec -Lane $lane
-                    $announced[$rec.id] = $true
-                }
+                # Deduped on a stable fingerprint, not the run/pass-stamped id.
+                # The same Owner question asked on three passes is one blocker,
+                # announced once. Re-printing it trains the operator to stop
+                # reading the console.
+                $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $rec
+                $receipt.blockersRaised += $added.blocker.id
+                if ($added.isNew) { Write-C1Blocker -Blocker $added.blocker -Lane $lane }
             }
         }
 
@@ -727,12 +859,26 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
         }
 
         # ---- lane state + durable persistence, after EVERY item
+        # A blocked lane keeps working ONLY if it says it still has safe work.
+        #
+        # Mapping every non-DONE result to BLOCKED_PARTIAL kept lanes executable
+        # forever, so each pass spent a Claude session rediscovering the same
+        # Owner question. When the worker reports nothing left to do without an
+        # answer, the lane moves to the wait state that names who owes it.
+        $hasRemainingWork = Test-C1HasRemainingWork -Claim $session.claim
+
         $lane.state = switch ($receipt.result) {
-            'DONE'             { 'PR_READY' }
-            'PARTIAL'          { 'BLOCKED_PARTIAL' }
-            'NO_WORK'          { 'IDLE' }
-            'FAILED_TECHNICAL' { if ($lane.state -eq 'RETRY_EXHAUSTED') { 'RETRY_EXHAUSTED' } else { 'BLOCKED_PARTIAL' } }
-            default            { 'BLOCKED_PARTIAL' }
+            'DONE'               { 'PR_READY' }
+            'PARTIAL'            { 'BLOCKED_PARTIAL' }
+            'NO_WORK'            { 'IDLE' }
+            'FAILED_RECOVERY'    { 'FAILED_RECOVERY' }
+            'BLOCKED_OWNER'      { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_OWNER' } }
+            'BLOCKED_TAYLOR'     { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_TAYLOR' } }
+            'BLOCKED_GOVERNANCE' { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_GOVERNANCE' } }
+            'BLOCKED_EXTERNAL'   { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_EXTERNAL' } }
+            'BLOCKED_COLLISION'  { if ($hasRemainingWork) { 'BLOCKED_PARTIAL' } else { 'WAITING_FOR_MAIN' } }
+            'FAILED_TECHNICAL'   { if ($lane.state -in @('RETRY_EXHAUSTED', 'FAILED_RECOVERY')) { $lane.state } else { 'BLOCKED_PARTIAL' } }
+            default              { 'BLOCKED_PARTIAL' }
         }
         $lane.currentWorkItem = $receipt.workItem
         $lane.lastRun = $runId
@@ -763,8 +909,28 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 
     # SAFE-WORK EXHAUSTION. Not cycles, not elapsed time, not PR_READY, not
     # MaxItems, and never a single lane saying DONE once.
-    $exhausted = ($verifiedCommitsThisPass -eq 0 -and $newItemsThisPass -eq 0 -and $retryableRemaining -eq 0)
-    Write-Diag "pass $passId done. commits=$verifiedCommitsThisPass newItems=$newItemsThisPass retryable=$retryableRemaining exhausted=$exhausted"
+    #
+    # Both halves must hold: this pass produced nothing, AND every remaining lane
+    # is terminal for automation. A lane still sitting in an executable state has
+    # safe work by definition, whatever this pass happened to do.
+    $retryableRemaining = @($lanesDoc.lanes | Where-Object {
+        $_.enabled -and $_.state -notin @('RETRY_EXHAUSTED', 'FAILED_RECOVERY') -and
+        $_.lastResult -eq 'FAILED_TECHNICAL'
+    }).Count
+
+    # A lane that reported NO_WORK this run is terminal for automation even
+    # though its IDLE state stays selectable for a future run: it has already
+    # been asked, this run, and answered "nothing safe left".
+    $stillExecutable = @($lanesDoc.lanes | Where-Object {
+        (Test-LaneExecutable -Lane $_ -AllLanes $lanesDoc.lanes) -and
+        -not ($_.lastRun -eq $runId -and $_.lastResult -eq 'NO_WORK')
+    })
+
+    $exhausted = ($verifiedCommitsThisPass -eq 0 -and $newItemsThisPass -eq 0 -and
+                  $retryableRemaining -eq 0 -and $stillExecutable.Count -eq 0)
+
+    Write-Diag ("pass $passId done. commits=$verifiedCommitsThisPass newItems=$newItemsThisPass " +
+                "retryable=$retryableRemaining stillExecutable=$($stillExecutable.Count) exhausted=$exhausted")
 
 } while ($UntilExhausted -and -not $exhausted -and $passId -lt $MaxPasses -and -not $DryRun)
 

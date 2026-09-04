@@ -133,7 +133,10 @@ function Write-C1Heartbeat {
     if ($WorkItem) { Write-Host "  Current item: $WorkItem" }
     Write-Host "  Elapsed: $(Format-C1Duration $Elapsed)"
     Write-Host "  Files currently changed: $FilesChanged"
-    Write-Host '  No safety/governance issue detected.'
+    # NOT "no issue detected". The worker is still running and the harness has
+    # not made its ownership or forbidden-path judgement yet. The console must
+    # never report a safety check as passed before it has actually run.
+    Write-Host '  Safety/governance verification runs before any commit.'
     Write-Host ''
 }
 

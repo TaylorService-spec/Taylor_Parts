@@ -53,9 +53,10 @@ function Invoke-C1LaneRecovery {
 
     if (-not (Test-Path $WorktreePath)) {
         if ($pending) {
-            Clear-C1PendingTransaction -Context $Context
+            $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $pending.itemId
             return (New-RecoveryResult 'FAILED_RECOVERY' `
-                "Pending transaction for lane $($Lane.id) references a worktree that no longer exists: $WorktreePath." @() -Blocked)
+                ("Pending transaction for lane $($Lane.id) references a worktree that no longer exists: $WorktreePath. " +
+                 "Evidence preserved at $ev.") @() -Blocked)
         }
         return (New-RecoveryResult 'NOTHING_TO_RECOVER' 'Lane worktree does not exist yet.')
     }
@@ -79,16 +80,17 @@ function Invoke-C1LaneRecovery {
             $paths = @(Get-C1CommitPaths -WorktreePath $WorktreePath -FromSha "$marked^" -ToSha $marked)
             $ruling = Test-C1PathsAcceptable -Paths $paths -OwnedPaths @($Lane.ownedPaths) -ForbiddenPaths $ForbiddenPaths
             if (-not $ruling.acceptable) {
-                Clear-C1PendingTransaction -Context $Context
+                $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $itemId
                 return (New-RecoveryResult 'FAILED_RECOVERY' ("Recovered commit $($marked.Substring(0,8)) touches paths lane $($Lane.id) may not own " +
-                    "(forbidden: $($ruling.forbiddenPaths -join ', '); out-of-scope: $($ruling.unownedPaths -join ', ')). Branch preserved.") @() -Blocked)
+                    "(forbidden: $($ruling.forbiddenPaths -join ', '); out-of-scope: $($ruling.unownedPaths -join ', ')). " +
+                    "Branch preserved. Evidence preserved at $ev.") @() -Blocked)
             }
 
             $drift = @(Get-C1PathDrift -Actual $paths -Expected @($pending.verifiedChangedPaths))
             if ($drift.Count -gt 0) {
-                Clear-C1PendingTransaction -Context $Context
+                $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $itemId
                 return (New-RecoveryResult 'FAILED_RECOVERY' ("Recovered commit $($marked.Substring(0,8)) does not match the pending transaction " +
-                    "(differs on: $($drift -join ', ')). Branch preserved; nothing rerun.") @() -Blocked)
+                    "(differs on: $($drift -join ', ')). Branch preserved; nothing rerun. Evidence preserved at $ev.") @() -Blocked)
             }
 
             $receipt = $pending.itemReceipt
@@ -115,16 +117,17 @@ function Invoke-C1LaneRecovery {
 
             $ruling = Test-C1PathsAcceptable -Paths $dirty -OwnedPaths @($Lane.ownedPaths) -ForbiddenPaths $ForbiddenPaths
             if (-not $ruling.acceptable) {
-                Clear-C1PendingTransaction -Context $Context
+                $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $itemId
                 return (New-RecoveryResult 'FAILED_RECOVERY' ("Lane $($Lane.id): interrupted work touches paths it may not own " +
-                    "(forbidden: $($ruling.forbiddenPaths -join ', '); out-of-scope: $($ruling.unownedPaths -join ', ')). Nothing committed; tree preserved.") @() -Blocked)
+                    "(forbidden: $($ruling.forbiddenPaths -join ', '); out-of-scope: $($ruling.unownedPaths -join ', ')). " +
+                    "Nothing committed; tree preserved. Evidence preserved at $ev.") @() -Blocked)
             }
 
             $drift = @(Get-C1PathDrift -Actual $dirty -Expected @($pending.verifiedChangedPaths))
             if ($drift.Count -gt 0) {
-                Clear-C1PendingTransaction -Context $Context
+                $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $itemId
                 return (New-RecoveryResult 'FAILED_RECOVERY' ("Lane $($Lane.id): working tree no longer matches the pending transaction " +
-                    "(differs on: $($drift -join ', ')). Nothing committed; tree preserved.") @() -Blocked)
+                    "(differs on: $($drift -join ', ')). Nothing committed; tree preserved. Evidence preserved at $ev.") @() -Blocked)
             }
 
             # Same paths, same verdict as before the crash: finish the transaction.
@@ -151,9 +154,9 @@ function Invoke-C1LaneRecovery {
 
         # Pending open, branch moved, no marker: something other than this
         # transaction advanced the branch. Not deterministic, so do not decide.
-        Clear-C1PendingTransaction -Context $Context
+        $ev = Save-C1FailedRecoveryEvidence -Context $Context -ItemId $itemId
         return (New-RecoveryResult 'FAILED_RECOVERY' ("Lane $($Lane.id): branch moved from $($pre.Substring(0,8)) to $($head.Substring(0,8)) " +
-            'but carries no marker for the pending item. Branch preserved; lane stopped.') @() -Blocked)
+            "but carries no marker for the pending item. Branch preserved; lane stopped. Evidence preserved at $ev.") @() -Blocked)
     }
 
     # ------------------------------------------------------------- cases C / D

@@ -115,8 +115,12 @@ function Get-C1CompletedWorkSummary {
         [Parameter(Mandatory)][string]$LaneId,
         [int]$Max = 25
     )
+    # RECOVERED counts. Work reconstructed by the legacy bootstrap, or recovered
+    # after a crash, exists on the branch just as surely as work this harness
+    # watched being made -- and telling a worker otherwise is telling it to build
+    # the thing again.
     $done = @(Get-C1ItemReceipts -Context $Context -LaneId $LaneId |
-        Where-Object { $_.result -in @('DONE', 'PARTIAL') -and $_.workItem })
+        Where-Object { $_.result -in @('DONE', 'PARTIAL', 'RECOVERED') -and $_.workItem })
 
     $titles = @($done | ForEach-Object { $_.workItem } | Select-Object -Unique)
     if ($titles.Count -gt $Max) { $titles = @($titles | Select-Object -Last $Max) }
@@ -149,18 +153,141 @@ function Save-C1PendingTransaction {
 }
 
 function Get-C1PendingTransaction {
+    <#
+        FAILS CLOSED. An unreadable pending transaction is crash evidence that
+        cannot be read -- which is NOT the same thing as no crash evidence.
+        Swallowing the parse error turned "I do not know what happened" into "no
+        transaction was in flight", and the supervisor would then select new work
+        on a lane whose true state was unknown.
+
+        The file is preserved untouched and the run stops.
+    #>
     param([Parameter(Mandatory)]$Context)
     if (-not (Test-Path $Context.PendingFile)) { return $null }
     try { Get-Content -LiteralPath $Context.PendingFile -Raw -Encoding UTF8 | ConvertFrom-Json }
     catch {
-        Write-Step "Pending transaction file is unreadable; treating as ambiguous recovery." 'WARN'
-        $null
+        throw ("STOP: pending-transaction.json exists but cannot be parsed: $($Context.PendingFile) -- " +
+               "$($_.Exception.Message). This is unreadable crash evidence, not an absent transaction. " +
+               'The file has been left exactly as found. No new work will be selected until it is resolved.')
     }
 }
 
 function Clear-C1PendingTransaction {
+    <#
+        Only ever called after a transaction is genuinely settled: a successful
+        deterministic recovery, or a normal checkpoint finalization. Ambiguous
+        recovery archives instead -- see Save-C1FailedRecoveryEvidence.
+    #>
     param([Parameter(Mandatory)]$Context)
     Remove-JsonFile $Context.PendingFile
+}
+
+function Save-C1FailedRecoveryEvidence {
+    <#
+        Atomically move an unsettled pending transaction out of the live slot and
+        into the recovery archive, so the run can continue on other lanes without
+        destroying the record of what could not be established.
+
+        Returns the archived path, which belongs in the blocker.
+    #>
+    param(
+        [Parameter(Mandatory)]$Context,
+        [string]$ItemId = 'unknown'
+    )
+    if (-not (Test-Path $Context.PendingFile)) { return $null }
+
+    if (-not (Test-Path $Context.RecoveryDir)) {
+        New-Item -ItemType Directory -Force -Path $Context.RecoveryDir | Out-Null
+    }
+    $safeId = ($ItemId -replace '[^A-Za-z0-9._-]', '-')
+    $dest = Join-Path $Context.RecoveryDir ("pending-failed-{0}-{1}.json" -f (Get-Date).ToString('yyyyMMdd-HHmmss'), $safeId)
+    Move-Item -LiteralPath $Context.PendingFile -Destination $dest -Force
+    Write-Step "Preserved unsettled pending transaction at $dest" 'WARN'
+    $dest
+}
+
+function Get-C1BlockerFingerprint {
+    <#
+        Stable identity for a blocker, independent of run and pass number.
+
+        Blocker ids embed the run and pass, so the same Owner question came back
+        as a brand-new blocker on every sweep and was announced again each time.
+        The operator learns to ignore the console, which defeats having one.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Lane,
+        [string]$Category,
+        [string]$Question,
+        [string]$BlockingScope
+    )
+    function Norm { param([string]$s) (($s -replace '\s+', ' ').Trim().ToLowerInvariant()) }
+    "$($Lane.ToUpperInvariant())|$(Norm $Category)|$(Norm $Question)|$(Norm $BlockingScope)"
+}
+
+function New-C1LaneBlocker {
+    <#
+        One shape for every harness-raised blocker, so dedupe has something
+        consistent to fingerprint.
+    #>
+    param(
+        [Parameter(Mandatory)]$Lane,
+        [Parameter(Mandatory)][string]$RunId,
+        [int]$PassId = 0,
+        [string]$Suffix = 'x',
+        [string]$WorkItem = '(harness)',
+        [Parameter(Mandatory)][string]$Category,
+        [Parameter(Mandatory)][string]$Question,
+        [string]$Why,
+        [string]$Scope,
+        [string]$Remaining
+    )
+    [pscustomobject]@{
+        id = "BLK-$RunId-p$PassId-$($Lane.id)-$Suffix"
+        lane = $Lane.id
+        workItem = $WorkItem
+        category = $Category
+        question = $Question
+        whyAutomationCannotDecide = $Why
+        blockingScope = $Scope
+        remainingExecutableWork = $Remaining
+        createdAt = Get-UtcStamp
+        status = 'OPEN'
+    }
+}
+
+function Add-C1Blocker {
+    <#
+        Append a blocker, or fold it into the identical OPEN one that already
+        exists. Returns { blocker, isNew }; only a new blocker is announced.
+    #>
+    param(
+        [Parameter(Mandatory)]$BlockersDoc,
+        [Parameter(Mandatory)]$Blocker
+    )
+    $fp = Get-C1BlockerFingerprint -Lane $Blocker.lane -Category $Blocker.category `
+        -Question $Blocker.question -BlockingScope $Blocker.blockingScope
+
+    if (-not $Blocker.PSObject.Properties['fingerprint']) {
+        $Blocker | Add-Member -NotePropertyName fingerprint -NotePropertyValue $fp
+    } else { $Blocker.fingerprint = $fp }
+
+    $existing = @($BlockersDoc.blockers | Where-Object {
+        $_.status -eq 'OPEN' -and
+        $_.PSObject.Properties['fingerprint'] -and $_.fingerprint -eq $fp
+    })
+
+    if ($existing.Count -gt 0) {
+        $hit = $existing[0]
+        if ($hit.PSObject.Properties['lastSeenAt']) { $hit.lastSeenAt = Get-UtcStamp }
+        else { $hit | Add-Member -NotePropertyName lastSeenAt -NotePropertyValue (Get-UtcStamp) }
+        if ($hit.PSObject.Properties['seenCount']) { $hit.seenCount = [int]$hit.seenCount + 1 }
+        else { $hit | Add-Member -NotePropertyName seenCount -NotePropertyValue 2 }
+        Write-Step "Blocker already open as $($hit.id); not duplicating." 'WARN'
+        return [pscustomobject]@{ blocker = $hit; isNew = $false }
+    }
+
+    $BlockersDoc.blockers += $Blocker
+    [pscustomobject]@{ blocker = $Blocker; isNew = $true }
 }
 
 # -------------------------------------------------------------- git forensics
