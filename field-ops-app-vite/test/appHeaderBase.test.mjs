@@ -102,16 +102,6 @@ check("sign-out is ONE implementation, taken from the auth context", () => {
   assert.equal(signOutHandlers, 1, "more than one sign-out control in the rail");
 });
 
-check("the strip collapses when it would otherwise be an empty ruled band", () => {
-  // Its remaining jobs are the notification bell and, at drawer widths, the navigation opener. A
-  // technician on a desktop has neither -- rendering the element anyway would leave a 48px surface
-  // with a bottom border announcing a region that contains nothing.
-  assert.ok(headerCode.includes("if (!onOpenNav && !canSeeReorderRequests) return null;"), "the empty-strip collapse is gone");
-  // AFTER the hooks, or hook order changes between renders.
-  const guardAt = headerCode.indexOf("if (!onOpenNav && !canSeeReorderRequests) return null;");
-  const lastHook = Math.max(headerCode.lastIndexOf("useMemo("), headerCode.lastIndexOf("useReorderRequests"));
-  assert.ok(guardAt > lastHook, "the early return sits above a hook");
-});
 
 check("the header still carries the drawer-width navigation opener", () => {
   // The rail is off-canvas at drawer widths. Removing the strip outright would have made navigation
@@ -120,4 +110,83 @@ check("the header still carries the drawer-width navigation opener", () => {
   // "fo-navtoggle", and a guard that a rename walks straight through is not a guard.
   assert.ok(headerCode.includes(String.fromCharCode(99,108,97,115,115,78,97,109,101,61,34) + "fo-navtoggle\""), "the drawer-width navigation opener is gone");
   assert.ok(headerCode.includes('aria-label="Open navigation"'), "the opener lost its accessible name");
+});
+
+
+// ── THE BELL LEFT TOO ──────────────────────────────────────────────────────────────────────────
+//
+// Notifications moved to the rail footer, beside the account block, where a person looks for their
+// own things. The header no longer owns any of it -- not the panel, not the reads, not the gate.
+
+const shell = fs.readFileSync(new URL("../src/navigation/AppShell.jsx", import.meta.url), "utf8");
+const control = fs.readFileSync(new URL("../src/shared/ui/NotificationControl.jsx", import.meta.url), "utf8");
+
+check("the header owns no notification behaviour at all", () => {
+  for (const gone of ["NotificationPanel", "useReorderRequests", "canSeeReorderRequests",
+                      "partsAttentionItems", "useCanonicalPartNames", "previewHasPermission",
+                      "accessVersion"]) {
+    assert.ok(!headerCode.includes(gone), gone + " is back in the header");
+  }
+});
+
+check("the header is the navigation opener and nothing else", () => {
+  // Its contents are ONE value; the guard reads that value rather than restating its condition.
+  assert.ok(headerCode.includes("const contents = [navToggle].filter(Boolean);"));
+  assert.ok(headerCode.includes("if (contents.length === 0) return null;"), "the empty-strip collapse is gone");
+  assert.ok(!headerCode.includes("if (!onOpenNav)"), "the guard went back to restating the condition");
+  // A docked desktop passes no opener, so the strip renders nothing -- for EVERY role now, admin
+  // included. The bell no longer justifies a top band.
+  assert.ok(!headerCode.includes("fo-appheader-right"), "the empty right-hand container survived");
+});
+
+check("the drawer-width navigation opener survived the move", () => {
+  assert.ok(headerCode.includes(String.fromCharCode(99,108,97,115,115,78,97,109,101,61,34) + "fo-navtoggle\""), "the opener is gone");
+  assert.ok(headerCode.includes('aria-label="Open navigation"'), "the opener lost its accessible name");
+});
+
+check("the notification control was MOVED, not rebuilt -- it owns its own gate", () => {
+  // The rail renders it for every principal, so the gate must live INSIDE. At the call site, every
+  // signed-in person would start loading the reorder queue merely because everyone has a rail.
+  assert.ok(control.includes("if (!canSeeReorderRequests) return null;"), "the control lost its own gate");
+  assert.ok(control.includes("enabled: canSeeReorderRequests"), "the canonical-name read is no longer gated");
+  // The same four governed reads, the same projection, the same permission preview.
+  for (const kept of ["useReorderRequests", "useReorderRequestsByStatus", "useReorderRequestsAssignedTo",
+                      "partsAttentionItems", "groupPartsAttentionItemsBySection",
+                      "reorder.request.read.queue", "NotificationPanel"]) {
+    assert.ok(control.includes(kept), kept + " was lost in the move");
+  }
+  // Authority stays capability-driven: no persona branching was introduced.
+  assert.ok(!/role === "technician"|role === "user"/.test(control), "a persona branch appeared");
+});
+
+check("the rail footer puts notifications ABOVE identity, and both outside <nav>", () => {
+  const notifAt = shell.indexOf("<NotificationControl");
+  const identAt = shell.indexOf("<RailIdentity />");
+  assert.ok(notifAt > 0 && identAt > 0, "the footer lost a member");
+  assert.ok(notifAt < identAt, "identity now renders above notifications");
+  assert.ok(shell.includes('<div className="fo-rail__footer">'), "the footer wrapper is gone");
+  // NOT inside RailIdentity: that component states who you are and how to leave, and a live queue
+  // does not belong inside it.
+  const rail = fs.readFileSync(new URL("../src/navigation/AppRail.jsx", import.meta.url), "utf8");
+  assert.ok(!rail.includes("NotificationControl"), "notifications were folded into the rail component");
+});
+
+check("the handheld drawer carries the SAME footer -- or the bell has no home there", () => {
+  // The docked rail is off-canvas at drawer widths. Without this the move would have DELETED
+  // notifications on a handheld rather than relocating them.
+  const footers = shell.split('<div className="fo-rail__footer">').length - 1;
+  assert.equal(footers, 2, "expected the footer in both the docked rail and the drawer");
+  const controls = shell.split("<NotificationControl").length - 1;
+  assert.equal(controls, 2, "the notification control is not in both shells");
+});
+
+check("the panel escapes the two scroll containers it now opens inside", () => {
+  // .fo-rail and .fo-drawer are both overflow-y:auto, and a non-visible overflow clips on BOTH
+  // axes -- a 320px panel inside a 252px rail would be cut off even after opening upward.
+  const railPanel = css.slice(css.indexOf(".fo-rail__notifications .fo-notification-panel-dropdown"));
+  const block = railPanel.slice(0, railPanel.indexOf("}"));
+  assert.match(block, /position: fixed;/);
+  assert.match(block, /box-sizing: border-box;/);  // measured: without it the panel drew 338px
+  assert.match(block, /bottom:/);                  // opens upward from the footer
+  assert.match(block, /z-index: 42;/);             // above the drawer (41) and its scrim (40)
 });

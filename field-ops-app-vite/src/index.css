@@ -360,19 +360,14 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   font-size: 12.5px;
   border-bottom: 1px solid var(--color-border);
 }
-.fo-appheader-left, .fo-appheader-right { display: flex; align-items: center; gap: 12px; }
+/* Only the left side survives: the strip carries the navigation opener and nothing else. */
+.fo-appheader-left { display: flex; align-items: center; gap: 12px; }
 /* Deliberately NOT bold: this is a system label, not the application name. */
 /* .fo-appheader-title removed with the duplicate product name it carried. */
 .fo-appheader a { color: var(--color-text-secondary); text-decoration: none; }
 .fo-appheader a:hover { color: var(--color-brand-primary); text-decoration: underline; }
-.fo-appheader button {
-  background: transparent; color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
-  /* 44px minimum. The reading that set it was taken on Logout, which has since moved to the
-     rail; the rule now governs the notification bell, the one button left in this strip. */
-  min-height: 44px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
-}
-.fo-appheader button:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
+/* .fo-appheader button rules removed with the last button that was not the nav toggle.
+   The toggle has its own .fo-navtoggle rules; the notification trigger moved to the rail. */
 
 /* ===========================================================================
    GATE 2 — APPLICATION SHELL
@@ -735,6 +730,53 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    groups (Pending Review, Ready for Parts Manager). */
 .fo-notification-panel-section { margin: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--color-text-secondary); }
 
+/* THE PANEL, OPENED FROM THE RAIL FOOTER.
+
+   The dropdown above is anchored top-right because it used to hang off a trigger in the top-right
+   of a full-width strip. From the BOTTOM-LEFT it would open downward, off the bottom of the
+   viewport, and align to the right edge of a 252px rail.
+
+   Worse, both containers scroll: .fo-rail and .fo-drawer are `overflow-y: auto`, and an
+   overflow value other than visible clips on BOTH axes -- a 320px panel inside a 252px rail would
+   be cut off horizontally even after it opened the right way up. `position: fixed` is what takes
+   it out of those scroll containers; neither the rail nor the drawer carries a transform, so fixed
+   still resolves against the viewport inside both.
+
+   Sized against the VIEWPORT rather than the rail, so it stays whole at 320px, and capped at half
+   the viewport height with its own scroll so a long queue cannot push itself off the top. */
+.fo-rail__notifications .fo-notification-panel-dropdown {
+  position: fixed;
+  top: auto;
+  right: auto;
+  left: var(--space-3);
+  bottom: calc(var(--space-3) + 132px);
+  /* BORDER-BOX, and the reason is measured: without it the 320px width excluded 8px padding and a
+     1px border on each side, so the panel rendered 338px and hung 30px off the right edge of a
+     320px viewport. The cap has to include what the box actually draws. */
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - (var(--space-3) * 2)));
+  max-width: none;
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Above the drawer (41) and its scrim (40), so the panel is reachable in both contexts. */
+  z-index: 42;
+}
+
+/* Full width of the footer, so the trigger reads as a rail utility rather than a stray pill. */
+.fo-rail__notifications .fo-notification-panel > button {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 44px;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--color-text-inverse);
+}
+.fo-rail__notifications .fo-notification-panel > button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-inverse);
+}
+
 /* ===========================================================================
    SHELL RESPONSIVE BEHAVIOUR
    ---------------------------------------------------------------------------
@@ -783,7 +825,6 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   /* The utility bar is a single flex row with no wrapping -- at phone width it
      would otherwise overflow horizontally. */
   .fo-appheader { flex-wrap: wrap; gap: 8px; }
-  .fo-appheader-right { flex-wrap: wrap; }
 }
 
 .fo-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -8039,8 +8080,13 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
    than rediscovered later.
    -------------------------------------------------------------------------- */
 
+/* THE RAIL FOOTER. `margin-top: auto` moved here from .fo-rail-identity: the notification control
+   and the identity block now travel together as one bottom-anchored group, and leaving the push on
+   identity alone would have driven a wedge between them. */
+.fo-rail__footer { margin-top: auto; }
+.fo-rail__notifications { padding: var(--space-3) var(--space-4) 0; }
+
 .fo-rail-identity {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
