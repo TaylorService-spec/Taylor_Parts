@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "gate": "C1-DATA-01",
+  "status": "PROPOSED",
+  "lastReconciled": "2026-09-04",
+  "tiers": [
+    "DAY_1",
+    "HISTORICAL_REFERENCE",
+    "NOT_MIGRATED"
+  ],
+  "domains": [
+    {
+      "domain": "parts",
+      "tier": "UNDECIDED",
+      "sourceSystemIds": [],
+      "rationale": "Cannot be tiered until the source census names the system(s) that hold parts and their volume. Verenward has not assumed Taylor's parts catalogue moves on Day 1.",
+      "taylorAcceptance": "UNKNOWN"
+    },
+    {
+      "domain": "customers",
+      "tier": "UNDECIDED",
+      "sourceSystemIds": [],
+      "rationale": "Cannot be tiered until the source census names the system(s) that hold customers and which is authoritative where more than one does.",
+      "taylorAcceptance": "UNKNOWN"
+    },
+    {
+      "domain": "equipment",
+      "tier": "UNDECIDED",
+      "sourceSystemIds": [],
+      "rationale": "Cannot be tiered until the source census names the system(s) that hold equipment and whether serialized identity is recorded there.",
+      "taylorAcceptance": "UNKNOWN"
+    },
+    {
+      "domain": "inventory",
+      "tier": "UNDECIDED",
+      "sourceSystemIds": [],
+      "rationale": "Cannot be tiered until the source census names the system(s) that hold inventory. Opening balances are additionally gated on C1-INV-01, which is Taylor's to accept.",
+      "taylorAcceptance": "UNKNOWN"
+    },
+    {
+      "domain": "purchasing",
+      "tier": "UNDECIDED",
+      "sourceSystemIds": [],
+      "rationale": "Cannot be tiered until the source census names the system(s) that hold purchasing and whether open purchase orders exist at cutover.",
+      "taylorAcceptance": "UNKNOWN"
+    },
+    {
+      "domain": "serviceHistory",
+      "tier": "UNDECIDED",
+      "sourceSystemIds": [],
+      "rationale": "Cannot be tiered until the source census names the system(s) that hold service history and how far back Taylor needs it readable.",
+      "taylorAcceptance": "UNKNOWN"
+    }
+  ]
+}

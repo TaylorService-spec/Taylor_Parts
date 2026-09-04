@@ -10,7 +10,10 @@ here closes a gate on its own.
 ## Files
 
 - `source-census.json` — the machine-readable source-system census (objective 1).
+- `migration-tiering.json` — the per-domain migration tiering record (objective 2).
 - `../../../scripts/customer1-migration/validate-source-census.mjs` — the census
+  validator.
+- `../../../scripts/customer1-migration/validate-migration-tiering.mjs` — the tiering
   validator.
 
 ## What the census is
@@ -40,6 +43,24 @@ The census cannot advance without Taylor supplying, for each system:
 4. Approximate record volume per domain.
 5. The identity key(s) records are keyed by.
 6. The Taylor owner responsible for that system.
+
+## What the tiering is
+
+One row per required domain, recording whether that domain is `DAY_1` (must exist in
+the new system before Taylor can operate), `HISTORICAL_REFERENCE` (moves, but is not
+needed to work), or `NOT_MIGRATED` (deliberately left behind), plus which census
+systems it comes from, why, and Taylor's acceptance of that call.
+
+**PROPOSED — every domain is `UNDECIDED`.** Tiering is downstream of the census: you
+cannot say a domain moves on Day 1 without knowing what holds it, how much of it there
+is, or how it gets out. The validator enforces that dependency — tiering cannot be
+declared `ACCEPTED` while the census it rests on is `INCOMPLETE`.
+
+Run it with:
+
+```
+node scripts/customer1-migration/validate-migration-tiering.mjs
+```
 
 ## Rules this record enforces
 
@@ -72,6 +93,7 @@ The census cannot advance without Taylor supplying, for each system:
 
 ## Not yet done
 
-Migration tiering (Day 1 / historical reference / not migrated), per-tier mapping
-specifications, the dry-run harness, and the opening-inventory reconciliation
-(`C1-INV-01`) all depend on a populated census and are not started.
+Per-tier mapping specifications, the dry-run harness, and the opening-inventory
+reconciliation (`C1-INV-01`) all depend on a populated census and an accepted tiering,
+and are not started. The tiering instrument exists but holds no decisions: every domain
+is `UNDECIDED` pending Taylor's answers to the census.
