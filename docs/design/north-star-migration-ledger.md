@@ -1897,3 +1897,56 @@ chance of failing on, and the pattern is worth keeping:
 
 A fixture written from the same misreading as the code under test is not evidence. Both of these were
 caught by looking at the browser, and the fixtures were corrected to the server's real shape.
+
+---
+
+## Family 10 — post-closure persona sweep, and Family 11 (2026-09-04)
+
+Family 10 was closed on the Owner's acceptance of the **Admin** screen. The same engine resolves for
+twelve other governed contexts, so the compositions nobody had looked at were swept afterwards. The
+acceptance is unchanged; what follows is verification evidence and the corrective it produced.
+
+### Family 10 — My Dashboard · post-closure verification
+
+| | |
+|---|---|
+| **Acceptance** | **Closed 2026-09-03 — UNCHANGED.** Recorded here as `CLOSED + POST-ACCEPTANCE CORRECTIVE`, never as reopened |
+| **Representative set** | Derived, not chosen: the 13 governed contexts collapse to **11 distinct compositions**. Five rendered — salesperson, sales manager, parts manager, warehouse manager, dispatcher. `partsManager`/`warehouseManager` and `partsAssociate`/`warehouseAssociate` compose identically; the two warehouse personas were still run separately because their goal SCOPE LABELS differ where their module sets do not |
+| **Method** | The emulator run under the **sandbox project id**, so `capabilityActivationOverrides` actually applied. Under the default project every commercial capability denies, which would have made the sweep look clean by making it vacuous. Each persona is a governed `roleAssignment` against a real role id, resolved by the real callable |
+| **Result** | 1440 and 375: 0 console errors, 0 failed requests, 0 false "could not be read", 0 overflow, for all five |
+| **Corrective** | PR #1793 — three defects, all EXISTING-AUTHORITY CLIENT DEFECTS. See below |
+| **Deployment** | Hosting required. Not executed |
+
+**The three defects, and why every suite agreed with them.**
+
+| Defect | Why it was invisible |
+|---|---|
+| Six capabilities the composition gates on were never in `REPORT_CAPABILITY_REQUEST`. `hasCapability` reads `feed.decisions[id]`, so an unrequested id is `undefined` — `false` — for everyone, forever. Seven modules could not resolve for **anyone**, the Owner included | Every composition suite supplies its OWN `hasCapability`, so not one of them can observe the request set |
+| FIN-004: `finance.read` is the fact-family gate and confers no reach; `listFinancialFacts` refuses a principal holding no `finance.visibility.*` scope. Money tiles composed for people the server would always deny and said "could not be read" forever | The role-matrix fixtures modelled `finance.read` alone, so they **agreed with the bug** — the same shape as the `summary.active` fixture in Family 10's own live review |
+| `useOpportunities` and `useCoordinatedOperations` were ungated while the comment above them claimed otherwise; `receivingQueue` and `accountPortfolio` carried a legacy-role disjunct their capability-governed callables do not honour | A 403 whose result the preview discards changes nothing a unit test asserts on. It is only visible in a console |
+
+Measured before the fix: the salesperson persona composed **one** module.
+
+**New guards:** `dashboardComposition` gains 5 tests — chief among them that every capability id the
+table gates on must be in the request set. That is the guard whose absence let this ship.
+
+---
+
+## Family 11 — Technician Dashboard · **AWAITING OWNER ACCEPTANCE**
+
+| | |
+|---|---|
+| **Composition** | `src/modules/technicianDashboard/TechnicianDashboard.jsx` with `TechnicianPerformance.jsx`, over `useCurrentTechnician` and the shared `GoalGrid` |
+| **Why it is its own family** | A DIFFERENT SURFACE, selected by `DashboardIndex`. It shares no component tree with `MyDashboard` beyond `GoalGrid` and the shell, and Family 10's acceptance was given on the Admin screen. Recording it under Family 10 would have claimed an acceptance the Owner never gave |
+| **Design authority** | [`DESIGN-HANDOFF-MY-DASHBOARD-P1v2.md`](../north-star/my-dashboard/DESIGN-HANDOFF-MY-DASHBOARD-P1v2.md) §4.1 (the technician persona) and §0-E (this surface's acceptance record). No second North Star: the existing one already owns the technician contract |
+| **Proof** | `test/dashboardDesignConformance.test.mjs` — 9 technician tests, added because the file previously read only `MyDashboard.jsx`; plus `compositionConformance`, `operationalRoleLanding`, `technicianEntryBundle`, `useCurrentTechnicianFailClosed`, `fieldDispatchSafeCopySweep` |
+| **Mutation proofs** | 4, each verified non-vacuous before being counted: routing technicians into `MyDashboard`, moving performance above the work buckets, turning the reserved absence into a `role="alert"` state, restoring the raw status render |
+| **Defect fixed** | The card rendered the raw status — a technician read `WORK_IN_PROGRESS` and `EN_ROUTE` on their own work. Routed through `workOrderStatusLabel()`; `workOrderStatusLabelConformance`'s allowlist entry burned down |
+| **Visual** | 1440 / 375 / 320 — work first at every width, buckets truthful, Avg. Job Duration `N/A` not zero, reserved measures named and non-alert, no leakage, 0 overflow, 0 console errors |
+| **Authority** | UNCHANGED. No Functions, Rules, indexes, capability, role or state-machine touched |
+| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the one authority a build cannot grant itself |
+
+**Open and deliberately unresolved:** a technician's own `EMPLOYEE`-scope goals render "This target
+is outside your access" without a governed role granting `performance.goal.read`. The tile is honest.
+Whether a technician should be able to read a goal set *for them* is an Owner authority question, and
+no authority was invented to make the screen look complete.
