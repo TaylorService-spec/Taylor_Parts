@@ -15,6 +15,7 @@
 // never written down a second time, because a hand-maintained column list beside a
 // mapping table drifts and the drift shows up as a silently dropped column.
 
+import { readXlsxGrid, XlsxError } from "./xlsxReader.js";
 import { parseCsv } from "../partMaster/csvMigrationAnalysis.js";
 import {
   PART_CANONICAL_FIELDS,
@@ -33,8 +34,18 @@ export const IMPORT_LIMITS = Object.freeze({
   maxFileBytes: 2 * 1024 * 1024,
   maxRows: 5000,
   maxColumns: 100,
-  allowedExtensions: Object.freeze([".csv"]),
-  allowedContentTypes: Object.freeze(["text/csv", "application/csv", "text/plain"]),
+  allowedExtensions: Object.freeze([".csv", ".xlsx"]),
+  /**
+   * .xlsm is ABSENT and must stay absent. A macro-enabled workbook is refused at the
+   * extension, before a single byte is inflated -- xlsxReader never opens a macro part
+   * either, but two independent refusals is the right number for "we do not run your file".
+   */
+  allowedContentTypes: Object.freeze([
+    "text/csv",
+    "application/csv",
+    "text/plain",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ]),
 });
 
 export type IntakeFailureCode =
@@ -44,7 +55,8 @@ export type IntakeFailureCode =
   | "NO_HEADER_ROW"
   | "DUPLICATE_COLUMN"
   | "TOO_MANY_COLUMNS"
-  | "TOO_MANY_ROWS";
+  | "TOO_MANY_ROWS"
+  | "UNREADABLE_WORKBOOK";
 
 export class IntakeError extends Error {
   readonly code: IntakeFailureCode;
@@ -80,22 +92,83 @@ function assertExtension(filename: string): void {
  * value is which, so a duplicate column name misfiles every value beneath it. That is a
  * file-level refusal, not a row-level warning.
  */
+/**
+ * Each reader accepts only the extensions it can HONESTLY read.
+ *
+ * assertExtension answers "is this file type supported at all"; this answers "can THIS
+ * function read it". Both are needed: without the second, parseSourceFile would accept a
+ * .xlsx filename and CSV-parse a ZIP's bytes-as-text, producing one nonsense column of
+ * mojibake instead of an error. The callable already picks the reader by the client's
+ * encoding, so this is defence in depth -- and the kind that stops a future caller, not a
+ * malicious one.
+ */
+function assertReadableAs(filename: string, accepted: readonly string[], readerLabel: string): void {
+  const lower = filename.toLowerCase();
+  if (!accepted.some((e) => lower.endsWith(e))) {
+    throw new IntakeError(
+      "UNSUPPORTED_EXTENSION",
+      `"${filename}" is not a ${readerLabel}. It must be uploaded as ${accepted.join(" or ")}.`,
+    );
+  }
+}
 export function parseSourceFile(filename: string, text: string): ParsedSourceFile {
   assertExtension(filename);
+  assertReadableAs(filename, [".csv"], "text file");
 
   const byteLength = Buffer.byteLength(text, "utf8");
+  assertWithinSize(byteLength);
+
+  // A UTF-8 BOM would otherwise ride along inside the first header name and silently
+  // break the mapping for exactly one column -- the hardest kind of bug to see.
+  const cleaned = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+
+  return gridToParsedFile(parseCsv(cleaned));
+}
+
+/**
+ * Parse an .xlsx workbook's FIRST worksheet.
+ *
+ * Deliberately the same return type, and deliberately the same validation: once the bytes
+ * are a grid of strings, a workbook and a text file are the same problem. Everything that
+ * makes import safe -- the header rules, the duplicate-column refusal, the row and column
+ * caps, the mapping, the preview -- runs identically for both, because only the FIRST step
+ * differs. A second validation path for spreadsheets is how the two formats would come to
+ * disagree about what a file means.
+ */
+export function parseWorkbookFile(filename: string, bytes: Buffer): ParsedSourceFile {
+  assertExtension(filename);
+  assertReadableAs(filename, [".xlsx"], "workbook");
+  assertWithinSize(bytes.length);
+
+  let grid: string[][];
+  try {
+    grid = readXlsxGrid(bytes, { maxRows: IMPORT_LIMITS.maxRows, maxColumns: IMPORT_LIMITS.maxColumns });
+  } catch (err) {
+    // The reader's own refusals are re-stated as intake failures so a caller handles ONE
+    // error type. The reader's message is kept: it describes the operator's own file
+    // (password-protected, damaged, not a workbook) and is the actionable part.
+    if (err instanceof XlsxError) throw new IntakeError("UNREADABLE_WORKBOOK", err.message);
+    throw err;
+  }
+
+  return gridToParsedFile(grid);
+}
+
+function assertWithinSize(byteLength: number): void {
   if (byteLength > IMPORT_LIMITS.maxFileBytes) {
     throw new IntakeError(
       "FILE_TOO_LARGE",
       `The file is ${byteLength} bytes; this release accepts up to ${IMPORT_LIMITS.maxFileBytes} bytes.`,
     );
   }
+}
 
-  // A UTF-8 BOM would otherwise ride along inside the first header name and silently
-  // break the mapping for exactly one column -- the hardest kind of bug to see.
-  const cleaned = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-
-  const grid = parseCsv(cleaned);
+/**
+ * The shared half: a grid of strings -> a validated ParsedSourceFile.
+ *
+ * This is where every file-level refusal lives, for every format.
+ */
+function gridToParsedFile(grid: readonly (readonly string[])[]): ParsedSourceFile {
   if (grid.length === 0) throw new IntakeError("FILE_EMPTY", "The file contains no rows.");
 
   const header = grid[0].map((h) => h.trim());
@@ -118,8 +191,9 @@ export function parseSourceFile(filename: string, text: string): ParsedSourceFil
   const rows: string[][] = [];
   const sourceRowNumbers: number[] = [];
   for (let i = 1; i < grid.length; i += 1) {
-    const r = grid[i];
-    // A row of entirely empty cells is spreadsheet padding, not a record.
+    const r = [...grid[i]];
+    // A row of entirely empty cells is spreadsheet padding, not a record. Workbooks are
+    // full of these: a stray format applied to row 900 makes Excel emit 900 rows.
     if (r.every((c) => c.trim() === "")) continue;
     rows.push(r);
     sourceRowNumbers.push(i + 1); // 1-based, counting the header as line 1

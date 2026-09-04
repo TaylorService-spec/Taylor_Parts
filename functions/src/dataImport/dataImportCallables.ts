@@ -20,6 +20,10 @@
 // cannot write -- the modules behind it have no write path -- so its gate protects reading
 // a file and seeing a preview. Execution's gate protects creating governed records.
 //
+// TWO FORMATS, ONE PIPELINE. A CSV arrives as text and an .xlsx arrives base64-encoded;
+// both become the same validated grid before anything else looks at them, so the mapping,
+// preview, approval and write cannot behave differently for a spreadsheet.
+//
 // NO FIREBASE STORAGE IN P1. The file arrives as text in the callable payload, bounded by
 // IMPORT_LIMITS.maxFileBytes. A Storage bucket would add an object-lifecycle, a second set
 // of Rules and a place for customer data to sit unowned, in exchange for a larger file
@@ -39,6 +43,7 @@ import type { Role } from "../types/access.js";
 import { assertNonProductionImportTarget, ImportTargetRefusedError } from "./importTargetGuard.js";
 import {
   parseSourceFile,
+  parseWorkbookFile,
   detectEntityType,
   suggestMapping,
   validateMapping,
@@ -194,11 +199,18 @@ export const stageDataImportCallable = onCall(REGION, async (request) => {
     const d = asObject(request.data);
     const fileName = typeof d.fileName === "string" ? d.fileName : "";
     const fileText = typeof d.fileText === "string" ? d.fileText : "";
-    if (!fileName || !fileText) {
-      throw new HttpsError("invalid-argument", "fileName and fileText are required.");
+    const fileBase64 = typeof d.fileBase64 === "string" ? d.fileBase64 : "";
+    if (!fileName || (!fileText && !fileBase64)) {
+      throw new HttpsError("invalid-argument", "fileName and either fileText or fileBase64 are required.");
     }
 
-    const parsed = parseSourceFile(fileName, fileText);
+    // WHICH READER IS CHOSEN BY THE CLIENT'S ENCODING, NOT BY THE FILENAME. A .xlsx is
+    // binary and arrives base64; a CSV is text. Trusting the extension to pick the reader
+    // would mean a renamed file selects a parser -- and the extension is still checked
+    // inside both readers, so a mismatch is refused rather than reinterpreted.
+    const parsed = fileBase64
+      ? parseWorkbookFile(fileName, Buffer.from(fileBase64, "base64"))
+      : parseSourceFile(fileName, fileText);
 
     const detection = detectEntityType(parsed.columns);
     const requested = typeof d.entityType === "string" ? (d.entityType as ImportEntityType) : null;

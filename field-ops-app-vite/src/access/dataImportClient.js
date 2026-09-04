@@ -42,8 +42,8 @@ async function call(name, payload) {
 }
 
 /** Stage a file. Returns either a staged job or an unstaged mapping-validation result. */
-export function stageDataImport({ fileName, fileText, entityType = null, mapping = null }) {
-  return call(STAGE_CALLABLE, { fileName, fileText, entityType, mapping });
+export function stageDataImport({ fileName, fileText = null, fileBase64 = null, entityType = null, mapping = null }) {
+  return call(STAGE_CALLABLE, { fileName, fileText, fileBase64, entityType, mapping });
 }
 
 /**
@@ -56,6 +56,28 @@ export function executeDataImport(jobId) {
 
 export function listDataImportJobs() {
   return call(LIST_CALLABLE, {});
+}
+
+/** True for a file this release reads as a binary workbook rather than as text. */
+export function isWorkbookFile(fileName) {
+  return /\.xlsx$/i.test(String(fileName ?? ""));
+}
+
+/**
+ * Read a File as base64.
+ *
+ * An .xlsx is a ZIP: reading it as text would corrupt it before it ever left the browser,
+ * and the corruption would surface as "this file is damaged" from a backend looking at
+ * bytes the user's file never contained.
+ */
+export function readFileBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("The file could not be read."));
+    // readAsDataURL yields "data:<type>;base64,<payload>"; only the payload is sent.
+    reader.onload = () => resolve(String(reader.result ?? "").split(",")[1] ?? "");
+    reader.readAsDataURL(file);
+  });
 }
 
 /** Read a File as text. Separated so the screen's logic is testable without the DOM. */

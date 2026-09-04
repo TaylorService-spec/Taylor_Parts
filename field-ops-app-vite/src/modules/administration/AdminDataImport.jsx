@@ -6,6 +6,8 @@ import {
   executeDataImport,
   listDataImportJobs,
   readFileText,
+  readFileBase64,
+  isWorkbookFile,
 } from "../../access/dataImportClient";
 
 // Administration -> Data Import.
@@ -172,8 +174,11 @@ export default function AdminDataImport({ hasCapability }) {
     setStaged(null);
     setBusy(true);
     try {
-      const fileText = await readFileText(file);
-      const res = await stageDataImport({ fileName: file.name, fileText });
+      // A workbook is binary and a CSV is text; reading either one the other way
+      // corrupts it in the browser, before anything that could report it honestly.
+      const res = isWorkbookFile(file.name)
+        ? await stageDataImport({ fileName: file.name, fileBase64: await readFileBase64(file) })
+        : await stageDataImport({ fileName: file.name, fileText: await readFileText(file) });
       if (res.ok) setStaged(res.data);
       else setError(res);
     } catch (err) {
@@ -211,7 +216,7 @@ export default function AdminDataImport({ hasCapability }) {
     <div className="fo-data-import">
       <PageHeader
         title="Data Import"
-        subtitle="Load Parts, Customers, Equipment, Inventory and Service History from a spreadsheet."
+        subtitle="Load Parts, Customers, Equipment, Inventory and Service History from a CSV or Excel file."
       />
 
       {view.stage === IMPORT_STAGE.UNGATED ? (
@@ -226,7 +231,7 @@ export default function AdminDataImport({ hasCapability }) {
             <p className="fo-wizard-hint">{view.stage === IMPORT_STAGE.IDLE ? view.detail : "Choosing another file discards the current preview."}</p>
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={onFile}
               disabled={busy}
               aria-label="Import file"

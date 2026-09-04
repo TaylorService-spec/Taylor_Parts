@@ -198,6 +198,90 @@ await check("re-staging the SAME file now reports every row as already existing"
   );
 });
 
+// --------------------------------------------------------------- xlsx
+
+await check("an XLSX workbook takes the SAME path and produces the same governed Part", async () => {
+  // Built here with zlib rather than by a library, for the same reason the reader has no
+  // dependency: this is the format contract, and it should be exercised by bytes we control.
+  const { deflateRawSync } = await import("node:zlib");
+
+  const crc32 = (buf) => {
+    let c = ~0;
+    for (const b of buf) { c ^= b; for (let k = 0; k < 8; k += 1) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+    return ~c >>> 0;
+  };
+  const zip = (files) => {
+    const locals = []; const central = []; let offset = 0;
+    for (const [name, str] of Object.entries(files)) {
+      const content = Buffer.from(str, "utf8");
+      const def = deflateRawSync(content);
+      const nb = Buffer.from(name, "utf8");
+      const lh = Buffer.alloc(30);
+      lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(8, 8);
+      lh.writeUInt32LE(crc32(content), 14); lh.writeUInt32LE(def.length, 18);
+      lh.writeUInt32LE(content.length, 22); lh.writeUInt16LE(nb.length, 26);
+      locals.push(lh, nb, def);
+      const cd = Buffer.alloc(46);
+      cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(8, 10);
+      cd.writeUInt32LE(crc32(content), 16); cd.writeUInt32LE(def.length, 20);
+      cd.writeUInt32LE(content.length, 24); cd.writeUInt16LE(nb.length, 28);
+      cd.writeUInt32LE(offset, 42);
+      central.push(cd, nb);
+      offset += 30 + nb.length + def.length;
+    }
+    const lp = Buffer.concat(locals); const cp = Buffer.concat(central);
+    const eo = Buffer.alloc(22);
+    eo.writeUInt32LE(0x06054b50, 0);
+    eo.writeUInt16LE(Object.keys(files).length, 8); eo.writeUInt16LE(Object.keys(files).length, 10);
+    eo.writeUInt32LE(cp.length, 12); eo.writeUInt32LE(lp.length, 16);
+    return Buffer.concat([lp, cp, eo]);
+  };
+
+  const cell = (col, row, value) =>
+    `<c r="${col}${row}" t="inlineStr"><is><t>${value}</t></is></c>`;
+  const rowXml = (r, values) =>
+    `<row r="${r}">${values.map((v, i) => cell(String.fromCharCode(65 + i), r, v)).join("")}</row>`;
+
+  const bytes = zip({
+    "[Content_Types].xml": '<?xml version="1.0"?><Types/>',
+    "xl/workbook.xml": '<workbook><sheets><sheet name="Parts" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    "xl/_rels/workbook.xml.rels": '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+    "xl/worksheets/sheet1.xml":
+      "<worksheet><sheetData>" +
+      rowXml(1, ["PART_NO", "NAME", "UOM", "CONTROL_TYPE", "STOCK_CLASS"]) +
+      rowXml(2, [`XL-${run}-1`, "Workbook gasket", "EA", "STANDARD", "STOCKED"]) +
+      "</sheetData></worksheet>",
+  });
+
+  const staged = await stageDataImport.run({
+    data: { fileName: "seeded-parts.xlsx", fileBase64: bytes.toString("base64") },
+    auth,
+  });
+  assert.equal(staged.staged, true);
+  assert.equal(staged.job.entityType, "PARTS");
+  assert.deepEqual(staged.job.summary, { total: 1, ready: 1, warnings: 0, errors: 0 });
+
+  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
+  assert.equal(done.job.status, "COMPLETED");
+
+  // Indistinguishable from the CSV path once written, which is the claim: the format
+  // changes the first step and nothing else.
+  const snap = await db.collection("parts").doc(derivePartId(`XL-${run}-1`)).get();
+  assert.equal(snap.exists, true);
+  assert.equal(snap.data().internalPartNumber, `XL-${run}-1`);
+  assert.equal(snap.data().status, "DRAFT");
+});
+
+await check("a file that is not a readable workbook is refused with its own reason", async () => {
+  await assert.rejects(
+    stageDataImport.run({
+      data: { fileName: "broken.xlsx", fileBase64: Buffer.from("not a zip", "utf8").toString("base64") },
+      auth,
+    }),
+    (err) => err.code === "invalid-argument" && err.details?.code === "UNREADABLE_WORKBOOK",
+  );
+});
+
 // --------------------------------------------------------------- authorization
 
 await check("a principal with no role is refused at every entry point", async () => {
