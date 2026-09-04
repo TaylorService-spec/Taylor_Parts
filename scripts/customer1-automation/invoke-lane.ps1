@@ -66,11 +66,16 @@ if ($deny.Count -gt 0) { $args += @('--disallowed-tools') + $deny }
 $allow = @($AllowedTools | Where-Object { $_ })
 if (-not $ReadOnly -and $allow.Count -gt 0) { $args += @('--allowed-tools') + $allow }
 
-Write-Step "Lane $LaneId : starting Claude session (timeout ${TimeoutSec}s). Args: $($args -join ' ')"
+# Start-Process joins ArgumentList with spaces and lets the child re-parse, so
+# any element containing a space (every "Bash(git add:*)" style rule) has to be
+# quoted or it arrives as two argv tokens and the CLI rejects the fragment.
+$argv = @($args | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } })
+
+Write-Step "Lane $LaneId : starting Claude session (timeout ${TimeoutSec}s). Args: $($argv -join ' ')"
 $started = Get-UtcStamp
 
 $proc = Start-Process -FilePath $ClaudeExe `
-    -ArgumentList $args `
+    -ArgumentList $argv `
     -WorkingDirectory $WorktreePath `
     -RedirectStandardInput $PromptPath `
     -RedirectStandardOutput $stdoutPath `
