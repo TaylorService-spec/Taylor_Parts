@@ -37,7 +37,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        the dashboard reporting authority census (#1740, merged `203848a1`) — every metric's classification and blocker traces to it; FIN-003 `planVsActual.ts` and FIN-007 `financialApprovals.ts`, both composed rather than modified
 - Expected outcome:    dashboards that answer what do I need to do / how am I performing against goal / what impact am I having, composed from existing domain authority at existing scope, with every ungoverned figure rendering an honest unavailable state that names its blocker
 - Protected boundaries:reached and NOT crossed — NO firestore.rules edit (the deny-all block for `performance_goals` is PREPARED for the Owner; the collection is already denied by rule absence). NO deploy, NO production activation, NO capability grant executed against a live environment, NO production data touched. All five `performance.goal.*` capabilities registered `active:false`; sandbox activation declared in the repo only, and its deploy is Owner-executed.
-- Lifecycle stage:     SANDBOX VERIFIED → **OWNER ACCEPTED 2026-09-03** · My Dashboard family CLOSED at live sandbox commit `50792fef`; training COMPLETE. Production NOT authorized and NOT touched — the acceptance is of the sandbox result only.
+- Lifecycle stage:     SANDBOX VERIFIED → **OWNER ACCEPTED 2026-09-03** · My Dashboard family CLOSED at live sandbox commit `50792fef`; training COMPLETE. Production NOT authorized and NOT touched — the acceptance is of the sandbox result only. POST-CLOSURE PERSONA SWEEP 2026-09-04: five governed personas rendered clean at 1440/375 after PR #1793 corrected three existing-authority client defects — CLOSED + post-acceptance corrective, NOT reopened. A Hosting release is required and was not executed. TechnicianDashboard is now design-conformance guarded and visually verified, and is AWAITING OWNER ACCEPTANCE as its own surface.
 
 
 - Capability:          EOS site-wide visual-system rollout — promote the accepted Financials pilot to the whole authenticated application
@@ -177,6 +177,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 | Capability | Stage | Record |
 |---|---|---|
 | My Dashboard North Star family (composition, goal actuals, bounded previews) | OWNER ACCEPTED on `platform-sandbox` `50792fef` — CLOSED | DECISIONS #161 · #162 · #172 · migration ledger Family 10 |
+| Dashboard persona sweep + Technician acceptance surface | MERGED — Hosting release REQUIRED and NOT executed · Technician surface AWAITING OWNER ACCEPTANCE | PR #1793 · migration ledger Family 10 post-closure + Family 11 |
 | Purchase Orders read surface (Purchasing item C) | MERGED (repo-only) | DECISIONS #64 · PR #578 |
 | PartsScanner as a tool within FieldMode (item A) | MERGED (repo-only) | DECISIONS #65 · PR #581 |
 | Default-autonomy operating mode (Charter Amendment 2) | MERGED | DECISIONS #66 · PR #582 |
