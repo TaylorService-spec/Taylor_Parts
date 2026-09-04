@@ -1,5 +1,5 @@
-// OD-3 -- AppHeader integration with the REAL useCanonicalPartNames hook (vitest + jsdom).
-// Proves AppHeader owns ONE canonical read for the header and threads a governed `resolveName`
+// OD-3 -- NotificationControl integration with the REAL useCanonicalPartNames hook (vitest + jsdom).
+// Proves NotificationControl owns ONE canonical read and threads a governed `resolveName`
 // into NotificationPanel: READY -> canonical resolver; a denied read fails closed to the raw
 // partId; and a same-UID accessVersion change invalidates the resolver synchronously. Only the
 // Firebase-touching seams + heavy access-preview are mocked; the hook + composition are REAL.
@@ -23,20 +23,20 @@ const perm = vi.hoisted(() => ({ canSee: true }));
 vi.mock("../src/access/navPermissionPreview", () => ({ createPermissionPreviewer: () => () => perm.canSee }));
 vi.mock("../src/access/resolveEffectivePermission", () => ({ resolveEffectivePermission: () => ({}) }));
 vi.mock("../src/access/compatibilityRoles", () => ({ COMPATIBILITY_ROLES: {} }));
-// Spy: capture the resolveName AppHeader passes into NotificationPanel.
+// Spy: capture the resolveName NotificationControl passes into NotificationPanel.
 const captured = [];
 vi.mock("../src/shared/ui/NotificationPanel", () => ({ default: ({ resolveName }) => { captured.push(resolveName); return null; } }));
 
 import { fetchPartMasterList } from "../src/services/partMasterQueries";
-import AppHeader from "../src/shared/ui/AppHeader.jsx";
+import NotificationControl from "../src/shared/ui/NotificationControl.jsx";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; perm.canSee = true; });
 
 const latest = (id) => captured[captured.length - 1](id);
 const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: [] };
-const renderHeader = (accessVersion) => render(<MemoryRouter><AppHeader accessVersion={accessVersion} /></MemoryRouter>);
+const renderHeader = (accessVersion) => render(<MemoryRouter><NotificationControl accessVersion={accessVersion} /></MemoryRouter>);
 
-describe("AppHeader + NotificationPanel (OD-3)", () => {
+describe("NotificationControl + NotificationPanel (OD-3)", () => {
   it("authorized (canSeeReorderRequests): ONE canonical read; the resolveName passed to NotificationPanel is canonical", async () => {
     fetchPartMasterList.mockResolvedValue(READY);
     renderHeader(1);
@@ -65,9 +65,9 @@ describe("AppHeader + NotificationPanel (OD-3)", () => {
   it("accessVersion change invalidates the resolver synchronously; stale old-boundary completion is dropped", async () => {
     const deferreds = [];
     fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
-    const { rerender } = render(<MemoryRouter><AppHeader accessVersion={1} /></MemoryRouter>);
+    const { rerender } = render(<MemoryRouter><NotificationControl accessVersion={1} /></MemoryRouter>);
     expect(deferreds).toHaveLength(1);                            // read #1 pending
-    rerender(<MemoryRouter><AppHeader accessVersion={2} /></MemoryRouter>);
+    rerender(<MemoryRouter><NotificationControl accessVersion={2} /></MemoryRouter>);
     expect(deferreds).toHaveLength(2);                            // access change -> read #2
     expect(latest("TST-9001")).toBe("TST-9001");                 // resolver invalidated immediately
 
