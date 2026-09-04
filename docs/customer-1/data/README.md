@@ -11,11 +11,15 @@ here closes a gate on its own.
 
 - `source-census.json` — the machine-readable source-system census (objective 1).
 - `migration-tiering.json` — the per-domain migration tiering record (objective 2).
+- `field-mappings.json` — the per-field mapping specification and its exception list
+  (objective 3).
 - `opening-inventory-reconciliation.json` — the opening-inventory reconciliation and
   the artifact Taylor signs (gate `C1-INV-01`, objective 5).
 - `../../../scripts/customer1-migration/validate-source-census.mjs` — the census
   validator.
 - `../../../scripts/customer1-migration/validate-migration-tiering.mjs` — the tiering
+  validator.
+- `../../../scripts/customer1-migration/validate-field-mappings.mjs` — the field-mapping
   validator.
 - `../../../scripts/customer1-migration/validate-opening-inventory.mjs` — the
   opening-inventory validator.
@@ -64,6 +68,36 @@ Run it with:
 
 ```
 node scripts/customer1-migration/validate-migration-tiering.mjs
+```
+
+## What the field mappings are
+
+One row per source field, in a named census system, for a named domain, saying where
+that field lands and under what transformation — or that it lands nowhere, and why.
+The exception list is not a separate document: a row whose `disposition` is not
+`MAPPED` **is** the exception. There is no shape in which "we could not map this" can
+be dropped without leaving a row behind.
+
+Dispositions: `MAPPED` (lands somewhere), `NOT_MIGRATED` (deliberately left behind),
+`NO_TARGET` (nothing in EOS holds this fact), `UNRESOLVED` (open question, blocks
+acceptance). Only `MAPPED` may name a `targetField` and a `transform`; the others must
+be `null` for both.
+
+**PROPOSED — empty by construction.** Mappings are downstream of tiering, which is
+downstream of the census. A mapping names a source field in a specific system; no
+census system exists yet and no domain is tiered as moving, so there is nothing to
+name. The validator enforces that chain: mappings cannot be `ACCEPTED` while the
+tiering beneath them is `PROPOSED`.
+
+It also refuses to let mappings widen the tiering. A field may only belong to a domain
+tiered `DAY_1` or `HISTORICAL_REFERENCE`, and may only cite a system that domain's
+tiering already names. Every moving domain must be accounted for — it has field rows,
+or it is listed in `domainsWithoutMappings`, never both and never neither.
+
+Run it with:
+
+```
+node scripts/customer1-migration/validate-field-mappings.mjs
 ```
 
 ## What the opening-inventory reconciliation is (`C1-INV-01`)
@@ -122,7 +156,8 @@ node scripts/customer1-migration/validate-opening-inventory.mjs
 
 ## Not yet done
 
-Per-tier mapping specifications and the dry-run harness depend on a populated census and
-an accepted tiering, and are not started. The tiering and opening-inventory instruments
-exist but hold no decisions: every domain is `UNDECIDED` and every custody scope is
-`UNKNOWN`, pending Taylor's answers to the census.
+The dry-run harness (objective 4) depends on at least one real mapping to exercise, and
+is not started. The census, tiering, mapping, and opening-inventory instruments now all
+exist, but they hold no decisions: every census field is `UNKNOWN`, every domain is
+`UNDECIDED`, the mapping table is empty, and every custody scope is `UNKNOWN` — all
+pending Taylor's answers to the census.

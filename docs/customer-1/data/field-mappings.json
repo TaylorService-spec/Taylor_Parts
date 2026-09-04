@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "gate": "C1-DATA-01",
+  "status": "PROPOSED",
+  "lastReconciled": "2026-09-04",
+  "dispositions": [
+    "MAPPED",
+    "NOT_MIGRATED",
+    "NO_TARGET",
+    "UNRESOLVED"
+  ],
+  "fields": [],
+  "domainsWithoutMappings": [],
+  "notes": "Empty by construction, not by omission. A field mapping names a source field in a specific census system and says where it lands. No census system exists yet and no domain is tiered as moving, so there is no source field to name. Every domain the tiering later marks DAY_1 or HISTORICAL_REFERENCE must appear here — either with field entries or in domainsWithoutMappings — before this record can be ACCEPTED."
+}
