@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "program": "Taylor Customer 1 Parallel Execution Orchestrator",
+  "config": {
+    "maxConcurrentClaude": 1,
+    "claudeExe": "C:\\Users\\Rudy2\\.local\\bin\\claude.exe",
+    "claudePermissionMode": "acceptEdits",
+    "claudeTimeoutSec": 3600,
+    "worktreeRoot": "D:\\Taylor_C1_Lanes",
+    "mainRef": "origin/main",
+    "resultFileName": ".orchestrator-result.json",
+    "autoMerge": false,
+    "autoPushLaneBranch": false,
+    "openPullRequest": false,
+    "forbiddenPaths": [
+      "firestore.rules",
+      "firestore.indexes.json",
+      "storage.rules",
+      ".firebaserc",
+      "firebase.json",
+      "docs/DECISIONS.md",
+      "docs/DelegationCharter.md",
+      "docs/architecture/SYSTEM_AUTHORITIES.md",
+      ".github/workflows/**"
+    ],
+    "harnessOwnedPaths": [
+      "docs/customer-1/automation/**",
+      "scripts/customer1-automation/**",
+      ".claude/skills/customer1-program/**"
+    ],
+    "claudeDisallowedTools": [
+      "WebFetch",
+      "WebSearch"
+    ],
+    "strictMcpConfig": true,
+    "proofPolicy": {
+      "note": "Positive allowlist. A worker may SUGGEST a proof; the harness decides whether it runs. This policy is read from the HARNESS worktree, never from the lane worktree, so a lane cannot authorize its own command. Every path here is also in harnessOwnedPaths, so a lane that edits it fails verification.",
+      "maxCommandLength": 300,
+      "rejectMetacharacters": ["&&", "||", ";", "|", "&", "`", "$(", "${", ">", "<", "\n", "\r"],
+      "allow": [
+        "^npm (test|run [A-Za-z0-9:_-]+)$",
+        "^npm (test|run [A-Za-z0-9:_-]+) -- [A-Za-z0-9 ._/@:=-]+$",
+        "^node --test( [A-Za-z0-9._/*@-]+)+$",
+        "^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$",
+        "^npx (vitest|jest)( run)?( [A-Za-z0-9._/@:=-]+)*$",
+        "^git (status|log|show|rev-parse|merge-base|ls-files|cat-file)( [A-Za-z0-9._/^~@:=-]+)*$",
+        "^git diff( --(check|name-only|stat|cached))*( [A-Za-z0-9._/^~@:=-]+)*$",
+        "^git branch --show-current$"
+      ],
+      "deny": [
+        "firebase", "gcloud", "gsutil", "aws ", "az ",
+        "git push", "git reset", "git clean", "git checkout", "git restore",
+        "git branch -d", "git worktree", "git rebase", "git filter-branch", "git update-ref",
+        "gh pr merge", "gh api", "gh secret", "gh release",
+        "remove-item", "rmdir", "rm ", "del ", "erase ", "format ", "shutdown", "reboot",
+        "invoke-expression", "iex ", "invoke-webrequest", "invoke-restmethod",
+        "curl", "wget", "-method post", "-method put", "-method delete", "-method patch",
+        "sudo", "chmod", "chown", "mklink", "reg add", "reg delete", "schtasks", "taskkill",
+        "npm publish", "npm install", "npm i ", "npx -y", "pip install",
+        "firestore:delete", "functions:delete", "auth:import", "auth:export",
+        "node -e", "node --eval", "-c ", "start-process", "new-item", "set-content",
+        "out-file", "add-content", "tee", "cmd /c", "powershell -", "pwsh -", "bash -c", "sh -c"
+      ]
+    }
+  },
+  "laneStates": [
+    "IDLE",
+    "READY",
+    "RUNNING",
+    "BLOCKED_PARTIAL",
+    "BLOCKED",
+    "PR_READY",
+    "WAITING_FOR_MAIN",
+    "WAITING_FOR_OWNER",
+    "WAITING_FOR_TAYLOR",
+    "COMPLETE"
+  ],
+  "workItemResults": [
+    "DONE",
+    "PARTIAL",
+    "BLOCKED_OWNER",
+    "BLOCKED_TAYLOR",
+    "BLOCKED_GOVERNANCE",
+    "BLOCKED_COLLISION",
+    "BLOCKED_EXTERNAL",
+    "FAILED_TECHNICAL",
+    "NO_WORK"
+  ],
+  "lanes": [
+    {
+      "id": "A",
+      "name": "Scope / Product Close",
+      "priority": 10,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/A-scope-product.md",
+      "gates": [
+        "C1-SCOPE-01",
+        "C1-PRODUCT-01"
+      ],
+      "ownedPaths": [
+        "docs/customer-1/CUSTOMER_1_READINESS.md",
+        "docs/customer-1/CUSTOMER_1_LEDGER.json",
+        "docs/customer-1/scope/**",
+        "docs/customer-1/acceptance/**"
+      ],
+      "allowedActivities": [
+        "Build and maintain the Customer 1 Day-1 scope matrix.",
+        "Reconcile North Star family status against Customer 1 Day-1 need.",
+        "Prepare acceptance evidence packages for Owner review.",
+        "Fix bounded, non-governance corrective defects that block a Day-1 workflow."
+      ],
+      "forbiddenActivities": [
+        "Declare Owner visual acceptance.",
+        "Broaden product authority.",
+        "Decide whether ambiguous business scope belongs in Day 1."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/a-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    },
+    {
+      "id": "B",
+      "name": "Data / Inventory",
+      "priority": 20,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/B-data-inventory.md",
+      "gates": [
+        "C1-DATA-01",
+        "C1-INV-01"
+      ],
+      "ownedPaths": [
+        "docs/customer-1/data/**",
+        "scripts/customer1-migration/**"
+      ],
+      "allowedActivities": [
+        "Inventory Taylor source systems and record the census.",
+        "Define migration schemas, mappings, and transformation validators.",
+        "Build repeatable dry runs and exception reporting.",
+        "Build reconciliation and opening-inventory tooling."
+      ],
+      "forbiddenActivities": [
+        "Make destructive writes against customer production data.",
+        "Invent a source-of-truth choice where the evidence is ambiguous.",
+        "Accept physical opening inventory on behalf of Taylor."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/b-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    },
+    {
+      "id": "C",
+      "name": "Admin / Identity / Security",
+      "priority": 30,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/C-admin-security.md",
+      "gates": [
+        "C1-IDENTITY-01",
+        "C1-ADMIN-01",
+        "C1-SECURITY-01"
+      ],
+      "ownedPaths": [
+        "docs/customer-1/identity/**",
+        "docs/customer-1/security/**",
+        "docs/customer-1/admin/**"
+      ],
+      "allowedActivities": [
+        "Implement admin capability that is ALREADY authorized by an existing ruling.",
+        "Maintain the governed principal directory and identity bindings.",
+        "Work role and scope mechanics within existing authority.",
+        "Write negative and security tests.",
+        "Assemble production-readiness evidence."
+      ],
+      "forbiddenActivities": [
+        "Create a new authority ruling.",
+        "Grant broader access in order to make a test pass.",
+        "Invent Taylor users or production identities.",
+        "Weaken fail-closed behavior."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/c-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    },
+    {
+      "id": "D",
+      "name": "Recovery / Continuity",
+      "priority": 40,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/D-recovery-continuity.md",
+      "gates": [
+        "C1-RECOVERY-01",
+        "C1-CONTINUITY-01"
+      ],
+      "ownedPaths": [
+        "docs/customer-1/continuity/**",
+        "scripts/customer1-continuity/**"
+      ],
+      "allowedActivities": [
+        "Define the backup procedure and its policy.",
+        "Design isolated restore testing and recovery validation.",
+        "Write outage fallback runbooks.",
+        "Write the reconciliation-after-outage procedure."
+      ],
+      "forbiddenActivities": [
+        "Perform a destructive production restore automatically."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/d-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    },
+    {
+      "id": "E",
+      "name": "Commercial / Legal / Support",
+      "priority": 50,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/E-commercial-support.md",
+      "gates": [
+        "C1-COMM-01",
+        "C1-CONTRACT-01",
+        "C1-SUPPORT-01"
+      ],
+      "ownedPaths": [
+        "docs/customer-1/commercial/**",
+        "docs/customer-1/support/**"
+      ],
+      "allowedActivities": [
+        "Draft the commercial structure and pricing decision worksheets.",
+        "Draft the support and escalation model.",
+        "Draft contract, SOW, data, and support artifacts.",
+        "Maintain the unresolved decision register."
+      ],
+      "forbiddenActivities": [
+        "Make a final pricing choice.",
+        "Bind Verenward or Taylor contractually.",
+        "Make a legal judgment.",
+        "Sign or approve anything."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/e-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    },
+    {
+      "id": "F",
+      "name": "Training",
+      "priority": 60,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/F-training.md",
+      "gates": [
+        "C1-TRAINING-01"
+      ],
+      "ownedPaths": [
+        "docs/training/**",
+        "docs/customer-1/training/**"
+      ],
+      "allowedActivities": [
+        "Detect user-impacting changes in merged and deployed work.",
+        "Create and update role and workflow training guides.",
+        "Identify missing training coverage.",
+        "Maintain training-close evidence."
+      ],
+      "forbiddenActivities": [
+        "Record Taylor acceptance of training.",
+        "Close a deployment as trained without live verification or a verified no-user-impact finding."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/f-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    },
+    {
+      "id": "G",
+      "name": "Cutover / Launch",
+      "priority": 70,
+      "enabled": true,
+      "state": "READY",
+      "charter": "docs/customer-1/automation/lanes/G-cutover.md",
+      "gates": [
+        "C1-CUTOVER-01",
+        "C1-OWNER-01"
+      ],
+      "ownedPaths": [
+        "docs/customer-1/cutover/**"
+      ],
+      "allowedActivities": [
+        "Write and maintain the cutover runbook.",
+        "Collect dependency receipts and validate prerequisites.",
+        "Design non-destructive rehearsal and the smoke-test plan.",
+        "Write the fallback plan.",
+        "Assemble the launch evidence package."
+      ],
+      "forbiddenActivities": [
+        "Perform production go-live.",
+        "Transition final Owner authorization.",
+        "Perform any destructive customer action."
+      ],
+      "dependencies": [],
+      "currentWorkItem": null,
+      "branchPrefix": "customer1/g-",
+      "lastReconciledMain": null,
+      "lastRun": null,
+      "lastResult": null
+    }
+  ]
+}
