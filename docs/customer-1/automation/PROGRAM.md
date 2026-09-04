@@ -22,6 +22,64 @@ gate state. This orchestrator reads that ledger; it does not replace it.
 - It is not an authority. It cannot close a gate, accept anything on behalf of
   Taylor or the Owner, or make a go/no-go call.
 
+## Host requirement
+
+**PowerShell 7+ (`pwsh`) only.** Every entry point checks this before it reads or
+writes anything, and refuses outright on Windows PowerShell 5.1.
+
+5.1 lacks `ProcessStartInfo.ArgumentList`, which is how worker arguments survive
+without being re-split, and it handles native-command stderr differently. Run
+under 5.1, the orchestrator got all the way through legacy bootstrap, lane
+reconciliation and a main merge before dying at the process launch with *"The
+property 'ArgumentList' cannot be found on this object"* — persistent state
+mutated, no worker ever started. The guard turns that into a refusal with
+nothing touched.
+
+## Upstream integration is not lane work
+
+`reconcile-main.ps1` merges `origin/main` into a lane branch. That merge is a
+real commit whose first-parent diff contains **everything main changed**,
+harness-owned paths included.
+
+Nothing may read such a commit as lane work. Doing so condemned a lane over a
+merge the harness had just made itself: legacy bootstrap saw an uncovered
+pre-receipt commit touching `scripts/customer1-automation/**` and returned
+`FAILED_BOOTSTRAP`, and branch-ahead recovery reached the same verdict by a
+different route.
+
+A commit is an **integration merge** when all three hold, judged structurally
+from the repository:
+
+1. it has more than one parent;
+2. a non-first parent is an ancestor of the main ref — it really did integrate
+   upstream, not some unrelated branch;
+3. its combined diff (`git diff-tree --cc`) is empty — it took every path
+   cleanly from one side and contributed nothing of its own.
+
+Fact 3 is what keeps real work visible. An "evil merge" carrying its own edits
+has a non-empty combined diff, and a domain merge of a feature branch fails fact
+2; **neither is excluded**. Work never becomes invisible merely because it
+arrived through a merge.
+
+Recognition is structural rather than marker-based on purpose: the merges
+stranding lanes were made before any marker existed. New reconciliations are
+also stamped with a `C1-Reconcile-Main:` trailer, but only as legible evidence —
+nothing depends on it.
+
+Ownership is therefore judged over **lane-authored commits only**. Range
+analysis also excludes commits reachable from the main ref: a plain two-dot diff
+across a merge otherwise reports every upstream change as though the lane had
+made it.
+
+A branch that advanced *only* by integration records a `MAIN_INTEGRATION`
+receipt. It carries no changed paths and is kept out of the worker's
+completed-work list, but it advances the lane's last verified SHA so the next
+start is quiet instead of re-discovering the same merge forever.
+
+`lastReconciledMain` is persisted **the moment the merge lands**, not after the
+worker finishes, so a crash in between cannot leave a branch that has moved and
+a state file that never heard of it.
+
 ## Execution model
 
 **PowerShell is the supervisor. Claude is a bounded worker.** `MAX_CONCURRENT_CLAUDE = 1`.

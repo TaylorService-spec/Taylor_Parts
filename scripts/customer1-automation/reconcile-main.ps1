@@ -27,6 +27,7 @@ param(
 )
 
 . (Join-Path (Split-Path -Parent $PSCommandPath) '_common.ps1')
+. (Join-Path (Split-Path -Parent $PSCommandPath) 'checkpoint.ps1')
 
 function New-Result {
     param($Classification, $MainSha, $Overlap, $Integrated, $Message)
@@ -96,7 +97,19 @@ $integrated = $false
 $message = "main advanced to $($mainSha.Substring(0,8)); classified $classification."
 
 if ($Apply -and $classification -in @('NO_OVERLAP', 'SAFE_OVERLAP')) {
-    $merge = Invoke-Git -Directory $WorktreePath -Arguments @('merge', '--no-edit', $MainRef) -AllowFail
+    # Stamp the integration so history reads honestly: the harness pulling main
+    # in, not lane work. This is EVIDENCE, not a control -- the classifier that
+    # keeps such a merge out of legacy bootstrap is structural, because the merges
+    # that stranded lanes were made before any marker existed.
+    $mergeMsg = @"
+chore(customer-1): integrate $MainRef into lane $LaneId
+
+Upstream reconciliation performed by the Customer 1 orchestrator. This commit
+carries no lane work: every path in it comes from $MainRef.
+
+$(Get-C1ReconcileMarker -MainSha $mainSha)
+"@
+    $merge = Invoke-Git -Directory $WorktreePath -Arguments @('merge', '--no-edit', '-m', $mergeMsg, $MainRef) -AllowFail
     if ($merge.ExitCode -eq 0) {
         $integrated = $true
         $message += ' Integrated cleanly.'
