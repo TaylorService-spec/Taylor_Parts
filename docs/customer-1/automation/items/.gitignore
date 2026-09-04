@@ -1,0 +1,4 @@
+# Item receipts are runtime evidence: durable on disk for crash recovery,
+# not repository state. The directory is tracked so the harness always has it.
+*.json
+!.gitignore

@@ -1,16 +1,16 @@
 // site-work round-2 #4 (appheader-discards-reorder-error) -- RENDER tests
 // (vitest + jsdom), following test/dispatchSurfacesErrorState.test.jsx's convention.
 //
-// AppHeader.jsx used to call useReorderRequests()/useReorderRequestsByStatus()(x2)/
+// AppHeader.jsx used to call (this orchestration now lives in NotificationControl.jsx) useReorderRequests()/useReorderRequestsByStatus()(x2)/
 // useReorderRequestsAssignedTo() and destructure only `{ data }` from each, discarding
 // the `error` every one of those hooks already exposes (hooks/useReorderRequests.js's
 // W2 notes). A failed reorder-request subscription rendered the exact same "no pending
 // reorder requests" / undercounted bell as a genuinely empty queue -- an admin/
 // dispatcher could miss real reorder-request activity with no indication a read failed.
 //
-// These tests pin the fix at both layers: AppHeader combines the four hooks' errors and
+// These tests pin the fix at both layers: NotificationControl combines the four hooks' errors and
 // threads the result into NotificationPanel (mirrored by mocking the reorder hooks and
-// rendering AppHeader), and NotificationPanel itself renders a distinct, alert-role
+// rendering NotificationControl), and NotificationPanel itself renders a distinct, alert-role
 // failure state instead of its empty/count state when `error` is truthy (mirrored by
 // rendering NotificationPanel directly).
 import { afterEach, describe, it, expect, vi } from "vitest";
@@ -40,7 +40,7 @@ vi.mock("../src/hooks/useReorderRequests", () => ({
   useReorderRequestsAssignedTo: vi.fn(() => reorderHooks.assignedTo),
 }));
 
-import AppHeader from "../src/shared/ui/AppHeader.jsx";
+import NotificationControl from "../src/shared/ui/NotificationControl.jsx";
 import NotificationPanel from "../src/shared/ui/NotificationPanel.jsx";
 import { partsAttentionItems, groupPartsAttentionItemsBySection } from "../src/domain/partsAttentionProjection.js";
 
@@ -56,11 +56,11 @@ afterEach(() => {
 const renderHeader = () =>
   render(
     <MemoryRouter>
-      <AppHeader />
+      <NotificationControl />
     </MemoryRouter>
   );
 
-describe("AppHeader -- a failed reorder-request subscription is not swallowed into the empty bell", () => {
+describe("NotificationControl -- a failed reorder-request subscription is not swallowed into the empty bell", () => {
   it("useReorderRequests() erroring surfaces the failure indication, not a false empty/zero bell", () => {
     reorderHooks.requests = { data: [], error: PERMISSION_ERROR };
     renderHeader();

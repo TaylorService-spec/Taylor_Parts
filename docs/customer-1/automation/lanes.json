@@ -32,6 +32,18 @@
       "WebFetch",
       "WebSearch"
     ],
+    "claudeAllowedToolsNote": "acceptEdits auto-approves file edits but not Bash, so a worker must be told which commands it may run. This list contains NO git write verb by design: the harness commits lane work only after verifying it, and a worker that could commit would be committing unverified changes ahead of the gate. invoke-lane.ps1 refuses to start a session if a git write permission ever reappears here.",
+    "claudeAllowedTools": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-files:*)",
+      "Bash(node --test:*)",
+      "Bash(npm test)",
+      "Bash(npm run:*)"
+    ],
     "strictMcpConfig": true,
     "proofPolicy": {
       "note": "Positive allowlist. A worker may SUGGEST a proof; the harness decides whether it runs. This policy is read from the HARNESS worktree, never from the lane worktree, so a lane cannot authorize its own command. Every path here is also in harnessOwnedPaths, so a lane that edits it fails verification.",

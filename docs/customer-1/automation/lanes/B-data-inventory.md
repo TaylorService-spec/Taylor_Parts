@@ -50,9 +50,27 @@ scripts/customer1-migration/**
 5. Opening inventory: the reconciliation procedure and the acceptance artifact
    Taylor completes.
 
+## Seeded evidence rule
+
+**Seeded data can prove the process. It cannot prove Taylor's actual data.**
+
+The absence of a real Taylor export is NOT a reason to stop. Build the process
+against deterministic, source-shaped synthetic data and prove it runs: a
+repeatable migration dry run, mapping and transformation execution, an exception
+report, reconciliation output, and a rerun that proves idempotency.
+
+Every synthetic artifact must be marked SEEDED / SYNTHETIC in its filename or a
+banner at the top of the file, so nobody can mistake a rehearsal for Taylor's
+real numbers. Seeded evidence advances the PROCESS half of a gate. It never
+closes a gate that needs Taylor's own data or Taylor's acceptance.
+
 ## Blocker triggers
 
-- Source system access, export format, or volume is unknown (`BLOCKED_TAYLOR`).
+- Source system access, export format, or volume is unknown AND the work cannot
+  be rehearsed on synthetic data (`BLOCKED_TAYLOR`). Raise this only for work
+  that genuinely depends on a real Taylor fact -- never merely because an export
+  has not arrived. Missing exports are the expected state right now: rehearse
+  against seeded data and record what Taylor still has to supply.
 - Two sources disagree on an authoritative fact (`BLOCKED_TAYLOR`).
 - A mapping would require a schema or authority change (`BLOCKED_GOVERNANCE`).
 - Production read access is required (`BLOCKED_OWNER`).

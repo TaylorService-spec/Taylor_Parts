@@ -1,6 +1,6 @@
 # My Dashboard — North Star P1v2 · design handoff
 
-**Status:** DESIGN AUTHORITY for the My Dashboard family — **CLOSED / OWNER ACCEPTED 2026-09-03** (§0-C), with a **post-acceptance corrective 2026-09-04** (§0-D). The technician surface is a SEPARATE acceptance and is **not** covered by it (§0-E). Recorded 2026-09-02 under the Owner's
+**Status:** DESIGN AUTHORITY for the My Dashboard family — **CLOSED / OWNER ACCEPTED 2026-09-03** (§0-C), post-acceptance correctives **LIVE VERIFIED 2026-09-04** (§0-G). The technician surface is a SEPARATE acceptance, also **CLOSED / OWNER ACCEPTED / LIVE VERIFIED** (§0-E, §0-G; migration ledger Family 11). Recorded 2026-09-02 under the Owner's
 dashboard + performance-management direction. Governed by
 [`eos-dashboard-composition-authority.md`](../../governance/eos-dashboard-composition-authority.md)
 (Decision #161) and the Performance Goal Authority (Decision #162).
@@ -8,6 +8,73 @@ dashboard + performance-management direction. Governed by
 **Visual system:** [`../VISUAL-SYSTEM.md`](../VISUAL-SYSTEM.md), unchanged. **This document
 redesigns nothing.** It composes the accepted grammar — the same tokens, the same primitives, the
 same hover contract — into one dashboard family. Where it names a component it names an existing one.
+
+---
+
+## 0-G. FINAL LIVE VERIFICATION AND CLOSURE — 2026-09-04
+
+**Both dashboard families are closed.** My Dashboard was accepted on 2026-09-03 and is NOT reopened
+or re-accepted here; what this section adds is that the correctives which landed AFTER that
+acceptance have now been seen running. The Technician surface is closed outright.
+
+| | |
+|---|---|
+| **Live build** | `platform-sandbox` Hosting **`6b281cd5`** — read from `/version.json`, not inferred from a merge |
+| **My Dashboard** | CLOSED · OWNER ACCEPTED (2026-09-03) · **POST-ACCEPTANCE CORRECTIVES COMPLETE AND LIVE VERIFIED** |
+| **Technician Dashboard** | **CLOSED · OWNER ACCEPTED · LIVE VERIFIED** — migration ledger Family 11 |
+| **Training** | [`docs/training/MY_DASHBOARD.md`](../../training/MY_DASHBOARD.md) — **COMPLETE**, one guide covering both surfaces |
+| **Production** | untouched and unauthorized. A sandbox acceptance authorizes nothing beyond the sandbox |
+
+### The corrective chain this closure covers
+
+Each was verified an ancestor of the live commit before anything was closed — the point of the
+check being that a merged corrective and a running one are different claims.
+
+| PR | Merge | What it corrected |
+|---|---|---|
+| #1793 | `761c0471` | Six governed capabilities the composition gates on were never in the access-feed request set, so seven modules could not resolve for anyone; FIN-004 reach; two ungated reads |
+| #1795 | `f066f450` | Team performance rendered the stored Work Order status; the opportunity identity rule was investigated and found correct |
+| #1796 | `dbaca853` | A negative Avg Job Duration presented as a performance fact |
+| #1799 | `6b281cd5` | Shared shell: duplicate account controls removed, notifications relocated to the rail footer, desktop top strip collapsed |
+
+### The technician duration rule, as accepted
+
+The governed definition is unchanged — `completedAt - workStartedAt`, over the lifecycle timestamps
+`transitionWorkOrder()` writes. What changed is what happens when that pair contradicts itself.
+
+| Evidence | Result |
+|---|---|
+| valid span | measured, non-negative |
+| zero-length span | **valid** — unusual, not contradictory |
+| inverted (`completedAt` before `workStartedAt`) | contradictory: the **whole figure is withdrawn**, never transformed |
+| missing one timestamp | outside the eligible population, and counted so the shortfall is not silent |
+
+**Forbidden, and each individually mutation-proved:** `Math.abs()`, clamping to zero, swapping the two
+timestamps, and averaging the trustworthy remainder after contradictory evidence. Every one turns
+evidence the platform cannot explain into a plausible number — worse than showing nothing, because
+it is unfalsifiable. The live surface shows a valid non-negative value or an honest N/A.
+
+**The underlying records were NOT repaired.** The sandbox still holds completed Work Orders whose
+timestamps contradict the lifecycle. That is carried as a data-quality finding in
+[`sandbox-inverted-work-order-completion-evidence.md`](../../assessments/sandbox-inverted-work-order-completion-evidence.md),
+OPEN and non-blocking: the dashboard failing honestly is not the same as the data being right.
+
+### The shared shell, recorded but not promoted to a family
+
+PR #1799 composes no domain and states no business fact, so it is a shared-shell corrective rather
+than a North Star family. It is noted here only because both dashboards render inside it.
+
+- **Desktop** — no top application strip, for any role. Notifications and identity sit in the rail
+  footer; one Sign out, at most one notification control mounted.
+- **Handheld** — the top strip carries the navigation opener alone; the drawer carries the same rail
+  footer, so an authorized principal still reaches notifications, identity, role and Sign out.
+
+### Left open on purpose
+
+A technician still cannot read an approved `EMPLOYEE`-scope goal set for their own governed employee
+identity — the tile reads "This target is outside your access." That is honest and it is not a
+dashboard defect. Granting it needs its own authority package with server-side adversarial proof,
+and **no capability, role or activation was changed by any part of this closure.**
 
 ---
 
@@ -161,7 +228,7 @@ Recorded as **CLOSED + POST-ACCEPTANCE CORRECTIVE**, not as a reopening.
 
 ---
 
-## 0-E. TECHNICIAN DASHBOARD — ITS OWN ACCEPTANCE SURFACE — 2026-09-04
+## 0-E. TECHNICIAN DASHBOARD — ITS OWN ACCEPTANCE SURFACE — 2026-09-04 · **CLOSED**
 
 **Status: CODE COMPLETE · DESIGN-CONFORMANCE GUARDED · VISUALLY VERIFIED · AWAITING OWNER
 ACCEPTANCE.**
@@ -275,8 +342,9 @@ The underlying data finding is carried separately as SANDBOX DATA QUALITY in
 It is non-blocking now that the dashboard fails honestly, and "the screen no longer shows a
 negative" is explicitly not the same as those records being correct.
 
-**Status is unchanged: AWAITING OWNER ACCEPTANCE.** The corrective is code-complete and not
-deployed; acceptance waits on a refreshed live screen.
+**Status: CLOSED / OWNER ACCEPTED / LIVE VERIFIED — 2026-09-04.** The corrective was deployed with
+the rest of the chain and the Owner reviewed the refreshed live surface. Recorded in the migration
+ledger as Family 11. See §0-G for the verification this closure rests on.
 
 ---
 

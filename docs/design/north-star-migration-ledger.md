@@ -1932,7 +1932,7 @@ table gates on must be in the request set. That is the guard whose absence let t
 
 ---
 
-## Family 11 — Technician Dashboard · **AWAITING OWNER ACCEPTANCE**
+## Family 11 — Technician Dashboard · **ACCEPTED** (Owner, 2026-09-04)
 
 | | |
 |---|---|
@@ -1944,9 +1944,51 @@ table gates on must be in the request set. That is the guard whose absence let t
 | **Defect fixed** | The card rendered the raw status — a technician read `WORK_IN_PROGRESS` and `EN_ROUTE` on their own work. Routed through `workOrderStatusLabel()`; `workOrderStatusLabelConformance`'s allowlist entry burned down |
 | **Visual** | 1440 / 375 / 320 — work first at every width, buckets truthful, Avg. Job Duration `N/A` not zero, reserved measures named and non-alert, no leakage, 0 overflow, 0 console errors |
 | **Authority** | UNCHANGED. No Functions, Rules, indexes, capability, role or state-machine touched |
-| **Acceptance** | `AWAITING_OWNER_VISUAL_ACCEPTANCE` — the one authority a build cannot grant itself |
+| **Runtime corrective** | PR #1796 (`dbaca853`) — a negative Avg Job Duration withdrawn rather than transformed; PR #1799 (`6b281cd5`) — the shared shell's account and notification relocation |
+| **Live verified** | `platform-sandbox` Hosting `6b281cd5`, the build that carries every corrective in this chain |
+| **Training** | [`docs/training/MY_DASHBOARD.md`](../training/MY_DASHBOARD.md) — COMPLETE. One guide owns both surfaces; it already carries the technician section |
+| **Acceptance** | **CLOSED 2026-09-04 — Owner acceptance given on the refreshed live sandbox** |
 
 **Open and deliberately unresolved:** a technician's own `EMPLOYEE`-scope goals render "This target
 is outside your access" without a governed role granting `performance.goal.read`. The tile is honest.
 Whether a technician should be able to read a goal set *for them* is an Owner authority question, and
 no authority was invented to make the screen look complete.
+
+
+---
+
+## Families 10 and 11 — live verification of the corrective chain (2026-09-04)
+
+Both dashboard families were accepted on evidence, and then the evidence moved: four runtime
+correctives landed after Family 10's closure. This records the Owner's pass over the build that
+actually carries them, so "accepted" and "live" name the same artifact rather than two.
+
+| | |
+|---|---|
+| **Live build** | `platform-sandbox` Hosting **`6b281cd5`** — read from `/version.json`, not inferred from a merge |
+| **Correctives contained** | #1793 `761c0471` capability request set · #1795 `f066f450` status label + opportunity identity · #1796 `dbaca853` invalid technician duration · #1799 `6b281cd5` shared-shell account and notification relocation. Each verified an ancestor of the live commit |
+| **Family 10 — My Dashboard** | **CLOSED / OWNER ACCEPTED** (2026-09-03, unchanged) **+ POST-ACCEPTANCE CORRECTIVES LIVE VERIFIED** (2026-09-04). The family is not reopened and not re-accepted; what is new is that the corrective chain has been seen running |
+| **Family 11 — Technician Dashboard** | **CLOSED / OWNER ACCEPTED / LIVE VERIFIED** (2026-09-04) |
+
+### What the shared shell contributes, and why it is not a family
+
+PR #1799 is a shared-shell corrective, not a North Star family: it composes no domain and states no
+business fact. It is recorded here only because both dashboards render inside it.
+
+- **Desktop** — no top application strip for any role. Notifications and identity live in the rail
+  footer; one Sign out, at most one notification control.
+- **Handheld** — the top strip carries the navigation opener alone; the drawer carries the same rail
+  footer, so an authorized principal still reaches notifications, identity, role and Sign out.
+
+### What is NOT closed by this
+
+| Item | State |
+|---|---|
+| Inverted Work Order completion evidence in the sandbox dataset | **OPEN**, non-blocking. [`sandbox-inverted-work-order-completion-evidence.md`](../assessments/sandbox-inverted-work-order-completion-evidence.md). The dashboard now fails honestly; **the records were not repaired**, and no ad-hoc sandbox mutation was performed |
+| A technician reading their own approved `EMPLOYEE`-scope goal | **OPEN**. Needs its own authority package with server-side adversarial proof. No capability, role or activation was changed here |
+| Production | **UNTOUCHED and UNAUTHORIZED.** A sandbox acceptance authorizes nothing beyond the sandbox |
+
+The domain-authority backlog transferred out of Family 10 at closure (booked read, on-time and
+first-time-fix definitions, workday, location-level stock aggregate, `INVENTORY_BALANCE_READ_READY`,
+forecast-exception read, costing method, FIN-BLOCK-004 elimination) is unchanged and still owned
+elsewhere. Closing a family does not close what it honestly reported as missing.
