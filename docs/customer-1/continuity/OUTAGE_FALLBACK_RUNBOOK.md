@@ -207,8 +207,9 @@ Owner decision at the time, not a procedure written in advance.
    backlog yet.**
 4. The outage lead collects every sheet, counts them against the list of people
    who were working on paper (§4.1), and completes the outage log.
-5. The paper goes to the post-outage reconciliation procedure, which is where
-   entry happens and in what order.
+5. The paper goes to
+   [`POST_OUTAGE_RECONCILIATION.md`](./POST_OUTAGE_RECONCILIATION.md), which is
+   where entry happens and in what order.
 
 Step 3 matters. Uncoordinated catch-up entry — several people typing in the same
 outage's work at once — produces duplicate work orders and double-counted parts,
