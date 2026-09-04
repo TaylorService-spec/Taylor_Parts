@@ -190,3 +190,28 @@ check("the panel escapes the two scroll containers it now opens inside", () => {
   assert.match(block, /bottom:/);                  // opens upward from the footer
   assert.match(block, /z-index: 42;/);             // above the drawer (41) and its scrim (40)
 });
+
+check("exactly ONE NotificationControl is mounted per shell mode", () => {
+  // A CSS-HIDDEN COMPONENT IS STILL A MOUNTED ONE. At drawer widths .fo-rail is `display: none`,
+  // and `display` suppresses paint, not React hooks. With the docked footer left unconditional, an
+  // authorized principal with the drawer open held TWO NotificationControls -- and therefore two
+  // copies of every governed reorder subscription, two listeners racing the same data, one of them
+  // feeding a surface nobody can see.
+  //
+  // The mount follows `isDrawer`, which is real state rather than a media query's opinion:
+  //   docked            -> the docked footer only
+  //   drawer, open      -> the drawer footer only
+  //   drawer, closed    -> neither, so no reads at all for a rail that cannot be reached
+  assert.ok(shell.includes("{!isDrawer && ("), "the docked footer is unconditional again");
+  const dockedAt = shell.indexOf("{!isDrawer && (");
+  const drawerAt = shell.indexOf("{isDrawer && drawerOpen && (");
+  assert.ok(dockedAt > 0 && drawerAt > 0, "a shell-mode branch is missing");
+  assert.ok(dockedAt < drawerAt, "the docked footer must precede the drawer block");
+  // Both footers still exist -- this is a lifecycle gate, not a deletion.
+  assert.equal(shell.split('<div className="fo-rail__footer">').length - 1, 2);
+  assert.equal(shell.split("<NotificationControl").length - 1, 2);
+  // The docked footer sits INSIDE the !isDrawer branch, not merely after it.
+  const dockedBlock = shell.slice(dockedAt, drawerAt);
+  assert.ok(dockedBlock.includes("<NotificationControl"), "the docked control escaped its branch");
+  assert.ok(dockedBlock.includes("<RailIdentity />"), "identity escaped the mode gate");
+});

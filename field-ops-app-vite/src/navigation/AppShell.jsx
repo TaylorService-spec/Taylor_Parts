@@ -146,11 +146,20 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
 
             Notifications sits ABOVE identity, and is NOT part of it: RailIdentity states who you
             are and how to leave. Folding a live queue into that component would put changing state
-            inside the one block that must never be anything but a name, a role and a way out. */}
-        <div className="fo-rail__footer">
-          <NotificationControl accessVersion={operationalContext?.accessVersion} />
-          <RailIdentity />
-        </div>
+            inside the one block that must never be anything but a name, a role and a way out.
+
+            MOUNTED ON `!isDrawer`, NOT HIDDEN BY CSS. At drawer widths this rail is
+            `display: none` -- and a hidden component is still a MOUNTED one. Left unconditional,
+            an authorized principal with the drawer open would hold TWO NotificationControls and
+            therefore two copies of every governed reorder subscription: double the reads, two
+            listeners racing the same data, for a surface nobody can see. `isDrawer` is real state
+            rather than a media query's opinion, so the mount can follow the shell mode exactly. */}
+        {!isDrawer && (
+          <div className="fo-rail__footer">
+            <NotificationControl accessVersion={operationalContext?.accessVersion} />
+            <RailIdentity />
+          </div>
+        )}
       </aside>
 
       {isDrawer && drawerOpen && (
@@ -182,7 +191,11 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
                 widths, so without this the notification control would have no reachable home at
                 all once it left the top strip -- moving the bell would have DELETED it on a
                 handheld. Identity comes with it: the drawer is the rail here, and the rail's
-                footer is where a person's own things live. */}
+                footer is where a person's own things live.
+
+                This is the ONLY footer mounted at drawer widths: the docked one above is gated on
+                `!isDrawer`, so exactly one NotificationControl exists per shell mode and the
+                governed reads are never instantiated twice. */}
             <div className="fo-rail__footer">
               <NotificationControl accessVersion={operationalContext?.accessVersion} />
               <RailIdentity />
