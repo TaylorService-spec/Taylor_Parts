@@ -239,14 +239,15 @@ org chart.
 
 These are named here so their absence is visible rather than assumed:
 
-1. **Rehearsal plan** — what of the above can be rehearsed without touching
-   production, and what honestly cannot. G-STEP-06 through G-STEP-09 cannot be
-   rehearsed against production by definition.
-2. **Smoke-test plan** — the concrete first-hour test list referenced by
+1. **Smoke-test plan** — the concrete first-hour test list referenced by
    G-STEP-11.
-3. **Fallback plan** — the severity definitions and the restore procedure
+2. **Fallback plan** — the severity definitions and the restore procedure
    referenced by G-STEP-13.
-4. **Authorization package index** — the document the Owner reads at G-STEP-02.
+3. **Authorization package index** — the document the Owner reads at G-STEP-02.
+
+The rehearsal plan now exists at
+`docs/customer-1/cutover/REHEARSAL_PLAN.md`; it classifies every step above as
+rehearsable, partially rehearsable, or not rehearsable at all.
 
 Until those exist, `C1-CUTOVER-01` is not closable: its `closeWhen` requires
 rehearsal, smoke tests, and fallback to be rehearsed and packaged, not merely
