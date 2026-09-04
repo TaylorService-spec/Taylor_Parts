@@ -31,7 +31,11 @@
       "launchCritical": true,
       "authority": "Verenward + Taylor",
       "closeWhen": "Every EOS family is classified as Day 1, post-Day-1, pilot, or excluded; explicit exclusions are accepted.",
-      "evidence": []
+      "evidence": [
+        "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md: proposed classification for all 13 North Star family rows plus four surfaces outside the family register. Nine families and two non-family surfaces are proposed DAY_1; four rows (Opportunity 4, Opportunity 4b, Sales Agreement 5, Financials/AR, Reporting) are BLOCKED on existing Taylor/Owner blockers rather than guessed.",
+        "These are Verenward proposals derived from repository evidence only. The gate remains OPEN: it closes on Taylor and Verenward acceptance of the classification and of the explicit exclusions, not on the existence of the matrix.",
+        "The matrix also surfaces an undecided census boundary: whether 'every EOS family' means the North Star migration ledger's family rows or the broader business capability register."
+      ]
     },
     {
       "id": "C1-COMM-01",
