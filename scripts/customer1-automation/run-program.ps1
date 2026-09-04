@@ -180,8 +180,16 @@ $blockerText
 
 YOUR TASK
 Derive and complete exactly ONE bounded work item from your charter and the
-current gate state. Stop at a natural mergeable boundary. Commit your work on
-this branch. Do not push. Do not open a PR.
+current gate state. Stop at a natural mergeable boundary.
+
+DO NOT RUN GIT. Not add, not commit, not status, not diff. This environment
+refuses git to you and you have nobody to approve it -- do not waste the
+session retrying. Leave your changes in the working tree. The harness commits
+them for you after checking every path against your lane's ownership, and it
+pushes nothing. Never raise a blocker about git access; it is already handled.
+
+Your lane branch accumulates across items, so work committed by earlier items
+in your lane is already here. Build on it; do not redo it.
 
 Prefer the smallest correct change. Do not re-census the repository; use the
 charter and the ledger. Keep any tests targeted and narrow.

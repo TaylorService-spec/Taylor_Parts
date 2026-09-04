@@ -1,5 +1,189 @@
 {
   "schemaVersion": 1,
-  "lastRunId": null,
-  "runs": []
+  "lastRunId": "run-20260904-070657",
+  "runs": [
+    {
+      "runId": "run-20260904-065908",
+      "dryRun": false,
+      "startedAt": "2026-09-04T13:59:09Z",
+      "endedAt": "2026-09-04T13:59:10Z",
+      "mainShaStart": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+      "mainShaEnd": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+      "branch": "automation/customer1-controller",
+      "maxItems": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "A"
+      ],
+      "items": [
+        {
+          "laneId": "A",
+          "laneName": "Scope / Product Close",
+          "branch": "customer1/a-20260904-065908",
+          "worktree": "D:\\Taylor_C1_Lanes\\A",
+          "baseSha": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "headShaBefore": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "headShaAfter": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "reconcile": {
+            "laneId": "A",
+            "classification": "NO_OVERLAP",
+            "mainSha": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+            "mainChanged": [],
+            "laneChanged": [
+              "docs/customer-1/CUSTOMER_1_LEDGER.json",
+              "docs/customer-1/CUSTOMER_1_READINESS.md",
+              "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md",
+              "docs/customer-1/scope/verify-scope-docs.mjs"
+            ],
+            "overlap": [],
+            "integrated": true,
+            "message": "main advanced to 05ce0caa; classified NO_OVERLAP. Integrated cleanly."
+          },
+          "workItem": "(unnamed)",
+          "result": "FAILED_TECHNICAL",
+          "changedPaths": [],
+          "proofs": [],
+          "violations": [
+            "claude session exited 1"
+          ],
+          "blockersRaised": [],
+          "logDir": "D:\\Taylor_C1_Controller\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-065908"
+        }
+      ],
+      "productionActions": []
+    },
+    {
+      "runId": "run-20260904-065957",
+      "dryRun": false,
+      "startedAt": "2026-09-04T13:59:58Z",
+      "endedAt": "2026-09-04T14:04:36Z",
+      "mainShaStart": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+      "mainShaEnd": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+      "branch": "automation/customer1-controller",
+      "maxItems": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "A"
+      ],
+      "items": [
+        {
+          "laneId": "A",
+          "laneName": "Scope / Product Close",
+          "branch": "customer1/a-20260904-065957",
+          "worktree": "D:\\Taylor_C1_Lanes\\A",
+          "baseSha": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "headShaBefore": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "headShaAfter": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "reconcile": {
+            "laneId": "A",
+            "classification": "NO_ADVANCE",
+            "mainSha": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+            "mainChanged": [],
+            "laneChanged": [],
+            "overlap": [],
+            "integrated": false,
+            "message": "main is unchanged at 05ce0caa."
+          },
+          "workItem": "A-SCOPE-MATRIX-1 — Day-1 scope matrix: proposed classification for every EOS family (C1-SCOPE-01 seeded objective 1)",
+          "result": "FAILED_TECHNICAL",
+          "changedPaths": [],
+          "proofs": [
+            {
+              "command": "node docs/customer-1/scope/verify-scope-matrix.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "PASS ΓÇö 18 matrix rows, 16 gates, ledger and readiness agree"
+            },
+            {
+              "command": "git diff --check",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^git diff( --(check|name-only|stat|cached))*( [A-Za-z0-9._/^~@:=-]+)*$'",
+              "tail": ""
+            }
+          ],
+          "violations": [
+            "left 3 uncommitted change(s)"
+          ],
+          "blockersRaised": [
+            "BLK-run-20260904-065957-A-1",
+            "BLK-run-20260904-065957-A-2"
+          ],
+          "logDir": "D:\\Taylor_C1_Controller\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-065957"
+        }
+      ],
+      "productionActions": []
+    },
+    {
+      "runId": "run-20260904-070657",
+      "dryRun": false,
+      "startedAt": "2026-09-04T14:06:58Z",
+      "endedAt": "2026-09-04T14:09:41Z",
+      "mainShaStart": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+      "mainShaEnd": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+      "branch": "automation/customer1-controller",
+      "maxItems": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "A"
+      ],
+      "items": [
+        {
+          "laneId": "A",
+          "laneName": "Scope / Product Close",
+          "branch": "customer1/a-work",
+          "worktree": "D:\\Taylor_C1_Lanes\\A",
+          "baseSha": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "headShaBefore": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+          "headShaAfter": "8887c5d8954668c7d93a13122937f17da0e36c6d",
+          "reconcile": {
+            "laneId": "A",
+            "classification": "NO_ADVANCE",
+            "mainSha": "05ce0caa6163435fef0fc629b71de472375d9cbb",
+            "mainChanged": [],
+            "laneChanged": [],
+            "overlap": [],
+            "integrated": false,
+            "message": "main is unchanged at 05ce0caa."
+          },
+          "workItem": "A-SCOPE-MATRIX-1 — Day-1 scope matrix (seeded objective 1) for C1-SCOPE-01",
+          "result": "BLOCKED_EXTERNAL",
+          "changedPaths": [
+            "docs/customer-1/CUSTOMER_1_LEDGER.json",
+            "docs/customer-1/CUSTOMER_1_READINESS.md",
+            "docs/customer-1/scope/DAY_1_SCOPE_MATRIX.md",
+            "docs/customer-1/scope/verify-scope-matrix.mjs"
+          ],
+          "proofs": [
+            {
+              "command": "node docs/customer-1/scope/verify-scope-matrix.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "OK 16 gates, links resolve"
+            },
+            {
+              "command": "git status --short",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^git (status|log|show|rev-parse|merge-base|ls-files|cat-file)( [A-Za-z0-9._/^~@:=-]+)*$'",
+              "tail": "?? .orchestrator-result.json"
+            }
+          ],
+          "violations": [],
+          "blockersRaised": [
+            "BLK-run-20260904-070657-A-1",
+            "BLK-run-20260904-070657-A-2"
+          ],
+          "logDir": "D:\\Taylor_C1_Controller\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-070657"
+        }
+      ],
+      "productionActions": []
+    }
+  ]
 }

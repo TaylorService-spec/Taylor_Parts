@@ -38,6 +38,54 @@
       "remainingExecutableWork": "Everything else in the matrix is classified.",
       "createdAt": "2026-09-04T08:34:00Z",
       "status": "OPEN"
+    },
+    {
+      "id": "BLK-run-20260904-065957-A-1",
+      "lane": "A",
+      "workItem": "A-SCOPE-MATRIX-1 — Day-1 scope matrix: proposed classification for every EOS family (C1-SCOPE-01 seeded objective 1)",
+      "category": "EXTERNAL",
+      "question": "Grant the lane worker permission to run git add and git commit in this worktree, or have the harness commit the worktree changes on the lane's behalf.",
+      "whyAutomationCannotDecide": "Every git write command in this environment returns 'requires manual approval'. The run is unattended and the lane may not authorize its own commands, so no approval path exists from inside the work item.",
+      "blockingScope": "Only the commit boundary. All four files are written and internally consistent in the worktree.",
+      "remainingExecutableWork": "None for this item; the content is finished. Subsequent Lane A items are equally blocked at their commit boundary until this is resolved.",
+      "createdAt": "2026-09-04T14:04:35Z",
+      "status": "OPEN"
+    },
+    {
+      "id": "BLK-run-20260904-065957-A-2",
+      "lane": "A",
+      "workItem": "A-SCOPE-MATRIX-1 — Day-1 scope matrix: proposed classification for every EOS family (C1-SCOPE-01 seeded objective 1)",
+      "category": "TAYLOR",
+      "question": "BLK-A-3 — Does Taylor depend on EOS financial/AR surfaces from Day 1, or does an existing accounting system remain the authority for money, with EOS costing feeding it?",
+      "whyAutomationCannotDecide": "Which system is the Day-1 authority for money is a Taylor business and accounting fact, not a repository fact. The ledger already records that Taylor's financial-policy profile is a customer/accounting choice this program does not infer.",
+      "blockingScope": "The Financials / AR row of the scope matrix, and therefore the C1-SCOPE-01 close condition.",
+      "remainingExecutableWork": "The other 17 rows are classified or blocked on the two pre-existing canary blockers; Lane A can continue with the acceptance evidence index.",
+      "createdAt": "2026-09-04T14:04:35Z",
+      "status": "OPEN"
+    },
+    {
+      "id": "BLK-run-20260904-070657-A-1",
+      "lane": "A",
+      "workItem": "A-SCOPE-MATRIX-1 — Day-1 scope matrix (seeded objective 1) for C1-SCOPE-01",
+      "category": "EXTERNAL",
+      "question": "Grant the lane worker permission to run git add and git commit in this worktree, or have the harness commit the worktree changes on the lane's behalf.",
+      "whyAutomationCannotDecide": "Both commands are rejected by the sandbox before execution; the worker cannot widen its own permissions.",
+      "blockingScope": "Every Lane A deliverable reaching a commit. The files are written and correct on disk but unversioned.",
+      "remainingExecutableWork": "All content work continues normally; only the commit step is blocked.",
+      "createdAt": "2026-09-04T14:09:40Z",
+      "status": "OPEN"
+    },
+    {
+      "id": "BLK-run-20260904-070657-A-2",
+      "lane": "A",
+      "workItem": "A-SCOPE-MATRIX-1 — Day-1 scope matrix (seeded objective 1) for C1-SCOPE-01",
+      "category": "GOVERNANCE",
+      "question": "For C1-SCOPE-01's close condition, does 'every EOS family' mean the North Star migration ledger's family rows, the broader business capability register, or the union of both?",
+      "whyAutomationCannotDecide": "The two registers are differently shaped (page families vs capabilities) and the gate's own wording does not name one. Picking the narrower register would let the gate close on a census that omits real scope; picking the broader one changes what Taylor is being asked to accept. That is a Verenward/Taylor scope-authority decision.",
+      "blockingScope": "Whether the matrix is complete enough to be put to Taylor for acceptance, and therefore C1-SCOPE-01 closure.",
+      "remainingExecutableWork": "The matrix covers the family register and names the four largest surfaces outside it; per-family gate reconciliation for C1-PRODUCT-01 can proceed against the DAY_1 proposals regardless of the answer.",
+      "createdAt": "2026-09-04T14:09:40Z",
+      "status": "OPEN"
     }
   ]
 }
