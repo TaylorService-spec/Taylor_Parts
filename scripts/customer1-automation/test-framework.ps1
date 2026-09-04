@@ -345,6 +345,22 @@ function Get-SandboxContext {
 
 function Reset-FakeCounters { Remove-Item -LiteralPath $argvOut, $callsOut -Force -ErrorAction SilentlyContinue }
 
+function Complete-C1TestRecovery {
+    <#
+        Do what run-program.ps1 does once recovery returns: persist, then release
+        the guard. Recovery deliberately no longer clears the pending transaction
+        itself, so a test that calls it directly has to finish the job the same
+        way the supervisor does -- otherwise the test is asserting against a state
+        the real program never reaches.
+    #>
+    param([Parameter(Mandatory)]$Recovery, $Context)
+    if (-not $Context) { $Context = Get-SandboxContext }
+    if ($Recovery.PSObject.Properties['pendingReadyToClear'] -and $Recovery.pendingReadyToClear) {
+        Clear-C1PendingTransaction -Context $Context
+    }
+    $Recovery
+}
+
 Write-Host 'CUSTOMER 1 FRAMEWORK REGRESSION SUITE'
 Write-Host "sandbox: $sandbox"
 
@@ -496,6 +512,7 @@ try {
 
         $before = @(Get-Content -LiteralPath $callsOut).Count
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA -WorktreePath $wtA -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         $after = @(Get-Content -LiteralPath $callsOut).Count
 
         ($r.status -eq 'RECOVERED_COMMIT') -and ($before -eq $after) -and
@@ -514,6 +531,7 @@ try {
         }) | Out-Null
 
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA -WorktreePath $wtA -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         $newHead = (Invoke-Git -Directory $wtA -Arguments @('rev-parse', 'HEAD')).Output[0]
         ($r.status -eq 'RETRY_NEEDED') -and ($newHead -eq $head) -and
         (-not (Test-Path (Join-Path $sbx.ItemsDir 'crashtest2-A.json'))) -and (-not (Test-Path $sbx.PendingFile))
@@ -537,6 +555,7 @@ try {
         }) | Out-Null
 
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA -WorktreePath $wtA -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         ($r.status -eq 'COMPLETED_TRANSACTION') -and
         ((Invoke-Git -Directory $wtA -Arguments @('rev-parse', 'HEAD')).Output[0] -ne $head) -and
         (-not (Test-Path $sbx.PendingFile))
@@ -545,6 +564,7 @@ try {
     Check '11. interrupted AFTER the final checkpoint: nothing is duplicated' {
         $countBefore = @(Get-C1ItemReceipts -Context $sbx -LaneId 'A').Count
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA -WorktreePath $wtA -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         $countAfter = @(Get-C1ItemReceipts -Context $sbx -LaneId 'A').Count
         ($r.status -eq 'NOTHING_TO_RECOVER') -and ($countBefore -eq $countAfter)
     }
@@ -557,6 +577,7 @@ try {
         $head = (Invoke-Git -Directory $wtA -Arguments @('rev-parse', 'HEAD')).Output[0]
 
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA -WorktreePath $wtA -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         ($r.status -eq 'RECOVERED_BRANCH_AHEAD') -and (-not $r.blocked) -and
         ((Get-C1LastVerifiedSha -Context $sbx -LaneId 'A') -eq $head)
     }
@@ -570,6 +591,7 @@ try {
         $head = (Invoke-Git -Directory $wtA -Arguments @('rev-parse', 'HEAD')).Output[0]
 
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA -WorktreePath $wtA -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         ($r.status -eq 'FAILED_RECOVERY') -and $r.blocked -and
         # the branch is preserved, not reset
         ((Invoke-Git -Directory $wtA -Arguments @('rev-parse', 'HEAD')).Output[0] -eq $head)
@@ -586,6 +608,7 @@ try {
         Save-C1ItemReceipt -Context $sbx -Receipt $rc | Out-Null
 
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneB -WorktreePath $wtB -Branch 'customer1/b-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         $ok = ($r.status -eq 'FAILED_RECOVERY') -and $r.blocked -and
               ((Invoke-Git -Directory $wtB -Arguments @('rev-parse', 'HEAD')).Output[0] -eq $head)
         Remove-Item -LiteralPath (Join-Path $sbx.ItemsDir 'divergetest-B.json') -Force
@@ -916,6 +939,7 @@ try {
         Set-Content -LiteralPath (Join-Path $wt 'docs/customer-1/scope/something-else.md') -Value '# drift' -Encoding UTF8
 
         $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA2 -WorktreePath $wt -Branch 'customer1/a-work' -ForbiddenPaths $forbidden
+        $r = Complete-C1TestRecovery -Recovery $r -Context $sbx
         $archived = @(Get-ChildItem -Path $sbx.RecoveryDir -Filter 'pending-failed-*evidence-A.json' -ErrorAction SilentlyContinue)
         $ok = ($r.status -eq 'FAILED_RECOVERY') -and $r.blocked -and
               ($archived.Count -eq 1) -and (-not (Test-Path $sbx.PendingFile)) -and
@@ -1159,6 +1183,9 @@ try {
             -Branch 'customer1/a-work' -ForbiddenPaths $forbidden -BlockersDoc $blockersDoc
         Write-JsonFile $sbx.LanesFile $lanesDoc
         Write-JsonFile $sbx.BlockersFile $blockersDoc
+        if ($rec.PSObject.Properties['pendingReadyToClear'] -and $rec.pendingReadyToClear) {
+            Clear-C1PendingTransaction -Context $sbx
+        }
 
         [pscustomobject]@{
             crash           = $crash
@@ -1404,6 +1431,103 @@ try {
         $hasEvidence = $snap.workItem -and @($snap.blockersRaised).Count -eq 1
         $ok = $hasPhase2 -and $hasEvidence
         Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        $ok
+    }
+
+    # ------------------------------------------------------------------------
+    Section 'W. Recovery releases the guard last (review 5)'
+
+    Check 'R5. a crash DURING recovery is itself recoverable, then recovery completes' {
+        # Set up a real interrupted item: commit made, pending phase 2 on disk,
+        # nothing else persisted.
+        Reset-SandboxLanes
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $sbx.ItemsDir -Filter '*.json' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '*-A-*' -or $_.Name -like 'recovered-A-*' -or $_.Name -like 'legacy-A-*' } |
+            Remove-Item -Force
+        Reset-FakeCounters
+
+        Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -Fault 'AFTER_COMMIT' -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A') | Out-Null
+        $callsAfterFirst = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+        $headAfterFirst = Get-LaneHead 'A'
+        if (-not (Test-Path $sbx.PendingFile)) { return $false }
+
+        # SECOND CRASH: recovery runs and returns, then the process dies before
+        # the recovered lane state and blockers are persisted. Under the old
+        # ordering recovery had already deleted the pending file by this point,
+        # and everything it reconstructed would be gone with nothing left to say
+        # so.
+        $second = Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -Fault 'AFTER_RECOVERY_RETURN' -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A')
+        $callsAfterSecond = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+
+        $guardSurvived = Test-Path $sbx.PendingFile
+        $noRerun       = $callsAfterSecond -eq $callsAfterFirst
+        $noNewCommit   = (Get-LaneHead 'A') -eq $headAfterFirst
+
+        # THIRD START: recovery completes normally. Lane A finishes in
+        # WAITING_FOR_OWNER, which is non-executable, so no worker is selected.
+        $third = Invoke-Sandbox -Mode 'workblocked' -ExitCode 0 -ExtraArgs @('-MaxItems', '1', '-LaneId', 'A')
+        $callsAfterThird = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+
+        $receipts = @(Get-C1ItemReceipts -Context $sbx -LaneId 'A' | Where-Object { $_.commitSha -eq $headAfterFirst })
+        $lane     = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        $blockers = @((Read-JsonFile $sbx.BlockersFile).blockers |
+            Where-Object { $_.status -eq 'OPEN' -and $_.question -match 'contract template governs Day-1 support' })
+
+        $guardSurvived -and $noRerun -and $noNewCommit -and
+        # receipt durable, exactly one, no duplicate commit
+        ($receipts.Count -eq 1) -and ($receipts[0].result) -and
+        # lanes durable
+        ($lane.state -eq 'WAITING_FOR_OWNER') -and
+        # blockers durable, preserved exactly once across three starts
+        ($blockers.Count -eq 1) -and
+        # still no worker rerun, and the branch never moved again
+        ($callsAfterThird -eq $callsAfterFirst) -and
+        ((Get-LaneHead 'A') -eq $headAfterFirst) -and
+        # and ONLY NOW is the guard gone
+        (-not (Test-Path $sbx.PendingFile))
+    }
+
+    Check 'R5b. recovery itself never clears a pending transaction' {
+        # The clear belongs to the supervisor, after it has persisted lanes and
+        # blockers. Ambiguous recovery still archives evidence rather than
+        # clearing it as success.
+        $code = Get-Content -LiteralPath (Join-Path $here 'recover.ps1') -Raw
+        ($code -notmatch 'Clear-C1PendingTransaction') -and ($code -match 'PendingReadyToClear')
+    }
+
+    Check 'R5c. the supervisor clears pending only after both state writes' {
+        $code = Get-Content -LiteralPath (Join-Path $here 'run-program.ps1') -Raw
+        $iLanes    = $code.IndexOf('Write-JsonFile $ctx.LanesFile $lanesDoc' + "`r`n" + '            Write-JsonFile $ctx.BlockersFile $blockersDoc')
+        if ($iLanes -lt 0) { $iLanes = $code.IndexOf('Recovery restored receipts, blockers and a lane state in memory') }
+        $iClear = $code.IndexOf('if ($rec.PSObject.Properties[''pendingReadyToClear''] -and $rec.pendingReadyToClear)')
+        $iLanes -gt 0 -and $iClear -gt $iLanes
+    }
+
+    Check 'R5d. ambiguous recovery still archives rather than clearing as success' {
+        $laneA4 = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        $wt = Join-Path $lanesDir 'A'
+        $head = Get-LaneHead 'A'
+        $rc = New-C1ItemReceipt -RunId 'ambig' -PassId 1 -Attempt 0 -Lane $laneA4 -Branch 'customer1/a-work' -ItemId 'ambig-A'
+        Save-C1PendingTransaction -Context $sbx -Transaction ([pscustomobject]@{
+            schemaVersion = 1; phase = 'PRE_COMMIT'; itemId = 'ambig-A'; runId = 'ambig'; passId = 1; laneId = 'A'
+            branch = 'customer1/a-work'; worktree = $wt; preCommitHead = $head
+            verifiedChangedPaths = @('docs/customer-1/scope/never-existed.md'); expectedPaths = @()
+            verificationResult = 'PASS'; proofResults = @(); commitMarker = (Get-C1ItemMarker -ItemId 'ambig-A')
+            commitMessage = 'unused'; itemReceipt = $rc
+            claimSnapshot = (New-C1ClaimSnapshot -Claim $null -ClaimedResult 'DONE')
+            createdAt = (Get-UtcStamp)
+        }) | Out-Null
+        Set-Content -LiteralPath (Join-Path $wt 'docs/customer-1/scope/something-different.md') -Value '# drift' -Encoding UTF8
+
+        $bd = Read-JsonFile $sbx.BlockersFile
+        $r = Invoke-C1LaneRecovery -Context $sbx -Lane $laneA4 -WorktreePath $wt `
+            -Branch 'customer1/a-work' -ForbiddenPaths $forbidden -BlockersDoc $bd
+
+        $archived = @(Get-ChildItem -Path $sbx.RecoveryDir -Filter 'pending-failed-*ambig-A.json' -ErrorAction SilentlyContinue)
+        $ok = ($r.status -eq 'FAILED_RECOVERY') -and $r.blocked -and
+              (-not $r.pendingReadyToClear) -and ($archived.Count -eq 1)
+        Invoke-Git -Directory $wt -AllowFail -Arguments @('clean', '-fdq') | Out-Null
         $ok
     }
     Section 'I. Repository-level guarantees'

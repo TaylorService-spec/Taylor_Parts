@@ -43,13 +43,23 @@ function Invoke-C1LaneRecovery {
     )
 
     function New-RecoveryResult {
-        param($Status, $Message, $Recovered = @(), [switch]$Blocked)
+        param($Status, $Message, $Recovered = @(), [switch]$Blocked, [switch]$PendingReadyToClear)
         [pscustomobject]@{
             laneId    = $Lane.id
             status    = $Status
             message   = $Message
             recovered = @($Recovered)
             blocked   = [bool]$Blocked
+            # Recovery reconstructs the lane state and the blockers IN MEMORY; the
+            # supervisor owns writing lanes.json and blockers.json. So recovery
+            # must not clear the pending transaction itself -- doing so released
+            # the recovery guard while the recovered state was still only in
+            # memory, and a crash in that gap lost the blockers and the wait state
+            # with no evidence left that anything was unfinished.
+            #
+            # This flag says "the transaction is settled; clear it once you have
+            # persisted everything". Ambiguous recovery never sets it.
+            pendingReadyToClear = [bool]$PendingReadyToClear
         }
     }
 
@@ -184,7 +194,8 @@ function Invoke-C1LaneRecovery {
             $Lane.lastRun = $receipt.runId
             $Lane.lastResult = $receipt.result
 
-            Clear-C1PendingTransaction -Context $Context
+            # NOT cleared here. The supervisor clears it after lanes.json and
+            # blockers.json are on disk.
 
             # Anything committed AFTER the marked commit is a separate question,
             # answered by the ordinary branch-ahead rule on its own evidence.
@@ -199,11 +210,13 @@ function Invoke-C1LaneRecovery {
             if ($trailing) {
                 $msg += " $($trailing.message)"
                 if ($trailing.blocked) {
+                    # The transaction itself settled, but the trailing range did
+                    # not. Keep the evidence: this lane needs a human.
                     return (New-RecoveryResult 'FAILED_RECOVERY' $msg (@($receipt) + @($trailing.recovered)) -Blocked)
                 }
-                return (New-RecoveryResult 'RECOVERED_COMMIT' $msg (@($receipt) + @($trailing.recovered)))
+                return (New-RecoveryResult 'RECOVERED_COMMIT' $msg (@($receipt) + @($trailing.recovered)) -PendingReadyToClear)
             }
-            return (New-RecoveryResult 'RECOVERED_COMMIT' $msg @($receipt))
+            return (New-RecoveryResult 'RECOVERED_COMMIT' $msg @($receipt) -PendingReadyToClear)
         }
 
         if ($head -eq $pre) {
@@ -211,9 +224,11 @@ function Invoke-C1LaneRecovery {
             $dirty = @(Get-C1DirtyPaths -WorktreePath $WorktreePath -ResultFileName $ResultFileName)
 
             if ($dirty.Count -eq 0) {
-                Clear-C1PendingTransaction -Context $Context
+                # Nothing happened at all: no commit, no changes. The transaction
+                # is settled, but the clear still belongs to the supervisor so
+                # that "recovery never clears" holds without exception.
                 return (New-RecoveryResult 'RETRY_NEEDED' ("Lane $($Lane.id): interrupted before commit and the working tree is empty. " +
-                    'No completion claimed; the item is available to run again.'))
+                    'No completion claimed; the item is available to run again.') @() -PendingReadyToClear)
             }
 
             $ruling = Test-C1PathsAcceptable -Paths $dirty -OwnedPaths @($Lane.ownedPaths) -ForbiddenPaths $ForbiddenPaths
@@ -279,9 +294,9 @@ function Invoke-C1LaneRecovery {
             $Lane.currentWorkItem = $receipt.workItem
             $Lane.lastRun = $receipt.runId
             $Lane.lastResult = $receipt.result
-            Clear-C1PendingTransaction -Context $Context
+            # Cleared by the supervisor, after lanes.json and blockers.json land.
             return (New-RecoveryResult 'COMPLETED_TRANSACTION' ("Lane $($Lane.id): re-verified the interrupted work and completed the commit as " +
-                "$($newHead.Substring(0,8)). The worker was NOT rerun.") @($receipt))
+                "$($newHead.Substring(0,8)). The worker was NOT rerun.") @($receipt) -PendingReadyToClear)
         }
 
         # Pending open, branch moved, no marker: something other than this

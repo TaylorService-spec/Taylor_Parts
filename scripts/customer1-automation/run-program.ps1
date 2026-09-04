@@ -368,14 +368,25 @@ if ($DryRun) {
         if ($rec.status -notin @('NOTHING_TO_RECOVER', 'NOTHING_TO_BOOTSTRAP', 'ALREADY_BOOTSTRAPPED')) {
             Write-Host "  Recovered -- $($lane.name): $($rec.message)"
         }
+        Invoke-C1FaultPoint 'AFTER_RECOVERY_RETURN'
+
         if (@($rec.recovered).Count -gt 0) {
-            # Recovery just restored receipts, blockers and a lane state in
-            # memory. Persist them before anything else runs, or a second crash
-            # would repeat the same reconstruction.
+            # Recovery restored receipts, blockers and a lane state in memory.
+            # Persist them here, before the recovery guard is released.
             Write-JsonFile $ctx.LanesFile $lanesDoc
             Write-JsonFile $ctx.BlockersFile $blockersDoc
             $stateAdvanced = $true
             $anyCommit = $true
+        }
+
+        # ONLY NOW is the recovered checkpoint durable, so only now may the
+        # pending transaction go. Recovery deliberately does not clear it: doing
+        # so inside recovery released the guard while the recovered lane state and
+        # blockers were still only in memory, and a crash in that gap lost them
+        # with no evidence left that anything was unfinished.
+        if ($rec.PSObject.Properties['pendingReadyToClear'] -and $rec.pendingReadyToClear) {
+            Clear-C1PendingTransaction -Context $ctx
+            Invoke-C1FaultPoint 'AFTER_RECOVERY_PENDING_CLEAR'
         }
         if ($rec.blocked) {
             # Per-lane stop. The other six lanes are unaffected.

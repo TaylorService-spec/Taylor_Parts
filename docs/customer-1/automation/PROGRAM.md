@@ -115,6 +115,14 @@ state and the blockers are all durably on disk. Clearing it right after the
 commit left a window where a reboot kept the commit and the receipt but lost the
 blockers and the wait state, with no evidence that anything was unfinished.
 
+The same rule governs recovery, which is where it is easiest to get wrong.
+Recovery reconstructs the lane state and the blockers **in memory**; the
+supervisor owns writing `lanes.json` and `blockers.json`. So recovery never
+clears the transaction itself — it returns `pendingReadyToClear`, and the
+supervisor releases the guard only after both files are written. A crash partway
+through recovery therefore leaves the guard in place and is itself recoverable.
+Ambiguous recovery never sets the flag: it archives the evidence instead.
+
 It has two phases:
 
 | Phase | Written | Carries |
