@@ -215,6 +215,34 @@ and an unowned later range fails closed rather than becoming verified state.
 Ambiguity is never resolved by guessing. An unrecoverable lane records a blocker
 and stops; the rest of the program continues.
 
+### An unexplained dirty lane receives no worker
+
+> **A lane worktree containing unexplained dirty state must never receive a new
+> worker.**
+
+The four recovery cases above all assume the supervisor lived long enough to
+leave evidence. A supervisor killed from *outside* does not: it dies after its
+worker has already changed the lane worktree but before any result receipt,
+pending transaction or commit exists. The branch is the correct one, so the
+unexpected-branch guard says nothing, and there is no transaction, so recovery
+finds nothing to reconcile. The next run would hand a fresh worker a tree that
+already holds somebody else's half-finished work, and the harness would commit
+the blend as a single verified item under a single provenance.
+
+Startup therefore inspects each lane, on its expected branch, after bootstrap and
+recovery have had their say. Dirty state that no recovery mechanism accounted for
+sets the lane to `FAILED_RECOVERY` and raises one deduplicated `GOVERNANCE`
+blocker. It is a per-lane refusal: every other lane still runs.
+
+This is **detection and refusal only**. Nothing is committed, staged, reset,
+cleaned, stashed, checked out or adopted; no receipt or pending transaction is
+manufactured; no intent is inferred from filenames or worker output. The item
+never reached a boundary at which any of that would be truthful, so the files are
+left exactly as found for a person to reconcile.
+
+It is distinct from the unexpected-branch guard, which keeps its own more
+specific diagnosis. A correct branch does not make unexplained dirty state safe.
+
 **Unreadable evidence fails closed.** A `pending-transaction.json` that exists
 but does not parse is crash evidence that cannot be read — which is not the same
 thing as no crash evidence. The file is left exactly as found, its path is
