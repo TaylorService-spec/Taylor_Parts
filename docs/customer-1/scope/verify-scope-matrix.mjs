@@ -48,16 +48,23 @@ for (const key of proposed) if (!reconciled.has(key)) fail(`proposed DAY_1 row "
 for (const key of reconciled) if (!proposed.has(key)) fail(`reconciliation row "${key}" is not a proposed DAY_1 row`);
 
 // Acceptance evidence index: an ACCEPTED row must name the deployed build it was accepted
-// against, or cite a recorded gap explaining why no build is recorded.
+// against, or cite a recorded gap explaining why no build is recorded. A named build is a
+// CITATION, so it must still appear in the source that records the acceptance — the North Star
+// migration ledger, or this ledger's own evidence. A transcribed-wrong SHA fails here.
+const sources = readFileSync(resolve(c1, '../design/north-star-migration-ledger.md'), 'utf8') +
+  readFileSync(resolve(c1, 'CUSTOMER_1_LEDGER.json'), 'utf8');
 for (const line of reconTable.split('\n').filter(isRow)) {
   const cells = line.split('|');
   if (!/^\s*ACCEPTED/.test(cells[5] ?? '')) continue;
   const against = (cells[6] ?? '').trim();
   const gap = against.match(/G-\d+/);
+  const sha = against.match(/`([0-9a-f]{8})`/);
   if (gap) {
     if (!recon.includes(`**${gap[0]} —`)) fail(`${rowKey(line)}: cites gap ${gap[0]}, which has no entry under Recorded gaps`);
-  } else if (!/`[0-9a-f]{8}`/.test(against)) {
+  } else if (!sha) {
     fail(`${rowKey(line)}: ACCEPTED but names no deployed build and no recorded gap`);
+  } else if (!sources.includes(sha[1])) {
+    fail(`${rowKey(line)}: accepted build ${sha[1]} is cited by no source of record`);
   }
 }
 

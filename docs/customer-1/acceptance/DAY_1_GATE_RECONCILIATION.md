@@ -58,6 +58,13 @@ Seven proposed Day-1 rows carry Owner visual acceptance. Six of them name the li
 acceptance was given against; those SHAs are the `Accepted against` column above and are the index
 this lane maintains. All are `platform-sandbox`. **No row on this page is production evidence.**
 
+Each named SHA is a **citation**, so
+[`../scope/verify-scope-matrix.mjs`](../scope/verify-scope-matrix.mjs) checks that it still appears
+in a source of record — the migration ledger or [`../CUSTOMER_1_LEDGER.json`](../CUSTOMER_1_LEDGER.json).
+An `ACCEPTED` row must therefore either name a build that its source also names, or cite a recorded
+gap. A mistyped or invented SHA fails the check; the check does not confirm the acceptance itself,
+which only the migration ledger grants.
+
 ## What remains for `C1-PRODUCT-01`
 
 Against the *proposed* Day-1 set, the gate cannot close until at least:
