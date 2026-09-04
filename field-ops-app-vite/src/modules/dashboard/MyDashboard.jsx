@@ -68,6 +68,7 @@ import { RECEIVING_OUTCOME } from "../../domain/receivingTransport.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection.js";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants.js";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus.js";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
@@ -816,7 +817,14 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
                     ) : (
                       <>
                         <div className="fo-stat-grid">
-                          {rows.map((r) => <CompactMetric key={r.status} value={r.count} label={r.status} />)}
+                          {/* THE LABEL, NOT THE STORED VALUE. This rendered the enum, so Team
+                              performance read "WORK_IN_PROGRESS" while the technician surface --
+                              corrected in #1793 -- read "In Progress" for the same record. The KEY
+                              stays the machine value: it is an identity, not prose, and it is the
+                              stable one. An unrecognised status passes through workOrderStatusLabel
+                              VERBATIM by design, so a vocabulary gap stays visible instead of being
+                              relabelled into something reassuring. */}
+                          {rows.map((r) => <CompactMetric key={r.status} value={r.count} label={workOrderStatusLabel(r.status)} />)}
                         </div>
                         <p className="fo-muted">
                           {/* A COMPLETE count, and permitted for exactly that reason: the read is an

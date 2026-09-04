@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { workOrderStatusLabel, WORK_ORDER_STATUS_VALUES } from "../src/domain/workOrderStatus.js";
 
 let passed = 0;
 function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
@@ -59,6 +60,42 @@ check("WorkOrdersList.jsx: status is rendered from the metadata enum labels, nev
     "the definition must take its labels from the canonical map, not restate them",
   );
   assert.match(def, /enumLabels: WORK_ORDER_STATUS_LABEL/);
+});
+
+// THE AGGREGATE PATH -- the one a variable-name heuristic could never see.
+//
+// The repo-wide sweep below keys on WO_ID_NAMES: wo, workOrder, selectedWorkOrder, job. My
+// Dashboard's Team performance renders a COUNTS-BY-STATUS aggregate, so its row variable is `r`,
+// and `label={r.status}` matched nothing. The screen shipped reading "WORK_IN_PROGRESS" while the
+// technician surface -- fixed in #1793 -- read "In Progress" for the same record, and the guard
+// that exists to prevent exactly that was structurally blind to it.
+//
+// Widening WO_ID_NAMES to any identifier was measured and rejected: it flags label={truck.status},
+// {tech.status}, {account.status} and {part.status}, which are OTHER governed vocabularies. A Work
+// Order guard that fires on a truck is a guard that gets weakened. A named site is the honest fix.
+check("MyDashboard.jsx Team performance: the by-status aggregate is labelled, not enumerated", () => {
+  const text = read("modules/dashboard/MyDashboard.jsx");
+  assert.ok(text.includes(`import { workOrderStatusLabel } from "../../domain/workOrderStatus.js"`), "the canonical helper import is gone");
+  assert.ok(text.includes("label={workOrderStatusLabel(r.status)}"), "the aggregate must go through the helper");
+  assert.ok(!text.includes("label={r.status}"), "the raw aggregate status render is back");
+  // The KEY may stay the machine value -- it is an identity, not prose.
+  assert.ok(text.includes("key={r.status}"), "the machine value is the stable key and should stay");
+});
+
+// BEHAVIOURAL, not a grep: every value the enum can actually hold must have words. A vocabulary
+// with a gap would let a real status render as its own token even through the helper, because
+// workOrderStatusLabel returns an unrecognised value VERBATIM by design.
+check("every stored Work Order status has a human label -- no value renders as its own token", () => {
+  for (const value of WORK_ORDER_STATUS_VALUES) {
+    const label = workOrderStatusLabel(value);
+    assert.notEqual(label, value, `${value} has no label and would render as the stored token`);
+    assert.doesNotMatch(label, /^[A-Z][A-Z0-9_]*$/, `${value} -> "${label}" still reads as an enum`);
+    assert.doesNotMatch(label, /_/, `${value} -> "${label}" still contains an underscore`);
+  }
+  assert.ok(WORK_ORDER_STATUS_VALUES.length >= 8, "the vocabulary shrank -- is this list still the real enum?");
+  // The two the Owner actually saw leak, named so a regression is unmistakable.
+  assert.equal(workOrderStatusLabel("WORK_IN_PROGRESS"), "In Progress");
+  assert.equal(workOrderStatusLabel("EN_ROUTE"), "En Route");
 });
 
 check("WorkOrderPreview.jsx (Control Tower dispatcher preview pane): uses workOrderStatusLabel", () => {

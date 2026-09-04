@@ -26,6 +26,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { DASHBOARD_MODULES, composeDashboard } from "../src/domain/dashboardComposition.js";
+import { workOrderStatusLabel } from "../src/domain/workOrderStatus.js";
+import { UNKNOWN_STATUS_LABEL } from "../src/domain/dashboardTeamProjections.js";
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 /** Source with comments stripped, so a guard can never pass or fail on prose ABOUT the code. */
@@ -382,4 +384,58 @@ test("the technician layout carries no desktop-only assumption", () => {
   assert.ok(!/min-width:\s*\d+px/.test(TECH_DASHBOARD), "a width gate appeared in the component");
   assert.ok(!/window\.innerWidth/.test(TECH_DASHBOARD), "layout branched on a measured viewport");
   assert.match(TECH_DASHBOARD, /WorkspaceShell/, "it must stay inside the shared responsive shell");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// THE TWO THINGS THE OWNER SAW ON THE LIVE ADMIN SCREEN after the persona corrective shipped.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test("the by-status aggregate renders words, and its counts are untouched", () => {
+  // Team performance read "WORK_IN_PROGRESS" while the technician surface -- corrected in #1793 --
+  // read "In Progress" for the SAME record. Only the LABEL changes: population, counting and
+  // terminal classification are the projection's business and a presentation fix must not touch them.
+  assert.match(DASHBOARD, /label=\{workOrderStatusLabel\(r\.status\)\}/);
+  assert.ok(!DASHBOARD.includes("label={r.status}"), "the stored enum is rendered again");
+  const projection = code(read("../src/domain/dashboardTeamProjections.js"));
+  assert.ok(
+    !/workOrderStatusLabel|WORK_ORDER_STATUS_LABEL/.test(projection),
+    "labelling leaked into the projection -- aggregate keys must stay canonical stored values",
+  );
+});
+
+test("an unrecorded status keeps its own honest bucket through the label helper", () => {
+  // The projection buckets a missing/malformed status rather than dropping the row, which would make
+  // the chart total fewer work orders than exist -- silently. That string is not in the enum, and
+  // workOrderStatusLabel returns an unrecognised value VERBATIM by design, so it survives labelling.
+  // If the helper ever started defaulting instead, an unknown status would be relabelled into
+  // something reassuring and this breaks.
+  assert.equal(workOrderStatusLabel(UNKNOWN_STATUS_LABEL), UNKNOWN_STATUS_LABEL);
+  assert.equal(workOrderStatusLabel("A_STATUS_NOBODY_REGISTERED"), "A_STATUS_NOBODY_REGISTERED");
+});
+
+test("an opportunity preview row shows governed identity, and NEVER an internal id", () => {
+  // THE LIVE OBSERVATION: two rows read "Opportunity" where others read "OPP-2026-000002".
+  // Investigated and NOT a defect. The governed projection carries 'name' and 'opportunityNumber' as
+  // independently nullable fields (opportunityReadService.ts), the client reads exactly those two,
+  // and the callable payload is passed through untouched -- so those rows are records that genuinely
+  // carry neither. "Opportunity" is the truthful fallback for a legacy record; making it look more
+  // complete than it is would be the actual defect.
+  //
+  // What must never happen is the fallback reaching for the document id to look authoritative.
+  assert.match(DASHBOARD, /primary: o\.name \|\| o\.opportunityNumber \|\| "Opportunity"/);
+  assert.ok(!/primary: o\.id/.test(DASHBOARD), "an internal id became a display label");
+  // The id may still key the row and build the href -- an identity and a URL, never prose.
+  assert.match(DASHBOARD, /key: o\.id/);
+});
+
+test("the opportunity preview reads the fields the governed projection actually returns", () => {
+  // The failure this prevents is §0-B's: reading a field the server has never sent, and rendering a
+  // permanent fallback that looks like missing DATA rather than a missing FIELD.
+  const service = read("../../functions/src/opportunity/opportunityReadService.ts");
+  for (const field of ["name", "opportunityNumber", "accountId"]) {
+    const present =
+      service.includes(field + ": str(data." + field + ")") ||
+      service.includes(field + ": num(data." + field + ")");
+    assert.ok(present, "the projection no longer returns " + field + " -- the dashboard reads it");
+  }
 });
