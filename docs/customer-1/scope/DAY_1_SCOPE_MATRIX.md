@@ -66,8 +66,9 @@ omitting them would make the gate close on a narrower census than it claims.
   the migration ledger, which is the only place that state is set.
 - It does not resolve the four blocked rows. Those are Taylor and Owner business decisions and are
   recorded as blockers rather than guessed.
-- It does not assert that a `DAY_1` proposal is *ready*. Readiness is `C1-PRODUCT-01`, and per-family
-  gate reconciliation against these proposals is the next work item for this lane.
+- It does not assert that a `DAY_1` proposal is *ready*. Readiness is `C1-PRODUCT-01`; the per-family
+  gate reconciliation against these proposals lives in
+  [`../acceptance/DAY_1_GATE_RECONCILIATION.md`](../acceptance/DAY_1_GATE_RECONCILIATION.md).
 
 ## Open question this matrix surfaces
 

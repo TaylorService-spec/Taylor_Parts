@@ -106,6 +106,7 @@
       "authority": "Verenward + Owner acceptance where required",
       "closeWhen": "Every Day-1 workflow has passed its applicable governed functional, sandbox, North Star, and acceptance gates.",
       "evidence": [
+        "docs/customer-1/acceptance/DAY_1_GATE_RECONCILIATION.md: per-family reconciliation of this gate's four close conditions (functional, sandbox, North Star, acceptance) against the PROPOSED Day-1 rows, plus the acceptance evidence index pinning each accepted family to the platform-sandbox build it was accepted against. Seven of twelve proposed rows carry Owner acceptance; families 2, 3, 11, Purchasing and Administration do not. Three record gaps are named (family 1 has no accepted SHA; family 8's gate SHA and accepted SHA differ; accepted builds are not necessarily current). Nothing there is production evidence and nothing there grants an acceptance.",
         "docs/design/north-star-migration-ledger.md",
         "PR #1761 / a81e5b47: Certification formally closed with world 1.8.0, 1093/1093, final applied-inventory verifier 38/38 PASS, and bounded live Purchasing, Receiving, and Cycle Count evidence. The closeout explicitly does not claim production deployment or close transferred findings.",
         "PR #1749 / 0d76bea9 originally proved the physical-consumption/on-hand defect: consumed stock remained available after use.",

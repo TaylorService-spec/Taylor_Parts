@@ -19,7 +19,7 @@ for (const id of readiness.match(/C1-[A-Z]+-\d+/g) ?? []) {
   if (!ledger.gates.some((g) => g.id === id)) fail(`${id}: cited in readiness but absent from ledger JSON`);
 }
 
-for (const file of ['CUSTOMER_1_READINESS.md', 'scope/DAY_1_SCOPE_MATRIX.md']) {
+for (const file of ['CUSTOMER_1_READINESS.md', 'scope/DAY_1_SCOPE_MATRIX.md', 'acceptance/DAY_1_GATE_RECONCILIATION.md']) {
   const path = resolve(c1, file);
   const text = readFileSync(path, 'utf8');
   for (const [, target] of text.matchAll(/\]\((?!https?:)([^)#]+)/g)) {
