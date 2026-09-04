@@ -216,8 +216,8 @@ and stabilization length.
 
 ## Consumers of this document
 
-- Pricing decision worksheets, one per revenue line (implementation,
-  subscription, support, founding-customer treatment, change requests, billable
-  custom work) — each ends in a named Owner question.
+- `PRICING_DECISION_WORKSHEETS.md` — one worksheet per revenue line
+  (implementation, subscription, support, founding-customer treatment, change
+  requests, billable custom work), each ending in a named Owner question.
 - The unresolved decision register, which carries every `UNKNOWN` above to its
   decision owner.

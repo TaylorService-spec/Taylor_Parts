@@ -35,6 +35,12 @@ must produce the fact first.
 | CD-16 | Termination rights, notice period, and what Taylor is left holding operationally. | COUNSEL + OWNER | `C1-CONTRACT-01` close condition | `C1-CONTRACT-01` |
 | CD-17 | Contracting entity, governing law, and venue. | OWNER + COUNSEL | Every draft agreement's signature block | `C1-CONTRACT-01` |
 | CD-18 | Which admin actions remain Verenward labor at Day 1 rather than Taylor self-service. | LANE-C (`C1-ADMIN-01`) | A recurring labor line whose size is currently unknown | Cost model §4 |
+| CD-19 | Does implementation carry a fixed fee, and what is the objective boundary at which additional work becomes billable? | OWNER | Implementation revenue line; implementation SOW | Worksheet W-1 |
+| CD-20 | What is the subscription unit (named user, technician, flat, base-plus-metered), and does the initial-term level clear the cost floor with founder labor priced at `CD-01`? | OWNER | Subscription revenue line; the founder-labor red line | Worksheet W-2 |
+| CD-21 | Is support bundled into the subscription or charged separately, and what coverage window will Verenward contract to? | OWNER | Support revenue line; support terms | Worksheet W-3 |
+| CD-22 | Is there a founding-customer concession, what does Verenward receive in return, and when does it end? | OWNER, accepted by TAYLOR | Founding-customer treatment; every other worksheet's stated level | Worksheet W-4 |
+| CD-23 | Is there an included change allowance during implementation, and above what threshold is a written priced change order mandatory? | OWNER + TAYLOR | Change-request revenue line; implementation SOW | Worksheet W-5 |
+| CD-24 | For custom work funded by Taylor and merged into the shared platform: who owns the result, may Verenward sell it to others, and does that change what Taylor is charged? | COUNSEL + OWNER, accepted by TAYLOR | Billable custom work; IP terms in `C1-CONTRACT-01` | Worksheet W-6 |
 
 ## Rules for this register
 
@@ -48,8 +54,11 @@ must produce the fact first.
 
 ## Open issues
 
-- No row has an owner-confirmed answer yet; this register is at its first
-  revision and is expected to grow as the pricing worksheets, support model, and
-  draft agreements are written.
+- No row has an owner-confirmed answer yet. The register has grown once already
+  (CD-19 through CD-24, from the pricing worksheets) and is expected to grow
+  again as the support model and draft agreements are written.
+- CD-19 through CD-24 are structural pricing decisions and are all gated on
+  CD-01 and CD-02 being answered first; deciding them earlier means choosing a
+  structure without being able to size its trade-off.
 - `COUNSEL` has not been engaged. Rows CD-14 through CD-17 cannot progress at
   all until that happens, and nothing in this lane substitutes for it.

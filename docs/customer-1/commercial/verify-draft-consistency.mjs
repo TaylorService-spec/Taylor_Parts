@@ -13,7 +13,9 @@ const ROOTS = ['docs/customer-1/commercial', 'docs/customer-1/support'];
 const REQUIRED = [
   { label: 'status declaration', re: /^\*\*Status:/m },
   { label: 'decision owner', re: /^\*\*Decision owner:/m },
-  { label: 'open-issues list', re: /^#+ Open issues$/m },
+  // Drafts carry open issues either as a document-level section heading or as a
+  // bold label repeated per section. Both satisfy the charter.
+  { label: 'open-issues list', re: /^(?:#+ |\*\*)Open issues\b/m },
 ];
 
 function markdownFiles(dir) {
