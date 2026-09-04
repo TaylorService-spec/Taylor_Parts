@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "gate": "C1-INV-01",
+  "status": "DRAFT",
+  "lastReconciled": "2026-09-04",
+  "requiredScopes": [
+    "warehouse",
+    "bin",
+    "truck",
+    "serialized"
+  ],
+  "scopes": [
+    {
+      "scope": "warehouse",
+      "inScope": "UNKNOWN",
+      "countMethod": "UNKNOWN",
+      "countPerformedBy": "UNKNOWN",
+      "systemBalanceSourceIds": [],
+      "varianceDisposition": "UNKNOWN",
+      "taylorAcceptance": "UNKNOWN",
+      "notes": "Which physical warehouses hold stock at cutover, and what the on-hand balance is counted against, is Taylor's to state. Verenward has not assumed a warehouse list."
+    },
+    {
+      "scope": "bin",
+      "inScope": "UNKNOWN",
+      "countMethod": "UNKNOWN",
+      "countPerformedBy": "UNKNOWN",
+      "systemBalanceSourceIds": [],
+      "varianceDisposition": "UNKNOWN",
+      "taylorAcceptance": "UNKNOWN",
+      "notes": "Whether Taylor counts to bin granularity at all, or only to warehouse, changes the count procedure and the acceptable variance. Unanswered."
+    },
+    {
+      "scope": "truck",
+      "inScope": "UNKNOWN",
+      "countMethod": "UNKNOWN",
+      "countPerformedBy": "UNKNOWN",
+      "systemBalanceSourceIds": [],
+      "varianceDisposition": "UNKNOWN",
+      "taylorAcceptance": "UNKNOWN",
+      "notes": "Truck stock is mobile custody: the count must be taken at a stated moment with the trucks off the road, or it cannot be reconciled. Taylor sets that moment."
+    },
+    {
+      "scope": "serialized",
+      "inScope": "UNKNOWN",
+      "countMethod": "UNKNOWN",
+      "countPerformedBy": "UNKNOWN",
+      "systemBalanceSourceIds": [],
+      "varianceDisposition": "UNKNOWN",
+      "taylorAcceptance": "UNKNOWN",
+      "notes": "Serialized assets reconcile unit by unit, not by quantity. Whether Taylor holds serials today, and where, is part of the source census and is still UNKNOWN."
+    }
+  ],
+  "acceptance": {
+    "acceptedBy": "UNKNOWN",
+    "acceptedOn": "UNKNOWN",
+    "statement": "UNKNOWN"
+  }
+}

@@ -11,10 +11,14 @@ here closes a gate on its own.
 
 - `source-census.json` — the machine-readable source-system census (objective 1).
 - `migration-tiering.json` — the per-domain migration tiering record (objective 2).
+- `opening-inventory-reconciliation.json` — the opening-inventory reconciliation and
+  the artifact Taylor signs (gate `C1-INV-01`, objective 5).
 - `../../../scripts/customer1-migration/validate-source-census.mjs` — the census
   validator.
 - `../../../scripts/customer1-migration/validate-migration-tiering.mjs` — the tiering
   validator.
+- `../../../scripts/customer1-migration/validate-opening-inventory.mjs` — the
+  opening-inventory validator.
 
 ## What the census is
 
@@ -62,6 +66,31 @@ Run it with:
 node scripts/customer1-migration/validate-migration-tiering.mjs
 ```
 
+## What the opening-inventory reconciliation is (`C1-INV-01`)
+
+One row per custody scope — `warehouse`, `bin`, `truck`, `serialized` — recording what
+is in scope, how it is counted, who counts it, which census system holds the balance it
+is counted against, how variances are dispositioned, and Taylor's acceptance. Plus one
+document-level acceptance block: who accepted, when, and the statement they accepted.
+
+**DRAFT — every field is `UNKNOWN`.** The scopes exist because the gate names them, not
+because Taylor has confirmed it holds stock in all four. Truck and serialized custody in
+particular are unanswered.
+
+Two things this record refuses to let happen:
+
+- **Verenward cannot accept the count.** The tooling produces the reconciliation; Taylor
+  accepts it. The validator rejects any acceptance naming Verenward, the automation, or
+  a lane, in either the per-scope acceptance or the document acceptance block.
+- **A scope cannot be accepted against nothing.** Accepting a scope requires naming the
+  census system whose balance it was reconciled against.
+
+Run it with:
+
+```
+node scripts/customer1-migration/validate-opening-inventory.mjs
+```
+
 ## Rules this record enforces
 
 - **`UNKNOWN` is a value, not an omission.** A missing field is a validation error.
@@ -93,7 +122,7 @@ node scripts/customer1-migration/validate-migration-tiering.mjs
 
 ## Not yet done
 
-Per-tier mapping specifications, the dry-run harness, and the opening-inventory
-reconciliation (`C1-INV-01`) all depend on a populated census and an accepted tiering,
-and are not started. The tiering instrument exists but holds no decisions: every domain
-is `UNDECIDED` pending Taylor's answers to the census.
+Per-tier mapping specifications and the dry-run harness depend on a populated census and
+an accepted tiering, and are not started. The tiering and opening-inventory instruments
+exist but hold no decisions: every domain is `UNDECIDED` and every custody scope is
+`UNKNOWN`, pending Taylor's answers to the census.
