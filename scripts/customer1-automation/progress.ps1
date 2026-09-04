@@ -85,7 +85,7 @@ function Get-C1GateLines {
     @($out)
 }
 
-# ------------------------------------------------------------------ §12 start
+# ----------------------------------------------------------- Section 12 start
 
 function Write-C1ItemStart {
     param(
@@ -114,7 +114,7 @@ function Write-C1ItemStart {
     Write-Host ('-' * 60)
 }
 
-# -------------------------------------------------------------- §13 heartbeat
+# ------------------------------------------------------- Section 13 heartbeat
 
 function Write-C1Heartbeat {
     <#
@@ -140,7 +140,7 @@ function Write-C1Heartbeat {
     Write-Host ''
 }
 
-# ------------------------------------------------------- §14/§15 item receipts
+# ----------------------------------------------- Sections 14/15 item receipts
 
 function Write-C1Completion {
     param(
@@ -259,7 +259,7 @@ function Write-C1Blocker {
     Write-Host ''
 }
 
-# ------------------------------------------------------------ §18 failure
+# --------------------------------------------------------- Section 18 failure
 
 function Write-C1Failure {
     <#
@@ -302,7 +302,7 @@ function Write-C1Failure {
     Write-Diag "FAILURE in $Component (lane $LaneId, exit $ExitCode): $ActualError" 'ERROR'
 }
 
-# ------------------------------------------------------------- §17 pass board
+# ------------------------------------------------------ Section 17 pass board
 
 function Get-C1BlockerOwnerCounts {
     <#
@@ -427,7 +427,7 @@ function Write-C1PassBoard {
     Write-Host ''
 }
 
-# -------------------------------------------------------- §20 final exhaustion
+# ------------------------------------------------ Section 20 final exhaustion
 
 function Write-C1ExhaustionReport {
     param(

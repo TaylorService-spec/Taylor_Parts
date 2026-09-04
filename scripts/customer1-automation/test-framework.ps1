@@ -496,7 +496,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'D. Human-readable progress (§12, §14, §17)'
+    Section 'D. Human-readable progress (Sections 12, 14, 17)'
 
     Check '18. item-start output names lane, gate, work item and why it matters' {
         ($run1.Output -match 'NOW WORKING') -and ($run1.Output -match 'Customer 1 gate:') -and
@@ -521,7 +521,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'E. Crash recovery (§5, §6)'
+    Section 'E. Crash recovery (Sections 5, 6)'
 
     $laneA = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
     $wtA = Join-Path $lanesDir 'A'
@@ -649,7 +649,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'F. Retry policy (§10)'
+    Section 'F. Retry policy (Section 10)'
 
     # Lane A is now blocked by the ambiguous-recovery fixture above, which is
     # itself the correct behaviour. Restore it so the retry tests can run.
@@ -691,7 +691,7 @@ try {
     Remove-Item -LiteralPath (Join-Path $lanesDir 'B\firestore.rules') -Force -ErrorAction SilentlyContinue
 
     # ------------------------------------------------------------------------
-    Section 'G. Continuous mode and safe-work exhaustion (§8, §9)'
+    Section 'G. Continuous mode and safe-work exhaustion (Sections 8, 9)'
 
     Reset-FakeCounters
     # Reset lane state so both lanes are executable again for the continuous run.
@@ -729,7 +729,7 @@ try {
     }
 
     # ------------------------------------------------------------------------
-    Section 'H. DryRun is inert (§22)'
+    Section 'H. DryRun is inert (Section 22)'
 
     $before = @{
         lanes = (Get-FileHash $sbx.LanesFile).Hash
