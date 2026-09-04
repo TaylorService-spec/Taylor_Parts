@@ -209,7 +209,7 @@
       "name": "Data / Inventory",
       "priority": 20,
       "enabled": true,
-      "state": "PR_READY",
+      "state": "BLOCKED_PARTIAL",
       "charter": "docs/customer-1/automation/lanes/B-data-inventory.md",
       "gates": [
         "C1-DATA-01",

@@ -14,5 +14,19 @@
     "RESOLVED",
     "WITHDRAWN"
   ],
-  "blockers": []
+  "blockers": [
+    {
+      "id": "BLK-run-20260904-142339-p1-B",
+      "lane": "B",
+      "workItem": "(reconciliation)",
+      "category": "GOVERNANCE",
+      "question": "origin/main moved a governed authority path. How should lane B reconcile? main moved a governed authority path: docs/customer-1/automation/PROGRAM.md, docs/customer-1/automation/lanes/B-data-inventory.md, scripts/customer1-automation/run-program.ps1, scripts/customer1-automation/test-framework.ps1. Automation must not reconcile this.",
+      "whyAutomationCannotDecide": "Authority changes are Owner rulings; automation may not reinterpret them.",
+      "blockingScope": "Lane B branch integration.",
+      "remainingExecutableWork": "Other lanes are unaffected and remain executable.",
+      "createdAt": "2026-09-04T21:23:50Z",
+      "status": "OPEN",
+      "fingerprint": "B|governance|origin/main moved a governed authority path. how should lane b reconcile? main moved a governed authority path: docs/customer-1/automation/program.md, docs/customer-1/automation/lanes/b-data-inventory.md, scripts/customer1-automation/run-program.ps1, scripts/customer1-automation/test-framework.ps1. automation must not reconcile this.|lane b branch integration."
+    }
+  ]
 }
