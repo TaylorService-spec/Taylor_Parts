@@ -1,5 +1,89 @@
 {
   "schemaVersion": 1,
-  "lastRunId": null,
-  "runs": []
+  "lastRunId": "run-20260904-125539",
+  "runs": [
+    {
+      "runId": "run-20260904-125539",
+      "dryRun": false,
+      "untilExhausted": false,
+      "startedAt": "2026-09-04T19:55:41Z",
+      "endedAt": "2026-09-04T20:00:04Z",
+      "mainShaStart": "85b485d7c245986b869b9b82c98b87a075fb28d4",
+      "mainShaEnd": "85b485d7c245986b869b9b82c98b87a075fb28d4",
+      "branch": "automation/customer1-execution-20260904",
+      "maxItems": 1,
+      "passes": 1,
+      "claudeSessions": 1,
+      "lanesAttempted": [
+        "B"
+      ],
+      "items": [
+        {
+          "schemaVersion": 1,
+          "itemId": "run-20260904-125539-p1-B-a0",
+          "runId": "run-20260904-125539",
+          "passId": 1,
+          "attempt": 0,
+          "laneId": "B",
+          "laneName": "Data / Inventory",
+          "gates": [
+            "C1-DATA-01",
+            "C1-INV-01"
+          ],
+          "workItem": "B-05 Migration dry-run harness and deterministic exception report for C1-DATA-01",
+          "purpose": "Before Taylor's data moves, Taylor needs to see exactly which rows would fail and why, on a rehearsal that can be run again after each fix until the exception list is empty.",
+          "branch": "customer1/b-work",
+          "mainSha": "85b485d7c245986b869b9b82c98b87a075fb28d4",
+          "headShaBefore": "ef717d502914603101cd00309911f7e965029dc8",
+          "headShaAfter": "2f262d38c82fd03222c5741fd66650c55e15006c",
+          "commitSha": "2f262d38c82fd03222c5741fd66650c55e15006c",
+          "changedPaths": [
+            "docs/customer-1/data/README.md",
+            "docs/customer-1/data/seeded/SEEDED-field-mappings.json",
+            "docs/customer-1/data/seeded/SEEDED-migration-tiering.json",
+            "docs/customer-1/data/seeded/SEEDED-source-census.json",
+            "docs/customer-1/data/seeded/SEEDED-source-records.json",
+            "scripts/customer1-migration/dry-run.mjs",
+            "scripts/customer1-migration/dry-run.test.mjs"
+          ],
+          "proofCommands": [
+            "node --test scripts/customer1-migration/dry-run.test.mjs",
+            "node scripts/customer1-migration/dry-run.mjs"
+          ],
+          "proofResults": [
+            {
+              "command": "node --test scripts/customer1-migration/dry-run.test.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node --test( [A-Za-z0-9._/*@-]+)+$'",
+              "tail": "ok 6 - an unvalidated mapping chain refuses to run at all\n  ---\n  duration_ms: 0.2945\n  type: 'test'\n  ...\n# Subtest: a mapping naming an unimplemented transform is an exception, not a crash\nok 7 - a mapping naming an unimplemented transform is an exception, not a crash\n  ---\n  duration_ms: 0.3866\n  type: 'test'\n  ...\n1..7\n# tests 7\n# suites 0\n# pass 7\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 92.7939"
+            },
+            {
+              "command": "node scripts/customer1-migration/dry-run.mjs",
+              "exitCode": 0,
+              "passed": true,
+              "executed": true,
+              "reason": "matches allow pattern '^node [A-Za-z0-9._/-]+\\.(mjs|cjs|js)( [A-Za-z0-9._/=@:-]+)*$'",
+              "tail": "    {\n      \"domain\": \"inventory\",\n      \"recordId\": \"INV-1\",\n      \"target\": {\n        \"inventoryBalances.locationCode\": \"PHX\",\n        \"inventoryBalances.partNumber\": \"SEED-001\",\n        \"inventoryBalances.quantityOnHand\": 7\n      }\n    },\n    {\n      \"domain\": \"parts\",\n      \"recordId\": \"PART-1\",\n      \"target\": {\n        \"parts.description\": \"Seeded compressor\",\n        \"parts.listPrice\": 1250,\n        \"parts.partNumber\": \"SEED-001\"\n      }\n    }\n  ]\n}"
+            }
+          ],
+          "ownedPathCheck": "PASS",
+          "forbiddenPathCheck": "PASS",
+          "reconcileClassification": "NO_OVERLAP",
+          "workerExitCode": 0,
+          "result": "DONE",
+          "violations": [],
+          "blockersRaised": [],
+          "nextSuggestedItem": "B-06: an export intake contract — the file-shape, encoding, delimiter, and per-domain column manifest Taylor's export must satisfy for the dry-run harness to read it, with a reader that turns a CSV/XLSX export into the harness's source-record shape and reports intake-level exceptions (unreadable file, unexpected columns, encoding) before any mapping runs.",
+          "recovered": null,
+          "startedAt": "2026-09-04T19:55:49Z",
+          "completedAt": "2026-09-04T20:00:03Z"
+        }
+      ],
+      "productionActions": [],
+      "exhausted": false,
+      "diagnosticLog": "D:\\Taylor_C1_Execution\\docs\\customer-1\\automation\\reports\\logs\\run-20260904-125539\\diagnostic.log"
+    }
+  ]
 }
