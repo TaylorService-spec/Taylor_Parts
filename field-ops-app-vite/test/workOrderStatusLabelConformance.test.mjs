@@ -139,7 +139,6 @@ const KNOWN_RAW_WO_STATUS_ALLOWLIST = new Set([
   "modules/jobs/Jobs.jsx",
   "modules/scheduling/SchedulingWorkspace.jsx",
   "modules/service/CoordinatedVisitsWorkspace.jsx",
-  "modules/technicianDashboard/TechnicianWorkOrderCard.jsx",
 ]);
 
 function findRawWorkOrderStatusRenders() {

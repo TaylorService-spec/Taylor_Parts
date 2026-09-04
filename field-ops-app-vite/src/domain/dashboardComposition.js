@@ -86,6 +86,27 @@ const has = (ctx, capability) =>
 /** The legacy admin/dispatcher surface several Work Order reads are still governed by in Rules. */
 const isOperationsViewer = (ctx) => ctx?.role === "admin" || ctx?.role === "dispatcher";
 
+/**
+ * FIN-004: MONEY NEEDS BOTH HALVES OF ITS AUTHORITY.
+ *
+ * `finance.read` is the fact-FAMILY gate and confers no reach by itself -- the catalog says so in
+ * as many words. Reach comes from a `finance.visibility.*` scope, and `listFinancialFacts` refuses
+ * a principal holding none. Gating on `finance.read` alone therefore put a Billed and a Collected
+ * tile in front of people the server would always deny, where they reported "could not be read"
+ * forever -- a failure state standing in for a settled answer: this person has no financial reach.
+ *
+ * Absent is the honest composition. It withholds nothing they could otherwise have seen.
+ */
+const FINANCE_REACH_SCOPES = Object.freeze([
+  "finance.visibility.self",
+  "finance.visibility.team",
+  "finance.visibility.businessUnit",
+  "finance.visibility.company",
+  "finance.visibility.consolidated",
+]);
+const hasFinancialReach = (ctx) =>
+  has(ctx, "finance.read") && FINANCE_REACH_SCOPES.some((id) => has(ctx, id));
+
 const hasTechnicianBinding = (ctx) => typeof ctx?.technicianId === "string" && ctx.technicianId.length > 0;
 
 const hasLocationScope = (ctx) => Array.isArray(ctx?.warehouseIds) && ctx.warehouseIds.length > 0;
@@ -161,7 +182,12 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.CURRENT_WORK,
     label: "Awaiting receipt",
     census: "W-1 / W-2 / P-6",
-    needs: (ctx) => has(ctx, "inventory.stock.receive") || isOperationsViewer(ctx),
+    // THE CAPABILITY ALONE. `listReceivablePurchaseOrders` is gated on `inventory.stock.receive`
+    // and honours no legacy-role bypass, so `|| isOperationsViewer` widened only the CLIENT: a
+    // dispatcher composed the tile, the callable refused them, and the tile said the queue could
+    // not be read -- on every load, forever. The legacy disjunct is right for the Work Order reads
+    // Rules still govern by role; it is wrong for a capability-governed callable.
+    needs: (ctx) => has(ctx, "inventory.stock.receive"),
     // BOUNDED ACTIONABLE PREVIEW (#172) over the EXISTING governed callable seam
     // (fetchReceivablePurchaseOrders). No new receiving authority, no client-direct collection read.
     state: () => MODULE_STATE.READY,
@@ -357,7 +383,11 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.BUSINESS_IMPACT,
     label: "Account portfolio",
     census: "C-1",
-    needs: (ctx) => has(ctx, "customer.record.read") || isOperationsViewer(ctx),
+    // THE CAPABILITY ALONE -- `getAccountPortfolioSummary` resolves `customer.record.read` and
+    // nothing else. See the receiving module above: the same client-only widening, the same
+    // permanent denial. Admin and dispatcher keep this module wherever they genuinely hold the
+    // capability, which is where the server was going to answer them anyway.
+    needs: (ctx) => has(ctx, "customer.record.read"),
     state: () => MODULE_STATE.READY,
   },
   // THREE FACTS, THREE MODULES -- split from one "Booked, billed and collected" tile.
@@ -372,7 +402,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.BUSINESS_IMPACT,
     label: "Billed",
     census: "S-10",
-    needs: (ctx) => has(ctx, "finance.read"),
+    needs: hasFinancialReach,
     // COMPOSED from the server's OWN per-company, per-currency rollup. The dashboard performs no
     // money arithmetic: it renders what the server rolled up, and never adds the two operating
     // companies together (that needs an intercompany elimination rule -- FIN-BLOCK-004) nor two
@@ -385,7 +415,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.BUSINESS_IMPACT,
     label: "Collected",
     census: "S-11",
-    needs: (ctx) => has(ctx, "finance.read"),
+    needs: hasFinancialReach,
     // Same authority and same refusals as Billed. Booked's absence does not suppress it.
     state: () => MODULE_STATE.READY,
   },
@@ -394,7 +424,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.BUSINESS_IMPACT,
     label: "Booked",
     census: "S-9 / S-17",
-    needs: (ctx) => has(ctx, "finance.read"),
+    needs: hasFinancialReach,
     state: () => MODULE_STATE.UNAVAILABLE,
     blocker:
       "Booked has no governed read of its own — there is nothing to total, over any period. Consolidated firm figures additionally have no elimination rule yet, so a group total would double-count business the two companies do with each other. The reporting calendar exists and is not the blocker.",

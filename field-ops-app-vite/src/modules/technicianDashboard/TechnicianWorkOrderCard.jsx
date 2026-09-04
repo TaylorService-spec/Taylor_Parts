@@ -4,6 +4,7 @@ import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 import { workOrderPriorityText, workOrderPriorityLabel } from "../../domain/workOrderPriority";
+import { workOrderStatusLabel } from "../../domain/workOrderStatus";
 
 // Epic 6 Phase 6.1 -- reuses the same card shape/CSS classes as
 // modules/dispatcherBoard/WorkOrderQueue.jsx's cards (disp-wo-card,
@@ -49,10 +50,13 @@ function TechnicianWorkOrderCard({ workOrder, isSelected, onSelect }) {
         }
       }}
       aria-pressed={isSelected}
-      aria-label={`Work Order ${workOrder.woNumber}, status ${workOrder.status}, priority ${workOrderPriorityLabel(workOrder.priority) ?? "not set"}`}
+      aria-label={`Work Order ${workOrder.woNumber}, status ${workOrderStatusLabel(workOrder.status)}, priority ${workOrderPriorityLabel(workOrder.priority) ?? "not set"}`}
     >
       <div className="disp-wo-card-header">
-        <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrder.status}</span>
+        {/* THE LABEL, NOT THE MACHINE VALUE. This rendered the raw status, so a technician read
+            "WORK_IN_PROGRESS" and "EN_ROUTE" on their own work. The class keeps the machine value
+            (it is a selector, not prose); only the text a person reads goes through the helper. */}
+        <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrderStatusLabel(workOrder.status)}</span>
         <span className="fo-muted">{workOrderPriorityText(workOrder.priority) ?? "Priority not set"}</span>
       </div>
       <div>{workOrder.woNumber}</div>

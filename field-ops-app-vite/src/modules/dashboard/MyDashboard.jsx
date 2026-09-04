@@ -326,6 +326,10 @@ function BlockedModule({ label, blocker }) {
   );
 }
 
+/** Settled, empty, and never dispatched: the shape each hook already treats as an unavailable read. */
+const INERT_OPPORTUNITY_SOURCE = () => ({ status: "unavailable", synthetic: false, opportunities: [], accountNameById: {}, error: null });
+const INERT_COORDINATED_SOURCE = () => ({ status: "unavailable", synthetic: false, workOrders: [] });
+
 export default function MyDashboard({ role, allowedLegacyKeys = [], operationalContext = {} }) {
   const { user, employeeId, displayName, operationalRoles } = useAuth();
   const authUid = user?.uid ?? null;
@@ -385,8 +389,22 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
     accessVersion: operationalContext?.accessVersion,
     enabled: moduleKeys.has("reorderQueue"),
   });
-  const opportunityFeed = useOpportunities(governedOpportunitySource);
-  const coordinated = useCoordinatedOperations();
+  // GATED, LIKE EVERY OTHER READ ABOVE. These two were not, and the comment above -- "no viewer
+  // opens a query their Rules would deny" -- was therefore false for exactly them. A salesperson
+  // without fulfillment.coordinatedVisit.read still called listCoordinatedOperations on every
+  // dashboard load and took a 403; the preview already discarded the result, so the only thing the
+  // call produced was a console error on a screen whose own gate forbids them.
+  //
+  // An INERT SOURCE rather than a conditional hook: hooks cannot be called conditionally, and both
+  // of these already accept an injectable source whose SYNCHRONOUS return is treated as settled.
+  // "unavailable" is the honest state for a read that was never permitted -- it is what the module
+  // resolves to anyway, now reached without asking the server a question it must refuse.
+  const opportunityFeed = useOpportunities(
+    moduleKeys.has("myOpportunities") ? governedOpportunitySource : INERT_OPPORTUNITY_SOURCE,
+  );
+  const coordinated = useCoordinatedOperations(
+    moduleKeys.has("ordersRequiringAction") ? undefined : INERT_COORDINATED_SOURCE,
+  );
   // DEVICE-LOCAL, and therefore genuinely COMPLETE (#172 §9). This is the one queue whose whole
   // truth lives on this device, so no server count is needed and none is invented for it.
   const { queue: submissionQueue } = useSubmissionQueue();

@@ -142,7 +142,17 @@ test("opportunities are read through the GOVERNED source, never the synthetic de
   const src = readFileSync(new URL("../src/modules/dashboard/MyDashboard.jsx", import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
-  assert.match(src, /useOpportunities\(governedOpportunitySource\)/);
+  // Two-armed now: the governed source when the module resolves, an INERT one when it does not, so
+  // a principal without opportunity.read stops issuing a read the server refuses. Neither arm may
+  // be the synthetic default, which is what this guard is actually about.
+  assert.ok(src.includes(`moduleKeys.has("myOpportunities") ? governedOpportunitySource : INERT_OPPORTUNITY_SOURCE`), "the governed arm is gone");
+  // The coordinated read needs the SAME gate, and had none: a principal without
+  // fulfillment.coordinatedVisit.read called listCoordinatedOperations on every dashboard load and
+  // took a 403. The preview already discarded the result, so the call bought nothing but an error.
+  assert.ok(src.includes(`moduleKeys.has("ordersRequiringAction") ? undefined : INERT_COORDINATED_SOURCE`), "the coordinated read is ungated again");
+  assert.ok(!src.includes("useCoordinatedOperations()"), "an unqualified coordinated call fetches for everyone");
+  assert.ok(src.includes("const INERT_OPPORTUNITY_SOURCE = () => ({ status: \"unavailable\""), "the inert source is gone");
+  assert.ok(!/synthetic[A-Za-z]*Source/.test(src), "a synthetic source reached the dashboard");
   assert.ok(!/useOpportunities\(\s*\)/.test(src), "an unqualified call would resolve to the synthetic source");
   // ...and synthetic rows are refused even if a source ever hands them over.
   assert.match(src, /!opportunityFeed\.synthetic/);
