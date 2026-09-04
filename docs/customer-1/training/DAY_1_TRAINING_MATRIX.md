@@ -89,5 +89,7 @@ the live sandbox revision — that is how `MY_DASHBOARD.md` reached COMPLETE.
 
 `docs/customer-1/training/verify-training-index.mjs` checks this document against the guides it
 names: that every referenced guide exists, and that nothing is claimed `COMPLETE_LIVE_VERIFIED` here
-unless the guide itself carries a live-verification receipt. Run it with `node` after any change to
-either this matrix or a guide's status.
+unless the guide itself carries a live-verification receipt. The same check validates every record in
+`docs/customer-1/training/DEPLOYMENT_TRAINING_CLOSE_LOG.md`, the register where a deployment records
+the training receipt that lets it reach `CLOSED`. Run it with `node` after any change to this matrix,
+a guide's status, or the close log.

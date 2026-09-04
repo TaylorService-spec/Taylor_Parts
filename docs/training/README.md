@@ -123,6 +123,13 @@ TRAINING: NOT REQUIRED — VERIFIED NO USER IMPACT
 DEPLOYMENT STATE: CLOSED
 ```
 
+## Where close records are written
+
+Customer 1 deployment close records are appended to
+`docs/customer-1/training/DEPLOYMENT_TRAINING_CLOSE_LOG.md`, and
+`docs/customer-1/training/verify-training-index.mjs` checks each one against the two record forms
+above. A deployment claimed as `CLOSED` with no record there has not satisfied this rule.
+
 ## Anti-drift rule
 
 Training that describes a future design, sandbox-only behavior, superseded workflow, unavailable permission, or undeployed function is a defect in the release evidence. Fix the training or keep the deployment open; do not teach users functionality they do not actually have.

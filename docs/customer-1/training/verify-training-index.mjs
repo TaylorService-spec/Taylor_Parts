@@ -3,6 +3,10 @@
 // Fails if a referenced guide is missing, or if the matrix claims a guide is
 // COMPLETE_LIVE_VERIFIED while the guide itself carries no live-verification receipt.
 //
+// Also checks DEPLOYMENT_TRAINING_CLOSE_LOG.md: every deployment close record must
+// carry a complete, well-formed training receipt in one of the two forms that
+// docs/training/README.md allows, naming guides that exist.
+//
 // Run: node docs/customer-1/training/verify-training-index.mjs
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -41,9 +45,74 @@ for (const { guide, complete } of rows) {
   }
 }
 
+// --- Deployment training-close log ---------------------------------------
+
+const logPath = 'docs/customer-1/training/DEPLOYMENT_TRAINING_CLOSE_LOG.md';
+const CLOSED_HEADING = '## Closed deployments';
+
+const COMPLETE_RECEIPT = 'TRAINING: COMPLETE';
+const NO_IMPACT_RECEIPT = 'TRAINING: NOT REQUIRED — VERIFIED NO USER IMPACT';
+
+const REQUIRED_KEYS = {
+  COMPLETE: ['DEPLOYMENT', 'AFFECTED ROLES', 'AFFECTED WORKFLOWS', 'TRAINING GUIDES', 'TRAINING REPRESENTS', 'TRAINING', 'VERIFIED', 'DEPLOYMENT STATE'],
+  NO_IMPACT: ['DEPLOYMENT', 'USER IMPACT', 'REASON', 'TRAINING', 'DEPLOYMENT STATE'],
+};
+
+const log = readFileSync(join(repoRoot, logPath), 'utf8');
+const closedSectionStart = log.indexOf(CLOSED_HEADING);
+
+if (closedSectionStart === -1) {
+  // Without the heading the parser cannot tell real records from the format examples.
+  errors.push(`${logPath}: "${CLOSED_HEADING}" heading is missing — this check went blind`);
+}
+
+// Only blocks below the heading are records; blocks above it are the format spec.
+const records =
+  closedSectionStart === -1
+    ? []
+    : [...log.slice(closedSectionStart).matchAll(/```text\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
+
+for (const [index, record] of records.entries()) {
+  const label = `${logPath} record ${index + 1}`;
+  const fields = new Map(
+    record
+      .split('\n')
+      .map((line) => line.match(/^([A-Z][A-Z ]*):\s*(.*)$/))
+      .filter(Boolean)
+      .map((m) => [m[1], m[2].trim()]),
+  );
+
+  const receipt = fields.has('TRAINING') ? `TRAINING: ${fields.get('TRAINING')}` : null;
+  const form =
+    receipt === COMPLETE_RECEIPT ? 'COMPLETE' : receipt === NO_IMPACT_RECEIPT ? 'NO_IMPACT' : null;
+
+  if (!form) {
+    errors.push(`${label}: TRAINING receipt is "${receipt ?? 'absent'}", which is not one of the two receipts docs/training/README.md allows`);
+    continue;
+  }
+
+  for (const key of REQUIRED_KEYS[form]) {
+    const value = fields.get(key);
+    if (!value) errors.push(`${label}: required field "${key}" is missing or empty`);
+    else if (/^<.*>$/.test(value)) errors.push(`${label}: field "${key}" still holds the template placeholder ${value}`);
+  }
+
+  if (fields.get('DEPLOYMENT STATE') && fields.get('DEPLOYMENT STATE') !== 'CLOSED') {
+    errors.push(`${label}: DEPLOYMENT STATE is "${fields.get('DEPLOYMENT STATE')}" — only CLOSED records belong in this log`);
+  }
+
+  for (const guide of fields.get('TRAINING GUIDES')?.split(';') ?? []) {
+    const path = guide.trim();
+    if (path && !existsSync(join(repoRoot, path))) {
+      errors.push(`${label}: names training guide ${path}, which does not exist`);
+    }
+  }
+}
+
 if (errors.length > 0) {
   for (const error of errors) console.error(`FAIL: ${error}`);
   process.exit(1);
 }
 
 console.log(`OK: ${rows.length} guide rows checked, all present and truthfully statused`);
+console.log(`OK: ${records.length} deployment close record(s) checked`);
