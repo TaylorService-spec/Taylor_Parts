@@ -1,0 +1,4 @@
+# The write-ahead transaction is live runtime state: present only between
+# "verified" and "checkpointed", and meaningless outside the machine that
+# crashed. Startup recovery reads it from disk; the repository never should.
+pending-transaction.json
