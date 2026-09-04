@@ -41,6 +41,13 @@ must produce the fact first.
 | CD-22 | Is there a founding-customer concession, what does Verenward receive in return, and when does it end? | OWNER, accepted by TAYLOR | Founding-customer treatment; every other worksheet's stated level | Worksheet W-4 |
 | CD-23 | Is there an included change allowance during implementation, and above what threshold is a written priced change order mandatory? | OWNER + TAYLOR | Change-request revenue line; implementation SOW | Worksheet W-5 |
 | CD-24 | For custom work funded by Taylor and merged into the shared platform: who owns the result, may Verenward sell it to others, and does that change what Taylor is charged? | COUNSEL + OWNER, accepted by TAYLOR | Billable custom work; IP terms in `C1-CONTRACT-01` | Worksheet W-6 |
+| CD-25 | The official support intake mechanism (address, queue, ticketing tool), who operates it, and whether its cost is in the cost model. | OWNER | `C1-SUPPORT-01` intake close condition; support labor measurability | Support model §1 |
+| CD-26 | Taylor's named list: who may file a support request, who may escalate, and who may accept a resolution. | TAYLOR | Intake; escalation; any dispute resolution | Support model §1, §4 |
+| CD-27 | Acceptance of the S1–S4 severity definitions and the workaround/scope rules, by both parties. | OWNER + TAYLOR | `C1-SUPPORT-01` severity close condition | Support model §2 |
+| CD-28 | Definition of "business hours" for support, against Taylor's actual field-operations day. | OWNER + TAYLOR | Every response-time commitment; on-call posture (`CD-06`) | Support model §3 |
+| CD-29 | Coverage when the single Level 1/2 responder is unavailable (illness, travel, vacation). | OWNER | Whether any response commitment is honestly makeable | Support model §4 |
+| CD-30 | Where "accepted behaviour" is durably recorded, such that both parties can point at it when classifying a ticket. | OWNER, confirmed by TAYLOR | The bug-vs-enhancement test (`CD-11`) has no baseline without it | Support model §5 |
+| CD-31 | Does Taylor have an IT function to own the device/network/printer/email/identity rows? If not, who does, and is that labor priced? | TAYLOR then OWNER | Third-party IT boundary (`CD-12`); unpriced support labor | Support model §6 |
 
 ## Rules for this register
 
@@ -54,9 +61,10 @@ must produce the fact first.
 
 ## Open issues
 
-- No row has an owner-confirmed answer yet. The register has grown once already
-  (CD-19 through CD-24, from the pricing worksheets) and is expected to grow
-  again as the support model and draft agreements are written.
+- No row has an owner-confirmed answer yet. The register has grown twice
+  already — CD-19 through CD-24 from the pricing worksheets, CD-25 through
+  CD-31 from the support operating model — and is expected to grow again as the
+  draft agreements are written.
 - CD-19 through CD-24 are structural pricing decisions and are all gated on
   CD-01 and CD-02 being answered first; deciding them earlier means choosing a
   structure without being able to size its trade-off.
