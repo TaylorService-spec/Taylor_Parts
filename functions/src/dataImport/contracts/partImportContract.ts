@@ -23,6 +23,7 @@
 //   * whether it may be written (the trusted createPart command's authorization);
 //   * where it is stored (the data-plane adapter).
 
+import { registerEntityContract, type NormalizedRow } from "./entityContract.js";
 import {
   CONTROL_TYPES,
   PART_STATUSES,
@@ -451,3 +452,30 @@ function shortDigest(value: string): string {
   }
   return h.toString(36).toUpperCase().padStart(7, "0");
 }
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/**
+ * The Part contract, as the shared pipeline sees it.
+ *
+ * Registered here rather than assembled centrally so that adding an entity is one file
+ * plus one import, and so entityContract.ts need not depend on every contract.
+ */
+export const PART_IMPORT_CONTRACT = registerEntityContract({
+  entityType: "PARTS",
+  label: "Part",
+  canonicalFields: PART_CANONICAL_FIELDS,
+  requiredFields: PART_REQUIRED_FIELDS,
+  identityField: "internalPartNumber",
+  identityLabel: "Internal Part Number",
+  // The cast is honest and narrow: a draft IS a record of values, and the registry cannot
+  // name every entity's draft type without depending on every contract -- which is exactly
+  // the cycle the registry exists to avoid.
+  normalizeRow: (values) => normalizePartRow(values) as NormalizedRow,
+  // Part numbers are compared with ALL whitespace removed rather than collapsed: "TST 1001"
+  // and "TST1001" are the same part number written by two people, and treating them as two
+  // Parts is the duplicate this exists to prevent.
+  identityKey: (draft) => String(draft.internalPartNumber ?? "").trim().toUpperCase().replace(/\s+/g, ""),
+});

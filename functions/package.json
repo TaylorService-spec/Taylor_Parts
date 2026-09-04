@@ -150,7 +150,7 @@
     "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs test/ownershipProductionGuard.test.mjs test/warehouseRootCompanyAssignment.test.mjs test/warehouseCanonicalIdRepair.test.mjs",
     "test:financialPolicy": "npm run build && node --test test/financialPolicyProfile.test.mjs",
     "test:financialPolicyCommand": "npm run build && node --test test/financialPolicyProfileCommand.test.mjs",
-    "test:dataImport": "npm run build && node --test test/dataImportPartsPipeline.test.mjs test/dataImportJobLifecycle.test.mjs test/dataImportFirestoreAdapters.test.mjs test/xlsxReader.test.mjs test/importTargetGuard.test.mjs test/openingInventoryBalance.test.mjs && node --test test/dataImportProductionRefusal.test.mjs",
+    "test:dataImport": "npm run build && node --test test/dataImportPartsPipeline.test.mjs test/dataImportJobLifecycle.test.mjs test/dataImportFirestoreAdapters.test.mjs test/xlsxReader.test.mjs test/dataImportCustomers.test.mjs test/importTargetGuard.test.mjs test/openingInventoryBalance.test.mjs && node --test test/dataImportProductionRefusal.test.mjs",
     "test:dataImportEmulator": "npm run build && node test/dataImportEndToEnd.test.mjs"
   },
   "dependencies": {

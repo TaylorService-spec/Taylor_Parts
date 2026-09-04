@@ -32,6 +32,13 @@ import { derivePartId } from "./contracts/partImportContract.js";
 import type { RowWriter, WriteOutcome } from "./importExecution.js";
 import type { ImportJob } from "./importJob.js";
 import { partIdentityKey } from "./importPreview.js";
+import { naturalIdentityKey } from "./contracts/entityContract.js";
+import {
+  createAccountFromImport,
+  normalizeAccountSearchName,
+  AccountImportError,
+} from "../account/accountImportCommand.js";
+import { ACCOUNTS_COLLECTION } from "../account/accountPortfolioSummary.js";
 
 /** Where import jobs live. The ONLY collection this feature introduces. */
 export const IMPORT_JOBS_COLLECTION = "data_import_jobs";
@@ -187,6 +194,108 @@ export function firestorePartWriter(actorUid: string, db?: Firestore): RowWriter
         return { kind: outcome.outcome === "replayed" ? "replayed" : "created" };
       } catch (err) {
         return classify(err);
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+/**
+ * The document id an imported Customer is created at.
+ *
+ * Derived from the name for the same reason a Part's id is derived from its part number: a
+ * re-import lands on the same document, and the command's own already-exists check becomes
+ * the idempotency backstop without import needing a second uniqueness authority.
+ *
+ * Prefixed "IMP-" and NOT a bare slug, which matters here in a way it did not for Parts.
+ * Accounts created through the interface carry Firestore auto-ids, and other collections
+ * reference them. A derived id must be recognisable as one and must not plausibly collide
+ * with an auto-id -- so it is namespaced, and a collision would be refused rather than
+ * silently overwriting a customer somebody else created.
+ */
+export function deriveImportedAccountId(name: string): string {
+  const slug = name.trim().toUpperCase().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return `IMP-${slug || "CUSTOMER"}-${shortDigest(naturalIdentityKey(name))}`;
+}
+
+/** FNV-1a, 32-bit, base36 -- the same suffix scheme the Part id uses. */
+function shortDigest(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36).toUpperCase().padStart(7, "0");
+}
+
+/**
+ * Which of these customer names already exist?
+ *
+ * BY QUERY, unlike Parts, and the difference is the point. A Part's id is derived, so every
+ * Part that could exist occupies a predictable document. Customers are not: the ones already
+ * in EOS were created through the interface with auto-ids, so the only thing both sides
+ * share is the name -- and `nameLower` is the field the customer search already queries,
+ * which means it is populated for every customer however they were created.
+ *
+ * Checking only the derived id would compare imported customers against imported customers
+ * and conclude that a customer created by hand last year does not exist.
+ */
+export async function loadExistingCustomerIdentities(
+  names: readonly string[],
+  db: Firestore = getFirestore(),
+): Promise<ReadonlySet<string>> {
+  const found = new Set<string>();
+  const unique = [...new Set(names.map((n) => n.trim()).filter((n) => n.length > 0))];
+
+  // Firestore caps an `in` filter at 30 values.
+  for (let i = 0; i < unique.length; i += 30) {
+    const chunk = unique.slice(i, i + 30);
+    const snap = await db
+      .collection(ACCOUNTS_COLLECTION)
+      .where("nameLower", "in", chunk.map((n) => normalizeAccountSearchName(n)))
+      .get();
+    for (const doc of snap.docs) {
+      const name = String((doc.data() ?? {}).name ?? "");
+      if (name) found.add(naturalIdentityKey(name));
+    }
+  }
+
+  return found;
+}
+
+/**
+ * The Customers writer, over the trusted account-import command.
+ *
+ * The command -- not a direct set. It enforces `customer.record.create`, refuses the two
+ * governed commercial fields, derives `nameLower`, writes Timestamp-typed stamps and audits,
+ * all in one transaction. This function chooses the document id and translates errors, and
+ * that is deliberately all it does.
+ */
+export function firestoreCustomerWriter(actorUid: string, db?: Firestore): RowWriter {
+  return {
+    async write(draft, idempotencyKey) {
+      try {
+        const outcome = await createAccountFromImport(
+          { actorUid, idempotencyKey, accountId: deriveImportedAccountId(String(draft.name ?? "")), draft },
+          db ? { db } : undefined,
+        );
+        return { kind: outcome.outcome === "replayed" ? "replayed" : "created" };
+      } catch (err) {
+        if (err instanceof AccountImportError) {
+          const message =
+            err.code === "ALREADY_EXISTS"
+              ? "A customer with this name already exists."
+              : err.code === "UNAUTHORIZED"
+                ? "You are not authorized to create customers."
+                : err.code === "GOVERNED_FIELD_REFUSED"
+                  ? "This row sets a governed commercial field, which import cannot write."
+                  : "The row failed the Customer validation rules.";
+          return { kind: "failed", code: err.code, message };
+        }
+        return { kind: "failed", code: "UNEXPECTED", message: "The record could not be written." };
       }
     },
   };

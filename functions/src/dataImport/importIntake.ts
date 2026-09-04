@@ -16,6 +16,11 @@
 // mapping table drifts and the drift shows up as a silently dropped column.
 
 import { readXlsxGrid, XlsxError } from "./xlsxReader.js";
+import { entityContractFor, wiredEntityContracts, type ImportEntityType } from "./contracts/entityContract.js";
+// SIDE-EFFECT IMPORTS. A contract registers itself when its module loads, so the registry
+// is empty unless something pulls the modules in. This is that something: importing intake
+// is what makes every wired entity exist, and adding an entity means adding a line here.
+import "./contracts/customerImportContract.js";
 import { parseCsv } from "../partMaster/csvMigrationAnalysis.js";
 import {
   PART_CANONICAL_FIELDS,
@@ -25,8 +30,10 @@ import {
 } from "./contracts/partImportContract.js";
 
 /** P1 entity types. Only PARTS is wired in the first vertical slice. */
-export const IMPORT_ENTITY_TYPES = ["PARTS", "CUSTOMERS", "EQUIPMENT", "INVENTORY", "SERVICE_HISTORY"] as const;
-export type ImportEntityType = (typeof IMPORT_ENTITY_TYPES)[number];
+// Re-exported so callers keep one import site; the LIST itself lives with the registry,
+// because an entity's existence and an entity's contract are the same fact.
+export { IMPORT_ENTITY_TYPES } from "./contracts/entityContract.js";
+export type { ImportEntityType } from "./contracts/entityContract.js";
 
 /** Explicit P1 limits. Stated here so the UI and the backend cannot disagree. */
 export const IMPORT_LIMITS = Object.freeze({
@@ -220,6 +227,12 @@ export interface EntityDetection {
   readonly reason: string;
 }
 
+/**
+ * How much of an entity's required-field set a header must name before that entity is even
+ * a candidate. Ranking between candidates is by COVERAGE, not by this -- see detectEntityType.
+ */
+const REQUIRED_FIELD_THRESHOLD = 0.75;
+
 function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/[\s_\-./]+/g, "");
 }
@@ -233,26 +246,76 @@ function normalizeHeader(h: string): string {
  */
 export function detectEntityType(columns: readonly string[]): EntityDetection {
   const normalized = columns.map(normalizeHeader);
-  const requiredHit = PART_CANONICAL_FIELDS.filter((f) => f.required).filter((f) =>
-    f.synonyms.some((s) => normalized.includes(normalizeHeader(s))),
-  ).length;
-  const requiredTotal = PART_REQUIRED_FIELDS.length;
-  const confidence = requiredTotal === 0 ? 0 : requiredHit / requiredTotal;
 
-  if (confidence >= 0.75) {
+  // TWO STAGES, and the order matters.
+  //
+  // FIRST A GATE: an entity whose REQUIRED fields are not all present in the header cannot be
+  // what this file is, whatever else it matches. This is what stops a Parts export being read
+  // as anything else -- a file with no Stocking Class is not a Part file.
+  //
+  // THEN COVERAGE, not the required-field fraction. Entities have different numbers of
+  // required fields (a Part needs five, a Customer needs one), so "fraction of required
+  // fields matched" is not comparable between them: a Customer contract scores a perfect 1.0
+  // on any header containing NAME, including a Parts export. Coverage asks the comparable
+  // question instead -- how much of THIS HEADER does the entity explain?
+  const scores = wiredEntityContracts()
+    .map((contract) => {
+      const required = contract.canonicalFields.filter((f) => f.required);
+      const matches = (f: CanonicalFieldSpec) =>
+        f.synonyms.some((syn) => normalized.includes(normalizeHeader(syn))) ||
+        normalized.includes(normalizeHeader(f.field));
+      const requiredHit = required.filter(matches).length;
+      const explained = contract.canonicalFields.filter(matches).length;
+      return {
+        contract,
+        requiredHit,
+        requiredTotal: required.length,
+        // NOT all-or-nothing. A Parts export whose description column is not literally named
+        // NAME is still recognisably a Parts export, and the operator maps that one column
+        // by hand -- which is the normal workflow. An exact gate would answer "no entity
+        // could be recognised" for a file whose identity is obvious, which is less useful
+        // than a wrong guess would be harmful.
+        satisfied: required.length > 0 && requiredHit / required.length >= REQUIRED_FIELD_THRESHOLD,
+        coverage: normalized.length === 0 ? 0 : explained / normalized.length,
+      };
+    })
+    .sort((a, b) => b.coverage - a.coverage);
+
+  const eligible = scores.filter((s) => s.satisfied);
+
+  if (eligible.length === 0) {
+    // Nothing is eligible. Report the NEAREST miss, because "3 of 5 required Part columns"
+    // tells an operator which column to add; "no entity recognised" tells them nothing.
+    const nearest = scores.reduce<(typeof scores)[number] | null>(
+      (a, b) => (a === null || b.requiredHit / Math.max(1, b.requiredTotal) > a.requiredHit / Math.max(1, a.requiredTotal) ? b : a),
+      null,
+    );
     return Object.freeze({
-      entityType: "PARTS" as const,
-      confidence,
-      reason: `${requiredHit} of ${requiredTotal} required Part columns were recognised in the header.`,
+      entityType: null,
+      confidence: nearest ? nearest.requiredHit / Math.max(1, nearest.requiredTotal) : 0,
+      reason:
+        nearest && nearest.requiredHit > 0
+          ? `Only ${nearest.requiredHit} of ${nearest.requiredTotal} required ${nearest.contract.label} columns were recognised -- too few to assume. Choose the entity type.`
+          : "No entity could be recognised from the header. Choose the entity type.",
     });
   }
+
+  const best = eligible[0];
+  const tied = eligible.filter((s) => s.coverage === best.coverage);
+  if (tied.length > 1) {
+    // Two entities explain this header equally well. Picking either would misfile a whole
+    // file on an accident of list order, so the admin decides.
+    return Object.freeze({
+      entityType: null,
+      confidence: best.coverage,
+      reason: `This header matches ${tied.map((t) => t.contract.label).join(" and ")} equally well. Choose the entity type.`,
+    });
+  }
+
   return Object.freeze({
-    entityType: null,
-    confidence,
-    reason:
-      requiredHit === 0
-        ? "No entity could be recognised from the header. Choose the entity type."
-        : `Only ${requiredHit} of ${requiredTotal} required Part columns were recognised -- too few to assume. Choose the entity type.`,
+    entityType: best.contract.entityType,
+    confidence: best.coverage,
+    reason: `${best.requiredHit} of ${best.requiredTotal} required ${best.contract.label} columns were recognised, and ${Math.round(best.coverage * 100)}% of the header is ${best.contract.label} fields.`,
   });
 }
 
@@ -271,9 +334,16 @@ export interface MappingSuggestion {
 }
 
 export function canonicalFieldsFor(entityType: ImportEntityType): readonly CanonicalFieldSpec[] {
-  // Only PARTS is wired in this slice. Other entities return an empty set rather than a
-  // fabricated one, so an unwired entity cannot be mapped by accident.
-  return entityType === "PARTS" ? PART_CANONICAL_FIELDS : Object.freeze([]);
+  // An UNWIRED entity has no contract and therefore no fields. Returning an empty set is
+  // deliberate and is not the same as being wired with nothing to map: validateMapping
+  // refuses an unwired entity outright, so an empty field list can never be mistaken for
+  // a file that happens to need no mapping.
+  return entityContractFor(entityType)?.canonicalFields ?? Object.freeze([]);
+}
+
+/** Is this entity importable in this release at all? */
+export function isEntityWired(entityType: ImportEntityType): boolean {
+  return entityContractFor(entityType) !== null;
 }
 
 /**
@@ -318,6 +388,25 @@ export interface MappingValidation {
 
 /** Validate a proposed mapping against the entity's canonical fields. */
 export function validateMapping(entityType: ImportEntityType, parsed: ParsedSourceFile, mapping: ColumnMapping): MappingValidation {
+  if (!isEntityWired(entityType)) {
+    // An unwired entity is REFUSED here rather than validated against an empty field set,
+    // which would report "valid" for a file nothing can execute -- the one answer that would
+    // let an operator approve an import that does nothing at all.
+    return Object.freeze({
+      valid: false,
+      findings: Object.freeze([
+        Object.freeze({
+          severity: "ERROR" as const,
+          field: "entityType",
+          code: "ENTITY_NOT_WIRED",
+          message: `Import for ${entityType} is not available in this release.`,
+        }),
+      ]),
+      mappedFields: Object.freeze([]),
+      ignoredColumns: Object.freeze([...parsed.columns]),
+    });
+  }
+
   const fields = canonicalFieldsFor(entityType);
   const findings: FieldFinding[] = [];
   const mapped: string[] = [];

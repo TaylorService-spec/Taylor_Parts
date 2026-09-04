@@ -54,7 +54,7 @@ import {
   type ColumnMapping,
   type ImportEntityType,
 } from "./importIntake.js";
-import { buildPartsPreview } from "./importPreview.js";
+import { buildEntityPreview } from "./importPreview.js";
 import {
   stageImportJob,
   assertExecutable,
@@ -66,8 +66,12 @@ import { executeImportJob } from "./importExecution.js";
 import {
   firestoreImportJobStore,
   firestorePartWriter,
+  firestoreCustomerWriter,
   loadExistingPartIdentities,
+  loadExistingCustomerIdentities,
 } from "./firestoreDataImportAdapters.js";
+import { entityContractFor } from "./contracts/entityContract.js";
+import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
 const CAP_STAGE = "admin.dataImport.stage";
@@ -77,6 +81,31 @@ const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 const GLOBAL_TARGET: TargetContext = { scope: { type: "global" }, condition: {} };
 const ROLE_CATALOG: Readonly<Record<string, Role>> = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
 const HISTORY_LIMIT = 25;
+
+/**
+ * The ONE place an entity is bound to its data plane.
+ *
+ * Two functions per entity and nothing else: how existing identity is looked up, and how
+ * one record is written. Everything between -- parsing, mapping, validation, preview,
+ * approval, per-row accounting -- is entity-agnostic and shared, so adding an entity is a
+ * contract plus a row in this table rather than a second pipeline.
+ *
+ * An entity ABSENT from this table cannot be executed even if a contract exists for it,
+ * which is the fail-closed direction: a half-wired entity refuses rather than staging a job
+ * that would write through a writer nobody chose.
+ */
+const ENTITY_DATA_PLANE: Partial<
+  Record<
+    ImportEntityType,
+    {
+      loadExisting(values: readonly string[], db: Firestore): Promise<ReadonlySet<string>>;
+      writer(actorUid: string, db: Firestore): RowWriter;
+    }
+  >
+> = {
+  PARTS: { loadExisting: loadExistingPartIdentities, writer: firestorePartWriter },
+  CUSTOMERS: { loadExisting: loadExistingCustomerIdentities, writer: firestoreCustomerWriter },
+};
 
 function requireAuth(request: { auth?: { uid: string } | null }): string {
   if (!request.auth || typeof request.auth.uid !== "string" || request.auth.uid.length === 0) {
@@ -221,9 +250,11 @@ export const stageDataImportCallable = onCall(REGION, async (request) => {
         detection,
       });
     }
-    if (entityType !== "PARTS") {
-      // Honest refusal rather than a silent no-op: the other four entities are later
-      // checkpoints, and pretending otherwise would stage a job nothing can execute.
+    const contract = entityContractFor(entityType);
+    const plane = ENTITY_DATA_PLANE[entityType];
+    if (!contract || !plane) {
+      // Honest refusal rather than a silent no-op: an entity without BOTH a contract and a
+      // data plane would stage a job nothing can execute.
       throw new HttpsError("unimplemented", `Import for ${entityType} is not available yet.`, { code: "ENTITY_NOT_WIRED" });
     }
 
@@ -249,11 +280,13 @@ export const stageDataImportCallable = onCall(REGION, async (request) => {
     }
 
     const rows = projectRows(parsed, mapping);
-    const existing = await loadExistingPartIdentities(
-      rows.map((r) => String(r.values.internalPartNumber ?? "")),
+    // The identity values come from the CONTRACT's identity field, so this line does not
+    // need to know which entity it is looking at.
+    const existing = await plane.loadExisting(
+      rows.map((r) => String(r.values[contract.identityField] ?? "")),
       db,
     );
-    const preview = buildPartsPreview(rows, existing);
+    const preview = buildEntityPreview(entityType, rows, existing);
 
     const now = new Date();
     const job = stageImportJob({
@@ -309,7 +342,14 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
       throw new ImportJobError("JOB_NOT_STAGED", "This import is already running or has already run.");
     }
 
-    const rowResults = await executeImportJob(claimed, firestorePartWriter(actorUid, db));
+    const plane = ENTITY_DATA_PLANE[claimed.entityType];
+    if (!plane) {
+      // A job staged when an entity was wired, executed after it was un-wired. Refusing is
+      // correct: the job's drafts were validated against a contract this build may no
+      // longer honour, and writing them anyway would be writing on a stale promise.
+      throw new ImportJobError("JOB_NOT_STAGED", `Import for ${claimed.entityType} is not available.`);
+    }
+    const rowResults = await executeImportJob(claimed, plane.writer(actorUid, db));
     const finished = finishExecution(claimed, rowResults);
     await store.put(finished);
 

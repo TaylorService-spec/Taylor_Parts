@@ -14,8 +14,9 @@
 //   WARNING  -- will be imported; the admin should look
 //   ERROR    -- will NOT be imported, and is shown rather than hidden
 
-import { normalizePartRow, type FieldFinding } from "./contracts/partImportContract.js";
-import type { MappedRow, ImportEntityType } from "./importIntake.js";
+import type { FieldFinding } from "./contracts/partImportContract.js";
+import { entityContractFor, type ImportEntityType } from "./contracts/entityContract.js";
+import type { MappedRow } from "./importIntake.js";
 
 export type RowClassification = "READY" | "WARNING" | "ERROR";
 
@@ -70,26 +71,38 @@ export function partIdentityKey(internalPartNumber: string): string {
  *     update. P1 creates Parts; quietly mutating an existing governed Part from a
  *     spreadsheet is exactly the ambiguity the brief says to fail closed on.
  */
-export function buildPartsPreview(rows: readonly MappedRow[], existing: ExistingIdentityIndex): ImportPreview {
+export function buildEntityPreview(
+  entityType: ImportEntityType,
+  rows: readonly MappedRow[],
+  existing: ExistingIdentityIndex,
+): ImportPreview {
+  const contract = entityContractFor(entityType);
+  if (!contract) {
+    // Not an empty preview. An unwired entity must be refused by the caller before it gets
+    // here; reaching this point means something staged a job nothing can execute.
+    throw new Error(`no import contract is registered for ${entityType}`);
+  }
+
   const seenInFile = new Map<string, number>();
   const out: PreviewRow[] = [];
 
   for (const row of rows) {
-    const normalized = normalizePartRow(row.values);
+    const normalized = contract.normalizeRow(row.values);
     const findings: FieldFinding[] = [...normalized.findings];
     let identity: string | null = null;
 
     if (normalized.draft) {
-      identity = partIdentityKey(String(normalized.draft.internalPartNumber));
+      const shown = String(normalized.draft[contract.identityField] ?? "");
+      identity = contract.identityKey(normalized.draft);
 
       const firstSeenAt = seenInFile.get(identity);
       if (firstSeenAt !== undefined) {
         findings.push(
           finding(
             "ERROR",
-            "internalPartNumber",
+            contract.identityField,
             "DUPLICATE_IN_FILE",
-            `Internal Part Number "${normalized.draft.internalPartNumber}" also appears on source row ${firstSeenAt}. The file contradicts itself; neither row can be chosen automatically.`,
+            `${contract.identityLabel} "${shown}" also appears on source row ${firstSeenAt}. The file contradicts itself; neither row can be chosen automatically.`,
           ),
         );
       } else {
@@ -100,9 +113,9 @@ export function buildPartsPreview(rows: readonly MappedRow[], existing: Existing
         findings.push(
           finding(
             "ERROR",
-            "internalPartNumber",
+            contract.identityField,
             "ALREADY_EXISTS",
-            `A Part with Internal Part Number "${normalized.draft.internalPartNumber}" already exists. Import creates new Parts; it will not overwrite an existing one.`,
+            `A ${contract.label} with ${contract.identityLabel} "${shown}" already exists. Import creates new records; it will not overwrite an existing one.`,
           ),
         );
       }
@@ -124,7 +137,7 @@ export function buildPartsPreview(rows: readonly MappedRow[], existing: Existing
   }
 
   return Object.freeze({
-    entityType: "PARTS" as const,
+    entityType,
     summary: Object.freeze({
       total: out.length,
       ready: out.filter((r) => r.classification === "READY").length,
@@ -133,6 +146,11 @@ export function buildPartsPreview(rows: readonly MappedRow[], existing: Existing
     }),
     rows: Object.freeze(out),
   });
+}
+
+/** Parts, by name. Kept because Parts is the entity most callers mean. */
+export function buildPartsPreview(rows: readonly MappedRow[], existing: ExistingIdentityIndex): ImportPreview {
+  return buildEntityPreview("PARTS", rows, existing);
 }
 
 /** The rows an execute step is allowed to act on: READY and WARNING, never ERROR. */

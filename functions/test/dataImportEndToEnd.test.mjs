@@ -29,6 +29,7 @@ const { stageDataImportCallable: stageDataImport, executeDataImportCallable: exe
   "../lib/dataImport/dataImportCallables.js"
 );
 const { derivePartId } = await import("../lib/dataImport/contracts/partImportContract.js");
+const { deriveImportedAccountId } = await import("../lib/dataImport/firestoreDataImportAdapters.js");
 
 let passed = 0;
 async function check(name, fn) {
@@ -128,7 +129,7 @@ await check("an ambiguous header is REFUSED rather than guessed, and the admin c
 await check("an entity that is not wired yet says so, instead of staging a job nothing can run", async () => {
   await assert.rejects(
     stageDataImport.run({
-      data: { fileName: "customers.csv", fileText: SEEDED_CSV, entityType: "CUSTOMERS" },
+      data: { fileName: "equipment.csv", fileText: SEEDED_CSV, entityType: "EQUIPMENT" },
       auth,
     }),
     (err) => err.code === "unimplemented" && err.details?.code === "ENTITY_NOT_WIRED",
@@ -280,6 +281,70 @@ await check("a file that is not a readable workbook is refused with its own reas
     }),
     (err) => err.code === "invalid-argument" && err.details?.code === "UNREADABLE_WORKBOOK",
   );
+});
+
+// --------------------------------------------------------------- customers
+
+await check("a customer CSV becomes a governed Customer, searchable by the derived key", async () => {
+  const csv = [
+    "CUSTOMER_NAME,BILLING_ADDRESS,STATUS,CUSTOMER_NUMBER",
+    `Seeded Soda Works ${run},1 Main St,ACTIVE,C-${run}`,
+    `Seeded Ice Co ${run},2 Main St,Prospect,C-${run}-2`,
+  ].join("\n");
+
+  const staged = await stageDataImport.run({ data: { fileName: "customers.csv", fileText: csv }, auth });
+  assert.equal(staged.staged, true);
+  assert.equal(staged.job.entityType, "CUSTOMERS", "the header must detect as Customers, not Parts");
+  assert.deepEqual(staged.job.summary, { total: 2, ready: 2, warnings: 0, errors: 0 });
+
+  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
+  assert.equal(done.job.status, "COMPLETED");
+  assert.equal(done.job.result.created, 2);
+
+  const id = deriveImportedAccountId(`Seeded Soda Works ${run}`);
+  const snap = await db.collection("accounts").doc(id).get();
+  assert.equal(snap.exists, true);
+  const data = snap.data();
+  assert.equal(data.name, `Seeded Soda Works ${run}`);
+  assert.equal(data.status, "ACTIVE");
+
+  // THE DERIVED SEARCH KEY. Without it the customer is permanently unfindable by the
+  // customer search box, and the symptom never points at the import that caused it.
+  assert.equal(data.nameLower, `Seeded Soda Works ${run}`.toLowerCase());
+
+  // THE GOVERNED CREATE BASELINE the accounts Rules enforce for every other writer. The
+  // Admin SDK bypasses Rules, so this is the only thing standing behind that guarantee here.
+  assert.equal(data.paymentTerms, undefined);
+  assert.equal(data.taxStatus, undefined);
+
+  // Timestamp-typed, not epoch millis: a number sorts BELOW every Timestamp under
+  // `updatedAt DESC`, so an imported customer would land at the bottom of the list it was
+  // imported into and be unreachable from it.
+  assert.equal(typeof data.updatedAt?.toDate, "function");
+});
+
+await check("the customer command wrote its own audit event", async () => {
+  const events = await db.collection("auditEvents").where("action", "==", "createAccountFromImport").get();
+  assert.ok(events.docs.length >= 2, `expected an audit event per created Customer, saw ${events.docs.length}`);
+});
+
+await check("re-staging the same customers finds them by NAME, not only by derived id", async () => {
+  // The customers already in EOS were created through the interface with auto-ids, so the
+  // only field both sides share is the name. A derived-id-only check would compare imported
+  // customers against imported customers and conclude a hand-created one does not exist.
+  const handMade = `Hand Made Co ${run}`;
+  await db.collection("accounts").add({ name: handMade, nameLower: handMade.toLowerCase() });
+
+  const csv = [
+    "CUSTOMER_NAME,BILLING_ADDRESS",
+    `Seeded Soda Works ${run},1 Main St`,
+    `${handMade},9 Main St`,
+  ].join("\n");
+  const res = await stageDataImport.run({ data: { fileName: "customers.csv", fileText: csv }, auth });
+  assert.equal(res.job.summary.errors, 2, "both must be recognised as already existing");
+  for (const row of res.job.rows) {
+    assert.ok(row.findings.some((f) => f.code === "ALREADY_EXISTS"), `row ${row.sourceRowNumber}`);
+  }
 });
 
 // --------------------------------------------------------------- authorization
