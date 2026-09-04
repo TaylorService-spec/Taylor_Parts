@@ -1787,6 +1787,133 @@ try {
         # The reconcile point is durable, and no worker ever started.
         ($laneA.lastReconciledMain) -and ($laneA.lastReconciledMain -match '^[0-9a-f]{40}$') -and ($calls -eq 0)
     }
+
+    # ------------------------------------------------------------------------
+    Section 'Z. Externally-killed supervisor leaves an unexplained dirty lane'
+
+    Check 'R7. an unexplained dirty lane is refused, twice, without duplicating anything' {
+        # The exact incident: the SUPERVISOR is killed while a worker has already
+        # changed the lane worktree, before any receipt, pending transaction or
+        # commit exists. Nothing on disk explains the files, and the branch is the
+        # correct one -- so neither the unexpected-branch guard nor ordinary
+        # recovery has anything to say about them.
+        Reset-SandboxLanes
+        Remove-Item -LiteralPath $sbx.PendingFile -Force -ErrorAction SilentlyContinue
+        Reset-FakeCounters
+
+        $wt = Join-Path $lanesDir 'A'
+        $headBefore = Get-LaneHead 'A'
+
+        # A worker's leavings: one untracked file AND one tracked modification.
+        $untracked = 'docs/customer-1/scope/PARTIAL-interrupted.md'
+        New-Item -ItemType Directory -Force -Path (Join-Path $wt 'docs/customer-1/scope') | Out-Null
+        Set-Content -LiteralPath (Join-Path $wt $untracked) -Value "# half-written, nobody checkpointed this" -Encoding UTF8
+
+        # Pick a real tracked file inside lane A's ownership to modify.
+        $trackedRel = @((Invoke-Git -Directory $wt -Arguments @('ls-files', 'docs/customer-1/scope')).Output |
+            Where-Object { $_ -and $_ -ne $untracked })
+        $haveTracked = $trackedRel.Count -gt 0
+        if ($haveTracked) {
+            $tp = Join-Path $wt ($trackedRel[0] -replace '/', '\')
+            Add-Content -LiteralPath $tp -Value "`n<!-- interrupted edit -->" -Encoding UTF8
+        }
+
+        $hashesBefore = @{}
+        foreach ($r in @($untracked) + @(if ($haveTracked) { $trackedRel[0] } else { @() })) {
+            $hashesBefore[$r] = (Get-FileHash -LiteralPath (Join-Path $wt ($r -replace '/', '\')) -Algorithm SHA256).Hash
+        }
+
+        # Count only receipts that CLAIM WORK. A MAIN_INTEGRATION receipt from an
+        # earlier fixture's upstream merge is legitimate framework behaviour, and
+        # counting it would look like the interrupted item being adopted.
+        function Get-WorkReceiptCount {
+            @(Get-C1ItemReceipts -Context $sbx -LaneId 'A' |
+                Where-Object { $_.result -in @('DONE', 'PARTIAL') }).Count
+        }
+        function Test-NoReceiptMentions {
+            param([string]$Path)
+            @(Get-C1ItemReceipts -Context $sbx -LaneId 'A' |
+                Where-Object { @($_.changedPaths) -contains $Path }).Count -eq 0
+        }
+        $receiptsBefore = Get-WorkReceiptCount
+        $callsBefore = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue).Count
+
+        # ---- RESTART 1
+        $r1 = Invoke-Sandbox -Mode 'work' -ExitCode 0 -ExtraArgs @('-MaxItems', '2')
+        $callsA1 = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue | Where-Object { $_ -like 'A *' }).Count
+        $laneA1 = @((Read-JsonFile $sbx.LanesFile).lanes | Where-Object { $_.id -eq 'A' })[0]
+        $blockers1 = @((Read-JsonFile $sbx.BlockersFile).blockers |
+            Where-Object { $_.status -eq 'OPEN' -and $_.question -match 'uncheckpointed worktree changes' })
+        $receiptsAfter1 = Get-WorkReceiptCount
+
+        $bytesIntact1 = $true
+        foreach ($k in $hashesBefore.Keys) {
+            $p = Join-Path $wt ($k -replace '/', '\')
+            if (-not (Test-Path $p)) { $bytesIntact1 = $false; continue }
+            if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne $hashesBefore[$k]) { $bytesIntact1 = $false }
+        }
+
+        $pass1 =
+            ($callsA1 -eq 0) -and                                   # zero workers on the affected lane
+            $bytesIntact1 -and                                      # dirty files byte-identical
+            ((Get-LaneHead 'A') -eq $headBefore) -and               # no commit created
+            ($receiptsAfter1 -eq $receiptsBefore) -and              # no fabricated work receipt
+            (Test-NoReceiptMentions $untracked) -and                # nothing adopted the partial file
+            (-not (Test-Path $sbx.PendingFile)) -and                # no manufactured pending transaction
+            ($laneA1.state -eq 'FAILED_RECOVERY') -and              # lane refused
+            ($blockers1.Count -eq 1) -and                           # exactly one blocker
+            ($blockers1[0].category -eq 'GOVERNANCE')
+
+        # A healthy lane must still be selectable and actually run.
+        $callsB1 = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue | Where-Object { $_ -like 'B *' }).Count
+        $healthy1 = $callsB1 -ge 1
+
+        # ---- RESTART 2, nothing changed in between
+        $r2 = Invoke-Sandbox -Mode 'work' -ExitCode 0 -ExtraArgs @('-MaxItems', '2')
+        $callsA2 = @(Get-Content -LiteralPath $callsOut -ErrorAction SilentlyContinue | Where-Object { $_ -like 'A *' }).Count
+        $blockers2 = @((Read-JsonFile $sbx.BlockersFile).blockers |
+            Where-Object { $_.status -eq 'OPEN' -and $_.question -match 'uncheckpointed worktree changes' })
+        $receiptsAfter2 = Get-WorkReceiptCount
+
+        $bytesIntact2 = $true
+        foreach ($k in $hashesBefore.Keys) {
+            $p = Join-Path $wt ($k -replace '/', '\')
+            if (-not (Test-Path $p)) { $bytesIntact2 = $false; continue }
+            if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne $hashesBefore[$k]) { $bytesIntact2 = $false }
+        }
+
+        $pass2 =
+            ($callsA2 -eq 0) -and                                   # still zero workers on lane A
+            $bytesIntact2 -and                                      # bytes still identical
+            ($blockers2.Count -eq 1) -and                           # blocker deduped, not re-added
+            ($receiptsAfter2 -eq $receiptsBefore) -and              # still no receipt
+            ((Get-LaneHead 'A') -eq $headBefore)
+
+        # Clean up only the fixture, by exact path -- never a broad git clean.
+        Remove-Item -LiteralPath (Join-Path $wt $untracked) -Force -ErrorAction SilentlyContinue
+        if ($haveTracked) {
+            Invoke-Git -Directory $wt -AllowFail -Arguments @('checkout', '--', $trackedRel[0]) | Out-Null
+        }
+
+        $pass1 -and $healthy1 -and $pass2
+    }
+
+    Check 'R7b. the correct-branch case is distinct from the unexpected-branch guard' {
+        # Both refuse, but for different reasons, and neither may swallow the other.
+        $code = Get-Content -LiteralPath (Join-Path $here 'run-program.ps1') -Raw
+        ($code -match 'unexplained-dirty') -and                      # new startup guard
+        ($code -match 'dirty-branch') -and                           # existing unexpected-branch guard
+        ($code -match 'uncheckpointed worktree changes')
+    }
+
+    Check 'R7c. the guard adopts nothing: no commit, reset, clean, stash or fabricated receipt' {
+        $code = Get-Content -LiteralPath (Join-Path $here 'run-program.ps1') -Raw
+        $block = [regex]::Match($code, '(?s)UNEXPLAINED DIRTY LANE.*?\n        \}\r?\n    \}').Value
+        $block -and
+        ($block -notmatch '\bgit.{0,40}(add|commit|reset|clean|stash|checkout)\b') -and
+        ($block -notmatch 'Save-C1ItemReceipt') -and
+        ($block -notmatch 'Save-C1PendingTransaction')
+    }
     Section 'I. Repository-level guarantees'
 
     Check '23. every orchestrator PowerShell script parses' {

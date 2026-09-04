@@ -437,6 +437,56 @@ if ($DryRun) {
             Write-JsonFile $ctx.LanesFile $lanesDoc
             $stateAdvanced = $true
         }
+
+        # UNEXPLAINED DIRTY LANE -- fail closed before any worker launches.
+        #
+        # A supervisor killed from outside dies after its worker has changed the
+        # lane worktree but before a result receipt or pending transaction
+        # exists. Nothing on disk then explains those files: the branch is the
+        # RIGHT one, so the unexpected-branch guard does not fire, and there is
+        # no pending transaction, so recovery finds nothing to reconcile. The
+        # next run would hand a fresh worker a tree that already contains
+        # somebody else's half-finished work, and the harness would commit the
+        # blend as one verified item with one provenance.
+        #
+        # Detection and refusal only. Nothing is committed, staged, reset,
+        # cleaned, stashed, checked out or adopted, and no receipt or pending
+        # transaction is manufactured -- the item never reached a boundary where
+        # any of those would be truthful.
+        # Scoped to the EXPECTED branch on purpose. A dirty worktree sitting on the
+        # WRONG branch is a different situation with its own handler further down,
+        # and that guard must keep its own diagnosis rather than being preempted
+        # by this more general one.
+        $onExpectedBranch = $false
+        if (Test-Path $wt) {
+            $curBr = (Invoke-Git -Directory $wt -AllowFail -Arguments @('branch', '--show-current')).Output -join ''
+            $onExpectedBranch = ($curBr -eq $br)
+        }
+
+        if (-not $rec.blocked -and $onExpectedBranch) {
+            $unexplained = @(Get-C1DirtyPaths -WorktreePath $wt -ResultFileName $cfg.resultFileName)
+            if ($unexplained.Count -gt 0) {
+                Write-Diag ("lane $($lane.id): $($unexplained.Count) uncheckpointed path(s) with no recovery evidence " +
+                            "($($unexplained -join ', ')). Lane refused.") 'WARN'
+                $lane.state = 'FAILED_RECOVERY'
+                $lane.lastResult = 'FAILED_RECOVERY'
+                $blk = New-C1LaneBlocker -Lane $lane -RunId $runId -PassId 0 -Suffix 'unexplained-dirty' `
+                    -WorkItem '(startup recovery)' -Category 'GOVERNANCE' `
+                    -Question ("Lane $($lane.id) contains uncheckpointed worktree changes with no deterministic " +
+                               "recovery evidence: $($unexplained -join ', '). The prior supervisor may have " +
+                               'terminated during a worker session. How should these preserved files be reconciled?') `
+                    -Why ('The harness cannot prove whether the files are complete, verified, or even all from one ' +
+                          'worker session. Starting another worker on top of them would blend sessions and break ' +
+                          'item provenance.') `
+                    -Scope "Lane $($lane.id) execution only." `
+                    -Remaining 'All other lanes remain executable.'
+                $added = Add-C1Blocker -BlockersDoc $blockersDoc -Blocker $blk
+                if ($added.isNew) { Write-C1Blocker -Blocker $added.blocker -Lane $lane }
+                Write-JsonFile $ctx.BlockersFile $blockersDoc
+                Write-JsonFile $ctx.LanesFile $lanesDoc
+                $stateAdvanced = $true
+            }
+        }
     }
 }
 
