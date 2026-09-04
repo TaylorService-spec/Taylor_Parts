@@ -209,7 +209,7 @@
       "name": "Data / Inventory",
       "priority": 20,
       "enabled": true,
-      "state": "BLOCKED_PARTIAL",
+      "state": "READY",
       "charter": "docs/customer-1/automation/lanes/B-data-inventory.md",
       "gates": [
         "C1-DATA-01",
@@ -233,9 +233,9 @@
       "dependencies": [],
       "currentWorkItem": "B-05 Migration dry-run harness and deterministic exception report for C1-DATA-01",
       "branchPrefix": "customer1/b-",
-      "lastReconciledMain": "85b485d7c245986b869b9b82c98b87a075fb28d4",
+      "lastReconciledMain": "f84bd955b2e79520a3acb00828292e8d78925a3b",
       "lastRun": "run-20260904-125539",
-      "lastResult": "DONE",
+      "lastResult": null,
       "noProgressInRun": null
     },
     {

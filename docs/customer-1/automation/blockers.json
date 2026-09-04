@@ -25,8 +25,10 @@
       "blockingScope": "Lane B branch integration.",
       "remainingExecutableWork": "Other lanes are unaffected and remain executable.",
       "createdAt": "2026-09-04T21:23:50Z",
-      "status": "OPEN",
-      "fingerprint": "B|governance|origin/main moved a governed authority path. how should lane b reconcile? main moved a governed authority path: docs/customer-1/automation/program.md, docs/customer-1/automation/lanes/b-data-inventory.md, scripts/customer1-automation/run-program.ps1, scripts/customer1-automation/test-framework.ps1. automation must not reconcile this.|lane b branch integration."
+      "status": "RESOLVED",
+      "fingerprint": "B|governance|origin/main moved a governed authority path. how should lane b reconcile? main moved a governed authority path: docs/customer-1/automation/program.md, docs/customer-1/automation/lanes/b-data-inventory.md, scripts/customer1-automation/run-program.ps1, scripts/customer1-automation/test-framework.ps1. automation must not reconcile this.|lane b branch integration.",
+      "resolvedAt": "2026-09-04T21:29:30.7140211Z",
+      "resolution": "OWNER AUTHORIZED exact main f84bd955b2e79520a3acb00828292e8d78925a3b. Delta proved limited to reviewed PR #1802 and PR #1803. No broader governed-path or production authorization granted."
     }
   ]
 }
