@@ -70,16 +70,16 @@ $reconciled = foreach ($i in $items) {
 }
 
 $open = @($Blockers.blockers | Where-Object { $_.status -eq 'OPEN' })
-function BlockersOf { param([string[]]$Cats) @($open | Where-Object { $Cats -contains $_.category } | ForEach-Object { "**$($_.id)** (lane $($_.lane)) $($_.question) — _blocks:_ $($_.blockingScope)" }) }
+function BlockersOf { param([string[]]$Cats) @($open | Where-Object { $Cats -contains $_.category } | ForEach-Object { "**$($_.id)** (lane $($_.lane)) $($_.question) -- _blocks:_ $($_.blockingScope)" }) }
 
 $laneTable = foreach ($l in @($Lanes.lanes)) {
-    "| $($l.id) | $($l.name) | $($l.state) | $(if ($l.lastResult) { $l.lastResult } else { '—' }) | $(if ($l.currentWorkItem) { $l.currentWorkItem } else { '—' }) |"
+    "| $($l.id) | $($l.name) | $($l.state) | $(if ($l.lastResult) { $l.lastResult } else { '--' }) | $(if ($l.currentWorkItem) { $l.currentWorkItem } else { '--' }) |"
 }
 
-$nextQueue = @(Get-ExecutableLanes -Lanes $Lanes.lanes | ForEach-Object { "$($_.id) — $($_.name) (priority $($_.priority), state $($_.state))" })
+$nextQueue = @(Get-ExecutableLanes -Lanes $Lanes.lanes | ForEach-Object { "$($_.id) -- $($_.name) (priority $($_.priority), state $($_.state))" })
 
 $md = @"
-# Customer 1 orchestrator run — $($Run.runId)
+# Customer 1 orchestrator run -- $($Run.runId)
 
 $(if ($Run.dryRun) { '**DRY RUN. No Claude process was invoked and no file was changed.**' } else { '' })
 
@@ -102,7 +102,7 @@ $(Bullets @($Run.lanesAttempted))
 
 | Lane | Work item | Result | Changed files |
 | --- | --- | --- | ---: |
-$((@($items | ForEach-Object { "| $($_.laneId) | $(if ($_.workItem) { $_.workItem } else { '—' }) | $($_.result) | $(@($_.changedPaths).Count) |" })) -join "`n")
+$((@($items | ForEach-Object { "| $($_.laneId) | $(if ($_.workItem) { $_.workItem } else { '--' }) | $($_.result) | $(@($_.changedPaths).Count) |" })) -join "`n")
 
 - Completed (DONE): **$($done.Count)**
 - Partial: **$($partial.Count)**
@@ -122,7 +122,7 @@ $(Bullets $reconciled)
 
 ## PRs prepared
 
-$(Bullets @($items | Where-Object { $_.result -eq 'DONE' } | ForEach-Object { "lane $($_.laneId): branch ``$($_.branch)`` at ``$($_.headShaAfter)`` — not pushed, not merged" }))
+$(Bullets @($items | Where-Object { $_.result -eq 'DONE' } | ForEach-Object { "lane $($_.laneId): branch ``$($_.branch)`` at ``$($_.headShaAfter)`` -- not pushed, not merged" }))
 
 ## Owner questions
 
