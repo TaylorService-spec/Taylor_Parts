@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "gate": "C1-DATA-01",
+  "status": "INCOMPLETE",
+  "lastReconciled": "2026-09-04",
+  "requiredDomains": [
+    "parts",
+    "customers",
+    "equipment",
+    "inventory",
+    "purchasing",
+    "serviceHistory"
+  ],
+  "unsourcedDomains": [],
+  "systems": [
+    {
+      "id": "system-1",
+      "name": "UNKNOWN",
+      "vendor": "UNKNOWN",
+      "kind": "UNKNOWN",
+      "holds": [
+        "parts",
+        "customers",
+        "equipment",
+        "inventory",
+        "purchasing",
+        "serviceHistory"
+      ],
+      "accessMethod": "UNKNOWN",
+      "exportFormat": "UNKNOWN",
+      "recordVolume": "UNKNOWN",
+      "identityKeys": "UNKNOWN",
+      "taylorOwner": "UNKNOWN",
+      "notes": "Placeholder row. Taylor has not yet named the systems of record. No system, vendor, format, volume, or key has been asserted by Verenward; every field stays UNKNOWN until Taylor supplies it. Split this row into one row per real system when the facts arrive."
+    }
+  ]
+}
