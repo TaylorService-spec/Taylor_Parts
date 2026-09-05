@@ -23,10 +23,61 @@ const catalogById = () => {
   return m;
 };
 
-/** Registered ids that are ACTIVE (a missing `active` means active; only `false` is inert). */
+/**
+ * Registered ids the CATALOG marks active. A missing `active` means active; only `false` is inert.
+ *
+ * This is the catalogue's answer, not the environment's. On its own it is incomplete -- see
+ * operableCapabilityIds below, which is the one a screen should ask.
+ */
 export function activeCapabilityIds() {
   return new Set(PERMISSION_CATALOG.filter((p) => p.active !== false).map((p) => p.id));
 }
+
+/**
+ * Registered ids that are OPERABLE IN THIS ENVIRONMENT -- catalogue-active, PLUS anything this
+ * environment activates through the governed per-environment override.
+ *
+ * ============================ WHY THIS EXISTS ============================
+ *
+ * `active: false` in the catalog does NOT mean "inert everywhere". It means "inert unless the
+ * environment activates it", and that second half is how every capability shipped since the
+ * activation programme reaches anybody at all. A screen reading only the catalog reports a
+ * capability as denied while the backend resolver -- reading the same override set -- allows it.
+ *
+ * Data Import made the gap visible: `admin.dataImport.stage` and `.execute` are registered
+ * active:false, held by Administrator through the derived catalogue grant, and ACTIVATED in
+ * platform-sandbox. The inspector called them inert while the product ran them.
+ *
+ * ============================ WHAT IS NOT DUPLICATED HERE ============================
+ *
+ * The override set is CONSUMED, never recomputed. `config/capabilityActivationOverrides.js`
+ * bakes it at build time from the ONE registry via resolveEnvironment.mjs, which is role-keyed
+ * (production resolves to []) and already intersects the declaration with the eligibility
+ * allow-list. So production cannot be widened from here, and an environment cannot activate a
+ * capability nobody made eligible -- neither rule is re-implemented in this file.
+ *
+ * INTERSECTED WITH THE CATALOG all the same. An override naming an id the catalog does not
+ * define must not conjure a capability into existence; it stays an unknown grant, which is the
+ * category that already exists for exactly that.
+ */
+export function operableCapabilityIds(activationOverrides = EMPTY_OVERRIDES) {
+  const operable = activeCapabilityIds();
+  const registered = catalogById();
+  for (const id of activationOverrides) {
+    if (registered.has(id)) operable.add(id);
+  }
+  return operable;
+}
+
+/**
+ * The default: NO environment activation.
+ *
+ * Deliberately the conservative direction. A caller that forgets to pass the environment's set
+ * under-reports what a role can do, which is a visible wrong answer somebody chases. The
+ * opposite default would over-report -- telling an administrator authority exists where it does
+ * not, which is the failure this whole model was built to prevent.
+ */
+const EMPTY_OVERRIDES = Object.freeze(new Set());
 
 /**
  * One role's access, resolved against the catalog.
@@ -39,9 +90,10 @@ export function activeCapabilityIds() {
  *                Surfaced rather than filtered out, because a typo'd id is indistinguishable
  *                from a missing one when you silently drop both.
  */
-export function resolveRoleAccess(role) {
+export function resolveRoleAccess(role, { activationOverrides = EMPTY_OVERRIDES } = {}) {
   const byId = catalogById();
-  const active = activeCapabilityIds();
+  const catalogActive = activeCapabilityIds();
+  const operable = operableCapabilityIds(activationOverrides);
   const held = [...new Set(role?.permissions ?? [])];
 
   const granted = [];
@@ -56,7 +108,15 @@ export function resolveRoleAccess(role) {
       id,
       description: def.description ?? null,
       domain: domainOf(id),
-      active: active.has(id),
+      // The CATALOG's answer, kept so the two can be told apart rather than merged into one
+      // flag that could no longer explain itself.
+      active: catalogActive.has(id),
+      // The answer that decides which list this lands in.
+      operable: operable.has(id),
+      // True only for the interesting case: inert in the catalog, reachable here anyway. The
+      // screen says so out loud, because "active" and "active BECAUSE THIS ENVIRONMENT SAYS SO"
+      // are different facts and an administrator planning production needs the difference.
+      activatedByEnvironment: !catalogActive.has(id) && operable.has(id),
     });
   }
   granted.sort((a, b) => a.id.localeCompare(b.id));
@@ -67,8 +127,11 @@ export function resolveRoleAccess(role) {
     roleName: role?.name ?? null,
     description: role?.description ?? null,
     granted,
-    effective: granted.filter((g) => g.active),
-    inert: granted.filter((g) => !g.active),
+    effective: granted.filter((g) => g.operable),
+    inert: granted.filter((g) => !g.operable),
+    // Called out separately so a reader can see at a glance how much of this role's reach
+    // depends on an environment setting rather than on the catalog.
+    environmentActivated: granted.filter((g) => g.activatedByEnvironment),
     unknown,
   };
 }
@@ -120,8 +183,11 @@ export function roleObjectMatrix(role) {
  *                      least-privilege baseline) and sometimes a role that was defined and
  *                      never filled in; the screen shows it and lets a human tell which.
  */
-export function accessDiagnostics(roles) {
-  const active = activeCapabilityIds();
+export function accessDiagnostics(roles, { activationOverrides = EMPTY_OVERRIDES } = {}) {
+  // The SAME question resolveRoleAccess asks, asked the same way. A diagnostics panel counting
+  // catalogue-inert while the list beside it counts environment-operable would put two numbers
+  // on one screen that disagree -- and the reader has no way to know which is answering theirs.
+  const active = operableCapabilityIds(activationOverrides);
   const grantedAnywhere = new Set();
   const inertGrants = [];
   const unknownGrants = [];

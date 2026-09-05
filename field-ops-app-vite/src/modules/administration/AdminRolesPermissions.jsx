@@ -8,6 +8,7 @@ import {
   accessDiagnostics,
 } from "../../access/roleAccessModel.js";
 import { VERBS, VERB_LABEL } from "../../access/objectPermissionMap.js";
+import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
@@ -28,6 +29,15 @@ import ApprovalRequests from "./ApprovalRequests.jsx";
 // real time -- admin holding 50 of 110 capabilities went unnoticed precisely because
 // nothing rendered a role's actual reach.
 //
+// ACTIVATION IS PER ENVIRONMENT, and this screen has to say THAT too. `active: false` in the
+// catalog does not mean inert everywhere -- it means inert unless the environment activates it,
+// which is how every capability shipped under the activation programme reaches anybody at all.
+// This screen originally read only the catalog, so it reported a capability as denied while the
+// backend resolver -- reading the same override set -- allowed it. Data Import made that visible:
+// admin.dataImport.stage/.execute are catalogue-inert, held by Administrator through the derived
+// grant, and ACTIVATED in platform-sandbox. The inspector called them inert while the product ran
+// them. It now asks the same question the enforcement path asks, from the same governed set.
+//
 // GRANT IS NOT ACTIVATION, and this screen exists largely to say so. A capability
 // registered active:false DENIES FOR EVERYONE regardless of who holds it. A role can carry
 // the id and still be unable to act. Drawn as one undifferentiated list, a granted-but-
@@ -38,6 +48,18 @@ import ApprovalRequests from "./ApprovalRequests.jsx";
 // honest reason (below) rather than being quietly dropped -- removing it would hide that
 // the capability exists and is merely unreachable from here.
 const ALL_ROLES = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+
+/**
+ * This build's environment id, or null.
+ *
+ * Guarded exactly as diagnostics/crashDiagnostics.js guards it: the define is absent in a plain
+ * node context, and an unguarded read of an undeclared global throws rather than returning
+ * undefined. Naming the environment matters here -- "active" and "active because THIS
+ * environment activates it" are different facts, and the second is only meaningful with the
+ * environment named.
+ */
+const ENVIRONMENT_ID =
+  typeof __APP_ENVIRONMENT__ === "object" && __APP_ENVIRONMENT__ ? (__APP_ENVIRONMENT__.id ?? null) : null;
 
 // Roles in the Owner's roster order. Stated rather than derived so a role the business has
 // named but the system has not shows up as MISSING instead of silently vanishing.
@@ -79,7 +101,7 @@ function VerbCell({ state }) {
   );
 }
 
-function CapabilityList({ capabilities, tone }) {
+function CapabilityList({ capabilities, tone, environmentId }) {
   if (capabilities.length === 0) return <p className="fo-muted">None.</p>;
   return (
     <ul className="fo-role-caps">
@@ -87,6 +109,13 @@ function CapabilityList({ capabilities, tone }) {
         <li key={c.id}>
           <code>{c.id}</code>
           {tone === "inert" && <StatusPill tone="attention" label="inert" asText />}
+          {/* Catalogue-inert but reachable HERE. Said on the row rather than only in the
+              heading, because this is the fact that changes when the same role is read against
+              production -- and an administrator planning production needs to see which lines
+              would move. */}
+          {c.activatedByEnvironment && (
+            <StatusPill tone="info" label={environmentId ? `active in ${environmentId}` : "active in this environment"} asText />
+          )}
           {c.description && <span className="fo-muted"> — {c.description}</span>}
         </li>
       ))}
@@ -94,7 +123,14 @@ function CapabilityList({ capabilities, tone }) {
   );
 }
 
-export default function AdminRolesPermissions() {
+/**
+ * @param activationOverrides  The environment's activation set. Defaults to the governed
+ *   build-time constant, which is what production and the sandbox both actually run. It is a
+ *   PARAMETER so a test can render this screen as a DIFFERENT environment -- the shared vitest
+ *   define is `[]` on purpose (other suites depend on that), and a screen whose environment
+ *   behaviour could only be tested by changing a global would not get tested.
+ */
+export default function AdminRolesPermissions({ activationOverrides = CAPABILITY_ACTIVATION_OVERRIDE_SET, environmentId = ENVIRONMENT_ID } = {}) {
   // Surfaced next to the section heading so a waiting approval is visible on arrival rather
   // than only after scrolling into the queue.
   const [pendingApprovals, setPendingApprovals] = useState(0);
@@ -102,12 +138,16 @@ export default function AdminRolesPermissions() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const selected = ROSTER_ROLES.find((r) => r.id === roleKey) ?? ROSTER_ROLES[1];
+  // THE CURRENT ENVIRONMENT'S activation set, baked at build time from the ONE registry and
+  // role-keyed -- a production bundle carries []. Passed rather than read inside the model so
+  // the model stays pure and a test can hand it a different environment.
+  const activation = { activationOverrides };
   const role = selected.id ? ALL_ROLES[selected.id] : null;
 
-  const access = useMemo(() => (role ? resolveRoleAccess(role) : null), [role]);
+  const access = useMemo(() => (role ? resolveRoleAccess(role, activation) : null), [role]);
   const objects = useMemo(() => (role ? roleObjectMatrix(role) : []), [role]);
   const diagnostics = useMemo(
-    () => accessDiagnostics(ROSTER_ROLES.map((r) => ALL_ROLES[r.id]).filter(Boolean)),
+    () => accessDiagnostics(ROSTER_ROLES.map((r) => ALL_ROLES[r.id]).filter(Boolean), activation),
     []
   );
 
@@ -141,9 +181,14 @@ export default function AdminRolesPermissions() {
             items={[
               { key: "effective", label: "Can actually do", value: access.effective.length },
               // Counted separately and never folded into the total: a granted capability
-              // that denies for everyone is not authority, and a single number would say
-              // it was.
+              // that denies for everyone HERE is not authority, and a single number would
+              // say it was.
               { key: "inert", label: "Granted but inert", value: access.inert.length },
+              // Only shown when it is non-zero, because on most roles in most environments it
+              // is zero and a permanent 0 teaches a reader to stop seeing the row.
+              ...(access.environmentActivated.length > 0
+                ? [{ key: "envActivated", label: `Active because of ${environmentId ?? "this environment"}`, value: access.environmentActivated.length }]
+                : []),
               { key: "catalog", label: "Capabilities in catalog", value: diagnostics.catalogSize },
               { key: "active", label: "Active in catalog", value: diagnostics.activeCount },
             ]}
@@ -169,10 +214,19 @@ export default function AdminRolesPermissions() {
 
           <section className="fo-panel" aria-label="Capabilities this role can use">
             <h3>Can actually do ({access.effective.length})</h3>
+            {access.environmentActivated.length > 0 && (
+              <p className="fo-muted">
+                {access.environmentActivated.length} of these are registered inactive in the catalog and
+                are reachable because{" "}
+                <strong>{environmentId ?? "this environment"}</strong> activates them. They are marked
+                below. In an environment that does not activate them, this role cannot do them —
+                so this list answers <em>here</em>, not everywhere.
+              </p>
+            )}
             {groupByDomain(access.effective).map((g) => (
               <div key={g.domain} className="fo-role-domain">
                 <h4>{g.domain}</h4>
-                <CapabilityList capabilities={g.capabilities} />
+                <CapabilityList capabilities={g.capabilities} environmentId={environmentId} />
               </div>
             ))}
             {access.effective.length === 0 && (
@@ -187,11 +241,13 @@ export default function AdminRolesPermissions() {
             <section className="fo-panel" aria-label="Granted but inert">
               <h3>Granted, but denies anyway ({access.inert.length})</h3>
               <p className="fo-muted">
-                These are registered inactive in the permission catalog, which denies them for
-                <strong> everyone</strong> regardless of who holds them. The role carries the grant and
-                still cannot do the thing. Granting it again will not help — it has to be activated.
+                These are registered inactive in the permission catalog{" "}
+                <strong>and {environmentId ?? "this environment"} does not activate them</strong>, so they
+                deny for <strong>everyone</strong> here regardless of who holds them. The role carries the
+                grant and still cannot do the thing. Granting it again will not help — it has to be
+                activated, which is an environment decision rather than a role one.
               </p>
-              <CapabilityList capabilities={access.inert} tone="inert" />
+              <CapabilityList capabilities={access.inert} tone="inert" environmentId={environmentId} />
             </section>
           )}
 
