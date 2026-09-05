@@ -568,6 +568,12 @@ export const NAV_DOMAINS = [
       // configuration of the same kind as Roles and Racking rather than routine financial work.
       // Financials carries a read-only summary that links here; this is the only editing surface.
       { key: "financialPolicy", label: "Financial Policy", path: "financial-policy" },
+      // Data Import -- loading a customer's existing records into EOS. Configuration of the same kind
+      // as Roles and Racking: it is done during implementation, by an administrator, once per data set.
+      // Both capabilities are registered active:false and activated per environment, so this item is
+      // capability-gated rather than role-gated -- an environment that has not activated import does
+      // not show a destination that would refuse everyone who opened it.
+      { key: "dataImport", label: "Data Import", path: "data-import", capabilityAccess: ["admin.dataImport.stage"] },
       { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],

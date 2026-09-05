@@ -8268,3 +8268,50 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
   max-width: 100%;
   min-height: 44px;
 }
+
+/* =============================================================================
+   ADMINISTRATION -> DATA IMPORT
+   =============================================================================
+   Four stacked panels in the order the work happens (file, contents, preview,
+   approve) plus history. No new layout vocabulary: the panels are .fo-panel and
+   the tables are .fo-table like every other administration surface. These rules
+   exist only for the two things those do not cover -- a preview that can be long
+   enough to need its own scroll, and per-row findings rendered as a list inside
+   a table cell. */
+.fo-data-import { display: flex; flex-direction: column; gap: 12px; }
+.fo-data-import__summary { margin: 0; }
+/* Bounded so a 500-row preview does not push Approve off the bottom of the page.
+   Approving something you have to scroll past the end of the world to reach is
+   how an operator approves without looking. */
+.fo-data-import__preview { max-height: 360px; overflow: auto; }
+.fo-data-import__findings { margin: 0; padding-left: 0; list-style: none; }
+.fo-data-import__findings li { font-size: 13px; }
+
+/* =============================================================================
+   IMPORTED HISTORICAL SERVICE -- the second source under Service activity
+   =============================================================================
+   Deliberately the SAME row grammar as the Work Order list above it (.ns-svc__list
+   / .ns-svc__row), so the two sources read as one page rather than as a bolted-on
+   panel. What differs is what differs in the data: an imported row has a
+   description where a Work Order has a status, and no schedule, so its columns
+   split differently. The rule above it is what separates the two sources
+   visually -- a heading alone reads as a subsection of the same list. */
+.ns-imported-history { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+.ns-imported-history__title { font-size: 15px; }
+.ns-svc__row--imported { grid-template-columns: 200px minmax(0, 1fr) 130px 170px; align-items: start; }
+.ns-svc__summary { color: var(--color-text-primary); }
+/* On the row itself, not only in the heading: a row is what gets screenshotted and
+   quoted back with no heading attached. */
+.ns-imported-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  vertical-align: middle;
+  white-space: nowrap;
+}

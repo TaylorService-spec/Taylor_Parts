@@ -167,6 +167,12 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   // rather than a safeguard.
   'financialPolicy.profile.read',
   'financialPolicy.profile.configure',
+  // DATA IMPORT P1 -- mirrors environmentCapabilityOverrides.ts, whose comment carries the full
+  // reasoning. Present here for the same reason as the ids above: the frontend bakes THIS list
+  // into the bundle, so a capability eligible on the backend but absent here would hide the Data
+  // Import screen the command would have answered.
+  'admin.dataImport.stage',
+  'admin.dataImport.execute',
 ]);
 
 /**

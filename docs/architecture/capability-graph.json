@@ -12,26 +12,26 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 137,
+    "capabilities": 139,
     "catalogActive": 0,
-    "catalogInactive": 137,
-    "eligibleForEnvironmentActivation": 83,
-    "activatedInSomeEnvironment": 83,
-    "callableExports": 45,
-    "destinations": 90,
+    "catalogInactive": 139,
+    "eligibleForEnvironmentActivation": 85,
+    "activatedInSomeEnvironment": 85,
+    "callableExports": 46,
+    "destinations": 91,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 137,
-    "parsed": 137,
+    "raw": 139,
+    "parsed": 139,
     "ok": true
   },
   "implementationEvidence": {
-    "SERVER_REFERENCED": 111,
-    "EXPORTED": 20,
+    "EXPORTED": 21,
+    "SERVER_REFERENCED": 112,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -397,7 +397,9 @@
       "description": "Read a Customer record.",
       "catalogActive": false,
       "implementation": {
-        "exportedCallables": [],
+        "exportedCallables": [
+          "listImportedServiceHistoryCallable as listImportedServiceHistory"
+        ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
@@ -405,6 +407,7 @@
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountPortfolioSummary.ts",
           "functions/src/assistant/assistantStarters.ts",
+          "functions/src/dataImport/importedServiceHistoryReadService.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
@@ -416,9 +419,9 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 7,
-        "evidence": "SERVER_REFERENCED"
+        "evidence": "EXPORTED"
       },
       "environmentActivation": {
         "eligible": false,
@@ -437,7 +440,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/account/accountImportCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -446,7 +450,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1443,7 +1447,7 @@
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
-          "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
+          "field-ops-app-vite/src/shared/ui/NotificationControl.jsx"
         ],
         "serverReferenceCount": 4,
         "clientReferenceCount": 6,
@@ -3092,6 +3096,57 @@
       }
     },
     {
+      "id": "admin.dataImport.stage",
+      "resource": "admin.dataImport",
+      "action": "stage",
+      "description": "Upload a file, choose or confirm the entity, map columns, and see the validated preview of what an import would do. Writes no operational record and cannot: the staging path has no write capability of any kind.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/dataImport/dataImportCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx",
+          "field-ops-app-vite/src/navigation/navConfig.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "admin.dataImport.execute",
+      "resource": "admin.dataImport",
+      "action": "execute",
+      "description": "Approve a validated import preview and execute it through the governed EOS commands. Creates records only: never overwrites an existing one, and never bypasses the command that owns the record it writes.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/dataImport/dataImportCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
       "id": "admin.credentialReset.initiate",
       "resource": "admin.credentialReset",
       "action": "initiate",
@@ -3869,13 +3924,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/equipmentInstall/equipmentImportCommand.ts",
           "functions/src/equipmentInstall/installSerializedAssetCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/equipmentInstallCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4554,6 +4610,16 @@
       "module": "./crmActivity/crmActivityReadService",
       "capabilityHints": [],
       "comment": null
+    },
+    {
+      "names": [
+        "listImportedServiceHistoryCallable as listImportedServiceHistory"
+      ],
+      "module": "./dataImport/dataImportCallables",
+      "capabilityHints": [
+        "customer.record.read"
+      ],
+      "comment": "--- EOS Data Import P1 -- the READ side of imported service history --- Separate from the three import callables above in every way that matters: it is NOT sandbox-gated (reading records that already exist is not a sandbox-only act), and it is NOT gated on the import capabilities (gating it on those"
     }
   ],
   "destinations": [
@@ -5269,6 +5335,15 @@
       "placeholderExplanation": null
     },
     {
+      "key": "dataImport",
+      "label": "Data Import",
+      "path": "data-import",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
       "key": "integrations",
       "label": "Integrations",
       "path": "integrations",
@@ -5526,7 +5601,9 @@
     "performance.goal.supersede",
     "performance.goal.retire",
     "financialPolicy.profile.read",
-    "financialPolicy.profile.configure"
+    "financialPolicy.profile.configure",
+    "admin.dataImport.stage",
+    "admin.dataImport.execute"
   ],
   "parityIssues": []
 }

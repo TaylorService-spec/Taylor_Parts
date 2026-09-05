@@ -81,7 +81,19 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 //     the ONLY delta this pin now blesses is that one hunk; and the whole remaining diff is comment
 //     lines. If a future mismatch cannot be explained that precisely, fix the Rules or ask -- do not
 //     move this constant.
-const GOVERNED_RULES_SHA256 = "cb449226148d5766a3674b8dbc9a88e2706e68ea70360cc9f0e4bf08707407a0";
+//   cb449226148d5766a3674b8dbc9a88e2706e68ea70360cc9f0e4bf08707407a0 -- the ruleset before EOS Data Import P1
+//     added two deny-all match blocks: data_import_jobs and imported_service_history. Both are
+//     `allow read, write: if false;`.
+//
+//     RE-PINNED by synchronisation, and the delta is explainable to the line, which is the bar
+//     this comment sets. The ENTIRE non-comment diff is those two blocks. Each GRANTS NOTHING
+//     and NARROWS NOTHING: an unmatched collection already denies, so making the denial explicit
+//     changes no decision for any principal. They are written because every other
+//     Admin-SDK-only collection in this file is written that way, and a silent omission reads
+//     identically to an oversight.
+//
+//     Both governed copies were re-verified byte-identical before this moved.
+const GOVERNED_RULES_SHA256 = "43d848caaa3112c7b2b26259fffb4da46cd832c0713099485795717bbfe54252";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

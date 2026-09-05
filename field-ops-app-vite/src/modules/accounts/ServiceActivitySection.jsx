@@ -15,6 +15,9 @@ import { workOrderStatusWords } from "../../domain/workOrderNorthStar.js";
 import { formatDateOnly } from "../../domain/displayTimestamp.js";
 import { objectListPath, OBJECT_LIST_KEY } from "../../navigation/objectRoutes.js";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { useState, useEffect } from "react";
+import ImportedServiceHistoryBlock from "./ImportedServiceHistoryBlock.jsx";
+import { fetchImportedServiceHistory } from "../../access/importedServiceHistorySource.js";
 
 // SERVICE ACTIVITY -- this account's work, in the North Star row grammar.
 //
@@ -88,12 +91,48 @@ function WorkOrderRow({ wo, technicians, techniciansLoading, techniciansError })
   );
 }
 
+/**
+ * Imported historical service, on its OWN state.
+ *
+ * A fourth independent read beside the two counts and the timeline, following this file's
+ * existing rule exactly: one element's failure can never change what another renders. If the
+ * imported read is denied or fails, the Work Order timeline above is untouched -- and if there
+ * is no imported history at all (the normal case), the block renders nothing.
+ *
+ * It reads through a trusted callable rather than a Firestore query because
+ * `imported_service_history` is deny-all in Rules, which is the correct posture for records
+ * carrying another system's free text.
+ */
+function useImportedServiceHistory(accountId) {
+  const [state, setState] = useState({ loading: true, source: null });
+
+  useEffect(() => {
+    if (!accountId) {
+      setState({ loading: false, source: null });
+      return undefined;
+    }
+    let live = true;
+    setState({ loading: true, source: null });
+    fetchImportedServiceHistory(accountId).then((source) => {
+      // Guarded against an account change mid-flight: a late response for the PREVIOUS
+      // customer rendering under this one would attribute somebody else's history.
+      if (live) setState({ loading: false, source });
+    });
+    return () => {
+      live = false;
+    };
+  }, [accountId]);
+
+  return state;
+}
+
 export default function ServiceActivitySection({ accountId }) {
   // Two SEPARATE count hooks -- each fetches and error-handles on its own, so Completed failing
   // never hides Open (or vice versa), and neither touches the timeline below.
   const completed = useAccountWorkOrderCount(accountId, fetchAccountCompletedWorkOrderCount);
   const open = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
   const timeline = useAccountWorkOrderTimeline(accountId);
+  const imported = useImportedServiceHistory(accountId);
   const tView = timelineView(timeline);
   const {
     data: technicians,
@@ -146,6 +185,11 @@ export default function ServiceActivitySection({ accountId }) {
           )}
         </>
       )}
+
+      {/* THE SECOND SOURCE. Below the Work Order list, never interleaved with it, and never
+          counted into the two counts above -- those are Work Order counts, and an imported
+          record is not a Work Order. */}
+      <ImportedServiceHistoryBlock loading={imported.loading} source={imported.source} />
 
       <p className="ns-table__note">
         Equipment isn’t listed here: no account-scoped equipment read exists yet, and a partial list

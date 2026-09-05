@@ -529,3 +529,30 @@ export {
   listPerformanceGoalVersionsCallable as listPerformanceGoalVersions,
   listGoalSubjectsCallable as listGoalSubjects,
 } from "./performance/performanceGoalCallables";
+
+// --- EOS Data Import P1 (sandbox-only native file import) ---
+// Administration -> Data Import. Three callables: stage a file into a previewed job, execute an
+// approved job, and list history. SANDBOX ONLY, and enforced in the code rather than by deployment
+// discipline: every one of them calls assertNonProductionImportTarget FIRST, which refuses the
+// production project by name from the runtime's own GCLOUD_PROJECT before any authority is even
+// evaluated. Both capabilities (admin.dataImport.stage / .execute) are registered active:false and
+// activated only where config/environments.json says so.
+//
+// EXECUTION ADDS NO WRITE AUTHORITY. It calls the same governed partMaster createPart a human uses,
+// which enforces inventory.catalog.manage, validates, keys idempotency and audits inside its own
+// transaction. Import cannot write anything a person with the same capabilities could not have
+// written one record at a time. Frozen public names, no "Callable" suffix, per the convention above.
+export {
+  stageDataImportCallable as stageDataImport,
+  executeDataImportCallable as executeDataImport,
+  listDataImportJobsCallable as listDataImportJobs,
+} from "./dataImport/dataImportCallables";
+
+// --- EOS Data Import P1 -- the READ side of imported service history ---
+// Separate from the three import callables above in every way that matters: it is NOT
+// sandbox-gated (reading records that already exist is not a sandbox-only act), and it is NOT
+// gated on the import capabilities (gating it on those would make imported history visible only
+// to whoever imported it). It gates on `customer.record.read` -- the existing, ACTIVE authority
+// to read a Customer -- and resolves nothing: the technician name and equipment serial leave as
+// the historical TEXT they were stored as.
+export { listImportedServiceHistoryCallable as listImportedServiceHistory } from "./dataImport/dataImportCallables";

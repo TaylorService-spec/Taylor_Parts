@@ -1,15 +1,15 @@
 {
  "catalog": {
-  "total": 137,
+  "total": 139,
   "active": 36,
-  "inactive": 101
+  "inactive": 103
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 18,
+  "total": 20,
   "byStatus": {
    "UNCLASSIFIED": 3,
-   "DELIBERATELY_PRIVILEGED_ONLY": 6,
+   "DELIBERATELY_PRIVILEGED_ONLY": 8,
    "RECORDED_GAP": 9
   },
   "capabilities": [
@@ -91,6 +91,18 @@
     "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
    },
    {
+    "capability": "admin.dataImport.stage",
+    "active": false,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
+    "capability": "admin.dataImport.execute",
+    "active": false,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
     "capability": "admin.credentialReset.initiate",
     "active": false,
     "status": "DELIBERATELY_PRIVILEGED_ONLY",
@@ -137,12 +149,14 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 137,
+   "grantedCount": 139,
    "operableCount": 36,
-   "blockedCount": 101,
+   "blockedCount": 103,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
+    "admin.dataImport.execute",
+    "admin.dataImport.stage",
     "admin.roleAssignment.write",
     "admin.userStatus.write",
     "audit.event.read",
@@ -319,6 +333,8 @@
    ],
    "grantedButInactive": [
     "admin.credentialReset.initiate",
+    "admin.dataImport.execute",
+    "admin.dataImport.stage",
     "coverage.read",
     "coverage.write",
     "crm.activity.create",

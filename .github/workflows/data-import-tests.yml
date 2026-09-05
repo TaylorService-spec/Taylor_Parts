@@ -1,0 +1,218 @@
+name: Data Import Tests
+
+# EOS DATA IMPORT P1 -- the sandbox-only native file import. A NEW subsystem needs its own
+# workflow or it is CI-uncovered, and this one guards three claims that must not be allowed to
+# rot quietly, so it does not ride on somebody else's path filter:
+#
+#   1. IMPORT NEVER RUNS IN PRODUCTION. Enforced in code, from the runtime's own project
+#      identity, ahead of any authorization check.
+#   2. IMPORT ADDS NO WRITE AUTHORITY. Execution calls the same governed partMaster command a
+#      human uses; there is no privileged path to lose track of.
+#   3. NOTHING IS WRITTEN BEFORE APPROVAL. Structural -- the staging modules have no write
+#      capability -- and asserted against a real database, not only against a fake.
+#
+# THREE JOBS, SPLIT BY COST AND BY PROCESS.
+#
+# The offline suite is pure and runs first so a broken invariant fails in seconds. The
+# production-refusal suite is a SEPARATE PROCESS because project identity is read at load time:
+# a suite that already loaded as the sandbox cannot honestly assert anything about production.
+# The emulator suite proves the wiring, which is the one thing fakes cannot.
+#
+# NO production, NO deployment, NO credentials, NO repository secrets. The emulator runs as
+# project "eos-platform-sandbox" on loopback -- deliberately NOT "taylor-parts", because the
+# capability activation this feature depends on exists only in the sandbox and the guard would
+# (correctly) refuse everything under the production identity. Both admin.dataImport.* ids stay
+# registered `active: false`; nothing here changes that.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/dataImport/**"
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/account/accountImportCommand.ts"
+      - "functions/src/equipmentInstall/equipmentImportCommand.ts"
+      - "functions/src/constants/collections.ts"
+      - "firestore.rules"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
+      - "functions/test/dataImport*.test.mjs"
+      - "functions/test/xlsxReader.test.mjs"
+      - "functions/test/importedServiceHistoryRead.test.mjs"
+      - "field-ops-app-vite/src/domain/importedServiceHistoryView.js"
+      - "field-ops-app-vite/src/access/importedServiceHistorySource.js"
+      - "functions/test/importTargetGuard.test.mjs"
+      - "functions/test/openingInventoryBalance.test.mjs"
+      - "functions/src/index.ts"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/data-import-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/dataImport/**"
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/account/accountImportCommand.ts"
+      - "functions/src/equipmentInstall/equipmentImportCommand.ts"
+      - "functions/src/constants/collections.ts"
+      - "firestore.rules"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
+      - "functions/test/dataImport*.test.mjs"
+      - "functions/test/xlsxReader.test.mjs"
+      - "functions/test/importedServiceHistoryRead.test.mjs"
+      - "field-ops-app-vite/src/domain/importedServiceHistoryView.js"
+      - "field-ops-app-vite/src/access/importedServiceHistorySource.js"
+      - "functions/test/importTargetGuard.test.mjs"
+      - "functions/test/openingInventoryBalance.test.mjs"
+      - "functions/src/index.ts"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/data-import-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  data-import-offline-tests:
+    name: Contract, intake, XLSX, job model (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      # The pure pipeline: canonical contract, CSV intake, mapping, drift, preview
+      # classification, job lifecycle, execution orchestration, and the Firestore adapters
+      # against fakes. Includes the portability assertions -- the modules above the storage
+      # seam must import no firebase-admin and name no collection.
+      - name: Data import pipeline (contract, intake, preview, job, adapters)
+        run: npm run test:dataImport
+        working-directory: functions
+
+      # The hand-written XLSX reader. Workbooks are built byte by byte in the test with zlib,
+      # so the fixtures add no dependency to the thing whose point is having none -- and can be
+      # made hostile in ways a library would refuse to emit (a lying size header, an
+      # uncalculated formula, a shared-string index off the end).
+      - name: XLSX reader (formulas never evaluated, expansion bounded, malformed refused)
+        run: node --test test/xlsxReader.test.mjs
+        working-directory: functions
+
+      # The catalogue guard: both ids must stay active:false, because true means production too.
+      - name: Permission catalog (catalogue-inactive; activation is per-environment)
+        run: node test/permissionCatalog.test.mjs
+        working-directory: functions
+
+      # The activation seam: eligible-set size, sandbox resolution, production EMPTY.
+      - name: Environment capability overrides (production stays triple-blocked)
+        run: node --test test/environmentCapabilityOverrides.test.mjs
+        working-directory: functions
+
+  data-import-production-refusal:
+    name: Production refusal (separate process, no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      # ITS OWN JOB, not a step in the one above, for the same reason it is its own file: the
+      # runtime's project identity is read once at module load. Loading as "taylor-parts" is
+      # the entire test, and it cannot share a process with a suite that loaded as the sandbox.
+      #
+      # No emulator is started ON PURPOSE. If any entry point reached Firestore, this job would
+      # hang or fail on credentials instead of passing -- refusal happens before that.
+      - name: Every entry point refuses the production project
+        run: node --test test/dataImportProductionRefusal.test.mjs
+        working-directory: functions
+
+  data-import-emulator-tests:
+    name: All five entities, end to end (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project eos-platform-sandbox --config ../firebase.json > /tmp/data-import-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/data-import-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/data-import-emulator.log
+          exit 1
+        working-directory: functions
+
+      # A seeded CSV goes in through the real callable and governed Parts come out in `parts`,
+      # each with the audit event createPart wrote for it -- which is what proves import did not
+      # build a private write path. Also: staging writes nothing, an unapproved execute is
+      # refused, a completed job will not run twice, and re-staging the same file is refused row
+      # by row rather than silently doubling the catalog.
+      - name: Data import end to end (stage, approve, write, replay, authorization)
+        run: npm run test:dataImportEmulator
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-import-emulator-logs
+          path: |
+            /tmp/data-import-emulator.log
+            functions/firestore-debug.log

@@ -19,5 +19,17 @@ what you're trying to do, in plain language, matching the app's actual on-screen
 - [Edit an opportunity](./sales/edit-an-opportunity.md)
 - [Mark an opportunity won](./sales/mark-an-opportunity-won.md)
 
+## Administration
+
+- [Import data from a file](./administration/import-data-from-a-file.md) — loading your existing
+  Parts, Customers, Equipment, stock counts and past service records from a spreadsheet: what each
+  kind of import does, what it refuses and why, and what it will never do. Sandbox only.
+- [Set up warehouse racking](./administration/set-up-warehouse-racking.md) — describing a
+  warehouse's aisles, bays and positions once and creating all of its bins in one pass.
+- [Manage employees](./administration/manage-employees.md)
+- [See who can do what](./administration/see-who-can-do-what.md)
+- [See what a role can do](./administration/see-what-a-role-can-do.md)
+- [Integrations](./administration/integrations-guide.md)
+
 More guides will be added here as they're written. If a guide references a screen or control that
 isn't live yet, it says so rather than describing something you can't actually do.

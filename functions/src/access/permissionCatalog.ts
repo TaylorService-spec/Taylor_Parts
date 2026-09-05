@@ -958,6 +958,38 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.accessRequest",
     action: "decide",
   }),
+  // DATA IMPORT P1 (sandbox-only native file import). TWO capabilities, deliberately, because
+  // the flow has two audiences of risk and only one of them writes anything.
+  //
+  // `admin.dataImport.stage` covers upload, entity selection, column mapping, normalization,
+  // validation and preview. Every module behind it is structurally incapable of an operational
+  // write -- there is no write path to hold back, which is why staging is a lower bar than
+  // executing without that being a concession.
+  //
+  // `admin.dataImport.execute` is the authority to turn an approved preview into governed EOS
+  // records. It is NOT a bypass: execution runs the SAME governed commands a human would
+  // (createPart, and for Inventory the opening-balance authority over the existing ledger), so
+  // holding it never authorizes a write the holder could not have made one record at a time.
+  //
+  // Registered active:false. Import is sandbox-only for P1, and that property is enforced twice
+  // over: per-environment activation here, and importTargetGuard.ts refusing the production
+  // project by name inside the command itself.
+  Object.freeze({
+    id: "admin.dataImport.stage",
+    description:
+      "Upload a file, choose or confirm the entity, map columns, and see the validated preview of what an import would do. Writes no operational record and cannot: the staging path has no write capability of any kind.",
+    resource: "admin.dataImport",
+    action: "stage",
+    active: false,
+  }),
+  Object.freeze({
+    id: "admin.dataImport.execute",
+    description:
+      "Approve a validated import preview and execute it through the governed EOS commands. Creates records only: never overwrites an existing one, and never bypasses the command that owns the record it writes.",
+    resource: "admin.dataImport",
+    action: "execute",
+    active: false,
+  }),
   // AUTH-PR-3.5 (Authentication Modernization; DECISIONS #56 D-RESET-PERMISSION).
   // Admin-initiated password reset for another eligible user. Registered
   // INACTIVE (`active: false` = hard, unconditional DENY through
