@@ -20,6 +20,12 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 import {
   DATA_IMPORT_SURFACE_CAPABILITIES,
   GOVERNED_SURFACE_CAPABILITY_IDS,
+  WAREHOUSE_HANDHELD_CAPABILITIES,
+  RECEIVING_SURFACE_CAPABILITIES,
+  TRANSFER_SURFACE_CAPABILITIES,
+  CYCLE_COUNT_SURFACE_CAPABILITIES,
+  PLACEMENT_SURFACE_CAPABILITIES,
+  RETURNS_SURFACE_CAPABILITIES,
 } from "../src/access/governedSurfaceCapabilities.js";
 import {
   REPORT_CAPABILITY_REQUEST,
@@ -305,5 +311,85 @@ describe("import history: loading, denied, failed and empty are four different f
     expect(screen.getByRole("heading", { name: /^Import history$/i })).toBeTruthy();
     const early = screen.queryByText(/No import has been run/i);
     expect(early).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- the surface boundary
+
+describe("Data Import authority never becomes warehouse-handheld authority", () => {
+  // THE LEAK THIS PINS, and why array membership was not enough to catch it.
+  //
+  // WAREHOUSE_HANDHELD_CAPABILITIES is not a request list. navConfig.js uses it directly as
+  // Warehouse Workspace's `capabilityAccess`, so an id added to it becomes a WAY IN. The Data
+  // Import ids landed there by accident: that set and the request set below it both end in
+  // ...RETURNS_SURFACE_CAPABILITIES, an edit aimed at the second landed in the first, and the
+  // tests missed it because they asserted PRESENCE where the ids belonged and never ABSENCE where
+  // they did not.
+  //
+  // So these assert the SURFACE, through the real predicate, not the arrays.
+  const warehouseItem = NAV_DOMAINS.flatMap((d) => d.subnav ?? []).find((i) => i.key === "warehouseWorkspace");
+
+  it("the two sets are wired to different things, and only one of them is a gate", () => {
+    // GOVERNED_SURFACE_CAPABILITY_IDS feeds the REQUEST. WAREHOUSE_HANDHELD_CAPABILITIES IS a
+    // capabilityAccess gate. Conflating them is what made this possible.
+    expect(warehouseItem.capabilityAccess).toBe(WAREHOUSE_HANDHELD_CAPABILITIES);
+  });
+
+  it("membership: requested everywhere it should be, absent from the handheld gate", () => {
+    for (const id of DATA_IMPORT_SURFACE_CAPABILITIES) {
+      expect(GOVERNED_SURFACE_CAPABILITY_IDS).toContain(id);
+      expect(REPORT_CAPABILITY_REQUEST).toContain(id);
+      expect(WAREHOUSE_HANDHELD_CAPABILITIES).not.toContain(id);
+    }
+    expect([...DATA_IMPORT_SURFACE_CAPABILITIES]).toEqual([STAGE, EXECUTE]);
+  });
+
+  it("the handheld gate is exactly the five warehouse families and nothing else", () => {
+    // Pinned as a whole set rather than as an absence of two ids, so the NEXT administration
+    // capability cannot arrive here quietly either.
+    expect([...WAREHOUSE_HANDHELD_CAPABILITIES].sort()).toEqual(
+      [
+        ...RECEIVING_SURFACE_CAPABILITIES,
+        ...TRANSFER_SURFACE_CAPABILITIES,
+        ...CYCLE_COUNT_SURFACE_CAPABILITIES,
+        ...PLACEMENT_SURFACE_CAPABILITIES,
+        ...RETURNS_SURFACE_CAPABILITIES,
+      ].sort(),
+    );
+    // No administration capability of any kind belongs in a warehouse-handheld gate.
+    for (const id of WAREHOUSE_HANDHELD_CAPABILITIES) {
+      expect(id.startsWith("admin.")).toBe(false);
+    }
+  });
+
+  it("SURFACE BOUNDARY: full Data Import authority opens Data Import and NOT Warehouse Workspace", () => {
+    // The principal the leak would have admitted: both Data Import ids, no warehouse authority
+    // whatsoever. Driven through the real predicate, with `technician` so no compatibility path
+    // can admit either item -- a governed decision is the only thing in play.
+    const hasCapability = hasCapabilityFromFeed([STAGE, EXECUTE]);
+    expect(hasCapability(STAGE)).toBe(true);
+    expect(hasCapability(EXECUTE)).toBe(true);
+    for (const id of WAREHOUSE_HANDHELD_CAPABILITIES) expect(hasCapability(id)).toBe(false);
+
+    expect(isNavItemVisible(dataImportItem, "technician", [], contextFor(hasCapability))).toBe(true);
+    expect(isNavItemVisible(warehouseItem, "technician", [], contextFor(hasCapability))).toBe(false);
+  });
+
+  it("SURFACE BOUNDARY: a real warehouse capability still opens Warehouse Workspace", () => {
+    // The other half. Proving the gate is closed to Data Import means nothing if it is closed to
+    // everyone -- a broken gate would pass the test above.
+    const hasCapability = hasCapabilityFromFeed(["inventory.stock.receive"]);
+    expect(isNavItemVisible(warehouseItem, "technician", [], contextFor(hasCapability))).toBe(true);
+    // ...and that principal gets no Data Import reachability in exchange.
+    expect(isNavItemVisible(dataImportItem, "technician", [], contextFor(hasCapability))).toBe(false);
+  });
+
+  it("SURFACE BOUNDARY: every warehouse family still admits the workspace on its own", () => {
+    // Each family is a genuine way in, and the whole-set assertion above must not have narrowed
+    // any of them while removing the two that did not belong.
+    for (const id of WAREHOUSE_HANDHELD_CAPABILITIES) {
+      const hasCapability = hasCapabilityFromFeed([id]);
+      expect(isNavItemVisible(warehouseItem, "technician", [], contextFor(hasCapability))).toBe(true);
+    }
   });
 });

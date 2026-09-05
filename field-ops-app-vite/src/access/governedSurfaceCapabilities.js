@@ -145,10 +145,16 @@ export const WAREHOUSE_HANDHELD_CAPABILITIES = Object.freeze([
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
   ...PLACEMENT_SURFACE_CAPABILITIES,
   ...RETURNS_SURFACE_CAPABILITIES,
-  // Both Data Import ids, in the same single call and against the same accessVersion as
-  // everything else here — see DATA_IMPORT_SURFACE_CAPABILITIES for why route visibility alone
-  // is not enough.
-  ...DATA_IMPORT_SURFACE_CAPABILITIES,
+  // DATA IMPORT IS DELIBERATELY ABSENT, and this is a surface boundary rather than a list.
+  //
+  // navConfig.js uses THIS SET as Warehouse Workspace's capabilityAccess, so an id added here
+  // becomes a way to reach the handheld. Data Import authority is administration authority: it
+  // says somebody may load a spreadsheet, and it must never imply standing at a receiving dock.
+  //
+  // It was briefly here by accident. The request set below and this gate both end in
+  // ...RETURNS_SURFACE_CAPABILITIES, an edit aimed at the second landed in the first, and the
+  // tests missed it because they asserted PRESENCE where it belonged and never ABSENCE where it
+  // did not. dataImportSurfaceAccess.test.jsx now asserts both, through the real nav predicate.
 ]);
 
 /**
