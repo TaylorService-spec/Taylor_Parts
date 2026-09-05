@@ -4,7 +4,7 @@
 //   2. the review screen shows the message and EOS's reading of it side by side;
 //   3. Accept Job submits the REVIEWER'S confirmed values and nothing else -- no actor, no timestamp;
 //   4. a role without the capability sees an honest denial, not an empty screen or a live button.
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeAll, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 const capabilities = { value: new Set(["service.inboundWork.read", "service.inboundWork.accept", "service.inboundWork.decline", "service.inboundWork.attachExisting"]) };
@@ -108,6 +108,14 @@ function makeSource(overrides = {}) {
     ...overrides,
   };
 }
+
+// jsdom implements no object-URL machinery, and the download path is the only thing here that wants it.
+// Stubbed rather than worked around in the component: a browser always has this, and a component that
+// checked for it would be carrying a branch that exists only for the test environment.
+beforeAll(() => {
+  if (typeof URL.createObjectURL !== "function") URL.createObjectURL = () => "blob:stub";
+  if (typeof URL.revokeObjectURL !== "function") URL.revokeObjectURL = () => {};
+});
 
 afterEach(() => {
   cleanup();
