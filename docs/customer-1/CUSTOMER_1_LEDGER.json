@@ -4,7 +4,7 @@
   "product": "Enterprise Operations OS (EOS)",
   "provider": "Verenward LLC",
   "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
-  "lastReconciled": "2026-09-03",
+  "lastReconciled": "2026-09-04",
   "statusVocabulary": [
     "READY",
     "IN_PROGRESS",
@@ -61,7 +61,9 @@
       "launchCritical": true,
       "authority": "Verenward + Taylor",
       "closeWhen": "Source systems are inventoried, migration tiers and mappings are accepted, at least one repeatable rehearsal is completed, and exceptions are reconciled.",
-      "evidence": []
+      "evidence": [
+        "PR #1802 / ccd3f2d2 records the Lane B seeded-evidence rule and the successful B-05 canary at lane commit 2f262d38: deterministic SEEDED/SYNTHETIC source records, census/tiering/mapping fixtures, a repeatable migration dry-run harness, deterministic exception reporting, and passing targeted proofs. This materially proves the migration PROCESS can be rehearsed without waiting for a Taylor export; it does not prove Taylor's actual source data, accepted mappings, real exceptions, or Taylor acceptance, so this gate remains OPEN."
+      ]
     },
     {
       "id": "C1-INV-01",
@@ -108,7 +110,8 @@
         "PR #1775 / f8708713 closes that defect in code through the canonical WORK_ORDER_CONSUMPTION movement and command-scoped source projection, with nine emulator proofs including receive 5 / consume 2 -> on-hand 3 / availability 3 and the warehouse-to-truck double-subtraction guard. No general technician inventory read was granted.",
         "Sandbox release evidence on 2026-09-03 shows the applicable Functions estate was deployed after #1775, and the subsequently accepted dashboard ran on platform-sandbox at 50792fef, a descendant of the consumption fix. The original PHYSICAL_CONSUMPTION blocker is therefore CLOSED IN RUNNING SANDBOX BEHAVIOR, not merely closed in code. This does not establish production deployment.",
         "PR #1763 / 5824df2a retired the remaining stock_locations client-direct reader and the Rules read arm in code. Legacy stock_locations documents remain inert pending separately authorized disposition; this is no longer an active runtime reader/writer dependency.",
-        "PR #1792 / c6589c06: My Dashboard Family 10 is CLOSED / OWNER ACCEPTED against live platform-sandbox commit 50792fef. Measured census: 23 modules — 15 READY, 2 SATISFIED_ELSEWHERE, 1 GATED, 5 UNAVAILABLE, NOT_WIRED = 0. Remaining unavailable/gated items transferred to their existing domain-authority backlogs rather than being hidden.",
+        "PR #1792 / c6589c06: My Dashboard Family 10 was CLOSED / OWNER ACCEPTED against live platform-sandbox commit 50792fef, with 23 modules fully classified and NOT_WIRED = 0.",
+        "PR #1800 / c6ad5b68: the dashboard corrective chain was live-verified on platform-sandbox Hosting 6b281cd5. My Dashboard remains CLOSED / OWNER ACCEPTED with its post-acceptance correctives live-verified, and Technician Dashboard Family 11 is CLOSED / OWNER ACCEPTED / LIVE VERIFIED. The closeout preserves the open technician self-goal-read authority question, the non-blocking inverted Work Order timestamp data-quality finding, and production remains untouched and unauthorized.",
         "Existing governed authorization, certification, sandbox persona, scanner, service, dispatch, sales, and inventory evidence remains source-specific authority rather than being copied into this ledger.",
         "PR #1762 / b19a7486: FIN-BLOCK-003A cost activation merged (Decision #166) — new purchase commitments require price + currency, legacy unpriced purchases grandfathered by a server-stamped priceAuthorityVersion, receipt produces immutable AcquisitionCostFact.",
         "PR #1776 / 4c6b98c0 plus #1778 / 5b2bb0c6: EOS now supports governed financial-policy profiles with multiple tested costing strategies; sandbox configure/read authority is activated under the ruled access model and the lock is absolute. Taylor's actual deployment profile remains a customer/accounting choice and is not inferred here."
@@ -169,7 +172,8 @@
       "evidence": [
         "docs/training/README.md",
         "docs/training/PURCHASING_RECORD_PURCHASE_ORDER.md exists as a deployment-gated user guide for the governed purchase-order price-entry behavior; its completion state remains tied to live verification.",
-        "PR #1792 / c6589c06: docs/training/MY_DASHBOARD.md is TRAINING COMPLETE — LIVE VERIFIED against the final Owner-accepted platform-sandbox behavior. This closes training for My Dashboard only; it does not satisfy the all-Day-1-role/workflow close condition."
+        "PR #1792 / c6589c06 originally closed docs/training/MY_DASHBOARD.md for My Dashboard against the Owner-accepted sandbox behavior.",
+        "PR #1800 / c6ad5b68: docs/training/MY_DASHBOARD.md is COMPLETE — LIVE VERIFIED against platform-sandbox commit 6b281cd5 and now explicitly covers both My Dashboard and Technician Dashboard, including the post-acceptance corrective chain. This closes training for those two dashboard surfaces only; it does not satisfy the all-Day-1-role/workflow close condition."
       ]
     },
     {
@@ -193,6 +197,7 @@
       "evidence": [
         "PR #1726 merged as 606278d2fcaf2aa26290d97d5c7f0f455c03dc9e; GitHub Pages is now path-filtered and remains ubuntu-latest.",
         "Measured on docs-only Customer 1 reconciliation commit 72be6c52: no GitHub Pages deployment was triggered, but Vite Build Check and Operational Payload Guard still ran. Therefore the original READY claim was too broad and this gate is reopened until broad application CI is also excluded for ledger/training-only changes.",
+        "PR #1802 head d52dab2a changed exactly one docs/customer-1 charter file and still triggered Vite Build Check, Operational Payload Guard, and Secret scan. This independently confirms broad application CI isolation remains incomplete; no GitHub Pages or Windows-hosted runner evidence was observed.",
         "No Windows-hosted Action was introduced or observed in this reconciliation."
       ]
     },
