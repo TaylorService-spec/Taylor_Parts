@@ -22,7 +22,8 @@ open their record, and — where your account is authorised — correct their de
    - **Employment Status** — Active, On Leave, Inactive, Terminated, Retired or Contractor.
    - **Operational Roles** — what they are eligible to do operationally, such as Technician or
      Parts Manager. This is *not* their security role.
-   - **EOS Access** — **Account linked** if they have an EOS sign-in, **No account** if they do not.
+   - **EOS Account** — **Account linked** if they have an EOS sign-in, **No account** if they do not.
+     It says whether an account EXISTS, not whether it is switched on.
    - **Security Role** — Admin, Dispatcher or Technician.
 3. If the list is long, select **Load more** at the bottom to fetch the next page.
 
@@ -68,7 +69,7 @@ It shows the recorded, audited history; it is not assembled from what happens to
 
 ## Tips and common problems
 
-- **"Employment Status" and "EOS Access" are different things, on purpose.** Marking someone
+- **"Employment Status" and EOS account status are different things, on purpose.** Marking someone
   Terminated does *not* switch their EOS account off, and disabling an account does *not* change
   their employment record. Each is its own deliberate action.
 - **Operational roles are not access.** Adding "Parts Manager" makes someone eligible for that kind
@@ -81,12 +82,18 @@ It shows the recorded, audited history; it is not assembled from what happens to
 - **Enable Account / Disable Account are locked, with a padlock.** Hover or focus the button to read
   why. These need a governed access grant that is not issued in any environment yet.
 - **Send password reset is not showing.** It appears only for accounts authorised to initiate one.
-  When it is available, the person receives an email and sets their own new password — you never see
-  their password, a reset link, or a code, and a routine reset does not sign them out.
+  When it is available, a reset email is *requested* — the person then sets their own new password
+  from it. You never see their password, a reset link, or a code; this screen does not confirm that
+  the email arrived; and a routine reset does not sign them out.
 - **"Change history unavailable."** The trusted history service is not deployed and verified yet.
   That is not the same as "nothing has ever changed", and the screen deliberately does not claim it.
 - **Employee ID is blank for some people.** That field is your own employee number, and nobody was
   given one automatically. Fill it in when you edit the record.
+- **"That Employee ID is already assigned to another employee."** Employee IDs are unique — one
+  number belongs to one person, and upper and lower case count as the same number. Pick a different
+  one, or clear it from whoever holds it first, and it becomes available again.
+- **The Employee ID box rejects what you typed.** Use up to 32 letters, digits, dots, underscores or
+  hyphens, starting with a letter or digit. No spaces and no slashes.
 - **No "New user" button.** Adding a person to EOS links them to a sign-in account, which an
   administrator does through the onboarding procedure rather than from this screen.
 

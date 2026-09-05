@@ -192,7 +192,9 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
         statusWords={employmentStatusWords(employee)}
         statusTone={employmentStatusTone(employee)}
         facts={[
-          { key: "access", label: "EOS Access", value: eosAccessLabel(employee) },
+          // "EOS Account", not "EOS Access" -- the value is linkage, and a label reading Access
+          // over it claims more than the record can prove (Owner ruling, PR #1806).
+          { key: "access", label: "EOS Account", value: eosAccessLabel(employee) },
           { key: "roles", label: "Operational", value: roles.length > 0 ? roles.join(", ") : null },
           { key: "security", label: "Security Role", value: security },
         ]}

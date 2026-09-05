@@ -6039,3 +6039,90 @@ Firestore composite index (`auditEvents` targetType/targetId/at) is declared, no
 free strings would be duplicate master data), and a per-change free-text `reason` (the immutable
 trail has no field for one, and widening that contract is a governance change rather than a side
 effect of an edit form). Specification: `specifications/administration-users-consolidation.md`.
+
+
+## #174 — OWNER RULING: PR #1806 accepted with corrections; sandbox-only activation approved (2026-09-05)
+
+**Context.** #173 landed Administration → Users fail-closed in every environment, and listed four
+decisions it deliberately did not make. This is the Owner's answer to all four, plus the
+authorization needed to exercise the surface end to end.
+
+### 1. Sandbox activation — APPROVED FOR SANDBOX ONLY
+
+Complete the minimum controlled authorization path needed to exercise Administration → Users end to
+end in **eos-platform-sandbox**. Authorized: making the existing compatibility-admin bootstrap/grant
+path operable through the existing governed/operator architecture; creating the **minimum** sandbox
+admin roleAssignment required for testing; deploying the new Administration Users trusted callables
+to sandbox; deploying the auditEvents composite index to sandbox; verifying Edit User, Change
+History and Enable/Disable through the trusted paths.
+
+**NOT authorized:** production grants, production deployment, broad grants to multiple principals,
+bypassing roleAssignments, weakening Firestore Rules, or activating unrelated capabilities.
+
+**Password reset stays behind its own `admin.credentialReset.initiate` activation gate and must not
+be silently activated.** It is the one capability in this surface that is `active: false`, and the
+sandbox authorization above does not reach it.
+
+### 2. Employment type — DEFER
+
+Not added in #1806. `employmentStatus` already contains CONTRACTOR, so a second field now creates
+conflicting semantics. **Follow-up design item: separate employment LIFECYCLE from worker
+CLASSIFICATION.** The future target distinguishes:
+
+    Employment Status:  Active / On Leave / Inactive / Terminated / Retired
+    Employment Type:    Full-time / Part-time / Contractor / …
+
+**CONTRACTOR must not be migrated automatically** until the migration semantics are explicitly
+designed — an automatic split would silently reclassify every contractor's lifecycle state.
+
+### 3. Department / Location — DEFER
+
+No free-text `departmentId`/`locationId`. These become User profile REFERENCES once EOS has
+governed Department and Location/Branch authorities to reference. **Duplicate master data must not
+be created merely to fill the User page.**
+
+### 4. Per-change reason — DEFER
+
+Change History does not require a reason field for closure, and the immutable audit-event contract
+is not to be widened in #1806 solely for optional notes. A generic governed change-reason capability
+can be designed separately if it is later wanted **across** EOS record types — which is the level
+that decision belongs at.
+
+### 5. Password-reset eligible-user list — RETAIN
+
+No longer needed by User Detail, but deleting reviewed credential-management machinery is not part
+of this consolidation. **Recorded as cleanup debt**; remove only after proving there are no
+remaining consumers.
+
+### Corrections required before merge, and what was done
+
+**1. UNIQUENESS AND GOVERNANCE FOR `employeeNumber`.** A business identifier two people can share
+is not an identifier. Implemented as a transactional claim in a new
+`employee_number_registry` collection, keyed by the NORMALIZED (upper-cased) number and holding
+the owning employeeId — claimed, released and checked inside the same transaction as the profile
+write.
+
+A registry rather than a query, deliberately: Firestore's transactional isolation covers the
+documents a query MATCHED, not the ones that did not exist when it ran, so two concurrent claims of
+an unused number would both see "nobody has it". A document id has no phantom. The collection has no
+match block, so Rules deny every client read and write of it by default — the same posture
+`privilegedRoleRequests` takes, and **no Rules change**. Governance also means SHAPE: 1–32
+characters of letters, digits, dot, underscore or hyphen, no spaces and no slash. Nothing to
+backfill — `employeeNumber` is introduced by the same change and no document has ever carried one.
+
+**2. NON-ABSOLUTE PASSWORD-RESET WORDING.** A future-tense promise that an email arrives is a claim
+about a provider the surface has no signal from; the callable returns a neutral `accepted`. The
+merged `RESULT_COPY` was already conditional ("if the account is eligible … has been requested");
+the surface copy now matches it and states that delivery is not confirmed here. Asserted from source.
+
+**3. "EOS ACCESS" → "EOS ACCOUNT" in the directory.** The column's value is account LINKAGE. A
+heading reading Access over it invites "this person HAS access", which is a stronger claim than "an
+account exists" and the one no read on that page can support. The heading changes back only when the
+enabled/disabled state is genuinely readable. The record page's *section* keeps its name — it does
+carry access facts — and the `setUserStatus` audit event keeps the label "EOS Access Status",
+because that command really does change access status.
+
+### Sequence
+
+Merge #1806. **Then** perform the sandbox-only authorization and deployment as a SEPARATE controlled
+step, and run browser verification against real sandbox data. Production stays closed.

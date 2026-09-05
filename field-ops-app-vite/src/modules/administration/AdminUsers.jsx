@@ -46,11 +46,11 @@ export default function AdminUsers() {
     filters: [],
   });
 
-  // THE EOS ACCESS CELL, composed here rather than in the metadata layer.
+  // THE EOS ACCOUNT CELL, composed here rather than in the metadata layer.
   //
   // `makeColumn` deliberately accepts no custom renderer -- the definition's own validator rejects
   // one by name -- and names post-processing `presentation.rows[].cells` as what a caller needing
-  // custom cell display does instead. This is that. The `userId` column is relabelled "EOS Access"
+  // custom cell display does instead. This is that. The `userId` column is relabelled "EOS Account"
   // in the definition, and its cell becomes words: the raw uid never reaches a reader, which is
   // the point, because a Firebase uid in a directory column is unreadable and teaches people to
   // recognise internal keys.
@@ -60,6 +60,10 @@ export default function AdminUsers() {
   // Deriving it from employment status would render a CONTRACTOR who legitimately holds access as
   // switched off -- the exact conflation this product forbids. The detail page says the same thing
   // at greater length rather than filling the gap with a guess.
+  //
+  // The COLUMN is headed "EOS Account" for the same reason (Owner ruling, PR #1806): a heading
+  // reading Access over a linkage value invites "this person HAS access", which is a stronger claim
+  // than "an account exists" and the one no read here can support.
   //
   // SECURITY ROLE IS GIVEN ITS WORDS IN THE SAME PASS. It is a plain STRING field (deliberately --
   // it is a mirror, and declaring enumLabels on it would dress a mirror up as a governed
@@ -137,8 +141,8 @@ export default function AdminUsers() {
       <p className="fo-muted">
         Employee profiles, operational roles, EOS access and security roles. Security Role mirrors
         the legacy identity role (admin, dispatcher, technician) — not the governed Role a person
-        holds. EOS Access shows whether an application account is linked; whether that account is
-        enabled or disabled is Firebase Auth state that no governed read exposes yet.
+        holds. EOS Account shows whether an application account exists for this person; whether that
+        account is enabled or disabled is Firebase Auth state that no governed read exposes yet.
       </p>
       <MetadataListGrid
         presentation={withDisplayWords}

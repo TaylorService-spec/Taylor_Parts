@@ -170,6 +170,31 @@ test("employment status is a closed picklist and operational roles come from the
   assert.ok(bad.operationalRoles);
 });
 
+test("the business employee number is a CODE, and the shape rule mirrors the enforcing one", () => {
+  // Uniqueness is the command's to enforce (this client cannot check it without reading every
+  // employee). SHAPE is checked here so a malformed number is refused before a round trip.
+  for (const bad of ["has space", "-leading", "a".repeat(33), "with/slash"]) {
+    const errors = validateProfileValues({ ...seedEditValues(JOHN), employeeNumber: bad });
+    assert.ok(errors.employeeNumber, `"${bad}" must be refused`);
+  }
+  for (const good of ["TAZ-0042", "100234", "E.42", "a"]) {
+    const errors = validateProfileValues({ ...seedEditValues(JOHN), employeeNumber: good });
+    assert.equal(errors.employeeNumber, undefined, `"${good}" must be accepted`);
+  }
+  // Clearable: a wrongly assigned number must be removable, which releases its claim server-side.
+  assert.equal(
+    validateProfileValues({ ...seedEditValues(JOHN), employeeNumber: "" }).employeeNumber,
+    undefined,
+  );
+
+  // The pattern is the ENFORCING one, read from the command rather than restated.
+  const enforcing = readFileSync(
+    fileURLToPath(new URL("../../functions/src/access/employeeProfileCommands.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.match(enforcing, /EMPLOYEE_NUMBER_PATTERN = \/\^\[A-Za-z0-9\]\[A-Za-z0-9\._-\]\{0,31\}\$\//);
+});
+
 test("a display name is required, and a malformed email or date is caught before a round trip", () => {
   const errors = validateProfileValues({
     ...seedEditValues(JOHN),

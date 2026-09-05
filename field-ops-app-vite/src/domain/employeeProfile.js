@@ -67,6 +67,10 @@ export const EDITABLE_FIELDS = Object.freeze([
   { key: "middleName", label: "Middle Name", kind: "TEXT" },
   { key: "lastName", label: "Last Name", kind: "TEXT" },
   { key: "preferredName", label: "Preferred Name", kind: "TEXT" },
+  // UNIQUE, case-insensitively, across all employees -- enforced transactionally by the trusted
+  // command against its own registry, because two people sharing a business identifier defeats the
+  // only thing that identifier is for. This client cannot check it (it would need to read every
+  // employee), so a duplicate comes back as an actionable message from the command.
   { key: "employeeNumber", label: "Employee ID", kind: "TEXT" },
   { key: "workEmail", label: "Work Email", kind: "EMAIL" },
   { key: "workPhone", label: "Work Phone", kind: "TEXT" },
@@ -380,6 +384,9 @@ function normalizeForCompare(f, value) {
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
+// Mirrors EMPLOYEE_NUMBER_PATTERN in the trusted command, which is the ENFORCING copy and also owns
+// the uniqueness rule this cannot check. Here so a malformed number is refused before a round trip.
+const EMPLOYEE_NUMBER_SHAPE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
 
 /**
  * Client-side validation.
@@ -401,6 +408,11 @@ export function validateProfileValues(values) {
   const email = trimmedOrNull(values.workEmail);
   if (email !== null && !EMAIL_SHAPE.test(email)) {
     errors.workEmail = "Enter a valid email address.";
+  }
+  const employeeNumber = trimmedOrNull(values.employeeNumber);
+  if (employeeNumber !== null && !EMPLOYEE_NUMBER_SHAPE.test(employeeNumber)) {
+    errors.employeeNumber =
+      "Use up to 32 letters, digits, dots, underscores or hyphens — no spaces.";
   }
   for (const key of ["hireDate", "separationDate"]) {
     const value = trimmedOrNull(values[key]);

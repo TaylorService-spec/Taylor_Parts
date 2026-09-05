@@ -67,6 +67,29 @@ const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 const EMPLOYEES_COLLECTION = "employees";
 
+// ════════════════════ THE EMPLOYEE-NUMBER UNIQUENESS REGISTRY ════════════════════
+//
+// One document per claimed employee number, keyed by the NORMALIZED number, holding the employeeId
+// that owns it. Claiming, releasing and checking all happen inside the SAME transaction as the
+// profile write, so two administrators typing "TAZ-0042" at once produce one winner and one refusal
+// rather than two employees sharing a business identifier.
+//
+// WHY A REGISTRY AND NOT A QUERY. The obvious alternative -- query `employees` for the number
+// inside the transaction and refuse if anyone else holds it -- does not actually hold: Firestore's
+// transactional isolation covers the documents a query MATCHED, not the ones that did not exist
+// when it ran, so two concurrent claims of an unused number both see "nobody has it". A document id
+// has no phantom: a read of `employee_number_registry/TAZ-0042` locks that exact key whether it
+// exists or not, which is the guarantee uniqueness needs.
+//
+// NO RULES CHANGE. No match block names this collection, so firestore.rules denies every client
+// read and write of it by default -- the same posture `privilegedRoleRequests` deliberately takes.
+// The Admin SDK is the only writer, and this command is the only Admin-SDK path to it.
+//
+// NOTHING TO BACKFILL. `employeeNumber` is introduced by this same change and no document has ever
+// carried one, so the registry starts empty and consistent by construction rather than by a
+// migration somebody has to trust.
+const EMPLOYEE_NUMBER_REGISTRY_COLLECTION = "employee_number_registry";
+
 /** The target type every Employee-profile Audit Event carries. Change History queries by it. */
 export const EMPLOYEE_TARGET_TYPE = "employee";
 
@@ -78,6 +101,7 @@ export class UnauthorizedActorError extends Error {}
 export class EmployeeNotFoundError extends Error {}
 export class UnknownManagerError extends Error {}
 export class IdempotencyKeyConflictError extends Error {}
+export class EmployeeNumberTakenError extends Error {}
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{8,200}$/;
 const MAX_TEXT_LENGTH = 200;
@@ -116,6 +140,23 @@ export const OPERATIONAL_ROLE_VALUES = Object.freeze([
 // is a different answer from a malformed one.
 const OPERATING_COMPANY_ID_PATTERN = /^[a-z][a-z0-9_-]{1,62}$/;
 
+// A BUSINESS EMPLOYEE NUMBER IS A CODE, not free text -- it is quoted on the phone, typed into a
+// search box and printed on paper, and it is about to become a uniqueness key. So it is bounded and
+// shaped: letters, digits, dot, underscore and hyphen, starting with an alphanumeric. Deliberately
+// NO spaces and NO slash -- a slash cannot appear in a Firestore document id, and " TAZ 42" vs
+// "TAZ 42" is the kind of near-duplicate a uniqueness rule exists to prevent rather than record.
+//
+// The pattern is permissive about SCHEME (TAZ-0042, 100234 and E.42 are all fine) because the
+// numbering scheme is Taylor's to choose and this file must not invent one.
+const EMPLOYEE_NUMBER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+
+// Uniqueness is CASE-INSENSITIVE. "taz-0042" and "TAZ-0042" are one employee number written two
+// ways, and letting both exist would defeat the rule while appearing to satisfy it. The stored
+// value keeps the case an administrator typed; only the registry key is folded.
+export function normalizeEmployeeNumberKey(value: string): string {
+  return value.toUpperCase();
+}
+
 // A date a person types about employment: a calendar day, not an instant. Stored as the ISO
 // calendar string rather than a timestamp because "hired on the 3rd" is not a moment and giving it
 // one invents a timezone the record never had.
@@ -124,7 +165,15 @@ const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 // Deliberately permissive: a name, a phone number and a street address take more forms across
 // people and countries than any pattern this file could honestly assert. The bound and the
 // trim are real; a "valid name" regex is not.
-type FieldKind = "TEXT" | "EMAIL" | "DATE" | "EMPLOYMENT_STATUS" | "OPERATIONAL_ROLES" | "OPERATING_COMPANY" | "MANAGER";
+type FieldKind =
+  | "TEXT"
+  | "EMAIL"
+  | "DATE"
+  | "EMPLOYMENT_STATUS"
+  | "OPERATIONAL_ROLES"
+  | "OPERATING_COMPANY"
+  | "MANAGER"
+  | "EMPLOYEE_NUMBER";
 
 interface EditableField {
   readonly key: string;
@@ -147,7 +196,7 @@ export const EDITABLE_EMPLOYEE_FIELDS: readonly EditableField[] = Object.freeze(
   { key: "middleName", kind: "TEXT" },
   { key: "lastName", kind: "TEXT" },
   { key: "preferredName", kind: "TEXT" },
-  { key: "employeeNumber", kind: "TEXT" },
+  { key: "employeeNumber", kind: "EMPLOYEE_NUMBER" },
   { key: "workEmail", kind: "EMAIL" },
   { key: "workPhone", kind: "TEXT" },
   { key: "mobilePhone", kind: "TEXT" },
@@ -284,6 +333,17 @@ function normalizeValue(field: EditableField, raw: unknown): unknown {
       const text = normalizeText(raw, field.key);
       if (text !== null && !OPERATING_COMPANY_ID_PATTERN.test(text)) {
         throw new InvalidInputError("operatingCompanyId is not a well-formed operating-company id");
+      }
+      return text;
+    }
+    case "EMPLOYEE_NUMBER": {
+      const text = normalizeText(raw, field.key);
+      // Clearable: an employee number wrongly assigned must be removable, and clearing it releases
+      // the registry claim. Uniqueness is checked inside the transaction -- shape only here.
+      if (text !== null && !EMPLOYEE_NUMBER_PATTERN.test(text)) {
+        throw new InvalidInputError(
+          "employeeNumber must be 1-32 characters of letters, digits, dot, underscore or hyphen, starting with a letter or digit",
+        );
       }
       return text;
     }
@@ -425,6 +485,9 @@ export async function updateEmployeeProfile(
   const managerId = submitted.has("managerEmployeeId")
     ? (submitted.get("managerEmployeeId") as string | null)
     : undefined;
+  const submittedNumber = submitted.has("employeeNumber")
+    ? (submitted.get("employeeNumber") as string | null)
+    : undefined;
 
   return db.runTransaction(async (txn): Promise<UpdateEmployeeProfileOutcome> => {
     // EVERY READ BEFORE EVERY WRITE -- Firestore transactions require it, and the manager
@@ -465,6 +528,32 @@ export async function updateEmployeeProfile(
       }
     }
 
+    // ════════════════════ EMPLOYEE NUMBER: CLAIM, RELEASE, REFUSE ════════════════════
+    //
+    // Read before write, inside the transaction, keyed by the normalized number -- so a document id
+    // does the locking and two concurrent claims of the same unused number cannot both succeed.
+    //
+    // Only when the number actually CHANGES. Re-submitting the number a record already holds must
+    // not read as a collision with itself, and must not re-claim a key that is already theirs.
+    const previousNumber = typeof current.employeeNumber === "string" ? current.employeeNumber : null;
+    const numberChanges =
+      submittedNumber !== undefined && (submittedNumber ?? null) !== previousNumber;
+
+    if (numberChanges && submittedNumber !== null) {
+      const claimRef = db
+        .collection(EMPLOYEE_NUMBER_REGISTRY_COLLECTION)
+        .doc(normalizeEmployeeNumberKey(submittedNumber));
+      const claimSnap = await txn.get(claimRef);
+      const heldBy = claimSnap.exists
+        ? ((claimSnap.data() as Record<string, unknown>).employeeId as string | undefined)
+        : undefined;
+      // A claim held by THIS employee is not a conflict -- it is a record whose registry entry
+      // survived a case change ("taz-0042" -> "TAZ-0042" is the same key), which must be allowed.
+      if (heldBy !== undefined && heldBy !== input.employeeId) {
+        throw new EmployeeNumberTakenError("this employee number is already assigned");
+      }
+    }
+
     // The DIFF, against what is stored right now inside the transaction -- not against whatever
     // the client last read. A field the caller submitted unchanged is not a change, and a
     // concurrent edit to a field this caller never touched survives, because only changed keys
@@ -494,6 +583,29 @@ export async function updateEmployeeProfile(
       }
     }
     txn.set(employeeRef, update, { merge: true });
+
+    // The registry moves WITH the record, in the same commit: claim the new key, release the old
+    // one. Staged only when the number actually changed -- and only after `changed` proved it did,
+    // so a resubmitted identical value touches neither the record nor the registry.
+    if (numberChanges && changed.some((f) => f.key === "employeeNumber")) {
+      if (submittedNumber !== null) {
+        txn.set(
+          db.collection(EMPLOYEE_NUMBER_REGISTRY_COLLECTION).doc(normalizeEmployeeNumberKey(submittedNumber)),
+          { employeeId: input.employeeId, employeeNumber: submittedNumber, updatedAt: Date.now() },
+        );
+      }
+      // Release the previous key so the number can be reissued. Skipped when the two normalize to
+      // the SAME key (a case correction), which would otherwise delete the claim just made.
+      if (
+        previousNumber !== null &&
+        (submittedNumber === null ||
+          normalizeEmployeeNumberKey(previousNumber) !== normalizeEmployeeNumberKey(submittedNumber))
+      ) {
+        txn.delete(
+          db.collection(EMPLOYEE_NUMBER_REGISTRY_COLLECTION).doc(normalizeEmployeeNumberKey(previousNumber)),
+        );
+      }
+    }
 
     const auditEventIds = changed.map((field, index) => {
       const previous = renderValue(readAt(current, field.key));

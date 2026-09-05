@@ -100,18 +100,21 @@ describe("Administration > Users is the one people directory", () => {
     expect(screen.getByText("Pat Lee")).toBeTruthy();
   });
 
-  it("shows the six columns the directory is for -- with EOS Access as WORDS, never a uid", () => {
+  it("shows the six columns the directory is for -- with EOS Account as WORDS, never a uid", () => {
     render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    for (const heading of ["Name", "Employment Status", "Operational Roles", "EOS Access", "Security Role"]) {
+    // "EOS Account", not "EOS Access" (Owner ruling, PR #1806): the value is linkage, and a heading
+    // reading Access over it claims something no read on this page can support.
+    for (const heading of ["Name", "Employment Status", "Operational Roles", "EOS Account", "Security Role"]) {
       expect(screen.getByRole("columnheader", { name: heading }), heading).toBeTruthy();
     }
+    expect(screen.queryByRole("columnheader", { name: "EOS Access" })).toBeNull();
     expect(screen.getByText("Account linked")).toBeTruthy();
     expect(screen.getByText("No account")).toBeTruthy();
     // The linked employee's raw uid must not appear anywhere on the page.
     expect(screen.queryByText("uid-john")).toBeNull();
   });
 
-  it("EOS Access is NOT derived from employment status", () => {
+  it("EOS Account is NOT derived from employment status", () => {
     // Pat Lee is a CONTRACTOR with no account; John is ACTIVE with one. A status-derived column
     // would call the contractor disabled, which is the conflation this product forbids.
     render(<MemoryRouter><AdminUsers /></MemoryRouter>);
@@ -356,6 +359,32 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText("Enter a display name.")).toBeTruthy();
     expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
+  });
+
+  it("a malformed Employee ID is refused before a round trip", async () => {
+    const client = okHistory();
+    renderDetail(client, "emp-1", "?edit=1");
+    fireEvent.change(await screen.findByLabelText(/Employee ID/), { target: { value: "has space" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText(/no spaces/i)).toBeTruthy();
+    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
+  });
+
+  it("a DUPLICATE Employee ID comes back as an actionable message, not as an outage", async () => {
+    // Uniqueness is enforced transactionally by the command, which this client cannot check without
+    // reading every employee. What it must do is render the refusal as something to fix.
+    const client = okHistory();
+    client.updateEmployeeProfile = vi.fn().mockResolvedValue({
+      ok: false,
+      result: "INVALID",
+      message: "That Employee ID is already assigned to another employee. Choose a different one.",
+    });
+    renderDetail(client, "emp-1", "?edit=1");
+    // A DIFFERENT number from the one this record already holds -- an unchanged value is a no-op
+    // and would never reach the command.
+    fireEvent.change(await screen.findByLabelText(/Employee ID/), { target: { value: "TAZ-0099" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/already assigned to another employee/i)).toBeTruthy();
   });
 });
 

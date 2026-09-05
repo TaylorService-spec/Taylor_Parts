@@ -22,6 +22,7 @@ import {
 } from "../src/domain/adminUsersResetView.js";
 import {
   RESET_RESULT,
+  RESULT_COPY,
   ACTION_PHASE,
   createAdminResetController,
   initialActionState,
@@ -186,6 +187,20 @@ ok("UserAccessActions.jsx keeps enable/disable on the SAME setUserStatus command
   assert.match(accessActionsSrc, /Disable Account/);
   assert.match(accessActionsSrc, /setUserStatus/);
 });
+ok("UserAccessActions.jsx REQUESTS delivery and never promises it", () => {
+  // Owner ruling, PR #1806. "They will receive an email" is a claim about a provider this surface
+  // has no signal from -- the callable returns a neutral `accepted`. The merged RESULT_COPY was
+  // already careful ("has been requested"); the surface copy now matches it.
+  assert.ok(
+    !/will receive an email|they will receive|an email will be sent/i.test(accessActionsSrc),
+    "the surface must not promise delivery",
+  );
+  assert.match(accessActionsSrc, /does not confirm delivery|Delivery is not\s+confirmed here/);
+  // And the shared copy it defers to is unchanged and still conditional.
+  assert.match(RESULT_COPY[RESET_RESULT.REQUEST_ACCEPTED], /If the account is eligible/);
+  assert.match(RESULT_COPY[RESET_RESULT.REQUEST_ACCEPTED], /has been requested/);
+});
+
 ok("UserAccessActions.jsx never references a reset link/token/oobCode or session revocation", () => {
   // No credential-bearing surface leaks into the client. revokeRefreshTokens is checked as before;
   // the file NAMES revokeUserSessions only to say it invokes nothing of the sort, so the guard is

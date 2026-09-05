@@ -47,6 +47,11 @@ export function mapAdminUserError(err) {
       return { result: ADMIN_USER_RESULT.DENIED, message: null };
     case "invalid-argument":
     case "failed-precondition":
+    // `already-exists` covers a taken employee number and a reused request key. Both messages are
+    // about what the CALLER submitted and both are actionable, so both are forwarded -- and neither
+    // names another person or any server state. Mapping it to UNAVAILABLE (the old default) would
+    // have told an administrator the service was down when the truth was a duplicate they can fix.
+    case "already-exists":
       return { result: ADMIN_USER_RESULT.INVALID, message: err?.message ?? null };
     case "not-found":
       return { result: ADMIN_USER_RESULT.NOT_FOUND, message: null };

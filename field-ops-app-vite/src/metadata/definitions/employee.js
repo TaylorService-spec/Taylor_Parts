@@ -367,15 +367,22 @@ export const employeeIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "displayName", sortable: true }),
     makeColumn({ fieldId: "employmentStatus", sortable: true }),
     makeColumn({ fieldId: "operationalRoles" }),
-    // EOS ACCESS, rendered from the field that can actually prove something.
+    // EOS ACCOUNT -- named for what it can actually prove.
     //
     // The column answers "does this person have an EOS account", because that is what this client
     // is able to know. Whether that account is ENABLED or DISABLED is Firebase Auth state, and no
     // governed read of another user's account status exists -- so the page states that rather than
     // inferring it from employment status, which would show a CONTRACTOR who legitimately holds
-    // access as switched off. The label is overridden here and the raw uid never reaches a cell:
-    // AdminUsers.jsx maps this cell to the words a person reads.
-    makeColumn({ fieldId: "userId", label: "EOS Access" }),
+    // access as switched off.
+    //
+    // IT IS CALLED "EOS ACCOUNT", NOT "EOS ACCESS" (Owner ruling, PR #1806). A column headed Access
+    // over a linkage value invites the reading "this person HAS access", which is a stronger claim
+    // than "an account exists" and is exactly the one no read here can support. The heading changes
+    // back only when the enabled/disabled state is genuinely readable.
+    //
+    // The label is overridden here and the raw uid never reaches a cell: AdminUsers.jsx maps this
+    // cell to the words a person reads.
+    makeColumn({ fieldId: "userId", label: "EOS Account" }),
     makeColumn({ fieldId: "securityRole" }),
   ],
   filters: [

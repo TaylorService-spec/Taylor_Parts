@@ -7,10 +7,10 @@
 // runs, and the properties asserted here (which fields are refused, that a denial writes nothing,
 // that a no-op writes nothing) are exactly the ones a change would break silently.
 //
-// What the double is NOT: a Firestore implementation. It supports the four operations this command
-// performs -- doc get, a two-clause equality query on roleAssignments, transactional get, and
-// transactional set with merge -- and nothing else, so a command that started doing something more
-// would fail here loudly rather than be quietly approximated.
+// What the double is NOT: a Firestore implementation. It supports the operations this command
+// actually performs -- doc get, a two-clause equality query on roleAssignments, a batch of one, and
+// transactional get / set-with-merge / delete -- and nothing else, so a command that started doing
+// something more would fail here loudly rather than be quietly approximated.
 //
 // Prerequisite: npm run build (this imports from ../lib).
 import assert from "node:assert/strict";
@@ -30,6 +30,8 @@ const {
   UnauthorizedActorError,
   EmployeeNotFoundError,
   UnknownManagerError,
+  EmployeeNumberTakenError,
+  normalizeEmployeeNumberKey,
 } = await import("../lib/access/employeeProfileCommands.js");
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -113,6 +115,10 @@ function makeDb(seed = {}) {
           const existing = options?.merge ? (col(ref.__collection).get(ref.__id) ?? {}) : {};
           col(ref.__collection).set(ref.__id, { ...existing, ...data });
         },
+        delete(ref) {
+          writes.push({ collection: ref.__collection, id: ref.__id, deleted: true });
+          col(ref.__collection).delete(ref.__id);
+        },
       };
       return fn(txn);
     },
@@ -161,6 +167,7 @@ const DEPS = (db) => ({ db, roles: ROLES });
 const KEY = "profilekey-0001";
 
 const auditEvents = (db) => [...(db.__store.get("auditEvents") ?? new Map()).entries()];
+const registry = (db) => db.__store.get("employee_number_registry") ?? new Map();
 
 async function rejects(fn, ErrorClass) {
   await assert.rejects(fn, (err) => err instanceof ErrorClass, `expected ${ErrorClass.name}`);
@@ -429,6 +436,123 @@ test("a missing employee is a not-found, not a create", async () => {
     EmployeeNotFoundError,
   );
   assert.equal(db.__store.get("employees").has("emp-ghost"), false);
+});
+
+// ════════════════════ the employee number is UNIQUE ════════════════════
+
+test("a business employee number must be a CODE, not free text", async () => {
+  const db = seeded();
+  for (const bad of ["has space", "way-too-long-an-employee-number-for-any-scheme-at-all", "/slash", "-leading"]) {
+    await assert.rejects(
+      () => updateEmployeeProfile({ actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: bad }, idempotencyKey: KEY }, DEPS(db)),
+      (err) => err instanceof InvalidInputError,
+      `"${bad}" must be refused`,
+    );
+  }
+});
+
+test("assigning a number CLAIMS it in the registry, in the same commit as the record", async () => {
+  const db = seeded();
+  const outcome = await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: KEY },
+    DEPS(db),
+  );
+  assert.equal(outcome.status, "applied");
+  assert.equal(db.__store.get("employees").get("emp-1").employeeNumber, "TAZ-0042");
+  assert.deepEqual(registry(db).get("TAZ-0042").employeeId, "emp-1");
+});
+
+test("a second employee CANNOT take a number that is already assigned", async () => {
+  const db = seeded({ extraEmployees: { "emp-2": { displayName: "Mike Jones" } } });
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0001" },
+    DEPS(db),
+  );
+  await assert.rejects(
+    () => updateEmployeeProfile({ actorUid: "actor-1", employeeId: "emp-2", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0002" }, DEPS(db)),
+    (err) => err instanceof EmployeeNumberTakenError,
+  );
+  // And the refusal changed nothing about the second employee.
+  assert.equal(db.__store.get("employees").get("emp-2").employeeNumber, undefined);
+});
+
+test("uniqueness is CASE-INSENSITIVE -- one number written two ways is one number", async () => {
+  assert.equal(normalizeEmployeeNumberKey("taz-0042"), "TAZ-0042");
+  const db = seeded({ extraEmployees: { "emp-2": { displayName: "Mike Jones" } } });
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0001" },
+    DEPS(db),
+  );
+  await assert.rejects(
+    () => updateEmployeeProfile({ actorUid: "actor-1", employeeId: "emp-2", changes: { employeeNumber: "taz-0042" }, idempotencyKey: "claimkey-0002" }, DEPS(db)),
+    (err) => err instanceof EmployeeNumberTakenError,
+  );
+});
+
+test("correcting the CASE of your own number is allowed, and does not release the claim", async () => {
+  const db = seeded();
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "taz-0042" }, idempotencyKey: "claimkey-0001" },
+    DEPS(db),
+  );
+  const outcome = await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0002" },
+    DEPS(db),
+  );
+  assert.equal(outcome.status, "applied");
+  assert.equal(db.__store.get("employees").get("emp-1").employeeNumber, "TAZ-0042");
+  // The key did not move, so it must still be held -- deleting the old key after claiming the same
+  // one is the bug this asserts against.
+  assert.equal(registry(db).get("TAZ-0042")?.employeeId, "emp-1");
+});
+
+test("changing your number RELEASES the old one, so it can be reissued", async () => {
+  const db = seeded({ extraEmployees: { "emp-2": { displayName: "Mike Jones" } } });
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0001" },
+    DEPS(db),
+  );
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0099" }, idempotencyKey: "claimkey-0002" },
+    DEPS(db),
+  );
+  assert.equal(registry(db).has("TAZ-0042"), false, "the old number is free again");
+  assert.equal(registry(db).get("TAZ-0099").employeeId, "emp-1");
+
+  const reissued = await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-2", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0003" },
+    DEPS(db),
+  );
+  assert.equal(reissued.status, "applied");
+});
+
+test("clearing a number releases it and writes no registry claim", async () => {
+  const db = seeded();
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0001" },
+    DEPS(db),
+  );
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "" }, idempotencyKey: "claimkey-0002" },
+    DEPS(db),
+  );
+  assert.equal(db.__store.get("employees").get("emp-1").employeeNumber, null);
+  assert.equal(registry(db).size, 0);
+});
+
+test("re-submitting the number a record already holds touches neither record nor registry", async () => {
+  const db = seeded();
+  await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0001" },
+    DEPS(db),
+  );
+  const writesBefore = db.__writes.length;
+  const outcome = await updateEmployeeProfile(
+    { actorUid: "actor-1", employeeId: "emp-1", changes: { employeeNumber: "TAZ-0042" }, idempotencyKey: "claimkey-0002" },
+    DEPS(db),
+  );
+  assert.equal(outcome.status, "unchanged");
+  assert.equal(db.__writes.length, writesBefore, "a no-op must not re-claim, re-release or re-audit");
 });
 
 // ════════════════════ the mirrors ════════════════════

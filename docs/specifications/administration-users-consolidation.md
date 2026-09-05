@@ -101,17 +101,20 @@ action lands.
 
 ## The Users directory
 
-Columns: **User · Employment Status · Operational Roles · EOS Access · Security Role · Actions.**
+Columns: **User · Employment Status · Operational Roles · EOS Account · Security Role · Actions.**
 
 - The rows come from the existing `employee.index` metadata declaration on the standard list
   runtime — the same client-direct read, sort and 50-row page the retired screen used. **No second
   read path was added.**
-- **EOS Access says "Account linked" / "No account", not "Enabled" / "Disabled."** Whether an
-  account is enabled is Firebase Auth state, and no governed read exposes another user's to this
-  client. Deriving it from employment status would render a CONTRACTOR who legitimately holds
-  access as switched off. The column is composed by post-processing the `userId` cell — the
-  metadata layer accepts no custom renderer by design, and names this as what a caller does
-  instead — so a raw uid never reaches a reader.
+- **The column is headed "EOS Account"** (Owner ruling, DECISIONS #174) and says "Account linked" /
+  "No account", not "Enabled" / "Disabled". Whether an account is enabled is Firebase Auth state, and
+  no governed read exposes another user's to this client; deriving it from employment status would
+  render a CONTRACTOR who legitimately holds access as switched off. A heading reading *Access* over
+  a linkage value invites "this person HAS access", a stronger claim than "an account exists" — it
+  changes back only when the enabled/disabled state is genuinely readable. The record page's
+  *section* keeps its name, because it does carry access facts. The column is composed by
+  post-processing the `userId` cell — the metadata layer accepts no custom renderer by design, and
+  names this as what a caller does instead — so a raw uid never reaches a reader.
 - **Security Role is labelled as the mirror it is**, in the surface's own copy.
 - The **count is withheld while pages remain**, and no aggregate query was added to rescue the
   partial case.
@@ -139,7 +142,30 @@ schema**, so a new nullable `employeeNumber` field was added and is labelled "Em
 UI. The technical id stays internal and is never presented as a business identifier.
 
 `employeeNumber` is deliberately **not** promoted to the entity's governed reference: it is
-optional, unenforced, and absent on every record provisioned before it existed.
+optional and absent on every record provisioned before it existed.
+
+#### It is UNIQUE, and uniqueness is transactional (Owner ruling, DECISIONS #174)
+
+A business identifier two people can share is not an identifier. `employee_number_registry` holds
+one document per claimed number, keyed by the NORMALIZED (upper-cased) value and carrying the owning
+`employeeId`. The trusted command claims, releases and checks it **inside the same transaction as
+the profile write**.
+
+A registry rather than a query, deliberately: Firestore's transactional isolation covers the
+documents a query MATCHED, not the ones that did not exist when it ran, so two concurrent claims of
+an unused number would both see "nobody has it". A document id has no phantom — reading
+`employee_number_registry/TAZ-0042` locks that key whether or not it exists.
+
+- **No Rules change.** No match block names the collection, so Firestore denies every client read
+  and write of it by default — the posture `privilegedRoleRequests` deliberately takes.
+- **Case-insensitive.** "taz-0042" and "TAZ-0042" are one number written two ways. The stored value
+  keeps the case an administrator typed; only the key is folded. Correcting the case of your own
+  number is allowed and does not release the claim.
+- **Shape is governed too**: 1–32 characters of letters, digits, dot, underscore or hyphen, starting
+  alphanumeric. No spaces (near-duplicates), no slash (not a legal document id).
+- **Clearable**, which releases the claim so a number can be reissued.
+- **Nothing to backfill.** The field arrives with this change and no document has ever carried one,
+  so the registry starts consistent by construction rather than by a migration somebody must trust.
 
 ### What the page will not claim
 
@@ -247,18 +273,33 @@ Enable and Disable are therefore offered (each naming the state it sets) rather 
 action; `setUserStatus` takes an explicit status rather than toggling, so this is the command's own
 shape rather than a workaround.
 
-## Open decisions this change deliberately did not make
+## Deferred by Owner ruling (DECISIONS #174)
 
-1. **`employmentType`** was not added. `employmentStatus` already carries `CONTRACTOR`, and a
-   second employment-type vocabulary alongside it would create two answers to "is this person a
-   contractor". Naming the relationship between the two is a product decision.
-2. **`departmentId` / `locationId` (branch)** were not added. Both were reserved-and-unused in the
-   employee specification, and there is no governed department or employee-location catalog to
-   reference. Adding them as free strings would create duplicate master data.
-3. **A per-change `reason` note.** The Audit Event contract has no field that can carry one for a
-   field-change action, and widening the immutable trail's contract to add free text is a
-   governance change rather than a side effect of an edit form. Change History renders its optional
-   Reason column empty for this record type until that contract exists.
+All three were raised as open decisions by this change and have been **DEFERRED**, not rejected.
+
+1. **`employmentType` — DEFER.** `employmentStatus` already carries `CONTRACTOR`, so adding a
+   second field now creates conflicting semantics. Follow-up design item: **separate employment
+   LIFECYCLE from worker CLASSIFICATION** — a future `Employment Status` of Active / On Leave /
+   Inactive / Terminated / Retired alongside an `Employment Type` of Full-time / Part-time /
+   Contractor. CONTRACTOR must **not** be migrated automatically until the migration semantics are
+   explicitly designed.
+2. **`departmentId` / `locationId` (branch) — DEFER.** These become User profile REFERENCES once
+   EOS has governed Department and Location/Branch authorities to reference. Duplicate master data
+   must not be created merely to fill the User page.
+3. **A per-change `reason` note — DEFER.** Change History does not require one for closure, and the
+   immutable audit-event contract is not widened here solely for optional notes. A generic governed
+   change-reason capability can be designed separately if later wanted **across** EOS record types,
+   which is the level that decision belongs at.
+
+## Cleanup debt (Owner ruling, DECISIONS #174)
+
+The password-reset **eligible-user list** path — `listResetEligibleUsers` in
+`adminPasswordResetClient.js`, and `buildResetUserRows` / `loadEligibleUsers` /
+`maybeLoadEligibleUsers` / `RESET_SECTION_TITLE` / `RESET_UNAVAILABLE_COPY` in
+`adminUsersResetView.js` — has no consumer since the reset moved onto the record page, where the
+target IS the record. **RETAINED**: deleting reviewed credential-management machinery is not part of
+this consolidation. Remove only after proving there are no remaining consumers. The backend callable
+stays regardless; it is referenced by the enterprise-access deployment manifest.
 
 ## Tests
 

@@ -70,6 +70,16 @@ function mapError(err: unknown): HttpsError {
     );
   }
 
+  // The number the caller themselves submitted is already assigned. Safe to say plainly, and the
+  // only thing they can act on -- and deliberately WITHOUT naming who holds it: an administrator
+  // editing one record does not need another person's identity to fix their own typo.
+  if (err instanceof employeeProfile.EmployeeNumberTakenError) {
+    return new HttpsError(
+      "already-exists",
+      "That Employee ID is already assigned to another employee. Choose a different one.",
+    );
+  }
+
   return new HttpsError("internal", "An unexpected error occurred. Please try again.");
 }
 

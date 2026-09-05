@@ -46,6 +46,16 @@ import {
 // contract does not guarantee an email address reaches this client, and naming one we do not have
 // would be an invented fact.
 //
+// AND DELIVERY IS REQUESTED, NEVER PROMISED (Owner ruling, PR #1806). A future-tense promise that
+// an email arrives is a claim about a provider this surface has no signal from -- the callable
+// returns a neutral `accepted`, and the merged result copy is already careful to say the reset
+// "has been requested". The copy here now matches it: conditional, and explicit that this screen
+// does not confirm delivery. The difference matters at the moment the email does not arrive, which
+// is when somebody rereads the sentence to work out what the system actually claimed.
+//
+// The copy is asserted from SOURCE by test/adminUsersReset.test.mjs, so this comment deliberately
+// does not quote the phrasing it forbids -- the guard cannot tell a quotation from a claim.
+//
 // A routine reset does not revoke sessions and this surface never says it does. Session revocation
 // is a separate governed command (revokeUserSessions) which nothing here invokes.
 //
@@ -253,9 +263,10 @@ export default function UserAccessActions({
             )}
           </div>
           <p className="fo-muted">
-            The user sets their own new password from an email they receive. An administrator never
-            sees a reset link, code, or the user&apos;s password. Routine resets do not sign the
-            user out.
+            If the request is accepted, a password-reset email is requested for this account, and the
+            user sets their own new password from it. An administrator never sees a reset link, code,
+            or the user&apos;s password, and this screen does not confirm delivery. Routine resets do
+            not sign the user out.
           </p>
 
           {action.phase === ACTION_PHASE.CONFIRMING && (
@@ -265,8 +276,9 @@ export default function UserAccessActions({
                   this client, so an "…to john.smith@example.com?" confirmation would be quoting an
                   address we do not have. */}
               <p>
-                Send a password reset for <strong>{name}</strong>? They will receive an email with a
-                link to set a new password.
+                Request a password reset for <strong>{name}</strong>? If the account is eligible, a
+                reset email is requested and they set their own new password from it. Delivery is not
+                confirmed here.
               </p>
               <div>
                 <Button type="button" variant="primary" onClick={confirmReset} disabled={inFlight} loading={inFlight}>
