@@ -104,3 +104,29 @@ test("row tone maps to the shared semantic vocabulary", () => {
   assert.equal(rowTone("WARNING"), "attention");
   assert.equal(rowTone("READY"), "positive");
 });
+
+test("the approval sentence names what THIS entity's write actually does", async () => {
+  const { APPROVAL_CONSEQUENCE } = await import("../src/domain/dataImportView.js");
+  const view = (entityType) =>
+    buildDataImportView({
+      ...GATED,
+      staged: { staged: true, job: { entityType, summary: { total: 1, ready: 1, warnings: 0, errors: 0 }, rows: [], mapping: {} } },
+    }).consequence;
+
+  // Each sentence names a real difference in what the write means. A screen that said
+  // "writes the records shown above" for all five would be telling four of them something
+  // slightly untrue.
+  assert.match(view("PARTS"), /DRAFT/);
+  assert.match(view("CUSTOMERS"), /tax status/i);
+  assert.match(view("INVENTORY"), /ledger movement/i);
+  assert.match(view("SERVICE_HISTORY"), /not Work Orders/i);
+  assert.equal(Object.keys(APPROVAL_CONSEQUENCE).length, 5);
+});
+
+test("an entity with no sentence still gets a true one rather than nothing", () => {
+  const view = buildDataImportView({
+    ...GATED,
+    staged: { staged: true, job: { entityType: "SOMETHING_NEW", summary: { total: 1, ready: 1, warnings: 0, errors: 0 }, rows: [], mapping: {} } },
+  });
+  assert.match(view.consequence, /never overwrites/i);
+});

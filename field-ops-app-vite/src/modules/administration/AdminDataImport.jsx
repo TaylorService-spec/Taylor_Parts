@@ -292,8 +292,7 @@ export default function AdminDataImport({ hasCapability }) {
                   </Button>
                 )}
                 <p className="fo-wizard-hint">
-                  Approving writes the records shown above as new Parts in DRAFT status. It never
-                  overwrites an existing record.
+                  {view.consequence} It never overwrites an existing record.
                 </p>
               </div>
             </>

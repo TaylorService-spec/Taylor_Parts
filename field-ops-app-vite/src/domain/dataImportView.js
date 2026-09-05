@@ -116,6 +116,9 @@ export function buildDataImportView({
       summary.errors === 0
         ? "Nothing has been written yet. Approve to write these records."
         : `${summary.errors} row${summary.errors === 1 ? " is" : "s are"} shown but will not be written.`,
+    consequence:
+      APPROVAL_CONSEQUENCE[job?.entityType] ??
+      "Approving writes the records shown above. It never overwrites an existing record.",
     // Approving is gated on the SECOND capability, and the reason is stated rather than the
     // button silently vanishing -- a control that disappears reads as a missing feature.
     approvalBlockedReason: !canExecute
@@ -125,6 +128,29 @@ export function buildDataImportView({
         : null,
   };
 }
+
+/**
+ * What approving this import will actually do, in one sentence, per entity.
+ *
+ * IT LIVES HERE RATHER THAN ON THE SCREEN because the sentences are not decoration -- each
+ * one names a real difference in what the write means. A Part lands in DRAFT because a
+ * spreadsheet cannot substantiate ACTIVE. An opening balance writes a ledger movement rather
+ * than a stored number. A service record is explicitly not a Work Order. An operator
+ * approving a bulk write is entitled to know which of those they are about to do, and a
+ * screen that said "writes the records shown above" for all five would be telling four of
+ * them something slightly untrue.
+ */
+export const APPROVAL_CONSEQUENCE = Object.freeze({
+  PARTS: "Approving creates these as new Parts in DRAFT status. Activating a Part stays a separate step.",
+  CUSTOMERS:
+    "Approving creates these as new Customers. Payment terms and tax status are not imported and stay unset.",
+  EQUIPMENT:
+    "Approving creates these as ACTIVE Equipment under the customer and location each row names.",
+  INVENTORY:
+    "Approving records an opening balance for each row -- one ledger movement, at a position with no history yet. It is not a receipt and not a count correction.",
+  SERVICE_HISTORY:
+    "Approving records these as historical service performed in another system. They are not Work Orders and nothing is scheduled.",
+});
 
 /** Row tone for the preview table. One vocabulary, shared with the rest of the app. */
 export function rowTone(classification) {

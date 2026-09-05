@@ -309,7 +309,10 @@ export function equipmentContextFindings(
 
 /** A location's identity is its name UNDER ITS CUSTOMER, never its name alone. */
 export function scopedLocationKey(customerName: string, locationName: string): string {
-  return `${naturalIdentityKey(customerName)} ${naturalIdentityKey(locationName)}`;
+  // A VISIBLE separator. This briefly held a literal NUL byte -- invisible in every editor,
+  // and the kind of thing that works until something normalizes it away. " :: " cannot appear
+  // in a naturalIdentityKey, which collapses whitespace and keeps no control characters.
+  return `${naturalIdentityKey(customerName)} :: ${naturalIdentityKey(locationName)}`;
 }
 
 export const EQUIPMENT_IMPORT_CONTRACT = registerEntityContract({
