@@ -87,7 +87,26 @@ export default function ChangeHistory({
   // explanation. Falling back to "all" here keeps the control honest about what it is showing.
   const activeField = fieldOptions.some((o) => o.value === field) ? field : ALL_FIELDS;
   const activeActor = actorOptions.some((o) => o.value === actor) ? actor : ALL_FIELDS;
-  const filtered = activeField !== ALL_FIELDS || activeActor !== ALL_FIELDS || from !== "" || to !== "";
+
+  // A FILTER BAR OVER AN EMPTY HISTORY IS FOUR CONTROLS THAT CANNOT DO ANYTHING.
+  //
+  // The options are derived from the rows, and that is right (see the header comment) -- but it
+  // means a record with no recorded history renders "All changes" and "Anyone" over two selects
+  // holding nothing else, plus a From/To pair with no range to narrow. Every one of them is
+  // operable and none of them can change what is shown, which is how a working screen comes to
+  // look broken.
+  //
+  // THE ANSWER IS NOT TO FILL THEM. Populating Field from the employee schema would offer a
+  // filter for every field the profile HAS rather than every field that CHANGED, and selecting
+  // one would return nothing while implying the history was searched. What is missing here is
+  // history, not options.
+  //
+  // So the bar appears when there is something to filter, and the empty state stands alone.
+  // A filtered read that matches nothing is a DIFFERENT case -- the rows exist, the controls
+  // stay, and "No matches" tells the reader their filters are why (below).
+  const hasHistory = rows.length > 0;
+  const filtered =
+    hasHistory && (activeField !== ALL_FIELDS || activeActor !== ALL_FIELDS || from !== "" || to !== "");
 
   return (
     <RuledSection title={title} id="change-history">
@@ -109,46 +128,48 @@ export default function ChangeHistory({
         />
       ) : (
         <>
-          <div className="fo-history__filters">
-            <label className="fo-history__filter">
-              <span>Field</span>
-              <select
-                value={activeField}
-                onChange={(e) => setField(e.target.value)}
-                data-history-filter="field"
-              >
-                <option value={ALL_FIELDS}>All changes</option>
-                {fieldOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="fo-history__filter">
-              <span>Changed by</span>
-              <select
-                value={activeActor}
-                onChange={(e) => setActor(e.target.value)}
-                data-history-filter="actor"
-              >
-                <option value={ALL_FIELDS}>Anyone</option>
-                {actorOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="fo-history__filter">
-              <span>From</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-history-filter="from" />
-            </label>
-            <label className="fo-history__filter">
-              <span>To</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} data-history-filter="to" />
-            </label>
-          </div>
+          {hasHistory ? (
+            <div className="fo-history__filters">
+              <label className="fo-history__filter">
+                <span>Field</span>
+                <select
+                  value={activeField}
+                  onChange={(e) => setField(e.target.value)}
+                  data-history-filter="field"
+                >
+                  <option value={ALL_FIELDS}>All changes</option>
+                  {fieldOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="fo-history__filter">
+                <span>Changed by</span>
+                <select
+                  value={activeActor}
+                  onChange={(e) => setActor(e.target.value)}
+                  data-history-filter="actor"
+                >
+                  <option value={ALL_FIELDS}>Anyone</option>
+                  {actorOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="fo-history__filter">
+                <span>From</span>
+                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-history-filter="from" />
+              </label>
+              <label className="fo-history__filter">
+                <span>To</span>
+                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} data-history-filter="to" />
+              </label>
+            </div>
+          ) : null}
 
           {shown.length === 0 ? (
             <EmptyState
