@@ -28,6 +28,21 @@ export interface NormalizedRow {
   readonly findings: readonly FieldFinding[];
 }
 
+/**
+ * What preview knows about the world beyond this file.
+ *
+ * `existing` is the set of natural identities that ALREADY exist. `references` holds the
+ * OTHER records a row may point at, keyed by reference name -- an Equipment row names a
+ * customer and a location that must already be there.
+ *
+ * Injected as VALUES, not queried, which is what keeps preview deterministic and testable
+ * with no infrastructure -- and what keeps the modules above the storage seam portable.
+ */
+export interface ImportContext {
+  readonly existing: ReadonlySet<string>;
+  readonly references?: Readonly<Record<string, ReadonlySet<string>>>;
+}
+
 export interface EntityImportContract {
   readonly entityType: ImportEntityType;
   /** Singular, as an operator would say it: "Part", "Customer". */
@@ -44,6 +59,18 @@ export interface EntityImportContract {
   readonly identityLabel: string;
   /** Never throws: a bad row yields findings and a null draft. */
   normalizeRow(values: Readonly<Record<string, unknown>>): NormalizedRow;
+  /**
+   * Reference names this entity needs loaded before a row can be judged.
+   *
+   * Declared by the contract rather than known by the loader, so an entity that gains a
+   * foreign key does not need the pipeline changed to notice.
+   */
+  readonly referenceFields?: readonly { readonly reference: string; readonly field: string }[];
+  /**
+   * Findings that need the world, not just the row -- an unresolvable foreign key, a
+   * cross-row conflict the identity check does not cover. Optional: most entities have none.
+   */
+  contextFindings?(draft: Readonly<Record<string, unknown>>, context: ImportContext): readonly FieldFinding[];
   /** Comparison form of the identity: case- and whitespace-insensitive. */
   identityKey(draft: Readonly<Record<string, unknown>>): string;
 }

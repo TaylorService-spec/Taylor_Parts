@@ -129,7 +129,7 @@ await check("an ambiguous header is REFUSED rather than guessed, and the admin c
 await check("an entity that is not wired yet says so, instead of staging a job nothing can run", async () => {
   await assert.rejects(
     stageDataImport.run({
-      data: { fileName: "equipment.csv", fileText: SEEDED_CSV, entityType: "EQUIPMENT" },
+      data: { fileName: "inventory.csv", fileText: SEEDED_CSV, entityType: "INVENTORY" },
       auth,
     }),
     (err) => err.code === "unimplemented" && err.details?.code === "ENTITY_NOT_WIRED",
@@ -345,6 +345,71 @@ await check("re-staging the same customers finds them by NAME, not only by deriv
   for (const row of res.job.rows) {
     assert.ok(row.findings.some((f) => f.code === "ALREADY_EXISTS"), `row ${row.sourceRowNumber}`);
   }
+});
+
+// --------------------------------------------------------------- equipment
+
+await check("equipment imports only where its customer and location BOTH resolve", async () => {
+  // The customers imported above exist. Give one of them a location, and leave a second
+  // location under a DIFFERENT customer so the scoped key is actually exercised.
+  const soda = `Seeded Soda Works ${run}`;
+  const sodaId = deriveImportedAccountId(soda);
+  await db.collection("locations").add({ accountId: sodaId, name: "Main Plant" });
+
+  const other = await db.collection("accounts").add({ name: `Other Co ${run}`, nameLower: `other co ${run}` });
+  await db.collection("locations").add({ accountId: other.id, name: "Shared Name" });
+
+  const csv = [
+    "SERIAL,CUSTOMER,SITE,NAME,MAKE,MODEL",
+    `EQ-${run}-1,${soda},Main Plant,Ice Machine 1,Manitowoc,IY-0454A`,
+    `EQ-${run}-2,${soda},Shared Name,Ice Machine 2,Manitowoc,IY-0454A`,
+    `EQ-${run}-3,Nobody Ltd ${run},Main Plant,Ice Machine 3,Manitowoc,IY-0454A`,
+  ].join("\n");
+
+  const staged = await stageDataImport.run({ data: { fileName: "equipment.csv", fileText: csv }, auth });
+  assert.equal(staged.staged, true);
+  assert.equal(staged.job.entityType, "EQUIPMENT");
+  // Row 3 names a location that exists under ANOTHER customer; row 4 names a customer that
+  // does not exist. Both are refused, and neither creates the thing it could not find.
+  assert.deepEqual(staged.job.summary, { total: 3, ready: 1, warnings: 0, errors: 2 });
+  assert.ok(staged.job.rows[1].findings.some((f) => f.code === "LOCATION_NOT_FOUND"));
+  assert.ok(staged.job.rows[2].findings.some((f) => f.code === "CUSTOMER_NOT_FOUND"));
+
+  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
+  assert.equal(done.job.status, "COMPLETED");
+  assert.equal(done.job.result.created, 1);
+
+  const snap = await db.collection("equipment").where("serialNumber", "==", `EQ-${run}-1`).get();
+  assert.equal(snap.size, 1);
+  const eq = snap.docs[0].data();
+  assert.equal(eq.accountId, sodaId, "the customer NAME was resolved to an id");
+  assert.equal(eq.status, "ACTIVE", "create is always ACTIVE");
+  assert.equal(typeof eq.createdAt, "number", "equipment governs its stamps as NUMBER, not Timestamp");
+  assert.equal(eq.serialNumberKey, `EQ-${run}-1`.toUpperCase());
+  // The two name columns were the FILE's way of naming records; the document holds ids. A
+  // stale copy of a customer name on every machine is how two sources of one fact appear.
+  assert.equal(eq.customerName, undefined);
+  assert.equal(eq.locationName, undefined);
+});
+
+await check("a serial already registered is refused, whoever registered it", async () => {
+  const soda = `Seeded Soda Works ${run}`;
+  // Registered the way the ORDINARY Equipment screen would: an auto-id, no serialNumberKey.
+  // A key-only uniqueness check would happily re-register this machine.
+  await db.collection("equipment").add({
+    accountId: deriveImportedAccountId(soda),
+    serialNumber: `LEGACY-${run}`,
+    name: "Added by hand",
+    status: "ACTIVE",
+  });
+
+  const csv = [
+    "SERIAL,CUSTOMER,SITE,NAME",
+    `LEGACY-${run},${soda},Main Plant,Re-imported`,
+  ].join("\n");
+  const res = await stageDataImport.run({ data: { fileName: "equipment.csv", fileText: csv }, auth });
+  assert.equal(res.job.summary.errors, 1);
+  assert.ok(res.job.rows[0].findings.some((f) => f.code === "ALREADY_EXISTS"));
 });
 
 // --------------------------------------------------------------- authorization

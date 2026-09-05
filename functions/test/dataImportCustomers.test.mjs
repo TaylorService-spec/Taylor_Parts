@@ -172,12 +172,12 @@ test("a header nothing recognises says so, rather than naming a near-miss it did
   assert.equal(detection.entityType, null);
   assert.match(detection.reason, /No entity could be recognised/);
 });
-test("both wired entities are registered, and the unwired three are honestly absent", () => {
+test("the wired entities are registered, and the unwired ones are honestly absent", () => {
   assert.deepEqual(
     wiredEntityContracts().map((c) => c.entityType),
-    ["PARTS", "CUSTOMERS"],
+    ["PARTS", "CUSTOMERS", "EQUIPMENT"],
   );
-  for (const later of ["EQUIPMENT", "INVENTORY", "SERVICE_HISTORY"]) {
+  for (const later of ["INVENTORY", "SERVICE_HISTORY"]) {
     assert.equal(entityContractFor(later), null, `${later} must have no contract yet`);
     assert.equal(isEntityWired(later), false);
   }
@@ -185,7 +185,7 @@ test("both wired entities are registered, and the unwired three are honestly abs
 
 test("an unwired entity fails mapping validation instead of reporting valid with no fields", () => {
   const parsed = parseSourceFile("x.csv", "A,B\n1,2");
-  const v = validateMapping("EQUIPMENT", parsed, { A: null, B: null });
+  const v = validateMapping("INVENTORY", parsed, { A: null, B: null });
   // "Valid" here would be the one answer that lets an operator approve an import that does
   // nothing at all.
   assert.equal(v.valid, false);

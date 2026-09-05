@@ -15,7 +15,7 @@
 //   ERROR    -- will NOT be imported, and is shown rather than hidden
 
 import type { FieldFinding } from "./contracts/partImportContract.js";
-import { entityContractFor, type ImportEntityType } from "./contracts/entityContract.js";
+import { entityContractFor, type ImportEntityType, type ImportContext } from "./contracts/entityContract.js";
 import type { MappedRow } from "./importIntake.js";
 
 export type RowClassification = "READY" | "WARNING" | "ERROR";
@@ -74,8 +74,12 @@ export function partIdentityKey(internalPartNumber: string): string {
 export function buildEntityPreview(
   entityType: ImportEntityType,
   rows: readonly MappedRow[],
-  existing: ExistingIdentityIndex,
+  context: ImportContext | ExistingIdentityIndex,
 ): ImportPreview {
+  // A bare Set is still accepted: most entities reference nothing, and making every caller
+  // wrap one identity set in an object would be ceremony for the common case.
+  const ctx: ImportContext = context instanceof Set ? { existing: context } : (context as ImportContext);
+  const existing = ctx.existing;
   const contract = entityContractFor(entityType);
   if (!contract) {
     // Not an empty preview. An unwired entity must be refused by the caller before it gets
@@ -108,6 +112,9 @@ export function buildEntityPreview(
       } else {
         seenInFile.set(identity, row.sourceRowNumber);
       }
+
+      // Findings that need the world beyond this row -- an unresolvable foreign key, say.
+      if (contract.contextFindings) findings.push(...contract.contextFindings(normalized.draft, ctx));
 
       if (existing.has(identity)) {
         findings.push(

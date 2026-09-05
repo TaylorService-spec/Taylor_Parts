@@ -67,8 +67,11 @@ import {
   firestoreImportJobStore,
   firestorePartWriter,
   firestoreCustomerWriter,
+  firestoreEquipmentWriter,
   loadExistingPartIdentities,
   loadExistingCustomerIdentities,
+  loadExistingEquipmentSerials,
+  loadEquipmentReferences,
 } from "./firestoreDataImportAdapters.js";
 import { entityContractFor } from "./contracts/entityContract.js";
 import type { RowWriter } from "./importExecution.js";
@@ -99,12 +102,19 @@ const ENTITY_DATA_PLANE: Partial<
     ImportEntityType,
     {
       loadExisting(values: readonly string[], db: Firestore): Promise<ReadonlySet<string>>;
+      /** Only for entities with foreign keys. Absent means the row stands on its own. */
+      loadReferences?(db: Firestore): Promise<Readonly<Record<string, ReadonlySet<string>>>>;
       writer(actorUid: string, db: Firestore): RowWriter;
     }
   >
 > = {
   PARTS: { loadExisting: loadExistingPartIdentities, writer: firestorePartWriter },
   CUSTOMERS: { loadExisting: loadExistingCustomerIdentities, writer: firestoreCustomerWriter },
+  EQUIPMENT: {
+    loadExisting: loadExistingEquipmentSerials,
+    loadReferences: loadEquipmentReferences,
+    writer: firestoreEquipmentWriter,
+  },
 };
 
 function requireAuth(request: { auth?: { uid: string } | null }): string {
@@ -286,7 +296,10 @@ export const stageDataImportCallable = onCall(REGION, async (request) => {
       rows.map((r) => String(r.values[contract.identityField] ?? "")),
       db,
     );
-    const preview = buildEntityPreview(entityType, rows, existing);
+    // References are loaded only for an entity that declares them, so an entity with no
+    // foreign keys pays nothing for the ones that have them.
+    const references = plane.loadReferences ? await plane.loadReferences(db) : undefined;
+    const preview = buildEntityPreview(entityType, rows, { existing, references });
 
     const now = new Date();
     const job = stageImportJob({

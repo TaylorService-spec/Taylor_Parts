@@ -21,6 +21,7 @@ import { entityContractFor, wiredEntityContracts, type ImportEntityType } from "
 // is empty unless something pulls the modules in. This is that something: importing intake
 // is what makes every wired entity exist, and adding an entity means adding a line here.
 import "./contracts/customerImportContract.js";
+import "./contracts/equipmentImportContract.js";
 import { parseCsv } from "../partMaster/csvMigrationAnalysis.js";
 import {
   PART_CANONICAL_FIELDS,

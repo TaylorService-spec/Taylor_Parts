@@ -39,6 +39,13 @@ import {
   AccountImportError,
 } from "../account/accountImportCommand.js";
 import { ACCOUNTS_COLLECTION } from "../account/accountPortfolioSummary.js";
+import {
+  createEquipmentFromImport,
+  EquipmentImportError,
+  EQUIPMENT_COLLECTION,
+  LOCATIONS_COLLECTION,
+} from "../equipmentInstall/equipmentImportCommand.js";
+import { EQUIPMENT_REFERENCES, scopedLocationKey } from "./contracts/equipmentImportContract.js";
 
 /** Where import jobs live. The ONLY collection this feature introduces. */
 export const IMPORT_JOBS_COLLECTION = "data_import_jobs";
@@ -299,4 +306,149 @@ export function firestoreCustomerWriter(actorUid: string, db?: Firestore): RowWr
       }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Equipment
+// ---------------------------------------------------------------------------
+
+/**
+ * Every serial number already registered, normalized the way the contract compares them.
+ *
+ * READ AND NORMALIZED IN MEMORY rather than queried per row, and that is the point: a legacy
+ * machine recorded as "AB 12345" must collide with a file saying "AB12345", and no Firestore
+ * query can do that comparison. The command's in-transaction check is the race backstop; THIS
+ * is the duplicate detector an operator actually sees, before approving anything.
+ *
+ * Bounded by the environment's own equipment register, which is why it is acceptable to read
+ * it: a customer with more machines than fits in memory has a different problem, and P1
+ * imports at most 5000 rows into a sandbox.
+ */
+export async function loadExistingEquipmentSerials(
+  _serials: readonly string[],
+  db: Firestore = getFirestore(),
+): Promise<ReadonlySet<string>> {
+  const found = new Set<string>();
+  const snap = await db.collection(EQUIPMENT_COLLECTION).select("serialNumber").get();
+  for (const doc of snap.docs) {
+    const serial = String((doc.data() ?? {}).serialNumber ?? "").trim();
+    if (serial) found.add(serial.toUpperCase().replace(/\s+/g, ""));
+  }
+  return found;
+}
+
+/**
+ * The customers and locations an equipment file may point at.
+ *
+ * Returned as KEYS, not ids, because preview only has to answer "does this exist" -- and a
+ * preview that carried ids would be carrying resolution the writer has to redo anyway,
+ * against state that may have moved. The writer resolves ids for itself, in its transaction.
+ *
+ * A location's key is its name UNDER ITS CUSTOMER. firestore.rules requires the location to
+ * belong to the account, so "Main Street" at some other customer is a different place and
+ * must not satisfy this row.
+ */
+export async function loadEquipmentReferences(
+  db: Firestore = getFirestore(),
+): Promise<Readonly<Record<string, ReadonlySet<string>>>> {
+  const accountsSnap = await db.collection(ACCOUNTS_COLLECTION).select("name").get();
+  const nameByAccountId = new Map<string, string>();
+  const customers = new Set<string>();
+  for (const doc of accountsSnap.docs) {
+    const name = String((doc.data() ?? {}).name ?? "").trim();
+    if (!name) continue;
+    nameByAccountId.set(doc.id, name);
+    customers.add(naturalIdentityKey(name));
+  }
+
+  const locationsSnap = await db.collection(LOCATIONS_COLLECTION).select("name", "accountId").get();
+  const locations = new Set<string>();
+  for (const doc of locationsSnap.docs) {
+    const data = doc.data() ?? {};
+    const customerName = nameByAccountId.get(String(data.accountId ?? ""));
+    const locationName = String(data.name ?? "").trim();
+    // A location whose account is unknown is skipped rather than added under an empty key: an
+    // orphaned location must not become a location every customer appears to have.
+    if (customerName && locationName) locations.add(scopedLocationKey(customerName, locationName));
+  }
+
+  return Object.freeze({
+    [EQUIPMENT_REFERENCES.CUSTOMER]: customers,
+    [EQUIPMENT_REFERENCES.LOCATION]: locations,
+  });
+}
+
+/**
+ * The Equipment writer.
+ *
+ * It resolves the two names to ids HERE, per row, and hands the command ids -- which the
+ * command then re-checks against stored state inside its transaction. Resolving twice is
+ * deliberate: the preview's answer is minutes old by the time an admin approves, and a
+ * referential rule enforced from a cached answer is not enforced.
+ */
+export function firestoreEquipmentWriter(actorUid: string, db: Firestore = getFirestore()): RowWriter {
+  return {
+    async write(draft, idempotencyKey) {
+      try {
+        const customerName = String(draft.customerName ?? "");
+        const locationName = String(draft.locationName ?? "");
+
+        const accountId = await resolveAccountIdByName(db, customerName);
+        if (!accountId) {
+          return { kind: "failed", code: "CUSTOMER_NOT_FOUND", message: `No customer named "${customerName}" exists.` };
+        }
+        const locationId = await resolveLocationIdByName(db, accountId, locationName);
+        if (!locationId) {
+          return {
+            kind: "failed",
+            code: "LOCATION_NOT_FOUND",
+            message: `"${customerName}" has no location named "${locationName}".`,
+          };
+        }
+
+        // The two name fields are dropped: they were the file's way of naming records, and
+        // the stored document holds ids. Leaving them would put a stale copy of a customer's
+        // name on every machine, which is the classic way two sources of one fact appear.
+        const { customerName: _c, locationName: _l, ...fields } = draft;
+
+        const outcome = await createEquipmentFromImport(
+          { actorUid, idempotencyKey, accountId, locationId, fields },
+          { db },
+        );
+        return { kind: outcome.outcome === "replayed" ? "replayed" : "created" };
+      } catch (err) {
+        if (err instanceof EquipmentImportError) {
+          const message =
+            err.code === "DUPLICATE_SERIAL"
+              ? "This serial number is already registered to a machine."
+              : err.code === "UNAUTHORIZED"
+                ? "You are not authorized to create equipment."
+                : err.code === "LOCATION_NOT_UNDER_CUSTOMER"
+                  ? "That location does not belong to that customer."
+                  : "The row failed the Equipment validation rules.";
+          return { kind: "failed", code: err.code, message };
+        }
+        return { kind: "failed", code: "UNEXPECTED", message: "The record could not be written." };
+      }
+    },
+  };
+}
+
+async function resolveAccountIdByName(db: Firestore, name: string): Promise<string | null> {
+  const snap = await db
+    .collection(ACCOUNTS_COLLECTION)
+    .where("nameLower", "==", normalizeAccountSearchName(name))
+    .limit(2)
+    .get();
+  // TWO customers with one name is not a resolution, it is a question. Picking either would
+  // attach a machine to the wrong company on a coin flip.
+  if (snap.size !== 1) return null;
+  return snap.docs[0].id;
+}
+
+async function resolveLocationIdByName(db: Firestore, accountId: string, name: string): Promise<string | null> {
+  const snap = await db.collection(LOCATIONS_COLLECTION).where("accountId", "==", accountId).get();
+  const wanted = naturalIdentityKey(name);
+  const matches = snap.docs.filter((d) => naturalIdentityKey(String((d.data() ?? {}).name ?? "")) === wanted);
+  return matches.length === 1 ? matches[0].id : null;
 }
