@@ -47,3 +47,8 @@ docs/audits/inv-convergence-e-c1-hosting-deploy/** -text
 docs/audits/inv-convergence-e-c2-partdetail-cutover/** -text
 docs/audits/inv-convergence-e-c2-hosting-deploy-prep/** -text
 docs/audits/inv-convergence-e-c2-hosting-deploy/** -text
+
+# STYLESHEETS ARE LF, ALWAYS. A two-rule edit to field-ops-app-vite/src/index.css from a
+# Windows checkout landed as +8,480/-8,400 (PR #1808) -- the whole file replaced by line
+# endings, hiding an 84-line change. No churn: the one tracked stylesheet is already stored LF.
+*.css text eol=lf
