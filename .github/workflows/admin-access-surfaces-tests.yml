@@ -55,6 +55,11 @@ on:
       - "field-ops-app-vite/test/binLabelsSurface.test.jsx"
       - "field-ops-app-vite/test/binLabelsIntegration.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
+      - "field-ops-app-vite/test/dataImportSurfaceAccess.test.jsx"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/src/access/reportCapabilityAccess.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
       # The privileged-approval surface reads its queue through this client, so a change to
@@ -89,6 +94,11 @@ on:
       - "field-ops-app-vite/test/binLabelsSurface.test.jsx"
       - "field-ops-app-vite/test/binLabelsIntegration.test.jsx"
       - "field-ops-app-vite/test/roleAccessModel.test.jsx"
+      - "field-ops-app-vite/test/dataImportSurfaceAccess.test.jsx"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/src/access/reportCapabilityAccess.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
       - "field-ops-app-vite/test/objectAccessModel.test.jsx"
       - "field-ops-app-vite/test/approvalRequests.test.jsx"
       # The privileged-approval surface reads its queue through this client, so a change to
@@ -138,6 +148,7 @@ jobs:
           npx vitest run
           test/roleAccessModel.test.jsx
           test/adminRolesPermissions.test.jsx
+          test/dataImportSurfaceAccess.test.jsx
           test/adminRolesPermissionsDeclined.test.jsx
           test/adminWarehouseRacking.test.jsx
           test/rackingLayoutGenerator.test.jsx

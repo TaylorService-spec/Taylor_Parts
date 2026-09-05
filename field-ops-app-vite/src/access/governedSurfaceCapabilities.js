@@ -82,6 +82,54 @@ export const PLACEMENT_SURFACE_CAPABILITIES = Object.freeze([
 export const RETURNS_SURFACE_CAPABILITIES = Object.freeze(["inventory.returns.intake"]);
 
 /**
+ * DATA IMPORT — Administration -> Data Import.
+ *
+ * ============================ THE DEFECT THIS CLOSES ============================
+ *
+ * An authenticated sandbox Administrator opening /administration/data-import was told "Your
+ * account doesn't have access to this area" — while holding both capabilities, in an
+ * environment that activates both.
+ *
+ * Nothing was wrong with the grant, the activation, or either check. The nav item declares
+ * `capabilityAccess: ["admin.dataImport.stage"]`, AdminDataImport checks stage and execute, and
+ * both are correct. But `hasCapability` answers from `feed.decisions[id]`, and the feed only
+ * decides the ids it is ASKED for. These two were absent from the request set, so the trusted
+ * backend was never asked — and an unrequested capability resolves `false` in
+ * buildHasCapability(), correctly and permanently, for every principal including one who
+ * genuinely holds it.
+ *
+ * This is the SAME failure DASHBOARD_MODULE_CAPABILITY_IDS above was written to fix, on a new
+ * surface. The note there says it outright: an id that is never requested is indistinguishable
+ * from a denied one. Asking is what makes a real decision possible.
+ *
+ * ============================ WHY BOTH IDS, NOT JUST STAGE ============================
+ *
+ * Route visibility needs only `stage` — and requesting only `stage` would reproduce the bug one
+ * layer in. The page would open and the Approve control would read as unavailable to everyone,
+ * because the screen asks `hasCapability("admin.dataImport.execute")` and would get `false`
+ * from an unasked question rather than from a decision.
+ *
+ * Both in ONE request also keeps them on ONE accessVersion. Split across two calls, a principal
+ * whose access changed between them could be shown a page they may open and an Approve button
+ * decided against a version that no longer applies.
+ *
+ * The split this preserves is real and is the point:
+ *   stage=true, execute=false  -> the page opens, preview works, Approve stays protected
+ *   stage=true, execute=true   -> the full experience
+ *   stage=false                -> the route is not reachable
+ *
+ * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION. Both ids are already registered (active:false),
+ * already held by Administrator through the derived catalogue grant, and already activated in
+ * platform-sandbox and nowhere else. Asking for a decision is not receiving a positive one: in
+ * production, where nothing is activated, both still resolve false — from the server, on the
+ * evidence, rather than from an absent answer.
+ */
+export const DATA_IMPORT_SURFACE_CAPABILITIES = Object.freeze([
+  "admin.dataImport.stage",
+  "admin.dataImport.execute",
+]);
+
+/**
  * THE WAREHOUSE HANDHELD GATE — the union, and nothing beyond it.
  *
  * The shell offers whichever workflows a person actually holds, so the NAV ITEM should appear for
@@ -97,6 +145,10 @@ export const WAREHOUSE_HANDHELD_CAPABILITIES = Object.freeze([
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
   ...PLACEMENT_SURFACE_CAPABILITIES,
   ...RETURNS_SURFACE_CAPABILITIES,
+  // Both Data Import ids, in the same single call and against the same accessVersion as
+  // everything else here — see DATA_IMPORT_SURFACE_CAPABILITIES for why route visibility alone
+  // is not enough.
+  ...DATA_IMPORT_SURFACE_CAPABILITIES,
 ]);
 
 /**
@@ -148,4 +200,8 @@ export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   // accessVersion rather than racing a second request against a different one.
   ...PLACEMENT_SURFACE_CAPABILITIES,
   ...RETURNS_SURFACE_CAPABILITIES,
+  // Both Data Import ids, in the SAME single call and against the SAME accessVersion as
+  // everything else here -- see DATA_IMPORT_SURFACE_CAPABILITIES for why route visibility alone
+  // is not enough.
+  ...DATA_IMPORT_SURFACE_CAPABILITIES,
 ]);
