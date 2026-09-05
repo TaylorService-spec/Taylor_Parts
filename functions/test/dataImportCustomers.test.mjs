@@ -172,26 +172,30 @@ test("a header nothing recognises says so, rather than naming a near-miss it did
   assert.equal(detection.entityType, null);
   assert.match(detection.reason, /No entity could be recognised/);
 });
-test("the wired entities are registered, and the unwired ones are honestly absent", () => {
+test("every one of the five brief entities is now wired", () => {
   assert.deepEqual(
     wiredEntityContracts().map((c) => c.entityType),
-    ["PARTS", "CUSTOMERS", "EQUIPMENT", "INVENTORY"],
+    ["PARTS", "CUSTOMERS", "EQUIPMENT", "INVENTORY", "SERVICE_HISTORY"],
   );
-  for (const later of ["SERVICE_HISTORY"]) {
-    assert.equal(entityContractFor(later), null, `${later} must have no contract yet`);
-    assert.equal(isEntityWired(later), false);
+  // The registry order is the DECLARED entity order, not registration order -- so a contract
+  // moving to a different file cannot quietly reorder what an operator sees.
+  for (const t of ["PARTS", "CUSTOMERS", "EQUIPMENT", "INVENTORY", "SERVICE_HISTORY"]) {
+    assert.ok(entityContractFor(t), t);
+    assert.equal(isEntityWired(t), true);
   }
 });
 
-test("an unwired entity fails mapping validation instead of reporting valid with no fields", () => {
+test("an entity with no contract fails mapping validation instead of reporting valid", () => {
+  // All five brief entities are wired now, so this uses a type that is not one of them --
+  // which is exactly the shape of the next failure this guards: an entity added to the enum
+  // before its contract lands. Reporting `valid` for a file nothing can execute is the one
+  // answer that would let an operator approve an import that does nothing at all.
   const parsed = parseSourceFile("x.csv", "A,B\n1,2");
-  const v = validateMapping("SERVICE_HISTORY", parsed, { A: null, B: null });
-  // "Valid" here would be the one answer that lets an operator approve an import that does
-  // nothing at all.
+  const v = validateMapping("NOT_AN_ENTITY", parsed, { A: null, B: null });
   assert.equal(v.valid, false);
   assert.ok(v.findings.some((f) => f.code === "ENTITY_NOT_WIRED"));
+  assert.deepEqual([...v.ignoredColumns], ["A", "B"]);
 });
-
 test("the shared preview classifies customers with the CUSTOMER contract's vocabulary", () => {
   const preview = buildEntityPreview(
     "CUSTOMERS",

@@ -1858,5 +1858,19 @@ service cloud.firestore {
     match /data_import_jobs/{jobId} {
       allow read, write: if false;
     }
+    // EOS Data Import P1 -- imported service history. Admin-SDK-only, same fail-closed posture.
+    // ALL direct client read/write denied; the only write path is the trusted import execution
+    // (functions/src/dataImport/firestoreServiceHistoryAdapters.ts).
+    //
+    // DELIBERATELY NOT fieldops_wos. A Work Order is a lifecycle, and a record dropped into a
+    // terminal state never had one -- a fabricated Work Order would be indistinguishable from a
+    // real one in every metric that counts them. These are records of service performed in
+    // ANOTHER system, they carry that provenance in the document, and nothing transitions them.
+    //
+    // This block GRANTS NOTHING and widens nothing: an unmatched collection already denies. It is
+    // written explicitly because every other Admin-SDK-only collection here is.
+    match /imported_service_history/{recordId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -79,6 +79,11 @@ import {
   loadExistingOpeningBalances,
   firestoreOpeningBalanceWriter,
 } from "./firestoreInventoryImportAdapters.js";
+import {
+  loadServiceHistoryReferences,
+  loadExistingServiceHistoryIdentities,
+  firestoreServiceHistoryWriter,
+} from "./firestoreServiceHistoryAdapters.js";
 import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
@@ -127,6 +132,11 @@ const ENTITY_DATA_PLANE: Partial<
     // which import produced it, so a movement can be traced back to the file and the
     // approval that authorized it.
     writer: (actorUid, db, jobId) => firestoreOpeningBalanceWriter(actorUid, db, jobId),
+  },
+  SERVICE_HISTORY: {
+    loadExisting: loadExistingServiceHistoryIdentities,
+    loadReferences: loadServiceHistoryReferences,
+    writer: (actorUid, db, jobId) => firestoreServiceHistoryWriter(actorUid, db, jobId),
   },
 };
 

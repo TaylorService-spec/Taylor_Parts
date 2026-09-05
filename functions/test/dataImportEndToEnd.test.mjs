@@ -129,7 +129,7 @@ await check("an ambiguous header is REFUSED rather than guessed, and the admin c
 await check("an entity that is not wired yet says so, instead of staging a job nothing can run", async () => {
   await assert.rejects(
     stageDataImport.run({
-      data: { fileName: "history.csv", fileText: SEEDED_CSV, entityType: "SERVICE_HISTORY" },
+      data: { fileName: "nope.csv", fileText: SEEDED_CSV, entityType: "NOT_AN_ENTITY" },
       auth,
     }),
     (err) => err.code === "unimplemented" && err.details?.code === "ENTITY_NOT_WIRED",
@@ -478,6 +478,101 @@ await check("a SECOND opening balance at the same position is refused at executi
   const moves = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-1`)).get();
   assert.equal(moves.size, 1);
   assert.equal(moves.docs[0].data().quantity, 12);
+});
+
+// --------------------------------------------------------------- service history
+
+await check("service history imports as its OWN record, never as a Work Order", async () => {
+  const soda = `Seeded Soda Works ${run}`;
+  const csv = [
+    "CUSTOMER,SERVICE_DATE,WORK_PERFORMED,TICKET,TECH,SERIAL",
+    `${soda},2019-06-14,Replaced evaporator fan motor,OLD-${run}-1,R. Alvarez,EQ-${run}-1`,
+    `${soda},2027-01-01,Scheduled maintenance,OLD-${run}-2,R. Alvarez,`,
+  ].join("\n");
+
+  const staged = await stageDataImport.run({ data: { fileName: "history.csv", fileText: csv }, auth });
+  assert.equal(staged.job.entityType, "SERVICE_HISTORY");
+  // The future-dated row is refused. Scheduling work is what Work Orders and dispatch are
+  // for, with a lifecycle this record deliberately does not have.
+  assert.deepEqual(staged.job.summary, { total: 2, ready: 1, warnings: 0, errors: 1 });
+  assert.ok(staged.job.rows[1].findings.some((f) => f.code === "NOT_HISTORICAL"));
+
+  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
+  assert.equal(done.job.status, "COMPLETED");
+  assert.equal(done.job.result.created, 1);
+
+  const snap = await db.collection("imported_service_history").get();
+  const mine = snap.docs.map((d) => d.data()).filter((d) => d.externalReference === `OLD-${run}-1`);
+  assert.equal(mine.length, 1);
+  const record = mine[0];
+
+  // PROVENANCE IS IN THE RECORD. Anyone reading this row in five years must be able to see
+  // that it describes service performed in another system, not work EOS did.
+  assert.equal(record.recordKind, "IMPORTED_SERVICE_HISTORY");
+  assert.equal(record.sourceSystem, "DATA_IMPORT");
+  assert.equal(record.importJobId, staged.job.jobId);
+
+  // The customer is the ONE thing linked. The technician stays a name and the serial stays a
+  // string: linking a 2019 job to a current employee would attribute somebody else's work to
+  // a real person, and linking a serial would attach a replaced machine's history to its
+  // replacement.
+  assert.equal(record.accountId, deriveImportedAccountId(soda));
+  assert.equal(record.technicianName, "R. Alvarez");
+  assert.equal(record.technicianId, undefined);
+  assert.equal(record.equipmentSerialNumber, `EQ-${run}-1`);
+  assert.equal(record.equipmentId, undefined);
+
+  // AND NOTHING WAS WRITTEN TO THE WORK ORDER COLLECTION. This is the load-bearing
+  // assertion of the entity: a fabricated Work Order would be indistinguishable from a real
+  // one in every metric that counts them.
+  const wos = await db.collection("fieldops_wos").get();
+  assert.equal(wos.size, 0, `import must not create Work Orders, saw ${wos.size}`);
+});
+
+await check("re-importing the same service records is refused by their source reference", async () => {
+  const soda = `Seeded Soda Works ${run}`;
+  const csv = [
+    "CUSTOMER,SERVICE_DATE,WORK_PERFORMED,TICKET",
+    `${soda},2019-06-14,Replaced evaporator fan motor,OLD-${run}-1`,
+  ].join("\n");
+  const res = await stageDataImport.run({ data: { fileName: "history.csv", fileText: csv }, auth });
+  assert.equal(res.job.summary.errors, 1);
+  assert.ok(res.job.rows[0].findings.some((f) => f.code === "ALREADY_EXISTS"));
+});
+
+// --------------------------------------------------------------- cross-entity acceptance
+
+await check("ACCEPTANCE: all five entities landed, and each is what it claims to be", async () => {
+  // The whole point of running this last: the five entities were built one at a time, and
+  // this asserts they coexist in one environment without having quietly become each other.
+  const counts = {};
+  for (const c of ["parts", "accounts", "equipment", "inventory_transactions", "imported_service_history"]) {
+    counts[c] = (await db.collection(c).get()).size;
+  }
+
+  assert.ok(counts.parts >= 4, `parts: ${counts.parts}`);
+  assert.ok(counts.accounts >= 2, `accounts: ${counts.accounts}`);
+  assert.ok(counts.equipment >= 1, `equipment: ${counts.equipment}`);
+  assert.ok(counts.inventory_transactions >= 1, `movements: ${counts.inventory_transactions}`);
+  assert.ok(counts.imported_service_history >= 1, `history: ${counts.imported_service_history}`);
+
+  // NO WORK ORDERS, NO JOBS. Import creates neither, in any entity.
+  assert.equal((await db.collection("fieldops_wos").get()).size, 0);
+  assert.equal((await db.collection("fieldops_jobs").get()).size, 0);
+
+  // Every entity's write went through a command that audited it. Four distinct actions,
+  // which is what proves import did not grow a shortcut for any one of them.
+  const actions = new Set((await db.collection("auditEvents").get()).docs.map((d) => String(d.data().action)));
+  for (const action of ["createPart", "createAccountFromImport", "createEquipmentFromImport", "createServiceHistoryFromImport"]) {
+    assert.ok(actions.has(action), `no audit event for ${action}`);
+  }
+
+  // And the history shows every run, with what each one wrote.
+  const jobs = (await listDataImportJobs.run({ data: {}, auth })).jobs;
+  const entities = new Set(jobs.map((j) => j.entityType));
+  for (const e of ["PARTS", "CUSTOMERS", "EQUIPMENT", "INVENTORY", "SERVICE_HISTORY"]) {
+    assert.ok(entities.has(e), `no import job recorded for ${e}`);
+  }
 });
 
 // --------------------------------------------------------------- authorization
