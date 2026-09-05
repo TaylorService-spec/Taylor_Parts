@@ -147,6 +147,130 @@ export const employeeEntity = makeEntityDefinition({
       type: "STRING",
       description: "Optional, string | null (spec Data model). No consumer reads this independently of displayName today.",
     }),
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // ADMINISTRATION USERS CONSOLIDATION -- the profile fields the governed write command
+    // (functions/src/access/employeeProfileCommands.ts) can now set. Every one is nullable and
+    // every existing record legitimately lacks all of them: nothing backfills, nothing invents a
+    // value, and a record provisioned before these existed renders honest absences rather than
+    // blanks pretending to be data.
+    //
+    // employeeNumber IS NOT employeeId, AND THAT IS THE WHOLE POINT. `employeeId` above is the
+    // Firestore document id -- the spec's own comment calls it "technical, immutable -- never a
+    // name". Taylor's human-facing Employee ID had no home in this schema at all, so promoting the
+    // document id into that role would have been exactly the document-id-as-identity fallback
+    // DECISIONS #106 forbids. This is a separate, nullable, business-facing field, labelled
+    // "Employee ID" in the UI while the technical id stays internal.
+    //
+    // STILL NO referenceField ON identity. employeeNumber is optional and unenforced -- no writer
+    // requires it, no uniqueness constraint exists, and most records will not have one for a long
+    // time. Promoting an optional field to the entity's governed reference is the same mistake
+    // equipment.js declines for serialNumber/assetTag, for the same reason.
+    makeFieldDefinition({
+      id: "employeeNumber",
+      entityId: "employee",
+      label: "Employee ID",
+      type: "STRING",
+      description: "The BUSINESS-facing employee number, nullable. Distinct from employeeId (the technical document id) and deliberately not a governed reference: optional, unenforced, and absent on every record provisioned before this field existed.",
+    }),
+    makeFieldDefinition({
+      id: "middleName",
+      entityId: "employee",
+      label: "Middle Name",
+      type: "STRING",
+      description: "Optional, string | null.",
+    }),
+    makeFieldDefinition({
+      id: "preferredName",
+      entityId: "employee",
+      label: "Preferred Name",
+      type: "STRING",
+      description: "Optional, string | null. What this person is called; displayName remains the identity nameField.",
+    }),
+    makeFieldDefinition({
+      id: "workEmail",
+      entityId: "employee",
+      label: "Work Email",
+      type: "STRING",
+      description: "Optional, string | null. A contact fact on the workforce record -- NOT an authentication identity (that lives in Firebase Auth against users/{uid}).",
+    }),
+    makeFieldDefinition({
+      id: "workPhone",
+      entityId: "employee",
+      label: "Work Phone",
+      type: "STRING",
+      description: "Optional, string | null.",
+    }),
+    makeFieldDefinition({
+      id: "mobilePhone",
+      entityId: "employee",
+      label: "Mobile Phone",
+      type: "STRING",
+      description: "Optional, string | null.",
+    }),
+    makeFieldDefinition({
+      id: "jobTitle",
+      entityId: "employee",
+      label: "Job Title",
+      type: "STRING",
+      description: "Optional, string | null. Descriptive only: a job title determines no permission, no operational role and no security role.",
+    }),
+    // RELATIONAL, not display text. The stored value is another employee's document id, so the
+    // record page renders the manager as a link to that person's own User Detail and a rename
+    // follows automatically. The trusted command validates the referenced document exists.
+    //
+    // Declared as a plain ID rather than a REFERENCE for the reason userId is: a REFERENCE this
+    // registry can resolve needs the target entity's reference contract, and employee identity is
+    // a nameField only -- there is no governed reference to point at.
+    makeFieldDefinition({
+      id: "managerEmployeeId",
+      entityId: "employee",
+      label: "Manager",
+      type: "ID",
+      description: "Nullable employees/{employeeId} pointer to this person's manager. Validated for existence by the trusted write command; never free-form display text.",
+    }),
+    // The governed operating-company id (domain/operatingCompanyAuthority.js). Declared as ID,
+    // not ENUM: that authority's own contract requires additional companies to be addable without
+    // a schema change, so a closed enumValues list here would contradict it.
+    //
+    // companyId/departmentId/locationId REMAIN UNDECLARED -- see the header. This is not the same
+    // field: companyId was the spec's reserved, permanently-null placeholder, while
+    // operatingCompanyId names an authority that actually exists and can resolve.
+    makeFieldDefinition({
+      id: "operatingCompanyId",
+      entityId: "employee",
+      label: "Operating Company",
+      type: "ID",
+      description: "Nullable governed operating-company id (taylor | ventana today). Resolved through domain/operatingCompanyAuthority.js -- never inferred from an Account's line of business.",
+    }),
+    // ISO calendar day strings, NOT timestamps. "Hired on the 3rd" is a calendar day; giving it an
+    // instant invents a timezone the record never had. Declared STRING rather than DATE for the
+    // same reason: the stored value is "2026-09-04", and a DATE-typed field would promise a
+    // temporal value this collection does not store.
+    makeFieldDefinition({
+      id: "hireDate",
+      entityId: "employee",
+      label: "Hire Date",
+      type: "STRING",
+      description: "Optional ISO calendar day (YYYY-MM-DD), stored as a string. Not a timestamp.",
+    }),
+    makeFieldDefinition({
+      id: "separationDate",
+      entityId: "employee",
+      label: "Separation Date",
+      type: "STRING",
+      description: "Optional ISO calendar day (YYYY-MM-DD), stored as a string. Independent of EOS account status, which lives in Firebase Auth and is changed only by setUserStatus.",
+    }),
+    // The postal address, as one nested map. Its five sub-keys are addressed individually by the
+    // trusted command (address.city, ...) so a change to a city audits as a change to a city --
+    // but the metadata layer has no nested-field type, so it is declared as the one field it is
+    // rather than five it is not.
+    makeFieldDefinition({
+      id: "address",
+      entityId: "employee",
+      label: "Address",
+      type: "STRING",
+      description: "Nullable nested map { street, unit, city, state, postalCode }. Rendered field-by-field by the record page; v1 FIELD_TYPE has no nested-object member, so it is declared as a single field rather than approximated as five.",
+    }),
     makeFieldDefinition({
       id: "employmentStatus",
       entityId: "employee",
@@ -243,6 +367,22 @@ export const employeeIndexList = makeListViewDefinition({
     makeColumn({ fieldId: "displayName", sortable: true }),
     makeColumn({ fieldId: "employmentStatus", sortable: true }),
     makeColumn({ fieldId: "operationalRoles" }),
+    // EOS ACCOUNT -- named for what it can actually prove.
+    //
+    // The column answers "does this person have an EOS account", because that is what this client
+    // is able to know. Whether that account is ENABLED or DISABLED is Firebase Auth state, and no
+    // governed read of another user's account status exists -- so the page states that rather than
+    // inferring it from employment status, which would show a CONTRACTOR who legitimately holds
+    // access as switched off.
+    //
+    // IT IS CALLED "EOS ACCOUNT", NOT "EOS ACCESS" (Owner ruling, PR #1806). A column headed Access
+    // over a linkage value invites the reading "this person HAS access", which is a stronger claim
+    // than "an account exists" and is exactly the one no read here can support. The heading changes
+    // back only when the enabled/disabled state is genuinely readable.
+    //
+    // The label is overridden here and the raw uid never reaches a cell: AdminUsers.jsx maps this
+    // cell to the words a person reads.
+    makeColumn({ fieldId: "userId", label: "EOS Account" }),
     makeColumn({ fieldId: "securityRole" }),
   ],
   filters: [

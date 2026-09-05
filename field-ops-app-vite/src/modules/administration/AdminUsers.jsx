@@ -1,237 +1,157 @@
-// Issue #226 Row 12 -- Admin mutation UI (Task 17). Two governed surfaces:
+import { useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { employeeEntity, employeeIndexList } from "../../metadata/definitions/employee.js";
+import { useMetadataList } from "../../hooks/useMetadataList";
+import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
+import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
+import { EOS_ACCESS, EOS_ACCESS_LABEL } from "../../domain/employeeProfile.js";
+import { securityRoleLabel } from "../../domain/employeeVocabulary.js";
+
+// ADMINISTRATION → USERS -- the one people-management destination.
 //
-// (1) Set user status (Enable/Disable) -> the trusted-writer `setUserStatus`
-//     command (functions/src/access/trustedWriterCommands.ts). CURRENT REPO
-//     TRUTH as of the Part 9 reconciliation (2026-08-15): implemented, exported
-//     (functions/src/index.ts), and -- unlike the stale "blocked on Issue #15"
-//     claim this comment used to make -- ACTUALLY DEPLOYED as a live Cloud
-//     Function in eos-platform-sandbox (DECISIONS.md #90 finding F-2, 2026-08-06).
-//     It remains undeployed to production only (DECISIONS.md #97 line 562). Its
-//     Permission (`admin.userStatus.write`, permissionCatalog.ts) carries no
-//     `active:false` gate and IS granted to the `admin` compatibility Role
-//     (compatibilityRoles.ts) -- so the catalog/Role layers are real, not a
-//     preview. Still shown disabled here, for an HONEST, different reason: (a)
-//     no governed target-user directory read exists for this action (the only
-//     comparable read, `listResetEligibleUsers`, is scoped and audited for
-//     credential-reset eligibility specifically -- reusing it here would record
-//     a false action in the immutable Audit Event trail), and (b) no principal
-//     in any environment yet holds a `roleAssignments` document (the governed
-//     migration step, `bootstrapCompatibilityAdmin`, exists in
-//     trustedWriterCommands.ts but is not exported/callable), so every call
-//     would deny today regardless. Wiring a real target-selection UI is a
-//     separate, later gate; this preview must not claim more than that.
+// ════════════════════ WHAT WAS CONSOLIDATED, AND WHAT WAS NOT ════════════════════
 //
-// (2) Password reset (AUTH-UI-3, DECISIONS #56) -> the governed admin-initiated
-//     reset. Wired to the trusted callable via the client SEAM
-//     (access/adminPasswordResetClient.js); ALL logic lives in the pure,
-//     node-tested view-model (domain/adminUsersResetView.js + adminPasswordReset.js)
-//     so this JSX stays thin. The callables are NOT deployed yet, so the live
-//     surface renders the honest unavailable/uncertain states -- never a
-//     client-direct Auth mutation, never a delivery claim. Authorization is
-//     resolved SERVER-SIDE; nav/button visibility here is not authorization.
+// Administration used to carry TWO people destinations. "Employees" rendered the governed employee
+// directory. "Users" rendered a governance status page with two permanently-disabled buttons and a
+// password-reset surface that had no particular user to point at. Neither was a place an
+// administrator could go to find a person and then see or change anything about them.
 //
-// Truthfulness (DECISIONS #56): this surface never shows a reset link, action
-// code, token, target email, or provider body, never claims the email was
-// delivered/opened/consumed, and only drives the ROUTINE reset (no session
-// revocation -- D-ROUTINE-REVOKE = NO).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "../../auth/AuthContext";
-import { Button } from "../../shared/ui/primitives";
-import { adminPasswordResetClient } from "../../access/adminPasswordResetClient";
-import {
-  createAdminResetController,
-  initialActionState,
-  beginConfirm,
-  cancelConfirm,
-  markSubmitting,
-  settle,
-  canInitiateAdminCredentialReset,
-  DEFAULT_MODE,
-} from "../../domain/adminPasswordReset";
-import {
-  RESET_SECTION_TITLE,
-  RESET_ACTION_LABEL,
-  RESET_CONFIRM_TITLE,
-  RESET_UNAVAILABLE_COPY,
-  maybeLoadEligibleUsers,
-  resetStatusView,
-} from "../../domain/adminUsersResetView";
+// They are now ONE destination, and EmployeesList.jsx is deleted rather than left running beside
+// this -- two directories over one collection is how they drift into disagreeing about the same
+// people. The retired Employees URLs redirect here (App.jsx).
+//
+// THE CONSOLIDATION IS PRESENTATIONAL. Underneath, nothing collapsed: `employees` is still the
+// authoritative workforce identity, `users/{uid}` is still application-access identity,
+// operationalRoles are still eligibility markers rather than permissions, and securityRole is
+// still a read-only mirror of the legacy role. The page is one; the authorities are not, and
+// domain/employeeProfile.js is where that separation is kept honest.
+//
+// ════════════════════ THIS IS THE EMPLOYEE DIRECTORY, NOT A COPY OF IT ════════════════════
+//
+// The rows come from `employee.index` (metadata/definitions/employee.js) on the standard list
+// runtime -- the same declaration, the same Rules-granted client-direct read, the same
+// name-ordered default sort and 50-row page the retired Employees screen used. No second read path
+// was added and no employee domain code was deleted; the directory moved under the name Users.
+//
+// ════════════════════ A ROW CLICK READS. EDIT EDITS. ════════════════════
+//
+// Clicking a row (or its name) opens User Detail READ-ONLY. Nothing here ever turns a row into an
+// editable field: an inline-editable table makes every stray click a candidate write to somebody's
+// employment record, and it has nowhere to put the validation, the confirmation and the audit a
+// governed change requires. The explicit Edit action opens the SAME edit flow the detail page's
+// Edit User button opens, against the SAME trusted command -- one write path, two doors to it.
+export default function AdminUsers() {
+  const navigate = useNavigate();
+  const { presentation, loadMore, retry } = useMetadataList(employeeIndexList, employeeEntity, {
+    filters: [],
+  });
 
-// `hasCapability` is the trusted effective-access previewer threaded from the
-// App.jsx dispatcher (operationalContext.hasCapability). The password-reset
-// surface -- and its eligible-user list read -- exist ONLY when the session
-// effectively holds `admin.credentialReset.initiate`. This gate is enforced
-// HERE, at the rendered surface, NOT merely by nav visibility: reaching
-// /administration/users directly still yields a fail-closed hasCapability
-// (undefined default) and the whole reset surface stays hidden with ZERO list
-// callable attempts. The catalog entry is `active: false` today, so this is
-// always false until a separate activation/grant gate -- keeping production
-// fail-closed. The setUserStatus preview below is a SEPARATE surface and is
-// intentionally not gated by this capability.
-export default function AdminUsers({ client = adminPasswordResetClient, hasCapability }) {
-  const { user } = useAuth();
-  const actorUid = user?.uid ?? "";
-  const canReset = canInitiateAdminCredentialReset(hasCapability);
-
-  const [loadState, setLoadState] = useState({ loading: true, ok: false, rows: [], result: null });
-  const [selected, setSelected] = useState(null); // the row being reset
-  const [action, setAction] = useState(initialActionState());
-  const [inFlight, setInFlight] = useState(false);
-
-  // ONE controller instance owns the synchronous in-flight lock + the
-  // idempotency key for the current intent (reused on retry).
-  const controllerRef = useRef(null);
-  if (controllerRef.current === null) {
-    controllerRef.current = createAdminResetController((payload) => client.rawInitiateAdminPasswordReset(payload));
-  }
-
-  useEffect(() => {
-    // Fail-closed: without the reset capability the surface is hidden and the
-    // governed list read must NEVER be attempted. Return before any call.
-    if (!canReset) {
-      setLoadState({ loading: false, ok: false, rows: [], result: null });
-      return undefined;
-    }
-    let alive = true;
-    setLoadState((s) => ({ ...s, loading: true }));
-    // maybeLoadEligibleUsers re-checks the SAME capability predicate and only
-    // invokes the seam when it holds -- a second, single-source-of-truth guard.
-    maybeLoadEligibleUsers({ hasCapability, listFn: client.listResetEligibleUsers, actorUid }).then((res) => {
-      if (!alive) return;
-      if (res.ok) setLoadState({ loading: false, ok: true, rows: res.rows, result: null });
-      else setLoadState({ loading: false, ok: false, rows: [], result: res.result ?? null });
-    });
-    return () => {
-      alive = false;
+  // THE EOS ACCOUNT CELL, composed here rather than in the metadata layer.
+  //
+  // `makeColumn` deliberately accepts no custom renderer -- the definition's own validator rejects
+  // one by name -- and names post-processing `presentation.rows[].cells` as what a caller needing
+  // custom cell display does instead. This is that. The `userId` column is relabelled "EOS Account"
+  // in the definition, and its cell becomes words: the raw uid never reaches a reader, which is
+  // the point, because a Firebase uid in a directory column is unreadable and teaches people to
+  // recognise internal keys.
+  //
+  // It says "Account linked" / "No account", NOT "Enabled" / "Disabled". Whether an account is
+  // enabled is Firebase Auth state, and no governed read exposes another user's to this client.
+  // Deriving it from employment status would render a CONTRACTOR who legitimately holds access as
+  // switched off -- the exact conflation this product forbids. The detail page says the same thing
+  // at greater length rather than filling the gap with a guess.
+  //
+  // The COLUMN is headed "EOS Account" for the same reason (Owner ruling, PR #1806): a heading
+  // reading Access over a linkage value invites "this person HAS access", which is a stronger claim
+  // than "an account exists" and the one no read here can support.
+  //
+  // SECURITY ROLE IS GIVEN ITS WORDS IN THE SAME PASS. It is a plain STRING field (deliberately --
+  // it is a mirror, and declaring enumLabels on it would dress a mirror up as a governed
+  // vocabulary), so the runtime renders the stored machine value: a column reading "technician"
+  // beside one reading "Active" teaches a reader that some of these are database constants.
+  // securityRoleLabel is the ONE label map for it, reused rather than restated here, and an
+  // unrecognised value still passes through verbatim rather than becoming a placeholder.
+  const withDisplayWords = useMemo(() => {
+    if (presentation.state !== "READY") return presentation;
+    const accessIndex = presentation.columns.findIndex((c) => c.fieldId === "userId");
+    const roleIndex = presentation.columns.findIndex((c) => c.fieldId === "securityRole");
+    if (accessIndex < 0 && roleIndex < 0) return presentation;
+    return {
+      ...presentation,
+      rows: presentation.rows.map((row) => ({
+        ...row,
+        cells: row.cells.map((cell, index) => {
+          if (index === accessIndex) {
+            // cellValue already resolved an absent/blank userId to null, so the presence of a
+            // value IS the linkage -- no second interpretation of the stored shape here.
+            return { ...cell, value: EOS_ACCESS_LABEL[cell.value ? EOS_ACCESS.LINKED : EOS_ACCESS.NO_ACCOUNT] };
+          }
+          if (index === roleIndex && cell.value) {
+            return { ...cell, value: securityRoleLabel(cell.value) };
+          }
+          return cell;
+        }),
+      })),
     };
-  }, [client, actorUid, canReset, hasCapability]);
+  }, [presentation]);
 
-  const openConfirm = useCallback((row) => {
-    setSelected(row);
-    controllerRef.current.beginIntent(); // fresh idempotency key for this intent
-    setAction(beginConfirm(initialActionState(), { eligible: row.eligible, mode: DEFAULT_MODE }));
-  }, []);
+  const openDetail = useCallback(
+    (employeeId) => navigate(`/administration/users/${employeeId}`),
+    [navigate],
+  );
 
-  const cancel = useCallback(() => {
-    setAction((s) => cancelConfirm(s));
-    setSelected(null);
-  }, []);
+  const rowActions = useMemo(
+    () => [
+      { id: "view", label: "View", onActivate: openDetail },
+      // Edit is a different DESTINATION, not a mode toggle on the row: the detail page opens
+      // read-only, and `?edit=1` opens it with the editor already up. Both reach the same form and
+      // the same trusted command; authorization is resolved there, never by whether this button
+      // rendered.
+      {
+        id: "edit",
+        label: "Edit",
+        onActivate: (employeeId) => navigate(`/administration/users/${employeeId}?edit=1`),
+      },
+    ],
+    [navigate, openDetail],
+  );
 
-  const confirmSend = useCallback(async () => {
-    if (!selected) return;
-    setAction((s) => markSubmitting(s));
-    setInFlight(true);
-    // NOTE: reason is captured client-side only; it is NOT part of the merged
-    // callable contract and is deliberately not sent until AUTH-PR-3.5 adds it.
-    const outcome = await controllerRef.current.submit({ targetUid: selected.uid, mode: DEFAULT_MODE });
-    setInFlight(false);
-    if (outcome.skipped) return; // an overlapping submit was ignored by the lock
-    setAction((s) => settle(s, outcome.result));
-  }, [selected]);
-
-  const status = useMemo(() => resetStatusView(action), [action]);
+  // THE COUNT EXISTS ONLY WHEN THE CURSOR IS EXHAUSTED -- the rule Suppliers, Warehouses and the
+  // retired Employees screen all state at length, and a people directory is where a partial count
+  // reads most convincingly as a complete one ("47 users" sounds like a headcount). No aggregate
+  // query was added to rescue the partial case: that would be creating a read to make the page
+  // look finished.
+  const complete = presentation.state === "READY" && !presentation.hasMore;
 
   return (
-    <div className="fo-panel">
-      <h2>Users</h2>
+    <WorkspaceIdentity
+      crumb="Administration → Users"
+      title="Users"
+      count={complete ? presentation.rows.length : null}
+      countLabel={presentation.rows.length === 1 ? "user" : "users"}
+      // NOTHING TO SUMMARISE. employmentStatus is a six-value field with no governed aggregate over
+      // it, so a workload line here would be a tally of the loaded page presented as a fact about
+      // the company. Silence is the honest answer, not an approximation in a smaller font.
+      summaryItems={[]}
+      // NO CREATE ACTION. A person enters EOS through the governed operator script
+      // (functions/scripts/provisionEmployeeAccess.js), which links a human to application access
+      // reciprocally. A disabled "New user" here would describe a permission boundary when the
+      // truth is that creating one is an onboarding procedure rather than a screen.
+    >
       <p className="fo-muted">
-        This surface&apos;s governed content requires the Enterprise Access &amp; Administration
-        Platform&apos;s trusted backend. Firestore Rules deny all client-direct access to governed
-        Role/Permission/Audit data by design (Spec sec12); mutations are performed only by trusted
-        callables, never by the client.
+        Employee profiles, operational roles, EOS access and security roles. Security Role mirrors
+        the legacy identity role (admin, dispatcher, technician) — not the governed Role a person
+        holds. EOS Account shows whether an application account exists for this person; whether that
+        account is enabled or disabled is Firebase Auth state that no governed read exposes yet.
       </p>
-
-      <h3>Set user status</h3>
-      <p className="fo-muted">
-        Enabling or disabling a user calls the trusted <code>setUserStatus</code> command. It is
-        implemented, tested, and deployed as a live Cloud Function in some environments (not yet in
-        production). These actions stay disabled here because no governed target-user directory
-        read exists yet for this action, and no principal currently holds the access-record grant
-        every real call requires -- not because the backend is unbuilt.
-      </p>
-      {/* variant="protected", not `secondary disabled`. The explanation was already written
-          above, but it was loose prose sitting NEAR the control rather than attached to it --
-          nothing tied the two together for a screen reader. The protected variant is this
-          codebase's existing mechanism for exactly that: it renders the lock, keeps the native
-          disabled attribute, and ties a stated reason to the button via aria-describedby. The
-          paragraph above stays, because it carries the governance context (the backend IS built
-          and deployed) that a control-level reason should not try to hold. */}
-      <Button type="button" variant="protected" reason="No governed target-user directory read exists yet, and no principal holds the required access-record grant.">
-        Enable user
-      </Button>{" "}
-      <Button type="button" variant="protected" reason="No governed target-user directory read exists yet, and no principal holds the required access-record grant.">
-        Disable user
-      </Button>
-
-      {/* Fail-closed: the ENTIRE password-reset surface renders only when the
-          session effectively holds admin.credentialReset.initiate. Hidden (and
-          zero list calls) otherwise -- see the gate at the top of this file. */}
-      {canReset && (
-        <>
-          <h3>{RESET_SECTION_TITLE}</h3>
-          <p className="fo-muted">
-            Initiates a governed password reset for another eligible user. The user sets their own new
-            password from an email they receive; an administrator never sees a reset link, code, or the
-            user&apos;s password. Routine resets do not sign the user out.
-          </p>
-
-          {loadState.loading && <p className="fo-muted">Loading eligible users…</p>}
-
-          {!loadState.loading && !loadState.ok && (
-            <p className="fo-muted" role="status">
-              {RESET_UNAVAILABLE_COPY}
-            </p>
-          )}
-
-          {!loadState.loading && loadState.ok && loadState.rows.length === 0 && (
-            <p className="fo-muted">No eligible users to display.</p>
-          )}
-
-          {!loadState.loading && loadState.ok && loadState.rows.length > 0 && (
-            <ul className="fo-list">
-              {loadState.rows.map((row) => (
-                <li key={row.uid}>
-                  <span>{row.displayName || row.uid}</span>
-                  {row.role ? <span className="fo-muted"> — {row.role}</span> : null}{" "}
-                  {row.eligible ? (
-                    <Button type="button" variant="secondary" onClick={() => openConfirm(row)} disabled={inFlight}>
-                      {RESET_ACTION_LABEL}
-                    </Button>
-                  ) : (
-                    <span className="fo-muted" title={row.ineligibleReasonCopy || undefined}>
-                      (not eligible)
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {selected && (
-            <div className="fo-modal" role="dialog" aria-modal="true" aria-label={RESET_CONFIRM_TITLE}>
-              <h4>{RESET_CONFIRM_TITLE}</h4>
-              <p>
-                Send a password reset for <strong>{selected.displayName || selected.uid}</strong>
-                {selected.role ? <span className="fo-muted"> ({selected.role})</span> : null}?
-              </p>
-              <div>
-                <Button type="button" variant="primary" onClick={confirmSend} disabled={inFlight} loading={inFlight}>
-                  Confirm
-                </Button>{" "}
-                <Button type="button" variant="secondary" onClick={cancel} disabled={inFlight}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {status.show && (
-            <p className={`fo-${status.tone}`} {...status.aria}>
-              {status.message}
-            </p>
-          )}
-        </>
-      )}
-    </div>
+      <MetadataListGrid
+        presentation={withDisplayWords}
+        caption="Users"
+        onRowClick={openDetail}
+        rowActions={rowActions}
+        onLoadMore={loadMore}
+        onRetry={retry}
+      />
+    </WorkspaceIdentity>
   );
 }

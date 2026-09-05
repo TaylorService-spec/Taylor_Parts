@@ -536,7 +536,21 @@ export const NAV_DOMAINS = [
       // named sub-item. Listed first only for tab-bar display order (array order
       // has no effect on routing/gating).
       { key: "overview", label: "Overview", path: "overview" },
-      { key: "employees", label: "Employees", path: "", legacyKey: "technicians" },
+      // ADMINISTRATION USERS CONSOLIDATION -- the "employees" item is GONE, not hidden.
+      //
+      // It used to hold path "" (so bare /administration resolved to the employee directory) with
+      // legacyKey "technicians". Administration now has ONE people destination, so both of that
+      // item's URLs -- the /administration index and /administration/employees -- redirect to
+      // /administration/users from App.jsx's own administration block, where a redirect can be a
+      // route rather than a nav item pretending to be a page.
+      //
+      // The nav item is not merely navHidden: a hidden item still generates a route, and a hidden
+      // "Employees" route rendering the Users directory is exactly the two-competing-directories
+      // state this consolidation exists to end.
+      //
+      // The legacyKey it carried is not lost. It gated visibility for the technician-era role
+      // model, and "users" carries no legacyKey -- so this destination is admin/dispatcher-visible
+      // through PLACEHOLDER_DEFAULT_ROLES, unchanged from what the Users item already had.
       { key: "users", label: "Users", path: "users" },
       { key: "rolesPermissions", label: "Roles & Permissions", path: "roles-permissions" },
       // Objects -- the Role x Object x CRED grid (Owner, 2026-08-20). Sits beside Roles &

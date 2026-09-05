@@ -70,7 +70,7 @@ const AdminWarehouseRacking = lazy(() => import("./modules/administration/AdminW
 const AdminFinancialPolicy = lazy(() => import("./modules/administration/AdminFinancialPolicy"));
 const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
-const EmployeesList = lazy(() => import("./modules/administration/EmployeesList.jsx"));
+const UserDetail = lazy(() => import("./modules/administration/UserDetail.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
 const PurchaseOrders = lazy(() => import("./modules/purchasing/PurchaseOrders"));
 const Receipts = lazy(() => import("./modules/purchasing/Receipts"));
@@ -437,13 +437,12 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // both passed, because neither renders the route table the way the browser does.
   // Dispatched here, not as a separate <Route> -- the generic subnav loop emits the route
   // and renders whatever this returns, so a second Route at the same path never wins.
-  // Owner ruling 2026-08-20: "technician is a role". The Employees item keeps its
-  // legacyKey (so WHO can see it is unchanged) but renders the governed employee
-  // directory instead of the fieldops_technicians roster it used to. The two had drifted
-  // into parallel identities for the same people; the directory is `employees`.
-  if (domain.key === "administration" && item.key === "employees") {
-    return <EmployeesList />;
-  }
+  // ADMINISTRATION USERS CONSOLIDATION -- the "employees" dispatch branch went with the nav item
+  // it served (navConfig.js). The Owner ruling it recorded is not reversed by that: "technician is
+  // a role" (2026-08-20) still holds, the directory is still `employees`, and that directory is
+  // exactly what Administration > Users renders. What changed is that it has one name and one
+  // destination instead of two. Its retired URLs redirect -- see the administration block in
+  // AppRoutes below, where a redirect can be a route rather than a nav item pretending to be one.
   if (domain.key === "administration" && item.key === "objects") {
     return <AdminObjects />;
   }
@@ -966,6 +965,37 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               keeps the route from disagreeing with them. */}
           {domain.key === "equipment" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <Route path=":equipmentId" element={<EquipmentDetail />} />
+          )}
+          {/* ADMINISTRATION USERS CONSOLIDATION.
+              ═══════════════════════════════════════════════════════════════════════════════════
+              THE RETIRED URLS STILL WORK. "Employees" held path "" in this domain, so bare
+              /administration WAS the employee directory and is a URL people have bookmarked and
+              linked. Removing the nav item without these redirects would drop both that address
+              and /administration/employees onto the top-level catch-all, which sends you to
+              /dashboard -- a bookmark that silently lands somewhere else is worse than one that
+              404s, because nothing tells you your link was wrong.
+              Both are STATIC segments (and an index), so React Router ranks them above the
+              dynamic :employeeId sibling below and neither can ever be read as a record id.
+              Unconditional, deliberately: a role that cannot see Administration still gets a
+              redirect to the Users route, which then states its own denial through the generated
+              denied-item route. The redirect moves the address; it decides no access.
+              THE RECORD PAGE is the same one-extra-route shape /customers/:accountId uses, and it
+              is gated the same way -- by isDomainVisible, so a role with no Administration access
+              never MOUNTS the page or its directory subscription. hasCapability is threaded for
+              the same reason it is threaded to the Users list's password-reset surface: the
+              fail-closed previewer decides what RENDERS, and the trusted commands decide,
+              independently and server-side, what may actually be written. */}
+          {domain.key === "administration" && (
+            <>
+              <Route index element={<Navigate to="/administration/users" replace />} />
+              <Route path="employees" element={<Navigate to="/administration/users" replace />} />
+            </>
+          )}
+          {domain.key === "administration" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+            <Route
+              path="users/:employeeId"
+              element={<UserDetail hasCapability={operationalContext?.hasCapability} />}
+            />
           )}
           {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
               NOT isDomainVisible(service domain) -- a technician

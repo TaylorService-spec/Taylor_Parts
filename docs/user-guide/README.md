@@ -26,7 +26,7 @@ what you're trying to do, in plain language, matching the app's actual on-screen
   kind of import does, what it refuses and why, and what it will never do. Sandbox only.
 - [Set up warehouse racking](./administration/set-up-warehouse-racking.md) — describing a
   warehouse's aisles, bays and positions once and creating all of its bins in one pass.
-- [Manage employees](./administration/manage-employees.md)
+- [Manage users](./administration/manage-employees.md)
 - [See who can do what](./administration/see-who-can-do-what.md)
 - [See what a role can do](./administration/see-what-a-role-can-do.md)
 - [Integrations](./administration/integrations-guide.md)

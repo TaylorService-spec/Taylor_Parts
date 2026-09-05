@@ -70,7 +70,7 @@ const COLLECTION_PAGES = [
   "modules/equipment/EquipmentWorkspace.jsx",
   "modules/purchasing/Suppliers.jsx",
   "modules/inventory/Manufacturers.jsx",
-  "modules/administration/EmployeesList.jsx",
+  "modules/administration/AdminUsers.jsx",
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",
   "modules/purchasing/PurchaseOrders.jsx",

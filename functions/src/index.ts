@@ -221,6 +221,20 @@ export {
   listResetEligibleUsers,
 } from "./access/adminCredentialCallables";
 
+// --- ADMINISTRATION USERS CONSOLIDATION surface: the Employee profile write + the
+// record-scoped Change History read ---
+// Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
+// activation program, NOT deployed to the production project. Both re-authorize server-side on a
+// governed capability (admin.employeeProfile.write / audit.event.read), and both DENY today in
+// every environment for the standing platform reason -- no principal holds a roleAssignments
+// document -- which the Users surface states on screen rather than hiding. Neither weakens
+// firestore.rules: employees stays client-write-denied and auditEvents stays client-read-denied,
+// so these callables are the only paths that exist.
+export {
+  updateEmployeeProfile,
+  listRecordChangeHistory,
+} from "./access/administrationUsersCallables";
+
 // --- EI Truck Registry surface (ADR-010 / Decision #60): trusted write callables ---
 // Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
 // activation program, NOT deployed to the production project. NO Admin UI wired to call them, NO App

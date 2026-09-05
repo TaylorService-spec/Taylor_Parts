@@ -26,19 +26,19 @@ things and this document never fuses them into one verdict.
 
 ## Counts
 
-- **capabilities**: 139
+- **capabilities**: 140
 - **catalogActive**: 0
-- **catalogInactive**: 139
+- **catalogInactive**: 140
 - **eligibleForEnvironmentActivation**: 85
 - **activatedInSomeEnvironment**: 85
 - **callableExports**: 46
-- **destinations**: 91
+- **destinations**: 90
 - **destinationsHidden**: 19
 - **guides**: 0
 - **registerEntries**: 18
 - **parityIssues**: 0
 
-Catalog parse check: 139/139 entries (ok)
+Catalog parse check: 140/140 entries (ok)
 
 ## Implementation evidence
 
@@ -47,7 +47,7 @@ Evidence of reference. **Not** proof that a callable exists, except where stated
 | Class | Count | Means |
 | --- | ---: | --- |
 | EXPORTED | 21 | An exported callable in `index.ts` names this capability |
-| SERVER_REFERENCED | 112 | Referenced under `functions/src`; no callable matched |
+| SERVER_REFERENCED | 113 | Referenced under `functions/src`; no callable matched |
 | CLIENT_ONLY | 2 | Referenced only in the client app |
 | NO_IMPLEMENTATION_EVIDENCE | 4 | No literal reference found — **may be a false negative** for ids assembled indirectly |
 

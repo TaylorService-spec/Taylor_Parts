@@ -5948,3 +5948,181 @@ No new read, grant, capability or Rules change. No ATP, stockout, valuation, COG
 carrying cost. No count aggregate is created, and none is implied to be coming. The final dashboard
 should prefer useful governed work previews over placeholders waiting for future count
 infrastructure — **but it must never trade truth for visual completeness.**
+
+
+## #173 — OWNER DIRECTION: Administration presents ONE people destination, and a record has a Change History (2026-09-05)
+
+**Context.** Administration carried two people destinations over the same set of humans. "Employees"
+was the governed employee directory with deliberately inert rows and no record page. "Users" was a
+governance status page: two permanently-disabled Enable/Disable buttons with no user selected, and a
+password-reset surface that had to fetch its own candidate list to find a target. Neither was
+somewhere an administrator could look a person up and then see or change anything about them.
+
+**What is DIRECTED and what is DERIVED.** Points 1-5 and 7 restate the Owner's own direction for
+this workstream. Points 6, 8 and 9, and everything under "Deliberately not decided", are
+implementation judgments made under it and are recorded here so they can be overruled as such --
+they are not attributed to the Owner.
+
+### The direction
+
+**1. ONE DESTINATION, NAMED USERS.** The Employees nav item is removed — not hidden, because a
+hidden item still generates a route and a hidden "Employees" route rendering the Users directory is
+the two-directories state this exists to end. `EmployeesList.jsx` is deleted. The retired URLs
+(`/administration`, which Employees held as the domain index, and `/administration/employees`)
+redirect to `/administration/users`.
+
+**2. THE CONSOLIDATION IS PRESENTATIONAL. THE AUTHORITIES ARE NOT.** `employees` remains the
+authoritative workforce identity and is what Users reads. `users/{uid}` + Firebase Auth remain
+application/access identity. `operationalRoles` remain eligibility markers consumed as Rules
+Conditions, never permissions. `securityRole` remains a read-only mirror of `users/{uid}.role`.
+`firestore.rules` is untouched: `employees` stays client-write-denied and `auditEvents` stays
+client-read-denied, which is why the trusted callables are the only paths that exist.
+
+**3. A RECORD IS READ-ONLY BY DEFAULT, AND EDITING IS DELIBERATE.** `/administration/users/:employeeId`
+is a first-class routed record page. A row click opens it to READ. Editing is a button, or the
+directory's own explicit Edit action, and both reach the same form and the same trusted command.
+Clicking a row never makes a field editable.
+
+**4. THE INDEPENDENCE RULES ARE STRUCTURAL, NOT POLICY.** Employment Status does not switch access
+on or off; account status rewrites no employment record; Operational Roles and Security Role derive
+nothing from each other in either direction; a job title determines nothing. The edit payload is a
+diff of what the user touched, so a derived change is not something a reviewer has to look for — it
+cannot be expressed.
+
+**5. THE PROFILE WRITE IS A TRUSTED COMMAND, AND ITS REFUSALS ARE THE POINT.**
+`updateEmployeeProfile` re-authorizes on the new `admin.employeeProfile.write` capability and
+refuses `securityRole`, `userId` and account status **by name** — never silently, because a
+silent no-op leaves an administrator believing a security change landed. A save that changes nothing
+writes nothing; only changed keys are written, so a concurrent edit to an untouched field survives.
+
+**6. AN AUDIT EVENT PER CHANGED FIELD, ON THE EXISTING TRAIL.** Not one bundled event ("when did
+this person's manager change" cannot be filtered out of a bundle) and not a second collection. The
+existing `auditEventWriter` is extended with three field-change facts under the same closed-carrier
+rule `objectId` and the ownership fields already follow. **An applied field-change event must carry
+them; a DENIED one must not** — a denial changed no field, and requiring the facts unconditionally
+made every denial event fail validation, which meant a refused attempt to change somebody's
+employment record could not be recorded at all.
+
+**7. CHANGE HISTORY IS A SHARED EOS RECORD PATTERN.** `shared/ui/ChangeHistory.jsx` +
+`domain/changeHistory.js` are record-agnostic — Customers, Equipment, Parts, Work Orders and
+Purchase Orders mount the same component over the same row shape. It renders **stored, audited
+events only**; there is no prop through which a caller could hand it a client-computed diff. Newest
+first by default, every column sortable with `aria-sort`, and the Field filter's options **derived
+from the rows** rather than declared — a hard-coded employee field list inside a shared component
+offers Equipment filters that can only ever return nothing.
+
+**8. THE PAGE STATES WHAT IT CANNOT KNOW.** Whether an account is enabled or disabled is Firebase
+Auth state and no governed read exposes another user's to this client, so it renders "Not available"
+with the reason, and BOTH Enable and Disable are offered (each naming the state it sets) rather than
+one contextual action. Deriving it from employment status would render a CONTRACTOR who legitimately
+holds access as switched off. No Last Sign-In, Account Created or Last Access Change rows exist, for
+the same reason.
+
+**9. `employeeNumber` IS NOT `employeeId`.** The document id is technical and stays internal —
+promoting it would be the document-id-as-identity fallback #106 forbids. A new nullable
+`employeeNumber` carries Taylor's human-facing Employee ID and is labelled "Employee ID" in the UI.
+Nothing is backfilled: old records legitimately have none.
+
+### What this does NOT authorize
+
+No Rules change, no grant, no activation, no deployment. `admin.employeeProfile.write` is
+registered active and held by the `admin` compatibility Role by the existing catalog derivation —
+no grant was invented — and it still DENIES everywhere today for the standing platform reason: no
+principal holds a `roleAssignments` document in any environment. Enable/Disable, Edit User and
+Change History all render fail-closed with that reason attached to the control. The one new
+Firestore composite index (`auditEvents` targetType/targetId/at) is declared, not deployed.
+
+### Deliberately not decided
+
+`employmentType` (it would create a second answer to "is this person a contractor" beside
+`employmentStatus.CONTRACTOR`), `departmentId`/`locationId` (no governed catalog to reference;
+free strings would be duplicate master data), and a per-change free-text `reason` (the immutable
+trail has no field for one, and widening that contract is a governance change rather than a side
+effect of an edit form). Specification: `specifications/administration-users-consolidation.md`.
+
+
+## #174 — OWNER RULING: PR #1806 accepted with corrections; sandbox-only activation approved (2026-09-05)
+
+**Context.** #173 landed Administration → Users fail-closed in every environment, and listed four
+decisions it deliberately did not make. This is the Owner's answer to all four, plus the
+authorization needed to exercise the surface end to end.
+
+### 1. Sandbox activation — APPROVED FOR SANDBOX ONLY
+
+Complete the minimum controlled authorization path needed to exercise Administration → Users end to
+end in **eos-platform-sandbox**. Authorized: making the existing compatibility-admin bootstrap/grant
+path operable through the existing governed/operator architecture; creating the **minimum** sandbox
+admin roleAssignment required for testing; deploying the new Administration Users trusted callables
+to sandbox; deploying the auditEvents composite index to sandbox; verifying Edit User, Change
+History and Enable/Disable through the trusted paths.
+
+**NOT authorized:** production grants, production deployment, broad grants to multiple principals,
+bypassing roleAssignments, weakening Firestore Rules, or activating unrelated capabilities.
+
+**Password reset stays behind its own `admin.credentialReset.initiate` activation gate and must not
+be silently activated.** It is the one capability in this surface that is `active: false`, and the
+sandbox authorization above does not reach it.
+
+### 2. Employment type — DEFER
+
+Not added in #1806. `employmentStatus` already contains CONTRACTOR, so a second field now creates
+conflicting semantics. **Follow-up design item: separate employment LIFECYCLE from worker
+CLASSIFICATION.** The future target distinguishes:
+
+    Employment Status:  Active / On Leave / Inactive / Terminated / Retired
+    Employment Type:    Full-time / Part-time / Contractor / …
+
+**CONTRACTOR must not be migrated automatically** until the migration semantics are explicitly
+designed — an automatic split would silently reclassify every contractor's lifecycle state.
+
+### 3. Department / Location — DEFER
+
+No free-text `departmentId`/`locationId`. These become User profile REFERENCES once EOS has
+governed Department and Location/Branch authorities to reference. **Duplicate master data must not
+be created merely to fill the User page.**
+
+### 4. Per-change reason — DEFER
+
+Change History does not require a reason field for closure, and the immutable audit-event contract
+is not to be widened in #1806 solely for optional notes. A generic governed change-reason capability
+can be designed separately if it is later wanted **across** EOS record types — which is the level
+that decision belongs at.
+
+### 5. Password-reset eligible-user list — RETAIN
+
+No longer needed by User Detail, but deleting reviewed credential-management machinery is not part
+of this consolidation. **Recorded as cleanup debt**; remove only after proving there are no
+remaining consumers.
+
+### Corrections required before merge, and what was done
+
+**1. UNIQUENESS AND GOVERNANCE FOR `employeeNumber`.** A business identifier two people can share
+is not an identifier. Implemented as a transactional claim in a new
+`employee_number_registry` collection, keyed by the NORMALIZED (upper-cased) number and holding
+the owning employeeId — claimed, released and checked inside the same transaction as the profile
+write.
+
+A registry rather than a query, deliberately: Firestore's transactional isolation covers the
+documents a query MATCHED, not the ones that did not exist when it ran, so two concurrent claims of
+an unused number would both see "nobody has it". A document id has no phantom. The collection has no
+match block, so Rules deny every client read and write of it by default — the same posture
+`privilegedRoleRequests` takes, and **no Rules change**. Governance also means SHAPE: 1–32
+characters of letters, digits, dot, underscore or hyphen, no spaces and no slash. Nothing to
+backfill — `employeeNumber` is introduced by the same change and no document has ever carried one.
+
+**2. NON-ABSOLUTE PASSWORD-RESET WORDING.** A future-tense promise that an email arrives is a claim
+about a provider the surface has no signal from; the callable returns a neutral `accepted`. The
+merged `RESULT_COPY` was already conditional ("if the account is eligible … has been requested");
+the surface copy now matches it and states that delivery is not confirmed here. Asserted from source.
+
+**3. "EOS ACCESS" → "EOS ACCOUNT" in the directory.** The column's value is account LINKAGE. A
+heading reading Access over it invites "this person HAS access", which is a stronger claim than "an
+account exists" and the one no read on that page can support. The heading changes back only when the
+enabled/disabled state is genuinely readable. The record page's *section* keeps its name — it does
+carry access facts — and the `setUserStatus` audit event keeps the label "EOS Access Status",
+because that command really does change access status.
+
+### Sequence
+
+Merge #1806. **Then** perform the sandbox-only authorization and deployment as a SEPARATE controlled
+step, and run browser verification against real sandbox data. Production stays closed.

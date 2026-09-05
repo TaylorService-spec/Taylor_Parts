@@ -958,6 +958,25 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.roleAssignment",
     action: "write",
   }),
+  // ADMINISTRATION USERS CONSOLIDATION -- the governed Employee PROFILE write
+  // (employeeProfileCommands.ts). A THIRD Administration authority beside userStatus and
+  // roleAssignment, deliberately separate from both: correcting somebody's job title is not
+  // the authority to switch their account off, and neither is the authority to change what
+  // they can do. Holding this one grants no access change of any kind -- the command it
+  // guards refuses securityRole, userId and account status outright.
+  //
+  // Registered ACTIVE, like its two Administration siblings and unlike the report./dataImport
+  // ids: there is no per-environment activation gate to wait on here. It still denies today
+  // for the reason every governed capability denies today -- no principal holds a
+  // roleAssignments document in any environment -- which is the standing platform blocker,
+  // not a property of this entry.
+  Object.freeze({
+    id: "admin.employeeProfile.write",
+    description:
+      "Edit an Employee's profile and employment record (name, contact, title, manager, operating company, employment status, operational roles). Confers no access change: security role, account status and the user linkage are out of this capability's reach.",
+    resource: "admin.employeeProfile",
+    action: "write",
+  }),
   Object.freeze({
     id: "admin.accessRequest.decide",
     description: "Approve or reject a pending Access Request.",

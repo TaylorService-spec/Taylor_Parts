@@ -1,0 +1,137 @@
+name: Administration Users Tests
+
+# ADMINISTRATION USERS CONSOLIDATION -- Administration presents ONE people destination (Users),
+# built on the authoritative employee directory, with a routed User Detail record page, a governed
+# Edit User flow, and the shared Change History component.
+#
+# THREE LAYERS, all offline. No emulator, no Firebase runtime, no deployment, no secrets:
+#   1. the pure client domain (profile view/diff/validation, and the record-agnostic history model)
+#   2. the rendered surfaces (vitest + jsdom, Firestore mocked at the hook boundary and the
+#      governed writes mocked at the SEAM -- no capability is granted anywhere, so the fail-closed
+#      states asserted are the states the running app is in today)
+#   3. the trusted backend (functions build + node:test over an in-memory Firestore double): which
+#      fields the Employee profile command REFUSES, that a denial writes no employee data, that a
+#      no-op writes nothing at all, and that the Change History read's projection is an allow-list.
+#
+# INERT. This surface registers one capability (admin.employeeProfile.write) and exports two
+# callables; it grants nothing, activates nothing, deploys nothing, and does not touch
+# firestore.rules -- employees stays client-write-denied and auditEvents stays client-read-denied,
+# which is why the callables are the only paths that exist. The one new Firestore composite index
+# (auditEvents targetType/targetId/at) is declared, not deployed.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/administration/AdminUsers.jsx"
+      - "field-ops-app-vite/src/modules/administration/UserDetail.jsx"
+      - "field-ops-app-vite/src/modules/administration/UserEditPanel.jsx"
+      - "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdministrationOverview.jsx"
+      - "field-ops-app-vite/src/shared/ui/ChangeHistory.jsx"
+      - "field-ops-app-vite/src/domain/employeeProfile.js"
+      - "field-ops-app-vite/src/domain/changeHistory.js"
+      - "field-ops-app-vite/src/domain/employeeVocabulary.js"
+      - "field-ops-app-vite/src/access/administrationUsersClient.js"
+      - "field-ops-app-vite/src/metadata/definitions/employee.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/test/employeeProfileDomain.test.mjs"
+      - "field-ops-app-vite/test/changeHistoryModel.test.mjs"
+      - "field-ops-app-vite/test/administrationUsersSurfaces.test.jsx"
+      - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
+      - "functions/src/access/employeeProfileCommands.ts"
+      - "functions/src/access/recordChangeHistoryReadService.ts"
+      - "functions/src/access/administrationUsersCallables.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/index.ts"
+      - "functions/test/employeeProfileCommands.test.mjs"
+      - "functions/test/recordChangeHistoryRead.test.mjs"
+      - ".github/workflows/administration-users-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/administration/**"
+      - "field-ops-app-vite/src/shared/ui/ChangeHistory.jsx"
+      - "field-ops-app-vite/src/domain/employeeProfile.js"
+      - "field-ops-app-vite/src/domain/changeHistory.js"
+      - "field-ops-app-vite/src/access/administrationUsersClient.js"
+      - "functions/src/access/employeeProfileCommands.ts"
+      - "functions/src/access/recordChangeHistoryReadService.ts"
+      - "functions/src/access/administrationUsersCallables.ts"
+      - ".github/workflows/administration-users-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Users surfaces + pure domain (node:test + vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: field-ops-app-vite
+
+      - name: Pure domain -- profile view/diff/validation and the history model (node:test)
+        run: node --test test/employeeProfileDomain.test.mjs test/changeHistoryModel.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Administration nav -- ONE people destination (node:test)
+        run: node test/administrationPortalNav.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: The rendered surfaces -- directory, record page, edit flow, history (vitest)
+        run: npx vitest run test/administrationUsersSurfaces.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Composition conformance -- the record and collection grammars
+        run: npx vitest run test/compositionConformance.test.jsx test/listsP2Tranche2.test.jsx
+        working-directory: field-ops-app-vite
+
+  trusted-backend:
+    name: Employee profile command + Change History read (functions build + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Build functions (tsc)
+        run: npm run build
+        working-directory: functions
+
+      - name: Profile command + record-scoped history read (node:test)
+        run: node --test test/employeeProfileCommands.test.mjs test/recordChangeHistoryRead.test.mjs
+        working-directory: functions
+
+      - name: Capability catalog + resolver exhaustiveness (node:test)
+        run: node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs
+        working-directory: functions

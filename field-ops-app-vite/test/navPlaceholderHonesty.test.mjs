@@ -95,9 +95,19 @@ check("real index destinations were not hidden by mistake", () => {
   assert.ok(crmIndex, "CRM/Sales index destination missing");
   assert.notEqual(crmIndex.navHidden, true, "the CRM/Sales index route is real and must stay visible");
 
-  const adminEmployees = destinations().find((d) => d.domain === "administration" && d.key === "employees");
-  assert.ok(adminEmployees, "Administration employees destination missing");
-  assert.notEqual(adminEmployees.navHidden, true, "Administration > Employees is real and must stay visible");
+  // ADMINISTRATION USERS CONSOLIDATION (2026-09-04): the destination this checked is now called
+  // Users and lives at its own named path. The regression it guards against is unchanged -- an
+  // over-broad edit hiding a REAL people destination because a key collided with a Reporting
+  // placeholder (Reporting still carries a navHidden "employees" key, which is exactly why this
+  // check exists and why it now names the surviving destination explicitly).
+  const adminUsers = destinations().find((d) => d.domain === "administration" && d.key === "users");
+  assert.ok(adminUsers, "Administration users destination missing");
+  assert.notEqual(adminUsers.navHidden, true, "Administration > Users is real and must stay visible");
+  assert.equal(
+    destinations().some((d) => d.domain === "administration" && d.key === "employees"),
+    false,
+    "Administration must expose ONE people destination, not two",
+  );
 });
 
 console.log(`\n${passed} passed, 0 failed`);
