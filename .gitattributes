@@ -48,17 +48,7 @@ docs/audits/inv-convergence-e-c2-partdetail-cutover/** -text
 docs/audits/inv-convergence-e-c2-hosting-deploy-prep/** -text
 docs/audits/inv-convergence-e-c2-hosting-deploy/** -text
 
-# STYLESHEETS ARE LF, ALWAYS -- BECAUSE A WINDOWS EDIT OTHERWISE REWRITES THE WHOLE FILE.
-#
-# Measured on PR #1808: a two-rule change to field-ops-app-vite/src/index.css arrived as
-# +8,480 / -8,400 -- every line in the file replaced. Nothing had been reformatted. The
-# working copy is materialised CRLF on Windows (core.autocrlf=true), an edit round-tripped
-# the file, and the CRLF bytes reached the commit instead of being normalised on the way in.
-# The real change was 84 lines; `--ignore-space-at-eol` was the only thing that could see it.
-#
-# A diff nobody can read is a diff nobody reviews, and this is the largest file in the client.
-# Pinning it removes the possibility rather than relying on the next person to notice.
-#
-# THIS ADDS NO CHURN. The one tracked stylesheet is already stored LF
-# (`git ls-files --eol` reports i/lf), so the rule states what the repository already holds.
+# STYLESHEETS ARE LF, ALWAYS. A two-rule edit to field-ops-app-vite/src/index.css from a
+# Windows checkout landed as +8,480/-8,400 (PR #1808) -- the whole file replaced by line
+# endings, hiding an 84-line change. No churn: the one tracked stylesheet is already stored LF.
 *.css text eol=lf
