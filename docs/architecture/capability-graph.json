@@ -12,26 +12,26 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 139,
+    "capabilities": 140,
     "catalogActive": 0,
-    "catalogInactive": 139,
+    "catalogInactive": 140,
     "eligibleForEnvironmentActivation": 85,
     "activatedInSomeEnvironment": 85,
     "callableExports": 46,
-    "destinations": 91,
+    "destinations": 90,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 139,
-    "parsed": 139,
+    "raw": 140,
+    "parsed": 140,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 112,
+    "SERVER_REFERENCED": 113,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -3034,10 +3034,11 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/objectPermissionMap.js"
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3063,6 +3064,27 @@
         ],
         "serverReferenceCount": 2,
         "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.employeeProfile.write",
+      "resource": "admin.employeeProfile",
+      "action": "write",
+      "description": "Edit an Employee's profile and employment record (name, contact, title, manager, operating company, employment status, operational roles). Confers no access change: security role, account status and the user linkage are out of this capability's reach.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/employeeProfileCommands.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3179,13 +3201,14 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts"
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/recordChangeHistoryReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -5233,15 +5256,6 @@
       "label": "Overview",
       "path": "overview",
       "legacyKey": null,
-      "navHidden": false,
-      "future": false,
-      "placeholderExplanation": null
-    },
-    {
-      "key": "employees",
-      "label": "Employees",
-      "path": "",
-      "legacyKey": "technicians",
       "navHidden": false,
       "future": false,
       "placeholderExplanation": null

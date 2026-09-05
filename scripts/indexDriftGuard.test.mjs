@@ -143,6 +143,18 @@ const PENDING_DEPLOY_INDEX_KEYS = new Set([
   // read fails at query time rather than silently returning nothing -- Firestore refuses a query it
   // has no index for, which is the failure mode to want.
   'technician_blocked_time|COLLECTION|technicianId:ASCENDING,endMillis:ASCENDING',
+  // ADMINISTRATION USERS CONSOLIDATION (DECISIONS #173): the record-scoped Change History read is
+  // `targetType == x AND targetId == y ORDER BY at DESC` -- two equalities plus an ordering, which
+  // Firestore cannot serve from single-field indexes. It is the query auditEventWriter's own Row-11
+  // deferral anticipated ("filtered/ordered queries by targetType/targetId are deferred to Row 11,
+  // which will define and deploy whatever composite indexes its actual Admin Portal audit-history
+  // UI needs").
+  //
+  // Declared here and NOT deployed, like every other key on this list. Until it is, the history
+  // read fails at query time rather than silently returning nothing -- Firestore refuses a query it
+  // has no index for, which is the failure mode to want, and the surface renders its honest
+  // "change history unavailable" state either way (the callable is undeployed too).
+  'auditEvents|COLLECTION|targetType:ASCENDING,targetId:ASCENDING,at:DESCENDING',
 ]);
 
 test('O-4: every declared index is either live or explicitly listed as pending deploy', () => {
