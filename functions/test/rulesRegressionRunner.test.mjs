@@ -207,7 +207,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 815 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 835 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -254,8 +254,15 @@ await okAsync("7. a fully-passing run reports exactly 815 passed, 0 failed", asy
   // transition to ORDERED), plus both record generations proved to keep every RETAINED transition
   // and to refuse warehouseId/operatingCompanyId appearing in any transition diff, on a legacy row
   // as well as a new one.
-  assert.equal(EXPECTED_TOTAL, 815); // Workstream 2B: reorderRequestsRules 90 -> 108 (was 797)
-  assert.ok(lines.some((l) => /815 passed, 0 failed/.test(l)), "summary must state 815 passed, 0 failed");
+  // 815 -> 835: EOS Data Import P1 registered equipmentImportInteropRules.test.js (20
+  // assertions). The trusted import command writes a server-derived `serialNumberKey` the
+  // client writer never writes, and the Admin SDK bypasses Rules -- so the existing guards were
+  // PROVEN rather than assumed: an imported machine takes ordinary edits through the normal
+  // client path, the key is unforgeable on create and unmodifiable/undeletable afterwards, and
+  // both shapes (with and without it) stay valid with every governed field still governed. No
+  // Rules change was required, which is why this is a registration and not a correction.
+  assert.equal(EXPECTED_TOTAL, 835); // Data Import P1: +20 equipmentImportInteropRules (was 815)
+  assert.ok(lines.some((l) => /835 passed, 0 failed/.test(l)), "summary must state 835 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);

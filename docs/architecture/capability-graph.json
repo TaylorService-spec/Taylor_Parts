@@ -407,6 +407,7 @@
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountPortfolioSummary.ts",
           "functions/src/assistant/assistantStarters.ts",
+          "functions/src/dataImport/importedServiceHistoryReadService.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
@@ -418,7 +419,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
       },
