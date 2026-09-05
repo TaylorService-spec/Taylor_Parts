@@ -21,6 +21,7 @@ import {
   isValidReportDefinitionCapabilityId,
   isActivePermission,
 } from "../lib/access/permissionCatalog.js";
+import { GOVERNED_BUSINESS_ROLES } from "../lib/access/governedBusinessRoles.js";
 
 let passed = 0;
 let failed = 0;
@@ -255,7 +256,7 @@ check("the three sensitive wave-1 report ids stay withheld -- now at the activat
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile.", "inventory.stock.relocate", "admin.dataImport."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile.", "inventory.stock.relocate", "admin.dataImport.", "administration.emailIntake.", "service.inboundWork."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
@@ -553,3 +554,35 @@ console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);
 }
+
+// Email Connections + Inbound Work. Paired with the two prefixes above, per this file's convention: a
+// prefix that permits `active` to be DECLARED must come with an assertion pinning what it is declared AS.
+// The counts are pinned so a seventh id cannot appear inside either prefix unnoticed -- configuring the
+// mailboxes and deciding on the work that arrives in them are separate authorities and must stay so.
+check("every administration.emailIntake.* and service.inboundWork.* entry is registered-but-inactive (active: false, never true)", () => {
+  const adminIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("administration.emailIntake."));
+  assert.deepEqual(adminIds.map((p) => p.id).sort(), ["administration.emailIntake.manage", "administration.emailIntake.read"]);
+  const serviceIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("service.inboundWork."));
+  assert.deepEqual(serviceIds.map((p) => p.id).sort(), [
+    "service.inboundWork.accept",
+    "service.inboundWork.attachExisting",
+    "service.inboundWork.decline",
+    "service.inboundWork.read",
+  ]);
+  for (const permission of [...adminIds, ...serviceIds]) {
+    assert.equal(permission.active, false, `${permission.id} must be registered active:false`);
+    assert.equal(permission.action, permission.id.split(".")[2], `${permission.id} action must match its id`);
+  }
+});
+// The one collapse this feature must never permit: administration authority over connections and mailboxes
+// is not authority to accept work, and vice versa. Asserted on the Roles, because that is where a
+// convenience grant would actually be made.
+check("email intake ADMINISTRATION and inbound work DECISIONS stay separate authorities", () => {
+  const admin = GOVERNED_BUSINESS_ROLES.emailIntakeAdministrator;
+  const reviewer = GOVERNED_BUSINESS_ROLES.serviceInboundWorkReviewer;
+  assert.ok(admin && reviewer, "both governed Roles are declared");
+  assert.equal(admin.permissions.some((id) => id.startsWith("service.inboundWork.")), false);
+  assert.equal(reviewer.permissions.some((id) => id.startsWith("administration.emailIntake.")), false);
+  assert.equal(admin.privileged, false);
+  assert.equal(reviewer.privileged, false);
+});

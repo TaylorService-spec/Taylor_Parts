@@ -49,6 +49,10 @@ function check(name, fn) {
 
 const ALL_GOVERNED_ROLES = Object.values(GOVERNED_BUSINESS_ROLES);
 const EXPECTED_IDS = [
+  // Email Connections + Inbound Work (2026-09-05). Two narrow Roles, not positions: configuring email
+  // intake and deciding on the work that arrives are different authorities held by different people.
+  "emailIntakeAdministrator",
+  "serviceInboundWorkReviewer",
   // Performance Goal Authority (2026-09-02). A narrow READ grant, not a position: it exists because
   // technician and dispatcher are COMPATIBILITY Roles that must keep reproducing today's matrix
   // exactly, so they cannot carry performance.goal.read directly without corrupting the parity
@@ -149,7 +153,7 @@ function resolve(permissionId, roleId, roles, activationOverrides = undefined) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the forty-one ids (thirty-one, three reporting tiers, equipment catalog, receiving, two serialized-equipment stations, two labor stations, one goal-subject read grant)", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the forty-three ids (thirty-one, three reporting tiers, equipment catalog, receiving, two serialized-equipment stations, two labor stations, one goal-subject read grant, two email-intake Roles)", () => {
   // The list is pinned so a Role cannot appear by accident. salesperson was added
   // deliberately on the Owner clarification that "salesManager and Sales are
   // different -- the manager is over the salesperson".
@@ -159,7 +163,7 @@ check("GOVERNED_BUSINESS_ROLES contains exactly the forty-one ids (thirty-one, t
   // had no such Role -- so the business had defined a position the platform could not
   // represent, let alone grant. This pin failing on that addition is the guard working.
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 41);
+  assert.equal(ALL_GOVERNED_ROLES.length, 43);
 });
 
 check("salesperson and salesManager differ ONLY by audit read, financial reach, and the goal WRITE verbs", () => {
@@ -308,7 +312,7 @@ check("owner is the only privileged Role on the governed allowlist; every other 
 
 // Full-coverage: all 15 declared governed business Roles are now reachable through the grant path,
 // matching Owner's explicit direction ("make all 15 governed business roles grantable").
-check("all forty-one governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
+check("all forty-three governed business Roles are governed-assignable (no UnknownRoleError for any of them)", () => {
   // A Role defined but missing from the allowlist is the worst kind of gap: it appears in the
   // catalog, shows up in every admin surface, and throws UnknownRoleError the moment anyone tries to
   // actually grant it. The two lists are asserted equal in both directions so neither can drift.
@@ -317,8 +321,8 @@ check("all forty-one governed business Roles are governed-assignable (no Unknown
   }
   assert.equal(
     Object.keys(__GOVERNED_ASSIGNABLE_ROLES_FOR_TEST).length,
-    41,
-    "the governed allowlist must contain exactly the 41 declared governed business Roles",
+    43,
+    "the governed allowlist must contain exactly the 43 declared governed business Roles",
   );
 });
 

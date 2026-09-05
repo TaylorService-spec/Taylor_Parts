@@ -173,6 +173,15 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   // Import screen the command would have answered.
   'admin.dataImport.stage',
   'admin.dataImport.execute',
+  // EMAIL CONNECTIONS + INBOUND WORK. The SCRIPT-side copy of the same contract; the environment-
+  // architecture guard compares config/environments.json against THIS list, so omitting them here would
+  // reject the sandbox declaration as ineligible.
+  'administration.emailIntake.read',
+  'administration.emailIntake.manage',
+  'service.inboundWork.read',
+  'service.inboundWork.accept',
+  'service.inboundWork.decline',
+  'service.inboundWork.attachExisting',
 ]);
 
 /**

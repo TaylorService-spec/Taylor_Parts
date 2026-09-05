@@ -503,7 +503,22 @@ export type AuditAction =
   // so a retried call replays instead of creating a second request or a duplicate purchase order.
   // Runtime mirror in access/auditEventWriter.ts, and the two MUST stay symmetrical
   | "createReorderRequest"
-  | "recordReorderPurchaseOrder";
+  | "recordReorderPurchaseOrder"
+  // Email Connections + Inbound Work -- the intake and decision trail. Nine actions, not one, because the
+  // question this trail must answer is "why does this Work Order exist, who accepted it, and which inbound
+  // request created it" and a single "inboundWork" action could not distinguish taking a message in from
+  // deciding on it. Same immutable Audit Event path, same verb+Noun convention -- no parallel audit system.
+  // Runtime mirror in access/auditEventWriter.ts, and the two MUST stay symmetrical. Comment intentionally
+  // free of the statement-terminator character (adminCredentialEligibility slices this union at the first one)
+  | "createInboundWorkRequest"
+  | "quarantineInboundWorkRequest"
+  | "linkInboundWorkThreadMessage"
+  | "acceptInboundWorkRequest"
+  | "declineInboundWorkRequest"
+  | "attachInboundWorkRequest"
+  | "configureEmailConnection"
+  | "configureEmailMailbox"
+  | "configureEmailRoutingRule";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
