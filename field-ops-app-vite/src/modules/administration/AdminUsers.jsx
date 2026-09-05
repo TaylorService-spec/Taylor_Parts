@@ -144,14 +144,24 @@ export default function AdminUsers() {
         holds. EOS Account shows whether an application account exists for this person; whether that
         account is enabled or disabled is Firebase Auth state that no governed read exposes yet.
       </p>
-      <MetadataListGrid
-        presentation={withDisplayWords}
-        caption="Users"
-        onRowClick={openDetail}
-        rowActions={rowActions}
-        onLoadMore={loadMore}
-        onRetry={retry}
-      />
+      {/* THE DIRECTORY IS MEASURED AGAINST ITSELF, NOT THE WINDOW. This wrapper exists only to
+          be a containment context: `.fo-users-directory` in index.css asks how much width the
+          directory actually has once the application rail has taken its share, and recomposes
+          the six columns into the shared labelled-card grammar below 760px of its OWN width.
+          The rail is why a 900px window was clipping View and Edit off the right edge while the
+          640px phone breakpoint sat unfired -- the numbers are in the CSS comment and in
+          scripts/adminUsersResponsiveProbe.mjs. No second Users table: same grid, same cells,
+          same data-labels, recomposed. */}
+      <div className="fo-users-directory">
+        <MetadataListGrid
+          presentation={withDisplayWords}
+          caption="Users"
+          onRowClick={openDetail}
+          rowActions={rowActions}
+          onLoadMore={loadMore}
+          onRetry={retry}
+        />
+      </div>
     </WorkspaceIdentity>
   );
 }

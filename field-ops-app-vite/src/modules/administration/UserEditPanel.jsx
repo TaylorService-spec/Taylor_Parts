@@ -225,21 +225,28 @@ export default function UserEditPanel({ employee, candidates, client, onClose, o
         {/* MULTI-SELECT over the canonical operational-role vocabulary -- checkboxes rather than a
             multiple <select>, which is close to unusable on a phone and famously easy to clear by
             accident. A fieldset/legend so the group is announced as one question. */}
-        <fieldset className="fo-checkbox-group">
-          <legend>Operational Roles</legend>
-          {OPERATIONAL_ROLE_OPTIONS.map((o) => (
-            <label key={o.value} className="fo-checkbox">
-              <input
-                type="checkbox"
-                checked={(values.operationalRoles ?? []).includes(o.value)}
-                onChange={() => toggleRole(o.value)}
-              />
-              <span>{o.label}</span>
-            </label>
-          ))}
-          {errors.operationalRoles ? <FormError id="user-operationalRoles-error">{errors.operationalRoles}</FormError> : null}
-        </fieldset>
-        <p className="fo-muted">
+        {/* The wrapper is the containment context the role grid measures itself against -- how much
+            width this panel actually has, not how wide the window is. See .fo-role-grid in
+            index.css; the numbers are from scripts/adminUserEditRolesProbe.mjs. */}
+        <div className="fo-role-grid">
+          <fieldset className="fo-checkbox-group">
+            <legend>Operational Roles</legend>
+            {OPERATIONAL_ROLE_OPTIONS.map((o) => (
+              <label key={o.value} className="fo-checkbox">
+                <input
+                  type="checkbox"
+                  checked={(values.operationalRoles ?? []).includes(o.value)}
+                  onChange={() => toggleRole(o.value)}
+                />
+                <span>{o.label}</span>
+              </label>
+            ))}
+            {errors.operationalRoles ? <FormError id="user-operationalRoles-error">{errors.operationalRoles}</FormError> : null}
+          </fieldset>
+        </div>
+        {/* Outside the fieldset, and so outside the grid: this sentence is about the whole section
+            and reads across its full width, not as a ninth item in a column of roles. */}
+        <p className="fo-muted fo-role-grid__note">
           Operational roles are eligibility for work. Changing them does not change this
           person&apos;s Security Role, and never has.
         </p>

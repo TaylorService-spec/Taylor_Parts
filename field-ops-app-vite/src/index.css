@@ -4510,6 +4510,57 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 
 /* =============================================================================
+   THE USERS DIRECTORY RECOMPOSES ON ITS OWN WIDTH, NOT THE WINDOW'S
+   =============================================================================
+   Measured, not reasoned about: scripts/adminUsersResponsiveProbe.mjs against the running
+   app at five widths. The six-column directory has an intrinsic minimum of 704px, and the
+   application rail takes 208-252px before this page is given any width at all:
+
+     viewport 1440 -> directory 1076px   fits
+     viewport 1024 -> directory  716px   fits, barely
+     viewport  900 -> directory  592px   table 704px; the View/Edit actions ended at x=950
+                                         in a 900px window -- 50px CLIPPED OFF THE RIGHT
+     viewport  768 -> directory  672px   table 704px; 32px past its scroll container
+
+   The window was never the question. A 900px window is not a phone, which is why the 640px
+   viewport breakpoint above never fired, while the rail was quietly taking the room. So ask
+   the question that actually decides the layout -- how much width does the directory have --
+   exactly as .ns-page/ns-record already does for the record body split, for the same
+   measured reason.
+
+   THE DECLARATIONS ARE RESTATED, NOT SHARED. Plain CSS cannot lend one block's body to a
+   second at-rule. The alternative was to retrigger the canonical .fo-table--stack block on a
+   container for EVERY metadata list; that may well be right, but the measurement above
+   covers this directory and no other, so the scope stays where the evidence is. If a second
+   list is measured into the same shape, hoist this rather than copying it a third time.
+
+   NO @supports FALLBACK. Container queries are already the layout authority in .ns-page.
+   Where they are unavailable this degrades to today's horizontally-scrolling table -- worse,
+   but not newly broken.
+
+   NOTHING IS DROPPED TO FIT. The cards carry Name, Employment Status, Operational Roles,
+   EOS Account, Security Role AND the View/Edit actions; the labels are the data-label the
+   shared grid already writes on every cell. */
+.fo-users-directory { container-type: inline-size; container-name: fo-users-directory; }
+@container fo-users-directory (max-width: 760px) {
+  .fo-users-directory .fo-table--stack thead { position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .fo-users-directory .fo-table--stack,
+  .fo-users-directory .fo-table--stack tbody,
+  .fo-users-directory .fo-table--stack tr,
+  .fo-users-directory .fo-table--stack td { display: block; }
+  .fo-users-directory .fo-table--stack tr { border: 1px solid var(--color-border);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+  .fo-users-directory .fo-table--stack td { border: 0; padding: 4px 0; display: flex;
+    justify-content: space-between; gap: 12px; align-items: baseline; }
+  .fo-users-directory .fo-table--stack td[data-label]::before { content: attr(data-label);
+    color: var(--color-text-muted); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .03em; flex: none; }
+  .fo-users-directory .fo-table--stack td a { display: inline-flex; align-items: center;
+    min-height: 44px; }
+}
+
+/* =============================================================================
    SCHEDULING BOARD x BUTTON PRIMITIVE -- the compact-context override.
    =============================================================================
    64096edb (#1321) migrated 170 raw <button>s onto the shared Button primitive.
@@ -8352,10 +8403,39 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
 /* A multi-select rendered as checkboxes. A <select multiple> is close to unusable on a phone and
    famously easy to clear by accident -- which for operational roles means silently removing
    somebody from every assignment picker. */
-.fo-checkbox-group { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
-.fo-checkbox-group > legend { flex-basis: 100%; font-size: 13px; color: var(--color-text-secondary); padding: 0 0 6px; }
-.fo-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; min-height: 32px; }
-.fo-checkbox input { width: 16px; height: 16px; }
+/* OPERATIONAL ROLES IS ONE SELECTION GRID, NOT EIGHT PLACED CONTROLS.
+   This was `display: flex; flex-wrap: wrap`, which lays each checkbox out at whatever x the
+   previous label happened to end at. Measured (scripts/adminUserEditRolesProbe.mjs), eight roles
+   in a 646px fieldset produced SEVEN distinct checkbox x positions -- every row starting somewhere
+   new, because "Warehouse Associate" is wider than "Technician". Nothing was misaligned by hand;
+   the layout simply had no columns to align to.
+   A grid gives it columns. Two of them where there is room for two, one where there is not, and
+   the decision is made by the width the fieldset actually HAS -- the record body is a 1fr/340px
+   split whose left column varies with both the window and the application rail, so a viewport
+   media query would ask the wrong question here exactly as it did on the Users directory.
+   THE PAIR IS THE UNIT. Each .fo-checkbox is itself a two-track grid -- a fixed box column and a
+   flexible text column -- so every label begins the same distance from its own checkbox and a
+   label long enough to wrap does so under itself instead of shoving the next column sideways. */
+.fo-role-grid { container-type: inline-size; container-name: fo-role-grid; }
+.fo-checkbox-group { border: 0; margin: 0; padding: 0; display: grid;
+  grid-template-columns: minmax(0, 1fr); gap: 4px 24px; }
+/* 420px is where two columns stop being a squeeze: the longest role label needs ~180px, and below
+   this the second column would wrap its own text rather than hold a role. Measured widths are
+   646/558 (two columns) and 308/286/281 (one). */
+@container fo-role-grid (min-width: 420px) {
+  .fo-checkbox-group { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* The legend and any validation message are ABOUT the group, so they span it rather than taking
+   a role's place in the columns. */
+.fo-checkbox-group > legend { grid-column: 1 / -1; font-size: 13px;
+  color: var(--color-text-secondary); padding: 0 0 6px; }
+.fo-checkbox-group > .fo-warning { grid-column: 1 / -1; }
+.fo-checkbox { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center;
+  gap: 8px; font-size: 14px; min-height: 32px; }
+.fo-checkbox input { width: 16px; height: 16px; margin: 0; }
+/* The section's explanatory line reads across the panel, not inside the columns -- capped at a
+   comfortable measure so it does not run to a single long line on a wide record page. */
+.fo-role-grid__note { max-width: 68ch; margin-top: 12px; }
 
 .fo-user-actions { margin-top: 16px; }
 .fo-user-actions__title { font-size: 14px; font-weight: 600; margin: 0 0 8px; }

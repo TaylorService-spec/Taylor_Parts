@@ -5,7 +5,7 @@
 // uses. No Firebase, no network, and no capability granted anywhere: the fail-closed states below
 // are the states the running app is in today.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 const mockNavigate = vi.fn();
@@ -33,6 +33,7 @@ vi.mock("../src/hooks/useMetadataList", () => ({
 import AdminUsers from "../src/modules/administration/AdminUsers.jsx";
 import UserDetail from "../src/modules/administration/UserDetail.jsx";
 import { employeeEntity, employeeIndexList } from "../src/metadata/definitions/employee.js";
+import { OPERATIONAL_ROLE_OPTIONS } from "../src/domain/employeeProfile.js";
 import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
 import { buildListPresentation } from "../src/metadata/listPresentation.js";
 
@@ -325,6 +326,40 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
     expect(within(group).getByLabelText("Parts Manager").checked).toBe(false);
   });
 
+  // ── THE ROLES ARE ONE GRID, NOT EIGHT PLACED CONTROLS ──
+  //
+  // jsdom has no layout engine, so the column count and the pixel alignment are proven by
+  // measurement instead (scripts/adminUserEditRolesProbe.mjs: 7 distinct checkbox x positions
+  // before, 2 or 1 after, one row pitch, one label offset). What IS worth pinning here is the
+  // structure that lets the CSS do it -- uniform sibling items under one containment context,
+  // with nothing positioned per role -- and that fixing the layout changed no role and no order.
+  it("every operational role is present, in the canonical order, none hidden", async () => {
+    renderDetail(okHistory(), "emp-1", "?edit=1");
+    const group = await screen.findByRole("group", { name: "Operational Roles" });
+    expect(within(group).getAllByRole("checkbox").map((b) => b.closest("label").textContent)).toEqual(
+      OPERATIONAL_ROLE_OPTIONS.map((o) => o.label),
+    );
+  });
+
+  it("the roles are uniform siblings inside the containment context the grid measures", async () => {
+    renderDetail(okHistory(), "emp-1", "?edit=1");
+    const group = await screen.findByRole("group", { name: "Operational Roles" });
+    // One container, one item class, no per-role wrapper and no inline positioning: the columns
+    // come from the grid or they do not come at all.
+    const items = [...group.children].filter((el) => el.tagName === "LABEL");
+    expect(items.length).toBe(OPERATIONAL_ROLE_OPTIONS.length);
+    expect(items.every((el) => el.className === "fo-checkbox")).toBe(true);
+    expect(items.every((el) => el.getAttribute("style") === null)).toBe(true);
+    expect(group.parentElement.classList.contains("fo-role-grid")).toBe(true);
+  });
+
+  it("the explanatory line is outside the grid, so it is not a ninth role", async () => {
+    renderDetail(okHistory(), "emp-1", "?edit=1");
+    const group = await screen.findByRole("group", { name: "Operational Roles" });
+    const note = screen.getByText(/Operational roles are eligibility for work/);
+    expect(group.contains(note)).toBe(false);
+  });
+
   it("Save sends ONLY the changed field, through the trusted command", async () => {
     const client = okHistory();
     renderDetail(client, "emp-1", "?edit=1");
@@ -521,6 +556,62 @@ describe("Change History sits at the bottom of the record and shows AUDITED even
     const rows = within(screen.getByTestId("change-history-table")).getAllByRole("row").slice(1);
     expect(rows.length).toBe(1);
     expect(rows[0].getAttribute("data-history-row")).toBe("h2");
+  });
+
+  // ── AN EMPTY HISTORY OFFERS NOTHING TO FILTER ──
+  //
+  // The filter options are derived from the rows, so a record with no history rendered four
+  // controls that could not change anything: "All changes" and "Anyone" over empty selects, and a
+  // date range over no dates. The three cases below are the whole distinction -- no history, some
+  // history, and history that the reader's own filters excluded -- and they must not collapse into
+  // each other, because "nothing happened" and "nothing matched" are different facts.
+
+  it("a record with NO history shows the empty state alone -- no filters over nothing", async () => {
+    renderDetail(okHistory([]));
+    expect(await screen.findByText("No changes recorded")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Field" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Changed by" })).toBeNull();
+    expect(document.querySelector('[data-history-filter="from"]')).toBeNull();
+    expect(document.querySelector('[data-history-filter="to"]')).toBeNull();
+  });
+
+  it("a record WITH history shows the filters, and their options are the history's own", async () => {
+    renderDetail(okHistory(HISTORY));
+    const filter = await screen.findByRole("combobox", { name: "Field" });
+    expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All changes",
+      "EOS Access Status",
+      "Job Title",
+    ]);
+    expect(screen.getByRole("combobox", { name: "Changed by" })).toBeTruthy();
+    expect(document.querySelector('[data-history-filter="from"]')).toBeTruthy();
+  });
+
+  it("filters that match nothing KEEP the controls and say so -- the rows are still there", async () => {
+    renderDetail(okHistory(HISTORY));
+    await screen.findByTestId("change-history-table");
+    // A date range after every recorded event: rows exist, none of them match.
+    fireEvent.change(document.querySelector('[data-history-filter="from"]'), {
+      target: { value: "2099-01-01" },
+    });
+    expect(screen.getByText("No matches")).toBeTruthy();
+    expect(screen.getByText("No recorded changes match these filters.")).toBeTruthy();
+    expect(screen.queryByText("No changes recorded")).toBeNull();
+    // The way back out of an over-narrow filter is the filter itself, so it stays.
+    expect(screen.getByRole("combobox", { name: "Field" })).toBeTruthy();
+  });
+
+  it("a history still LOADING shows neither filters nor an empty state", async () => {
+    const client = okHistory();
+    let release;
+    client.listRecordChangeHistory = vi.fn(
+      () => new Promise((resolve) => { release = () => resolve({ ok: true, rows: [] }); }),
+    );
+    renderDetail(client);
+    expect(await screen.findByText("Loading change history…")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Field" })).toBeNull();
+    expect(screen.queryByText("No changes recorded")).toBeNull();
+    await act(async () => { release(); });
   });
 
   it("an UNREADABLE history is stated as unreadable, never as an empty one", async () => {
