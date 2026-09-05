@@ -30,10 +30,10 @@
     "ok": true
   },
   "implementationEvidence": {
-    "SERVER_REFERENCED": 111,
+    "SERVER_REFERENCED": 113,
     "EXPORTED": 20,
-    "CLIENT_ONLY": 3,
-    "NO_IMPLEMENTATION_EVIDENCE": 5
+    "CLIENT_ONLY": 2,
+    "NO_IMPLEMENTATION_EVIDENCE": 4
   },
   "guideStatuses": {},
   "flows": [
@@ -437,7 +437,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/account/accountImportCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -446,7 +447,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3099,13 +3100,16 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
-        "serverReferences": [],
+        "serverReferences": [
+          "functions/src/dataImport/dataImportCallables.ts"
+        ],
         "clientReferences": [
+          "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 0,
-        "clientReferenceCount": 1,
-        "evidence": "CLIENT_ONLY"
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": true,
@@ -3122,11 +3126,15 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
-        "serverReferences": [],
-        "clientReferences": [],
-        "serverReferenceCount": 0,
-        "clientReferenceCount": 0,
-        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+        "serverReferences": [
+          "functions/src/dataImport/dataImportCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": true,
@@ -3913,13 +3921,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/equipmentInstall/equipmentImportCommand.ts",
           "functions/src/equipmentInstall/installSerializedAssetCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/equipmentInstallCapabilityAccess.js",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
