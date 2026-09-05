@@ -21,6 +21,16 @@ Two sides, side by side, because you are comparing them:
 itself, its attachments and which mailbox it came into. It is evidence and cannot be edited. Later replies
 on the same thread appear underneath it.
 
+Each attachment says whether EOS actually has it:
+
+| What you see | What it means |
+| --- | --- |
+| **Download** | EOS holds the file, and this is the only way to it — there is no link to share or guess. |
+| Not retrieved yet | It is on its way, or the mailbox check has not reached it. |
+| Could not be retrieved | The message arrived; that file did not. Ask an administrator to retry it. |
+
+A request whose attachments are incomplete says so above the list rather than looking finished.
+
 **Right — what EOS made of it.** The request type, the customer, the site, the unit, the model and serial,
 the warranty or authorization number, the vendor reference, the problem, the priority, and how it was routed.
 
@@ -80,8 +90,10 @@ Setting up mailboxes and routing rules is administration work and lives in
 
 ## Two things worth knowing
 
-- **Attachments are listed, not stored inside EOS yet.** Filename, type, size and where the attachment came
-  from are kept with the request; the file itself stays retrievable through the connected mailbox.
+- **Attachments are held by EOS, and only reachable through this screen.** There is no link or address that
+  reaches a file directly: opening one asks the server, which checks that you may read this request first.
+  Files are always offered as a download, never opened in the browser — an attachment from outside is not
+  something to render.
 - **Accepting never edits your customer records.** If the email spells the site address differently or names
   a contact you do not have, the Work Order uses what you confirmed and your customer, site, contact and
   equipment records are left exactly as they are.

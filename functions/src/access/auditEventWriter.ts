@@ -261,6 +261,17 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "configureEmailConnection",
   "configureEmailMailbox",
   "configureEmailRoutingRule",
+  // Real provider delivery (Email Connections phase 2) -- runtime mirror of the eight transport
+  // AuditAction union members (types/access.ts). Symmetry is the point: the union is erased at build
+  // time, so adding to only one compiles cleanly and fails at runtime.
+  "connectionAuthorizationStarted",
+  "connectionAuthorized",
+  "connectionAuthorizationFailed",
+  "connectionDisconnected",
+  "connectionHealthChecked",
+  "providerDeliveryCycle",
+  "providerDeliveryFailed",
+  "attachmentCustodyRecorded",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

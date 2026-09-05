@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// EOS Cloud Storage -- DENY EVERY CLIENT, EVERYWHERE.
+//
+// The only objects EOS stores today are inbound email attachments (functions/src/inboundWork/
+// attachmentCustody.ts), and no browser reads them from here. The one route to those bytes is the
+// governed `getInboundWorkAttachment` callable, which authorizes against the INBOUND REQUEST the
+// attachment belongs to and reads the object with the Admin SDK. A person who cannot open the request
+// cannot reach its attachment, because there is no client-reachable path to reach it by.
+//
+// THIS FILE IS THE WHOLE POLICY, and it is deliberately the strictest one that can be written. Admin SDK
+// access from a trusted Function bypasses these rules by design, which is exactly the intended shape: the
+// server is the only reader, and the server checks authority before it reads.
+//
+// IF A LATER FEATURE NEEDS CLIENT-VISIBLE FILES, it does not get them by widening this file. It gets a
+// governed read of its own, or -- if direct client access is genuinely required -- its own match block,
+// its own authorization predicate, and its own Owner-approved review. A blanket read grant here would
+// hand every authenticated user every customer's attachments at once.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

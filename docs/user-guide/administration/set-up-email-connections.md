@@ -6,9 +6,12 @@ Connect the mailboxes work arrives in — Service, Warranty, Parts — so an ema
 vendor or a manufacturer turns into a reviewable request instead of something somebody has to re-type.
 
 > **Sandbox only, for now.** This works in the sandbox and nowhere else. It is switched off in the live
-> system in the code itself, not by a setting somebody could change by accident. Connecting a real Microsoft
-> 365 or Google Workspace mailbox also needs an authorization your organisation grants with the provider;
-> until that exists, the screens are set up but no mail arrives.
+> system in the code itself, not by a setting somebody could change by accident — the screen will tell you
+> so rather than half-working.
+>
+> Connecting a real mailbox also needs your Microsoft or Google administrator to register an application
+> once, per environment. That is a separate, one-time job: see
+> [Email provider setup](../../deployment/email-provider-setup.md).
 
 ## What the sections are
 
@@ -39,6 +42,32 @@ records only its **name**.
 A new connection is saved as **not connected**. Saving a form cannot mark a connection authorized — only
 completing the authorization with the provider does that.
 
+### Connect it
+
+Press **Connect**. You are sent to Microsoft or Google, you sign in as the account that owns or can read
+the mailboxes, and you accept a **read-only** request. You come straight back to this screen.
+
+EOS then does three things before it calls the connection connected:
+
+1. exchanges the one-time code for a credential — server-side, so your browser never holds one;
+2. stores that credential in the platform's secret store, not in any record you can read;
+3. **opens each mailbox you configured.** A connection that signs in successfully but cannot read the
+   warranty mailbox is not connected, and says exactly that.
+
+If the connection needs renewing later, press **Connect** again — the button reads **Reauthorize** once a
+connection is live.
+
+### Test it, any time
+
+**Test connection** re-checks the credential and re-opens each mailbox. It reads and nothing else: no
+email is sent, nothing is marked or moved in the mailbox, and no work is created. It is safe to press
+whenever you want to know where you stand.
+
+### Disconnect
+
+**Disconnect** destroys the stored authorization rather than hiding it. Mail stops arriving immediately.
+Everything already taken in — requests, messages, attachments, the Work Orders they became — is untouched.
+
 ## 2. Add mailboxes
 
 The connection is the link; a mailbox is the thing people actually send to. One Microsoft or Google
@@ -52,6 +81,14 @@ For each mailbox, set:
 - optionally a default queue and an operating company.
 
 New mailboxes require review by default: everything that arrives waits for a person. That is deliberate.
+
+Once the connection is live, EOS checks each mailbox **every five minutes**. **Check now** polls
+immediately, which is the quickest way to confirm a new mailbox works: send yourself a test message and
+press it.
+
+**Connecting a mailbox does not import its history.** EOS notes where the mailbox is up to and takes in
+what arrives from then on — connecting an inbox with ten years of mail in it does not create ten years of
+inbound work.
 
 ## 3. Write routing rules
 
@@ -91,6 +128,19 @@ step and is not available in this build.
 Nothing is discarded. A message that arrived in a mailbox EOS does not know, or that failed processing, is
 kept with the reason so somebody can look at it. Duplicates — the same message delivered twice — are kept
 too, and never turn into a second job.
+
+**Delivery failures** appear here too, with what to do about them:
+
+| What you see | What it means |
+| --- | --- |
+| The provider was busy or unavailable | Nothing to do. It retries on its own. |
+| The authorization expired or was revoked | Press **Reauthorize** on the connection. |
+| The mailbox cannot be found or read | Fix the address, or give the connected account access to it. |
+| An attachment could not be retrieved | The message itself arrived and is in the queue. Press **Retry now**. |
+| Retries exhausted | Fix the cause, then press **Retry now**. |
+
+**Retry now** re-checks the mailbox from where it left off. It cannot create a duplicate request or a
+second copy of a file: EOS recognises what it already has.
 
 ## Who can do this
 

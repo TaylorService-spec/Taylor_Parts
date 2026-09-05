@@ -1,6 +1,9 @@
 # Email Connections + Inbound Work
 
 **Status:** SANDBOX BUILD — implemented, tested, and activated in non-production environments only.
+Phase 2 (real Microsoft 365 / Google Workspace delivery and attachment byte custody) is implemented and
+proven against scripted providers and the Firestore emulator; binding a real tenant is an external
+configuration step documented in [Email provider setup](../deployment/email-provider-setup.md).
 Production is **not** authorized and not reachable (see [Environments and activation](#environments-and-activation)).
 
 ## The problem
@@ -64,6 +67,97 @@ provider message (Microsoft Graph / Gmail)
 Everything above `inboundIntakeCommand.ts` is pure — no Firestore, no firebase import — which is why the
 whole classification and extraction model is testable from fixtures without a database.
 
+
+## Real provider delivery
+
+```text
+provider mailbox
+      |  scheduled poll, every 5 minutes (or Check now)
+      v
+EmailTransportAdapter        <- Microsoft Graph delta - Gmail history
+      |  raw provider message
+      v
+normalizeProviderMessage()   <- unchanged from phase 1
+      v
+ingestInboundMessage()       <- unchanged from phase 1
+      v
+attachment bytes fetched and stored
+      v
+Service -> Inbound Work
+```
+
+**Delivery adds no intake path.** The poller fetches a message and hands it to the same normalizer and
+the same `ingestInboundMessage` the phase 1 delivery seam used. Routing, extraction, candidate
+resolution, threading and duplicate protection are the ones already built; nothing about Accept,
+Decline, Attach or Work Order creation changed.
+
+### Why polling, not change notifications
+
+Microsoft Graph mail subscriptions expire in under three days and Gmail's `users.watch` in seven, so a
+notification design needs a renewal job, a publicly reachable endpoint that answers a validation
+handshake and verifies a clientState while unauthenticated, and Pub/Sub for Gmail — **and it still needs
+a poll underneath it**, because a missed notification is silent data loss. `messages/delta` and
+`users.history.list` give the same property (everything since the last look, exactly once) with a stored
+cursor, no public endpoint and no renewal. If notification latency is ever required, it becomes an extra
+trigger for this same poll rather than a second delivery path.
+
+### The first poll ingests nothing
+
+Microsoft is asked for `$deltatoken=latest` and Gmail for its current `historyId`: connecting a mailbox
+establishes a resume point and takes in no mail. **Connecting is not importing** — a mailbox with ten
+years of history does not enqueue ten years of Inbound Work.
+
+### The cursor is the safety property
+
+A message the poll could not take in leaves the cursor where it was, so the next poll sees it again.
+Reprocessing is safe — intake's deterministic document id (mailbox + provider message id) collapses it
+to one record — and skipping is not. Gmail's history id can age out; recovery re-lists a bounded recent
+window rather than failing, for the same reason.
+
+### Failure, classified into what a person should do
+
+| Disposition | Examples | Behaviour |
+| --- | --- | --- |
+| RETRYABLE | rate limit, provider outage, one message fetch | bounded exponential backoff, honouring the provider's own `Retry-After`, up to 5 attempts |
+| REFRESH_THEN_RETRY | expired access token | refreshed from the stored credential, transparently |
+| REQUIRES_ADMIN_ACTION | revoked grant, mailbox missing, access denied | no retry loop; it appears in Exceptions with what to fix |
+
+Failures are records in `email_delivery_failures`, keyed per (mailbox, subject) so a repeating failure
+increments one row rather than filling the list. Nothing is discarded: a retry-exhausted delivery is
+retained and retryable from Administration once the cause is fixed.
+
+## Credential custody
+
+**A connection document still contains no secret.** It carries the name of where the credential lives, a
+version, and timestamps.
+
+- The **refresh token** is held in Google Secret Manager, one secret per connection, readable only by the
+  Functions runtime service account. This repository writes no cryptography of its own — no key material,
+  no cipher choice, no rotation scheme invented here.
+- The **access token is never persisted anywhere**. It lives in process memory for its own short life and
+  is re-minted from the refresh token. There is no field for one, so no later change can start storing it.
+- A **rotated** refresh token is written to the vault before the access token is handed out, so a rotation
+  we then failed to persist cannot leave us holding a credential the provider has already invalidated.
+- No secret value is ever logged, returned to a client, or put in an error message. Provider error
+  messages carry the status and the operation and never the response body — which is where a token would
+  otherwise leak from.
+
+## OAuth security
+
+The authorization state is generated server-side, stored **by its hash**, single-use (consumed inside a
+transaction, so two simultaneous callbacks cannot both pass), time-bounded to ten minutes, and bound to
+the connection, the provider, the redirect URI and the administrator who started it. PKCE is used even
+though this is a confidential client: the verifier never leaves the server, so an intercepted code is
+worthless. The redirect must be https (or a localhost development URL) and must match at exchange time.
+
+**There is no public callback endpoint.** The provider redirects to the application's own Administration
+screen, which calls an authenticated callable; the exchange happens behind the same capability check as
+every other administration write.
+
+**A connection is not CONNECTED because a token was issued.** Completion reads each configured mailbox
+with the granted authority; a connection that consents but cannot read its mailbox is recorded as
+authorized-and-failing with the reason, which is the state an operator can act on.
+
 ### The processing provider boundary
 
 Every processing provider returns the same `InboundProcessingResult`: request type, customer/location/
@@ -93,7 +187,7 @@ must belong together, and an INSTALL cannot name a unit that does not exist yet.
 
 ## Records
 
-Four collections, all **Admin-SDK-only**: `firestore.rules` has no match block for any of them, so every
+Six collections, all **Admin-SDK-only**: `firestore.rules` has no match block for any of them, so every
 client read and write is denied by default and the trusted callables are the only way in or out. **This
 feature required no Rules change.**
 
@@ -146,17 +240,28 @@ message id), so a racing redelivery collides structurally instead of unlikely.
 
 ## Attachments
 
-Filename, MIME type, size, provider hash where the provider supplies one, the provider's attachment id, the
-source message id and the receipt time are preserved on the intake and carried through acceptance.
+Filename, MIME type, size, content hash, the provider's attachment id, the source message id and the
+receipt time are preserved on the intake record — **and the bytes are now held by EOS**, fetched from the
+provider as each message is taken in.
 
-**The bytes are not copied into EOS in this phase.** This repository has no document/storage architecture to
-reuse — no Cloud Storage bucket is configured and no attachment model exists — and inventing one for this
-feature would have created exactly the parallel document system the implementation principles forbid.
-Attachments remain re-fetchable through the connection by their provider id. Byte custody is a separate,
-Owner-gated piece of work (a bucket, its rules, retention and a document model), recorded in
-[Deferred](#deferred-to-a-later-phase). Structured attachment *transformation* remains a VDX enhancement,
-not a base requirement.
+| Concern | How |
+| --- | --- |
+| Where | Cloud Storage, in the environment's own bucket, under a key derived from EOS ids and a hash — never from the sender's filename |
+| Who can read | nobody, directly: `storage.rules` denies every client read and write. The only route is a governed callable that authorizes against the INBOUND REQUEST the attachment belongs to |
+| Content type | stored as `application/octet-stream`, always. The sender's declared type travels beside the bytes as data, so the bucket can never serve an active type |
+| Size | bounded before a byte is written (25MB); a larger file is refused, not truncated |
+| Filename | sanitized for display only — path separators, traversal sequences and control characters removed |
+| Retry | the storage key is deterministic, so retrying a partial failure fetches only what is missing and cannot produce a second copy |
+| Honesty | an intake reads NONE / PENDING / PARTIAL / COMPLETE / FAILED. A message whose attachment failed says so on the review screen instead of looking complete |
 
+**Nothing scans attachments for malware.** No scanning architecture exists in this repository, and
+claiming files are scanned when they are not is worse than the absence. Recorded as a security follow-up.
+
+**Production retention is UNRESOLVED and nothing expires anything.** Every stored attachment carries
+`retentionPolicy: "UNRESOLVED"`; a retention period is a business and legal decision, not one to infer
+from a codebase.
+
+Structured attachment *transformation* remains a VDX enhancement, not a base requirement.
 ## Authority
 
 Six capabilities across **two** authorities, because they belong to two different people:
@@ -214,32 +319,32 @@ acceptance rate, decline reasons by vendor, volume by mailbox) are governed fact
 intake record; exposing them through the existing reporting architecture is a later, separate step and no
 new reporting platform was built here.
 
-## P1 limitations, stated
+## Limitations, stated
 
-- **Real provider delivery is not connected.** No non-production Microsoft 365 or Google Workspace tenant
-  or OAuth client registration is available to this repository. What is implemented is everything that does
-  not require one: the provider model, the configuration contract and its validation, the authorization-
-  request and callback seams, both message mappings, and a non-production delivery seam that runs a
-  provider-shaped message through the identical path a poll would use. Binding a tenant is external
-  configuration, not missing code.
-- Attachment bytes are referenced, not stored (above).
+- **No real tenant is bound in this repository.** The provider model, OAuth flow, credential custody,
+  polling, attachment custody, health and retry are implemented and tested; connecting an actual
+  Microsoft 365 or Google Workspace tenant requires an external administrator and is documented in
+  [Email provider setup](../deployment/email-provider-setup.md). Nothing here fabricates a tenant id, a
+  client id or a secret.
+- **Attachment bytes are returned inline, bounded at 6MB.** A larger file needs a streaming download,
+  which is a later capability; the record says so rather than failing obscurely.
+- **Polling is every five minutes**, so a message can wait that long. Change notifications would reduce
+  it and are additive when needed (see above).
+- Gmail reads the authorized account's own mailbox; a Google shared mailbox via domain-wide delegation is
+  not implemented.
 - The overview counts a bounded page of intake records rather than a server-side aggregate.
-- Operating company comes from the mailbox or a routing rule; there is no per-company scoping of the queue
-  itself yet, because no operating-company scope is enforced on Work Orders either.
 
 ## Deferred to a later phase
 
 - **Outbound / reply from a Work Order.** Designed for, not built: a connection already carries
-  `outboundEnabled`, and a reply would go out through the connected mailbox and return on the same thread,
-  where the existing association logic would file it against the same work with no change. There is no
-  existing send-email architecture to extend, so adding one would have inflated P1.
-- **Asynchronous provider polling / webhooks** (and with them the observable `NEW` and `PROCESSING` states).
-- **Attachment byte custody** — needs a storage bucket, its rules, and a retention decision.
-- **Entitlement gating for the optional providers.** This repository has no licensing/entitlement framework;
-  the architecture is ready (a stored processing provider per environment, one provider-neutral contract)
-  and the Administration screen states plainly that provider selection is not available in this build,
-  rather than showing a fake paid feature flag.
-
+  `outboundEnabled`, and a reply would return on the same thread where the existing association logic
+  would file it against the same work. No send scope is requested and no send architecture exists.
+- **Change notifications / push delivery**, and with them the observable `NEW` and `PROCESSING` states.
+- **Malware scanning** of stored attachments.
+- **Attachment retention policy** — a business and legal decision, not a code one.
+- **Entitlement gating for the optional providers.** This repository has no licensing framework; the
+  architecture is ready and the Administration screen says plainly that provider selection is not
+  available in this build, rather than showing a fake paid feature flag.
 ## Where the code lives
 
 | Concern | File |
@@ -255,11 +360,21 @@ new reporting platform was built here.
 | Administration writes | `functions/src/inboundWork/emailAdminCommands.ts` |
 | Trusted reads | `functions/src/inboundWork/inboundWorkReadService.ts` |
 | Callables | `functions/src/inboundWork/inboundWorkCallables.ts` |
+| OAuth state | `functions/src/inboundWork/providerAuthorizationState.ts` |
+| Transport contract + failure model | `functions/src/inboundWork/providerTransport.ts` |
+| Microsoft / Gmail adapters | `functions/src/inboundWork/microsoftGraphTransport.ts` · `gmailTransport.ts` |
+| Credential custody | `functions/src/inboundWork/providerCredentialVault.ts` |
+| Connection lifecycle | `functions/src/inboundWork/emailConnectionCommands.ts` |
+| Delivery + retry | `functions/src/inboundWork/emailDeliveryService.ts` · `emailDeliverySchedule.ts` |
+| Attachment custody | `functions/src/inboundWork/attachmentCustody.ts` · `storage.rules` |
+| Transport callables | `functions/src/inboundWork/emailTransportCallables.ts` |
 | Service surface | `field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx` |
 | Administration surface | `field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx` |
 | Sandbox fixtures + seed | `functions/scripts/fixtures/inboundWorkFixtures.mjs` · `functions/scripts/seedSandboxInboundWork.mjs` |
-| Tests | `functions/test/inboundWorkDomain.test.mjs` · `functions/test/inboundWorkEmulator.test.mjs` · `field-ops-app-vite/test/inboundWorkNav.test.mjs` · `field-ops-app-vite/test/inboundWorkWorkspace.test.jsx` |
+| Tests | `functions/test/inboundWorkDomain.test.mjs` · `emailTransport.test.mjs` · `inboundWorkEmulator.test.mjs` · `emailTransportEmulator.test.mjs` · `field-ops-app-vite/test/inboundWorkNav.test.mjs` · `field-ops-app-vite/test/inboundWorkWorkspace.test.jsx` |
 | CI | `.github/workflows/inbound-work-tests.yml` |
+
+Operator runbook: [Email provider setup](../deployment/email-provider-setup.md).
 
 User guides: [Set up email connections](../user-guide/administration/set-up-email-connections.md) ·
 [Review inbound work](../user-guide/work-orders/review-inbound-work.md).

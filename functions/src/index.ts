@@ -599,3 +599,31 @@ export {
   saveEmailRoutingRule,
   deliverInboundEmailMessage,
 } from "./inboundWork/inboundWorkCallables";
+
+// --- Email Connections: REAL provider delivery + attachment custody (phase 2 of the same capability) ---
+//
+// EXPORT != DEPLOY, and this group additionally REFUSES PRODUCTION at runtime: every callable below and
+// the schedule check the runtime's own project identity first, so production provider binding, production
+// polling and production attachment ingestion are impossible rather than merely unauthorized.
+//
+// It adds NO intake path and NO Work Order path. Delivery fetches a provider message, hands it to the
+// SAME normalizer and the SAME ingestInboundMessage phase 1 uses, and stops there; Accept still creates
+// the Work Order through createWorkOrderRecord exactly as before.
+//
+// Authority is phase 1's: connecting, testing, polling and retrying are administration.emailIntake.manage;
+// reading an attachment is service.inboundWork.read -- the same capability that opens the request it
+// belongs to. No new capability was introduced.
+export {
+  startEmailConnectionAuthorization,
+  completeEmailConnectionAuthorization,
+  testEmailConnection,
+  disconnectEmailConnection,
+  getEmailProviderReadiness,
+  pollEmailMailboxNow,
+  retryEmailDelivery,
+  getInboundWorkAttachment,
+} from "./inboundWork/emailTransportCallables";
+
+// The scheduled poller -- the thing that makes delivery automatic. Deploying it is what starts it; until
+// then nothing runs on any schedule anywhere.
+export { pollEmailMailboxes } from "./inboundWork/emailDeliverySchedule";

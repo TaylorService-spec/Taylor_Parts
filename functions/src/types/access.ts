@@ -518,7 +518,21 @@ export type AuditAction =
   | "attachInboundWorkRequest"
   | "configureEmailConnection"
   | "configureEmailMailbox"
-  | "configureEmailRoutingRule";
+  | "configureEmailRoutingRule"
+  // Real provider delivery (Email Connections phase 2). The transport lifecycle: authorizing a real
+  // mailbox, losing that authorization, polling, failing, and taking custody of attachment bytes. Eight
+  // actions and not twenty: each one is a fact somebody would come looking for, and the per-message and
+  // per-decision facts are already written by the intake and decision commands -- restating them here
+  // would make the trail longer and no more answerable. Runtime mirror in access/auditEventWriter.ts, and
+  // the two MUST stay symmetrical. Comment intentionally free of the statement-terminator character
+  | "connectionAuthorizationStarted"
+  | "connectionAuthorized"
+  | "connectionAuthorizationFailed"
+  | "connectionDisconnected"
+  | "connectionHealthChecked"
+  | "providerDeliveryCycle"
+  | "providerDeliveryFailed"
+  | "attachmentCustodyRecorded";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
