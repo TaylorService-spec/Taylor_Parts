@@ -116,3 +116,66 @@ test("describeImportTarget reports refusals without throwing, and agrees with th
   assert.equal(good.allowed, true);
   assert.equal(good.target.projectId, "eos-platform-sandbox");
 });
+
+// ---------------------------------------------------------------- the deployed shape
+
+test("the guard resolves WITHOUT the repo-root registry file -- the deployed shape", () => {
+  // THE DEFECT THIS PINS, and it reached the sandbox before any test saw it.
+  //
+  // The guard resolved config/environments.json by path from the repo root. That is correct
+  // from a checkout and from the emulator, and WRONG from a deployed Function: only the
+  // `functions/` directory is uploaded, so the file is not there. Deployed, the read failed,
+  // the guard refused TARGET_REGISTRY_UNREADABLE, and every Data Import callable answered
+  // "not available in this environment" -- in the one environment where it IS available.
+  //
+  // Every test ran from a checkout, where the file is exactly where the path says it is, so
+  // nothing failed until a real call was made. This asserts the resolution the deployed
+  // runtime actually performs: no registryPath, no file read, the bundled snapshot.
+  const resolved = assertNonProductionImportTarget("eos-platform-sandbox");
+  assert.equal(resolved.projectId, "eos-platform-sandbox");
+  assert.equal(resolved.role, "sandbox");
+});
+
+test("the bundled path keeps every refusal -- production by name, unknown, and production role", () => {
+  // The snapshot must not have bought reachability at the cost of the guard's whole point.
+  assert.throws(
+    () => assertNonProductionImportTarget("taylor-parts"),
+    (err) => err instanceof ImportTargetRefusedError && err.code === "TARGET_PRODUCTION_PROJECT",
+  );
+  assert.throws(
+    () => assertNonProductionImportTarget("some-project-nobody-provisioned"),
+    (err) => err instanceof ImportTargetRefusedError && err.code === "TARGET_UNKNOWN_ENVIRONMENT",
+  );
+  for (const missing of ["", "   ", null, undefined, 42]) {
+    assert.throws(
+      () => assertNonProductionImportTarget(missing),
+      (err) => err instanceof ImportTargetRefusedError && err.code === "TARGET_MISSING",
+    );
+  }
+});
+
+test("the bundled snapshot agrees with the canonical registry on every project's ROLE", () => {
+  // The snapshot is what the deployed guard reads; config/environments.json is canonical. A
+  // drift guard already compares the activation sets -- this compares the two facts THIS
+  // module reads, so a snapshot that disagreed about a role could not pass unnoticed.
+  const canonical = JSON.parse(
+    readFileSync(new URL("../../config/environments.json", import.meta.url), "utf8"),
+  ).environments;
+
+  for (const env of canonical) {
+    const projectId = env?.firebase?.projectId;
+    if (typeof projectId !== "string" || projectId === "") continue;
+    if (projectId === "taylor-parts") continue; // refused by name before any lookup
+
+    if (env.role === "production") {
+      assert.throws(
+        () => assertNonProductionImportTarget(projectId),
+        (err) => err instanceof ImportTargetRefusedError && err.code === "TARGET_PRODUCTION_ROLE",
+        `${projectId} is role:production and must be refused`,
+      );
+    } else {
+      const resolved = assertNonProductionImportTarget(projectId);
+      assert.equal(resolved.role, env.role, `${projectId} role must match the canonical registry`);
+    }
+  }
+});

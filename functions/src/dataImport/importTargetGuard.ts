@@ -27,6 +27,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { ENVIRONMENT_ACTIVATION_REGISTRY } from "../access/environmentCapabilityOverrides.js";
+
 /** The customer production project, refused by name as well as by registry role. */
 export const PRODUCTION_PROJECT_ID = "taylor-parts";
 
@@ -62,6 +64,34 @@ interface RegistryEnvironment {
  * Default registry location. Resolved from this module so it is correct from both the
  * compiled lib/ output and a ts-node style run; callers may override for tests.
  */
+/**
+ * The registry as it exists INSIDE the deployed bundle.
+ *
+ * ============================ THE DEFECT THIS FIXES ============================
+ *
+ * This guard originally resolved the registry from the repo root by path. That works from a
+ * checkout and from the emulator -- and NOT from a deployed Function, because only the
+ * `functions/` directory is uploaded (firebase.json functions.source). Deployed, the read
+ * failed, the guard refused TARGET_REGISTRY_UNREADABLE, and every Data Import callable
+ * answered "not available in this environment" in the one environment where it IS available.
+ *
+ * Caught by the first real sandbox call, not by any test: every test runs from a checkout,
+ * where the file is exactly where the path says it is.
+ *
+ * REUSING THE EXISTING SNAPSHOT rather than adding a second one.
+ * environmentCapabilityOverrides.ts already ships ENVIRONMENT_ACTIVATION_REGISTRY inside the
+ * bundle for precisely this reason, and a CI drift guard already asserts it matches the
+ * canonical config/environments.json. A second snapshot would be a second thing to keep in
+ * step, with no second guard watching it.
+ *
+ * FAIL-CLOSED IS UNCHANGED. The snapshot carries role and projectId -- the only two facts
+ * this guard reads. Production is still refused by name before any lookup, an unknown project
+ * is still refused, and a `role: "production"` entry is still refused.
+ */
+function bundledRegistryEnvironments(): RegistryEnvironment[] {
+  const envs = (ENVIRONMENT_ACTIVATION_REGISTRY as { environments?: unknown })?.environments;
+  return Array.isArray(envs) ? (envs as RegistryEnvironment[]) : [];
+}
 export function defaultEnvironmentRegistryPath(): string {
   // functions/src/dataImport -> functions/src -> functions -> repo root
   return path.resolve(__dirname, "..", "..", "..", "config", "environments.json");
@@ -123,7 +153,22 @@ export function assertNonProductionImportTarget(
     );
   }
 
-  const environments = readRegistry(options.registryPath ?? defaultEnvironmentRegistryPath());
+  // A caller naming a registryPath gets the FILE -- that is how the guard's own suite feeds it
+  // adversarial registries. Everything else, including every deployed call, gets the snapshot
+  // that actually ships inside the bundle.
+  const environments = options.registryPath
+    ? readRegistry(options.registryPath)
+    : bundledRegistryEnvironments();
+
+  // An EMPTY snapshot is a refusal, not an empty search. If the bundled registry ever ships
+  // blank, every target would be "unknown" -- which is the right answer for the wrong reason,
+  // and would read as a missing environment rather than as a broken build.
+  if (environments.length === 0) {
+    throw new ImportTargetRefusedError(
+      "TARGET_REGISTRY_UNREADABLE",
+      "REFUSING: the bundled environment registry is empty. Import targets are resolved only through the registry.",
+    );
+  }
   const env = environments.find(
     (e) => e && e.firebase && typeof e.firebase === "object" && (e.firebase as { projectId?: unknown }).projectId === target,
   );
