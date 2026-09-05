@@ -8315,3 +8315,86 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
   vertical-align: middle;
   white-space: nowrap;
 }
+
+/* ════════════════════ ADMINISTRATION > USERS + THE SHARED CHANGE HISTORY ════════════════════
+   Two surfaces' worth of rules, deliberately small: the record page itself composes ns-page,
+   RecordIdentity, RuledSection and StructuredFields, all of which already carry their own
+   grammar, so what is left here is the handful of things those primitives do not cover. */
+
+/* The record page and the edit form are ordinary ns-page content; these exist so the page and the
+   form are addressable (tests, future per-surface tuning) rather than to restyle them. */
+.fo-user-detail { }
+.fo-user-edit { display: flex; flex-direction: column; gap: 4px; }
+
+/* A two-column field grid that collapses to one on a phone -- the same shape .fo-account-form
+   uses, kept as its own token because a form of employee fields carrying a class named for
+   Accounts is how a reader learns not to trust class names. */
+.fo-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+.fo-form-grid .fo-form-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin: 0; }
+.fo-form-grid input, .fo-form-grid select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+}
+
+/* A multi-select rendered as checkboxes. A <select multiple> is close to unusable on a phone and
+   famously easy to clear by accident -- which for operational roles means silently removing
+   somebody from every assignment picker. */
+.fo-checkbox-group { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.fo-checkbox-group > legend { flex-basis: 100%; font-size: 13px; color: var(--color-text-secondary); padding: 0 0 6px; }
+.fo-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; min-height: 32px; }
+.fo-checkbox input { width: 16px; height: 16px; }
+
+.fo-user-actions { margin-top: 16px; }
+.fo-user-actions__title { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+
+/* ── Change History ─────────────────────────────────────────────────────────────────────────
+   The filter row wraps rather than scrolls: four controls side by side is a desktop layout and
+   a phone needs them stacked, not dragged. */
+.fo-history__filters { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; }
+.fo-history__filter { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--color-text-secondary); }
+.fo-history__filter select, .fo-history__filter input {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--color-surface-card);
+  color: var(--color-text-primary);
+}
+.fo-history__table td { vertical-align: top; }
+.fo-history__outcome { color: var(--color-text-secondary); font-size: 12px; }
+
+/* A SORTABLE HEADER IS A BUTTON, not a clickable <th>. That is what makes it reachable and
+   operable from a keyboard with no handler of the table's own, and it is why this rule strips the
+   button's chrome instead of the table faking one with a cursor. */
+.fo-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.fo-sort-btn:hover { text-decoration: underline; }
+.fo-sort-btn__glyph { font-size: 10px; color: var(--color-text-secondary); }
+
+@media (max-width: 640px) {
+  .fo-form-grid { grid-template-columns: 1fr; }
+}

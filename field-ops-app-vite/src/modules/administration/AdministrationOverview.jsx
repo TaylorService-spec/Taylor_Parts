@@ -21,7 +21,8 @@ const MVP_SURFACES = [
     key: "users",
     path: "users",
     title: "Users",
-    description: "View and set user status (enable/disable) once trusted commands are activated.",
+    description:
+      "Manage employee profiles, operational roles, EOS access, security roles, and account status.",
   },
   {
     key: "rolesPermissions",

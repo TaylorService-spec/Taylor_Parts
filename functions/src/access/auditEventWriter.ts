@@ -52,6 +52,7 @@ import {
   FieldValue,
   type DocumentReference,
   type DocumentData,
+  type Firestore,
 } from "firebase-admin/firestore";
 import type { AuditAction, AuditOutcome, Scope, ScopeType } from "../types/access";
 import { isTypedOwner, type TypedOwner } from "../ownership/typedOwner";
@@ -117,6 +118,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "updateSupplier",
   "activateSupplier",
   "deactivateSupplier",
+  // ADMINISTRATION USERS CONSOLIDATION -- the governed Employee profile write. See the
+  // matching entry on the AuditAction union (types/access.ts).
+  "updateEmployeeProfile",
   // Legacy Compatibility-Admin Bootstrap -- one-time audited migration of a
   // legacy users.role=admin principal into the governed roleAssignment model.
   "bootstrapCompatibilityAdmin",
@@ -349,7 +353,40 @@ export interface RecordAuditEventInput {
   newOwner?: TypedOwner;
   handoffReason?: string;
   handoffSource?: OwnershipHandoffSource;
+  // ADMINISTRATION USERS CONSOLIDATION -- the FIELD-LEVEL change facts, added under the same
+  // precedent Issue #325's report fields and the ownership ruling's handoff fields both set:
+  // extend THIS writer rather than invent a parallel change-log. A record-detail Change History
+  // has to answer "which field, from what, to what" about one record, and no existing field on
+  // this contract can carry that.
+  //
+  // Only a FIELD_CHANGE_ACTION may carry them (validated unconditionally below), so field-shaped
+  // facts can never ride on an unrelated action -- the same closed-carrier rule objectId and the
+  // four handoff fields already follow.
+  //
+  // previousValue is nullable on purpose: a field that had no value before is a real, expected
+  // change, and a placeholder there would fabricate a prior value that never existed. Both are
+  // ALREADY-RENDERED strings, never raw sub-documents -- the trail records what a person changed,
+  // and an unbounded JSON blob is neither readable nor bounded.
+  fieldKey?: string;
+  previousValue?: string | null;
+  newValue?: string | null;
 }
+
+// The closed set of actions permitted to carry the field-change facts. A SET rather than one
+// constant because the pattern is deliberately reusable: Customer, Equipment and Work Order
+// record pages get the same shared Change History component, and each adds its own action here
+// rather than a second audit system.
+export const FIELD_CHANGE_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
+  "updateEmployeeProfile",
+]);
+
+// A field key is the MACHINE identifier for the changed attribute ("jobTitle", "address.city"),
+// never free text and never a rendered label. Shape-guarded for the same reason
+// FIELD_ID_SHAPE_PATTERN guards the report field ids: a length bound alone does not stop a caller
+// from putting a row value here. Unlike that pattern a single undotted segment is legal, because
+// most employee profile fields are flat.
+const CHANGE_FIELD_KEY_PATTERN = /^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)*$/;
+const MAX_CHANGE_VALUE_LENGTH = 500;
 
 // The closed set the ruling enumerated. A handoff must say which authority it came from -- an
 // admin correcting a mistake and a customer-review reassignment are different acts, and a later
@@ -527,6 +564,77 @@ function assertValid(input: RecordAuditEventInput): void {
     }
   }
 
+  // The three field-change facts. The CARRIER rule is unconditional like every other closed-carrier
+  // group above -- only a field-change action may carry them, ever. The REQUIREMENT is conditioned
+  // on the outcome, and that condition is load-bearing rather than a convenience:
+  //
+  // A field-change action also records DENIALS ("denied: actor lacks admin.employeeProfile.write").
+  // A denial changed no field, so there is no fieldKey, previousValue or newValue for it to carry --
+  // and requiring them unconditionally made every denial event fail validation, which meant a
+  // refused attempt to change somebody's employment record could not be recorded at all. That is
+  // the opposite of what an audit trail is for, and it is what this condition fixes.
+  //
+  // So: an APPLIED field-change event must carry all three; any other outcome may omit them, and is
+  // still held to every rule below on whatever it does carry.
+  const isFieldChangeAction = FIELD_CHANGE_ACTIONS.has(input.action as AuditAction);
+  const requiresFieldFacts = isFieldChangeAction && input.outcome === "applied";
+  if (isFieldChangeAction && (requiresFieldFacts || input.fieldKey !== undefined)) {
+    if (typeof input.fieldKey !== "string" || !input.fieldKey) {
+      throw new AuditEventValidationError(
+        "fieldKey is required for an applied field-change AuditAction",
+      );
+    }
+    if (input.fieldKey.length > MAX_FIELD_ID_LENGTH) {
+      throw new AuditEventValidationError(`fieldKey exceeds ${MAX_FIELD_ID_LENGTH} characters`);
+    }
+    if (!CHANGE_FIELD_KEY_PATTERN.test(input.fieldKey)) {
+      throw new AuditEventValidationError(
+        `fieldKey must be a machine field identifier (e.g. "jobTitle", "address.city"), not free text: "${input.fieldKey}"`,
+      );
+    }
+    // undefined is a caller that FORGOT; null is the real "there was no value". The two must not
+    // read the same in an immutable trail -- the same distinction previousOwner draws.
+    for (const [name, value] of [
+      ["previousValue", input.previousValue],
+      ["newValue", input.newValue],
+    ] as const) {
+      if (value === undefined) {
+        throw new AuditEventValidationError(
+          `${name} is required for an applied field-change AuditAction (use null when the field had no value)`,
+        );
+      }
+      if (value === null) continue;
+      if (typeof value !== "string") {
+        throw new AuditEventValidationError(`${name} must be a string or null`);
+      }
+      if (value.length > MAX_CHANGE_VALUE_LENGTH) {
+        throw new AuditEventValidationError(
+          `${name} exceeds ${MAX_CHANGE_VALUE_LENGTH} characters`,
+        );
+      }
+      if (SECRET_LIKE_PATTERN.test(value)) {
+        throw new AuditEventValidationError(
+          `${name} appears to contain a secret/token/credential -- refusing to persist`,
+        );
+      }
+    }
+    if (input.previousValue === input.newValue) {
+      throw new AuditEventValidationError(
+        "previousValue and newValue are identical -- a change that changes nothing is not an event",
+      );
+    }
+  } else if (!isFieldChangeAction) {
+    for (const [name, value] of [
+      ["fieldKey", input.fieldKey],
+      ["previousValue", input.previousValue],
+      ["newValue", input.newValue],
+    ] as const) {
+      if (value !== undefined) {
+        throw new AuditEventValidationError(`${name} is only valid for a field-change AuditAction`);
+      }
+    }
+  }
+
   if (input.rowCount !== undefined) {
     if (!isReportRowFactAction) {
       throw new AuditEventValidationError(
@@ -610,6 +718,12 @@ function buildAuditEventDoc(input: RecordAuditEventInput): DocumentData {
   if (input.newOwner !== undefined) doc.newOwner = input.newOwner;
   if (input.handoffReason !== undefined) doc.handoffReason = input.handoffReason;
   if (input.handoffSource !== undefined) doc.handoffSource = input.handoffSource;
+  // Field-change facts. previousValue/newValue are written even when null, for the reason
+  // previousOwner is: "this field had no value before" is a fact the trail must be able to state,
+  // and an omitted field cannot state it.
+  if (input.fieldKey !== undefined) doc.fieldKey = input.fieldKey;
+  if (input.previousValue !== undefined) doc.previousValue = input.previousValue;
+  if (input.newValue !== undefined) doc.newValue = input.newValue;
   return doc;
 }
 
@@ -626,9 +740,15 @@ export interface AuditEventWriter {
 // repo, trusted or otherwise, that mutates an existing Audit Event.
 // `.doc()` always mints a fresh auto-id -- this can only ever be a
 // create, never an overwrite of an existing document.
-export function stageAuditEvent(writer: AuditEventWriter, input: RecordAuditEventInput): string {
+// `database` is optional and defaults to the ambient Firestore, so every existing call site is
+// unchanged -- see stageAuditEventWithId for why the seam exists at all.
+export function stageAuditEvent(
+  writer: AuditEventWriter,
+  input: RecordAuditEventInput,
+  database?: Firestore,
+): string {
   assertValid(input);
-  const db = getFirestore();
+  const db = database ?? getFirestore();
   const docRef = db.collection(AUDIT_EVENTS_COLLECTION).doc();
   writer.set(docRef, buildAuditEventDoc(input));
   return docRef.id;
@@ -646,16 +766,24 @@ export function stageAuditEvent(writer: AuditEventWriter, input: RecordAuditEven
 // outside that established check-then-write pattern (unlike
 // stageAuditEvent, whose auto-id makes a collision structurally
 // impossible without any caller-side discipline required).
+//
+// `db` is optional and defaults to the ambient Firestore, so every existing call site is
+// unchanged. It exists because a command that stages its writes onto a caller-supplied
+// transaction is otherwise untestable without an emulator: the transaction can be faked, and then
+// this one line reaches for the real Firestore anyway. Threading the SAME database the caller is
+// already transacting on is also the more honest shape -- staging a write onto a transaction from
+// one database using a document reference from another was never meaningful.
 export function stageAuditEventWithId(
   writer: AuditEventWriter,
   id: string,
   input: RecordAuditEventInput,
+  db?: Firestore,
 ): string {
   if (!id || typeof id !== "string") {
     throw new AuditEventValidationError("id must be a non-empty string");
   }
   assertValid(input);
-  const docRef = auditEventDocRef(id);
+  const docRef = auditEventDocRef(id, db);
   writer.set(docRef, buildAuditEventDoc(input));
   return id;
 }
@@ -664,8 +792,8 @@ export function stageAuditEventWithId(
 // to, so a caller can `.get()` it (inside their own transaction, for
 // the idempotency check) before deciding whether to call
 // stageAuditEventWithId.
-export function auditEventDocRef(id: string): DocumentReference {
-  return getFirestore().collection(AUDIT_EVENTS_COLLECTION).doc(id);
+export function auditEventDocRef(id: string, db?: Firestore): DocumentReference {
+  return (db ?? getFirestore()).collection(AUDIT_EVENTS_COLLECTION).doc(id);
 }
 
 // Convenience wrapper for the audit-only case (no accompanying business
@@ -676,16 +804,53 @@ export function auditEventDocRef(id: string): DocumentReference {
 // multi-write path, rather than a separate ad hoc `.set()` call.
 export async function recordStandaloneAuditEvent(
   input: RecordAuditEventInput,
+  database?: Firestore,
 ): Promise<string> {
-  const db = getFirestore();
+  const db = database ?? getFirestore();
   const batch = db.batch();
-  const id = stageAuditEvent(batch, input);
+  const id = stageAuditEvent(batch, input, db);
   await batch.commit();
   return id;
 }
 
 export interface ListAuditEventsOptions {
   limit?: number;
+}
+
+// The RECORD-SCOPED read the Row-11 deferral above anticipated, verbatim: "Filtered/ordered
+// queries by targetType/targetId are deferred to Row 11, which will define and deploy whatever
+// composite indexes its actual Admin Portal audit-history UI needs."
+//
+// This is that query, and the composite it needs (auditEvents: targetType ASC, targetId ASC,
+// at DESC) is declared in firestore.indexes.json in the same change. The alternative is loading
+// the whole company's audit history to render one record's Change History, which is not one.
+//
+// Server-side (Admin SDK) only: firestore.rules denies every client read of auditEvents, so the
+// callable wrapping this is the only path, and it re-authorizes on audit.event.read.
+// `database` is optional and defaults to the ambient Firestore -- the same seam the staging
+// helpers above carry, so the callable that wraps this is testable without an emulator.
+export async function listAuditEventsForRecord(
+  targetType: string,
+  targetId: string,
+  options: ListAuditEventsOptions = {},
+  database?: Firestore,
+): Promise<Array<Record<string, unknown>>> {
+  if (!targetType || typeof targetType !== "string") {
+    throw new AuditEventValidationError("targetType is required");
+  }
+  if (!targetId || typeof targetId !== "string") {
+    throw new AuditEventValidationError("targetId is required");
+  }
+  const limit = assertValidLimit(options.limit);
+  const db = database ?? getFirestore();
+  const snapshot = await db
+    .collection(AUDIT_EVENTS_COLLECTION)
+    .where("targetType", "==", targetType)
+    .where("targetId", "==", targetId)
+    .orderBy("at", "desc")
+    .limit(limit)
+    .get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
 function assertValidLimit(limit: number | undefined): number {

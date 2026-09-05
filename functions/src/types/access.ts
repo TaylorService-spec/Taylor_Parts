@@ -312,6 +312,15 @@ export type AuditAction =
   // Legacy Compatibility-Admin Bootstrap -- one-time, audited migration of an
   // existing legacy `users/{uid}.role === "admin"` principal into the governed
   // roleAssignment model (ADR-005 / ADR-009 controlled technical exception).
+  // ADMINISTRATION USERS CONSOLIDATION -- the governed Employee PROFILE write
+  // (functions/src/access/employeeProfileCommands.ts). One event PER CHANGED FIELD, each carrying
+  // fieldKey/previousValue/newValue, because "what changed on this person" is the question a
+  // record-detail Change History answers and one bundled event cannot. Extends this SAME immutable
+  // Audit Event path -- no parallel change-log collection. Runtime allow-list mirror lives in
+  // access/auditEventWriter.ts's AUDIT_ACTIONS
+  // (keep this comment free of the statement-terminator character -- mirror checks parse the union
+  //  up to the first one)
+  | "updateEmployeeProfile"
   | "bootstrapCompatibilityAdmin"
   // AUTH-PR-3 (Authentication Modernization) -- admin-initiated password
   // recovery. Durable, SEPARATE events for initiation, delivery outcome, and

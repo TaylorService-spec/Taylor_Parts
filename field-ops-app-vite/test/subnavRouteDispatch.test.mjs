@@ -28,8 +28,20 @@ import { NAV_DOMAINS } from "../src/navigation/navConfig.js";
 
 const APP = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/App.jsx"), "utf8");
 
-// Every explicit <Route path="..."> written by hand in App.jsx.
-const explicitRoutePaths = [...APP.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]);
+// Every explicit <Route path="..."> written by hand in App.jsx -- EXCEPT the ones that redirect.
+//
+// A <Route element={<Navigate .../>}> cannot cause the failure this file pins. That failure is a
+// hand-written route SHADOWING a subnav item, so a placeholder renders over a built screen; a
+// redirect renders no screen at all, and exists precisely to keep a RETIRED path working.
+//
+// The ADMINISTRATION USERS CONSOLIDATION is what surfaced the gap: it redirects
+// /administration/employees, Administration has no employees item any more -- but REPORTING has one
+// whose path is also "employees", and this comparison is path-only rather than domain-scoped
+// (despite what the header says), so the retired-path redirect read as a collision with a different
+// domain entirely. Excluding redirects keeps the check pointed at the thing that actually broke.
+const explicitRoutePaths = [...APP.matchAll(/<Route\s+path="([^"]+)"\s+element=\{<([A-Za-z]+)/g)]
+  .filter((m) => m[2] !== "Navigate")
+  .map((m) => m[1]);
 
 test("no hand-written <Route> duplicates a subnav item's path -- the generic loop emits that route already", () => {
   for (const domain of NAV_DOMAINS) {

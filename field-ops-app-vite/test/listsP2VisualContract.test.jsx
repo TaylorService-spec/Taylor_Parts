@@ -61,7 +61,7 @@ const MIGRATE = [
   { name: "Suppliers", file: "modules/purchasing/Suppliers.jsx", owns: "both" },
   { name: "Warehouses", file: "modules/inventory/Warehouses.jsx", owns: "both" },
   { name: "Manufacturers", file: "modules/inventory/Manufacturers.jsx", owns: "both" },
-  { name: "Employees", file: "modules/administration/EmployeesList.jsx", owns: "both" },
+  { name: "Users", file: "modules/administration/AdminUsers.jsx", owns: "both" },
   { name: "Trucks", file: "modules/inventory/TruckInventory.jsx", owns: "both" },
   { name: "Purchase Orders", file: "modules/purchasing/PurchaseOrders.jsx", owns: "both" },
   { name: "Transfers", file: "modules/inventory/Transfers.jsx", owns: "both" },

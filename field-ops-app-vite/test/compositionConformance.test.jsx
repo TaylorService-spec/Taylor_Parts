@@ -102,7 +102,9 @@ const CONFORMANT_SURFACES = [
   "modules/purchasing/Suppliers.jsx",
   "modules/inventory/Manufacturers.jsx",
   // TRANCHE 2 — organization / location families.
-  "modules/administration/EmployeesList.jsx",
+  // The employee directory, renamed: Administration presents ONE people destination and
+  // EmployeesList.jsx was deleted rather than left running beside it.
+  "modules/administration/AdminUsers.jsx",
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",  // moved from CONFORMANT_WORKSPACES (Wave 1)
   // TRANCHE 3 — operational movement families.
@@ -146,6 +148,10 @@ const NORTH_STAR_RECORD_PAGES = [
   // family 8 -- a RECOMPOSITION like family 7's: it left CONFORMANT_WORKSPACES above in the same
   // commit that brought it here.
   "modules/equipment/EquipmentDetail.jsx",      // family 8 (Equipment record)
+  // ADMINISTRATION USERS CONSOLIDATION -- a NEW routed record page (/administration/users/:id),
+  // not a recomposition: no Administration surface has ever had a record page, so this file
+  // arrives on this list rather than moving off another one.
+  "modules/administration/UserDetail.jsx",
 ];
 
 // ════════════════════ NORTH STAR COLLECTION PAGES ════════════════════
@@ -184,7 +190,7 @@ const NORTH_STAR_COLLECTION_PAGES = [
   "modules/equipment/EquipmentWorkspace.jsx",
   "modules/purchasing/Suppliers.jsx",
   "modules/inventory/Manufacturers.jsx",
-  "modules/administration/EmployeesList.jsx",
+  "modules/administration/AdminUsers.jsx",
   "modules/inventory/Warehouses.jsx",
   "modules/inventory/TruckInventory.jsx",
   "modules/purchasing/PurchaseOrders.jsx",

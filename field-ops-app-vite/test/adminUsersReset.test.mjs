@@ -162,50 +162,56 @@ ok("canSubmitReset requires eligible row and not in-flight", () => {
   assert.strictEqual(canSubmitReset(null, confirming, false), false);
 });
 
-// -- source-text wiring + regression (AdminUsers.jsx) ------------------------
-const adminUsersSrc = fs.readFileSync(
-  fileURLToPath(new URL("../src/modules/administration/AdminUsers.jsx", import.meta.url)),
+// -- source-text wiring + regression (UserAccessActions.jsx) -----------------
+//
+// THE SURFACE MOVED, THE CONTRACT DID NOT. The ADMINISTRATION USERS CONSOLIDATION took the reset
+// out of the page-level AdminUsers screen and put it on the User Detail record page, in
+// UserAccessActions.jsx, where the target is the record rather than a row picked from a list. Every
+// assertion below is the same assertion, re-pointed -- plus one that got STRONGER, marked below.
+const accessActionsSrc = fs.readFileSync(
+  fileURLToPath(new URL("../src/modules/administration/UserAccessActions.jsx", import.meta.url)),
   "utf8",
 );
-ok("AdminUsers.jsx wires the seam + pure view-model (thin JSX)", () => {
-  assert.match(adminUsersSrc, /adminPasswordResetClient/);
-  assert.match(adminUsersSrc, /adminUsersResetView/);
-  assert.match(adminUsersSrc, /createAdminResetController/);
-  assert.match(adminUsersSrc, /RESET_ACTION_LABEL/);
+ok("UserAccessActions.jsx wires the seam + pure view-model (thin JSX)", () => {
+  assert.match(accessActionsSrc, /adminPasswordResetClient/);
+  assert.match(accessActionsSrc, /adminUsersResetView/);
+  assert.match(accessActionsSrc, /createAdminResetController/);
+  assert.match(accessActionsSrc, /RESET_ACTION_LABEL/);
   assert.ok(RESET_ACTION_LABEL.length > 0 && RESET_UNAVAILABLE_COPY.length > 0);
 });
-ok("AdminUsers.jsx preserves the setUserStatus preview (regression)", () => {
-  assert.match(adminUsersSrc, /Enable user/);
-  assert.match(adminUsersSrc, /Disable user/);
-  assert.match(adminUsersSrc, /setUserStatus/);
+ok("UserAccessActions.jsx keeps enable/disable on the SAME setUserStatus command", () => {
+  // The labels are per-account now ("Enable Account") rather than the old page-level "Enable user",
+  // because the action has a subject. What must not change is which command performs it.
+  assert.match(accessActionsSrc, /Enable Account/);
+  assert.match(accessActionsSrc, /Disable Account/);
+  assert.match(accessActionsSrc, /setUserStatus/);
 });
-ok("AdminUsers.jsx never references a reset link/token/oobCode or session revocation", () => {
-  // No credential-bearing or revocation surface leaks into the client.
-  assert.ok(!/generatePasswordResetLink|oobCode|actionCode|revokeRefreshTokens/.test(adminUsersSrc));
-  // No POSITIVE delivery claim in the rendered copy (the only "delivered" token
-  // permitted is the negated truthfulness comment). Guard the affirmative phrasings.
-  assert.ok(!/email (was|is) delivered|successfully delivered|has been delivered/i.test(adminUsersSrc));
+ok("UserAccessActions.jsx never references a reset link/token/oobCode or session revocation", () => {
+  // No credential-bearing surface leaks into the client. revokeRefreshTokens is checked as before;
+  // the file NAMES revokeUserSessions only to say it invokes nothing of the sort, so the guard is
+  // on the API call, not on the word.
+  assert.ok(!/generatePasswordResetLink|oobCode|actionCode|revokeRefreshTokens/.test(accessActionsSrc));
+  assert.ok(!/email (was|is) delivered|successfully delivered|has been delivered/i.test(accessActionsSrc));
 });
 
-// -- fail-closed capability gating wiring (AdminUsers.jsx) --------------------
-ok("AdminUsers.jsx accepts hasCapability and derives canReset from the gate", () => {
-  assert.match(adminUsersSrc, /canInitiateAdminCredentialReset/);
-  assert.match(adminUsersSrc, /hasCapability/);
-  assert.match(adminUsersSrc, /const\s+canReset\s*=\s*canInitiateAdminCredentialReset\(hasCapability\)/);
+// -- fail-closed capability gating wiring (UserAccessActions.jsx) ------------
+ok("UserAccessActions.jsx accepts hasCapability and derives canReset from the gate", () => {
+  assert.match(accessActionsSrc, /canInitiateAdminCredentialReset/);
+  assert.match(accessActionsSrc, /hasCapability/);
+  assert.match(accessActionsSrc, /const\s+canReset\s*=\s*canInitiateAdminCredentialReset\(hasCapability\)/);
 });
-ok("AdminUsers.jsx gates the ENTIRE reset section render on canReset", () => {
-  // The reset section (its title constant) must sit behind the canReset gate.
-  assert.match(adminUsersSrc, /\{canReset && \(/);
-  const gateIdx = adminUsersSrc.indexOf("{canReset && (");
-  const titleIdx = adminUsersSrc.indexOf("{RESET_SECTION_TITLE}");
-  assert.ok(gateIdx > -1 && titleIdx > gateIdx, "RESET_SECTION_TITLE must render inside the canReset gate");
+ok("UserAccessActions.jsx gates the ENTIRE reset surface on canReset", () => {
+  assert.match(accessActionsSrc, /\{canReset && \(/);
+  const gateIdx = accessActionsSrc.indexOf("{canReset && (");
+  const labelIdx = accessActionsSrc.indexOf("{RESET_ACTION_LABEL}");
+  assert.ok(gateIdx > -1 && labelIdx > gateIdx, "the reset action must render inside the canReset gate");
 });
-ok("AdminUsers.jsx guards the list effect and never calls the seam unconditionally", () => {
-  // The effect must early-return when !canReset and route the read through the
-  // capability-gated orchestrator -- never loadEligibleUsers(...) directly.
-  assert.match(adminUsersSrc, /if \(!canReset\)/);
-  assert.match(adminUsersSrc, /maybeLoadEligibleUsers\(/);
-  assert.ok(!/\bloadEligibleUsers\(/.test(adminUsersSrc), "must not call the ungated loadEligibleUsers directly");
+ok("the zero-list-read guarantee got STRONGER: there is no list read left to gate", () => {
+  // The old assertion was that the eligible-user list read early-returned when the capability was
+  // absent. On a record page the target IS the record, so that read does not happen AT ALL -- for
+  // any caller, capability or not. An absent call cannot leak, which is a stronger property than a
+  // guarded one, and this is the assertion that would fail if somebody reintroduced the list.
+  assert.ok(!/listResetEligibleUsers|maybeLoadEligibleUsers|loadEligibleUsers/.test(accessActionsSrc));
 });
 
 // -- dispatcher threads the fail-closed previewer (App.jsx) -------------------
@@ -213,8 +219,10 @@ const appSrc = fs.readFileSync(
   fileURLToPath(new URL("../src/App.jsx", import.meta.url)),
   "utf8",
 );
-ok("App.jsx dispatcher passes hasCapability into AdminUsers (not nav-only gating)", () => {
-  assert.match(appSrc, /<AdminUsers hasCapability=\{operationalContext\?\.hasCapability\}\s*\/>/);
+ok("App.jsx threads hasCapability into the record page that hosts the reset (not nav-only gating)", () => {
+  // The previewer now goes to UserDetail, which mounts UserAccessActions. The Users DIRECTORY takes
+  // no capability prop, and should not: it renders no governed action.
+  assert.match(appSrc, /<UserDetail hasCapability=\{operationalContext\?\.hasCapability\}/);
 });
 
 console.log(`\n${passed} passed`);

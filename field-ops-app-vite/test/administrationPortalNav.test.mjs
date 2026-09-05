@@ -46,16 +46,28 @@ ok("Permission Preview is admin/dispatcher visible, technician fail-closed", () 
   assert.equal(isNavItemVisible(preview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
 });
 
-// ----- Employees: route/legacyKey/index position untouched -----
-ok("Employees keeps its index route and legacyKey byte-for-byte (never touched by #226)", () => {
-  const employees = byKey("employees");
-  assert.ok(employees, "employees subnav item present");
-  assert.equal(employees.path, "");
-  assert.equal(employees.legacyKey, "technicians");
+// ----- Employees: CONSOLIDATED INTO USERS -----
+//
+// These two assertions used to pin the Employees item's index route and legacyKey "byte-for-byte".
+// That pin was correct for #226, which promised not to touch it. The ADMINISTRATION USERS
+// CONSOLIDATION is the later decision that does: Administration presents ONE people destination,
+// and a hidden-or-duplicate Employees item is exactly the two-directories state it exists to end.
+//
+// So the assertions are INVERTED rather than deleted. The item must be GONE -- not navHidden,
+// which would still generate a route -- and the URLs it owned must still resolve, which is a
+// routing fact and is asserted in App.jsx's own suite.
+ok("the Employees subnav item is gone, not merely hidden", () => {
+  assert.equal(byKey("employees"), undefined, "employees must not be a nav item any more");
 });
-ok("Employees is still the only item with path '' -- the bare /administration URL still resolves there", () => {
+ok("no Administration item claims the index path -- /administration is a redirect, not a page", () => {
   const indexItems = adminDomain.subnav.filter((i) => i.path === "");
-  assert.deepEqual(indexItems.map((i) => i.key), ["employees"]);
+  assert.deepEqual(indexItems.map((i) => i.key), []);
+});
+ok("Users is the one people destination, at its own named path", () => {
+  const users = byKey("users");
+  assert.ok(users, "users subnav item present");
+  assert.equal(users.path, "users");
+  assert.equal(users.label, "Users");
 });
 
 // ----- Every pre-existing item's gating is unchanged -----
@@ -96,7 +108,7 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly fifteen Administration subnav items now exist", () => {
+ok("exactly fourteen Administration subnav items now exist", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
   // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
   // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
@@ -112,7 +124,10 @@ ok("exactly fifteen Administration subnav items now exist", () => {
   // implementation activity an administrator performs once per data set, which is the same kind of
   // thing as Roles and Racking. It is the first Administration item gated by capabilityAccess rather
   // than by role, because its capabilities are activated per environment.
-  assert.equal(adminDomain.subnav.length, 15);
+  // FOURTEEN, not fifteen, since the ADMINISTRATION USERS CONSOLIDATION (2026-09-04): Employees and
+  // Users were two destinations over one set of people and are now one. The pin going DOWN is the
+  // point -- a consolidation that left the old item in place would show here as an unchanged count.
+  assert.equal(adminDomain.subnav.length, 14);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {

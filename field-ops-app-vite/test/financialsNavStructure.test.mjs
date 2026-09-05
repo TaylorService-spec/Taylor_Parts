@@ -201,7 +201,12 @@ test("no existing domain's routes changed — every non-financials domain path s
     "/reporting/purchasing", "/reporting/warehouse", "/reporting/employees", "/reporting/customers", "/reporting/financial",
   ]);
   assert.deepEqual(byKey.administration, [
-    "/administration/overview", "/administration", "/administration/users", "/administration/roles-permissions",
+    // ADMINISTRATION USERS CONSOLIDATION (2026-09-04). "/administration" is GONE from this list
+    // because no nav item claims the index path any more -- Employees held it, and Employees and
+    // Users were two destinations over one set of people. The URL still resolves: App.jsx redirects
+    // both /administration and /administration/employees to /administration/users, which is a
+    // routing fact rather than a nav item, and is asserted where routes are.
+    "/administration/overview", "/administration/users", "/administration/roles-permissions",
     "/administration/objects", "/administration/permission-preview", "/administration/vehicles",
     "/administration/regions", "/administration/company-settings", "/administration/duplicate-rules",
     "/administration/warehouse-racking",

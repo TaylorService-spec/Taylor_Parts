@@ -151,7 +151,8 @@
     "test:financialPolicy": "npm run build && node --test test/financialPolicyProfile.test.mjs",
     "test:financialPolicyCommand": "npm run build && node --test test/financialPolicyProfileCommand.test.mjs",
     "test:dataImport": "npm run build && node --test test/dataImportPartsPipeline.test.mjs test/dataImportJobLifecycle.test.mjs test/dataImportFirestoreAdapters.test.mjs test/xlsxReader.test.mjs test/dataImportCustomers.test.mjs test/dataImportEquipment.test.mjs test/dataImportInventory.test.mjs test/dataImportServiceHistory.test.mjs test/importedServiceHistoryRead.test.mjs test/importTargetGuard.test.mjs test/openingInventoryBalance.test.mjs && node --test test/dataImportProductionRefusal.test.mjs",
-    "test:dataImportEmulator": "npm run build && node test/dataImportEndToEnd.test.mjs"
+    "test:dataImportEmulator": "npm run build && node test/dataImportEndToEnd.test.mjs",
+    "test:administrationUsers": "npm run build && node --test test/employeeProfileCommands.test.mjs test/recordChangeHistoryRead.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
