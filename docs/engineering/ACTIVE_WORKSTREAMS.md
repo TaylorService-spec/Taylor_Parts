@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Email Connections phase 2 — REAL Microsoft 365 / Google Workspace delivery and attachment byte custody, on top of the phase 1 intake capability (PR #1811)
+- Agent/session:       Claude (Claude Code, 2026-09-05) · Role: builder
+- Branch / worktree:   `feature/email-provider-delivery` · `D:/Taylor_Parts-eos` — STACKED on `feature/email-connections-inbound-work` (PR #1811, open at `d6e4b1de`)
+- Base commit:         `d6e4b1deedbf859b52df542a218bdcf9465621e6` (PR #1811 head; origin/main was `e62b16ba` and unmoved)
+- Owned paths:         `functions/src/inboundWork/provider*.ts` · `microsoftGraphTransport.ts` · `gmailTransport.ts` · `attachmentCustody.ts` · `emailConnectionCommands.ts` · `emailDeliveryService.ts` · `emailDeliverySchedule.ts` · `emailTransportCallables.ts` · `functions/test/emailTransport*.test.mjs` · `storage.rules` · `docs/deployment/email-provider-setup.md`
+- Shared paths req'd:  `functions/src/types/access.ts` + `access/auditEventWriter.ts` (eight additive AuditActions, both mirrors) · `functions/src/constants/collections.ts` (two additive collections) · `functions/src/index.ts` · `functions/src/inboundWork/inboundWorkReadService.ts` (additive projections) · `functions/package.json` + lock (one dependency: @google-cloud/secret-manager) · `firebase.json` (3-line storage-rules wiring) · `field-ops-app-vite/src/access/inboundWorkSource.js` + the two email screens + their tests · `.github/workflows/inbound-work-tests.yml` (extended, not duplicated) · `docs/architecture/email-connections-and-inbound-work.md` + both user guides · `docs/DECISIONS.md` (#177) · this registry
+- Dependencies:        PR #1811 must merge first — this branch contains its commits. It adds NO capability, NO Role and NO firestore.rules change of its own.
+- Expected outcome:    a real mailbox is connected through a consented, read-only OAuth grant; new mail reaches Service → Inbound Work automatically with its attachment bytes held by EOS; Accept still produces exactly one governed Work Order; failures are visible, classified and retryable.
+- Protected boundaries:reached and NOT crossed — NO `firestore.rules` edit. `storage.rules` is NEW and denies every client (strictest possible), wired into firebase.json but NOT deployed. NO production OAuth binding, NO production polling, NO production attachment ingestion: every transport callable and the scheduler refuse the production project from the runtime's own identity before authority is evaluated. NO deploy, NO capability activation, NO grant, NO production data touched, NO Certification fixture altered.
+- Lifecycle stage:     **SANDBOX BUILD** — proven locally against the Firestore emulator as `eos-platform-sandbox` (37 offline + 23 delivery end-to-end assertions, phase 1's 31 + 33 still green, 15 + 13 client assertions, production build clean). Real tenant binding is an external administrator action, documented in `docs/deployment/email-provider-setup.md` and NOT performed.
+
 - Capability:          Email Connections + Inbound Work — base EOS email intake: connect a Microsoft 365 / Google Workspace mailbox, review what arrives, accept it into one governed Work Order without re-typing it
 - Agent/session:       Claude (Claude Code, 2026-09-05) · Role: builder
 - Branch / worktree:   `feature/email-connections-inbound-work` · `D:/Taylor_Parts-eos`

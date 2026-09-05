@@ -38,6 +38,10 @@ on:
       - "functions/scripts/fixtures/inboundWorkFixtures.mjs"
       - "functions/scripts/seedSandboxInboundWork.mjs"
       - "functions/test/inboundWork*.test.mjs"
+      - "functions/test/emailTransport*.test.mjs"
+      - "functions/package.json"
+      - "storage.rules"
+      - "firebase.json"
       - "config/environments.json"
       - "field-ops-app-vite/src/access/inboundWorkSource.js"
       - "field-ops-app-vite/src/access/useGovernedCapabilities.js"
@@ -63,6 +67,10 @@ on:
       - "functions/scripts/fixtures/inboundWorkFixtures.mjs"
       - "functions/scripts/seedSandboxInboundWork.mjs"
       - "functions/test/inboundWork*.test.mjs"
+      - "functions/test/emailTransport*.test.mjs"
+      - "functions/package.json"
+      - "storage.rules"
+      - "firebase.json"
       - "config/environments.json"
       - "field-ops-app-vite/src/access/inboundWorkSource.js"
       - "field-ops-app-vite/src/access/useGovernedCapabilities.js"
@@ -109,6 +117,13 @@ jobs:
       # the provider-neutral processing contract -- all pure, all fixture-driven.
       - name: Inbound work domain (untrusted content, providers, routing, threading, processing)
         run: node --test test/inboundWorkDomain.test.mjs
+        working-directory: functions
+
+      # Real provider transport, offline: OAuth state rules, both adapters against a stubbed fetch,
+      # failure classification and backoff, credential custody, attachment safety. No network, no
+      # emulator, no credential -- the provider payloads are fixtures.
+      - name: Provider transport (OAuth state, adapters, credentials, attachment safety)
+        run: node --test test/emailTransport.test.mjs
         working-directory: functions
 
       # The catalogue guard: all six ids must stay active:false, because true means production too.
@@ -193,6 +208,13 @@ jobs:
       # intake linked to it, an audit event beside it, and a reply on the thread creating nothing.
       - name: Inbound work end to end (intake, accept, decline, attach, threading, authority)
         run: node --test test/inboundWorkEmulator.test.mjs
+        working-directory: functions
+
+      # Real delivery end to end against a scripted provider: the connection lifecycle, the poll, the
+      # cursor, duplicate safety, threading, attachment custody, retry, provider parity, and Accept
+      # still producing exactly one governed Work Order.
+      - name: Provider delivery end to end (connect, poll, attachments, retry, parity)
+        run: node --test test/emailTransportEmulator.test.mjs
         working-directory: functions
 
       - name: Upload emulator debug logs

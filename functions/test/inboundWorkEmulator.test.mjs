@@ -538,11 +538,14 @@ test("an EXTERNAL processing provider changes nothing about acceptance or Work O
 // ── Administration configuration ─────────────────────────────────────────────────────────────────
 test("the administration read serves connections, mailboxes, rules and REAL counts", async () => {
   const config = await readEmailIntakeConfiguration(db);
-  assert.equal(config.connections.length, 1);
-  assert.equal(config.connections[0].oauthStatus, "NOT_CONNECTED", "a form cannot mark a connection authorized");
-  assert.equal("password" in config.connections[0], false);
-  assert.equal(config.mailboxes.length, 3);
-  assert.equal(config.rules.length, 2);
+  // ABOUT THIS SUITE'S OWN RECORDS, not a global tally: other suites share this emulator database, and
+  // a count of everything in it is a test of who else ran, not of this read.
+  const connection = config.connections.find((c) => c.id === SANDBOX_CONNECTION.id);
+  assert.ok(connection, "the seeded connection is served");
+  assert.equal(connection.oauthStatus, "NOT_CONNECTED", "a form cannot mark a connection authorized");
+  assert.equal("password" in connection, false);
+  assert.equal(config.mailboxes.filter((m) => m.connectionId === SANDBOX_CONNECTION.id).length, 3);
+  assert.ok(config.rules.some((r) => r.id === SANDBOX_ROUTING_RULES[0].id));
   assert.ok(config.overview.total > 0);
   assert.ok((config.overview.byStatus.ACCEPTED ?? 0) > 0);
 });

@@ -6277,3 +6277,87 @@ configuration dependency, recorded rather than faked), attachment byte custody, 
 and entitlement gating for the optional providers (no licensing framework exists; the architecture is ready
 and the screen says plainly that provider selection is unavailable in this build rather than showing a fake
 paid flag).
+
+## #177 — Real email provider delivery and attachment custody: the decisions taken to build it (2026-09-05)
+
+**Context.** #176 built email intake with a non-production delivery seam and stated two things as
+external dependencies: a real provider connection, and custody of attachment bytes. This closes both.
+Implementation record, not an Owner ruling — the Owner-gated items are listed at the end and were NOT taken.
+
+### 1. Polling, not change notifications
+
+Graph mail subscriptions expire in under three days and Gmail's `users.watch` in seven. A notification
+design therefore needs a renewal job, a publicly reachable endpoint that answers a validation handshake and
+verifies a clientState while unauthenticated, Pub/Sub for Gmail — **and a poll underneath it anyway**,
+because a missed notification is silent data loss. `messages/delta` and `users.history.list` give the same
+exactly-once property from a stored cursor with no public surface and no renewal. Notifications remain
+available later as an extra TRIGGER for the same poll, not as a second delivery path.
+
+### 2. The credential vault is Secret Manager, not something written here
+
+The repository had no encrypted-credential pattern, and the instruction was explicit that a homemade one is
+not acceptable. Secret Manager is the platform's own mechanism, already the convention here for static
+server-only configuration; one secret per connection extends it to dynamic ones. The access token is never
+persisted at all — it lives in process memory and is re-minted — so the only durable credential is the one
+the platform encrypts and audits. One dependency was added (`@google-cloud/secret-manager`); everything
+else uses Node's built-in `fetch`.
+
+**Cost, recorded honestly:** the runtime service account needs secret-create/access/delete permission. That
+is broader than reading a fixed secret, and it is the price of per-connection rotation and revocation.
+
+### 3. The OAuth callback is an authenticated callable, not a public endpoint
+
+The provider redirects to the Administration screen the administrator is already signed into, and the SPA
+hands the code and state to a callable behind the same capability check as every other administration
+write. This removes a whole class of exposure (an unauthenticated public endpoint) rather than defending
+it. The state is stored by its hash, single-use inside a transaction, ten-minute TTL, and bound to the
+connection, provider, redirect and initiating administrator. PKCE is used despite this being a confidential
+client, so an intercepted code is worthless on its own.
+
+### 4. Consent is not access
+
+Completion reads each configured mailbox with the granted authority before the connection is called
+CONNECTED. A connection that consents successfully but cannot open the warranty mailbox is recorded as
+authorized-and-failing with the reason — which is the state an operator can act on, and the state a
+token-only check would have hidden until the first silent poll.
+
+### 5. The cursor advances only over messages actually taken in
+
+A message the poll could not fetch leaves the cursor where it was, so the next poll sees it again.
+Reprocessing is safe because intake deduplicates on (mailbox, provider message id); skipping is not
+recoverable. The same reasoning makes Gmail's expired-history recovery a bounded re-list rather than a
+failure. **At-least-once delivery, exactly-once intake.**
+
+### 6. Attachment bytes: private bucket, governed read, no signed URLs
+
+`storage.rules` denies every client read and write, and the only route to a byte is a callable that
+authorizes against the inbound request the attachment belongs to and looks the storage key up server-side.
+A signed URL was rejected deliberately: it is a credential that outlives the authorization check and can be
+forwarded. Bytes are stored as `application/octet-stream` whatever the sender declared, keys are derived
+from EOS ids and a hash (never the filename), size is bounded before the first write, and the key is
+deterministic so a retry cannot double-store.
+
+**Not done, and not pretended:** no malware scanning (no such architecture exists here), and production
+retention is UNRESOLVED — every stored attachment carries that word rather than an invented period.
+
+### 7. No new capability, no new Role, no Rules change
+
+Connecting, testing, polling and retrying are `administration.emailIntake.manage`; reading an attachment is
+`service.inboundWork.read` — the same capability that opens the request the attachment belongs to.
+Inventing an `attachment.read` id would have created a permission somebody could hold without being able to
+open the record it describes. The two new collections have no `firestore.rules` match block, so they are
+denied to every client by default, exactly like the four from #176.
+
+### 8. Production is refused in code, not by discipline
+
+Every transport callable and the scheduled poller check the runtime's own project identity **before
+authority is evaluated**, reusing the guard Data Import already uses: production by name, any
+`role: "production"` registry environment, and any unknown project. Production provider binding, polling and
+attachment ingestion require a separate Owner authorization and a code change, in that order.
+
+### Not taken — Owner / external
+
+A real Microsoft 365 or Google Workspace tenant binding (an administrator outside this repository registers
+the application and consents; documented in `docs/deployment/email-provider-setup.md`), any deploy, the
+`roles/secretmanager.admin` IAM grant that credential custody needs at runtime, production retention
+policy, malware scanning, and outbound reply-from-EOS.

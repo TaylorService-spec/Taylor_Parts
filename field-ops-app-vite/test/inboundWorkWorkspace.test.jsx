@@ -5,7 +5,7 @@
 //   3. Accept Job submits the REVIEWER'S confirmed values and nothing else -- no actor, no timestamp;
 //   4. a role without the capability sees an honest denial, not an empty screen or a live button.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 const capabilities = { value: new Set(["service.inboundWork.read", "service.inboundWork.accept", "service.inboundWork.decline", "service.inboundWork.attachExisting"]) };
 
@@ -54,8 +54,10 @@ const detail = {
   originalBodyText: HOSTILE_TEXT,
   normalizedBody: HOSTILE_TEXT,
   attachmentRefs: [
-    { filename: "authorization.pdf", mimeType: "application/pdf", size: 2048, providerAttachmentId: "att-1", sourceMessageId: "msg-1" },
+    { filename: "authorization.pdf", mimeType: "application/pdf", size: 2048, providerAttachmentId: "att-1", sourceMessageId: "msg-1", custody: "STORED" },
+    { filename: "photo.jpg", mimeType: "image/jpeg", size: 4096, providerAttachmentId: "att-2", sourceMessageId: "msg-1", custody: "FAILED", failureCode: "ATTACHMENT_FETCH_FAILED" },
   ],
+  attachmentCustody: "PARTIAL",
   threadMessages: [],
   customerCandidate: { id: "acct-1", rawValue: "SN-1", confidence: "EXACT", matchedOn: "serialNumberKey" },
   locationCandidate: { id: "loc-1", rawValue: "SN-1", confidence: "EXACT", matchedOn: "equipmentLocation" },
@@ -102,6 +104,7 @@ function makeSource(overrides = {}) {
     accept: async () => ({ ok: true, data: { requestId: "req-1", workItemId: "wo-1", woNumber: "WO-2026-000001", replayed: false } }),
     decline: async () => ({ ok: true, data: { requestId: "req-1", replayed: false } }),
     attach: async () => ({ ok: true, data: { requestId: "req-1", workItemId: "wo-9", replayed: false } }),
+    getAttachment: async () => ({ ok: true, data: { filename: "authorization.pdf", declaredMimeType: "application/pdf", size: 3, contentHash: "h", contentBase64: "UERG" } }),
     ...overrides,
   };
 }
@@ -198,6 +201,37 @@ describe("Inbound Work review", () => {
     const accept = await screen.findByRole("button", { name: "Accept Job" });
     expect(accept.disabled).toBe(true);
     expect(screen.getByText(/not part of your role/i)).toBeTruthy();
+  });
+
+
+  it("says which attachments EOS actually holds, and which it could not retrieve", async () => {
+    await open();
+    const region = screen.getByRole("region", { name: "Original message" });
+    expect(within(region).getByRole("button", { name: "Download" })).toBeTruthy();
+    expect(within(region).getByText("Could not be retrieved")).toBeTruthy();
+    expect(within(region).getByText(/one or more attachments could not be retrieved/i)).toBeTruthy();
+  });
+
+  it("downloading asks for the attachment by its PROVIDER id -- never by a storage key", async () => {
+    const getAttachment = vi.fn(async () => ({
+      ok: true,
+      data: { filename: "authorization.pdf", declaredMimeType: "application/pdf", size: 3, contentBase64: "UERG" },
+    }));
+    render(<InboundWorkWorkspace source={makeSource({ getAttachment })} />);
+    fireEvent.click(await screen.findByText("Warranty service required"));
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await waitFor(() => expect(getAttachment).toHaveBeenCalledTimes(1));
+    const payload = getAttachment.mock.calls[0][0];
+    expect(payload).toEqual({ requestId: "req-1", providerAttachmentId: "att-1" });
+    expect("storageKey" in payload).toBe(false);
+  });
+
+  it("says why a download failed instead of silently doing nothing", async () => {
+    const getAttachment = async () => ({ ok: false, code: "failed-precondition", message: "That attachment has not been retrieved yet." });
+    render(<InboundWorkWorkspace source={makeSource({ getAttachment })} />);
+    fireEvent.click(await screen.findByText("Warranty service required"));
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect(await screen.findByText(/has not been retrieved yet/)).toBeTruthy();
   });
 
   it("Decline Job carries a governed reason", async () => {

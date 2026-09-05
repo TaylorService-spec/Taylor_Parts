@@ -17,7 +17,7 @@
     "catalogInactive": 146,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 46,
+    "callableExports": 47,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -4816,6 +4816,14 @@
         "customer.record.read"
       ],
       "comment": "--- EOS Data Import P1 -- the READ side of imported service history --- Separate from the three import callables above in every way that matters: it is NOT sandbox-gated (reading records that already exist is not a sandbox-only act), and it is NOT gated on the import capabilities (gating it on those"
+    },
+    {
+      "names": [
+        "pollEmailMailboxes"
+      ],
+      "module": "./inboundWork/emailDeliverySchedule",
+      "capabilityHints": [],
+      "comment": "The scheduled poller -- the thing that makes delivery automatic. Deploying it is what starts it; until then nothing runs on any schedule anywhere."
     }
   ],
   "destinations": [

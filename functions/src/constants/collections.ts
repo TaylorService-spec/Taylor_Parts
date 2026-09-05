@@ -120,3 +120,16 @@ export const EMAIL_CONNECTIONS_COLLECTION = "email_connections";
 export const EMAIL_MAILBOXES_COLLECTION = "email_mailboxes";
 export const EMAIL_ROUTING_RULES_COLLECTION = "email_routing_rules";
 export const INBOUND_WORK_REQUESTS_COLLECTION = "inbound_work_requests";
+
+// Real provider delivery (Email Connections phase 2). Two more Admin-SDK-only collections, the same
+// fail-closed posture as the four above: no firestore.rules match block, so every client read and write is
+// denied and the trusted transport is the only writer.
+//
+// `email_oauth_states` holds one short-lived, single-use authorization state per connect attempt -- the
+// only thing tying a provider's redirect back to a request EOS actually made. Documents are keyed by the
+// HASH of the state value, never the value, and carry the PKCE verifier that never leaves the server.
+// `email_delivery_failures` is the retry and exception ledger for provider transport: what failed, how it
+// was classified, how many attempts it has had, and when it may next be tried. It exists so that a failed
+// delivery is a visible, retryable record rather than a log line nobody reads.
+export const EMAIL_OAUTH_STATES_COLLECTION = "email_oauth_states";
+export const EMAIL_DELIVERY_FAILURES_COLLECTION = "email_delivery_failures";

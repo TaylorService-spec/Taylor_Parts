@@ -13,6 +13,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import {
   EMAIL_CONNECTIONS_COLLECTION,
   EMAIL_MAILBOXES_COLLECTION,
+  EMAIL_DELIVERY_FAILURES_COLLECTION,
   EMAIL_ROUTING_RULES_COLLECTION,
   INBOUND_WORK_REQUESTS_COLLECTION,
 } from "../constants/collections";
@@ -101,7 +102,9 @@ export interface InboundWorkDetail extends InboundWorkQueueRow {
   /** Plain text ONLY. The stored markup is deliberately not projected -- see the file header. */
   originalBodyText: string;
   normalizedBody: string;
-  attachmentRefs: unknown[];
+  attachmentRefs: Record<string, unknown>[];
+  /** NONE | PENDING | PARTIAL | COMPLETE | FAILED -- whether EOS actually holds the files. */
+  attachmentCustody: string;
   threadMessages: unknown[];
   customerCandidate: unknown;
   locationCandidate: unknown;
@@ -144,7 +147,25 @@ export async function readInboundWorkRequest(db: Firestore, requestId: string): 
     // existed, or by a future path, still cannot deliver markup to a browser.
     originalBodyText: normalizedBody || toPlainText(d.originalBody, d.originalBodyContentType === "text/plain" ? "text/plain" : "text/html"),
     normalizedBody,
-    attachmentRefs: Array.isArray(d.attachmentRefs) ? d.attachmentRefs.slice(0, 200) : [],
+    // PROJECTED, NOT PASSED THROUGH. `storageKey` is internal: the governed attachment read takes a
+    // provider attachment id and looks the key up server-side, so a client never holds one and cannot
+    // name a different object. What a reviewer needs is the file's identity and whether EOS has it.
+    attachmentRefs: (Array.isArray(d.attachmentRefs) ? d.attachmentRefs.slice(0, 200) : []).map((a) => {
+      const ref = (a ?? {}) as Record<string, unknown>;
+      return {
+        filename: str(ref.filename, 255),
+        mimeType: str(ref.mimeType, 255),
+        size: typeof ref.size === "number" ? ref.size : 0,
+        contentHash: strOrNull(ref.contentHash, 128),
+        providerAttachmentId: str(ref.providerAttachmentId, 255),
+        sourceMessageId: str(ref.sourceMessageId, 255),
+        receivedAt: typeof ref.receivedAt === "number" ? ref.receivedAt : 0,
+        custody: str(ref.custody, 40) || "PENDING",
+        failureCode: strOrNull(ref.failureCode, 60),
+        attempts: typeof ref.attempts === "number" ? ref.attempts : 0,
+      };
+    }),
+    attachmentCustody: str(d.attachmentCustody, 40) || (Array.isArray(d.attachmentRefs) && d.attachmentRefs.length ? "PENDING" : "NONE"),
     threadMessages: Array.isArray(d.threadMessages)
       ? d.threadMessages.slice(0, 50).map((m) => {
           const t = (m ?? {}) as Record<string, unknown>;
@@ -223,7 +244,9 @@ export interface EmailIntakeConfiguration {
   connections: Record<string, unknown>[];
   mailboxes: Record<string, unknown>[];
   rules: RoutingRule[];
-  overview: { total: number; byStatus: Record<string, number> };
+  /** Open provider-transport failures: what could not be delivered, why, and whether a retry is left. */
+  exceptions: Record<string, unknown>[];
+  overview: { total: number; byStatus: Record<string, number>; attachmentCustody: Record<string, number> };
 }
 
 /**
@@ -233,16 +256,23 @@ export interface EmailIntakeConfiguration {
  * fabricated health figure. An environment with no intake shows zeroes, which is the honest answer.
  */
 export async function readEmailIntakeConfiguration(db: Firestore): Promise<EmailIntakeConfiguration> {
-  const [connections, mailboxes, rules, requests] = await Promise.all([
+  const [connections, mailboxes, rules, requests, failures] = await Promise.all([
     db.collection(EMAIL_CONNECTIONS_COLLECTION).limit(50).get(),
     db.collection(EMAIL_MAILBOXES_COLLECTION).limit(200).get(),
     readRoutingRules(db),
     db.collection(INBOUND_WORK_REQUESTS_COLLECTION).limit(MAX_QUEUE_LIMIT).get(),
+    db.collection(EMAIL_DELIVERY_FAILURES_COLLECTION).where("status", "in", ["OPEN", "DELIVERY_RETRY_EXHAUSTED"]).limit(50).get(),
   ]);
   const byStatus: Record<string, number> = {};
+  // Attachment custody is counted beside status because they answer different questions: one is what a
+  // reviewer must decide, the other is whether the evidence for deciding actually arrived.
+  const attachmentCustody: Record<string, number> = {};
   for (const doc of requests.docs) {
-    const status = str((doc.data() as Record<string, unknown>).status, 60) || "UNKNOWN";
+    const data = doc.data() as Record<string, unknown>;
+    const status = str(data.status, 60) || "UNKNOWN";
     byStatus[status] = (byStatus[status] ?? 0) + 1;
+    const custody = str(data.attachmentCustody, 60);
+    if (custody && custody !== "NONE") attachmentCustody[custody] = (attachmentCustody[custody] ?? 0) + 1;
   }
   return {
     connections: connections.docs.map((d) => {
@@ -262,6 +292,11 @@ export async function readEmailIntakeConfiguration(db: Firestore): Promise<Email
         credentialSecretName: strOrNull(c.credentialSecretName),
         lastSuccessfulSync: typeof c.lastSuccessfulSync === "number" ? c.lastSuccessfulSync : null,
         lastMessageReceived: typeof c.lastMessageReceived === "number" ? c.lastMessageReceived : null,
+        authorizedAt: typeof c.authorizedAt === "number" ? c.authorizedAt : null,
+        lastTokenRefreshAt: typeof c.lastTokenRefreshAt === "number" ? c.lastTokenRefreshAt : null,
+        lastHealthCheckAt: typeof c.lastHealthCheckAt === "number" ? c.lastHealthCheckAt : null,
+        lastProviderErrorAt: typeof c.lastProviderErrorAt === "number" ? c.lastProviderErrorAt : null,
+        providerErrorCode: strOrNull(c.providerErrorCode, 60),
       };
     }),
     mailboxes: mailboxes.docs.map((d) => {
@@ -280,9 +315,32 @@ export async function readEmailIntakeConfiguration(db: Firestore): Promise<Email
         threadingEnabled: m.threadingEnabled !== false,
         inboundEnabled: m.inboundEnabled !== false,
         status: str(m.status, 60) || "ACTIVE",
+        mailboxReadable: m.mailboxReadable === true,
+        mailboxValidationDetail: strOrNull(m.mailboxValidationDetail, 300),
+        lastPolledAt: typeof m.lastPolledAt === "number" ? m.lastPolledAt : null,
+        lastMessageReceivedAt: typeof m.lastMessageReceivedAt === "number" ? m.lastMessageReceivedAt : null,
+        // Whether delivery has a resume point at all -- never the cursor itself, which is provider state.
+        deliveryConnected: Boolean((m.deliveryCursor as Record<string, unknown> | undefined)?.value),
       };
     }),
     rules,
-    overview: { total: requests.size, byStatus },
+    exceptions: failures.docs.map((d) => {
+      const f = d.data() as Record<string, unknown>;
+      return {
+        id: d.id,
+        connectionId: str(f.connectionId),
+        mailboxId: str(f.mailboxId),
+        code: str(f.code, 60),
+        // The operator-facing sentence, bounded. No provider body, no token, no raw payload.
+        detail: str(f.detail, 300),
+        disposition: str(f.disposition, 40),
+        attempts: typeof f.attempts === "number" ? f.attempts : 0,
+        status: str(f.status, 40),
+        exhausted: f.exhausted === true,
+        lastFailedAt: typeof f.lastFailedAt === "number" ? f.lastFailedAt : 0,
+        nextAttemptAt: typeof f.nextAttemptAt === "number" ? f.nextAttemptAt : null,
+      };
+    }),
+    overview: { total: requests.size, byStatus, attachmentCustody },
   };
 }
