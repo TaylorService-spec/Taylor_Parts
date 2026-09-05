@@ -74,8 +74,20 @@ import {
 // with the reason attached rather than a button that will fail.
 const USER_STATUS_CAPABILITY = "admin.userStatus.write";
 
+// WHAT THE LOCK ACTUALLY MEANS, and it is narrower than it used to say.
+//
+// This read "No principal holds the governed access-record grant this command requires, in any
+// environment yet." That was true when written and is now FALSE: eos-platform-sandbox's admin
+// persona has held `roleAssignments/bootstrap-admin-<uid>` since 2026-08-14, and the resolver
+// returns ALLOW there. A control that explains itself with a claim about every environment is a
+// control that will eventually lie, because it is asserting something it cannot see.
+//
+// So the reason now says only what this session can actually know: the trusted feed did not return
+// a positive decision for THIS principal. That covers every real case -- no grant, a grant that
+// does not qualify, an inactive capability, an undeployed or unreachable feed -- without naming a
+// cause it has no evidence for.
 const NO_GRANT_REASON =
-  "No principal holds the governed access-record grant this command requires, in any environment yet.";
+  "The trusted access feed did not grant this action for your account.";
 const NO_ACCOUNT_REASON =
   "This person has no linked EOS account, so there is no account to enable or disable.";
 

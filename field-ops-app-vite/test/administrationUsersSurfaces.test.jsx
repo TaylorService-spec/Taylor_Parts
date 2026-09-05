@@ -33,6 +33,7 @@ vi.mock("../src/hooks/useMetadataList", () => ({
 import AdminUsers from "../src/modules/administration/AdminUsers.jsx";
 import UserDetail from "../src/modules/administration/UserDetail.jsx";
 import { employeeEntity, employeeIndexList } from "../src/metadata/definitions/employee.js";
+import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
 import { buildListPresentation } from "../src/metadata/listPresentation.js";
 
 const JOHN = {
@@ -66,11 +67,17 @@ const okHistory = (rows = []) => ({
   listRecordChangeHistory: vi.fn().mockResolvedValue({ ok: true, rows }),
 });
 
-const renderDetail = (client, employeeId = "emp-1", search = "") =>
+// `hasCapability` defaults to UNDEFINED, which is what the running app passes when the trusted feed
+// has not returned a positive decision -- so every test that omits it is exercising the real
+// fail-closed path rather than a test-only one.
+const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability = undefined) =>
   render(
     <MemoryRouter initialEntries={[`/administration/users/${employeeId}${search}`]}>
       <Routes>
-        <Route path="/administration/users/:employeeId" element={<UserDetail client={client} />} />
+        <Route
+          path="/administration/users/:employeeId"
+          element={<UserDetail client={client} hasCapability={hasCapability} />}
+        />
       </Routes>
     </MemoryRouter>,
   );
@@ -226,7 +233,27 @@ describe("EOS access and security stay independent, and fail closed", () => {
     // No capability is granted anywhere in this render, so both are protected, not live.
     expect(enable.hasAttribute("disabled")).toBe(true);
     expect(disable.hasAttribute("disabled")).toBe(true);
-    expect(screen.getAllByText(/No principal holds the governed access-record grant/i).length).toBeGreaterThan(0);
+    // The reason says what THIS SESSION can know, and no more. It used to claim no principal held
+    // the grant "in any environment yet", which stopped being true the day sandbox's admin persona
+    // was bootstrapped -- a control that explains itself with a claim about every environment is a
+    // control that will eventually lie.
+    expect(screen.getAllByText(/trusted access feed did not grant this action/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/in any environment/i)).toBeNull();
+  });
+
+  it("they go LIVE when the trusted feed grants the capability", async () => {
+    // The other half, and the one that was unreachable: with a positive decision the controls are
+    // real. Without this, "fails closed" is indistinguishable from "never works".
+    renderDetail(okHistory(), "emp-1", "", () => true);
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    const disable = screen.getByRole("button", { name: /Disable Account/ });
+    expect(disable.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(disable);
+    const dialog = screen.getByRole("dialog", { name: /account status/i });
+    // Consequential, so it confirms first -- and names the person and the state it sets.
+    expect(within(dialog).getByText(/John Smith/)).toBeTruthy();
+    expect(within(dialog).getAllByText(/disabled/).length).toBeGreaterThan(0);
   });
 
   it("Security Role is shown as the MIRROR it is, with no control over it", async () => {
@@ -234,6 +261,20 @@ describe("EOS access and security stay independent, and fail closed", () => {
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.getByText(/Mirrors the legacy identity role/)).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: /security role/i })).toBeNull();
+  });
+
+  it("the feed is ASKED about the Administration capabilities -- an unasked id is not a decision", () => {
+    // buildHasCapability requires `decisions[id] === true`, so an id the feed was never asked for
+    // reads as denied. That is fail-closed and correct, and it is also why Enable/Disable stayed
+    // permanently protected for a principal who genuinely held the grant. The fix is to ask.
+    for (const id of [
+      "admin.employeeProfile.write",
+      "admin.userStatus.write",
+      "audit.event.read",
+      "admin.credentialReset.initiate",
+    ]) {
+      expect(REPORT_CAPABILITY_REQUEST, id).toContain(id);
+    }
   });
 
   it("password reset is HIDDEN without the capability, and makes no call of any kind", async () => {

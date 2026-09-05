@@ -257,16 +257,44 @@ every existing call site is unchanged. It exists because a command staging write
 caller-supplied transaction is otherwise untestable without an emulator, and an emulator-gated test
 is one that does not run in the suite people actually run.
 
-## Fail-closed today, and exactly why
+## Fail-closed, and exactly why — CORRECTED 2026-09-05
 
-Everything below is built, tested and merged, and **denies in every environment right now**:
+**The claim this section originally made was wrong, and the correction matters more than the
+feature.** It said every action denied "in every environment" because "no principal holds a
+`roleAssignments` document in any environment", and that `bootstrapCompatibilityAdmin` "exists but
+is not exported/callable". Both were inherited verbatim from a comment in the retired `AdminUsers`
+screen, written when they were true. Measured against eos-platform-sandbox on 2026-09-05:
 
-| Action | Blocker |
-|---|---|
-| Edit User (save) | `admin.employeeProfile.write` resolves through `roleAssignments`, and **no principal holds a `roleAssignments` document in any environment**. `bootstrapCompatibilityAdmin` exists but is not exported/callable. The capability itself is registered active and is held by the `admin` compatibility Role by derivation — no grant was invented. |
-| Enable / Disable Account | The same standing blocker, on `admin.userStatus.write`. Both actions render `variant="protected"` with the reason attached to the control. |
-| Change History | The same blocker on `audit.event.read`, plus: the callable is not deployed. The section renders its honest unavailable state. |
-| Password reset | `admin.credentialReset.initiate` is registered `active: false`. The whole surface stays hidden, and — unlike the retired page — there is no candidate-list read left to suppress. |
+- the compatibility-admin bootstrap **has an operator script and a documented procedure**
+  (`functions/scripts/bootstrapCompatibilityAdmin.js`,
+  `docs/operations/legacy-admin-bootstrap-procedure.md`) — deliberately not a deployed callable,
+  which is not the same as "not operable";
+- it **was run in sandbox on 2026-08-14**: `roleAssignments/bootstrap-admin-ZVu3lHTP1NQhj0Am04zTAGou0dx1`
+  is active, roleId `admin`, scope global, and the collection holds many other active assignments;
+- `resolveEffectivePermission` against that stored assignment returns **ALLOW** for
+  `admin.employeeProfile.write`, `audit.event.read` and `admin.userStatus.write`, and **DENY
+  (inactivePermission)** for `admin.credentialReset.initiate`.
+
+The honest per-environment position:
+
+| Action | eos-platform-sandbox | production |
+|---|---|---|
+| Edit User (save) | Grant resolves ALLOW. Blocked only on the callable deploy. | Undeployed, and no grant. |
+| Enable / Disable Account | Grant resolves ALLOW, and `setUserStatus` is already deployed there. | Undeployed. |
+| Change History | Grant resolves ALLOW, composite index live. Blocked only on the callable deploy. | Undeployed. |
+| Password reset | **DENY — `active: false`.** Correctly gated, and the sandbox authorization does not reach it. | Same, plus undeployed. |
+
+Production remains closed on every one of them: nothing in this programme has been deployed or
+granted there.
+
+**AND THE UI HAD ITS OWN GATE, WHICH NOBODY HAD NOTICED.** `hasCapability` is built from the
+trusted effective-access feed and requires `decisions[id] === true`; an id the feed was never
+**asked** about has no entry and reads as denied. The feed's request list carried report, dashboard
+and governed-surface ids — and none of the Administration ones. So Enable/Disable would have stayed
+permanently protected in sandbox for a principal who genuinely held the grant, from an absent answer
+rather than a decision. The four ids are now requested in that same single call
+(`ADMINISTRATION_USERS_SURFACE_CAPABILITIES`), which grants nothing: an inactive capability still
+resolves DENY, from the server, on the evidence.
 
 Additionally, the account's **enabled/disabled state cannot be read** by this client at all. Both
 Enable and Disable are therefore offered (each naming the state it sets) rather than one contextual

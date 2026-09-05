@@ -597,14 +597,17 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // affordance (setUserStatus / assignApprovedRole) visibly but disabled --
   // see AdminUsers.jsx/AdminRolesPermissions.jsx's own doc comments.
   if (domain.key === "administration" && item.key === "users") {
-    // Explicit capability gating at the DISPATCHER (not nav visibility alone):
-    // the password-reset surface inside AdminUsers is gated on the trusted feed's
-    // hasCapability(admin.credentialReset.initiate). The Users nav item is
-    // admin/dispatcher-visible (placeholder default), so nav does NOT hide this
-    // route -- threading the fail-closed previewer here keeps the reset surface
-    // hidden (and its list read un-attempted) even on a direct URL hit, until a
-    // separate activation/grant gate. The setUserStatus preview is unaffected.
-    return <AdminUsers hasCapability={operationalContext?.hasCapability} />;
+    // NO `hasCapability` PROP, and its absence is the correct statement.
+    //
+    // This branch used to thread the previewer because the password-reset surface lived on the
+    // Users PAGE and had to be hidden there. The consolidation moved that surface onto the record
+    // (UserDetail -> UserAccessActions), which is where the previewer now goes -- see the
+    // users/:employeeId route below. The prop stayed behind for a component that had stopped
+    // reading it: harmless, and a false signal to the next reader that this screen gates something.
+    //
+    // The DIRECTORY renders no governed action. It lists people, and every action on it is
+    // navigation. A capability prop here would suggest otherwise.
+    return <AdminUsers />;
   }
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
