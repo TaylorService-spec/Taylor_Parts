@@ -12,26 +12,26 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 140,
+    "capabilities": 146,
     "catalogActive": 0,
-    "catalogInactive": 140,
-    "eligibleForEnvironmentActivation": 85,
-    "activatedInSomeEnvironment": 85,
+    "catalogInactive": 146,
+    "eligibleForEnvironmentActivation": 91,
+    "activatedInSomeEnvironment": 91,
     "callableExports": 46,
-    "destinations": 90,
+    "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 140,
-    "parsed": 140,
+    "raw": 146,
+    "parsed": 146,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 113,
+    "SERVER_REFERENCED": 119,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -4225,6 +4225,172 @@
           "platform-sandbox"
         ]
       }
+    },
+    {
+      "id": "administration.emailIntake.read",
+      "resource": "administration.emailIntake",
+      "action": "read",
+      "description": "Read the Email & Communications administration surface: connections, operational mailboxes, routing rules, and the intake overview counts. Reads configuration only -- it confers no authority over an inbound request and no ability to see message content.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/inboundWorkCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inboundWorkSource.js",
+          "field-ops-app-vite/src/navigation/navConfig.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "administration.emailIntake.manage",
+      "resource": "administration.emailIntake",
+      "action": "manage",
+      "description": "Create and change email connections, operational mailboxes and routing rules through the trusted administration commands. Never stores a mailbox password or an OAuth token -- a connection binds an externally-managed secret by name -- and confers no authority to review, accept, decline or attach an inbound request.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/inboundWorkCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/inboundWorkSource.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "service.inboundWork.read",
+      "resource": "service.inboundWork",
+      "action": "read",
+      "description": "Read the Service Inbound Work queue and one inbound request's review detail (original message as plain text, attachments, extracted references, suggested customer/location/equipment). Read-only: it decides nothing and writes nothing.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/inboundWorkCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/inboundWorkSource.js",
+          "field-ops-app-vite/src/navigation/navConfig.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "service.inboundWork.accept",
+      "resource": "service.inboundWork",
+      "action": "accept",
+      "description": "Accept an inbound request, creating exactly one Work Order through the same governed createWorkOrderRecord authority a dispatcher uses by hand. Adds no write path: the holder can create nothing here they could not create one record at a time, and acceptance never edits mastered Customer, Location, Contact or Equipment data.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/inboundWorkCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/inboundWorkSource.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "service.inboundWork.decline",
+      "resource": "service.inboundWork",
+      "action": "decline",
+      "description": "Decline an inbound request with a governed reason. The record is retained, never deleted, so decline reasons remain answerable for reporting and audit.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/inboundWorkCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/inboundWorkSource.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
+    },
+    {
+      "id": "service.inboundWork.attachExisting",
+      "resource": "service.inboundWork",
+      "action": "attachExisting",
+      "description": "File an inbound request against an existing Work Order instead of creating a new one, preserving its message and attachments there. Separate from accept because it commits the business to nothing new.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/inboundWorkCallables.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/inboundWorkSource.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
+      }
     }
   ],
   "callables": [
@@ -4729,6 +4895,15 @@
       "key": "workOrders",
       "label": "Work Orders",
       "path": "",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "inboundWork",
+      "label": "Inbound Work",
+      "path": "inbound-work",
       "legacyKey": null,
       "navHidden": false,
       "future": false,
@@ -5365,6 +5540,15 @@
       "placeholderExplanation": null
     },
     {
+      "key": "emailCommunications",
+      "label": "Email & Communications",
+      "path": "email-communications",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
       "key": "integrations",
       "label": "Integrations",
       "path": "integrations",
@@ -5624,7 +5808,13 @@
     "financialPolicy.profile.read",
     "financialPolicy.profile.configure",
     "admin.dataImport.stage",
-    "admin.dataImport.execute"
+    "admin.dataImport.execute",
+    "administration.emailIntake.read",
+    "administration.emailIntake.manage",
+    "service.inboundWork.read",
+    "service.inboundWork.accept",
+    "service.inboundWork.decline",
+    "service.inboundWork.attachExisting"
   ],
   "parityIssues": []
 }
