@@ -3034,11 +3034,12 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3082,9 +3083,11 @@
         "serverReferences": [
           "functions/src/access/employeeProfileCommands.ts"
         ],
-        "clientReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3180,11 +3183,12 @@
         "exportedCallables": [],
         "serverReferences": [],
         "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/adminPasswordReset.js"
         ],
         "serverReferenceCount": 0,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "CLIENT_ONLY"
       },
       "environmentActivation": {
@@ -3206,10 +3210,11 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
