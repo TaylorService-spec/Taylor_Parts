@@ -4236,6 +4236,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/emailTransportCallables.ts",
           "functions/src/inboundWork/inboundWorkCallables.ts"
         ],
         "clientReferences": [
@@ -4244,7 +4245,7 @@
           "field-ops-app-vite/src/access/inboundWorkSource.js",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4265,13 +4266,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/emailTransportCallables.ts",
           "functions/src/inboundWork/inboundWorkCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/inboundWorkSource.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4292,6 +4294,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/emailTransportCallables.ts",
           "functions/src/inboundWork/inboundWorkCallables.ts"
         ],
         "clientReferences": [
@@ -4300,7 +4303,7 @@
           "field-ops-app-vite/src/access/inboundWorkSource.js",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
