@@ -1542,6 +1542,77 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "retire",
     active: false,
   }),
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+  // EMAIL CONNECTIONS + INBOUND WORK (functions/src/inboundWork/*). Base EOS email intake: connect a
+  // Microsoft 365 or Google Workspace mailbox, review what arrives, and accept it into a governed Work
+  // Order without retyping it.
+  //
+  // SIX IDS ACROSS TWO AUTHORITIES, and the split is the point. Connecting or disconnecting a provider,
+  // configuring an operational mailbox and writing a routing rule are ADMINISTRATION. Reviewing, accepting,
+  // declining and attaching are SERVICE. A Service coordinator must be able to work the queue all day
+  // without holding any administration authority, and an administrator who configures mailboxes gains no
+  // authority to accept work. Two ids for configuration rather than six (connections / mailboxes / routing
+  // read+manage) because nothing in this repository can act on one of the three without the others: they are
+  // one configuration surface with one audience, and three near-identical pairs would be grantable
+  // distinctions nobody could exercise separately.
+  //
+  // ACCEPT, DECLINE AND ATTACH ARE SEPARATE IDS. Accepting commits the business to work and creates a Work
+  // Order; declining turns an external party away; attaching files a message against work that already
+  // exists. Different consequences, separately grantable, separately auditable -- the same reasoning that
+  // splits performance.goal.create from performance.goal.approve above.
+  //
+  // Registered active:false, so resolveEffectivePermission() denies every principal in every environment
+  // ahead of any Role grant. Activation is per-environment (environmentCapabilityOverrides.ts) and
+  // production is triple-hard-blocked; a grant is separate again, and is what a governed roleAssignment of
+  // the two Roles declared in governedBusinessRoles.ts does.
+  Object.freeze({
+    id: "administration.emailIntake.read",
+    description:
+      "Read the Email & Communications administration surface: connections, operational mailboxes, routing rules, and the intake overview counts. Reads configuration only -- it confers no authority over an inbound request and no ability to see message content.",
+    resource: "administration.emailIntake",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "administration.emailIntake.manage",
+    description:
+      "Create and change email connections, operational mailboxes and routing rules through the trusted administration commands. Never stores a mailbox password or an OAuth token -- a connection binds an externally-managed secret by name -- and confers no authority to review, accept, decline or attach an inbound request.",
+    resource: "administration.emailIntake",
+    action: "manage",
+    active: false,
+  }),
+  Object.freeze({
+    id: "service.inboundWork.read",
+    description:
+      "Read the Service Inbound Work queue and one inbound request's review detail (original message as plain text, attachments, extracted references, suggested customer/location/equipment). Read-only: it decides nothing and writes nothing.",
+    resource: "service.inboundWork",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "service.inboundWork.accept",
+    description:
+      "Accept an inbound request, creating exactly one Work Order through the same governed createWorkOrderRecord authority a dispatcher uses by hand. Adds no write path: the holder can create nothing here they could not create one record at a time, and acceptance never edits mastered Customer, Location, Contact or Equipment data.",
+    resource: "service.inboundWork",
+    action: "accept",
+    active: false,
+  }),
+  Object.freeze({
+    id: "service.inboundWork.decline",
+    description:
+      "Decline an inbound request with a governed reason. The record is retained, never deleted, so decline reasons remain answerable for reporting and audit.",
+    resource: "service.inboundWork",
+    action: "decline",
+    active: false,
+  }),
+  Object.freeze({
+    id: "service.inboundWork.attachExisting",
+    description:
+      "File an inbound request against an existing Work Order instead of creating a new one, preserving its message and attachments there. Separate from accept because it commits the business to nothing new.",
+    resource: "service.inboundWork",
+    action: "attachExisting",
+    active: false,
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {

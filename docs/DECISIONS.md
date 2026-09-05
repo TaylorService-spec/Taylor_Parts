@@ -6186,3 +6186,94 @@ and nothing more. `SYSTEM_AUTHORITIES.md` already states the rule — "if a row 
 what you find in the actual file, the code wins" — and this is the same rule one layer out: if a
 comment disagrees with the environment, **the environment wins**, and the claim gets measured before
 it is repeated in a specification, a decision record or a PR description.
+
+## #176 — Email Connections + Inbound Work: the decisions taken to build it (2026-09-05)
+
+**Context.** Base EOS email intake: connect a Microsoft 365 / Google Workspace mailbox, review what
+arrives in Service → Inbound Work, and accept it into exactly one governed Work Order without anybody
+re-typing what the email already said. Implementation record, not an Owner ruling — every item below is a
+builder decision with one reasonable governed answer; the Owner-gated items are listed at the end and were
+NOT taken.
+
+### 1. No `firestore.rules` change, by construction
+
+All four new collections (`email_connections`, `email_mailboxes`, `email_routing_rules`,
+`inbound_work_requests`) have no match block, and Firestore denies every client read and write to a
+collection no rule matches. Every read and write goes through a trusted callable — the same posture
+`opportunities`, `crm_activities` and `performance_goals` already have. A protected-policy change was
+therefore never needed, rather than being needed and skipped.
+
+### 2. Six capabilities, two authorities — not one, and not eleven
+
+Configuring connections/mailboxes/routing is ADMINISTRATION; reviewing, accepting, declining and
+attaching is SERVICE. A Service coordinator must be able to work the queue without gaining the ability to
+repoint the company's mail, which is exactly the convenience grant this split exists to prevent.
+
+Two configuration ids rather than six: nothing in this repository can act on connections without mailboxes
+and routing — they are one surface with one audience, and three near-identical read/manage pairs would be
+grantable distinctions nobody could exercise. Accept, decline and attach stay SEPARATE ids because their
+consequences differ, on the same reasoning that splits `performance.goal.create` from `.approve`.
+
+All six registered `active: false`; two narrow governed Roles declared (declaring grants nothing).
+
+### 3. Sandbox activation declared in the repository; production untouched and unreachable
+
+The six ids are eligible and activated for `eos-platform-sandbox` only, through the existing
+per-environment mechanism — precedent: Data Import (#1806-era) and the cycle-count ceremony. Production is
+blocked four times over (role-keyed resolver, no production entry declaring them, the eligible allow-list,
+and the delivery seam's own non-production target guard). No grant was executed against any live
+environment and nothing was deployed.
+
+### 4. Accepting is one governed transaction, and the intake's status is the idempotency substrate
+
+Acceptance validates authority and state, proves customer/site/unit exist and belong together, creates the
+Work Order through the SAME `createWorkOrderRecord` core a dispatcher uses, links the intake, and writes
+its audit events — all in one transaction. A second acceptance reads ACCEPTED, writes nothing, and returns
+the same `workItemId`. That is stronger than a client-supplied idempotency key: it holds for a double
+click, a retry after a lost response, and two different clients.
+
+`createWorkOrderRecord` gained three OPTIONAL fields (`inboundWorkRequestId`, `externalReference`,
+`authorizationNumber`) on the same additive-lineage precedent `salesOrderId` set. No existing caller
+changes behaviour.
+
+### 5. Master data is never mutated by an inbound email
+
+Accepting uses the reviewer's confirmed ids for the Work Order and touches no mastered Customer, Location,
+Contact or Equipment record. Proposing a master-data change belongs to whichever governance product the
+business uses; base EOS does only the validation safe operation requires. This is what keeps Verenward Data
+Governance optional rather than assumed.
+
+### 6. One provider-neutral processing contract, and no plugin framework
+
+EOS_NATIVE, VDX and EXTERNAL all return the same `InboundProcessingResult`, and the operational workflow
+reads only that. A provider returns candidates and text; it cannot choose the accepting user, the operating
+company, the intake status or the Work Order, and an id it claims is re-validated server-side anyway. That
+is the whole extensibility mechanism — deliberately not an abstraction layer with one implementation.
+
+### 7. Attachment BYTES are referenced, not stored — stated rather than invented
+
+This repository has no document/storage architecture: no bucket is configured and no attachment model
+exists. Metadata and provenance are preserved and carried through acceptance; the bytes stay re-fetchable
+through the connection by provider id. Inventing a storage model here would have created the parallel
+document system the implementation principles forbid. Byte custody (bucket, rules, retention) is an
+Owner-gated follow-up.
+
+### 8. A local browser run found a real defect a passing test suite did not
+
+Both destinations are capability-gated in `navConfig.js`, and `holdsDeclaredCapability` can only answer
+from a decision the shell already asked for. The two read ids were not in the shell's request set, so a
+principal holding the governed Role was told the surface "isn't available to your role" — an unasked
+capability is indistinguishable from a denied one. `governedSurfaceCapabilities.js` had recorded this exact
+failure mode for Data Import and Administration → Users; this made it three. Fixed by adding only the two
+READ ids to the shell request (the decision ids are resolved by each screen's own single request).
+
+**Standing point:** a green suite is evidence about what it asserts. Running the thing is evidence about
+whether it works.
+
+### Not taken — Owner-gated
+
+Production activation, any deploy, a real Microsoft 365 / Google Workspace tenant binding (an external
+configuration dependency, recorded rather than faked), attachment byte custody, outbound reply-from-EOS,
+and entitlement gating for the optional providers (no licensing framework exists; the architecture is ready
+and the screen says plainly that provider selection is unavailable in this build rather than showing a fake
+paid flag).

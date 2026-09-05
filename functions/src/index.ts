@@ -570,3 +570,32 @@ export {
 // to read a Customer -- and resolves nothing: the technician name and equipment serial leave as
 // the historical TEXT they were stored as.
 export { listImportedServiceHistoryCallable as listImportedServiceHistory } from "./dataImport/dataImportCallables";
+
+// --- Email Connections + Inbound Work (base EOS email intake) ---
+//
+// EXPORT != DEPLOY, REGISTER != GRANT. Ten callables covering the whole vertical slice: the Service
+// Inbound Work queue and its review detail, the three governed decisions (accept / decline / attach to
+// existing), the Administration configuration read and its three writes, and the non-production delivery
+// seam. All six capabilities (administration.emailIntake.read/manage, service.inboundWork.read/accept/
+// decline/attachExisting) are registered active:false, so every principal is denied in every environment
+// until a per-environment activation AND a governed roleAssignment exist -- production activation is
+// hard-blocked in environmentCapabilityOverrides.ts.
+//
+// NO RULES CHANGE. The four collections these read and write (email_connections, email_mailboxes,
+// email_routing_rules, inbound_work_requests) have no firestore.rules match block, so every client read and
+// write is denied by default and these trusted callables are the only path in or out.
+//
+// ACCEPT ADDS NO WRITE AUTHORITY: it creates the Work Order through the SAME governed createWorkOrderRecord
+// core the createWorkOrder callable uses, inside one transaction with its audit event.
+export {
+  listInboundWork,
+  getInboundWorkRequest,
+  acceptInboundWork,
+  declineInboundWork,
+  attachInboundWorkToWorkOrder,
+  getEmailIntakeConfiguration,
+  saveEmailConnection,
+  saveEmailMailbox,
+  saveEmailRoutingRule,
+  deliverInboundEmailMessage,
+} from "./inboundWork/inboundWorkCallables";

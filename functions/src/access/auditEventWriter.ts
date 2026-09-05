@@ -248,6 +248,19 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // and fails at runtime. Asserted by test/ownershipHandoffAudit.test.mjs's union/array diff.
   "createReorderRequest",
   "recordReorderPurchaseOrder",
+  // Email Connections + Inbound Work -- runtime mirror of the nine inbound-intake AuditAction union
+  // members (types/access.ts). Symmetry is the point: the union is erased at build time, so adding to
+  // only one compiles cleanly and fails at runtime. Asserted by test/ownershipHandoffAudit.test.mjs's
+  // union/array diff.
+  "createInboundWorkRequest",
+  "quarantineInboundWorkRequest",
+  "linkInboundWorkThreadMessage",
+  "acceptInboundWorkRequest",
+  "declineInboundWorkRequest",
+  "attachInboundWorkRequest",
+  "configureEmailConnection",
+  "configureEmailMailbox",
+  "configureEmailRoutingRule",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

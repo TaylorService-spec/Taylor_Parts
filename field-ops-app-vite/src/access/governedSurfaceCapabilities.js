@@ -235,6 +235,30 @@ export const ADMINISTRATION_USERS_SURFACE_CAPABILITIES = Object.freeze([
   "admin.credentialReset.initiate",
 ]);
 
+/**
+ * EMAIL CONNECTIONS + INBOUND WORK — the two capabilities that decide whether either destination is
+ * reachable at all.
+ *
+ * WHY THE SHELL MUST ASK. Navigation visibility for both new destinations is capability-backed
+ * (`navConfig.js` capabilityAccess), and `holdsDeclaredCapability` can only answer from a decision the
+ * shell already has. An id the shell never asks about is indistinguishable from a denied one: the
+ * route renders "isn't available to your role" for a principal who genuinely holds the Role. That is
+ * exactly what a local browser run of this feature showed before these two ids were added here.
+ *
+ * ONLY THE READ IDS. The write/decision ids (`service.inboundWork.accept` / `.decline` /
+ * `.attachExisting`, `administration.emailIntake.manage`) are NOT requested here, because nothing in
+ * navigation depends on them — each screen resolves its own action set in one request of its own
+ * (`INBOUND_WORK_CAPABILITY_REQUEST` / `EMAIL_INTAKE_CAPABILITY_REQUEST`), against one accessVersion.
+ * Asking the shell for authority it does not use would widen this list for no decision.
+ *
+ * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION. Both ids are already registered (active:false), held
+ * only through a governed roleAssignment, and activated in non-production environments only.
+ */
+export const INBOUND_WORK_SURFACE_CAPABILITIES = Object.freeze([
+  "service.inboundWork.read",
+  "administration.emailIntake.read",
+]);
+
 export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...TRANSFER_SURFACE_CAPABILITIES,
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
@@ -250,4 +274,7 @@ export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...DATA_IMPORT_SURFACE_CAPABILITIES,
   // Administration > Users -- in the SAME single call, for the same one-accessVersion reason.
   ...ADMINISTRATION_USERS_SURFACE_CAPABILITIES,
+  // Service -> Inbound Work and Administration -> Email & Communications, in the SAME single call
+  // and against the SAME accessVersion as everything else here.
+  ...INBOUND_WORK_SURFACE_CAPABILITIES,
 ]);
