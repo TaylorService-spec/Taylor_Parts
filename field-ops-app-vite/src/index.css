@@ -8518,3 +8518,6 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
   padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
 .fo-inbound-decline, .fo-inbound-attach { display: grid; gap: var(--space-2); }
 .fo-inbound-admin { margin-top: var(--space-4); }
+/* The per-connection action cluster in Administration ▸ Email & Communications. Wraps rather than
+   overflowing: a connection row carries up to three actions and the table is already dense. */
+.fo-inbound-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }

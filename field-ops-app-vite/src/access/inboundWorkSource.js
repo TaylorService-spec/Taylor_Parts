@@ -91,10 +91,25 @@ export const governedInboundWorkSource = Object.freeze({
   accept: (input) => governedWrite("acceptInboundWork", input),
   decline: (input) => governedWrite("declineInboundWork", input),
   attach: (input) => governedWrite("attachInboundWorkToWorkOrder", input),
+  // The governed attachment read. It takes the PROVIDER attachment id, never a storage key -- the
+  // server looks the key up on the record after authorizing against that record.
+  getAttachment: (input) => governedWrite("getInboundWorkAttachment", input),
 });
 
 export const governedEmailIntakeSource = Object.freeze({
   getConfiguration: () => governedRead("getEmailIntakeConfiguration"),
+  // What this runtime can actually offer: whether an OAuth client is configured at all, and whether
+  // provider transport is available in this environment. Never a secret value, only whether one exists.
+  getProviderReadiness: () => governedRead("getEmailProviderReadiness"),
+  // THE REAL CONNECTION LIFECYCLE. `startAuthorization` returns the provider URL to send the
+  // administrator to; the provider brings them back to this same screen with a code, and
+  // `completeAuthorization` does the exchange server-side. The browser never holds a token.
+  startAuthorization: (input) => governedWrite("startEmailConnectionAuthorization", input),
+  completeAuthorization: (input) => governedWrite("completeEmailConnectionAuthorization", input),
+  testConnection: (input) => governedWrite("testEmailConnection", input),
+  disconnect: (input) => governedWrite("disconnectEmailConnection", input),
+  pollNow: (input) => governedWrite("pollEmailMailboxNow", input),
+  retryDelivery: (input) => governedWrite("retryEmailDelivery", input),
   saveConnection: (input) => governedWrite("saveEmailConnection", input),
   saveMailbox: (input) => governedWrite("saveEmailMailbox", input),
   saveRoutingRule: (input) => governedWrite("saveEmailRoutingRule", input),

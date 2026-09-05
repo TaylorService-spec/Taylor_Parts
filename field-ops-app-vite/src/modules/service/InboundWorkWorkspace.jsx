@@ -84,8 +84,34 @@ function Fact({ label, children }) {
   );
 }
 
+/**
+ * Save one attachment the reviewer asked for.
+ *
+ * The bytes come back from the governed read as base64 and are turned into a file HERE, in the page,
+ * rather than through a link to storage: there is no URL to the object at all, so there is nothing to
+ * leak, share by accident, or reach without passing the authorization check first. The blob URL is
+ * revoked immediately after the save -- it is a handle to memory, not a location.
+ */
+async function saveAttachment(source, requestId, attachment) {
+  const result = await source.getAttachment({ requestId, providerAttachmentId: attachment.providerAttachmentId });
+  if (!result?.ok) return result?.message ?? "That attachment could not be opened.";
+  const binary = atob(result.data.contentBase64 ?? "");
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  // application/octet-stream, never the sender's declared type: a file the browser is asked to SAVE
+  // cannot be a file the browser decides to RENDER.
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = result.data.filename || attachment.filename || "attachment";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return null;
+}
 /** The message as it arrived. Read-only evidence; never edited, never re-rendered as markup. */
-function OriginalMessage({ detail }) {
+function OriginalMessage({ detail, onDownload, downloadError }) {
   return (
     <section className="fo-inbound-pane" aria-label="Original message">
       <h4 className="fo-inbound-pane__title">Original message</h4>
@@ -108,10 +134,33 @@ function OriginalMessage({ detail }) {
               <strong>{a.filename}</strong>{" "}
               <span className="fo-muted">
                 {a.mimeType} · {a.size} bytes
-              </span>
+              </span>{" "}
+              {/* CUSTODY IS STATED, NOT ASSUMED. "EOS holds this file" and "the provider told us this file
+                  exists" are different facts, and a reviewer deciding on a warranty job needs to know which
+                  one they are looking at. */}
+              {a.custody === "STORED" ? (
+                <Button variant="tertiary" className="fo-link-btn" onClick={() => onDownload(a)}>
+                  Download
+                </Button>
+              ) : a.custody === "FAILED" ? (
+                <StatusPill tone="attention" label="Could not be retrieved" asText />
+              ) : (
+                <StatusPill tone="info" label="Not retrieved yet" asText />
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {detail.attachmentCustody === "PARTIAL" && (
+        <p className="fo-muted">
+          The message arrived in full; one or more attachments could not be retrieved. An administrator can retry
+          them from Administration → Email &amp; Communications → Exceptions.
+        </p>
+      )}
+      {downloadError && (
+        <p className="fo-inline-error" role="alert">
+          {downloadError}
+        </p>
       )}
       {detail.threadMessages.length > 0 && (
         <>
@@ -350,6 +399,7 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
   const [queue, setQueue] = useState({ status: "loading", rows: [], truncated: false });
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [downloadError, setDownloadError] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   const canRead = hasCapability(INBOUND_WORK_READ);
@@ -479,7 +529,11 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
       )}
       {detail?.status === "ready" && (
         <div className="fo-inbound-review">
-          <OriginalMessage detail={detail.value} />
+          <OriginalMessage
+            detail={detail.value}
+            downloadError={downloadError}
+            onDownload={async (attachment) => setDownloadError(await saveAttachment(source, detail.value.id, attachment))}
+          />
           <Interpretation key={detail.value.id} detail={detail.value} capabilities={capabilities} onDecided={handleDecided} />
         </div>
       )}
