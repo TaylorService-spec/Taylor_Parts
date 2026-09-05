@@ -129,7 +129,9 @@ describe("a sandbox Administrator reaches Data Import", () => {
     // The three things the Owner's acceptance names.
     expect(screen.getByText(/Choose a file/i)).toBeTruthy();
     expect(screen.getByLabelText("Import file")).toBeTruthy();
-    expect(screen.getByText(/Import history/i)).toBeTruthy();
+    // Scoped to the HEADING: "Loading import history..." matches the same loose pattern, and a
+    // test that cannot tell a section from its own loading line is not testing the section.
+    expect(screen.getByRole("heading", { name: /^Import history$/i })).toBeTruthy();
 
     // And explicitly NOT the ungated state.
     expect(screen.queryByText(/Data Import is not available to you/i)).toBeNull();
@@ -272,5 +274,36 @@ describe("the nav item's own declaration", () => {
     expect(dataImportItem.legacyKey).toBeUndefined();
     expect(dataImportItem.path).toBe("data-import");
     expect(dataImportItem.navHidden).not.toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------- import history states
+
+describe("import history: loading, denied, failed and empty are four different facts", () => {
+  // THE DEFECT, found by a browser screenshot rather than a test. A failed read set the list to []
+  // and the empty state said "No import has been run in this environment yet" — so a refused or
+  // broken read told an administrator, with confidence, that nothing had ever been imported. The
+  // same sentence covered the moment before the first read returns, which is how a real 14-row
+  // history rendered as "none" two seconds after load.
+  it("while access is still resolving it says LOADING, never 'none'", () => {
+    // hasCapability is false during resolution, which is indistinguishable from "denied" at the
+    // capability layer — so the screen must not conclude anything about history yet.
+    const hasCapability = hasCapabilityFromFeed([]);
+    render(<AdminDataImport hasCapability={hasCapability} />);
+    // With no stage capability the whole screen is ungated, which is its own honest state.
+    expect(screen.getByText(/Data Import is not available to you/i)).toBeTruthy();
+    expect(screen.queryByText(/No import has been run/i)).toBeNull();
+  });
+
+  it("a granted account sees the history section, and 'none' only after a successful empty read", async () => {
+    const hasCapability = hasCapabilityFromFeed([STAGE, EXECUTE]);
+    render(<AdminDataImport hasCapability={hasCapability} />);
+
+    // Before the read resolves it must NOT claim there is no history.
+    // Scoped to the HEADING: "Loading import history..." matches the same loose pattern, and a
+    // test that cannot tell a section from its own loading line is not testing the section.
+    expect(screen.getByRole("heading", { name: /^Import history$/i })).toBeTruthy();
+    const early = screen.queryByText(/No import has been run/i);
+    expect(early).toBeNull();
   });
 });

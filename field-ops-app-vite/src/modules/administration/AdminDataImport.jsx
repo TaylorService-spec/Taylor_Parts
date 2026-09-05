@@ -110,7 +110,26 @@ function ResultTable({ rows }) {
   );
 }
 
-function History({ jobs }) {
+/**
+ * Import history, with LOADING, DENIED, FAILED and EMPTY kept apart.
+ *
+ * They were not. A failed read set the list to [] and the empty state said "No import has been
+ * run in this environment yet" -- so a refused or broken read told an administrator, with
+ * confidence, that nothing had ever been imported. The same sentence also covered the moment
+ * before the first read returns, which is how a real 14-row history rendered as "none" in a
+ * screenshot taken two seconds after load.
+ *
+ * This is the rule the rest of this feature is built on, applied to the one place it had been
+ * missed: an absence must say WHICH absence it is.
+ */
+function History({ status, jobs }) {
+  if (status === "loading") return <p className="fo-muted">Loading import history…</p>;
+  if (status === "denied") {
+    return <p className="fo-muted">Import history is not available to your account.</p>;
+  }
+  if (status === "error") {
+    return <p className="fo-muted">Import history couldn’t be read. Try again later.</p>;
+  }
   if (!jobs.length) {
     return <p className="fo-muted">No import has been run in this environment yet.</p>;
   }
@@ -151,11 +170,26 @@ export default function AdminDataImport({ hasCapability }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [jobs, setJobs] = useState([]);
+  // Tracked, not inferred from an empty list -- see History for why.
+  const [historyStatus, setHistoryStatus] = useState("loading");
 
   const refreshHistory = useCallback(async () => {
-    if (!canStage) return;
+    // Access is still resolving, or this account cannot stage. Either way there is nothing to
+    // read yet -- and saying "none" here would be the same lie the empty state used to tell.
+    if (!canStage) {
+      setHistoryStatus("loading");
+      setJobs([]);
+      return;
+    }
+    setHistoryStatus("loading");
     const res = await listDataImportJobs();
-    setJobs(res.ok && Array.isArray(res.data?.jobs) ? res.data.jobs : []);
+    if (res.ok && Array.isArray(res.data?.jobs)) {
+      setJobs(res.data.jobs);
+      setHistoryStatus("ready");
+      return;
+    }
+    setJobs([]);
+    setHistoryStatus(res.code === "permission-denied" || res.code === "denied" ? "denied" : "error");
   }, [canStage]);
 
   useEffect(() => {
@@ -313,7 +347,7 @@ export default function AdminDataImport({ hasCapability }) {
 
           <div className="fo-panel">
             <SectionHeader title="Import history" />
-            <History jobs={jobs} />
+            <History status={historyStatus} jobs={jobs} />
           </div>
         </>
       )}
