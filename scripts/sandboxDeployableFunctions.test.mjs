@@ -62,10 +62,17 @@ built("the real manifest yields every export but the governed exclusions", async
 
 // -- 2 --------------------------------------------------------------------------------------------
 
-built("the only secret-bound Function in the estate is the one that is excluded", async () => {
+built("every secret-bound Function in the estate is a governed exclusion", async () => {
+  // Was "the only secret-bound Function is KEYSTONE". Email Connections phase 2 added eight more, and
+  // the invariant that actually matters is unchanged and now stated directly: a Function that binds a
+  // secret is either deployable because this environment HAS that secret, or it is an explicit,
+  // reasoned exclusion. Never a surprise at deploy time.
   const manifest = await loadFunctionManifest(LIB_INDEX);
   const bound = manifest.filter((entry) => entry.secrets.length > 0).map((entry) => entry.name);
-  assert.deepEqual(bound, [KEYSTONE]);
+  for (const name of bound) {
+    assert.ok(name in SANDBOX_REFRESH_EXCLUDED_FUNCTIONS, `${name} binds a secret and is not a governed exclusion`);
+  }
+  assert.ok(bound.includes(KEYSTONE));
 
   // ...and it still requires all five. The fix filters the DEPLOY; it does not weaken the binding.
   const keystone = manifest.find((entry) => entry.name === KEYSTONE);
