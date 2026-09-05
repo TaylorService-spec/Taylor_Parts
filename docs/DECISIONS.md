@@ -6126,3 +6126,63 @@ because that command really does change access status.
 
 Merge #1806. **Then** perform the sandbox-only authorization and deployment as a SEPARATE controlled
 step, and run browser verification against real sandbox data. Production stays closed.
+
+
+## #175 — CORRECTION to #173/#174: the "no grant in any environment" claim was stale (2026-09-05)
+
+**What was claimed.** #173 recorded, and #174's authorization assumed, that every Administration →
+Users action denied everywhere because **no principal held a `roleAssignments` document in any
+environment**, and that `bootstrapCompatibilityAdmin` "exists but is not exported/callable". #174
+therefore authorized "making the bootstrap path operable" and "creating the minimum sandbox admin
+roleAssignment".
+
+**What is true.** Both halves were inherited verbatim from a comment in the retired `AdminUsers`
+screen, correct when written and overtaken since. Measured against eos-platform-sandbox:
+
+- The bootstrap has had an operator script and a written procedure all along
+  (`functions/scripts/bootstrapCompatibilityAdmin.js`,
+  `docs/operations/legacy-admin-bootstrap-procedure.md`). It is deliberately **not** a deployed
+  callable — which is a design decision recorded in that procedure, not an absence of operability.
+- **It was already run in sandbox, on 2026-08-14.** `roleAssignments/bootstrap-admin-<admin-persona-uid>`
+  is active, roleId `admin`, scope global, `grantedBy: bootstrap:legacy-admin-migration` — and the
+  collection holds many other active assignments besides.
+- The resolver, run against that stored assignment, returns ALLOW for `admin.employeeProfile.write`,
+  `audit.event.read` and `admin.userStatus.write`; DENY (inactivePermission) for
+  `admin.credentialReset.initiate`.
+
+**So #174's item 1 needed no new grant.** Creating one would have violated its own "minimum" and
+"no broad grants" constraints. Nothing was created; the existing grant was verified and used. That
+is strictly more conservative than what was authorized.
+
+### The second finding, which the first one hid
+
+`hasCapability` is built from the trusted effective-access feed and requires
+`decisions[capabilityId] === true`. An id the feed is never **asked** about has no entry, so it
+reads as denied — fail-closed, and correct. The feed's request list
+(`REPORT_CAPABILITY_REQUEST`) carried report, dashboard and governed-surface ids and **none of the
+Administration ones**.
+
+Enable/Disable Account would therefore have stayed permanently protected in sandbox for a principal
+who genuinely held the grant — not from a decision, but from an unasked question. Data Import's own
+note in `governedSurfaceCapabilities.js` had already recorded this exact failure mode; this surface
+repeated it. The four ids are now requested in the SAME single call, on the same accessVersion.
+
+**Asking is not activating.** `admin.credentialReset.initiate` is included and still resolves DENY
+wherever it is `active: false` — what asking buys is that the reset surface is hidden because the
+server said no, rather than because nobody asked.
+
+### And the control copy said too much
+
+The protected-button reason read "No principal holds the governed access-record grant this command
+requires, **in any environment yet**" — a claim about every environment, made by a control that can
+only see one, and false in sandbox since August. It now says only what the session can know: the
+trusted feed did not grant this action for this account. That covers no-grant, non-qualifying grant,
+inactive capability, and unreachable feed, without naming a cause it has no evidence for.
+
+### Standing correction
+
+A comment asserting a fact about the live estate is evidence of what was true when it was written,
+and nothing more. `SYSTEM_AUTHORITIES.md` already states the rule — "if a row here disagrees with
+what you find in the actual file, the code wins" — and this is the same rule one layer out: if a
+comment disagrees with the environment, **the environment wins**, and the claim gets measured before
+it is repeated in a specification, a decision record or a PR description.

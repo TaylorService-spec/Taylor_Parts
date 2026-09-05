@@ -197,6 +197,44 @@ export const DASHBOARD_MODULE_CAPABILITY_IDS = Object.freeze([
   "finance.visibility.consolidated",
 ]);
 
+/**
+ * ADMINISTRATION > USERS (DECISIONS #173/#174).
+ *
+ * THE UNASKED QUESTION, AGAIN. Data Import's own note above says it exactly: a screen that asks
+ * `hasCapability("admin.userStatus.write")` about an id the feed was never asked for gets `false`
+ * from an ABSENT ANSWER rather than from a decision — `buildHasCapability` requires
+ * `decisions[id] === true`, and an id nobody requested has no entry.
+ *
+ * That is fail-closed and correct, and it also made Enable / Disable Account permanently protected
+ * for a principal who genuinely holds the grant. Measured, not assumed: in eos-platform-sandbox the
+ * admin persona holds `roleAssignments/bootstrap-admin-<uid>` (active, roleId admin, global) from
+ * the 2026-08-14 compatibility-admin bootstrap, and `resolveEffectivePermission` returns ALLOW for
+ * all three ids below. The buttons stayed locked anyway, because the question was never put.
+ *
+ * ONE REQUEST, ONE accessVersion — the same reason Data Import gives. Split across two calls, a
+ * principal whose access changed between them could be shown a control decided against a version
+ * that no longer applies.
+ *
+ * The three ids are DIFFERENT AUTHORITIES and are asked for separately on purpose:
+ *   employeeProfile.write=true, userStatus.write=false -> Edit User works, Enable/Disable protected
+ *   userStatus.write=true, employeeProfile.write=false -> the reverse
+ *   audit.event.read=false                             -> Change History states it cannot be read
+ *
+ * `admin.credentialReset.initiate` IS INCLUDED, and including it changes nothing about its gate.
+ * It is registered `active: false`, so the resolver returns DENY (inactivePermission) wherever it
+ * is not activated — verified against the real sandbox grant. Asking is not activating: what it buys
+ * is that the reset surface is hidden because the SERVER said no, rather than because nobody asked.
+ *
+ * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION. All four ids are already registered and already held
+ * (or not) by exactly the principals that already hold (or do not hold) them.
+ */
+export const ADMINISTRATION_USERS_SURFACE_CAPABILITIES = Object.freeze([
+  "admin.employeeProfile.write",
+  "admin.userStatus.write",
+  "audit.event.read",
+  "admin.credentialReset.initiate",
+]);
+
 export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...TRANSFER_SURFACE_CAPABILITIES,
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
@@ -210,4 +248,6 @@ export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   // everything else here -- see DATA_IMPORT_SURFACE_CAPABILITIES for why route visibility alone
   // is not enough.
   ...DATA_IMPORT_SURFACE_CAPABILITIES,
+  // Administration > Users -- in the SAME single call, for the same one-accessVersion reason.
+  ...ADMINISTRATION_USERS_SURFACE_CAPABILITIES,
 ]);
