@@ -56,6 +56,7 @@ export type OpeningBalanceFailureCode =
   | "OPENING_BALANCE_QUANTITY_INVALID"
   | "OPENING_BALANCE_TRACKING_MODE_UNSUPPORTED"
   | "OPENING_BALANCE_ALREADY_OPERATIONAL"
+  | "OPENING_BALANCE_ALREADY_SET"
   | "OPENING_BALANCE_JOB_REQUIRED"
   | "OPENING_BALANCE_ROW_REQUIRED";
 
@@ -87,6 +88,14 @@ export interface OpeningLedgerState {
   readonly openingQuantity: number;
   /** True when ANY movement other than this job-family's opening events exists at the pair. */
   readonly hasOperationalHistory: boolean;
+  /**
+   * Source-object ids of the opening events already present at this pair.
+   *
+   * The quantity alone cannot answer 'has an opening balance already been set here', because
+   * a REPLAY of the same row must be allowed through to the idempotency check while a SECOND,
+   * different opening balance must be refused. Only the source id distinguishes them.
+   */
+  readonly openingSourceIds: readonly string[];
   /** Movement types observed that are not opening events -- for a deterministic message. */
   readonly foreignMovementTypes: readonly string[];
 }
@@ -108,6 +117,7 @@ export async function computeOpeningLedgerStateThroughTxn(
 ): Promise<OpeningLedgerState> {
   const snap = await txn.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   let openingQuantity = 0;
+  const openingSourceIds = new Set<string>();
   const foreign = new Set<string>();
 
   for (const doc of snap.docs) {
@@ -125,6 +135,7 @@ export async function computeOpeningLedgerStateThroughTxn(
     if (isOpeningBalanceMovement(v.sourceObject.type, v.sourceObject.id)) {
       // ADJUSTED is already signed.
       openingQuantity += v.quantity;
+      openingSourceIds.add(v.sourceObject.id);
       continue;
     }
     // ANY other operational movement at this pair is operational history. Deliberately not an
@@ -136,6 +147,7 @@ export async function computeOpeningLedgerStateThroughTxn(
 
   return Object.freeze({
     openingQuantity,
+    openingSourceIds: Object.freeze([...openingSourceIds].sort()),
     hasOperationalHistory: foreign.size > 0,
     foreignMovementTypes: Object.freeze([...foreign].sort()),
   });
@@ -234,6 +246,30 @@ export async function applyOpeningInventoryBalanceThroughTxn(
       "OPENING_BALANCE_ALREADY_OPERATIONAL",
       "Opening balance cannot initialize an inventory position that already has operational movement history " +
         `(observed: ${state.foreignMovementTypes.join(", ")}). Correct it through governed Cycle Count instead.`,
+    );
+  }
+
+  // AN OPENING BALANCE IS THE FIRST STATEMENT, AND THERE IS ONLY ONE OF THEM.
+  //
+  // Found by the end-to-end test rather than by reading: importing the same position twice
+  // was ACCEPTED and STACKED, because a prior opening event is not 'foreign' operational
+  // history -- so 12 then 99 left a balance of 111 and two opening movements at one position.
+  //
+  // The second one was never an opening balance. It is an adjustment, and an adjustment that
+  // arrives through this path carries none of the authority, reason or variance record that
+  // adjusting a live position is supposed to carry.
+  //
+  // A REPLAY OF THE SAME ROW IS NOT THAT, and must still be allowed through to the
+  // idempotency check below -- which is why this compares SOURCE IDS rather than looking at
+  // the quantity. Same job, same row, same source id: a replay. Anything else: a second
+  // opening balance, refused by name so the operator is told which of the two it is.
+  const thisSourceId = openingBalanceSourceObjectId(input.importJobId, input.sourceRowKey);
+  const priorOpening = state.openingSourceIds.filter((id) => id !== thisSourceId);
+  if (priorOpening.length > 0) {
+    throw new OpeningBalanceError(
+      "OPENING_BALANCE_ALREADY_SET",
+      "An opening balance has already been set for this part at this location. There is only one " +
+        "opening balance per position; correct the quantity through governed Cycle Count instead.",
     );
   }
 

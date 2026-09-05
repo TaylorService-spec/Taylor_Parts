@@ -22,6 +22,7 @@ import { entityContractFor, wiredEntityContracts, type ImportEntityType } from "
 // is what makes every wired entity exist, and adding an entity means adding a line here.
 import "./contracts/customerImportContract.js";
 import "./contracts/equipmentImportContract.js";
+import "./contracts/inventoryImportContract.js";
 import { parseCsv } from "../partMaster/csvMigrationAnalysis.js";
 import {
   PART_CANONICAL_FIELDS,

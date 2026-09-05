@@ -74,6 +74,11 @@ import {
   loadEquipmentReferences,
 } from "./firestoreDataImportAdapters.js";
 import { entityContractFor } from "./contracts/entityContract.js";
+import {
+  loadInventoryReferences,
+  loadExistingOpeningBalances,
+  firestoreOpeningBalanceWriter,
+} from "./firestoreInventoryImportAdapters.js";
 import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
@@ -104,7 +109,7 @@ const ENTITY_DATA_PLANE: Partial<
       loadExisting(values: readonly string[], db: Firestore): Promise<ReadonlySet<string>>;
       /** Only for entities with foreign keys. Absent means the row stands on its own. */
       loadReferences?(db: Firestore): Promise<Readonly<Record<string, ReadonlySet<string>>>>;
-      writer(actorUid: string, db: Firestore): RowWriter;
+      writer(actorUid: string, db: Firestore, jobId: string): RowWriter;
     }
   >
 > = {
@@ -114,6 +119,14 @@ const ENTITY_DATA_PLANE: Partial<
     loadExisting: loadExistingEquipmentSerials,
     loadReferences: loadEquipmentReferences,
     writer: firestoreEquipmentWriter,
+  },
+  INVENTORY: {
+    loadExisting: loadExistingOpeningBalances,
+    loadReferences: loadInventoryReferences,
+    // The ONLY writer that needs the job id: an opening balance's ledger movement records
+    // which import produced it, so a movement can be traced back to the file and the
+    // approval that authorized it.
+    writer: (actorUid, db, jobId) => firestoreOpeningBalanceWriter(actorUid, db, jobId),
   },
 };
 
@@ -362,7 +375,7 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
       // longer honour, and writing them anyway would be writing on a stale promise.
       throw new ImportJobError("JOB_NOT_STAGED", `Import for ${claimed.entityType} is not available.`);
     }
-    const rowResults = await executeImportJob(claimed, plane.writer(actorUid, db));
+    const rowResults = await executeImportJob(claimed, plane.writer(actorUid, db, claimed.jobId));
     const finished = finishExecution(claimed, rowResults);
     await store.put(finished);
 

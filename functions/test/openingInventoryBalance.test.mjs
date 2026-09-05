@@ -331,3 +331,43 @@ test("the source object id is durable provenance: job + row are both recoverable
   assert.equal(job, "imp-042");
   assert.equal(srcRow, "row-13");
 });
+
+test("a SECOND opening balance at the same position is refused -- there is only one", async () => {
+  // FOUND BY THE END-TO-END TEST, NOT BY READING. Importing the same position twice was
+  // accepted and STACKED: a prior opening event is not "foreign" operational history, so 12
+  // then 99 left a balance of 111 and two opening movements at one position. The second one
+  // was never an opening balance -- it is an adjustment arriving without the authority,
+  // reason or variance record that adjusting a live position is supposed to carry.
+  const priorOpening = movementValue({
+    quantity: 12,
+    sourceObject: { type: "ADJUSTMENT", id: openingBalanceSourceObjectId("imp-000", "row-1") },
+    idempotencyKey: "prior-opening",
+  });
+
+  await assert.rejects(
+    (() => {
+      const harness = makeDb([priorOpening]);
+      return applyOpeningInventoryBalanceThroughTxn(harness.txn, harness.db, row(), { now: NOW });
+    })(),
+    (err) => err instanceof OpeningBalanceError && err.code === "OPENING_BALANCE_ALREADY_SET",
+  );
+});
+
+test("the ledger state names the opening sources it found, which is what tells a replay apart", async () => {
+  // The guard compares SOURCE IDS rather than quantities, precisely so re-running the SAME
+  // job row stays distinguishable from stating a second opening balance. Quantities cannot
+  // tell those apart, and refusing both would make a retried execution fail where it should
+  // have been a no-op.
+  const sourceId = openingBalanceSourceObjectId("imp-001", "row-7");
+  const mine = movementValue({
+    quantity: 12,
+    sourceObject: { type: "ADJUSTMENT", id: sourceId },
+    idempotencyKey: "mine",
+  });
+  const harness = makeDb([mine]);
+  const state = await computeOpeningLedgerStateThroughTxn(harness.txn, harness.db, PART, LOC);
+
+  assert.deepEqual([...state.openingSourceIds], [sourceId]);
+  assert.equal(state.openingQuantity, 12);
+  assert.equal(state.hasOperationalHistory, false, "an opening event is not operational history");
+});

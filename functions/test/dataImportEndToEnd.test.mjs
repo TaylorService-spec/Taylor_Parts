@@ -129,7 +129,7 @@ await check("an ambiguous header is REFUSED rather than guessed, and the admin c
 await check("an entity that is not wired yet says so, instead of staging a job nothing can run", async () => {
   await assert.rejects(
     stageDataImport.run({
-      data: { fileName: "inventory.csv", fileText: SEEDED_CSV, entityType: "INVENTORY" },
+      data: { fileName: "history.csv", fileText: SEEDED_CSV, entityType: "SERVICE_HISTORY" },
       auth,
     }),
     (err) => err.code === "unimplemented" && err.details?.code === "ENTITY_NOT_WIRED",
@@ -410,6 +410,74 @@ await check("a serial already registered is refused, whoever registered it", asy
   const res = await stageDataImport.run({ data: { fileName: "equipment.csv", fileText: csv }, auth });
   assert.equal(res.job.summary.errors, 1);
   assert.ok(res.job.rows[0].findings.some((f) => f.code === "ALREADY_EXISTS"));
+});
+
+// --------------------------------------------------------------- inventory
+
+await check("an opening balance becomes a LEDGER MOVEMENT, not a stored quantity", async () => {
+  await db.collection("warehouses").add({ name: `Main Warehouse ${run}`, status: "ACTIVE" });
+  await db.collection("warehouses").add({ name: `Retired Warehouse ${run}`, status: "INACTIVE" });
+
+  const csv = [
+    "PART_NO,WAREHOUSE,ON_HAND",
+    `DI-${run}-1,Main Warehouse ${run},12`,
+    `DI-${run}-2,Main Warehouse ${run},0`,
+    `DI-${run}-3,Retired Warehouse ${run},5`,
+    `NOPE-${run},Main Warehouse ${run},7`,
+  ].join("\n");
+
+  const staged = await stageDataImport.run({ data: { fileName: "inventory.csv", fileText: csv }, auth });
+  assert.equal(staged.job.entityType, "INVENTORY");
+  // Row 2 imports. Row 3 is a zero balance -- a warning, not an error. Row 4 names an
+  // INACTIVE warehouse and row 5 an unknown part; both are refused before approval.
+  assert.deepEqual(staged.job.summary, { total: 4, ready: 1, warnings: 1, errors: 2 });
+  assert.ok(staged.job.rows[2].findings.some((f) => f.code === "WAREHOUSE_NOT_FOUND"));
+  assert.ok(staged.job.rows[3].findings.some((f) => f.code === "PART_NOT_FOUND"));
+
+  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
+  assert.equal(done.job.status, "COMPLETED");
+  // One movement written, one deliberate no-op: a zero balance moves nothing, and a movement
+  // that moves nothing is not written at all.
+  assert.equal(done.job.result.created, 1);
+  assert.equal(done.job.result.replayed, 1);
+
+  const moves = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-1`)).get();
+  assert.equal(moves.size, 1);
+  const move = moves.docs[0].data();
+  // The EXISTING primitives, not a new movement type: ADJUSTED / SIGNED / ADJUSTMENT. An
+  // opening balance invents no vocabulary and writes to no second balance table.
+  assert.equal(move.type, "ADJUSTED");
+  assert.equal(move.quantity, 12);
+  assert.equal(move.sourceObject.type, "ADJUSTMENT");
+  assert.match(String(move.sourceObject.id), /IMPORT_OPENING_BALANCE/);
+
+  // The zero-balance row wrote NOTHING. Not a movement of zero -- nothing.
+  const none = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-2`)).get();
+  assert.equal(none.size, 0);
+});
+
+await check("a SECOND opening balance at the same position is refused at execution, and says why", async () => {
+  // This is the deliberate gap, proven rather than described: the preview cannot know, so it
+  // shows READY, and the ledger refuses inside its own transaction. The operator learns the
+  // reason from the result rather than from a preview that guessed.
+  const csv = [
+    "PART_NO,WAREHOUSE,ON_HAND",
+    `DI-${run}-1,Main Warehouse ${run},99`,
+  ].join("\n");
+
+  const staged = await stageDataImport.run({ data: { fileName: "inventory.csv", fileText: csv }, auth });
+  assert.equal(staged.job.summary.ready, 1, "the preview cannot know, and does not pretend to");
+
+  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
+  assert.equal(done.job.status, "FAILED");
+  assert.equal(done.job.result.rows[0].failureCode, "OPENING_BALANCE_ALREADY_SET");
+  assert.match(done.job.result.rows[0].failureMessage, /opening-balance rules|already/i);
+
+  // AND THE BALANCE IS UNCHANGED. A refused opening balance must leave the ledger exactly
+  // as it was -- one movement of 12, not a second one and not an overwritten first.
+  const moves = await db.collection("inventory_transactions").where("partId", "==", derivePartId(`DI-${run}-1`)).get();
+  assert.equal(moves.size, 1);
+  assert.equal(moves.docs[0].data().quantity, 12);
 });
 
 // --------------------------------------------------------------- authorization
