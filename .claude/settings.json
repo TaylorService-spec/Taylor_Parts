@@ -95,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \".claude/hooks/session-context.mjs\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-context.mjs\"",
             "timeout": 5
           }
         ]
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \".claude/hooks/rules-guard.mjs\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/rules-guard.mjs\"",
             "timeout": 5
           }
         ]
@@ -118,7 +118,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \".claude/hooks/unpublished-work-guard.mjs\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/unpublished-work-guard.mjs\"",
             "timeout": 5
           }
         ]
