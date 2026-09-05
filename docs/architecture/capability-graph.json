@@ -3107,11 +3107,12 @@
           "functions/src/dataImport/dataImportCallables.ts"
         ],
         "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3133,10 +3134,11 @@
           "functions/src/dataImport/dataImportCallables.ts"
         ],
         "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/modules/administration/AdminDataImport.jsx"
         ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 1,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

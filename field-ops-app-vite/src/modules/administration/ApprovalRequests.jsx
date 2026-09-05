@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
@@ -48,11 +48,25 @@ export default function ApprovalRequests({ onPendingCountChange }) {
   const [busyRequestId, setBusyRequestId] = useState(null);
   const [notice, setNotice] = useState("");
 
+  // STILL MOUNTED? The queue read is a network round trip, and a person can leave this screen
+  // while it is in flight. Writing state afterwards is a React warning in development and, in a
+  // torn-down jsdom, an unhandled rejection reaching for a `window` that no longer exists --
+  // which is how this surfaced: adding renders to the role-inspector suite made a latent leak
+  // fire twice and turned a green run into two unhandled errors beside 213 passing tests.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setLoadState("loading");
     setErrorText("");
     try {
       const rows = await privilegedApprovalClient.listAll();
+      if (!alive.current) return;
       setRequests(rows);
       setLoadState("ready");
       const pending = rows.filter((r) => r.status === "PENDING_APPROVAL").length;
@@ -60,6 +74,7 @@ export default function ApprovalRequests({ onPendingCountChange }) {
     } catch (err) {
       // DENIED AND EMPTY MUST NOT LOOK THE SAME. An administrator seeing "no pending requests"
       // when the read was refused would conclude there is nothing to approve.
+      if (!alive.current) return;
       setLoadState("denied");
       setErrorText(err?.message || "This queue is not available to your account.");
       if (onPendingCountChange) onPendingCountChange(0);

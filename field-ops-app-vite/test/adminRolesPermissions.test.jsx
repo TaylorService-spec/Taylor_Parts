@@ -10,6 +10,7 @@ import AdminRolesPermissions from "../src/modules/administration/AdminRolesPermi
 import { PERMISSION_CATALOG } from "../src/access/permissionCatalog.ts";
 import { COMPATIBILITY_ROLES } from "../src/access/compatibilityRoles.ts";
 import { resolveRoleAccess } from "../src/access/roleAccessModel.js";
+import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../src/config/capabilityActivationOverrides";
 
 afterEach(cleanup);
 
@@ -103,5 +104,91 @@ describe("Roles & Permissions (what it still cannot do, stated honestly)", () =>
     render(<AdminRolesPermissions />);
     const table = screen.getByRole("table", { name: /object permissions/i });
     expect(within(table).getAllByTitle(/cannot be granted to any role/i).length).toBeGreaterThan(0);
+  });
+});
+
+describe("it answers for THIS environment, not for the catalog alone", () => {
+  // THE DEFECT. `active: false` in the catalog does not mean inert everywhere -- it means inert
+  // unless the environment activates it. This screen read only the catalog, so it reported a
+  // capability as denied while the backend resolver, reading the same override set, allowed it.
+  //
+  // Data Import made it visible: admin.dataImport.stage/.execute are catalogue-inactive, held by
+  // Administrator through the derived grant, and ACTIVATED in platform-sandbox.
+  //
+  // The environment is INJECTED rather than set on the shared vitest define, which is `[]` on
+  // purpose because other suites depend on it. A screen whose environment behaviour could only
+  // be tested by changing a global would not get tested.
+  const ACTIVATED = ["admin.dataImport.stage", "admin.dataImport.execute"];
+  const asSandbox = {
+    activationOverrides: new Set(ACTIVATED),
+    environmentId: "platform-sandbox",
+  };
+
+  it("shows an environment-activated capability under 'Can actually do', not under inert", () => {
+    render(<AdminRolesPermissions {...asSandbox} />);
+
+    const canDo = screen.getByLabelText("Capabilities this role can use");
+    for (const id of ACTIVATED) {
+      expect(within(canDo).getAllByText(id).length).toBeGreaterThan(0);
+    }
+
+    // And NOT in the inert section. Present in both would be worse than absent from one: the
+    // screen would be contradicting itself.
+    const inert = screen.queryByLabelText("Granted but inert");
+    if (inert) {
+      for (const id of ACTIVATED) expect(within(inert).queryByText(id)).toBeNull();
+    }
+  });
+
+  it("the SAME screen in an environment without the override shows them as inert", () => {
+    // Production's reading, rendered by the same component with the same catalog. Nothing about
+    // the catalog changed to make the sandbox answer true, which is what keeps production safe.
+    render(<AdminRolesPermissions activationOverrides={new Set()} environmentId="taylor-parts-production" />);
+
+    const inert = screen.getByLabelText("Granted but inert");
+    for (const id of ACTIVATED) {
+      expect(within(inert).getAllByText(id).length).toBeGreaterThan(0);
+    }
+    const canDo = screen.getByLabelText("Capabilities this role can use");
+    for (const id of ACTIVATED) expect(within(canDo).queryByText(id)).toBeNull();
+  });
+
+  it("says WHY it is reachable, rather than silently promoting it", () => {
+    render(<AdminRolesPermissions {...asSandbox} />);
+    // "active" and "active BECAUSE THIS ENVIRONMENT SAYS SO" are different facts, and an
+    // administrator planning production needs to see which lines would move.
+    expect(screen.getAllByText(/active in platform-sandbox/i).length).toBeGreaterThan(0);
+  });
+
+  it("the environment genuinely changes the answer", () => {
+    const withEnv = resolveRoleAccess(COMPATIBILITY_ROLES.admin, {
+      activationOverrides: new Set(ACTIVATED),
+    });
+    const withoutEnv = resolveRoleAccess(COMPATIBILITY_ROLES.admin, { activationOverrides: new Set() });
+    // Otherwise this whole suite would pass against a screen that still ignored the overrides.
+    expect(withEnv.effective.length).toBe(withoutEnv.effective.length + ACTIVATED.length);
+
+    render(<AdminRolesPermissions {...asSandbox} />);
+    expect(screen.getAllByText(String(withEnv.effective.length)).length).toBeGreaterThan(0);
+  });
+
+  it("defaults to the GOVERNED build-time set, not to an empty one", () => {
+    // The default is what production and the sandbox actually run. If the screen defaulted to
+    // no overrides, every environment would read as production and the defect would be back
+    // with a passing test suite beside it.
+    render(<AdminRolesPermissions />);
+    const rendered = resolveRoleAccess(COMPATIBILITY_ROLES.admin, {
+      activationOverrides: CAPABILITY_ACTIVATION_OVERRIDE_SET,
+    });
+    expect(screen.getAllByText(String(rendered.effective.length)).length).toBeGreaterThan(0);
+  });
+
+  it("the catalog is NOT rewritten to achieve any of this", () => {
+    // The requirement, asserted where it would be violated: nothing flips a catalogue flag, and
+    // nothing adds these ids to a role by hand.
+    for (const id of ACTIVATED) {
+      expect(PERMISSION_CATALOG.find((p) => p.id === id).active).toBe(false);
+      expect(COMPATIBILITY_ROLES.admin.permissions).toContain(id);
+    }
   });
 });
