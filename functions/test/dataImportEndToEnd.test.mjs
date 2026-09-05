@@ -25,7 +25,12 @@ admin.initializeApp({ projectId: "eos-platform-sandbox" });
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
-const { stageDataImportCallable: stageDataImport, executeDataImportCallable: executeDataImport, listDataImportJobsCallable: listDataImportJobs } = await import(
+const {
+  stageDataImportCallable: stageDataImport,
+  executeDataImportCallable: executeDataImport,
+  listDataImportJobsCallable: listDataImportJobs,
+  listImportedServiceHistoryCallable: listImportedServiceHistory,
+} = await import(
   "../lib/dataImport/dataImportCallables.js"
 );
 const { derivePartId } = await import("../lib/dataImport/contracts/partImportContract.js");
@@ -538,6 +543,67 @@ await check("re-importing the same service records is refused by their source re
   const res = await stageDataImport.run({ data: { fileName: "history.csv", fileText: csv }, auth });
   assert.equal(res.job.summary.errors, 1);
   assert.ok(res.job.rows[0].findings.some((f) => f.code === "ALREADY_EXISTS"));
+});
+
+// --------------------------------------------------------------- reading it back
+
+await check("imported history is VISIBLE through the normal customer read, and is not a Work Order", async () => {
+  const soda = `Seeded Soda Works ${run}`;
+  const accountId = deriveImportedAccountId(soda);
+
+  const res = await listImportedServiceHistory.run({ data: { accountId }, auth });
+  assert.ok(res.rows.length >= 1, `expected imported history for the account, saw ${res.rows.length}`);
+
+  const row = res.rows.find((r) => r.externalReference === `OLD-${run}-1`);
+  assert.ok(row, "the imported record must be reachable by the customer read");
+
+  // It says what it is, in the DATA -- a consumer never has to know.
+  assert.equal(row.recordKind, "IMPORTED_SERVICE_HISTORY");
+  assert.equal(row.sourceSystem, "DATA_IMPORT");
+
+  // The fields the gate requires be preserved.
+  assert.equal(row.serviceDate, "2019-06-14");
+  assert.match(row.summary, /evaporator fan motor/);
+  assert.equal(row.technicianName, "R. Alvarez");
+  assert.equal(row.equipmentSerialNumber, `EQ-${run}-1`);
+
+  // AND NOTHING WAS RESOLVED. The technician is text and the serial is text; neither was
+  // joined to a current Employee or a current Equipment record, because the canonical model
+  // does not prove either identity.
+  assert.equal(row.technicianId, undefined);
+  assert.equal(row.equipmentId, undefined);
+
+  // No Work Order field is synthesised onto it, and no Work Order exists.
+  for (const wo of ["status", "woNumber", "assignedTechId", "scheduledStart"]) {
+    assert.equal(row[wo], undefined, `${wo} must not appear on a historical row`);
+  }
+  assert.equal((await db.collection("fieldops_wos").get()).size, 0);
+});
+
+await check("the read is scoped to ONE customer -- another account sees none of it", async () => {
+  const other = await db.collection("accounts").add({ name: `Unrelated Co ${run}`, nameLower: `unrelated co ${run}` });
+  const res = await listImportedServiceHistory.run({ data: { accountId: other.id }, auth });
+  assert.equal(res.rows.length, 0, "one customer's history must never appear under another");
+});
+
+await check("an unauthorized read fails CLOSED, and an unauthenticated one never reaches authorization", async () => {
+  const soda = `Seeded Soda Works ${run}`;
+  const accountId = deriveImportedAccountId(soda);
+
+  await assert.rejects(
+    listImportedServiceHistory.run({ data: { accountId }, auth: stranger }),
+    (err) => err.code === "permission-denied",
+    "a principal with no role must not read a customer's history",
+  );
+  await assert.rejects(
+    listImportedServiceHistory.run({ data: { accountId }, auth: null }),
+    (err) => err.code === "unauthenticated",
+  );
+  // And a missing account is refused rather than answered with everything.
+  await assert.rejects(
+    listImportedServiceHistory.run({ data: {}, auth }),
+    (err) => err.code === "invalid-argument",
+  );
 });
 
 // --------------------------------------------------------------- cross-entity acceptance

@@ -547,3 +547,12 @@ export {
   executeDataImportCallable as executeDataImport,
   listDataImportJobsCallable as listDataImportJobs,
 } from "./dataImport/dataImportCallables";
+
+// --- EOS Data Import P1 -- the READ side of imported service history ---
+// Separate from the three import callables above in every way that matters: it is NOT
+// sandbox-gated (reading records that already exist is not a sandbox-only act), and it is NOT
+// gated on the import capabilities (gating it on those would make imported history visible only
+// to whoever imported it). It gates on `customer.record.read` -- the existing, ACTIVE authority
+// to read a Customer -- and resolves nothing: the technician name and equipment serial leave as
+// the historical TEXT they were stored as.
+export { listImportedServiceHistoryCallable as listImportedServiceHistory } from "./dataImport/dataImportCallables";

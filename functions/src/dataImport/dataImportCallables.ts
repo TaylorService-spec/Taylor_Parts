@@ -84,6 +84,10 @@ import {
   loadExistingServiceHistoryIdentities,
   firestoreServiceHistoryWriter,
 } from "./firestoreServiceHistoryAdapters.js";
+import {
+  listImportedServiceHistory,
+  ImportedServiceHistoryReadError,
+} from "./importedServiceHistoryReadService.js";
 import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
@@ -405,6 +409,40 @@ export const listDataImportJobsCallable = onCall(REGION, async (request) => {
   try {
     return { jobs: await firestoreImportJobStore(db).listRecent(HISTORY_LIMIT), limits: IMPORT_LIMITS };
   } catch (err) {
+    throw mapError(err);
+  }
+});
+
+/**
+ * READ imported historical service for one customer.
+ *
+ * NOT gated on the import capabilities, and that is the point. Loading data and reading a
+ * customer's history afterwards are different acts: gating the read on `admin.dataImport.*`
+ * would make imported history visible only to whoever imported it, which is not what a
+ * customer's service history is for.
+ *
+ * NOR is it gated on the import target guard. The other three callables refuse outside the
+ * sandbox because IMPORTING is a sandbox-only act; READING records that already exist is not.
+ * A record that somehow existed elsewhere should still be readable by someone entitled to see
+ * the customer -- refusing would hide data rather than protect it.
+ */
+export const listImportedServiceHistoryCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  const db = getFirestore();
+
+  try {
+    const d = asObject(request.data);
+    const accountId = typeof d.accountId === "string" ? d.accountId : "";
+    if (!accountId) throw new HttpsError("invalid-argument", "accountId is required.");
+    const limit = typeof d.limit === "number" ? d.limit : undefined;
+
+    return await listImportedServiceHistory(actorUid, accountId, limit, db);
+  } catch (err) {
+    if (err instanceof ImportedServiceHistoryReadError) {
+      throw err.code === "UNAUTHORIZED"
+        ? new HttpsError("permission-denied", "You are not authorized to perform this action.")
+        : new HttpsError("invalid-argument", "The request is missing or has invalid fields.");
+    }
     throw mapError(err);
   }
 });

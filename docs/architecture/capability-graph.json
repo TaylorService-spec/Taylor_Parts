@@ -17,7 +17,7 @@
     "catalogInactive": 139,
     "eligibleForEnvironmentActivation": 85,
     "activatedInSomeEnvironment": 85,
-    "callableExports": 45,
+    "callableExports": 46,
     "destinations": 91,
     "destinationsHidden": 19,
     "guides": 0,
@@ -30,8 +30,8 @@
     "ok": true
   },
   "implementationEvidence": {
-    "SERVER_REFERENCED": 113,
-    "EXPORTED": 20,
+    "EXPORTED": 21,
+    "SERVER_REFERENCED": 112,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -397,7 +397,9 @@
       "description": "Read a Customer record.",
       "catalogActive": false,
       "implementation": {
-        "exportedCallables": [],
+        "exportedCallables": [
+          "listImportedServiceHistoryCallable as listImportedServiceHistory"
+        ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
@@ -418,7 +420,7 @@
         ],
         "serverReferenceCount": 7,
         "clientReferenceCount": 7,
-        "evidence": "SERVER_REFERENCED"
+        "evidence": "EXPORTED"
       },
       "environmentActivation": {
         "eligible": false,
@@ -4607,6 +4609,16 @@
       "module": "./crmActivity/crmActivityReadService",
       "capabilityHints": [],
       "comment": null
+    },
+    {
+      "names": [
+        "listImportedServiceHistoryCallable as listImportedServiceHistory"
+      ],
+      "module": "./dataImport/dataImportCallables",
+      "capabilityHints": [
+        "customer.record.read"
+      ],
+      "comment": "--- EOS Data Import P1 -- the READ side of imported service history --- Separate from the three import callables above in every way that matters: it is NOT sandbox-gated (reading records that already exist is not a sandbox-only act), and it is NOT gated on the import capabilities (gating it on those"
     }
   ],
   "destinations": [

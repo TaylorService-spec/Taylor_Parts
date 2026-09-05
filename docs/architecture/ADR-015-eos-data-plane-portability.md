@@ -86,16 +86,54 @@ one table in `dataImportCallables.ts`, and everything between parsing and accoun
 
 ### The rule that made it real
 
-**Import has no write authority of its own.** Every writer calls the governed command that
-already owned the record — `createPart` for Parts, the account and equipment import commands
-for those, the opening-balance command for Inventory. Import can write nothing a person with
-the same capabilities could not have written one record at a time.
+**Import has no write authority of its own.** It authorizes nothing a person could not have
+done one record at a time, and it holds no capability that exists only to let it write. That
+is the rule; the four operational entities and the fifth historical one satisfy it differently,
+and the earlier wording — *"every writer calls the governed command that already owned the
+record"* — was true of four of them and not of the fifth. Stated accurately:
+
+| Entity | Executes through | Authority |
+| --- | --- | --- |
+| Parts | `partMaster`'s `createPart` — pre-existing, unchanged | `inventory.catalog.manage`, enforced by that command |
+| Customers | `createAccountFromImport`, a trusted command written for this feature | `customer.record.create` — the existing catalogued authority |
+| Equipment | `createEquipmentFromImport`, likewise | `equipment.install` — the nearest existing authority, reused, widening nobody |
+| Inventory | `applyOpeningInventoryBalanceThroughTxn` over the existing operational ledger | the ledger's own primitives; no second balance authority |
+| Service History | the Data Import execution boundary itself | `admin.dataImport.execute` |
+
+**Imported Service History is the honest exception, and it is not a Work Order authority.**
+It is a new, import-only historical record type, written only by the trusted Data Import
+execution path and its audit path. No pre-existing command owned it because no such record
+existed, and no domain command was borrowed to pretend otherwise: `workOrder.create` would
+have implied these ARE Work Orders — the exact confusion the record type exists to prevent.
+A capability was NOT invented to make the sentence above tidier, because the authority model
+does not require one: this record type has exactly one writer, no screen writes it, and no
+lifecycle acts on it, so the authority to write one IS the authority to execute an import.
+Reading it back is a separate, ordinary product read gated on `customer.record.read`.
 
 Where a trusted command had to be written (Accounts and Equipment are still client-direct
 under Rules, and the Admin SDK evaluates no Rules), the command **re-states every guarantee
 that Rules block makes** — the writable-key allow-list, the governed create baseline, the
 derived `nameLower` search key, the referential rule re-read inside the transaction, and the
-correct timestamp type. A test asserts the equipment key list equals `firestore.rules`' own.
+correct timestamp type. A test asserts the equipment key list equals `firestore.rules`' own,
+and a Rules-emulator suite proves an imported machine stays editable through the ordinary
+client path while its server-derived key stays unforgeable, unmodifiable and undeletable.
+
+### Making imported history visible without making it a Work Order
+
+A record nobody can reach is not a record. Imported history is read back through a trusted
+callable and rendered as a **second, separately-headed source** under a customer's Service
+activity — beside the Work Order timeline, never interleaved with it, and never counted into
+the Work Order counts.
+
+Not merged into one chronological list, deliberately. A Work Order row carries a status, a
+schedule and an assigned technician; an imported row has none of those and never will.
+Interleaving them would put empty cells beside every historical row and invite exactly the
+reading this must prevent — that those are jobs EOS lost track of.
+
+The read resolves nothing. The technician name and the equipment serial are returned as the
+historical text they were stored as, labelled *as recorded*. Joining either to a current
+Employee or a current Equipment record would manufacture a link the canonical model does not
+prove, inside a record that reads as authoritative.
 
 ### What it cost, honestly
 

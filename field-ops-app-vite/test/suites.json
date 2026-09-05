@@ -330,6 +330,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/importedServiceHistoryView.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/installedEquipmentListView.test.mjs",
       "runner": "node"
     },

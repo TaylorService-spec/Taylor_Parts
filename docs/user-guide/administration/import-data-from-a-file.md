@@ -145,6 +145,12 @@ customer. The **technician stays a name** rather than being linked to an employe
 would credit somebody else's work to a real person — and the **equipment serial stays text**,
 because the machine may since have been replaced.
 
+**Where you see it afterwards.** Open the customer and look under **Service activity**. Imported
+records appear below the work orders, under their own heading **Imported historical service**,
+with an `IMPORTED HISTORY` badge on every line. They are counted separately — your open and
+completed work order counts do not move — and the technician and serial are shown *as recorded*,
+because they are text from your old system rather than links to people and machines in EOS.
+
 A **future date is refused**. This imports what has already happened; work still to be done is a
 Work Order.
 
