@@ -17,7 +17,7 @@
     "catalogInactive": 146,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 46,
+    "callableExports": 47,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -4236,6 +4236,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/emailTransportCallables.ts",
           "functions/src/inboundWork/inboundWorkCallables.ts"
         ],
         "clientReferences": [
@@ -4244,7 +4245,7 @@
           "field-ops-app-vite/src/access/inboundWorkSource.js",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4265,13 +4266,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/emailTransportCallables.ts",
           "functions/src/inboundWork/inboundWorkCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/inboundWorkSource.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4292,6 +4294,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inboundWork/emailTransportCallables.ts",
           "functions/src/inboundWork/inboundWorkCallables.ts"
         ],
         "clientReferences": [
@@ -4300,7 +4303,7 @@
           "field-ops-app-vite/src/access/inboundWorkSource.js",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4816,6 +4819,14 @@
         "customer.record.read"
       ],
       "comment": "--- EOS Data Import P1 -- the READ side of imported service history --- Separate from the three import callables above in every way that matters: it is NOT sandbox-gated (reading records that already exist is not a sandbox-only act), and it is NOT gated on the import capabilities (gating it on those"
+    },
+    {
+      "names": [
+        "pollEmailMailboxes"
+      ],
+      "module": "./inboundWork/emailDeliverySchedule",
+      "capabilityHints": [],
+      "comment": "The scheduled poller -- the thing that makes delivery automatic. Deploying it is what starts it; until then nothing runs on any schedule anywhere."
     }
   ],
   "destinations": [

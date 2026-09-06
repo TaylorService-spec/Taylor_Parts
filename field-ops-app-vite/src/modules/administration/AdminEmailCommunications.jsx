@@ -20,14 +20,15 @@ import {
 //
 // SEVEN TABS, NOT SEVEN RAIL ITEMS, deliberately. Administration already carries fifteen destinations; the
 // seven parts of one configuration subject belong together under the subject, and a reader looking for
-// "where does email get set up" should find one answer rather than seven neighbours. The rail item is the
-// subject; the tabs are its sections.
+// "where does email get set up" should find one answer rather than seven neighbours.
+//
+// THIS SCREEN NOW OPERATES A REAL CONNECTION. Connect sends the administrator to the provider and brings
+// them back HERE with an authorization code, which this screen hands to the server to exchange. The
+// browser never sees a token: it carries a one-time code and a state value it cannot forge, and every
+// credential lives server-side from that point on.
 //
 // NO NEW VISUAL SYSTEM. Shell, context band, status pills, honest states, buttons and the existing table
 // and form classes -- every one of them already in use elsewhere in Administration.
-//
-// NOTHING ON THIS SCREEN IS AUTHORITY. Controls render from the trusted effective-access feed; each write
-// is re-authorized server-side against administration.emailIntake.manage.
 
 const TABS = [
   ["overview", "Overview"],
@@ -44,6 +45,21 @@ const OAUTH_TONE = { CONNECTED: "positive", PENDING_AUTHORIZATION: "info", NOT_C
 
 const EXCEPTION_STATUSES = ["FAILED", "QUARANTINED", "DUPLICATE"];
 const HISTORY_STATUSES = ["ACCEPTED", "DECLINED", "ATTACHED"];
+
+/** What each transport failure means for the person reading it, in one sentence they can act on. */
+const FAILURE_EXPLANATIONS = {
+  AUTH_EXPIRED: "The provider authorization expired. Reauthorize the connection.",
+  AUTH_REVOKED: "The provider no longer accepts the stored authorization. Reauthorize the connection.",
+  MAILBOX_NOT_FOUND: "The provider has no such mailbox. Check the address on the mailbox.",
+  MAILBOX_ACCESS_DENIED: "The connected account cannot read that mailbox. Grant it access, then retry.",
+  PROVIDER_RATE_LIMIT: "The provider asked us to slow down. This retries on its own.",
+  PROVIDER_UNAVAILABLE: "The provider could not be reached. This retries on its own.",
+  MESSAGE_FETCH_FAILED: "A message could not be fetched. This retries on its own.",
+  ATTACHMENT_FETCH_FAILED: "An attachment could not be retrieved. The message itself was taken in.",
+  CURSOR_EXPIRED: "The delivery resume point aged out; the next poll re-checks recent mail.",
+  CONFIGURATION_INVALID: "This connection is not configured for this environment.",
+  DELIVERY_RETRY_EXHAUSTED: "Retries are exhausted. Fix the cause, then retry from here.",
+};
 
 const emptyConnection = {
   connectionName: "",
@@ -69,6 +85,13 @@ const emptyMailbox = {
   inboundEnabled: true,
 };
 
+const formatWhen = (millis) => (millis ? new Date(millis).toLocaleString() : "—");
+
+/** The redirect the provider sends the administrator back to: this very screen, on this deployment. */
+export function oauthRedirectUri(location = window.location) {
+  return `${location.origin}${location.pathname}`;
+}
+
 function Field({ label, children }) {
   return (
     <label className="fo-inbound-field">
@@ -78,13 +101,23 @@ function Field({ label, children }) {
   );
 }
 
-function ConnectionsTab({ config, canManage, onSave }) {
+function ConnectionsTab({ config, readiness, canManage, actions, busy, notice }) {
   const [draft, setDraft] = useState(emptyConnection);
   const [error, setError] = useState(null);
   const set = (key) => (e) => setDraft({ ...draft, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 
+  const providerReady = (provider) =>
+    provider === "MICROSOFT_365" ? readiness?.microsoftConfigured : readiness?.googleConfigured;
+
   return (
     <>
+      {readiness && !readiness.transportAvailable && (
+        <p className="fo-inline-error" role="alert">
+          Connecting a real mailbox is not available in this environment. {readiness.productionRefusal}
+        </p>
+      )}
+      {notice && <p className="fo-muted" role="status">{notice}</p>}
+
       <table className="fo-sales-pipeline">
         <thead>
           <tr>
@@ -93,24 +126,58 @@ function ConnectionsTab({ config, canManage, onSave }) {
             <th>Account</th>
             <th>Authorization</th>
             <th>Health</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {config.connections.length === 0 ? (
             <tr>
-              <td colSpan={5}>No connections configured.</td>
+              <td colSpan={6}>No connections configured.</td>
             </tr>
           ) : (
             config.connections.map((c) => (
               <tr key={c.id}>
-                <td data-label="Connection">{c.connectionName}</td>
-                <td data-label="Provider">{c.provider}</td>
+                <td data-label="Connection">
+                  {c.connectionName}
+                  {c.providerErrorCode && (
+                    <div className="fo-muted">{FAILURE_EXPLANATIONS[c.providerErrorCode] ?? c.providerErrorCode}</div>
+                  )}
+                </td>
+                <td data-label="Provider">
+                  {c.provider}
+                  {!providerReady(c.provider) && <div className="fo-muted">No OAuth client configured here</div>}
+                </td>
                 <td data-label="Account">{c.connectedAccount}</td>
                 <td data-label="Authorization">
                   <StatusPill tone={OAUTH_TONE[c.oauthStatus] ?? "unknown"} label={c.oauthStatus} asText />
+                  <div className="fo-muted">
+                    {c.authorizedAt ? `Authorized ${formatWhen(c.authorizedAt)}` : "Never authorized"}
+                  </div>
                 </td>
                 <td data-label="Health">
                   <StatusPill tone={HEALTH_TONE[c.health] ?? "unknown"} label={c.health} asText />
+                  <div className="fo-muted">
+                    {c.lastMessageReceived ? `Last message ${formatWhen(c.lastMessageReceived)}` : "No mail received yet"}
+                  </div>
+                </td>
+                <td data-label="Actions">
+                  <div className="fo-inbound-row-actions">
+                    <Button
+                      variant="primary"
+                      disabled={!canManage || busy || !providerReady(c.provider) || readiness?.transportAvailable === false}
+                      onClick={() => actions.connect(c.id)}
+                    >
+                      {c.oauthStatus === "CONNECTED" ? "Reauthorize" : "Connect"}
+                    </Button>
+                    <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.test(c.id)}>
+                      Test connection
+                    </Button>
+                    {c.oauthStatus === "CONNECTED" && (
+                      <Button variant="tertiary" className="fo-link-btn" disabled={!canManage || busy} onClick={() => actions.disconnect(c.id)}>
+                        Disconnect
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))
@@ -119,12 +186,13 @@ function ConnectionsTab({ config, canManage, onSave }) {
       </table>
 
       {/* EOS STORES NO MAILBOX PASSWORD AND NO OAUTH TOKEN. This form collects the provider's identity
-          and the NAME of an externally-managed secret; the backend refuses any field that looks like
-          credential material, so the rule cannot be softened by adding an input here. */}
+          and, optionally, the NAME of an externally-managed secret; the backend refuses any field that
+          looks like credential material, so the rule cannot be softened by adding an input here. */}
       <h4 className="fo-inbound-pane__subtitle">Add a connection</h4>
       <p className="fo-muted">
-        EOS never stores a mailbox password or an OAuth token. Authorization is completed with the provider and
-        the resulting credential is held as an externally-managed secret, named here.
+        EOS never stores a mailbox password or an OAuth token. Authorization happens with the provider, and the
+        credential it returns is held in the platform&apos;s secret store — this screen only ever shows whether one
+        exists.
       </p>
       {error && <p className="fo-inline-error" role="alert">{error}</p>}
       <div className="fo-inbound-form">
@@ -143,15 +211,12 @@ function ConnectionsTab({ config, canManage, onSave }) {
         <Field label="Connected account">
           <input className="fo-wizard-control" value={draft.connectedAccount} onChange={set("connectedAccount")} />
         </Field>
-        <Field label="Credential secret name (optional)">
-          <input className="fo-wizard-control" value={draft.credentialSecretName} onChange={set("credentialSecretName")} />
-        </Field>
         <Button
           variant="primary"
           disabled={!canManage}
           onClick={async () => {
             setError(null);
-            const result = await onSave({ config: draft });
+            const result = await actions.saveConnection({ config: draft });
             if (!result.ok) setError(result.message);
             else setDraft(emptyConnection);
           }}
@@ -163,7 +228,7 @@ function ConnectionsTab({ config, canManage, onSave }) {
   );
 }
 
-function MailboxesTab({ config, canManage, onSave }) {
+function MailboxesTab({ config, canManage, actions, busy, notice }) {
   const [draft, setDraft] = useState(emptyMailbox);
   const [error, setError] = useState(null);
   const set = (key) => (e) => setDraft({ ...draft, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
@@ -172,22 +237,24 @@ function MailboxesTab({ config, canManage, onSave }) {
     <>
       <p className="fo-muted">
         A mailbox is operational configuration and is separate from the connection: one Microsoft or Google
-        connection commonly exposes several mailboxes — Service, Warranty, Parts.
+        connection commonly exposes several — Service, Warranty, Parts.
       </p>
+      {notice && <p className="fo-muted" role="status">{notice}</p>}
       <table className="fo-sales-pipeline">
         <thead>
           <tr>
             <th>Mailbox</th>
             <th>Address</th>
             <th>Purpose</th>
-            <th>Queue</th>
-            <th>Status</th>
+            <th>Readable</th>
+            <th>Delivery</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {config.mailboxes.length === 0 ? (
             <tr>
-              <td colSpan={5}>No mailboxes configured.</td>
+              <td colSpan={6}>No mailboxes configured.</td>
             </tr>
           ) : (
             config.mailboxes.map((m) => (
@@ -195,9 +262,20 @@ function MailboxesTab({ config, canManage, onSave }) {
                 <td data-label="Mailbox">{m.displayName}</td>
                 <td data-label="Address">{m.emailAddress}</td>
                 <td data-label="Purpose">{m.purpose}</td>
-                <td data-label="Queue">{m.defaultQueue ?? "—"}</td>
-                <td data-label="Status">
-                  <StatusPill tone={m.status === "ACTIVE" ? "positive" : "unknown"} label={m.status} asText />
+                <td data-label="Readable">
+                  <StatusPill tone={m.mailboxReadable ? "positive" : "unknown"} label={m.mailboxReadable ? "Readable" : "Unchecked"} asText />
+                  {m.mailboxValidationDetail && <div className="fo-muted">{m.mailboxValidationDetail}</div>}
+                </td>
+                <td data-label="Delivery">
+                  {m.deliveryConnected ? "Watching for new mail" : "Not started"}
+                  <div className="fo-muted">
+                    {m.lastMessageReceivedAt ? `Last message ${formatWhen(m.lastMessageReceivedAt)}` : `Last checked ${formatWhen(m.lastPolledAt)}`}
+                  </div>
+                </td>
+                <td data-label="Actions">
+                  <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.pollNow(m.id)}>
+                    Check now
+                  </Button>
                 </td>
               </tr>
             ))
@@ -240,7 +318,7 @@ function MailboxesTab({ config, canManage, onSave }) {
           disabled={!canManage}
           onClick={async () => {
             setError(null);
-            const result = await onSave({ config: draft });
+            const result = await actions.saveMailbox({ config: draft });
             if (!result.ok) setError(result.message);
             else setDraft(emptyMailbox);
           }}
@@ -293,7 +371,7 @@ function RoutingTab({ config }) {
   );
 }
 
-function ProcessingTab() {
+function ProcessingTab({ readiness }) {
   return (
     <>
       <h4 className="fo-inbound-pane__subtitle">Processing provider</h4>
@@ -302,21 +380,87 @@ function ProcessingTab() {
       </p>
       <p className="fo-muted">
         Base EOS reads an inbound message itself: it extracts the warranty or authorization number, external
-        reference, model, serial and problem description, and suggests a customer, location and unit from EOS
+        reference, model, serial and problem described, and suggests a customer, location and unit from EOS
         records. No add-on is required, and none is installed here.
       </p>
       <p className="fo-muted">
         VDX (Verenward&apos;s ETL / integration product) and customer-selected integration platforms are optional
-        enhancements. Where one is licensed and configured it supplies the same provider-neutral processing
-        result EOS Native produces, and the Inbound Work queue, the review screen and Work Order creation behave
-        identically. Selecting a different provider is an entitlement-gated configuration step and is not
-        available in this build.
+        enhancements. Where one is licensed and configured it supplies the same information in the same shape, and
+        the queue, the review screen and the Work Order that gets created all behave identically. Selecting a
+        different provider is an entitlement-gated configuration step and is not available in this build.
       </p>
       <p className="fo-muted">
         Data governance is likewise optional. Accepting a job never edits mastered Customer, Location, Contact or
         Equipment data on the strength of an inbound email; a master-data change is proposed through whichever
         governance product the business uses.
       </p>
+
+      <h4 className="fo-inbound-pane__subtitle">Delivery</h4>
+      <p className="fo-muted">
+        Connected mailboxes are checked for new mail every five minutes, and attachments are retrieved and held by
+        EOS as each message arrives. Nothing is sent, marked, moved or deleted in the provider&apos;s mailbox.
+      </p>
+      {readiness && (
+        <p className="fo-muted">
+          This environment: Microsoft 365 client {readiness.microsoftConfigured ? "configured" : "not configured"} ·
+          Google Workspace client {readiness.googleConfigured ? "configured" : "not configured"} ·
+          provider transport {readiness.transportAvailable ? "available" : "not available here"}.
+        </p>
+      )}
+    </>
+  );
+}
+
+function ExceptionsTab({ config, canManage, actions, busy }) {
+  const failures = config.exceptions ?? [];
+  return (
+    <>
+      <p className="fo-muted">
+        Nothing is ever discarded. A message that failed processing, arrived in a mailbox EOS does not know, or was
+        delivered twice is retained with the reason — and a provider failure is recorded here with what to do about
+        it.
+      </p>
+
+      <h4 className="fo-inbound-pane__subtitle">Delivery failures</h4>
+      {failures.length === 0 ? (
+        <p className="fo-muted">No delivery failures.</p>
+      ) : (
+        <table className="fo-sales-pipeline">
+          <thead>
+            <tr>
+              <th>What failed</th>
+              <th>Mailbox</th>
+              <th>Attempts</th>
+              <th>Last failure</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {failures.map((f) => (
+              <tr key={f.id}>
+                <td data-label="What failed">
+                  <StatusPill tone={f.exhausted ? "attention" : "info"} label={f.code} asText />
+                  <div className="fo-muted">{FAILURE_EXPLANATIONS[f.code] ?? f.detail}</div>
+                </td>
+                <td data-label="Mailbox">{f.mailboxId}</td>
+                <td data-label="Attempts">{f.attempts}</td>
+                <td data-label="Last failure">{formatWhen(f.lastFailedAt)}</td>
+                <td data-label="Actions">
+                  <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.retry(f.id)}>
+                    Retry now
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h4 className="fo-inbound-pane__subtitle">Retained messages</h4>
+      <RequestsTable
+        rows={EXCEPTION_STATUSES.map((s) => [s, config.overview.byStatus?.[s] ?? 0]).filter(([, count]) => count > 0)}
+        empty="No quarantined, failed or duplicate messages."
+      />
     </>
   );
 }
@@ -353,11 +497,16 @@ export default function AdminEmailCommunications({
   const canManage = hasCapability(ADMIN_EMAIL_INTAKE_MANAGE);
   const [tab, setTab] = useState("overview");
   const [state, setState] = useState({ status: "loading", config: null });
+  const [readiness, setReadiness] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   const load = useCallback(async () => {
     const result = await source.getConfiguration();
     setState(result.status === SOURCE_STATUS.READY ? { status: "ready", config: result.payload } : { status: result.status, config: null });
+    const ready = await source.getProviderReadiness();
+    setReadiness(ready.status === SOURCE_STATUS.READY ? ready.payload : null);
   }, [source]);
 
   useEffect(() => {
@@ -369,26 +518,113 @@ export default function AdminEmailCommunications({
     load();
   }, [canRead, accessVersion, load, reloadToken]);
 
+  // THE RETURN LEG OF THE OAUTH FLOW. The provider sends the administrator back to this screen with a
+  // one-time code and the state EOS issued; both go straight to the server, which validates the state,
+  // exchanges the code and takes custody of the credential. The query string is then cleared from the
+  // address bar so a refresh, a bookmark or a shared URL cannot replay a code that is already spent.
+  useEffect(() => {
+    if (!canManage || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const stateValue = params.get("state");
+    const connectionId = params.get("connection");
+    const clearQuery = () => window.history.replaceState({}, "", `${window.location.pathname}${window.location.hash}`);
+
+    if (params.get("error")) {
+      setNotice(`The provider did not complete the authorization (${params.get("error")}).`);
+      setTab("connections");
+      clearQuery();
+      return;
+    }
+    if (!code || !stateValue || !connectionId) return;
+
+    clearQuery();
+    setTab("connections");
+    setBusy(true);
+    source
+      .completeAuthorization({ connectionId, code, state: stateValue, redirectUri: oauthRedirectUri() })
+      .then((result) => {
+        setNotice(result.ok ? `Connection authorized. ${result.data?.detail ?? ""}`.trim() : `Authorization failed: ${result.message}`);
+        setReloadToken((t) => t + 1);
+      })
+      .finally(() => setBusy(false));
+  }, [canManage, source]);
+
   const config = state.config;
   const contextItems = useMemo(() => {
     if (!config) return [];
     const byStatus = config.overview.byStatus ?? {};
     const count = (...statuses) => statuses.reduce((sum, s) => sum + (byStatus[s] ?? 0), 0);
+    const connected = config.connections.filter((c) => c.oauthStatus === "CONNECTED").length;
     return [
-      { key: "connections", label: "Connections", value: config.connections.length },
+      { key: "connections", label: "Connections", value: `${connected}/${config.connections.length} connected` },
       { key: "mailboxes", label: "Mailboxes", value: config.mailboxes.length },
       { key: "inbound", label: "Inbound requests", value: config.overview.total },
       { key: "accepted", label: "Accepted", value: count("ACCEPTED") },
       { key: "review", label: "Needs review", value: count("NEEDS_REVIEW") },
-      { key: "exceptions", label: "Exceptions", value: count(...EXCEPTION_STATUSES) },
+      { key: "failures", label: "Delivery failures", value: (config.exceptions ?? []).length },
     ];
   }, [config]);
 
-  const save = (fn) => async (payload) => {
-    const result = await fn(payload);
-    if (result.ok) setReloadToken((t) => t + 1);
-    return result;
-  };
+  /** Every action follows the same shape: run it, say what happened, reload the real state. */
+  const run = useCallback(
+    async (label, fn) => {
+      setBusy(true);
+      setNotice(null);
+      const result = await fn();
+      setBusy(false);
+      setNotice(result.ok ? `${label}: ${result.data?.detail ?? "done"}` : `${label} failed: ${result.message}`);
+      if (result.ok) setReloadToken((t) => t + 1);
+      return result;
+    },
+    [],
+  );
+
+  const actions = useMemo(
+    () => ({
+      saveConnection: async (payload) => {
+        const result = await source.saveConnection(payload);
+        if (result.ok) setReloadToken((t) => t + 1);
+        return result;
+      },
+      saveMailbox: async (payload) => {
+        const result = await source.saveMailbox(payload);
+        if (result.ok) setReloadToken((t) => t + 1);
+        return result;
+      },
+      connect: async (connectionId) => {
+        setBusy(true);
+        setNotice(null);
+        // The redirect carries the connection id so the return leg knows which connection it is finishing;
+        // it is not authority -- the server checks it against the state it issued.
+        const redirectUri = oauthRedirectUri();
+        const result = await source.startAuthorization({ connectionId, redirectUri });
+        setBusy(false);
+        if (!result.ok) {
+          setNotice(`Could not start authorization: ${result.message}`);
+          return result;
+        }
+        const target = new URL(result.data.authorizationUrl);
+        const back = new URL(redirectUri);
+        back.searchParams.set("connection", connectionId);
+        target.searchParams.set("redirect_uri", back.toString());
+        window.location.assign(target.toString());
+        return result;
+      },
+      test: (connectionId) => run("Connection test", () => source.testConnection({ connectionId })),
+      disconnect: (connectionId) => run("Disconnect", () => source.disconnect({ connectionId })),
+      pollNow: (mailboxId) =>
+        run("Check for new mail", async () => {
+          const result = await source.pollNow({ mailboxId });
+          if (result.ok && result.data) {
+            result.data.detail = `${result.data.fetched} fetched, ${result.data.created} new, ${result.data.attachmentsStored} attachment(s) stored`;
+          }
+          return result;
+        }),
+      retry: (failureId) => run("Retry", () => source.retryDelivery({ failureId })),
+    }),
+    [run, source],
+  );
 
   const statusRows = (statuses) =>
     statuses.map((s) => [s, config?.overview.byStatus?.[s] ?? 0]).filter(([, count]) => count > 0);
@@ -428,28 +664,28 @@ export default function AdminEmailCommunications({
                 Every number here is counted from the intake records in this environment. Nothing on this page is
                 seeded, sampled or estimated — an environment with no inbound mail shows zeroes.
               </p>
+              {notice && <p className="fo-muted" role="status">{notice}</p>}
               <RequestsTable
                 rows={Object.entries(config.overview.byStatus ?? {})}
                 empty="No inbound requests have been taken in yet."
               />
+              <h4 className="fo-inbound-pane__subtitle">Attachments held</h4>
+              <RequestsTable
+                rows={Object.entries(config.overview.attachmentCustody ?? {})}
+                empty="No message with attachments has arrived yet."
+              />
             </>
           )}
-          {tab === "connections" && <ConnectionsTab config={config} canManage={canManage} onSave={save(source.saveConnection)} />}
-          {tab === "mailboxes" && <MailboxesTab config={config} canManage={canManage} onSave={save(source.saveMailbox)} />}
+          {tab === "connections" && (
+            <ConnectionsTab config={config} readiness={readiness} canManage={canManage} actions={actions} busy={busy} notice={notice} />
+          )}
+          {tab === "mailboxes" && <MailboxesTab config={config} canManage={canManage} actions={actions} busy={busy} notice={notice} />}
           {tab === "routing" && <RoutingTab config={config} />}
-          {tab === "processing" && <ProcessingTab />}
+          {tab === "processing" && <ProcessingTab readiness={readiness} />}
           {tab === "history" && (
             <RequestsTable rows={statusRows(HISTORY_STATUSES)} empty="No decisions have been recorded yet." />
           )}
-          {tab === "exceptions" && (
-            <>
-              <p className="fo-muted">
-                Nothing is ever discarded. A message that failed processing, arrived in a mailbox EOS does not know,
-                or was delivered twice is retained with the reason.
-              </p>
-              <RequestsTable rows={statusRows(EXCEPTION_STATUSES)} empty="No exceptions." />
-            </>
-          )}
+          {tab === "exceptions" && <ExceptionsTab config={config} canManage={canManage} actions={actions} busy={busy} />}
           {!canManage && tab !== "overview" && (
             <p className="fo-muted">Changing email configuration is not part of your role.</p>
           )}

@@ -12,6 +12,8 @@ import {
   SOURCE_STATUS,
   INBOUND_WORK_CAPABILITY_REQUEST,
   EMAIL_INTAKE_CAPABILITY_REQUEST,
+  governedEmailIntakeSource,
+  governedInboundWorkSource,
 } from "../src/access/inboundWorkSource.js";
 
 let passed = 0;
@@ -128,6 +130,21 @@ ok("inbound message content is never rendered as markup", () => {
     // The plain-text projection is the only body the screen knows about; the stored markup field is not
     // referenced anywhere in the client at all.
     assert.equal(/\boriginalBody\b(?!Text)/.test(source), false, `${relative} must read only originalBodyText`);
+  }
+});
+
+// ── Real provider transport ──────────────────────────────────────────────────────────────────────
+ok("the real connection lifecycle is reachable from the client, and only through callables", () => {
+  for (const action of ["startAuthorization", "completeAuthorization", "testConnection", "disconnect", "pollNow", "retryDelivery", "getProviderReadiness"]) {
+    assert.equal(typeof governedEmailIntakeSource[action], "function", `${action} is missing from the source seam`);
+  }
+  assert.equal(typeof governedInboundWorkSource.getAttachment, "function");
+});
+
+ok("no transport action reaches Firestore directly either", () => {
+  const source = read("../src/access/inboundWorkSource.js");
+  for (const forbidden of ["firebase/firestore", "getStorage", "getDownloadURL", "ref("]) {
+    assert.equal(source.includes(forbidden), false, `the source seam must not use ${forbidden}`);
   }
 });
 
