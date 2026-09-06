@@ -8478,3 +8478,43 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
 @media (max-width: 640px) {
   .fo-form-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Inbound Work review + Email & Communications administration ──────────────────────────────────
+   LAYOUT ONLY. Every colour, size and radius below is a declared semantic token -- there is no page
+   palette here, no hardcoded hex and no `var(--name, #hex)` fallback for a name that is not declared.
+   The two panes are a grid because the review screen's whole premise is that the message and EOS's
+   reading of it are visible at the same time; below 900px they stack, which is recomposition rather
+   than a second layout.
+
+   `--color-border-strong` on the pane, not `--color-border`: the pane sits on the sunken surface,
+   where the lighter hairline measures 2.90:1 and does not clear 1.4.11. */
+.fo-inbound-review { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; margin-top: var(--space-5); }
+@media (max-width: 900px) { .fo-inbound-review { grid-template-columns: 1fr; } }
+
+.fo-inbound-pane { min-width: 0; padding: var(--space-4); background: var(--color-surface-card);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.fo-inbound-pane__title { margin: 0 0 var(--space-3); font-size: var(--font-size-md); color: var(--color-text-primary); }
+.fo-inbound-pane__subtitle { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-size-base); color: var(--color-text-secondary); }
+
+.fo-inbound-fact { display: flex; gap: var(--space-3); padding: var(--space-1) 0; font-size: var(--font-size-base); }
+.fo-inbound-fact__label { flex: 0 0 9.5rem; font-size: var(--font-size-xs); letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted); padding-top: 2px; }
+.fo-inbound-fact__value { min-width: 0; color: var(--color-text-primary); overflow-wrap: anywhere; }
+
+/* The message body is TEXT and is rendered as text -- pre-wrap keeps the sender's line breaks without
+   the horizontal scroll a bare <pre> would give a long quoted reply. */
+.fo-inbound-body { margin: var(--space-3) 0; padding: var(--space-3); max-height: 22rem; overflow: auto;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: var(--font-size-base);
+  color: var(--color-text-primary); background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); }
+
+.fo-inbound-attachments, .fo-inbound-thread { margin: 0; padding-left: var(--space-5); font-size: var(--font-size-base); }
+.fo-inbound-thread > li + li { margin-top: var(--space-3); }
+
+.fo-inbound-field { display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-3) 0; }
+.fo-inbound-form { display: grid; gap: var(--space-3); }
+.fo-inbound-selected { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: 0; }
+.fo-inbound-warnings { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.fo-inbound-actions { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4);
+  padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+.fo-inbound-decline, .fo-inbound-attach { display: grid; gap: var(--space-2); }
+.fo-inbound-admin { margin-top: var(--space-4); }

@@ -1,0 +1,205 @@
+name: Email Connections and Inbound Work Tests
+
+# EMAIL CONNECTIONS + INBOUND WORK -- base EOS email intake. A new subsystem needs its own workflow or it
+# is CI-uncovered, and this one guards four claims that must not be allowed to rot quietly:
+#
+#   1. INBOUND EMAIL IS UNTRUSTED. Message content is stripped to plain text before it is stored, the
+#      governed read never projects the stored markup, and neither screen can render markup from a message.
+#   2. ACCEPTING CREATES EXACTLY ONE WORK ORDER. Two clicks, a retry and a concurrent double-submit all
+#      converge on the same Work Order, and a reply on the thread creates none at all.
+#   3. THE TWO AUTHORITIES STAY SEPARATE. Configuring mailboxes is not authority to accept work, and
+#      working the queue is not authority to repoint a mailbox.
+#   4. BASE EOS NEEDS NO ADD-ON. Native processing extracts and suggests with no VDX and no external
+#      provider configured -- and an EXTERNAL provider changes nothing about Work Order creation.
+#
+# THREE JOBS, SPLIT BY COST. The offline suite is pure and runs first, so a broken invariant fails in
+# seconds. The client suite covers navigation gating and the review screen. The emulator suite proves the
+# wiring, which is the one thing fakes cannot.
+#
+# NO production, NO deployment, NO credentials, NO repository secrets. The emulator runs as project
+# "eos-platform-sandbox" on loopback -- deliberately NOT "taylor-parts", because the capability activation
+# this feature depends on exists only in non-production environments and the guard would (correctly) refuse
+# everything under the production identity. All six capabilities stay registered `active: false`; nothing
+# here changes that.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/inboundWork/**"
+      - "functions/src/createWorkOrder.ts"
+      - "functions/src/workOrderEquipment.ts"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/index.ts"
+      - "functions/scripts/fixtures/inboundWorkFixtures.mjs"
+      - "functions/scripts/seedSandboxInboundWork.mjs"
+      - "functions/test/inboundWork*.test.mjs"
+      - "config/environments.json"
+      - "field-ops-app-vite/src/access/inboundWorkSource.js"
+      - "field-ops-app-vite/src/access/useGovernedCapabilities.js"
+      - "field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/test/inboundWork*.test.mjs"
+      - "field-ops-app-vite/test/inboundWork*.test.jsx"
+      - ".github/workflows/inbound-work-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/inboundWork/**"
+      - "functions/src/createWorkOrder.ts"
+      - "functions/src/workOrderEquipment.ts"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/types/access.ts"
+      - "functions/src/index.ts"
+      - "functions/scripts/fixtures/inboundWorkFixtures.mjs"
+      - "functions/scripts/seedSandboxInboundWork.mjs"
+      - "functions/test/inboundWork*.test.mjs"
+      - "config/environments.json"
+      - "field-ops-app-vite/src/access/inboundWorkSource.js"
+      - "field-ops-app-vite/src/access/useGovernedCapabilities.js"
+      - "field-ops-app-vite/src/modules/service/InboundWorkWorkspace.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/test/inboundWork*.test.mjs"
+      - "field-ops-app-vite/test/inboundWork*.test.jsx"
+      - ".github/workflows/inbound-work-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  inbound-work-offline:
+    name: Sanitization, providers, routing, threading, processing (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      # Hostile message content, both provider mappings, the closed routing model, thread association and
+      # the provider-neutral processing contract -- all pure, all fixture-driven.
+      - name: Inbound work domain (untrusted content, providers, routing, threading, processing)
+        run: node --test test/inboundWorkDomain.test.mjs
+        working-directory: functions
+
+      # The catalogue guard: all six ids must stay active:false, because true means production too.
+      - name: Permission catalog (catalogue-inactive; activation is per-environment)
+        run: node test/permissionCatalog.test.mjs
+        working-directory: functions
+
+      # The two Roles must stay separable, and the activation seam must stay production-blocked.
+      - name: Governed business Roles (configuration and decision authority stay separate)
+        run: node test/governedBusinessRoles.test.mjs
+        working-directory: functions
+
+      - name: Environment capability overrides (production stays triple-blocked)
+        run: node --test test/environmentCapabilityOverrides.test.mjs
+        working-directory: functions
+
+  inbound-work-client:
+    name: Navigation gating and the review screen (client)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies (reproducible)
+        run: npm ci
+        working-directory: field-ops-app-vite
+
+      # Both destinations are capability-gated and fail closed; the source seam never touches Firestore.
+      - name: Navigation and source seam
+        run: node test/inboundWorkNav.test.mjs
+        working-directory: field-ops-app-vite
+
+      # The review screen: hostile content stays text, Accept submits only the reviewer's values, and a
+      # role without the capability gets an honest denial rather than a live button.
+      - name: Inbound Work review screen (jsdom)
+        run: npx vitest run test/inboundWorkWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+
+  inbound-work-emulator:
+    name: Intake to Work Order, end to end (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Build (TypeScript)
+        run: npm run build
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project eos-platform-sandbox --config ../firebase.json > /tmp/inbound-work-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/inbound-work-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/inbound-work-emulator.log
+          exit 1
+        working-directory: functions
+
+      # A provider message goes in through the real adapter and one governed Work Order comes out, carrying
+      # the customer, site, unit, warranty authorization and problem the message described -- with the
+      # intake linked to it, an audit event beside it, and a reply on the thread creating nothing.
+      - name: Inbound work end to end (intake, accept, decline, attach, threading, authority)
+        run: node --test test/inboundWorkEmulator.test.mjs
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inbound-work-emulator-logs
+          path: |
+            /tmp/inbound-work-emulator.log
+            functions/firestore-debug.log

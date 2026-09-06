@@ -260,6 +260,10 @@ export const NON_HIERARCHICAL_ROLES: ReadonlySet<string> = new Set([
   "inventoryTransferOperator",
   "inventoryCycleCountCounter",
   "inventoryCycleCountReconciler",
+  // Capability grants, not rungs: configuring email intake and reviewing the inbound queue place
+  // nobody above anybody.
+  "emailIntakeAdministrator",
+  "serviceInboundWorkReviewer",
 ]);
 
 /**

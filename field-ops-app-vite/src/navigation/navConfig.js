@@ -189,6 +189,13 @@ export const NAV_DOMAINS = [
       // Work Order view (Dashboard > My Dashboard /
       // TechnicianDashboard.jsx), untouched by this sprint.
       { key: "workOrders", label: "Work Orders", path: "" },
+      // Service -> INBOUND WORK. Work that arrived from outside EOS (today: email from Taylor Corporate,
+      // vendors and manufacturers) waiting for a Service decision. CAPABILITY-GATED rather than role-gated,
+      // like Data Import above: service.inboundWork.read is registered active:false and activated per
+      // environment, so an environment that has not activated email intake does not show a destination that
+      // would refuse everyone who opened it. Nav visibility is not the security boundary -- the trusted
+      // callables are.
+      { key: "inboundWork", label: "Inbound Work", path: "inbound-work", capabilityAccess: ["service.inboundWork.read"] },
       // The legacy fieldops_jobs screen (Jobs.jsx), relocated from
       // the "Work Orders" slot above. Same legacyKey ("jobs") as
       // before, so existing role access (including technician) is
@@ -588,6 +595,11 @@ export const NAV_DOMAINS = [
       // capability-gated rather than role-gated -- an environment that has not activated import does
       // not show a destination that would refuse everyone who opened it.
       { key: "dataImport", label: "Data Import", path: "data-import", capabilityAccess: ["admin.dataImport.stage"] },
+      // Email & Communications -- provider connections, operational mailboxes, routing rules, processing and
+      // exceptions. ONE destination carrying the seven-section information architecture as tabs: Administration
+      // already holds fifteen items, and the parts of one configuration subject belong under the subject.
+      // Capability-gated for the same reason Data Import is.
+      { key: "emailCommunications", label: "Email & Communications", path: "email-communications", capabilityAccess: ["administration.emailIntake.read"] },
       { key: "integrations", label: "Integrations", path: "integrations" },
       { key: "auditLogs", label: "Audit Logs", path: "audit-logs" },
     ],
@@ -699,7 +711,7 @@ export function isDomainVisible(domain, role, allowedLegacyKeys, operationalCont
 // subnav array order). Any service subnav item NOT listed here (e.g.
 // controlTower) renders as a standalone item, preserving its access + URL.
 export const SERVICE_NAV_GROUPS = [
-  { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "jobAssignments", "warranty"] },
+  { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "inboundWork", "jobAssignments", "warranty"] },
   { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"] },
   { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace", "coordinatedMission"] },
   // SCANNING IS ITS OWN GROUP, not a child of Technician Workspace.

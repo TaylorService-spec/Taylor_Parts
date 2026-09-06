@@ -152,13 +152,22 @@ const SPINE_11 = [
   // not be able to activate execution by activating the ability to look at a preview.
   "admin.dataImport.stage",
   "admin.dataImport.execute",
+  // EMAIL CONNECTIONS + INBOUND WORK (2026-09-05). Six ids, sandbox-eligible so the Administration ->
+  // Email & Communications and Service -> Inbound Work surfaces are exercisable at all. Certification and
+  // production declare none of them; production remains triple-blocked.
+  "administration.emailIntake.read",
+  "administration.emailIntake.manage",
+  "service.inboundWork.read",
+  "service.inboundWork.accept",
+  "service.inboundWork.decline",
+  "service.inboundWork.attachExisting",
 ];
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 85 eligible capability ids", () => {
+test("eligible allow-list is exactly the 91 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 85);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 91);
 });
 
 test("sandbox project resolves the full spine override set", () => {

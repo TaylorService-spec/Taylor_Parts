@@ -274,6 +274,19 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   // defect could not land a row in it.
   "admin.dataImport.stage",
   "admin.dataImport.execute",
+  // EMAIL CONNECTIONS + INBOUND WORK. Eligible so a non-production environment CAN activate email
+  // intake at all; without this all six ids are permanently denied everywhere and both surfaces
+  // (Administration -> Email & Communications, Service -> Inbound Work) have nothing behind them.
+  // Eligibility is not activation and activation is not a grant, unchanged: the registry decides what
+  // an environment DOES activate, and a principal still needs a governed roleAssignment carrying the id.
+  // Production is triple-blocked exactly as for every id above, and the delivery seam is additionally
+  // refused there by the same non-production target guard Data Import uses.
+  "administration.emailIntake.read",
+  "administration.emailIntake.manage",
+  "service.inboundWork.read",
+  "service.inboundWork.accept",
+  "service.inboundWork.decline",
+  "service.inboundWork.attachExisting",
 ]);
 
 const EMPTY: ReadonlySet<PermissionId> = new Set<PermissionId>();
@@ -542,6 +555,14 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         // neither id, and the command refuses the production project regardless.
         "admin.dataImport.stage",
         "admin.dataImport.execute",
+        // EMAIL CONNECTIONS + INBOUND WORK, sandbox only. Mirrors config/environments.json, which is
+        // canonical. Certification and production declare none of these ids.
+        "administration.emailIntake.read",
+        "administration.emailIntake.manage",
+        "service.inboundWork.read",
+        "service.inboundWork.accept",
+        "service.inboundWork.decline",
+        "service.inboundWork.attachExisting",
       ]),
     }),
     // DEPLOYABLE SYNTHETIC CERTIFICATION RUNTIME. Provisioned 2026-08-30.

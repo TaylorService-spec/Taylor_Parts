@@ -1589,6 +1589,49 @@ export const PERFORMANCE_GOAL_SUBJECT_ROLE: Role = Object.freeze({
   permissions: ["performance.goal.read"],
 }) as Role;
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// EMAIL CONNECTIONS + INBOUND WORK -- two Roles, because there are two audiences and they are not the
+// same people.
+//
+// The administrator who authorizes a Microsoft 365 or Google Workspace connection and decides which
+// mailbox is the warranty mailbox is doing configuration. The Service coordinator who reads what arrived
+// and turns it into a Work Order is doing operations. Giving the coordinator the administration Role so
+// they could work the queue -- the shortcut this split exists to prevent -- would hand every queue worker
+// the ability to repoint the company's inbound mail.
+//
+// DECLARING EITHER OBJECT GRANTS NOTHING. A principal holds one only via a governed, audited
+// roleAssignment, and the capabilities themselves are registered active:false besides.
+export const EMAIL_INTAKE_ADMINISTRATOR_ROLE: Role = Object.freeze({
+  id: "emailIntakeAdministrator",
+  name: "Email Intake Administrator",
+  description:
+    "Durable least-privilege Role for configuring EOS email intake: provider connections, operational mailboxes and routing rules. Carries exactly administration.emailIntake.read/manage and deliberately NOT any service.inboundWork.* id, so configuring the mailboxes confers no authority to accept, decline or attach the work that arrives in them. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["administration.emailIntake.read", "administration.emailIntake.manage"],
+}) as Role;
+
+// The operational half. Carries the queue read and all three decisions: in a service business the person
+// who reviews an inbound request is the person who accepts or turns it away, and splitting the decisions
+// across two Roles would describe an approval step this workflow does not have. The ids stay separate in
+// the catalog so an organisation that DOES want that separation can express it without a code change.
+export const SERVICE_INBOUND_WORK_REVIEWER_ROLE: Role = Object.freeze({
+  id: "serviceInboundWorkReviewer",
+  name: "Service Inbound Work Reviewer",
+  description:
+    "Durable least-privilege Role for working the Service Inbound Work queue: read a request, then accept it into a governed Work Order, decline it with a reason, or attach it to existing work. Carries no administration.emailIntake.* id -- a reviewer cannot connect, disconnect or repoint a mailbox. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "service.inboundWork.read",
+    "service.inboundWork.accept",
+    "service.inboundWork.decline",
+    "service.inboundWork.attachExisting",
+  ],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -1631,4 +1674,6 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   technicianLaborRecorder: TECHNICIAN_LABOR_RECORDER_ROLE,
   workOrderLaborCorrector: WORK_ORDER_LABOR_CORRECTOR_ROLE,
   performanceGoalSubject: PERFORMANCE_GOAL_SUBJECT_ROLE,
+  emailIntakeAdministrator: EMAIL_INTAKE_ADMINISTRATOR_ROLE,
+  serviceInboundWorkReviewer: SERVICE_INBOUND_WORK_REVIEWER_ROLE,
 });

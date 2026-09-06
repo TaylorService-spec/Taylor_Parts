@@ -183,7 +183,7 @@ test("no existing domain's routes changed — every non-financials domain path s
   assert.deepEqual(byKey.serviceOperations, ["/service-operations"]);
   assert.deepEqual(byKey.equipment, ["/equipment"]);
   assert.deepEqual(byKey.service, [
-    "/service", "/service/job-assignments", "/service/dispatch", "/service/coordinated-visits",
+    "/service", "/service/inbound-work", "/service/job-assignments", "/service/dispatch", "/service/coordinated-visits",
     "/service/coordinated-mission", "/service/technician-workspace", "/service/scan",
     "/service/dispatcher-board", "/service/scheduling", "/service/dispatch-scheduling", "/service/warranty",
   ]);
@@ -217,6 +217,7 @@ test("no existing domain's routes changed — every non-financials domain path s
     // DATA IMPORT P1. Administration, for the same reason as Financial Policy: loading a data set
     // is an implementation activity, not routine operational work.
     "/administration/data-import",
+    "/administration/email-communications",
     "/administration/integrations", "/administration/audit-logs",
   ]);
 });

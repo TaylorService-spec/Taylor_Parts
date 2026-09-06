@@ -26,19 +26,19 @@ things and this document never fuses them into one verdict.
 
 ## Counts
 
-- **capabilities**: 140
+- **capabilities**: 146
 - **catalogActive**: 0
-- **catalogInactive**: 140
-- **eligibleForEnvironmentActivation**: 85
-- **activatedInSomeEnvironment**: 85
+- **catalogInactive**: 146
+- **eligibleForEnvironmentActivation**: 91
+- **activatedInSomeEnvironment**: 91
 - **callableExports**: 46
-- **destinations**: 90
+- **destinations**: 92
 - **destinationsHidden**: 19
 - **guides**: 0
 - **registerEntries**: 18
 - **parityIssues**: 0
 
-Catalog parse check: 140/140 entries (ok)
+Catalog parse check: 146/146 entries (ok)
 
 ## Implementation evidence
 
@@ -47,14 +47,14 @@ Evidence of reference. **Not** proof that a callable exists, except where stated
 | Class | Count | Means |
 | --- | ---: | --- |
 | EXPORTED | 21 | An exported callable in `index.ts` names this capability |
-| SERVER_REFERENCED | 113 | Referenced under `functions/src`; no callable matched |
+| SERVER_REFERENCED | 119 | Referenced under `functions/src`; no callable matched |
 | CLIENT_ONLY | 2 | Referenced only in the client app |
 | NO_IMPLEMENTATION_EVIDENCE | 4 | No literal reference found — **may be a false negative** for ids assembled indirectly |
 
 ## Environment activation
 
-Eligible for activation (allow-list in the resolver): **85**.
-Activated by at least one environment: **85**.
+Eligible for activation (allow-list in the resolver): **91**.
+Activated by at least one environment: **91**.
 
 Production is hard-blocked by role in the resolver and carries no override declaration.
 

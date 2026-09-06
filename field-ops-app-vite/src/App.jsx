@@ -72,6 +72,8 @@ const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImp
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const UserDetail = lazy(() => import("./modules/administration/UserDetail.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
+const AdminEmailCommunications = lazy(() => import("./modules/administration/AdminEmailCommunications.jsx"));
+const InboundWorkWorkspace = lazy(() => import("./modules/service/InboundWorkWorkspace.jsx"));
 const PurchaseOrders = lazy(() => import("./modules/purchasing/PurchaseOrders"));
 const Receipts = lazy(() => import("./modules/purchasing/Receipts"));
 const Suppliers = lazy(() => import("./modules/purchasing/Suppliers"));
@@ -465,6 +467,17 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // Exposes the already-deployed governed transitionWorkOrder("Schedule", ...) transition (the
   // SCHEDULED gate that had no UI); repo-only, no Rules/Functions deploy, no grant, no direct
   // fieldops_wos write. The write re-authorizes server-side (Schedule = admin/dispatcher).
+  // Service -> Inbound Work, and Administration -> Email & Communications. Both are brand-new screens with
+  // no legacyKey, so they need an explicit branch here exactly like AccountsList/SchedulingWorkspace: the
+  // generic subnav loop emits the route and renders whatever this function returns, and an item with no
+  // branch falls through to PlaceholderPage. Both are additionally capability-gated in navConfig.js, and
+  // both fail closed inside themselves against the trusted effective-access feed.
+  if (domain.key === "service" && item.key === "inboundWork") {
+    return <InboundWorkWorkspace />;
+  }
+  if (domain.key === "administration" && item.key === "emailCommunications") {
+    return <AdminEmailCommunications />;
+  }
   if (domain.key === "service" && item.key === "scheduling") {
     return <SchedulingWorkspace />;
   }

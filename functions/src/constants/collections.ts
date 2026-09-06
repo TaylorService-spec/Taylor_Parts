@@ -103,3 +103,20 @@ export const CRM_ACTIVITIES_COLLECTION = "crm_activities";
 // target is a NEW VERSION beside the old one, so a September target stays September's target after
 // October's changes.
 export const PERFORMANCE_GOALS_COLLECTION = "performance_goals";
+
+// Email Connections + Inbound Work (base EOS email intake). Four Admin-SDK-only collections, the same
+// fail-closed posture as CRM_ACTIVITIES_COLLECTION above and for the same reason: firestore.rules has NO
+// match block for any of them, and a collection no rule matches is DENIED to every client, read and write.
+// The only paths in or out are the trusted commands/reads in functions/src/inboundWork/*.
+//
+// `email_connections` is the EXTERNAL provider authorization (Microsoft 365 / Google Workspace) and holds
+// NO mailbox password and no OAuth token value -- only the provider's status and the name of the secret a
+// deployment binds (see emailProvider.ts).
+// `email_mailboxes` is the OPERATIONAL mailbox configuration (Service / Warranty / Parts), separate from the
+// connection because one connection commonly exposes several operational mailboxes.
+// `email_routing_rules` is the small, ordered rule set that classifies an inbound message.
+// `inbound_work_requests` is the operational intake record a Service reviewer accepts, declines or attaches.
+export const EMAIL_CONNECTIONS_COLLECTION = "email_connections";
+export const EMAIL_MAILBOXES_COLLECTION = "email_mailboxes";
+export const EMAIL_ROUTING_RULES_COLLECTION = "email_routing_rules";
+export const INBOUND_WORK_REQUESTS_COLLECTION = "inbound_work_requests";

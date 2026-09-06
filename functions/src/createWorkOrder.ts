@@ -63,6 +63,16 @@ export async function createWorkOrderRecord(
     salesOrderId?: string;
     salesOrderLineRefs?: SalesOrderLineRef[];
     inventorySnapshot?: InventorySnapshotItem[];
+    // INBOUND PROVENANCE (Email Connections + Inbound Work). The same optional-lineage shape as
+    // `salesOrderId` above and added for the same reason: a Work Order created by accepting an inbound
+    // request must be able to answer "why does this exist" from the record itself, not only from the audit
+    // trail. `externalReference`/`authorizationNumber` are the vendor's or manufacturer's own identifiers
+    // (a warranty authorization, a case number) carried through so nobody retypes them. All three are
+    // untrusted external text by origin -- bounded and validated by the inbound command before it gets here
+    // -- and none of them is authority: they name nothing EOS resolves a permission against.
+    inboundWorkRequestId?: string;
+    externalReference?: string;
+    authorizationNumber?: string;
   },
   nowYear: number
 ): Promise<{ id: string; woNumber: string }> {
@@ -81,6 +91,9 @@ export async function createWorkOrderRecord(
     ...(input.salesOrderId ? { salesOrderId: input.salesOrderId } : {}),
     ...(Array.isArray(input.salesOrderLineRefs) && input.salesOrderLineRefs.length ? { salesOrderLineRefs: input.salesOrderLineRefs } : {}),
     ...(Array.isArray(input.inventorySnapshot) && input.inventorySnapshot.length ? { inventorySnapshot: input.inventorySnapshot } : {}),
+    ...(input.inboundWorkRequestId ? { inboundWorkRequestId: input.inboundWorkRequestId } : {}),
+    ...(input.externalReference ? { externalReference: input.externalReference } : {}),
+    ...(input.authorizationNumber ? { authorizationNumber: input.authorizationNumber } : {}),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

@@ -1,8 +1,8 @@
 {
  "catalog": {
-  "total": 140,
+  "total": 146,
   "active": 37,
-  "inactive": 103
+  "inactive": 109
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
@@ -155,9 +155,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 140,
+   "grantedCount": 146,
    "operableCount": 37,
-   "blockedCount": 103,
+   "blockedCount": 109,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -166,6 +166,8 @@
     "admin.employeeProfile.write",
     "admin.roleAssignment.write",
     "admin.userStatus.write",
+    "administration.emailIntake.manage",
+    "administration.emailIntake.read",
     "audit.event.read",
     "coverage.read",
     "coverage.write",
@@ -290,6 +292,10 @@
     "salesOrder.read",
     "salesOrder.service",
     "salesOrder.write",
+    "service.inboundWork.accept",
+    "service.inboundWork.attachExisting",
+    "service.inboundWork.decline",
+    "service.inboundWork.read",
     "warehouse.record.read",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
@@ -343,6 +349,8 @@
     "admin.credentialReset.initiate",
     "admin.dataImport.execute",
     "admin.dataImport.stage",
+    "administration.emailIntake.manage",
+    "administration.emailIntake.read",
     "coverage.read",
     "coverage.write",
     "crm.activity.create",
@@ -440,6 +448,10 @@
     "salesOrder.read",
     "salesOrder.service",
     "salesOrder.write",
+    "service.inboundWork.accept",
+    "service.inboundWork.attachExisting",
+    "service.inboundWork.decline",
+    "service.inboundWork.read",
     "workOrder.labor.correct",
     "workOrder.labor.record",
     "workOrder.parts.plan"
@@ -1405,6 +1417,27 @@
    ]
   },
   {
+   "roleId": "serviceInboundWorkReviewer",
+   "label": "Service Inbound Work Reviewer",
+   "composedFunctionalRoles": [],
+   "grantedCount": 4,
+   "operableCount": 0,
+   "blockedCount": 4,
+   "granted": [
+    "service.inboundWork.accept",
+    "service.inboundWork.attachExisting",
+    "service.inboundWork.decline",
+    "service.inboundWork.read"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "service.inboundWork.accept",
+    "service.inboundWork.attachExisting",
+    "service.inboundWork.decline",
+    "service.inboundWork.read"
+   ]
+  },
+  {
    "roleId": "inventoryCatalogAdministrator",
    "label": "Inventory Catalog Administrator",
    "composedFunctionalRoles": [],
@@ -1511,6 +1544,23 @@
    "grantedButInactive": [
     "inventory.location.bin.manage",
     "inventory.location.bin.read"
+   ]
+  },
+  {
+   "roleId": "emailIntakeAdministrator",
+   "label": "Email Intake Administrator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 2,
+   "operableCount": 0,
+   "blockedCount": 2,
+   "granted": [
+    "administration.emailIntake.manage",
+    "administration.emailIntake.read"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "administration.emailIntake.manage",
+    "administration.emailIntake.read"
    ]
   },
   {

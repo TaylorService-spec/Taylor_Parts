@@ -108,7 +108,7 @@ ok("the Administration domain's key/path/label are unchanged", () => {
   assert.equal(adminDomain.path, "administration");
   assert.equal(adminDomain.label, "Administration");
 });
-ok("exactly fourteen Administration subnav items now exist", () => {
+ok("exactly fifteen Administration subnav items now exist", () => {
   // The count is pinned so a nav item cannot appear by accident. Duplicate Rules
   // was added deliberately (Owner, 2026-08-19) as its own tab under Administration, and
   // Objects (the Role x Object x CRED grid) deliberately on 2026-08-20. The pin earned its
@@ -127,7 +127,11 @@ ok("exactly fourteen Administration subnav items now exist", () => {
   // FOURTEEN, not fifteen, since the ADMINISTRATION USERS CONSOLIDATION (2026-09-04): Employees and
   // Users were two destinations over one set of people and are now one. The pin going DOWN is the
   // point -- a consolidation that left the old item in place would show here as an unchanged count.
-  assert.equal(adminDomain.subnav.length, 14);
+  // Email & Communications joined for EMAIL CONNECTIONS + INBOUND WORK (2026-09-05): provider
+  // connections, operational mailboxes, routing rules, processing and exceptions. ONE item carrying
+  // seven sections as tabs, not seven rail items -- the parts of one configuration subject belong
+  // under the subject. Capability-gated like Data Import, for the same reason.
+  assert.equal(adminDomain.subnav.length, 15);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {
