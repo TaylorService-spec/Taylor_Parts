@@ -95,6 +95,7 @@ export interface InboundWorkDetail extends InboundWorkQueueRow {
   sourceProvider: string;
   sourceConnectionId: string;
   sourceMailboxId: string;
+  sourceMailboxName: string | null;
   sourceMessageId: string;
   sourceThreadId: string | null;
   recipients: string[];
@@ -115,6 +116,7 @@ export interface InboundWorkDetail extends InboundWorkQueueRow {
   serialNumber: string | null;
   modelNumber: string | null;
   routingRuleId: string | null;
+  routingRuleName: string | null;
   routingOutcome: string | null;
   threadAssociation: string | null;
   processingProvider: string;
@@ -139,6 +141,7 @@ export async function readInboundWorkRequest(db: Firestore, requestId: string): 
     sourceProvider: str(d.sourceProvider, 64),
     sourceConnectionId: str(d.sourceConnectionId),
     sourceMailboxId: str(d.sourceMailboxId),
+    sourceMailboxName: strOrNull(d.sourceMailboxName, 120),
     sourceMessageId: str(d.sourceMessageId),
     sourceThreadId: strOrNull(d.sourceThreadId),
     recipients: Array.isArray(d.recipients) ? d.recipients.map((v) => str(v)).filter(Boolean) : [],
@@ -187,6 +190,7 @@ export async function readInboundWorkRequest(db: Firestore, requestId: string): 
     serialNumber: strOrNull(d.serialNumber, 120),
     modelNumber: strOrNull(d.modelNumber, 120),
     routingRuleId: strOrNull(d.routingRuleId),
+    routingRuleName: strOrNull(d.routingRuleName, 120),
     routingOutcome: strOrNull(d.routingOutcome, 60),
     threadAssociation: strOrNull(d.threadAssociation, 60),
     processingProvider: str(d.processingProvider, 60) || "EOS_NATIVE",

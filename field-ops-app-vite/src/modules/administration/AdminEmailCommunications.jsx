@@ -40,6 +40,42 @@ const TABS = [
   ["exceptions", "Exceptions"],
 ];
 
+// THE STORED TOKEN IS NOT THE LABEL. `GOOGLE_WORKSPACE`, `PENDING_AUTHORIZATION` and `NEEDS_REVIEW` are
+// how EOS records a fact; they are not how a person reads one. Every screen word comes from a map here,
+// and anything unmapped falls back to sentence case rather than shouting an enum at the reader.
+const PROVIDER_LABELS = { MICROSOFT_365: "Microsoft 365", GOOGLE_WORKSPACE: "Google Workspace" };
+const OAUTH_LABELS = {
+  CONNECTED: "Connected",
+  PENDING_AUTHORIZATION: "Awaiting consent",
+  NOT_CONNECTED: "Not connected",
+  EXPIRED: "Authorization expired",
+  REVOKED: "Authorization revoked",
+};
+const HEALTH_LABELS = { HEALTHY: "Healthy", DEGRADED: "Degraded", FAILED: "Failing", UNKNOWN: "Not checked yet" };
+const STATUS_LABELS = {
+  AWAITING_DECISION: "Awaiting decision",
+  NEEDS_REVIEW: "Needs review",
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+  ATTACHED: "Attached to existing work",
+  DUPLICATE: "Duplicate of an earlier message",
+  FAILED: "Processing failed",
+  QUARANTINED: "Quarantined",
+};
+const CUSTODY_LABELS = {
+  NONE: "No attachments",
+  STORED: "Held by EOS",
+  PARTIAL: "Partly held",
+  METADATA_ONLY: "Listed, not retrieved",
+  FAILED: "Could not be retrieved",
+};
+
+/** A stored token as a sentence. Unmapped values degrade to sentence case, never to a raw enum. */
+function label(map, value) {
+  if (!value) return "—";
+  return map[value] ?? String(value).toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
 const HEALTH_TONE = { HEALTHY: "positive", DEGRADED: "attention", FAILED: "attention", UNKNOWN: "unknown" };
 const OAUTH_TONE = { CONNECTED: "positive", PENDING_AUTHORIZATION: "info", NOT_CONNECTED: "unknown", EXPIRED: "attention", REVOKED: "attention" };
 
@@ -60,6 +96,34 @@ const FAILURE_EXPLANATIONS = {
   CONFIGURATION_INVALID: "This connection is not configured for this environment.",
   DELIVERY_RETRY_EXHAUSTED: "Retries are exhausted. Fix the cause, then retry from here.",
 };
+
+const CONDITION_PHRASES = {
+  senderAddress: (v) => `sender is ${v}`,
+  senderDomain: (v) => `sender domain is ${v}`,
+  mailboxId: (v, names) => `mailbox is ${names(v)}`,
+  subjectContains: (v) => `subject contains ${[].concat(v).join(" and ")}`,
+  bodyContains: (v) => `body contains ${[].concat(v).join(" and ")}`,
+  hasAttachments: (v) => (v ? "the message has attachments" : "the message has no attachments"),
+};
+
+const OUTCOME_PHRASES = {
+  requestType: (v) => `classify as ${label({}, v)}`,
+  destination: (v) => `send to ${label({}, v)}`,
+  queue: (v) => `queue ${v}`,
+  operatingCompanyId: (v) => `operating company ${v}`,
+  priority: (v) => `priority ${v}`,
+  // A rule that does not hold for review says nothing: "no review hold" is the default, and printing a
+  // default as though it were a decision makes every rule look like it made one.
+  manualReview: (v) => (v ? "hold for review" : null),
+};
+
+/** One rule clause as a sentence a person can check against what they meant to configure. */
+function phrases(source, dictionary, names = (v) => v) {
+  return Object.entries(source ?? {})
+    .filter(([key, value]) => dictionary[key] && value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => dictionary[key](value, names))
+    .filter(Boolean);
+}
 
 const emptyConnection = {
   connectionName: "",
@@ -85,7 +149,33 @@ const emptyMailbox = {
   inboundEnabled: true,
 };
 
-const formatWhen = (millis) => (millis ? new Date(millis).toLocaleString() : "—");
+/**
+ * "4 minutes ago", not "9/5/2026, 11:01:21 PM".
+ *
+ * An operator watching a connection is asking HOW LONG since it last worked, and subtracting two
+ * timestamps in their head is work the screen can do. The exact instant is still available -- it is the
+ * title on the element -- for the moment somebody needs it for a support ticket.
+ */
+const RELATIVE_UNITS = [["day", 86_400_000], ["hour", 3_600_000], ["minute", 60_000]];
+function when(millis) {
+  if (!millis) return "—";
+  const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const difference = millis - Date.now();
+  for (const [unit, size] of RELATIVE_UNITS) {
+    if (Math.abs(difference) >= size) return relative.format(Math.round(difference / size), unit);
+  }
+  return "just now";
+}
+
+/** The relative phrase on screen; the exact instant on the element, for the support ticket. */
+function When({ millis }) {
+  if (!millis) return <>—</>;
+  return (
+    <time dateTime={new Date(millis).toISOString()} title={new Date(millis).toLocaleString()}>
+      {when(millis)}
+    </time>
+  );
+}
 
 /** The redirect the provider sends the administrator back to: this very screen, on this deployment. */
 export function oauthRedirectUri(location = window.location) {
@@ -118,112 +208,99 @@ function ConnectionsTab({ config, readiness, canManage, actions, busy, notice })
       )}
       {notice && <p className="fo-muted" role="status">{notice}</p>}
 
-      <table className="fo-sales-pipeline">
-        <thead>
-          <tr>
-            <th>Connection</th>
-            <th>Provider</th>
-            <th>Account</th>
-            <th>Authorization</th>
-            <th>Health</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {config.connections.length === 0 ? (
-            <tr>
-              <td colSpan={6}>No connections configured.</td>
-            </tr>
-          ) : (
-            config.connections.map((c) => (
-              <tr key={c.id}>
-                <td data-label="Connection">
-                  {c.connectionName}
-                  {c.providerErrorCode && (
-                    <div className="fo-muted">{FAILURE_EXPLANATIONS[c.providerErrorCode] ?? c.providerErrorCode}</div>
-                  )}
-                </td>
-                <td data-label="Provider">
-                  {c.provider}
-                  {!providerReady(c.provider) && <div className="fo-muted">No OAuth client configured here</div>}
-                </td>
-                <td data-label="Account">{c.connectedAccount}</td>
-                <td data-label="Authorization">
-                  <StatusPill tone={OAUTH_TONE[c.oauthStatus] ?? "unknown"} label={c.oauthStatus} asText />
-                  <div className="fo-muted">
-                    {c.authorizedAt ? `Authorized ${formatWhen(c.authorizedAt)}` : "Never authorized"}
-                  </div>
-                </td>
-                <td data-label="Health">
-                  <StatusPill tone={HEALTH_TONE[c.health] ?? "unknown"} label={c.health} asText />
-                  <div className="fo-muted">
-                    {c.lastMessageReceived ? `Last message ${formatWhen(c.lastMessageReceived)}` : "No mail received yet"}
-                  </div>
-                </td>
-                <td data-label="Actions">
-                  <div className="fo-inbound-row-actions">
-                    <Button
-                      variant="primary"
-                      disabled={!canManage || busy || !providerReady(c.provider) || readiness?.transportAvailable === false}
-                      onClick={() => actions.connect(c.id)}
-                    >
-                      {c.oauthStatus === "CONNECTED" ? "Reauthorize" : "Connect"}
-                    </Button>
-                    <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.test(c.id)}>
-                      Test connection
-                    </Button>
-                    {c.oauthStatus === "CONNECTED" && (
-                      <Button variant="tertiary" className="fo-link-btn" disabled={!canManage || busy} onClick={() => actions.disconnect(c.id)}>
-                        Disconnect
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+      {config.connections.length === 0 ? (
+        <p className="fo-muted">No connections configured.</p>
+      ) : (
+        <ul className="fo-connection-list">
+          {config.connections.map((c) => (
+            <li key={c.id} className="fo-connection-card">
+              <div className="fo-connection-card__identity">
+                <h2 className="fo-connection-card__name">{c.connectionName}</h2>
+                <p className="fo-connection-card__account">
+                  {label(PROVIDER_LABELS, c.provider)} · {c.connectedAccount}
+                </p>
+              </div>
+              <div className="fo-connection-card__state">
+                <StatusPill tone={OAUTH_TONE[c.oauthStatus] ?? "unknown"} label={label(OAUTH_LABELS, c.oauthStatus)} asText />
+                <StatusPill tone={HEALTH_TONE[c.health] ?? "unknown"} label={label(HEALTH_LABELS, c.health)} asText />
+              </div>
+              {/* WHAT A PERSON NEEDS FROM A CONNECTION, in the order they need it: what is wrong, when it
+                  last worked, and whether this environment can authorize it at all. */}
+              {c.providerErrorCode && (
+                <p className="fo-connection-card__problem">
+                  {FAILURE_EXPLANATIONS[c.providerErrorCode] ?? c.providerErrorCode}
+                </p>
+              )}
+              <p className="fo-connection-card__facts">
+                <span>{c.authorizedAt ? <>Authorized <When millis={c.authorizedAt} /></> : "Never authorized"}</span>
+                <span>
+                  {c.lastMessageReceived ? <>Last message <When millis={c.lastMessageReceived} /></> : "No mail received yet"}
+                </span>
+                {!providerReady(c.provider) && <span>No OAuth client is configured in this environment</span>}
+              </p>
+              <div className="fo-inbound-row-actions">
+                <Button
+                  variant="primary"
+                  disabled={!canManage || busy || !providerReady(c.provider) || readiness?.transportAvailable === false}
+                  onClick={() => actions.connect(c.id)}
+                >
+                  {c.oauthStatus === "CONNECTED" ? "Reauthorize" : "Connect"}
+                </Button>
+                <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.test(c.id)}>
+                  Test connection
+                </Button>
+                {c.oauthStatus === "CONNECTED" && (
+                  <Button variant="tertiary" className="fo-link-btn" disabled={!canManage || busy} onClick={() => actions.disconnect(c.id)}>
+                    Disconnect
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* EOS STORES NO MAILBOX PASSWORD AND NO OAUTH TOKEN. This form collects the provider's identity
           and, optionally, the NAME of an externally-managed secret; the backend refuses any field that
           looks like credential material, so the rule cannot be softened by adding an input here. */}
-      <h4 className="fo-inbound-pane__subtitle">Add a connection</h4>
-      <p className="fo-muted">
-        EOS never stores a mailbox password or an OAuth token. Authorization happens with the provider, and the
-        credential it returns is held in the platform&apos;s secret store — this screen only ever shows whether one
-        exists.
-      </p>
-      {error && <p className="fo-inline-error" role="alert">{error}</p>}
-      <div className="fo-inbound-form">
-        <Field label="Connection name">
-          <input className="fo-wizard-control" value={draft.connectionName} onChange={set("connectionName")} />
-        </Field>
-        <Field label="Provider">
-          <select className="fo-wizard-control" value={draft.provider} onChange={set("provider")}>
-            <option value="MICROSOFT_365">Microsoft 365 / Outlook</option>
-            <option value="GOOGLE_WORKSPACE">Google Workspace / Gmail</option>
-          </select>
-        </Field>
-        <Field label={draft.provider === "MICROSOFT_365" ? "Tenant id" : "Workspace domain"}>
-          <input className="fo-wizard-control" value={draft.tenantOrWorkspace} onChange={set("tenantOrWorkspace")} />
-        </Field>
-        <Field label="Connected account">
-          <input className="fo-wizard-control" value={draft.connectedAccount} onChange={set("connectedAccount")} />
-        </Field>
-        <Button
-          variant="primary"
-          disabled={!canManage}
-          onClick={async () => {
-            setError(null);
-            const result = await actions.saveConnection({ config: draft });
-            if (!result.ok) setError(result.message);
-            else setDraft(emptyConnection);
-          }}
-        >
-          Save connection
-        </Button>
-      </div>
+      <details className="fo-inbound-disclosure">
+        <summary>Add a connection</summary>
+        <p className="fo-muted">
+          EOS never stores a mailbox password or an OAuth token. Authorization happens with the provider, and the
+          credential it returns is held in the platform&apos;s secret store — this screen only ever shows whether one
+          exists.
+        </p>
+        {error && <p className="fo-inline-error" role="alert">{error}</p>}
+        <div className="fo-inbound-form">
+          <Field label="Connection name">
+            <input className="fo-wizard-control" value={draft.connectionName} onChange={set("connectionName")} />
+          </Field>
+          <Field label="Provider">
+            <select className="fo-wizard-control" value={draft.provider} onChange={set("provider")}>
+              <option value="MICROSOFT_365">Microsoft 365 / Outlook</option>
+              <option value="GOOGLE_WORKSPACE">Google Workspace / Gmail</option>
+            </select>
+          </Field>
+          <Field label={draft.provider === "MICROSOFT_365" ? "Tenant id" : "Workspace domain"}>
+            <input className="fo-wizard-control" value={draft.tenantOrWorkspace} onChange={set("tenantOrWorkspace")} />
+          </Field>
+          <Field label="Connected account">
+            <input className="fo-wizard-control" value={draft.connectedAccount} onChange={set("connectedAccount")} />
+          </Field>
+          <Button
+            variant="primary"
+            disabled={!canManage}
+            onClick={async () => {
+              setError(null);
+              const result = await actions.saveConnection({ config: draft });
+              if (!result.ok) setError(result.message);
+              else setDraft(emptyConnection);
+            }}
+          >
+            Save connection
+          </Button>
+          </div>
+      </details>
     </>
   );
 }
@@ -240,133 +317,144 @@ function MailboxesTab({ config, canManage, actions, busy, notice }) {
         connection commonly exposes several — Service, Warranty, Parts.
       </p>
       {notice && <p className="fo-muted" role="status">{notice}</p>}
-      <table className="fo-sales-pipeline">
-        <thead>
-          <tr>
-            <th>Mailbox</th>
-            <th>Address</th>
-            <th>Purpose</th>
-            <th>Readable</th>
-            <th>Delivery</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {config.mailboxes.length === 0 ? (
+      <div className="fo-sales-pipeline-wrap">
+        <table className="fo-sales-pipeline">
+          <thead>
             <tr>
-              <td colSpan={6}>No mailboxes configured.</td>
+              <th>Mailbox</th>
+              <th>Address</th>
+              <th>Purpose</th>
+              <th>Readable</th>
+              <th>Delivery</th>
+              <th>Actions</th>
             </tr>
-          ) : (
-            config.mailboxes.map((m) => (
-              <tr key={m.id}>
-                <td data-label="Mailbox">{m.displayName}</td>
-                <td data-label="Address">{m.emailAddress}</td>
-                <td data-label="Purpose">{m.purpose}</td>
-                <td data-label="Readable">
-                  <StatusPill tone={m.mailboxReadable ? "positive" : "unknown"} label={m.mailboxReadable ? "Readable" : "Unchecked"} asText />
-                  {m.mailboxValidationDetail && <div className="fo-muted">{m.mailboxValidationDetail}</div>}
-                </td>
-                <td data-label="Delivery">
-                  {m.deliveryConnected ? "Watching for new mail" : "Not started"}
-                  <div className="fo-muted">
-                    {m.lastMessageReceivedAt ? `Last message ${formatWhen(m.lastMessageReceivedAt)}` : `Last checked ${formatWhen(m.lastPolledAt)}`}
-                  </div>
-                </td>
-                <td data-label="Actions">
-                  <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.pollNow(m.id)}>
-                    Check now
-                  </Button>
-                </td>
+          </thead>
+          <tbody>
+            {config.mailboxes.length === 0 ? (
+              <tr>
+                <td colSpan={6}>No mailboxes configured.</td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      <h4 className="fo-inbound-pane__subtitle">Add a mailbox</h4>
-      {error && <p className="fo-inline-error" role="alert">{error}</p>}
-      <div className="fo-inbound-form">
-        <Field label="Connection">
-          <select className="fo-wizard-control" value={draft.connectionId} onChange={set("connectionId")}>
-            <option value="">Select a connection…</option>
-            {config.connections.map((c) => (
-              <option key={c.id} value={c.id}>{c.connectionName}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Display name">
-          <input className="fo-wizard-control" value={draft.displayName} onChange={set("displayName")} />
-        </Field>
-        <Field label="Email address">
-          <input className="fo-wizard-control" value={draft.emailAddress} onChange={set("emailAddress")} />
-        </Field>
-        <Field label="Purpose">
-          <select className="fo-wizard-control" value={draft.purpose} onChange={set("purpose")}>
-            {["SERVICE", "WARRANTY", "PARTS", "OTHER"].map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Default queue (optional)">
-          <input className="fo-wizard-control" value={draft.defaultQueue} onChange={set("defaultQueue")} />
-        </Field>
-        <Field label="Operating company (optional)">
-          <input className="fo-wizard-control" value={draft.operatingCompanyId} onChange={set("operatingCompanyId")} />
-        </Field>
-        <Button
-          variant="primary"
-          disabled={!canManage}
-          onClick={async () => {
-            setError(null);
-            const result = await actions.saveMailbox({ config: draft });
-            if (!result.ok) setError(result.message);
-            else setDraft(emptyMailbox);
-          }}
-        >
-          Save mailbox
-        </Button>
+            ) : (
+              config.mailboxes.map((m) => (
+                <tr key={m.id}>
+                  <td data-label="Mailbox">{m.displayName}</td>
+                  <td data-label="Address">{m.emailAddress}</td>
+                  <td data-label="Purpose">{label({}, m.purpose)}</td>
+                  <td data-label="Readable">
+                    <StatusPill tone={m.mailboxReadable ? "positive" : "unknown"} label={m.mailboxReadable ? "Readable" : "Unchecked"} asText />
+                    {m.mailboxValidationDetail && <div className="fo-muted">{m.mailboxValidationDetail}</div>}
+                  </td>
+                  <td data-label="Delivery">
+                    {m.deliveryConnected ? "Watching for new mail" : "Not started"}
+                    <div className="fo-muted">
+                      {m.lastMessageReceivedAt ? (
+                        <>Last message <When millis={m.lastMessageReceivedAt} /></>
+                      ) : (
+                        <>Last checked <When millis={m.lastPolledAt} /></>
+                      )}
+                    </div>
+                  </td>
+                  <td data-label="Actions">
+                    <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.pollNow(m.id)}>
+                      Check now
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      <details className="fo-inbound-disclosure">
+        <summary>Add a mailbox</summary>
+        {error && <p className="fo-inline-error" role="alert">{error}</p>}
+        <div className="fo-inbound-form">
+          <Field label="Connection">
+            <select className="fo-wizard-control" value={draft.connectionId} onChange={set("connectionId")}>
+              <option value="">Select a connection…</option>
+              {config.connections.map((c) => (
+                <option key={c.id} value={c.id}>{c.connectionName}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Display name">
+            <input className="fo-wizard-control" value={draft.displayName} onChange={set("displayName")} />
+          </Field>
+          <Field label="Email address">
+            <input className="fo-wizard-control" value={draft.emailAddress} onChange={set("emailAddress")} />
+          </Field>
+          <Field label="Purpose">
+            <select className="fo-wizard-control" value={draft.purpose} onChange={set("purpose")}>
+              {["SERVICE", "WARRANTY", "PARTS", "OTHER"].map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Default queue (optional)">
+            <input className="fo-wizard-control" value={draft.defaultQueue} onChange={set("defaultQueue")} />
+          </Field>
+          <Field label="Operating company (optional)">
+            <input className="fo-wizard-control" value={draft.operatingCompanyId} onChange={set("operatingCompanyId")} />
+          </Field>
+          <Button
+            variant="primary"
+            disabled={!canManage}
+            onClick={async () => {
+              setError(null);
+              const result = await actions.saveMailbox({ config: draft });
+              if (!result.ok) setError(result.message);
+              else setDraft(emptyMailbox);
+            }}
+          >
+            Save mailbox
+          </Button>
+          </div>
+      </details>
     </>
   );
 }
 
 function RoutingTab({ config }) {
+  const mailboxName = (id) => config.mailboxes.find((m) => m.id === id)?.displayName ?? id;
   return (
     <>
       <p className="fo-muted">
         Rules are evaluated in order and the first match wins. A message no rule matches is still taken in —
         classified as Service and flagged for review, never silently classified as something it might not be.
       </p>
-      <table className="fo-sales-pipeline">
-        <thead>
-          <tr>
-            <th>Order</th>
-            <th>Rule</th>
-            <th>When</th>
-            <th>Then</th>
-            <th>Enabled</th>
-          </tr>
-        </thead>
-        <tbody>
-          {config.rules.length === 0 ? (
+      <div className="fo-sales-pipeline-wrap">
+        <table className="fo-sales-pipeline">
+          <thead>
             <tr>
-              <td colSpan={5}>No routing rules configured.</td>
+              <th>Order</th>
+              <th>Rule</th>
+              <th>When</th>
+              <th>Then</th>
+              <th>Enabled</th>
             </tr>
-          ) : (
-            [...config.rules]
-              .sort((a, b) => a.order - b.order)
-              .map((r) => (
-                <tr key={r.id}>
-                  <td data-label="Order">{r.order}</td>
-                  <td data-label="Rule">{r.name}</td>
-                  <td data-label="When">{JSON.stringify(r.when)}</td>
-                  <td data-label="Then">{JSON.stringify(r.then)}</td>
-                  <td data-label="Enabled">{r.enabled ? "Yes" : "No"}</td>
-                </tr>
-              ))
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {config.rules.length === 0 ? (
+              <tr>
+                <td colSpan={5}>No routing rules configured.</td>
+              </tr>
+            ) : (
+              [...config.rules]
+                .sort((a, b) => a.order - b.order)
+                .map((r) => (
+                  <tr key={r.id}>
+                    <td data-label="Order">{r.order}</td>
+                    <td data-label="Rule">{r.name}</td>
+                    <td data-label="When">{phrases(r.when, CONDITION_PHRASES, mailboxName).join(" and ") || "every message"}</td>
+                    <td data-label="Then">{phrases(r.then, OUTCOME_PHRASES).join(", ") || "leave the defaults"}</td>
+                    <td data-label="Enabled">{r.enabled ? "Yes" : "No"}</td>
+                  </tr>
+                ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -374,7 +462,7 @@ function RoutingTab({ config }) {
 function ProcessingTab({ readiness }) {
   return (
     <>
-      <h4 className="fo-inbound-pane__subtitle">Processing provider</h4>
+      <h2 className="fo-inbound-pane__subtitle">Processing provider</h2>
       <p>
         <StatusPill tone="positive" label="EOS Native — in use" asText />
       </p>
@@ -395,7 +483,7 @@ function ProcessingTab({ readiness }) {
         governance product the business uses.
       </p>
 
-      <h4 className="fo-inbound-pane__subtitle">Delivery</h4>
+      <h2 className="fo-inbound-pane__subtitle">Delivery</h2>
       <p className="fo-muted">
         Connected mailboxes are checked for new mail every five minutes, and attachments are retrieved and held by
         EOS as each message arrives. Nothing is sent, marked, moved or deleted in the provider&apos;s mailbox.
@@ -413,6 +501,7 @@ function ProcessingTab({ readiness }) {
 
 function ExceptionsTab({ config, canManage, actions, busy }) {
   const failures = config.exceptions ?? [];
+  const mailboxName = (id) => config.mailboxes.find((m) => m.id === id)?.displayName ?? id;
   return (
     <>
       <p className="fo-muted">
@@ -421,42 +510,48 @@ function ExceptionsTab({ config, canManage, actions, busy }) {
         it.
       </p>
 
-      <h4 className="fo-inbound-pane__subtitle">Delivery failures</h4>
+      <h2 className="fo-inbound-pane__subtitle">Delivery failures</h2>
       {failures.length === 0 ? (
         <p className="fo-muted">No delivery failures.</p>
       ) : (
-        <table className="fo-sales-pipeline">
-          <thead>
-            <tr>
-              <th>What failed</th>
-              <th>Mailbox</th>
-              <th>Attempts</th>
-              <th>Last failure</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {failures.map((f) => (
-              <tr key={f.id}>
-                <td data-label="What failed">
-                  <StatusPill tone={f.exhausted ? "attention" : "info"} label={f.code} asText />
-                  <div className="fo-muted">{FAILURE_EXPLANATIONS[f.code] ?? f.detail}</div>
-                </td>
-                <td data-label="Mailbox">{f.mailboxId}</td>
-                <td data-label="Attempts">{f.attempts}</td>
-                <td data-label="Last failure">{formatWhen(f.lastFailedAt)}</td>
-                <td data-label="Actions">
-                  <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.retry(f.id)}>
-                    Retry now
-                  </Button>
-                </td>
+        <div className="fo-sales-pipeline-wrap">
+          <table className="fo-sales-pipeline">
+            <thead>
+              <tr>
+                <th>What failed</th>
+                <th>Mailbox</th>
+                <th>Attempts</th>
+                <th>Last failure</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {failures.map((f) => (
+                <tr key={f.id}>
+                  <td data-label="What failed">
+                    <StatusPill
+                        tone={f.exhausted ? "attention" : "info"}
+                        label={f.exhausted ? "Needs attention" : "Retrying on its own"}
+                        asText
+                      />
+                    <div>{FAILURE_EXPLANATIONS[f.code] ?? f.detail}</div>
+                  </td>
+                  <td data-label="Mailbox">{mailboxName(f.mailboxId)}</td>
+                  <td data-label="Attempts">{f.attempts}</td>
+                  <td data-label="Last failure"><When millis={f.lastFailedAt} /></td>
+                  <td data-label="Actions">
+                    <Button variant="secondary" disabled={!canManage || busy} onClick={() => actions.retry(f.id)}>
+                      Retry now
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <h4 className="fo-inbound-pane__subtitle">Retained messages</h4>
+      <h2 className="fo-inbound-pane__subtitle">Retained messages</h2>
       <RequestsTable
         rows={EXCEPTION_STATUSES.map((s) => [s, config.overview.byStatus?.[s] ?? 0]).filter(([, count]) => count > 0)}
         empty="No quarantined, failed or duplicate messages."
@@ -465,25 +560,27 @@ function ExceptionsTab({ config, canManage, actions, busy }) {
   );
 }
 
-function RequestsTable({ rows, empty }) {
+function RequestsTable({ rows, empty, labels = STATUS_LABELS, heading = "Status" }) {
   if (rows.length === 0) return <p className="fo-muted">{empty}</p>;
   return (
-    <table className="fo-sales-pipeline">
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Count</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([status, count]) => (
-          <tr key={status}>
-            <td data-label="Status">{status}</td>
-            <td data-label="Count">{count}</td>
+    <div className="fo-sales-pipeline-wrap">
+      <table className="fo-sales-pipeline">
+        <thead>
+          <tr>
+            <th>{heading}</th>
+            <th>Count</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map(([status, count]) => (
+            <tr key={status}>
+              <td data-label={heading}>{label(labels, status)}</td>
+              <td data-label="Count">{count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -669,9 +766,11 @@ export default function AdminEmailCommunications({
                 rows={Object.entries(config.overview.byStatus ?? {})}
                 empty="No inbound requests have been taken in yet."
               />
-              <h4 className="fo-inbound-pane__subtitle">Attachments held</h4>
+              <h2 className="fo-inbound-pane__subtitle">Attachments held</h2>
               <RequestsTable
                 rows={Object.entries(config.overview.attachmentCustody ?? {})}
+                labels={CUSTODY_LABELS}
+                heading="Attachment custody"
                 empty="No message with attachments has arrived yet."
               />
             </>

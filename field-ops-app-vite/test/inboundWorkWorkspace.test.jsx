@@ -128,7 +128,8 @@ describe("Inbound Work queue", () => {
     render(<InboundWorkWorkspace source={makeSource()} />);
     expect(await screen.findByText("dispatch@corporate.example")).toBeTruthy();
     expect(screen.getByText("Warranty service required")).toBeTruthy();
-    expect(screen.getByText("WARRANTY")).toBeTruthy();
+    // The stored token is WARRANTY; the queue says what a person reads.
+    expect(screen.getByText("Warranty")).toBeTruthy();
   });
 
   it("says DENIED rather than showing an empty queue when the role does not include it", async () => {
