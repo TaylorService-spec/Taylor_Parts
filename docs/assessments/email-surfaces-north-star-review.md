@@ -69,7 +69,19 @@ them**. No authority was seeded: every capability decision still came from the t
 ## What this does not claim
 
 - **No Owner visual acceptance.** Only the Owner moves that.
-- **No deployment.** Neither surface has been deployed to any environment in this workstream.
+- **No deployment.** Neither surface has been deployed to any environment in this workstream, and
+  not because it was overlooked: `scripts/_sandboxRefresh.run.sh` states at its head that it is
+  *"intentionally NOT run by any agent session — deploy is a human-triggered action."* That rule was
+  followed. The Owner runs, from the repository root in PowerShell:
+
+  ```
+  .scriptsInvoke-SandboxRefresh.ps1
+  ```
+
+  The email **transport** Functions remain governed exclusions from the derived sandbox deploy set
+  (`scripts/sandboxDeployableFunctions.mjs`) until a non-production tenant is bound; each carries the
+  instruction to remove its entry at that moment. The configuration and Inbound Work callables are
+  not excluded and deploy normally.
 - **No real mailbox.** No non-production Microsoft 365 or Google Workspace tenant, client id or
   secret was available, so no real inbound message has travelled this path. Binding one is an
   external configuration dependency.
