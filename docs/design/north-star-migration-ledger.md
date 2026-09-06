@@ -2037,3 +2037,27 @@ Two of those are worth naming, because they were correct code producing a wrong 
 | A real Microsoft 365 or Gmail mailbox | **NOT BOUND.** No non-production tenant, client id or secret was available, so no real inbound message has travelled this path. The provider abstraction, OAuth seam and delivery loop are proved against a scripted provider and the Firestore emulator |
 | Outbound email / Work Order correspondence | **NOT STARTED**, and deliberately out of scope here |
 | Production | **UNTOUCHED and UNAUTHORIZED** |
+
+---
+
+## Family 12 — deployed to platform-sandbox (2026-09-06)
+
+Appended, not edited: the row above said "not deployed" and was true when written.
+
+| | |
+|---|---|
+| **Live build** | `platform-sandbox` Hosting **`35ce3741`** — read from `/version.json`, not inferred from a merge |
+| **Manifest** | `environmentId: platform-sandbox`, `environmentRole: sandbox` |
+| **Acceptance** | **UNCHANGED — `AWAITING_OWNER_VISUAL_ACCEPTANCE`.** Deploying a surface is not accepting it. The Owner has now been given something to look at, which is the point |
+| **Evidence** | [`email-surfaces-north-star-review.md`](../assessments/email-surfaces-north-star-review.md#deployed-to-platform-sandbox--2026-09-06) |
+
+**What is operable there, and what is not.** `Service ▸ Inbound Work` is fully operable against intake
+records — queue, review, Accept, Decline, Attach Existing, attachment access. In
+`Administration ▸ Email & Communications`, Connect / Test connection / Check now / Retry are **not**
+operable: the eight provider-transport Functions bind the four `EMAIL_*` OAuth secrets, and
+`platform-sandbox` has no Microsoft 365 or Google Workspace application registered against it, so they
+remain governed exclusions from the deploy set. The screen reports that rather than offering a
+live-looking button. Removing the exclusions is the same act as binding a tenant.
+
+**Still not claimed:** a real mailbox (no non-production tenant credentials exist, so no real inbound
+message has travelled this path), outbound email, and production — untouched and unauthorized.
