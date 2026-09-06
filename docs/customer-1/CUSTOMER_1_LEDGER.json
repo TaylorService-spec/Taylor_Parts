@@ -4,7 +4,7 @@
   "product": "Enterprise Operations OS (EOS)",
   "provider": "Verenward LLC",
   "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
-  "lastReconciled": "2026-09-04",
+  "lastReconciled": "2026-09-05",
   "statusVocabulary": [
     "READY",
     "IN_PROGRESS",
@@ -62,7 +62,8 @@
       "authority": "Verenward + Taylor",
       "closeWhen": "Source systems are inventoried, migration tiers and mappings are accepted, at least one repeatable rehearsal is completed, and exceptions are reconciled.",
       "evidence": [
-        "PR #1802 / ccd3f2d2 records the Lane B seeded-evidence rule and the successful B-05 canary at lane commit 2f262d38: deterministic SEEDED/SYNTHETIC source records, census/tiering/mapping fixtures, a repeatable migration dry-run harness, deterministic exception reporting, and passing targeted proofs. This materially proves the migration PROCESS can be rehearsed without waiting for a Taylor export; it does not prove Taylor's actual source data, accepted mappings, real exceptions, or Taylor acceptance, so this gate remains OPEN."
+        "PR #1802 / ccd3f2d2 records the Lane B seeded-evidence rule and the successful B-05 canary at lane commit 2f262d38: deterministic SEEDED/SYNTHETIC source records, census/tiering/mapping fixtures, a repeatable migration dry-run harness, deterministic exception reporting, and passing targeted proofs. This materially proves the migration PROCESS can be rehearsed without waiting for a Taylor export; it does not prove Taylor's actual source data, accepted mappings, real exceptions, or Taylor acceptance, so this gate remains OPEN.",
+        "PR #1804 / d558f39d adds and sandbox-deploys EOS Data Import P1 at b533757a: CSV/XLSX staging and approved execution for Parts, Customers, Equipment, opening Inventory, and imported Service History, with 24/24 live sandbox acceptance and zero fabricated Work Orders. This materially strengthens the executable migration/rehearsal path, but import is deliberately sandbox-only and Taylor source facts, accepted mappings, real exception reconciliation, and Taylor acceptance remain outstanding."
       ]
     },
     {
@@ -93,7 +94,11 @@
       "launchCritical": true,
       "authority": "Verenward + Taylor",
       "closeWhen": "Designated Taylor EOS administrators can perform ordinary Day-1 administration without source-code changes, CLI commands, direct database edits, or Verenward engineering.",
-      "evidence": []
+      "evidence": [
+        "PR #1806 / 3294d835 consolidates Administration people management into one Users destination with a governed record page, trusted employee-profile edit command, per-field immutable audit events, and Change History while preserving separate security-role/account authorities.",
+        "PR #1807 verified the existing sandbox admin RoleAssignment and effective-access feed, corrected the client request set so granted Administration capabilities are actually asked of the trusted resolver, and created no new grant or production activation.",
+        "PR #1808 / 57a5ad47 live-verified Administration -> Users on platform-sandbox Hosting 8e90b41e. The running sandbox proved responsive directory/record behavior and an authorized reversible preferredName edit through the real UI and updateEmployeeProfile, producing two immutable audit rows. This materially advances ordinary administrator self-service, but it does not designate/train Taylor administrators, prove the complete Day-1 admin action set, activate password reset, or establish production readiness, so C1-ADMIN-01 remains OPEN."
+      ]
     },
     {
       "id": "C1-PRODUCT-01",
@@ -173,7 +178,8 @@
         "docs/training/README.md",
         "docs/training/PURCHASING_RECORD_PURCHASE_ORDER.md exists as a deployment-gated user guide for the governed purchase-order price-entry behavior; its completion state remains tied to live verification.",
         "PR #1792 / c6589c06 originally closed docs/training/MY_DASHBOARD.md for My Dashboard against the Owner-accepted sandbox behavior.",
-        "PR #1800 / c6ad5b68: docs/training/MY_DASHBOARD.md is COMPLETE — LIVE VERIFIED against platform-sandbox commit 6b281cd5 and now explicitly covers both My Dashboard and Technician Dashboard, including the post-acceptance corrective chain. This closes training for those two dashboard surfaces only; it does not satisfy the all-Day-1-role/workflow close condition."
+        "PR #1800 / c6ad5b68: docs/training/MY_DASHBOARD.md is COMPLETE — LIVE VERIFIED against platform-sandbox commit 6b281cd5 and now explicitly covers both My Dashboard and Technician Dashboard, including the post-acceptance corrective chain. This closes training for those two dashboard surfaces only; it does not satisfy the all-Day-1-role/workflow close condition.",
+        "Training-close gap discovered 2026-09-05: PR #1804 deployed and live-verified the new Administration -> Data Import workflow at sandbox commit b533757a, and PR #1808 deployed/live-verified the Administration -> Users workflow at sandbox Hosting 8e90b41e, but the authoritative docs/training directory currently contains no Data Import or Taylor EOS Administrator/Administration Users guide. Under docs/training/README.md these releases may be DEPLOYED/VERIFIED but must not be treated as CLOSED until applicable training is created/updated and verified, or a valid no-user-impact receipt exists. Day-1 applicability still depends on C1-SCOPE-01."
       ]
     },
     {
