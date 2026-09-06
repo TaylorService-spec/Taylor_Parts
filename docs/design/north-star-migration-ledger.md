@@ -1992,3 +1992,48 @@ The domain-authority backlog transferred out of Family 10 at closure (booked rea
 first-time-fix definitions, workday, location-level stock aggregate, `INVENTORY_BALANCE_READ_READY`,
 forecast-exception read, costing method, FIN-BLOCK-004 elimination) is unchanged and still owned
 elsewhere. Closing a family does not close what it honestly reported as missing.
+
+---
+
+## Family 12 — Email & Communications + Inbound Work (2026-09-05)
+
+Two surfaces, one family: `Administration ▸ Email & Communications` configures the intake and
+`Service ▸ Inbound Work` operates it. They are recorded together because neither is legible without
+the other — a routing rule is written on one screen and read on the other.
+
+| | |
+|---|---|
+| **Composition** | `src/modules/administration/AdminEmailCommunications.jsx` and `src/modules/service/InboundWorkWorkspace.jsx` over `src/access/inboundWorkSource.js`, with the projections in `functions/src/inboundWork/inboundWorkReadService.ts` |
+| **Visual authority** | The existing EOS visual system — `WorkspaceShell`, `ContextBand`, `StatusPill`, `HonestState`, `.fo-sales-pipeline` + `data-label` at ≤640px. No new page palette, no new primitive, no hardcoded colour |
+| **Proof** | `field-ops-app-vite/test/inboundWorkWorkspace.test.jsx` (13), `field-ops-app-vite/test/adminEmailCommunications.test.jsx` (3 — fails if a raw enum or a document id reaches the administration screen), `field-ops-app-vite/test/cssClassCoverage.test.mjs`, `field-ops-app-vite/test/visualSystem.test.mjs` |
+| **Functional regression after the visual work** | `functions/test/inboundWorkEmulator.test.mjs` 31/31, `functions/test/emailTransportEmulator.test.mjs` 23/23 (clean Firestore emulator, run separately as CI runs them), `functions/test/emailTransport.test.mjs` + `inboundWorkDomain.test.mjs` 70/70, `test/inboundWorkNav.test.mjs` 1/1 |
+| **Named decisions** | None newly opened. DECISIONS #106 (*a document id is a routing key, not a name*) was applied to the routing rule and the mailbox, which is why both names are now recorded **at intake** rather than resolved at read time |
+| **Acceptance** | **NORTH_STAR_IMPLEMENTED / AWAITING_OWNER_VISUAL_ACCEPTANCE.** The Owner has not seen these surfaces running |
+
+### What the review actually found
+
+The sweep drove the running application at 1440 / 1024 / 375 through all seven Administration tabs
+and the Inbound Work queue and review screen, and reported structural facts rather than opinions:
+horizontal **page** overflow at 375px on four tabs (reading a table moved the navigation off screen),
+heading levels jumping `h1 → h4` and `h1 → h5`, and — the class of defect a structural audit cannot
+see, which is why a person looked at the screenshots — stored tokens, serialized rule objects and
+Firestore document ids rendered to people.
+
+Two of those are worth naming, because they were correct code producing a wrong screen:
+
+- A Service reviewer deciding a warranty job was shown `rule sbx-rule-corporate-warranty`. The
+  routing rule's **name** is now recorded with the routing decision at intake, as is the mailbox's,
+  so a rule renamed or deleted later cannot change what the reviewer is told matched.
+- An administrator was shown `{"mailboxId":"sbx-mb-warranty","senderDomain":"corporate.example"}`.
+  A rule now reads `mailbox is Warranty and sender domain is corporate.example` →
+  `classify as Warranty, hold for review`.
+
+### What this family does NOT claim
+
+| Item | State |
+|---|---|
+| Owner visual acceptance | **NOT GIVEN.** Only the Owner moves that column |
+| Sandbox deployment of these surfaces | **NOT PERFORMED** in this workstream. The provider transport Functions remain governed exclusions from the sandbox deploy set until a non-production tenant is bound |
+| A real Microsoft 365 or Gmail mailbox | **NOT BOUND.** No non-production tenant, client id or secret was available, so no real inbound message has travelled this path. The provider abstraction, OAuth seam and delivery loop are proved against a scripted provider and the Firestore emulator |
+| Outbound email / Work Order correspondence | **NOT STARTED**, and deliberately out of scope here |
+| Production | **UNTOUCHED and UNAUTHORIZED** |
