@@ -84,9 +84,49 @@ firebase functions:secrets:set EMAIL_GOOGLE_CLIENT_SECRET    --project <non-prod
 Set only the pair for the provider you are connecting; Administration → Email & Communications shows which
 of the two this runtime has, and offers Connect only for a provider it can actually authorize.
 
-**The runtime service account additionally needs `roles/secretmanager.admin`** (or a narrower custom role
-with `secretmanager.secrets.create`, `versions.add`, `versions.access`, `secrets.delete`) so EOS can hold
-each connection's refresh token as its own secret. This is the credential custody described in
+### The runtime needs five Secret Manager permissions — and only five
+
+EOS holds each connection's refresh token as its own secret, so the Functions runtime service account
+needs to create, read, rotate and destroy those secrets. **Do not grant `roles/secretmanager.admin`.**
+That role also carries secret listing, update, and IAM-policy management across the whole project, none
+of which this code calls.
+
+The five permissions below are exactly what `providerCredentialVault.ts` invokes, one per API call:
+
+| Permission | The call that needs it |
+| --- | --- |
+| `secretmanager.secrets.get` | `getSecret` — does this connection already have a secret? |
+| `secretmanager.secrets.create` | `createSecret` — first authorization for a connection |
+| `secretmanager.versions.add` | `addSecretVersion` — store, and later rotate, the refresh token |
+| `secretmanager.versions.access` | `accessSecretVersion` — read it back to mint an access token |
+| `secretmanager.secrets.delete` | `deleteSecret` — Disconnect destroys the credential, not just the link |
+
+No predefined role is this shape: `secretVersionManager` and `secretAccessor` together still cannot
+create or delete a secret, and the role that can is Admin. So it is a custom role — which is the honest
+answer when the platform's catalogue does not have the right size.
+
+```bash
+# Owner-executed, once per environment. Substitute the real project and runtime service account.
+PROJECT=<non-production-project>
+RUNTIME_SA=<project-number>-compute@developer.gserviceaccount.com   # or the SA the Functions run as
+
+gcloud iam roles create eosEmailCredentialCustody \
+  --project "$PROJECT" \
+  --title "EOS email credential custody" \
+  --description "Create, read, rotate and destroy one Secret Manager secret per email connection. Nothing else." \
+  --permissions secretmanager.secrets.get,secretmanager.secrets.create,secretmanager.secrets.delete,secretmanager.versions.add,secretmanager.versions.access \
+  --stage GA
+
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member "serviceAccount:$RUNTIME_SA" \
+  --role "projects/$PROJECT/roles/eosEmailCredentialCustody"
+```
+
+**Narrower still, if you prefer:** bind the role on the secrets themselves rather than the project once
+they exist. That is not possible for the first `createSecret` (there is no resource to bind to yet), so
+the project-level binding above is the smallest grant that lets a first connection be authorized at all.
+
+This is the credential custody described in
 [the architecture document](../architecture/email-connections-and-inbound-work.md#credential-custody).
 
 ## 4. Deploy
