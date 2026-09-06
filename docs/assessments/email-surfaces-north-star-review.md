@@ -1,13 +1,15 @@
 # Email & Communications + Inbound Work — North Star review
 
-**Status: `NORTH_STAR_IMPLEMENTED` / `AWAITING_OWNER_VISUAL_ACCEPTANCE`.**
+**Status: `NORTH_STAR_IMPLEMENTED` / `OWNER ACCEPTED` (2026-09-06, against `platform-sandbox` build
+`de90d6b0`).** The capability is not `CLOSED`: the training rule still applies, and no real mailbox is
+bound. See *Owner acceptance* at the foot of this document.
 
 Date: 2026-09-05 · Surfaces: `Administration ▸ Email & Communications`, `Service ▸ Inbound Work` ·
 Code: PR #1811 (`c051af0c`), PR #1813 (`32bd8270`), PR #1814 (this review's corrections).
 
 Acceptance belongs to the Owner looking at the running application. This document records what was
-reviewed, what was found, what was corrected and what remains — it does not grant acceptance, and the
-Owner has not seen either surface running.
+reviewed, what was found, what was corrected and what remains. It did not grant acceptance; the Owner
+did, on 2026-09-06, after looking at both surfaces on the sandbox and finding one further defect there.
 
 ## How the review was conducted
 
@@ -129,3 +131,25 @@ Removing those eight exclusions is the same act as binding a tenant; the runbook
 Owner visual acceptance (not given), a real mailbox (no non-production tenant credentials exist, so no
 real inbound message has travelled this path), outbound email (not built), and production (untouched and
 unauthorized).
+
+## Owner acceptance — 2026-09-06
+
+The Owner accepted both surfaces against `platform-sandbox` build `de90d6b0` — the build carrying the
+North Star pass (#1814) and the corrective below, not the `35ce3741` first deployed.
+
+**One defect was found by the Owner during acceptance**, and it is the most useful line in this
+document. On the deployed sandbox, where no connection exists, `Mailboxes ▸ Add a mailbox` offered an
+enabled `<select>` containing nothing but "Select a connection…", with no explanation. The list was
+correct — a mailbox belongs to a connection — and the screen read as broken. Fixed in #1816 and
+deployed before acceptance.
+
+It escaped this review for a reason worth carrying into the next one: **the review harness had seeded
+two connections** so that the CONNECTED / EXPIRED / failure states could be looked at, and in doing so
+it never rendered the zero state. A seeded review sees the states it seeded. The suite now asserts the
+empty state directly.
+
+### What the acceptance does not carry
+
+Training is still required — no `docs/training/**` guide covers this capability, so the release is
+`DEPLOYED / OWNER-ACCEPTED` and must not be reported as `CLOSED`. No real mailbox is bound. Outbound
+email is not built. Production is untouched and unauthorized.

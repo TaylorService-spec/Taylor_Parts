@@ -2061,3 +2061,29 @@ live-looking button. Removing the exclusions is the same act as binding a tenant
 
 **Still not claimed:** a real mailbox (no non-production tenant credentials exist, so no real inbound
 message has travelled this path), outbound email, and production — untouched and unauthorized.
+
+---
+
+## Family 12 — **ACCEPTED** (Owner, 2026-09-06)
+
+Appended, not edited, per this file's rule: a family whose acceptance changes gets a new dated line.
+
+| | |
+|---|---|
+| **Acceptance** | **CLOSED / OWNER ACCEPTED**, 2026-09-06 |
+| **Accepted against** | `platform-sandbox` Hosting **`de90d6b0`** — read from `/version.json`. That is the build carrying the North Star pass (#1814) and the mailbox-prerequisite corrective (#1816), not the `35ce3741` first deployed |
+| **Surfaces accepted** | `Administration ▸ Email & Communications` and `Service ▸ Inbound Work` |
+| **Corrective found by the Owner during acceptance** | The mailbox connection picker rendered an empty `<select>` with no explanation where no connection existed. Fixed in #1816 and deployed before acceptance. It escaped the review because the review harness had seeded connections — a seeded review sees the states it seeded |
+
+### What this acceptance does and does not carry
+
+Accepting the **surfaces** is not accepting the **capability as operationally complete**, and the
+distinction matters because three things below are unchanged by it.
+
+| Item | State after acceptance |
+|---|---|
+| The two surfaces, as composed and rendered | **ACCEPTED** |
+| Training | **STILL REQUIRED.** `docs/training/README.md` requires current deployed-behavior training before a user-impacting deployment is `CLOSED`. No `docs/training/**` guide covers this capability, so the release is `DEPLOYED / OWNER-ACCEPTED` and must **not** be reported as `CLOSED` until one exists and is live-verified |
+| A real mailbox | **STILL UNBOUND.** No non-production Microsoft 365 or Google Workspace tenant credentials exist, so no real inbound message has travelled this path. The eight provider-transport Functions remain governed exclusions from the sandbox deploy set, and Connect / Test connection / Check now / Retry are not operable there |
+| Outbound email / Work Order correspondence | **NOT BUILT**, and not in scope for this family |
+| Production | **UNTOUCHED and UNAUTHORIZED.** A sandbox acceptance authorizes nothing beyond the sandbox |
