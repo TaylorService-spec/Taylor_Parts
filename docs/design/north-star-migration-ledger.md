@@ -2087,3 +2087,17 @@ distinction matters because three things below are unchanged by it.
 | A real mailbox | **STILL UNBOUND.** No non-production Microsoft 365 or Google Workspace tenant credentials exist, so no real inbound message has travelled this path. The eight provider-transport Functions remain governed exclusions from the sandbox deploy set, and Connect / Test connection / Check now / Retry are not operable there |
 | Outbound email / Work Order correspondence | **NOT BUILT**, and not in scope for this family |
 | Production | **UNTOUCHED and UNAUTHORIZED.** A sandbox acceptance authorizes nothing beyond the sandbox |
+
+---
+
+## Family 12 — training complete, deployment CLOSED (2026-09-06)
+
+| | |
+|---|---|
+| **Training** | [`docs/training/email-connections-and-inbound-work.md`](../training/email-connections-and-inbound-work.md), representing `de90d6b0` — `TRAINING: COMPLETE` |
+| **Deployment state** | **`CLOSED`.** The permanent close rule in `docs/training/README.md` is satisfied for this release |
+| **Still true** | No real mailbox is bound; no provider application is registered against `platform-sandbox`, so `Connect`, `Test connection`, `Check now` and `Retry now` are inoperable there. Outbound email is not built. Production is untouched and unauthorized |
+
+The guide **names those four actions as unavailable, with the reason**, rather than teaching them. That
+is the anti-drift rule: training that describes an undeployed function is a defect in the release
+evidence, so the honest guide is the one that says what you cannot do yet.

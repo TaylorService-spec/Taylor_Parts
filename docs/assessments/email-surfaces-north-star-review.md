@@ -150,6 +150,6 @@ empty state directly.
 
 ### What the acceptance does not carry
 
-Training is still required — no `docs/training/**` guide covers this capability, so the release is
-`DEPLOYED / OWNER-ACCEPTED` and must not be reported as `CLOSED`. No real mailbox is bound. Outbound
+Training is now complete: [`email-connections-and-inbound-work.md`](../training/email-connections-and-inbound-work.md)
+represents `de90d6b0`, so the release meets the permanent close rule. No real mailbox is bound. Outbound
 email is not built. Production is untouched and unauthorized.
