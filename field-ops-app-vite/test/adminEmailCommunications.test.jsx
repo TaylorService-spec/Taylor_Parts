@@ -90,3 +90,23 @@ describe("Email & Communications reads in words", () => {
     expect(screen.queryByText("mb-warranty")).toBeNull();
   });
 });
+
+// THE DEFECT THIS PREVENTS RECURRING. With no connection configured, the add-a-mailbox form offered an
+// enabled <select> with nothing in it and no reason given — which reads as a broken screen rather than
+// as a prerequisite. It survived the North Star review because the review harness had seeded
+// connections: an empty state is a thing to design, not a thing that happens.
+describe("Mailboxes with no connection configured", () => {
+  it("explains the prerequisite instead of offering an empty picker", async () => {
+    const emptySource = {
+      ...source,
+      getConfiguration: async () => ({ status: SOURCE_STATUS.READY, payload: { ...config, connections: [], mailboxes: [] } }),
+    };
+    render(<AdminEmailCommunications source={emptySource} />);
+    fireEvent.click((await screen.findAllByRole("tab")).find((t) => t.textContent === "Mailboxes"));
+
+    expect(await screen.findByText(/A mailbox belongs to a connection/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add a connection first" })).toBeTruthy();
+    expect(screen.queryByText("Add a mailbox")).toBeNull();
+    expect(screen.queryByText("Select a connection…")).toBeNull();
+  });
+});

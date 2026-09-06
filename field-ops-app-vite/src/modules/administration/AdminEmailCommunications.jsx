@@ -305,7 +305,7 @@ function ConnectionsTab({ config, readiness, canManage, actions, busy, notice })
   );
 }
 
-function MailboxesTab({ config, canManage, actions, busy, notice }) {
+function MailboxesTab({ config, canManage, actions, busy, notice, onAddConnection }) {
   const [draft, setDraft] = useState(emptyMailbox);
   const [error, setError] = useState(null);
   const set = (key) => (e) => setDraft({ ...draft, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
@@ -366,6 +366,19 @@ function MailboxesTab({ config, canManage, actions, busy, notice }) {
         </table>
       </div>
 
+      {config.connections.length === 0 ? (
+        <p className="fo-inbound-prerequisite">
+          A mailbox belongs to a connection, and none is configured yet — so there is nothing to attach one
+          to.{" "}
+          {canManage ? (
+            <Button variant="tertiary" className="fo-link-btn" onClick={onAddConnection}>
+              Add a connection first
+            </Button>
+          ) : (
+            "An administrator adds a connection first."
+          )}
+        </p>
+      ) : (
       <details className="fo-inbound-disclosure">
         <summary>Add a mailbox</summary>
         {error && <p className="fo-inline-error" role="alert">{error}</p>}
@@ -411,6 +424,7 @@ function MailboxesTab({ config, canManage, actions, busy, notice }) {
           </Button>
           </div>
       </details>
+      )}
     </>
   );
 }
@@ -778,7 +792,16 @@ export default function AdminEmailCommunications({
           {tab === "connections" && (
             <ConnectionsTab config={config} readiness={readiness} canManage={canManage} actions={actions} busy={busy} notice={notice} />
           )}
-          {tab === "mailboxes" && <MailboxesTab config={config} canManage={canManage} actions={actions} busy={busy} notice={notice} />}
+          {tab === "mailboxes" && (
+            <MailboxesTab
+              config={config}
+              canManage={canManage}
+              actions={actions}
+              busy={busy}
+              notice={notice}
+              onAddConnection={() => setTab("connections")}
+            />
+          )}
           {tab === "routing" && <RoutingTab config={config} />}
           {tab === "processing" && <ProcessingTab readiness={readiness} />}
           {tab === "history" && (
