@@ -8521,3 +8521,44 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
 /* The per-connection action cluster in Administration ▸ Email & Communications. Wraps rather than
    overflowing: a connection row carries up to three actions and the table is already dense. */
 .fo-inbound-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+
+/* "Add a connection" and "Add a mailbox" are occasional acts, so they are a disclosure rather than a form
+   held permanently open beneath the table of what already exists. Native <details>: the browser already
+   knows how to open, close, announce and keyboard-operate one. */
+.fo-inbound-disclosure { margin-top: var(--space-5); border-top: 1px solid var(--color-border); }
+/* The decided state: what happened, and the way back to the work it became. */
+.fo-inbound-decided { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
+
+/* A connection is an OBJECT WITH A STATE, not a row in a comparison. The card gives the name and the
+   account room to be read whole -- a mail address split across two lines by a table column is a defect --
+   and puts the two status answers next to each other where a person looks first. */
+.fo-connection-list { display: grid; gap: var(--space-3); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.fo-connection-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-4);
+  padding: var(--space-4); background: var(--color-surface-card); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); }
+.fo-connection-card__identity { min-width: 0; }
+.fo-connection-card__name { margin: 0; font-size: var(--font-size-md); color: var(--color-text-primary); }
+.fo-connection-card__account { margin: var(--space-1) 0 0; color: var(--color-text-secondary);
+  font-size: var(--font-size-base); overflow-wrap: anywhere; }
+.fo-connection-card__state { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-start;
+  justify-content: flex-end; }
+.fo-connection-card__problem { grid-column: 1 / -1; margin: 0; color: var(--color-text-primary); }
+.fo-connection-card__facts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4);
+  margin: 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.fo-connection-card .fo-inbound-row-actions { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .fo-connection-card { grid-template-columns: minmax(0, 1fr); }
+  .fo-connection-card__state { justify-content: flex-start; }
+}
+.fo-inbound-disclosure > summary { display: flex; gap: var(--space-2); align-items: center; min-height: 44px; cursor: pointer;
+  font-size: var(--font-size-base); font-weight: var(--font-weight-medium); color: var(--color-text-primary); }
+/* display:flex removes the native marker, so the affordance is drawn back: a form that opens must look
+   like a form that opens. */
+.fo-inbound-disclosure > summary::marker, .fo-inbound-disclosure > summary::-webkit-details-marker { display: none; content: ""; }
+.fo-inbound-disclosure > summary::before { content: "+"; font-size: var(--font-size-md); line-height: 1; color: var(--color-text-muted); }
+.fo-inbound-disclosure[open] > summary::before { content: "−"; }
+.fo-inbound-disclosure > summary:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* An email address, a tenant id or a provider message id has no spaces to break at, and one long cell
+   would otherwise widen the whole table until the page scrolled sideways. */
+.fo-sales-pipeline td { overflow-wrap: anywhere; }

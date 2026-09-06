@@ -67,6 +67,42 @@ const STATUS_TONE = {
   QUARANTINED: "attention",
 };
 
+const STATUS_LABELS = {
+  AWAITING_DECISION: "Awaiting decision",
+  NEEDS_REVIEW: "Needs review",
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+  ATTACHED: "Attached to existing work",
+  DUPLICATE: "Duplicate of an earlier message",
+  FAILED: "Processing failed",
+  QUARANTINED: "Quarantined",
+};
+
+const PROVIDER_LABELS = { MICROSOFT_365: "Microsoft 365", GOOGLE_WORKSPACE: "Google Workspace" };
+
+const REQUEST_TYPE_LABELS = {
+  SERVICE: "Service",
+  WARRANTY: "Warranty",
+  INSTALL: "Install",
+  PM: "Planned maintenance",
+  PARTS: "Parts",
+  OTHER: "Other",
+};
+
+/** A stored token as a sentence. Unmapped values degrade to sentence case, never to a raw enum. */
+function label(map, value) {
+  if (!value) return "—";
+  return map[value] ?? String(value).toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+/** File size as a person reads it. "2412881 bytes" is a number; "2.4 MB" is a size. */
+function fileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "unknown size";
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 const WARNING_LABELS = {
   NO_PROBLEM_DESCRIPTION: "No problem description found",
   NO_SERIAL_NUMBER: "No serial number found",
@@ -114,17 +150,18 @@ async function saveAttachment(source, requestId, attachment) {
 function OriginalMessage({ detail, onDownload, downloadError }) {
   return (
     <section className="fo-inbound-pane" aria-label="Original message">
-      <h4 className="fo-inbound-pane__title">Original message</h4>
+      <h2 className="fo-inbound-pane__title">Original message</h2>
       <Fact label="From">{detail.sender || "Unknown sender"}</Fact>
       <Fact label="To">{detail.recipients.join(", ") || "—"}</Fact>
       {detail.cc.length > 0 && <Fact label="CC">{detail.cc.join(", ")}</Fact>}
       <Fact label="Received">{formatWhen(detail.receivedAt)}</Fact>
       <Fact label="Subject">{detail.subject || "(no subject)"}</Fact>
       <Fact label="Source">
-        {detail.sourceProvider || "—"} · mailbox {detail.sourceMailboxId || "—"}
+        {label(PROVIDER_LABELS, detail.sourceProvider)}
+        {detail.sourceMailboxName ? ` · ${detail.sourceMailboxName}` : ""}
       </Fact>
       <pre className="fo-inbound-body">{detail.originalBodyText || "(no message body)"}</pre>
-      <h5 className="fo-inbound-pane__subtitle">Attachments</h5>
+      <h3 className="fo-inbound-pane__subtitle">Attachments</h3>
       {detail.attachmentRefs.length === 0 ? (
         <p className="fo-muted">No attachments.</p>
       ) : (
@@ -133,7 +170,7 @@ function OriginalMessage({ detail, onDownload, downloadError }) {
             <li key={`${a.sourceMessageId}:${a.providerAttachmentId}`}>
               <strong>{a.filename}</strong>{" "}
               <span className="fo-muted">
-                {a.mimeType} · {a.size} bytes
+                {a.mimeType} · {fileSize(a.size)}
               </span>{" "}
               {/* CUSTODY IS STATED, NOT ASSUMED. "EOS holds this file" and "the provider told us this file
                   exists" are different facts, and a reviewer deciding on a warranty job needs to know which
@@ -164,7 +201,7 @@ function OriginalMessage({ detail, onDownload, downloadError }) {
       )}
       {detail.threadMessages.length > 0 && (
         <>
-          <h5 className="fo-inbound-pane__subtitle">Later messages on this thread</h5>
+          <h3 className="fo-inbound-pane__subtitle">Later messages on this thread</h3>
           <ul className="fo-inbound-thread">
             {detail.threadMessages.map((m) => (
               <li key={m.messageId}>
@@ -185,7 +222,7 @@ function OriginalMessage({ detail, onDownload, downloadError }) {
  * The review pane. Suggestions arrive as candidate ids; a reviewer confirms or replaces them, and the
  * server re-reads and re-validates whatever is finally submitted.
  */
-function Interpretation({ detail, capabilities, onDecided }) {
+function Interpretation({ detail, capabilities, onDecided, onOpenWorkOrder }) {
   const accountPicker = useAccountPicker();
   const [customerId, setCustomerId] = useState(detail.customerCandidate?.id ?? null);
   const [customerName, setCustomerName] = useState(null);
@@ -230,7 +267,7 @@ function Interpretation({ detail, capabilities, onDecided }) {
 
   return (
     <section className="fo-inbound-pane" aria-label="EOS work interpretation">
-      <h4 className="fo-inbound-pane__title">EOS work interpretation</h4>
+      <h2 className="fo-inbound-pane__title">EOS work interpretation</h2>
 
       {detail.warnings.length > 0 && (
         <p className="fo-inbound-warnings">
@@ -250,7 +287,7 @@ function Interpretation({ detail, capabilities, onDecided }) {
         <select id="inbound-type" className="fo-wizard-control" value={requestType} disabled={decided}
           onChange={(e) => setRequestType(e.target.value)}>
           {REQUEST_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>{REQUEST_TYPE_LABELS[t] ?? t}</option>
           ))}
         </select>
       </div>
@@ -307,7 +344,7 @@ function Interpretation({ detail, capabilities, onDecided }) {
       <Fact label="Warranty / authorization">{detail.authorizationNumber}</Fact>
       <Fact label="External reference">{detail.externalReference}</Fact>
       <Fact label="Routing">
-        {detail.routingRuleId ? `rule ${detail.routingRuleId}` : "no rule matched — review required"}
+        {detail.routingRuleName || (detail.routingRuleId ? "Matched a routing rule that has since been removed" : "No rule matched — review required")}
         {detail.queue ? ` · queue ${detail.queue}` : ""}
       </Fact>
       <Fact label="Operating company">{detail.operatingCompanyId}</Fact>
@@ -334,9 +371,13 @@ function Interpretation({ detail, capabilities, onDecided }) {
       </div>
 
       {decided ? (
-        <p className="fo-muted">
-          This request is {detail.status}
-          {detail.workItemId ? ` and is linked to work order ${detail.workItemId}.` : "."}
+        <p className="fo-inbound-decided">
+          <StatusPill tone={STATUS_TONE[detail.status] ?? "unknown"} label={label(STATUS_LABELS, detail.status)} asText />
+          {detail.workItemId ? (
+            <Button variant="tertiary" className="fo-link-btn" onClick={() => onOpenWorkOrder(detail.workItemId)}>
+              Open the work order
+            </Button>
+          ) : null}
         </p>
       ) : (
         <>
@@ -510,9 +551,9 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
                   <td data-label="Received">{formatWhen(row.receivedAt)}</td>
                   <td data-label="From">{row.sender || "Unknown sender"}</td>
                   <td data-label="Subject">{row.subject || "(no subject)"}</td>
-                  <td data-label="Type">{row.requestType ?? "—"}</td>
+                  <td data-label="Type">{label(REQUEST_TYPE_LABELS, row.requestType)}</td>
                   <td data-label="Status">
-                    <StatusPill tone={STATUS_TONE[row.status] ?? "unknown"} label={row.status} asText />
+                    <StatusPill tone={STATUS_TONE[row.status] ?? "unknown"} label={label(STATUS_LABELS, row.status)} asText />
                   </td>
                 </tr>
               ))}
@@ -534,7 +575,13 @@ export default function InboundWorkWorkspace({ source = DEFAULT_INBOUND_WORK_SOU
             downloadError={downloadError}
             onDownload={async (attachment) => setDownloadError(await saveAttachment(source, detail.value.id, attachment))}
           />
-          <Interpretation key={detail.value.id} detail={detail.value} capabilities={capabilities} onDecided={handleDecided} />
+          <Interpretation
+            key={detail.value.id}
+            detail={detail.value}
+            capabilities={capabilities}
+            onDecided={handleDecided}
+            onOpenWorkOrder={(id) => navigate(`/service/work-orders/${id}`)}
+          />
         </div>
       )}
     </WorkspaceShell>

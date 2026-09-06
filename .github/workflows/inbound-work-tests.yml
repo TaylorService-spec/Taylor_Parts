@@ -169,6 +169,12 @@ jobs:
         run: npx vitest run test/inboundWorkWorkspace.test.jsx
         working-directory: field-ops-app-vite
 
+      # The administration screen speaks: a provider is named, a routing rule is a sentence, and a delivery
+      # failure names the mailbox rather than its document id.
+      - name: Email & Communications administration (jsdom)
+        run: npx vitest run test/adminEmailCommunications.test.jsx
+        working-directory: field-ops-app-vite
+
   inbound-work-emulator:
     name: Intake to Work Order, end to end (Firestore emulator)
     runs-on: ubuntu-latest

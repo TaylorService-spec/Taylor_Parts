@@ -278,7 +278,11 @@ export async function ingestInboundMessage(db: Firestore, input: IngestInput): P
       // An inbound message never names its own operating company.
       operatingCompanyId: routing.outcome.operatingCompanyId ?? mailbox.operatingCompanyId ?? null,
       priority: routing.outcome.priority ?? processing.priority ?? null,
+      sourceMailboxName: boundedString(mailbox.displayName, 120) || null,
       routingRuleId: routing.ruleId,
+      // The NAME, recorded WITH the decision rather than looked up later: the rule can be renamed or
+      // deleted afterwards, and what a reviewer needs to know is what matched at the time.
+      routingRuleName: routing.ruleId ? boundedString(rules.find((r) => r.id === routing.ruleId)?.name, 120) : null,
       routingOutcome: routing.reason,
       threadAssociation: association.outcome,
       threadAssociationCandidateIds: association.candidateIds,
