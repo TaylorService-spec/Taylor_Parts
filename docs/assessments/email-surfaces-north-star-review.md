@@ -69,8 +69,9 @@ them**. No authority was seeded: every capability decision still came from the t
 ## What this does not claim
 
 - **No Owner visual acceptance.** Only the Owner moves that.
-- **No deployment.** Neither surface has been deployed to any environment in this workstream, and
-  not because it was overlooked: `scripts/_sandboxRefresh.run.sh` states at its head that it is
+- **Deployment: see the dated section below.** Both surfaces were deployed to `platform-sandbox` on
+  2026-09-06, by the Owner, after this review was written. The rule that kept this build from doing it
+  itself still stands: `scripts/_sandboxRefresh.run.sh` states at its head that it is
   *"intentionally NOT run by any agent session — deploy is a human-triggered action."* That rule was
   followed. The Owner runs, from the repository root in PowerShell:
 
@@ -87,3 +88,44 @@ them**. No authority was seeded: every capability decision still came from the t
   external configuration dependency.
 - **No outbound email.** Work Order correspondence is not built and was explicitly out of scope.
 - **Production is untouched and unauthorized.**
+
+## Deployed to platform-sandbox — 2026-09-06
+
+The Owner triggered `.scriptsInvoke-SandboxRefresh.ps1`. Recorded here because a claim about a
+running environment is worth exactly what its evidence is:
+
+| | |
+|---|---|
+| **Deployed commit** | `35ce3741` — read from `https://eos-platform-sandbox.web.app/version.json`, not inferred from a merge |
+| **Manifest identity** | `environmentId: platform-sandbox`, `environmentRole: sandbox`, built 2026-09-06T07:04:52Z |
+| **Guards passed** | The target resolved to `eos-platform-sandbox` (≠ `taylor-parts`) at three separate points; release provenance confirmed the commit is contained in `origin/main`; the built artifact's own `version.json` was re-read and asserted against the target *before* Hosting |
+| **Functions** | 170 create/update operations succeeded, 0 failed. Eleven belong to this capability, including `getEmailIntakeConfiguration`, `getInboundWorkRequest`, `acceptInboundWork`, `declineInboundWork`, `attachInboundWorkToWorkOrder`, `getInboundWorkAttachment` and `deliverInboundEmailMessage` |
+| **Rules / indexes** | Unchanged at `35ce3741`; no deploy required |
+
+**The first release attempt was REFUSED, correctly.** It ran from the feature branch, and the provenance
+guard stopped it before anything was built: *"HEAD b43790fe is not contained in origin/main. A tree
+identical to main is NOT provenance: merge first, then release what merged."* The release was then run
+from the merged commit. That refusal belongs in the record — it is the guard doing precisely the job it
+was written for.
+
+### What is deployed, and what is deliberately not
+
+The eight **provider transport** Functions remain governed exclusions from the derived deploy set, each
+naming its own reason in `scripts/sandboxDeployableFunctions.mjs`: they bind the four `EMAIL_*` OAuth
+secrets, and `platform-sandbox` has no Microsoft 365 or Google Workspace application registered against
+it, so those secrets are intentionally absent. Deploying them in a general refresh would demand provider
+credentials for a capability the environment has not activated.
+
+The practical consequence, stated plainly rather than discovered by someone clicking: in the sandbox
+today, `Administration ▸ Email & Communications` reads configuration and shows state, and **Connect,
+Test connection, Check now and Retry are not operable** — their Functions are not deployed there, and the
+screen reports that honestly rather than offering a live-looking button. `Service ▸ Inbound Work` is
+fully operable against intake records, including Accept, Decline, Attach Existing and attachment access.
+Removing those eight exclusions is the same act as binding a tenant; the runbook is
+[`docs/deployment/email-provider-setup.md`](../deployment/email-provider-setup.md).
+
+### Still not claimed
+
+Owner visual acceptance (not given), a real mailbox (no non-production tenant credentials exist, so no
+real inbound message has travelled this path), outbound email (not built), and production (untouched and
+unauthorized).
