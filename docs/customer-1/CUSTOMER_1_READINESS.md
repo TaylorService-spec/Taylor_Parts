@@ -35,16 +35,20 @@ The physical-consumption Day-1 blocker that PR #1749 exposed is now closed in ru
 
 Dashboard evidence has advanced beyond the first acceptance record. PR #1800 records `platform-sandbox` Hosting `6b281cd5` as the live build carrying the corrective chain. My Dashboard remains **CLOSED / OWNER ACCEPTED**, with its post-acceptance correctives live-verified, and Technician Dashboard Family 11 is now **CLOSED / OWNER ACCEPTED / LIVE VERIFIED**. The same closeout explicitly preserves the open technician self-goal-read authority question, the non-blocking inverted Work Order timestamp data-quality finding, and the fact that production remains untouched and unauthorized.
 
-Migration preparation has also crossed an important process milestone without pretending seeded data is Taylor data. PR #1802 durably records the Lane B B-05 canary at `2f262d38`: deterministic SEEDED/SYNTHETIC source records, census/tiering/mapping fixtures, a repeatable dry-run harness, deterministic exception reporting, and passing targeted proofs. That establishes that the migration process can be rehearsed while Taylor exports are absent. `C1-DATA-01` remains `OPEN` because Taylor's actual source systems/volumes, accepted mappings, real exceptions, and customer acceptance are still required.
+Migration preparation has crossed two process milestones without pretending seeded or sandbox data is Taylor data. PR #1802 durably records the Lane B B-05 canary at `2f262d38`: deterministic SEEDED/SYNTHETIC source records, census/tiering/mapping fixtures, a repeatable dry-run harness, deterministic exception reporting, and passing targeted proofs. PR #1804 then merged and sandbox-deployed EOS Data Import P1 (`d558f39d`, deployed build `b533757a`) for Parts, Customers, Equipment, opening Inventory, and imported Service History; its live sandbox acceptance was 24/24 with zero fabricated Work Orders. Together these prove substantially more of the migration mechanism. `C1-DATA-01` remains `OPEN` because Taylor's actual source systems/volumes, accepted mappings, real exceptions, and customer acceptance are still required, and Data Import execution is deliberately sandbox-only.
+
+Administration self-service also materially advanced. PR #1806 consolidated people administration into one Administration → Users destination with a governed record page, trusted employee-profile edit command, per-field immutable audit events, and Change History. PR #1807 verified the existing sandbox administrator RoleAssignment/effective-access path rather than inventing a grant. PR #1808 then deployed and live-verified the Users experience on platform-sandbox Hosting `8e90b41e`, including a reversible governed `preferredName` edit through the real UI and two immutable audit rows. This is real progress toward `C1-ADMIN-01`, but not closure: the full Day-1 admin action set is not yet frozen, Taylor administrators are not designated/trained, password-reset authority remains inactive, and production readiness is not established.
 
 That evidence remains authoritative in its original files and merged PR records. This ledger does not duplicate hundreds of proof lines; it points at them and asks the Customer 1 question: **is the evidence sufficient for Taylor to depend on this in production?**
 
-The product and security gates therefore remain `IN_PROGRESS`, and the migration gate remains `OPEN` despite meaningful process progress.
+The product and security gates therefore remain `IN_PROGRESS`; migration, administration, and training remain `OPEN` despite meaningful progress.
 
 ## Current Customer 1 blockers / cautions
 
 - **Day-1 scope is still not frozen.** Until each family is explicitly Day 1, post-Day-1, pilot, or excluded, the product gate cannot honestly be declared complete even when individual families close.
-- **Migration process is rehearsable, but Taylor data is still missing.** Seeded B-05 evidence proves the mechanism, not Taylor's real source inventory, volume, accepted mappings, exception reconciliation, or migrated-data acceptance.
+- **Migration process is much more executable, but Taylor data is still missing.** Seeded B-05 evidence and sandbox Data Import P1 prove mechanism and governed import behavior, not Taylor's real source inventory, volume, accepted mappings, exception reconciliation, production execution path, or migrated-data acceptance.
+- **Administration → Users is live in sandbox but the Customer 1 admin gate is broader.** The running sandbox now supports governed user-profile edits and audited history, but the complete ordinary Day-1 admin action list is not frozen, designated Taylor admins are not yet trained, password reset remains separately inactive, and no production admin proof is claimed.
+- **New training-close gap:** `docs/training/README.md` requires user-impacting deployments to have current deployed-behavior training before they are `CLOSED`. PR #1804 deployed/live-verified the new Data Import workflow and PR #1808 deployed/live-verified Administration → Users, but the authoritative `docs/training/` directory currently has no Data Import or Taylor EOS Administrator/Administration Users guide. Those releases may be `DEPLOYED/VERIFIED`; they must not be treated as `CLOSED` until training is complete (or a valid no-user-impact receipt exists). Whether either workflow is Day 1 still depends on `C1-SCOPE-01`.
 - **Legacy stock-location runtime authority is retired, but legacy data remains:** PR #1763 removed the final client reader and Rules read arm. The remaining `stock_locations` documents are inert and await separately authorized disposition; they are not an active read/write dependency.
 - **Production governed-access adoption is sparse:** PR #1752 found zero principals exposed to the measured R-32 change, but also found production has only two RoleAssignments on one principal, no manager Roles, and no location scopes. That narrows one risk; it does not satisfy `C1-IDENTITY-01` or `C1-SECURITY-01`.
 - **Reporting production adoption is representable, not live:** PRs #1768 and #1779 separated eligibility from activation/adoption and made the approved production set representable without widening the non-production override mechanism. That is architecture/governance progress, not production verification.
@@ -57,6 +61,7 @@ Training is no longer merely a future requirement. The permanent close rule is a
 
 - `docs/training/MY_DASHBOARD.md` — **COMPLETE — LIVE VERIFIED** against `platform-sandbox` commit `6b281cd5`; it explicitly covers both My Dashboard and Technician Dashboard and the corrective chain accepted on 2026-09-04.
 - `docs/training/PURCHASING_RECORD_PURCHASE_ORDER.md` — guide exists for the governed purchasing price-entry workflow; its final completion remains tied to live deployment verification.
+- **Missing for newly deployed sandbox workflows:** no `docs/training/**` guide currently covers Administration → Data Import or Administration → Users / User Detail. Under the permanent close rule, those deployments cannot be treated as `CLOSED` until applicable training is created/updated and live-verified (or explicitly proven not applicable, which these user-facing workflows are not).
 
 `C1-TRAINING-01` remains `OPEN` because its close condition is broader: every agreed Day-1 role/workflow must have current training and designated Taylor administrators must be trained.
 
@@ -67,7 +72,7 @@ The largest remaining gaps are not simply more screens. They are:
 1. exact Day-1 scope and exclusions;
 2. Taylor-specific data migration facts, accepted mappings, and real exception reconciliation;
 3. opening inventory reconciliation;
-4. Taylor administrator self-service;
+4. complete Taylor administrator self-service plus administrator training;
 5. backup/restore and interruption procedures;
 6. support and escalation;
 7. complete role-based Day-1 training;
@@ -80,11 +85,11 @@ The largest remaining gaps are not simply more screens. They are:
 The next work should be prioritized in this order unless a dependency forces a change:
 
 1. **C1-SCOPE-01** — freeze proposed Day-1 and exclusions.
-2. **C1-DATA-01** — replace seeded assumptions with real Taylor exports/source facts, then reconcile and obtain acceptance of the migration tiers/mappings.
-3. **C1-ADMIN-01** — identify ordinary admin actions Taylor must perform without Verenward engineering.
-4. **C1-COMM-01 / C1-SUPPORT-01** — convert platform/support scope into sustainable pricing and operating boundaries.
-5. **C1-RECOVERY-01** — establish and prove customer backup/restore recovery before production dependency. The Customer 1 orchestration-harness recovery tests in PR #1803 are framework durability evidence and do **not** satisfy this customer-data restore gate.
-6. **C1-TRAINING-01** — continue closing role-based training as Day-1 workflows stabilize.
+2. **C1-DATA-01** — replace seeded/sandbox assumptions with real Taylor exports/source facts, then reconcile and obtain acceptance of the migration tiers/mappings.
+3. **C1-ADMIN-01** — finish the ordinary admin-action census against the now-running Users surface and identify what Taylor still cannot do without Verenward engineering.
+4. **C1-TRAINING-01** — close the newly visible Administration training gap and continue role/workflow coverage as Day-1 scope stabilizes.
+5. **C1-COMM-01 / C1-SUPPORT-01** — convert platform/support scope into sustainable pricing and operating boundaries.
+6. **C1-RECOVERY-01** — establish and prove customer backup/restore recovery before production dependency. The Customer 1 orchestration-harness recovery tests in PR #1803 are framework durability evidence and do **not** satisfy this customer-data restore gate.
 7. **C1-CUTOVER-01** — rehearse the actual launch procedure.
 
 ## Permanent deployment-close rule
