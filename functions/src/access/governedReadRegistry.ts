@@ -269,6 +269,20 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
   // into one entry with optional filters. "Equipment for this account" and "equipment at this
   // location" are different questions, and an entry whose filters are all optional is an entry that
   // silently answers "all equipment" the moment a caller forgets a parameter.
+  // Customer locations by id -- the keyed lookup the installed-equipment register uses to resolve
+  // location names. Same capability as accountLocations: the authorization question ("may this
+  // person read customer locations") does not change because the predicate is an id set.
+  locationsByIds: Object.freeze({
+    capability: "crm.location.read",
+    source: "locations",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 30,
+  }),
+
   accountEquipment: Object.freeze({
     capability: "service.equipment.read",
     source: "equipment",
