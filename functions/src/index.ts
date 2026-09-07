@@ -173,6 +173,8 @@ export {
   // (governedReadRegistry.ts), one capability per source. The client names an EOS source id, never
   // a collection, a where() clause, a sort field or a raw cursor.
   readGovernedList,
+  // The list header's count, behind the same registry entry and the same capability as the read.
+  countGovernedList,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,

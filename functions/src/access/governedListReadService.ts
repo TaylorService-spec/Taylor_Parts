@@ -314,3 +314,75 @@ export async function readGovernedList(
         : null,
   };
 }
+
+// ============================ THE GOVERNED COUNT ============================
+//
+// The list header's "N results" number, for a source the browser can no longer query itself.
+//
+// WHY THIS EXISTS AT ALL, stated plainly: migrating 15 entities to the governed read path silently
+// took this number away. useListViewChrome gated its count on `readVia === "CLIENT_DIRECT"` -- a
+// correct guard when it was written, because a client-direct aggregate against a deny-all
+// collection fails every time -- so flipping those entities to CALLABLE made the count render as
+// "no count" on Customers, Equipment and Parts. Nothing failed and nothing said so. Restoring it
+// through the same registry is the fix; accepting the loss would have been a product decision, and
+// not one a transport migration gets to make.
+//
+// SAME AUTHORITY AS THE READ, deliberately. Same source id, same capability, same named filters,
+// same refusals. A count is a read of how many, and a count that answered where the read would have
+// refused would disclose the size of a set the caller may not see.
+//
+// NO SORT, NO CURSOR, NO PAGE SIZE. None of them change a count, and accepting them would invite a
+// caller to believe the number is scoped to a page. It is not: it is the whole filtered set, up to
+// the ceiling below.
+//
+// BOUNDED, and honest about the bound. `atLeast` is true when the count hit the ceiling, so a
+// caller can render "500+" rather than a wrong exact number. An unbounded count is still a full
+// scan on the server's side of the wire, and the number's purpose is orientation, not accounting.
+export const COUNT_CEILING = 500;
+
+export interface CountGovernedListInput {
+  readonly actorUid: string;
+  readonly sourceId: string;
+  readonly filters?: Record<string, unknown>;
+}
+
+export interface GovernedListCount {
+  readonly count: number;
+  readonly atLeast: boolean;
+}
+
+export async function countGovernedList(
+  input: CountGovernedListInput,
+  deps: GovernedListDeps = {},
+): Promise<GovernedListCount> {
+  const db = deps.db ?? getFirestore();
+  const roles = deps.roles ?? COMPATIBILITY_ROLES;
+
+  if (typeof input.actorUid !== "string" || !input.actorUid) {
+    throw new InvalidInputError("actorUid is required");
+  }
+  const spec = Object.prototype.hasOwnProperty.call(GOVERNED_READS, input.sourceId)
+    ? GOVERNED_READS[input.sourceId as keyof typeof GOVERNED_READS]
+    : undefined;
+  if (!spec) {
+    throw new InvalidInputError(`"${String(input.sourceId)}" is not a governed read source`);
+  }
+
+  // Resolved BEFORE the capability check, matching readGovernedList's order: a malformed request is
+  // malformed regardless of who sent it, and answering "invalid filter" to an unauthorized caller
+  // discloses only the shape of the registry entry, which the caller named in the first place.
+  const filters = resolveFilters(spec, (input.filters ?? {}) as Record<string, unknown>);
+
+  if (!(await actorHolds(db, roles, input.actorUid, spec.capability))) {
+    throw new UnauthorizedActorError(`actor is not authorized for "${spec.capability}"`);
+  }
+
+  let query = db.collection(spec.source) as FirebaseFirestore.Query;
+  for (const f of filters) {
+    query = query.where(f.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : f.field, f.op, f.value);
+  }
+
+  const snap = await query.limit(COUNT_CEILING).count().get();
+  const count = snap.data().count;
+  return { count, atLeast: count >= COUNT_CEILING };
+}

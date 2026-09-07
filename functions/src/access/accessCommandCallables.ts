@@ -298,6 +298,29 @@ export const readGovernedList = onCall({ region: REGION }, async (request) => {
       filters: asRecord(data.filters),
       pageSize: typeof data.pageSize === "number" ? data.pageSize : undefined,
       cursor: typeof data.cursor === "string" ? data.cursor : undefined,
+      // The sort TOKEN. Forwarded, not resolved here -- this adapter maps a wire payload onto the
+      // service's input and decides nothing; the registry decides which field a token means, or
+      // refuses it. Omitting this line (as this call did when sortKey was added to the service)
+      // silently drops every caller's sort choice onto the source's default, which reads as "the
+      // sort control does nothing" rather than as an error.
+      sortKey: typeof data.sortKey === "string" ? data.sortKey : undefined,
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// The count behind the same registry entry. Separate callable rather than a flag on the read: they
+// return different shapes, and a read that sometimes counted instead would make the response type
+// depend on an input field.
+export const countGovernedList = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await governedReads.countGovernedList({
+      actorUid,
+      sourceId: data.sourceId as string,
+      filters: asRecord(data.filters),
     });
   } catch (err) {
     throw mapCommandError(err);

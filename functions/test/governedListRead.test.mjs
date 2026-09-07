@@ -11,7 +11,8 @@
 // Anything escape-sensitive or precedence-sensitive in here gets executed, never eyeballed.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readGovernedList } from "../lib/access/governedListReadService.js";
+import { readFileSync } from "node:fs";
+import { COUNT_CEILING, countGovernedList, readGovernedList } from "../lib/access/governedListReadService.js";
 import { COMPATIBILITY_ROLES } from "../lib/access/compatibilityRoles.js";
 
 const ACTOR = "actor-1";
@@ -23,7 +24,7 @@ const ACTOR = "actor-1";
  * on the rows it returned -- a filter that is silently dropped and one that is correctly applied
  * both return rows, and only the recorded clauses tell them apart.
  */
-function fakeDb({ docsByCollection = {}, capturedRef = null } = {}) {
+function fakeDb({ docsByCollection = {}, capturedRef = null, countOverride = null } = {}) {
   const makeQuery = (collectionName, clauses = []) => ({
     where(field, op, value) {
       const next = [...clauses, { field: String(field), op, value }];
@@ -48,6 +49,15 @@ function fakeDb({ docsByCollection = {}, capturedRef = null } = {}) {
         data: () => d.data,
       }));
       return { docs };
+    },
+    // The aggregate. Returns the number of documents the fake holds for this collection, so a count
+    // test asserts on the clauses BUILT rather than on arithmetic the fake would be doing anyway.
+    count() {
+      return {
+        async get() {
+          return { data: () => ({ count: countOverride ?? (docsByCollection[collectionName] ?? []).length }) };
+        },
+      };
     },
   });
 
@@ -320,4 +330,112 @@ test("omitting the sort uses the source's declared default", async () => {
   );
   const ordered = captured.orderBy.map(([field, dir]) => `${field}:${dir}`);
   assert.ok(ordered.includes("updatedAt:desc"), "the declared default sort must apply");
+});
+
+// ════════════════════ THE GOVERNED COUNT ════════════════════
+//
+// The list header's "N results", for a source the browser can no longer query itself. It exists
+// because migrating 15 entities to this path silently removed that number from Customers, Equipment
+// and Parts -- useListViewChrome gated its aggregate on readVia === "CLIENT_DIRECT", so the flip
+// turned a correct guard into a quiet feature removal.
+
+test("a count applies the SAME capability as the read behind that source", async () => {
+  // A count that answered where the read would refuse discloses the size of a set the caller may
+  // not see, which is a smaller leak than the rows but a leak.
+  const db = fakeDb({ docsByCollection: { users: [{ id: "stranger", data: { accessVersion: 0 } }], roleAssignments: [] } });
+  await assert.rejects(
+    () => countGovernedList({ actorUid: "stranger", sourceId: "metadataAccounts" }, { db, roles: COMPATIBILITY_ROLES }),
+    /is not authorized for/,
+  );
+});
+
+test("a count refuses an undeclared filter BY NAME, exactly as the read does", async () => {
+  const db = fakeDb({ docsByCollection: authorizedFixture() });
+  await assert.rejects(
+    () =>
+      countGovernedList(
+        { actorUid: ACTOR, sourceId: "metadataAccounts", filters: { secretField: "x" } },
+        { db, roles: COMPATIBILITY_ROLES },
+      ),
+    /secretField/,
+  );
+});
+
+test("a count builds the clause the REGISTRY chose, from the filter NAME the caller sent", async () => {
+  const captured = {};
+  const db = fakeDb({ docsByCollection: authorizedFixture({ accounts: [] }), capturedRef: captured });
+  await countGovernedList(
+    { actorUid: ACTOR, sourceId: "metadataAccounts", filters: { statusIn: ["ACTIVE", "PROSPECT"] } },
+    { db, roles: COMPATIBILITY_ROLES },
+  );
+  // `statusIn` is a NAME. The field and the operator are the registry's -- the caller never sent
+  // either, and could not have chosen `in` for a filter registered as `==`.
+  assert.deepEqual(captured.clauses, [{ field: "status", op: "in", value: ["ACTIVE", "PROSPECT"] }]);
+});
+
+test("a count neither orders nor resumes from a cursor", async () => {
+  // Neither changes a count, and honouring them would suggest the number is scoped to a page.
+  const captured = {};
+  const db = fakeDb({ docsByCollection: authorizedFixture({ accounts: [] }), capturedRef: captured });
+  await countGovernedList({ actorUid: ACTOR, sourceId: "metadataAccounts" }, { db, roles: COMPATIBILITY_ROLES });
+  assert.equal(captured.orderBy, undefined, "a count must not order");
+  assert.equal(captured.startAfter, undefined, "a count must not resume from a cursor");
+});
+
+test("a count is bounded, and says so when it hits the bound", async () => {
+  const capturedA = {};
+  const atCeiling = fakeDb({
+    docsByCollection: authorizedFixture({ accounts: [] }),
+    capturedRef: capturedA,
+    countOverride: COUNT_CEILING,
+  });
+  assert.deepEqual(
+    await countGovernedList({ actorUid: ACTOR, sourceId: "metadataAccounts" }, { db: atCeiling, roles: COMPATIBILITY_ROLES }),
+    { count: COUNT_CEILING, atLeast: true },
+  );
+  // The bound is real, not decorative: an unbounded count is still a full scan server-side.
+  assert.equal(capturedA.limit, COUNT_CEILING);
+
+  const under = fakeDb({ docsByCollection: authorizedFixture({ accounts: [] }), countOverride: 7 });
+  assert.deepEqual(
+    await countGovernedList({ actorUid: ACTOR, sourceId: "metadataAccounts" }, { db: under, roles: COMPATIBILITY_ROLES }),
+    { count: 7, atLeast: false },
+  );
+});
+
+// ════════════════════ THE ADAPTER FORWARDS WHAT THE SERVICE ACCEPTS ════════════════════
+
+test("the readGovernedList callable forwards every input the service declares", () => {
+  // THE BUG THIS CATCHES, met once already in this workstream: `sortKey` was added to
+  // ReadGovernedListInput and the onCall adapter was never updated, so every caller's sort choice
+  // was dropped onto the source's default. Nothing errored. The sort control simply did nothing,
+  // which is the quietest way for a feature to be absent -- and exactly the
+  // declaration-nothing-checks pattern this repository keeps rediscovering.
+  //
+  // Static on purpose: invoking an onCall wrapper needs a Functions runtime, and the property under
+  // test is "the adapter mentions this field at all", which the source answers exactly.
+  const service = readFileSync(new URL("../src/access/governedListReadService.ts", import.meta.url), "utf8");
+  const callables = readFileSync(new URL("../src/access/accessCommandCallables.ts", import.meta.url), "utf8");
+
+  const iface = service.match(/export interface ReadGovernedListInput \{([\s\S]*?)\n\}/);
+  assert.ok(iface, "ReadGovernedListInput must be findable");
+  const fields = [...iface[1].matchAll(/^\s*(?:readonly\s+)?(\w+)\??:/gm)].map((m) => m[1]);
+  // Guards the extraction itself -- a regex that matched nothing would make this test vacuous.
+  assert.ok(fields.includes("sortKey"), "sortKey should be among the extracted fields");
+  assert.ok(fields.length >= 5, `expected several fields, extracted ${fields.length}`);
+
+  const adapter = callables.match(/export const readGovernedList = onCall\(([\s\S]*?)\n\}\);/);
+  assert.ok(adapter, "the readGovernedList adapter must be findable");
+  // COMMENTS STRIPPED FIRST, and this is not a detail. The comment explaining why `sortKey` must be
+  // forwarded contains the word `sortKey`, so matching raw source passed even with the field
+  // deleted -- checked by deleting it. A contract test that its own documentation satisfies is
+  // worse than no test: it reports coverage it does not have. Same `code()` discipline as
+  // reorderTrustedWritePathContract.test.mjs.
+  const body = adapter[1].replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  for (const field of fields) {
+    // actorUid is deliberately NOT taken from the payload: it comes from request.auth.uid, and an
+    // adapter that read it from the wire would be accepting a client-asserted identity.
+    if (field === "actorUid") continue;
+    assert.match(body, new RegExp(`\\b${field}\\b`), `the readGovernedList adapter drops "${field}"`);
+  }
 });
