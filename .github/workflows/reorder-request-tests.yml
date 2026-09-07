@@ -17,6 +17,8 @@ on:
       - "functions/src/index.ts"
       - "functions/test/reorderRequestNumbering.test.mjs"
       - "functions/test/reorderTrustedCommands.test.mjs"
+      - "functions/test/reorderCancelVoidCommands.test.mjs"
+      - "functions/test/governedListRead.test.mjs"
       - "functions/test/bindingScopePolicy.test.mjs"
       - "functions/src/access/**"
       - "functions/package.json"
@@ -29,6 +31,8 @@ on:
       - "functions/src/index.ts"
       - "functions/test/reorderRequestNumbering.test.mjs"
       - "functions/test/reorderTrustedCommands.test.mjs"
+      - "functions/test/reorderCancelVoidCommands.test.mjs"
+      - "functions/test/governedListRead.test.mjs"
       - "functions/test/bindingScopePolicy.test.mjs"
       - "functions/src/access/**"
       - "functions/package.json"
@@ -77,4 +81,19 @@ jobs:
       # command core and the R-17 eligibility resolver were CI-uncovered while looking covered.
       - name: Trusted reorder commands + warehouse eligibility (build + run)
         run: npm run test:reorderTrustedCommands
+        working-directory: functions
+
+      # The two Class C reorder writes -- Cancel and Void -- as pure decisions. They carry the
+      # conditions that used to live in a browser transaction and in firestore.rules, so the
+      # allowlist, the record scope boundary and the one-clock cross-document invariant are
+      # exercised here rather than only in a reviewer's head.
+      - name: Reorder Cancel + Void command decisions (build + run)
+        run: npm run test:reorderCancelVoid
+        working-directory: functions
+
+      # The governed read contract. This lane is path-filtered on functions/src/access/**, which
+      # is where the registry and the read service live, and this suite had NO workflow naming it
+      # -- CI-uncovered while looking covered, the same gap Workstream 2B found above.
+      - name: Governed list read contract (build + run)
+        run: npm run test:governedListRead
         working-directory: functions

@@ -468,6 +468,17 @@ jobs:
         run: node --test test/metadataConvergedFeatures.test.mjs
         working-directory: field-ops-app-vite
 
+      # EVERY SHIPPED DEFINITION, THROUGH ITS OWN VALIDATOR. validateListViewDefinition and
+      # validateEntityDefinition existed for a long time with no test running them over the
+      # definitions the app actually ships -- only over hand-built fixtures. Measured: deleting a
+      # registered sort from the governed read registry left all 3,286 client tests passing. For a
+      # governed-source list this also proves every sortable column has a registered sort and every
+      # declared filter has a registered filter name, so an unregistered one is caught here rather
+      # than by the user who clicks that column header.
+      - name: Shipped metadata definitions pass their own validators
+        run: npx vitest run test/metadataDefinitionsValidate.test.jsx
+        working-directory: field-ops-app-vite
+
       # The boundary itself: one architecture, one filter UI, one sort UI, one URL layer, and no
       # screen building its own bounded query.
       - name: Object list metadata authority boundary
