@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 148,
+    "capabilities": 151,
     "catalogActive": 0,
-    "catalogInactive": 148,
+    "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
     "callableExports": 47,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 148,
-    "parsed": 148,
+    "raw": 151,
+    "parsed": 151,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 121,
+    "SERVER_REFERENCED": 124,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -422,6 +422,78 @@
         "serverReferenceCount": 8,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.contact.read",
+      "resource": "contact.record",
+      "action": "read",
+      "description": "Read Contact records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.location.read",
+      "resource": "location.record",
+      "action": "read",
+      "description": "Read Customer Location records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.equipment.read",
+      "resource": "equipment.record",
+      "action": "read",
+      "description": "Read Equipment / installed-base records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": false,
@@ -3083,13 +3155,14 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/workforceDirectoryReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },

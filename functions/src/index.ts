@@ -164,6 +164,11 @@ export {
   decidePrivilegedRoleRequest,
   listPrivilegedRoleRequests,
   readPrincipalAccessState,
+  // The governed reads that replace client-direct Firestore access as rules management comes out
+  // of Firebase. listWorkforceDirectory serves `employees`; readGovernedCollection serves the
+  // registry in governedCollectionReadService.ts, one capability per collection.
+  listWorkforceDirectory,
+  readGovernedCollection,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,

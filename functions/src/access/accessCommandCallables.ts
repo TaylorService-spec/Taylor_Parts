@@ -27,6 +27,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import * as commands from "./trustedWriterCommands";
 import * as workforceDirectory from "./workforceDirectoryReadService";
+import * as governedReads from "./governedCollectionReadService";
 
 const REGION = "us-central1";
 
@@ -276,6 +277,27 @@ export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (req
         authTimeSeconds: request.auth?.token?.auth_time ?? null,
         signInProvider: request.auth?.token?.firebase?.sign_in_provider ?? null,
       },
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// ONE REGISTERED COLLECTION, read under its own capability.
+//
+// The generic-looking signature is not a generic database endpoint: `collection` is a key into a
+// CLOSED registry compiled into this deploy, and each entry declares which fields may be filtered
+// and with which operator. A collection absent from the registry is unreadable through this path by
+// anyone; a filter the entry does not declare is refused by name rather than dropped.
+export const readGovernedCollection = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await governedReads.readGovernedCollection({
+      actorUid,
+      collection: data.collection as string,
+      filters: Array.isArray(data.filters) ? (data.filters as never[]) : undefined,
+      limit: typeof data.limit === "number" ? data.limit : undefined,
     });
   } catch (err) {
     throw mapCommandError(err);

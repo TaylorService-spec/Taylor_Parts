@@ -94,6 +94,12 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "warehouse.record.read",
   "warehouse.stockLocation.read",
   "warehouse.transferOrder.read",
+  // The governed replacements for the firestore.rules gates on contacts, locations and equipment --
+  // three objects that were `rulesOnly` and would otherwise be reachable by nobody once Rules stop
+  // deciding. Shared base for the same reason as the directory below: same population, new venue.
+  "crm.contact.read",
+  "crm.location.read",
+  "service.equipment.read",
   // The governed replacement for firestore.rules' `isAdminOrDispatcher()` gate on `employees`.
   // In the SHARED base deliberately: that predicate admits admin AND dispatcher today, and this
   // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in

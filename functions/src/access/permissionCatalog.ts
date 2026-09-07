@@ -69,6 +69,37 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "account.record",
     action: "read",
   }),
+  // THE THREE CRM READS FIRESTORE RULES USED TO DECIDE (Owner direction 2026-09-07).
+  //
+  // Contacts, Customer Locations and Equipment were `rulesOnly` objects on the Objects grid: no
+  // capability governed them because firestore.rules did, gating each on isAdminOrDispatcher() over
+  // the legacy users/{uid}.role. With Rules deciding nothing they would be governed by NOTHING and
+  // simply denied, and the grid would show three objects nobody can ever reach.
+  //
+  // These are the governed replacements, so each object's access becomes an administrable cell
+  // instead of a blank. Granted to the shared admin+dispatcher base -- exactly the population the
+  // predicate they replace admitted. WHERE the decision is made changes; WHO it admits does not.
+  //
+  // Read only. The write paths for these collections are a separate migration with their own
+  // commands, and giving a read capability a write-shaped name now would pre-empt that design.
+  Object.freeze({
+    id: "crm.contact.read",
+    description: "Read Contact records. Confers no write.",
+    resource: "contact.record",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "crm.location.read",
+    description: "Read Customer Location records. Confers no write.",
+    resource: "location.record",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "service.equipment.read",
+    description: "Read Equipment / installed-base records. Confers no write.",
+    resource: "equipment.record",
+    action: "read",
+  }),
   Object.freeze({
     id: "customer.record.create",
     description: "Create a Customer record.",
