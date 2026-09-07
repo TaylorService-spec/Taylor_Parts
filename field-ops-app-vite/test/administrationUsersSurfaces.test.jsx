@@ -35,6 +35,7 @@ import UserDetail from "../src/modules/administration/UserDetail.jsx";
 import { employeeEntity, employeeIndexList } from "../src/metadata/definitions/employee.js";
 import { OPERATIONAL_ROLE_OPTIONS } from "../src/domain/employeeProfile.js";
 import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
+import { ADMINISTRATION_USERS_SURFACE_CAPABILITIES } from "../src/access/governedSurfaceCapabilities.js";
 import { buildListPresentation } from "../src/metadata/listPresentation.js";
 
 const JOHN = {
@@ -126,10 +127,13 @@ describe("Administration > Users is the one people directory", () => {
     render(<MemoryRouter><AdminUsers /></MemoryRouter>);
     // "EOS Account", not "EOS Access" (Owner ruling, PR #1806): the value is linkage, and a heading
     // reading Access over it claims something no read on this page can support.
-    for (const heading of ["Name", "Employment Status", "Operational Roles", "EOS Account", "Security Role"]) {
+    // "Legacy role", not "Security Role": a directory column headed Security Role reads as current
+    // governed access to everyone scanning the list, and it is the legacy mirror.
+    for (const heading of ["Name", "Employment Status", "Operational Roles", "EOS Account", "Legacy role"]) {
       expect(screen.getByRole("columnheader", { name: heading }), heading).toBeTruthy();
     }
     expect(screen.queryByRole("columnheader", { name: "EOS Access" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Security Role" })).toBeNull();
     expect(screen.getByText("Account linked")).toBeTruthy();
     expect(screen.getByText("No account")).toBeTruthy();
     // The linked employee's raw uid must not appear anywhere on the page.
@@ -450,7 +454,22 @@ describe("EOS access and security stay independent, and fail closed", () => {
       // Without this the Add Role control is protected for an admin who genuinely holds the
       // grant -- the exact defect the four ids above were added to fix, repeated once more.
       "admin.roleAssignment.write",
+      // And the READ. Unasked, the record page would report "you do not have access to read this"
+      // to an administrator who holds admin.principalAccess.read -- account status blank and no
+      // governed Roles listed. This is the same defect for the third time in this workstream, which
+      // is why every id the surface consults is enumerated here rather than spot-checked.
+      "admin.principalAccess.read",
     ]) {
+      expect(REPORT_CAPABILITY_REQUEST, id).toContain(id);
+    }
+  });
+
+  it("every capability id the Users surface consults is one the shell REQUESTS", () => {
+    // The generalization of the test above: rather than trusting that someone remembers to add a
+    // new id here, this asserts the declared surface set is wholly contained in the shell's
+    // request. A capability added to ADMINISTRATION_USERS_SURFACE_CAPABILITIES but not reaching
+    // REPORT_CAPABILITY_REQUEST is exactly the unasked-id defect, and it fails here immediately.
+    for (const id of ADMINISTRATION_USERS_SURFACE_CAPABILITIES) {
       expect(REPORT_CAPABILITY_REQUEST, id).toContain(id);
     }
   });

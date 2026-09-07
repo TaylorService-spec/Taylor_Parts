@@ -32,6 +32,7 @@
     "test:operationalRoleContext": "npm run build && node test/operationalRoleContext.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",
+    "test:principalAccessRead": "npm run build && node test/readPrincipalAccessState.test.mjs",
     "test:bootstrapCompatibilityAdmin": "npm run build && node test/bootstrapCompatibilityAdmin.test.mjs",
     "test:operatorAccess": "node --test test/operatorAccessCommand.test.js",
     "test:legacyDataAudit": "node --test test/auditLegacyJobTechnicianData.test.js",

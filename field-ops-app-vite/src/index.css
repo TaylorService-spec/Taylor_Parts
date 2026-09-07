@@ -8444,6 +8444,17 @@ a.fo-preview-list__line:hover .fo-preview-list__primary { text-decoration: under
 .fo-role-assign { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-border); }
 .fo-role-assign h4 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
 .fo-role-assign select { padding: 6px 8px; }
+/* The governed Roles a person currently holds. One row per ASSIGNMENT (not per Role -- the same
+   Role can be held at more than one scope), each carrying its own Remove. */
+.fo-role-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.fo-role-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.fo-role-list li:last-child { border-bottom: 0; }
 
 /* ── Change History ─────────────────────────────────────────────────────────────────────────
    The filter row wraps rather than scrolls: four controls side by side is a desktop layout and

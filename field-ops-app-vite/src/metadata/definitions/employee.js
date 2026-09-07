@@ -298,9 +298,14 @@ export const employeeEntity = makeEntityDefinition({
     makeFieldDefinition({
       id: "securityRole",
       entityId: "employee",
-      label: "Security Role",
+      // "Legacy role", not "Security Role" (Owner ruling 2026-09-06 §2). A directory column headed
+      // Security Role reads as this person's current governed access to everyone scanning the list,
+      // and it is not: it mirrors the legacy users/{uid}.role string. Governed Roles are a separate
+      // system, read through admin.principalAccess.read on the record page, and the two are never
+      // merged into one column.
+      label: "Legacy role",
       type: "STRING",
-      description: "Denormalized, READ-ONLY mirror of users/{uid}.role (Section 8a). Rendered, not filtered -- see the header. May be null/missing on records provisioned before this mirror existed.",
+      description: "Denormalized, READ-ONLY mirror of the LEGACY users/{uid}.role (Section 8a) -- not the governed Roles this person holds, and not written by any governed command. Rendered, not filtered -- see the header. May be null/missing on records provisioned before this mirror existed.",
     }),
     // No `user` entity is registered anywhere in this program yet, so this stays a
     // plain reference id rather than a REFERENCE this registry cannot resolve -- the
