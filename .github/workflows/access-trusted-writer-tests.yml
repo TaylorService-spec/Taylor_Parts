@@ -17,6 +17,7 @@ on:
       - "functions/src/access/**"
       - "functions/test/trustedWriterCommands.test.mjs"
       - "functions/test/bootstrapCompatibilityAdmin.test.mjs"
+      - "functions/test/readPrincipalAccessState.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -28,6 +29,7 @@ on:
       - "functions/src/access/**"
       - "functions/test/trustedWriterCommands.test.mjs"
       - "functions/test/bootstrapCompatibilityAdmin.test.mjs"
+      - "functions/test/readPrincipalAccessState.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -84,6 +86,16 @@ jobs:
 
       - name: Bootstrap compatibility-admin command tests (build + run)
         run: npm run test:bootstrapCompatibilityAdmin
+        working-directory: functions
+
+      # The trusted principal-access READ (Owner ruling 2026-09-06 §4). Registered in THIS workflow
+      # rather than a new one because it needs the identical emulator pair this job already starts
+      # and exercises the same module -- a separate workflow would duplicate the whole setup to
+      # cover one more function in the same file. Registered at all because a suite named in no
+      # workflow is CI-uncovered: this repo runs suites by explicit name, never by glob, which is
+      # how trustedWriterCommands itself went unrun.
+      - name: Principal access read tests (build + run)
+        run: npm run test:principalAccessRead
         working-directory: functions
 
       - name: Upload emulator debug logs

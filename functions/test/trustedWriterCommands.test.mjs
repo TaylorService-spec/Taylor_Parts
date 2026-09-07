@@ -15,8 +15,17 @@
 //   node functions/test/trustedWriterCommands.test.mjs
 //
 // Never touches the live "taylor-parts" project.
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+// The default ports, OVERRIDABLE rather than assigned unconditionally. 8080 is not always free on
+// a developer machine (other local services claim it, and concurrent worktrees each want their own
+// emulator), and an unconditional assignment meant this suite could only ever run when that exact
+// port happened to be available -- which is how it came to be the suite nobody ran. Export
+// FIRESTORE_EMULATOR_HOST / FIREBASE_AUTH_EMULATOR_HOST to point it at a different emulator.
+//
+// STILL EMULATOR-ONLY. Both variables are set unconditionally to a LOCAL default when absent, so
+// the Admin SDK can never fall through to a live project: an unset variable is the dangerous state
+// this guards, and it does not occur.
+process.env.FIRESTORE_EMULATOR_HOST ||= "127.0.0.1:8080";
+process.env.FIREBASE_AUTH_EMULATOR_HOST ||= "127.0.0.1:9099";
 
 import assert from "node:assert/strict";
 import admin from "firebase-admin";

@@ -159,11 +159,122 @@ async function resolveActorLabels(db: Firestore, uids: string[]): Promise<Map<st
 }
 
 /**
+ * ONE PERSON'S EVENTS, gathered from the several places the trail records them.
+ *
+ * THE PROBLEM THIS SOLVES (Owner ruling 2026-09-06 §7). Access events are NOT written against the
+ * employee record, so a person's Change History showed profile edits and nothing about their
+ * access. Measured from the commands rather than assumed, the three shapes are:
+ *
+ *   assignApprovedRole   targetType "roleAssignment"   targetId = principalUid
+ *   setUserStatus        targetType "user"             targetId = principalUid
+ *   revokeRole           targetType "roleAssignment"   targetId = ASSIGNMENT id
+ *
+ * The third is the awkward one and the reason this is not a two-line union: a revocation is
+ * recorded against the assignment, and the audit event carries no principalUid field to query by,
+ * so the assignment ids have to be looked up first. That lookup reads roleAssignments at EVERY
+ * status -- unlike readPrincipalAccessState, which returns only active ones -- because a revoked
+ * assignment is precisely the one whose revocation we are trying to show.
+ *
+ * NO NEW AUDIT EVENTS ARE WRITTEN, here or anywhere. The immutable records stay exactly as the
+ * commands wrote them; this is a read that gathers them. Writing a second, employee-targeted copy
+ * of each access event would double the trail and create two records that can disagree.
+ *
+ * `in` takes at most 30 values per query, so the assignment ids are chunked. The per-query limit is
+ * the caller's full limit rather than a share of it: each query is independently ordered by time,
+ * and slicing after the merge is what makes "the most recent N events about this person" true.
+ */
+async function listEventsForRecordAndItsPrincipal(
+  db: Firestore,
+  targetType: string,
+  targetId: string,
+  limit: number,
+): Promise<Array<Record<string, unknown>>> {
+  const own = await listAuditEventsForRecord(targetType, targetId, { limit }, db);
+  if (targetType !== "employee") return own;
+
+  // The linked principal. No link means no access events exist to gather, which is a complete
+  // answer rather than a partial one.
+  const employeeSnap = await db.collection("employees").doc(targetId).get();
+  const principalUid = employeeSnap.exists
+    ? (employeeSnap.data() as Record<string, unknown>).userId
+    : undefined;
+  if (typeof principalUid !== "string" || principalUid.length === 0) return own;
+
+  const assignmentsSnap = await db
+    .collection("roleAssignments")
+    .where("principalUid", "==", principalUid)
+    .get();
+  const assignmentIds = assignmentsSnap.docs.map((d) => d.id);
+
+  const queries: Array<Promise<Array<Record<string, unknown>>>> = [
+    listAuditEventsForRecord("user", principalUid, { limit }, db),
+    listAuditEventsForRecord("roleAssignment", principalUid, { limit }, db),
+  ];
+  for (let i = 0; i < assignmentIds.length; i += 30) {
+    const chunk = assignmentIds.slice(i, i + 30);
+    queries.push(
+      db
+        .collection("auditEvents")
+        .where("targetType", "==", "roleAssignment")
+        .where("targetId", "in", chunk)
+        .orderBy("at", "desc")
+        .limit(limit)
+        .get()
+        .then((snap) => snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))),
+    );
+  }
+
+  // ROLE NAMES WITHOUT PARSING PROSE. An access event records only a summary sentence, so the
+  // obvious way to show WHICH Role was added is to parse that sentence -- which breaks the day the
+  // wording changes, silently and in a record of who has access to what.
+  //
+  // It is unnecessary, because the ids line up by construction: runAccessMutationCommand writes
+  // the audit document under the idempotencyKey, and assignApprovedRole creates the assignment
+  // under that same key. So for an ADD the audit event's own id IS the assignment id, and for a
+  // REMOVE the assignment id is the event's targetId. Both resolve through this map to the roleId
+  // the assignment itself records -- structured data, not text.
+  const roleIdByAssignmentId = new Map(
+    assignmentsSnap.docs.map((d) => [d.id, (d.data() as Record<string, unknown>).roleId]),
+  );
+  const withRoleNames = (events: Array<Record<string, unknown>>) =>
+    events.map((event) => {
+      const action = event.action;
+      if (action !== "assignApprovedRole" && action !== "revokeRole" && action !== "grantRole") {
+        return event;
+      }
+      const assignmentId = action === "revokeRole" ? String(event.targetId) : String(event.id);
+      const roleId = roleIdByAssignmentId.get(assignmentId);
+      if (typeof roleId !== "string") return event;
+      // fieldKey makes this a FIELD row rather than a bare event row, so it renders in the
+      // record's own Field/Previous/New shape: a removal shows the Role leaving, an addition shows
+      // it arriving. The client maps "governedRole" to its words.
+      return {
+        ...event,
+        fieldKey: "governedRole",
+        ...(action === "revokeRole" ? { previousValue: roleId } : { newValue: roleId }),
+      };
+    });
+
+  const merged = [...own, ...withRoleNames((await Promise.all(queries)).flat())];
+  // Deduplicated by document id: an assignment-id chunk query and the principalUid query can both
+  // return the same event, and the same event twice in a history reads as two things happening.
+  const byId = new Map(merged.map((e) => [String(e.id), e]));
+  return [...byId.values()]
+    .sort((a, b) => (toEpochMillis(b.at) ?? 0) - (toEpochMillis(a.at) ?? 0))
+    .slice(0, limit);
+}
+
+/**
  * One record's change history, newest first.
  *
  * Returns applied AND denied events: a refused attempt to change somebody's employment status is
  * part of that record's history, and hiding it would make the trail read as though nobody ever
  * tried.
+ *
+ * For an `employee` target this includes the ACCESS events recorded against their linked principal
+ * -- Role added, Role removed, account enabled/disabled -- which live under different targetTypes
+ * and were previously invisible on the page that shows the person. See
+ * listEventsForRecordAndItsPrincipal.
  */
 export async function listRecordChangeHistory(
   input: ListRecordChangeHistoryInput,
@@ -197,7 +308,7 @@ export async function listRecordChangeHistory(
     throw new UnauthorizedActorError(`actor is not authorized for "${AUDIT_READ_CAPABILITY}"`);
   }
 
-  const events = await listAuditEventsForRecord(input.targetType, input.targetId, { limit }, db);
+  const events = await listEventsForRecordAndItsPrincipal(db, input.targetType, input.targetId, limit);
   const labels = await resolveActorLabels(
     db,
     events.map((e) => asStringOrNull(e.actorUid) ?? ""),

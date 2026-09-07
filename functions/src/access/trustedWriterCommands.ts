@@ -1385,6 +1385,101 @@ export async function requestPrivilegedRole(input: RequestPrivilegedRoleInput): 
   });
 }
 
+export interface ReadPrincipalAccessStateInput {
+  actorUid: string;
+  principalUid: string;
+}
+
+export interface PrincipalAccessAssignment {
+  assignmentId: string;
+  roleId: string;
+  scope: Scope;
+}
+
+export interface PrincipalAccessState {
+  authExists: boolean;
+  accountStatus: "enabled" | "disabled" | null;
+  assignments: PrincipalAccessAssignment[];
+}
+
+/**
+ * ONE PRINCIPAL'S CURRENT ACCESS STATE (Owner ruling 2026-09-06 §4).
+ *
+ * WHY THIS EXISTS. Administration > Users could WRITE a person's access -- setUserStatus,
+ * assignApprovedRole, revokeRole are all built and deployed -- and could not READ it. The record
+ * page showed "Account Status: Not available" and no governed Roles at all, so an administrator
+ * acted blind: no current state before a change, no confirmation after one, and revokeRole was
+ * uncallable outright because its `assignmentId` is a document id nothing exposed. This closes
+ * that asymmetry and nothing else.
+ *
+ * THE MINIMUM, AND ONLY THE MINIMUM. Three facts leave here: whether an Auth account exists,
+ * whether it is enabled, and the principal's ACTIVE assignments as {assignmentId, roleId, scope}.
+ * Deliberately absent: email, display name, provider data, custom claims, timestamps, disabled
+ * reason, grantedBy, and every other field on both sources. The caller is rendering a person's own
+ * record page and already knows who they are; anything further is a second question that has not
+ * been asked and would need its own authority.
+ *
+ * NO FIREBASE ADMIN OBJECT CROSSES THIS BOUNDARY. `authExists` and `accountStatus` are derived
+ * here from the existing server-side seam and returned as a boolean and a two-value string. A
+ * UserRecord handed to the client would leak provider internals with no way to take them back.
+ *
+ * accountStatus is NULL, never "enabled", when no Auth account exists. A missing account and an
+ * enabled one are different facts, and defaulting the absent case to either would make the record
+ * page state something untrue about a person with no account at all.
+ *
+ * ACTIVE ONLY. `status == "active"` is the same predicate resolveEffectivePermission applies when
+ * deciding authority, so what this read shows and what the resolver acts on cannot disagree.
+ * Disabled assignments are history and belong to the audit trail, which is its own read.
+ *
+ * READ AUTHORITY, NOT WRITE AUTHORITY. Authorized on `admin.principalAccess.read` -- not on
+ * userStatus.write or roleAssignment.write. A principal who may see access state need not be able
+ * to change it, and this command confers nothing.
+ */
+export async function readPrincipalAccessState(
+  input: ReadPrincipalAccessStateInput,
+): Promise<PrincipalAccessState> {
+  assertNonEmptyString(input.actorUid, "actorUid");
+  assertNonEmptyString(input.principalUid, "principalUid");
+  await verifyActorPermission(input.actorUid, "admin.principalAccess.read", {
+    scope: { type: "global" },
+    condition: {},
+  });
+
+  // `.catch(() => null)` matches resolveTargetFacts' own handling of this call: a missing Auth
+  // user REJECTS rather than returning null, and that rejection is the ordinary "no account"
+  // answer rather than a fault. It is not a general error swallow -- the Firestore read below is
+  // deliberately left to reject, because a failed assignments query returning [] would render as
+  // "holds no Roles", which is a specific and wrong claim about a person's access.
+  const authUser = await getAuth().getUser(input.principalUid).catch(() => null);
+
+  const db = getFirestore();
+  const snap = await db
+    .collection(ROLE_ASSIGNMENTS_COLLECTION)
+    .where("principalUid", "==", input.principalUid)
+    .where("status", "==", "active")
+    .get();
+
+  const assignments = snap.docs
+    .map((doc) => {
+      const d = doc.data() as Record<string, unknown>;
+      return { assignmentId: doc.id, roleId: d.roleId, scope: d.scope };
+    })
+    // A malformed stored assignment is SKIPPED rather than returned half-formed or thrown on: the
+    // client uses assignmentId to revoke, and handing it a row whose roleId it cannot name would
+    // offer a Remove button for something the screen cannot describe. Malformed data is a repair
+    // job for the audit tooling, not something to render.
+    .filter(
+      (a): a is PrincipalAccessAssignment =>
+        typeof a.roleId === "string" && a.roleId.length > 0 && isPlainObject(a.scope),
+    );
+
+  return {
+    authExists: authUser !== null,
+    accountStatus: authUser === null ? null : authUser.disabled === true ? "disabled" : "enabled",
+    assignments,
+  };
+}
+
 export interface ListPrivilegedRoleRequestsInput {
   actorUid: string;
   status?: string;

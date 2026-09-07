@@ -13,6 +13,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import { normalizeHistoryRows } from "../../domain/changeHistory.js";
 import {
   EMPLOYEE_EVENT_LABELS,
+  EMPLOYEE_HISTORY_FIELD_LABELS,
   EMPLOYEE_FIELD_LABELS,
   EMPLOYEE_TARGET_TYPE,
   EOS_ACCESS_STATE_UNAVAILABLE,
@@ -54,11 +55,19 @@ import UserAccessActions from "./UserAccessActions.jsx";
 //
 // ════════════════════ WHAT THIS PAGE IS NOT ALLOWED TO CLAIM ════════════════════
 //
-// Employment Status and EOS Account Status are independent facts and are rendered in separate
-// sections that never derive one from the other. Operational Roles and Security Role likewise. The
-// account's enabled/disabled bit is Firebase Auth state that no governed read exposes to this
-// client, so it is reported as unavailable and the enable/disable actions stay fail-closed with
-// that exact reason attached -- not inferred from employment, not guessed.
+// Employment Status and EOS Account Status are independent facts, rendered in separate sections
+// that never derive one from the other. Operational Roles, the legacy compatibility role, and the
+// governed Roles are three more such facts, and no two of them are derived from each other either.
+//
+// ACCOUNT STATUS IS NOW READ, NOT DECLARED UNAVAILABLE. It used to be a hard-coded "Not available"
+// here, honestly, because Firebase Auth's disabled bit had no governed read. readPrincipalAccessState
+// provides one, so the value and the action that changes it live together in UserAccessActions and
+// this page no longer carries a second row for the same fact -- two rows for one fact eventually
+// disagree, and the stale one is always the one with no read behind it.
+//
+// THE LEGACY MIRROR IS LABELLED AS LEGACY (Owner ruling 2026-09-06 §2). employees.securityRole is
+// not this person's governed access and is never presented as it, never merged into the governed
+// Role list, and never called their Security Role.
 export default function UserDetail({ client = administrationUsersClient, hasCapability }) {
   const { employeeId } = useParams();
   const navigate = useNavigate();
@@ -124,7 +133,9 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
   const historyRows = useMemo(
     () =>
       normalizeHistoryRows(history.rows, {
-        fieldLabels: EMPLOYEE_FIELD_LABELS,
+        // The Employee profile fields, plus governedRole -- the key the trusted read attaches to
+        // a Role add/remove so it renders with the Role itself in Previous/New.
+        fieldLabels: { ...EMPLOYEE_FIELD_LABELS, ...EMPLOYEE_HISTORY_FIELD_LABELS },
         eventLabels: EMPLOYEE_EVENT_LABELS,
       }),
     [history.rows],
@@ -196,7 +207,10 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
           // over it claims more than the record can prove (Owner ruling, PR #1806).
           { key: "access", label: "EOS Account", value: eosAccessLabel(employee) },
           { key: "roles", label: "Operational", value: roles.length > 0 ? roles.join(", ") : null },
-          { key: "security", label: "Security Role", value: security },
+          // "Legacy role", not "Security Role": the header is the most-read line on the page, and a
+          // label reading as current governed authority over a legacy mirror is the specific
+          // misreading this record has been causing.
+          { key: "security", label: "Legacy role", value: security },
         ]}
         actions={
           editing ? null : (
@@ -293,11 +307,17 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
                 <dl className="fo-detail-list">
                   <dt>EOS account</dt>
                   <dd data-user-access={access}>{eosAccessLabel(employee)}</dd>
-                  <dt>Account status</dt>
-                  <dd data-user-account-status="unavailable">
-                    <span className="fo-muted">Not available</span>
-                  </dd>
-                  <dt>Security Role</dt>
+                  {/* NO ACCOUNT STATUS ROW HERE ANY MORE. It read a hard-coded "Not available",
+                      which was honest while no governed read existed. UserAccessActions below now
+                      renders the authoritative value from readPrincipalAccessState, beside the
+                      action that changes it. Two rows for one fact would eventually disagree, and
+                      the stale one is the one without a read behind it. */}
+                  {/* LEGACY, AND LABELLED AS LEGACY (Owner ruling 2026-09-06 §2). This row is not
+                      the person's governed access and must never be read as it -- governed Roles
+                      are rendered by UserAccessActions below, from the trusted read. The two are
+                      never merged into one list: they are different systems, and a combined list
+                      would imply a single authority that does not exist. */}
+                  <dt>Legacy compatibility role</dt>
                   <dd data-user-security-role={employee.securityRole ?? ""}>
                     {security ?? <span className="fo-muted">Not recorded</span>}
                   </dd>
@@ -310,10 +330,15 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
                     describe a loading problem rather than the truth, which is that the read does
                     not exist. */}
 
+                {/* The SAME seam this page already uses for the profile write and the history
+                    read, threaded through rather than left to the component's own default import.
+                    One page, one client: a surface whose sections reach for different instances of
+                    the same seam cannot be exercised as a whole. */}
                 <UserAccessActions
                   employee={employee}
                   actorUid={user?.uid ?? ""}
                   hasCapability={hasCapability}
+                  statusClient={client}
                 />
               </RuledSection>
             </>

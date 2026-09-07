@@ -108,13 +108,28 @@ export const EMPLOYEE_FIELD_LABELS = Object.freeze(
  */
 export const EMPLOYEE_EVENT_LABELS = Object.freeze({
   updateEmployeeProfile: "Profile change",
-  setUserStatus: "EOS Access Status",
+  setUserStatus: "Account Status",
   initiateAdminPasswordReset: "Password reset requested",
   deliverAdminPasswordReset: "Password reset delivery",
   revokeUserSessions: "Sessions revoked",
-  grantRole: "Security Role granted",
-  revokeRole: "Security Role revoked",
-  assignApprovedRole: "Security Role assigned",
+  // "Governed Role", never "Security Role" (Owner ruling 2026-09-06 §2). These three events write
+  // roleAssignments; the Security Role on the profile is the legacy users/{uid}.role mirror and is
+  // not touched by any of them. Labelling them "Security Role granted" told a reader that the row
+  // above had just changed, which it had not.
+  grantRole: "Governed Role granted",
+  revokeRole: "Governed Role removed",
+  assignApprovedRole: "Governed Role added",
+});
+
+/**
+ * Field-key labels for the record's Change History.
+ *
+ * `governedRole` is not a stored Employee field -- it is the key the trusted read attaches to a
+ * Role add/remove event so it renders in the Field / Previous / New shape (the Role arriving in
+ * New, or leaving in Previous) rather than as a bare event with no subject.
+ */
+export const EMPLOYEE_HISTORY_FIELD_LABELS = Object.freeze({
+  governedRole: "Governed Role",
 });
 
 const isBlank = (v) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");

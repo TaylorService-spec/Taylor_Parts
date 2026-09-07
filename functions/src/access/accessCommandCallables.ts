@@ -281,6 +281,29 @@ export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (req
   }
 });
 
+// ONE PRINCIPAL'S ACCESS STATE. The read half of Administration > Users (Owner ruling §4).
+//
+// Clients cannot read `roleAssignments` directly -- no rule matches that collection in
+// firestore.rules, so Firestore's default denies it -- and no client may hold the Admin SDK, so
+// Auth's `disabled` flag is unreachable from the browser by construction. This callable is
+// therefore the only read path for either fact, which is the point: the authority is checked
+// server-side on admin.principalAccess.read rather than by a UI that declines to render a row.
+//
+// principalUid comes from the CLIENT (it is the record being viewed); actorUid comes only from
+// request.auth.uid and is never accepted from the payload.
+export const readPrincipalAccessState = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await commands.readPrincipalAccessState({
+      actorUid,
+      principalUid: data.principalUid as string,
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
 // The APPROVAL QUEUE read. Approvers only.
 //
 // Clients cannot read `privilegedRoleRequests` directly: no rule matches that collection in

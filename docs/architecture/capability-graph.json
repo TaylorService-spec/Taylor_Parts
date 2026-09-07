@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 146,
+    "capabilities": 147,
     "catalogActive": 0,
-    "catalogInactive": 146,
+    "catalogInactive": 147,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
     "callableExports": 47,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 146,
-    "parsed": 146,
+    "raw": 147,
+    "parsed": 147,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 119,
+    "SERVER_REFERENCED": 120,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -3061,10 +3061,38 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/objectPermissionMap.js"
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.principalAccess.read",
+      "resource": "admin.principalAccess",
+      "action": "read",
+      "description": "Read one principal's current access state: whether their account exists and is enabled, and their active governed Role assignments. Confers no change of any kind.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/trustedWriterCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
