@@ -4,6 +4,7 @@ import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OW
 import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth, db } from "../firebase/firebase";
 import { isWriteBlocked } from "../config/env";
+import { notifyReorderRequestsChanged } from "./reorderRequestsChanged";
 // buildReorderRequestFields is no longer imported here: the canonical 35-field payload is now built
 // server-side by the trusted createReorderRequest command, which is the only writer. The pure
 // builder and its tests remain in domain/reorderRequestPayload.js -- retiring them is a separate
@@ -53,7 +54,38 @@ import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
 // this file -- they're set exclusively by
 // domain/reorderPurchaseOrders.js's recordPurchaseOrder(), atomically
 // together with creating the linked Reorder Purchase Order record.
-export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
+const baseReorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
+
+/**
+ * The reorder store, wrapped so a successful mutation announces itself.
+ *
+ * WHY HERE. Every reorder write in this file goes through this store, so this is the one place that
+ * cannot be forgotten -- a new write function added later signals without its author having to know
+ * the signal exists. Announcing from each write function individually is the version of this that
+ * works until someone adds the seventh one.
+ *
+ * WHAT IT RESTORES. The read hooks used onSnapshot precisely so a write in PartsList refreshed the
+ * Notification Panel mounted elsewhere. A governed callable cannot stream, so without this the
+ * migration reintroduces the bug onSnapshot was adopted to fix. See domain/reorderRequestsChanged.js.
+ *
+ * AFTER SUCCESS ONLY -- the promise chain means a rejected write announces nothing, so a failed
+ * mutation cannot make every listening view re-read for a change that did not happen.
+ */
+export const reorderRequestsStore = {
+  ...baseReorderRequestsStore,
+  add(data) {
+    return baseReorderRequestsStore.add(data).then((result) => {
+      notifyReorderRequestsChanged();
+      return result;
+    });
+  },
+  update(id, data) {
+    return baseReorderRequestsStore.update(id, data).then((result) => {
+      notifyReorderRequestsChanged();
+      return result;
+    });
+  },
+};
 
 // Zero-history reorder behavior sprint, PR 3 (docs/specifications/
 // inventory-zero-history-reorder-behavior.md). recommendationStatus/
@@ -112,6 +144,10 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
   // requestedBy is the AUTHENTICATED actor, taken server-side from the callable context, and is
   // deliberately not sent -- a client-asserted actor is not an actor. operatingCompanyId is never
   // sent either: the server derives it and REFUSES a caller that supplies one.
+  // Announces on success like every store write does. This path bypasses the wrapped store -- it
+  // goes to the trusted command directly -- so it needs the signal explicitly, and without it the
+  // commonest reorder write of all (creating one) would be the one that failed to refresh the
+  // Notification Panel.
   return submitCreateReorderRequest({
     partId,
     warehouseId,
@@ -121,6 +157,9 @@ export function createReorderRequest({ partId, warehouseId, urgency, recommended
     recommendedQty,
     requestedQty,
     workOrderId,
+  }).then((result) => {
+    notifyReorderRequestsChanged();
+    return result;
   });
 }
 
@@ -364,5 +403,11 @@ export function cancelReorderRequest(requestId, { reason }) {
       cancelledAt: Date.now(),
       cancellationReason: trimmedReason,
     });
+  }).then((result) => {
+    // Same signal as every other reorder write. This path is still a client-direct transaction --
+    // it is Class C, awaiting its own trusted command -- and it must refresh listening views in the
+    // meantime, or cancelling from one screen leaves a stale queue on another.
+    notifyReorderRequestsChanged();
+    return result;
   });
 }

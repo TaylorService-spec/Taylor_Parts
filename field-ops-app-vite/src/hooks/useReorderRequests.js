@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { governedCollectionClient } from "../access/governedCollectionClient";
+import {
+  subscribeReorderRequestsChanged,
+  getReorderRequestsVersion,
+} from "../domain/reorderRequestsChanged";
 import { REORDER_REQUEST_STATUS } from "../domain/constants";
 
 // Bug fix -- Reorder Request notifications/queues (Notification Panel,
@@ -49,6 +53,20 @@ import { REORDER_REQUEST_STATUS } from "../domain/constants";
 // useReorderRequestsByStatus() below (one read implementation, not
 // two) -- external signature/behavior unchanged.
 
+/**
+ * The cross-component refresh signal, as a render-visible value.
+ *
+ * These reads used onSnapshot so a write in one component refreshed a view in another. A governed
+ * callable cannot stream, so the signal supplies that: every hook below takes this version as a
+ * useEffect dependency, and a successful reorder write anywhere bumps it, which re-runs the read.
+ *
+ * useSyncExternalStore rather than a useState+useEffect pair because it is exactly this: an
+ * external mutable value React needs to observe, with no tearing between concurrent renders.
+ */
+function useReorderRequestsVersion() {
+  return useSyncExternalStore(subscribeReorderRequestsChanged, getReorderRequestsVersion, getReorderRequestsVersion);
+}
+
 // GOVERNED READ, one shape for the four list hooks below.
 //
 // `reorder_requests` is denied to every client in firestore.rules now; these resolve
@@ -86,6 +104,7 @@ export function useReorderRequests(enabled = true) {
 // Notification Panel sections, without a second read implementation.
 export function useReorderRequestsByStatus(status, enabled = true) {
   const [state, setState] = useState({ data: [], loading: enabled, error: null });
+  const changeVersion = useReorderRequestsVersion();
 
   useEffect(() => {
     if (!enabled) {
@@ -95,7 +114,7 @@ export function useReorderRequestsByStatus(status, enabled = true) {
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
     return subscribeGoverned({ status }, setState);
-  }, [status, enabled]);
+  }, [status, enabled, changeVersion]);
 
   return state;
 }
@@ -116,6 +135,7 @@ export function useReorderRequestsByStatus(status, enabled = true) {
 // (PURCHASING_IN_PROGRESS) sections, still filtered to one person.
 export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
   const [state, setState] = useState({ data: [], loading: enabled, error: null });
+  const changeVersion = useReorderRequestsVersion();
 
   useEffect(() => {
     if (!enabled || !userId) {
@@ -129,7 +149,7 @@ export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
     // capability behind this read is role-level just as the Rule was. Making it a server-derived
     // "me" would be a scope change, which this migration deliberately does not make.
     return subscribeGoverned({ assignedToUserId: userId, status }, setState);
-  }, [userId, status, enabled]);
+  }, [userId, status, enabled, changeVersion]);
 
   return state;
 }
@@ -265,6 +285,7 @@ export function useReorderRequestForPart(partId, requestId) {
 // other reorder_requests query in this file.
 export function useReorderRequestsByStatuses(statuses, enabled = true) {
   const [state, setState] = useState({ data: [], loading: enabled, error: null });
+  const changeVersion = useReorderRequestsVersion();
 
   useEffect(() => {
     if (!enabled || !statuses?.length) {
@@ -274,7 +295,7 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
     return subscribeGoverned({ statuses }, setState);
-  }, [statuses.join(","), enabled]);
+  }, [statuses.join(","), enabled, changeVersion]);
 
   return state;
 }
