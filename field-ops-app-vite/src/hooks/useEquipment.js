@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { governedCollectionClient } from "../access/governedCollectionClient";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { governedCollectionClient, READ_RESULT } from "../access/governedCollectionClient";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { EQUIPMENT_COLLECTION, WORK_ORDERS_COLLECTION } from "../domain/constants";
+// EQUIPMENT_COLLECTION is gone with the client-direct equipment read. WORK_ORDERS_COLLECTION
+// remains: the work-order query below is part of the BLOCKED work-order family, which keeps
+// its client-direct path until the technician/self-scope seam lands.
+import { WORK_ORDERS_COLLECTION } from "../domain/constants";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 // Issue #232 unit E2 -- the Equipment read path.
@@ -173,21 +176,47 @@ export function useEquipmentDoc(equipmentId) {
 
     setLoading(true);
     setError(null);
-    const unsub = onSnapshot(
-      doc(db, EQUIPMENT_COLLECTION, equipmentId),
-      (snap) => {
-        setEquipment(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        setEquipment(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
-        setLoading(false);
-      }
-    );
+    let active = true;
 
-    return () => unsub();
+    // One record, asked as a one-element id set through the governed `equipmentByIds` source --
+    // the same source and capability the batched lookups use, because "may this person read
+    // equipment" does not change with the size of the id set.
+    //
+    // ONE-SHOT, NOT A SUBSCRIPTION: a governed callable cannot stream. The equipment record page
+    // re-reads on navigation; nothing here rendered a live badge that would now be quietly stale.
+    //
+    // A stored `id` can no longer displace the document id. This spread
+    // `{ id: snap.id, ...snap.data() }`, resolving that conflict in favour of the DATA -- the same
+    // defect fixed in the registry projection, the metadata list source and useLocation. The
+    // server's projection puts the document id last.
+    (async () => {
+      const page = await governedCollectionClient.readGovernedList({
+        sourceId: "equipmentByIds",
+        filters: { ids: [equipmentId] },
+        pageSize: 1,
+      });
+      if (!active) return;
+      if (!page.ok) {
+        setEquipment(null);
+        // DENIED and UNAVAILABLE stay distinct, and both stay distinct from a CONFIRMED ABSENCE
+        // below -- a successful read that found no such equipment reports no error at all.
+        setError(
+          loadErrorMessage(
+            { code: page.result === READ_RESULT.DENIED ? "permission-denied" : "unavailable" },
+            { entity: ENTITY },
+          ),
+        );
+        setLoading(false);
+        return;
+      }
+      setEquipment(page.items[0] ?? null);
+      setError(null);
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
   }, [equipmentId]);
 
   return { equipment, loading, error };
