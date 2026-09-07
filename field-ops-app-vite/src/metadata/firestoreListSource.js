@@ -71,7 +71,16 @@ export function toConstraints(descriptor, cursorDoc = null) {
  */
 export async function fetchPage(descriptor, { cursorDoc = null } = {}) {
   const snap = await getDocs(query(collection(db, descriptor.collection), ...toConstraints(descriptor, cursorDoc)));
-  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // THE DOCUMENT ID WINS -- hence `id` LAST. Written as `{ id: d.id, ...d.data() }` this read
+  // silently handed back a stored `id` field in place of the authoritative Firestore document id,
+  // in every metadata-driven list including Users.
+  //
+  // That value is load-bearing rather than cosmetic: the runtime keys rows by it, the grid routes
+  // a click by it, and a record page is opened by it. A stored id that disagreed would route a
+  // click to the wrong record or to none, with nothing on screen saying so. A stored id that
+  // conflicts is corrupt data either way; this decides which of the two a reader is handed, and the
+  // answer is the one the database guarantees.
+  const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
   const page = interpretPage(descriptor, docs);
   // The cursor document is the LAST RETURNED row, matching interpretPage's rule that the
   // probe row is never the cursor — using the probe would skip a record on the next page,

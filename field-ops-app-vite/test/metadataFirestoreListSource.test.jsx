@@ -81,3 +81,39 @@ describe("toConstraints", () => {
     expect(kinds(c, "where")[0].op).toBe("array-contains");
   });
 });
+
+// ════════════════════ THE STORAGE IDENTITY WINS ════════════════════
+//
+// A CURRENT PRODUCTION DEFECT, independent of any migration. fetchPage composed rows as
+// `{ id: d.id, ...d.data() }` -- id FIRST -- so a document carrying its own stored `id` field
+// silently replaced the authoritative Firestore document id in every metadata-driven list,
+// including Users.
+//
+// That value is not cosmetic: the runtime keys rows by it, MetadataListGrid routes clicks by it,
+// and a record page is opened by it. A stored id that disagrees would send a click to the wrong
+// record, or to none, with nothing on screen saying so.
+//
+// This is a correctness question about which of two ids a reader is handed, and the answer is the
+// one the database guarantees. It is not a field-security question and does not anticipate one.
+describe("fetchPage row identity", () => {
+  it("a stored `id` field can never override the Firestore document id", async () => {
+    const { getDocs } = await import("firebase/firestore");
+    getDocs.mockResolvedValueOnce({
+      docs: [
+        {
+          id: "AUTHORITATIVE",
+          data: () => ({ id: "CONFLICTING", name: "Acme" }),
+        },
+      ],
+    });
+
+    const { fetchPage } = await import("../src/metadata/firestoreListSource.js");
+    const page = await fetchPage(descriptor({ limit: 2, pageSize: 1 }));
+
+    expect(page.rows).toHaveLength(1);
+    expect(page.rows[0].id).toBe("AUTHORITATIVE");
+    expect(page.rows[0].id).not.toBe("CONFLICTING");
+    // The rest of the document still arrives -- this is about precedence, not about dropping data.
+    expect(page.rows[0].name).toBe("Acme");
+  });
+});
