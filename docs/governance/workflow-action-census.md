@@ -110,6 +110,11 @@ one plus granting it to a Role is a capability change.
 | `supplier` list (read) | a Supplier read capability. No `supplier.*` capability exists. | `isAdminOrDispatcher()` |
 | `supplierCatalogItem` list (read) | as above | `isAdminOrDispatcher()` |
 
+A measured parity proposal for each — exact Rules predicate, proposed capability id and meaning,
+exact grants, proof that the proposed Role population matches the admitted one, scope, and why no
+existing capability can be reused — is in **`capability-parity-proposals.md`**. Proposal only; it
+mints nothing.
+
 Deliberately NOT resolved here by minting the capabilities and granting them to the compatibility
 roles, even though that would preserve exactly the current population. Granting capabilities is the
 one thing this migration is not authorized to decide for itself, and doing it quietly — inside a
