@@ -244,9 +244,29 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 100,
   }),
 
+  // Reorder Purchase Orders are keyed BY the reorder request id -- the document id is the request
+  // id, not a separate PO id -- so one keyed-lookup source serves both the batched resolver and the
+  // single-PO read on a request. No second entry for "one PO": same capability, same ordering,
+  // same predicate with one value.
   purchaseOrdersByIds: Object.freeze({
     capability: "reorder.purchaseOrder.read",
     source: "reorder_purchase_orders",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 30,
+  }),
+
+  // The VOID record for a purchase order, also keyed by the reorder request id. Its own source
+  // rather than a filter on the one above, because it is a different collection -- and it shares
+  // the purchase-order capability because voiding is part of that object's story, not a new
+  // authority. reorder.purchaseOrder.void governs performing a void; reading whether one happened
+  // is reading the purchase order.
+  purchaseOrderVoidsByIds: Object.freeze({
+    capability: "reorder.purchaseOrder.read",
+    source: "reorder_purchase_order_voids",
     orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
     filters: Object.freeze({
       ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
