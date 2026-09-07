@@ -16,9 +16,17 @@
 // excluded, so ordering on anything optional would drop Parts from the list without saying so. The
 // result set is small and sorted where it is displayed.
 //
-// FAILS OPEN TO IDS, NOT TO GUESSES. If this read is denied or unavailable, the list still renders
-// every available unit with its serial and raw part id. Losing the labels must never lose the
-// inventory -- somebody deciding what to install needs the units more than they need the words.
+// DISPLAY DEGRADATION, NOT AUTHORIZATION DEGRADATION -- and the distinction is worth stating
+// precisely, because "fails open" is dangerously ambiguous in an access-control context.
+//
+// AUTHORIZATION STILL FAILS CLOSED. This read resolves inventory.catalog.read server-side; a caller
+// without it gets nothing from this hook, and no part data reaches the screen through this path.
+//
+// What degrades is ENRICHMENT. The units themselves come from a different, already-authorized read;
+// this hook only supplies their friendly labels. So when the label read is denied or unavailable,
+// the list still renders every available unit by its serial and raw part id. Losing the words must
+// not lose the inventory -- somebody deciding what to install needs the units more than the names --
+// and showing an authoritative id is not showing data the caller was refused.
 import { useEffect, useState } from "react";
 import { governedCollectionClient } from "../access/governedCollectionClient";
 

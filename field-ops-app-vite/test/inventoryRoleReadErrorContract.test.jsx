@@ -6,32 +6,20 @@
 // code (or "unknown"); on success/empty they set `error: null`. These tests pin
 // that contract so a future refactor can't silently reintroduce the swallow.
 //
-// vitest + @testing-library/react (jsdom). Firebase is fully mocked; the mocked
-// onSnapshot captures the error callback so the test can drive the error path.
+// ALL THREE HOOKS READ THROUGH THE GOVERNED SEAM NOW. The contract under test is unchanged -- a
+// failed read must surface a code, never an empty list -- so the test drives the same contract
+// through the seam that produces it. The Firestore mock that used to capture onSnapshot callbacks
+// is GONE rather than left in place: a mock for a dependency nothing imports any more tells the
+// next reader this file still touches Firestore, which is exactly the wrong thing to believe.
+//
+// vitest + @testing-library/react (jsdom). No Firebase.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 
-let capturedNext;
-let capturedError;
-// THE TWO REORDER HOOKS READ THROUGH THE GOVERNED SEAM NOW, not Firestore. The contract under
-// test is unchanged -- a failed read must surface a code, never an empty list -- so the test
-// drives the same contract through the seam that now produces it. useInventoryActionsForPart is
-// still a Firestore read and still uses the onSnapshot capture below.
 let governedOutcome;
 vi.mock("../src/access/governedCollectionClient", () => ({
   governedCollectionClient: {
     readGovernedList: () => Promise.resolve(governedOutcome),
-  },
-}));
-vi.mock("../src/firebase/firebase", () => ({ db: {} }));
-vi.mock("firebase/firestore", () => ({
-  collection: () => ({}),
-  query: () => ({}),
-  where: () => ({}),
-  onSnapshot: (_q, next, error) => {
-    capturedNext = next;
-    capturedError = error;
-    return () => {}; // unsubscribe
   },
 }));
 
@@ -48,8 +36,6 @@ async function renderGoverned(fn) {
 }
 
 beforeEach(() => {
-  capturedNext = undefined;
-  capturedError = undefined;
   governedOutcome = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
 });
 afterEach(() => {
@@ -94,26 +80,35 @@ describe("useReorderRequestsAssignedTo -- read-error contract", () => {
 });
 
 describe("useInventoryActionsForPart -- read-error contract", () => {
-  it("a failed read sets error to the Firestore error code (not swallowed)", () => {
-    const { result } = renderHook(() => useInventoryActionsForPart("PART-1"));
-    expect(result.current.error).toBe(null);
-    act(() => capturedError({ code: "permission-denied" }));
+  // Reads through the governed seam now. The contract is unchanged -- a failed read must stay
+  // distinguishable from genuinely-empty history -- and so are the two strings consumers switch on.
+  it("a refused read sets a code, never an empty history", async () => {
+    governedOutcome = { ok: false, result: "DENIED", items: [] };
+    const { result } = await renderGoverned(() => useInventoryActionsForPart("PART-1"));
     expect(result.current.error).toBe("permission-denied");
     expect(result.current.data).toEqual([]);
   });
 
-  it("a successful read clears error and still sorts by createdAt desc", () => {
-    const { result } = renderHook(() => useInventoryActionsForPart("PART-1"));
-    act(() => capturedError({ code: "unavailable" }));
-    expect(result.current.error).toBe("unavailable");
-    act(() =>
-      capturedNext({
-        docs: [
-          { id: "a", data: () => ({ createdAt: 1 }) },
-          { id: "b", data: () => ({ createdAt: 2 }) },
-        ],
-      })
-    );
+  it("a non-denial failure falls back to 'unknown'", async () => {
+    governedOutcome = { ok: false, result: "UNAVAILABLE", items: [] };
+    const { result } = await renderGoverned(() => useInventoryActionsForPart("PART-1"));
+    expect(result.current.error).toBe("unknown");
+    expect(result.current.data).toEqual([]);
+  });
+
+  it("a successful read clears error and still sorts by createdAt desc", async () => {
+    // The sort stays CLIENT-SIDE deliberately: the source returns document-id order, and ordering
+    // server-side by createdAt would silently EXCLUDE any row missing that field -- history losing
+    // entries rather than reporting fewer. Rows arrive oldest-first here to prove the sort runs.
+    governedOutcome = {
+      ok: true,
+      result: "OK",
+      items: [
+        { id: "a", createdAt: 1 },
+        { id: "b", createdAt: 2 },
+      ],
+    };
+    const { result } = await renderGoverned(() => useInventoryActionsForPart("PART-1"));
     expect(result.current.error).toBe(null);
     expect(result.current.data.map((d) => d.id)).toEqual(["b", "a"]);
   });
