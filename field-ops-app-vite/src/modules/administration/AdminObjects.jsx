@@ -6,6 +6,7 @@ import { OBJECT_PERMISSIONS, VERBS, VERB_LABEL, cellState, cellCapabilities } fr
 import { objectAccessAll, objectDiagnostics } from "../../access/roleAccessModel.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import RoleObjectGrid from "./RoleObjectGrid.jsx";
 
 // ADMINISTRATION > OBJECTS -- the Role x Object x CRED grid.
 //
@@ -60,25 +61,6 @@ const MATRIX_ROLES = [
   { label: "Support Staff", id: "supportStaff" },
   { label: "Shop Manager", id: "shopManager" },
 ];
-
-function Cell({ state }) {
-  if (state === "noCapability") {
-    return (
-      <span className="fo-muted" title="No capability exists for this verb — it cannot be granted to any role">
-        —
-      </span>
-    );
-  }
-  return (
-    <input
-      type="checkbox"
-      checked={state === "granted"}
-      readOnly
-      disabled
-      aria-label={state === "granted" ? "Granted" : "Not granted"}
-    />
-  );
-}
 
 // OBJECT-FIRST view. The grid is role-first -- one role, every object -- which leaves "who can
 // delete a Sales Order?" answerable only by selecting each of sixteen roles in turn and reading
@@ -344,39 +326,9 @@ export default function AdminObjects() {
         </p>
       )}
 
-      {role && (
-        <div className="fo-table-scroll"><table className="fo-table">
-          <thead>
-            <tr>
-              <th scope="col">Object</th>
-              <th scope="col">Domain</th>
-              {VERBS.map((v) => (
-                <th key={v} scope="col" title={VERB_LABEL[v]}>{v}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {OBJECT_PERMISSIONS.map((entry) => (
-              <tr key={entry.object}>
-                <td>
-                  {entry.object}
-                  {entry.rulesOnly && (
-                    <span className="fo-muted" title={`Governed by firestore.rules on ${entry.rulesOnly}, outside the capability model`}>
-                      {" "}(rules-governed)
-                    </span>
-                  )}
-                </td>
-                <td className="fo-muted">{entry.domain}</td>
-                {VERBS.map((v) => (
-                  <td key={v}>
-                    <Cell state={cellState(role, entry, v)} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table></div>
-      )}
+      {/* The SAME component Roles & Permissions renders. This markup used to live here and again
+          there, and the two copies had already diverged in how they drew a cell. */}
+      <RoleObjectGrid role={role} label={selected.label} />
 
       {/* The write path is stated, not hidden behind a control that would do nothing. */}
       <p className="fo-warning">

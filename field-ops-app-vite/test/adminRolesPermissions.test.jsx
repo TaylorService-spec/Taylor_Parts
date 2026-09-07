@@ -85,11 +85,15 @@ describe("Roles & Permissions (diagnostics)", () => {
 });
 
 describe("Roles & Permissions (what it still cannot do, stated honestly)", () => {
-  it("keeps the Assign control disabled with its own reason rather than dropping it", () => {
-    // Removing it would hide that the capability exists and is merely unreachable here.
+  it("offers no Assign control at all -- a control that cannot act is not an affordance", () => {
+    // This screen previously rendered a disabled select + button with a paragraph explaining why
+    // it could not act. However honest, it still read as an affordance and still cost a reader the
+    // walk to discover it was not one. assignApprovedRole remains built and deployed; what blocks
+    // it (no trusted read of principals, no principal holding the access-record grant) is not made
+    // any closer by rendering a dead control, so the control is gone rather than disabled.
     render(<AdminRolesPermissions />);
-    expect(screen.getByRole("button", { name: /assign role/i }).disabled).toBe(true);
-    expect(screen.getByText(/no trusted read exists yet to list real principals/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /assign role/i })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /select a role/i })).toBeNull();
   });
 
   it("a roster role the system does not define is shown as not defined, not hidden", () => {

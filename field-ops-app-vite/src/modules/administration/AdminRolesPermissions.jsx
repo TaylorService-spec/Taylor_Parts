@@ -4,16 +4,16 @@ import { GOVERNED_BUSINESS_ROLES } from "../../access/governedBusinessRoles.ts";
 import {
   resolveRoleAccess,
   groupByDomain,
-  roleObjectMatrix,
   accessDiagnostics,
 } from "../../access/roleAccessModel.js";
-import { VERBS, VERB_LABEL } from "../../access/objectPermissionMap.js";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { Field } from "../../shared/ui/form";
 import ApprovalRequests from "./ApprovalRequests.jsx";
+import RoleObjectGrid from "./RoleObjectGrid.jsx";
 
 // ADMINISTRATION > ROLES & PERMISSIONS -- read-only Role inspector.
 //
@@ -44,9 +44,21 @@ import ApprovalRequests from "./ApprovalRequests.jsx";
 // inert capability tells an administrator access exists when it does not, and sends them
 // to debug the wrong layer. Effective and inert are therefore counted and rendered apart.
 //
-// EVERYTHING HERE IS READ-ONLY, and the ONE mutating affordance stays disabled for its own
-// honest reason (below) rather than being quietly dropped -- removing it would hide that
-// the capability exists and is merely unreachable from here.
+// EVERYTHING HERE IS READ-ONLY except Approval Requests. A disabled "Assign Role" select+button
+// used to sit above that queue, explaining at length why it could not act -- it asked an
+// administrator to pick a principal from a list no trusted read on this surface can produce. It is
+// removed rather than left disabled: a control that cannot act still reads as an affordance and
+// still costs a reader the walk to discover it is not one. `assignApprovedRole` remains built and
+// deployed, and per-person assignment belongs on a per-person surface, where the principal is the
+// record being read rather than something to look up. What stays here is what genuinely belongs to
+// a role-shaped screen: what each Role reaches, and the two-person approval queue a PRIVILEGED
+// grant requires -- which is not a per-person act at all.
+//
+// ORDER: the OBJECT MATRIX FIRST, then the capability lists. "What can this role touch" is a
+// bounded table a person can read at a glance; "which capability ids does it hold" is a
+// hundreds-of-rows list. Rendering the list first buried the table under a scroll, so the page's
+// most answerable question was the hardest one to reach. The lists are filterable for the same
+// reason -- unfiltered they are a wall, and the question is almost always about one domain.
 const ALL_ROLES = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
 
 /**
@@ -82,23 +94,9 @@ const ROSTER_ROLES = [
   { label: "Support Staff", id: "supportStaff" },
 ];
 
-const ASSIGNABLE_ROLES = Object.values(COMPATIBILITY_ROLES).filter((role) => !role.privileged);
-
-function VerbCell({ state }) {
-  if (state === "noCapability") {
-    // "Nobody can ever hold this" must not look like "you were not granted it" -- the
-    // second invites a request for access that cannot be granted to any role.
-    return (
-      <span className="fo-muted" title="No capability governs this verb — it cannot be granted to any role">
-        —
-      </span>
-    );
-  }
-  return (
-    <span aria-label={state === "granted" ? "Granted" : "Not granted"} title={state === "granted" ? "Granted" : "Not granted"}>
-      {state === "granted" ? "✓" : ""}
-    </span>
-  );
+/** "12" unfiltered, "3 of 12" filtered -- the total never disappears behind a filter. */
+function countLabel(shownCount, total) {
+  return shownCount === total ? `${total}` : `${shownCount} of ${total}`;
 }
 
 function CapabilityList({ capabilities, tone, environmentId }) {
@@ -136,6 +134,7 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [roleKey, setRoleKey] = useState("admin");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [filter, setFilter] = useState("");
 
   const selected = ROSTER_ROLES.find((r) => r.id === roleKey) ?? ROSTER_ROLES[1];
   // THE CURRENT ENVIRONMENT'S activation set, baked at build time from the ONE registry and
@@ -145,11 +144,27 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
   const role = selected.id ? ALL_ROLES[selected.id] : null;
 
   const access = useMemo(() => (role ? resolveRoleAccess(role, activation) : null), [role]);
-  const objects = useMemo(() => (role ? roleObjectMatrix(role) : []), [role]);
   const diagnostics = useMemo(
     () => accessDiagnostics(ROSTER_ROLES.map((r) => ALL_ROLES[r.id]).filter(Boolean), activation),
     []
   );
+
+  // The filter narrows what is SHOWN and never what is counted: `access` stays the whole truth and
+  // every heading reports both numbers, so a filtered view can never be misread as the role's reach.
+  const shown = useMemo(() => {
+    const empty = { effective: [], inert: [], unknown: [] };
+    if (!access) return empty;
+    const q = filter.trim().toLowerCase();
+    if (!q) return { effective: access.effective, inert: access.inert, unknown: access.unknown };
+    const hit = (c) => c.id.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q);
+    return {
+      effective: access.effective.filter(hit),
+      inert: access.inert.filter(hit),
+      // `unknown` is bare ids -- it is the list of grants pointing at nothing, so there is no
+      // catalog entry to carry a description.
+      unknown: access.unknown.filter((id) => id.toLowerCase().includes(q)),
+    };
+  }, [access, filter]);
 
   const picker = (
     <div className="fo-chip-row" role="group" aria-label="Select a role">
@@ -212,8 +227,41 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
             {access.description && <p className="fo-muted">{access.description}</p>}
           </section>
 
+          {/* THE ANSWERABLE QUESTION FIRST, and in the SAME grid the Objects page draws. A
+              bounded table of objects × verbs, above the hundreds-of-rows capability lists rather
+              than under them -- and now literally the same component, so a grant cannot read one
+              way here and another way there. */}
+          <section className="fo-panel" aria-label="Business object reach">
+            <h3>Business objects</h3>
+            <p className="fo-muted">
+              What this role can touch. C = Create, R = Read, E = Edit, D = Delete. A tick is
+              granted, a blank box is not, and a dash means no capability exists for that verb — it
+              cannot be granted to anyone.
+            </p>
+            <RoleObjectGrid role={role} label={selected.label} />
+          </section>
+
+          {/* ONE filter over all three capability lists, not one box per section: the question is
+              "where does this role touch inventory", and an answer split across three separately
+              filtered lists would make the reader run it three times. Counts stay honest -- a
+              filtered heading says "N of TOTAL" so a narrow filter can never read as a small role. */}
+          <div className="fo-panel">
+            <Field
+              id="role-capability-filter"
+              label="Filter capabilities"
+              hint="Matches the capability id and its description, across all three lists below."
+            >
+              <input
+                type="search"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="e.g. inventory, workOrder, .read"
+              />
+            </Field>
+          </div>
+
           <section className="fo-panel" aria-label="Capabilities this role can use">
-            <h3>Can actually do ({access.effective.length})</h3>
+            <h3>Can actually do ({countLabel(shown.effective.length, access.effective.length)})</h3>
             {access.environmentActivated.length > 0 && (
               <p className="fo-muted">
                 {access.environmentActivated.length} of these are registered inactive in the catalog and
@@ -223,23 +271,26 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
                 so this list answers <em>here</em>, not everywhere.
               </p>
             )}
-            {groupByDomain(access.effective).map((g) => (
+            {groupByDomain(shown.effective).map((g) => (
               <div key={g.domain} className="fo-role-domain">
                 <h4>{g.domain}</h4>
                 <CapabilityList capabilities={g.capabilities} environmentId={environmentId} />
               </div>
             ))}
-            {access.effective.length === 0 && (
+            {/* A filter that matches nothing and a role that HOLDS nothing are different facts,
+                and the reassuring least-privilege sentence is only true of the second. */}
+            {shown.effective.length === 0 && (
               <p className="fo-muted">
-                This role grants no capability that is active today. That is not necessarily wrong — a
-                least-privilege baseline role is meant to look like this.
+                {access.effective.length > 0
+                  ? "No capability here matches that filter."
+                  : "This role grants no capability that is active today. That is not necessarily wrong — a least-privilege baseline role is meant to look like this."}
               </p>
             )}
           </section>
 
-          {access.inert.length > 0 && (
+          {shown.inert.length > 0 && (
             <section className="fo-panel" aria-label="Granted but inert">
-              <h3>Granted, but denies anyway ({access.inert.length})</h3>
+              <h3>Granted, but denies anyway ({countLabel(shown.inert.length, access.inert.length)})</h3>
               <p className="fo-muted">
                 These are registered inactive in the permission catalog{" "}
                 <strong>and {environmentId ?? "this environment"} does not activate them</strong>, so they
@@ -247,56 +298,25 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
                 grant and still cannot do the thing. Granting it again will not help — it has to be
                 activated, which is an environment decision rather than a role one.
               </p>
-              <CapabilityList capabilities={access.inert} tone="inert" environmentId={environmentId} />
+              <CapabilityList capabilities={shown.inert} tone="inert" environmentId={environmentId} />
             </section>
           )}
 
-          {access.unknown.length > 0 && (
+          {shown.unknown.length > 0 && (
             <section className="fo-panel" aria-label="Grants pointing at nothing">
-              <h3>Grants the catalog does not define ({access.unknown.length})</h3>
+              <h3>Grants the catalog does not define ({countLabel(shown.unknown.length, access.unknown.length)})</h3>
               <p className="fo-muted">
                 This role names capability ids that do not exist. Shown rather than filtered out,
                 because a typo and a deletion look identical once both are dropped silently.
               </p>
               <ul className="fo-role-caps">
-                {access.unknown.map((id) => (
+                {shown.unknown.map((id) => (
                   <li key={id}><code>{id}</code></li>
                 ))}
               </ul>
             </section>
           )}
 
-          <section className="fo-panel" aria-label="Business object reach">
-            <h3>Business objects</h3>
-            <p className="fo-muted">
-              The same object mapping the Objects tab renders, read from this role's side. One table,
-              two views.
-            </p>
-            <div className="fo-table-scroll">
-              <table className="fo-table" aria-label={`${selected.label} object permissions`}>
-                <thead>
-                  <tr>
-                    <th scope="col">Object</th>
-                    <th scope="col">Domain</th>
-                    {VERBS.map((v) => (
-                      <th key={v} scope="col">{VERB_LABEL[v]}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {objects.map((row) => (
-                    <tr key={row.object}>
-                      <td>{row.object}</td>
-                      <td className="fo-muted">{row.domain}</td>
-                      {VERBS.map((v) => (
-                        <td key={v}><VerbCell state={row.verbs[v]} /></td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </>
       )}
 
@@ -352,38 +372,6 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
             )}
           </>
         )}
-      </section>
-
-      <section className="fo-panel" aria-label="Assign a role">
-        <h3>Assign an already-approved Role</h3>
-        <p className="fo-muted">
-          Assigning a Role calls the trusted <code>assignApprovedRole</code> command, limited to
-          non-privileged Roles only. It is implemented, tested, and deployed as a live Cloud Function in
-          some environments (not yet in production). This form stays disabled because no trusted read
-          exists yet to list real principals to act on, and no principal currently holds the access-record
-          grant every real call requires — not because the backend is unbuilt. Everything above needs no
-          such read, which is why it shows real content while this does not.
-        </p>
-        <select disabled aria-disabled="true" defaultValue="" aria-label="Select a Role">
-          <option value="" disabled>
-            Select a Role
-          </option>
-          {ASSIGNABLE_ROLES.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.id}
-            </option>
-          ))}
-        </select>{" "}
-        {/* variant="protected", not `secondary disabled`. The explanation was already written
-            above, but it was loose prose sitting NEAR the control rather than attached to it --
-            nothing tied the two together for a screen reader. The protected variant is this
-            codebase's existing mechanism for exactly that: it renders the lock, keeps the native
-            disabled attribute, and ties a stated reason to the button via aria-describedby. The
-            paragraph above stays, because it carries the governance context (the backend IS built
-            and deployed) that a control-level reason should not try to hold. */}
-        <Button type="button" variant="protected" reason="No trusted read of principals exists yet, and no principal holds the required access-record grant.">
-          Assign Role
-        </Button>
       </section>
 
       {/* APPROVAL REQUESTS. The one MUTATING affordance on this screen, and the reason it is here
