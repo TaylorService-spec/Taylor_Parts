@@ -63,6 +63,13 @@ export const SYNCED_MODULES = Object.freeze([
   "legacyAuthorizationSurface.ts",
   "parityFixtures.ts",
   "permissionCatalog.ts",
+  // The closed catalogue of governed read sources. Mirrored for ONE reason: so a metadata list
+  // definition naming a source, a sort or a filter can be checked AT DEFINITION TIME (the same
+  // reason callableListSource.js exports isKnownReadCallable) instead of failing the first time a
+  // user opens that list. It is not an authorization input on the client -- the server resolves
+  // capability, collection, ordering and filters from its own copy on every call, and a client
+  // that edited this file would only change which requests it gets refused for.
+  "governedReadRegistry.ts",
 ]);
 
 const CANONICAL_DIR = path.join("functions", "src", "access");

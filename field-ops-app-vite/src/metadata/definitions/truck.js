@@ -144,7 +144,10 @@ export const truckEntity = makeEntityDefinition({
   // in this directory does) — the literal here matches that constant and
   // functions/src/truckRegistry/truckRegistryRepository.ts's own TRUCKS_COLLECTION = "trucks".
   collection: "trucks",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataTrucks",
   // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather
   // than invented — see the header.
   readCapability: null,

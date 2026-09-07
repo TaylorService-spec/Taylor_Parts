@@ -147,7 +147,10 @@ export const reorderRequestEntity = makeEntityDefinition({
   label: "Reorder Request",
   labelPlural: "Reorder Requests",
   collection: REORDER_REQUESTS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataReorderRequests",
   // Rules gate this by role/relationship (admin/dispatcher, or a scoped PARTS_MANAGER/
   // PARTS_ASSOCIATE), not by a capability. Recorded as null rather than invented — see the header.
   readCapability: null,

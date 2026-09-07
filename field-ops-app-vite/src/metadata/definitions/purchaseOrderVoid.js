@@ -115,7 +115,10 @@ export const purchaseOrderVoidEntity = makeEntityDefinition({
   label: "Purchase Order Void",
   labelPlural: "Purchase Order Voids",
   collection: REORDER_PURCHASE_ORDER_VOIDS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataPurchaseOrderVoids",
   // No matching read capability exists in the catalog — see the file header.
   readCapability: null,
   // SYSTEM_ONLY, explicitly declared. See the file header.

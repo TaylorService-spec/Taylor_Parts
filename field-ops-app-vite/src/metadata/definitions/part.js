@@ -93,7 +93,10 @@ export const partEntity = makeEntityDefinition({
   label: "Part",
   labelPlural: "Parts",
   collection: "parts",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataParts",
   // Rules gate this by role (admin/dispatcher, or the PARTS_MANAGER/WAREHOUSE_MANAGER
   // operational roles), not by a capability. Recorded as null rather than invented — see
   // the header.

@@ -1976,6 +1976,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts"
         ],
@@ -1986,7 +1987,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2115,14 +2116,15 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/governedBusinessRoles.ts"
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

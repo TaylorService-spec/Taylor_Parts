@@ -27,7 +27,10 @@ export const contactEntity = makeEntityDefinition({
   label: "Contact",
   labelPlural: "Contacts",
   collection: CONTACTS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataContacts",
   // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null
   // rather than invented — see the header.
   readCapability: null,

@@ -264,3 +264,60 @@ test("an absent actorUid is an input error, never an anonymous read", async () =
     /actorUid is required/,
   );
 });
+
+// ════════════════════ THE SORT ALLOWLIST ════════════════════
+//
+// The UI lets a person choose how a list is ordered, and that must keep working -- but the browser
+// names a TOKEN, never a field. These prove the resolution happens server-side and that the
+// caller's string is compared, never used.
+
+test("a sort token resolves to the field the REGISTRY chose, not to the caller's string", async () => {
+  const captured = {};
+  const db = fakeDb({ docsByCollection: authorizedFixture({ accounts: [] }), capturedRef: captured });
+
+  await readGovernedList(
+    { actorUid: ACTOR, sourceId: "metadataAccounts", sortKey: "nameAsc" },
+    { db, roles: COMPATIBILITY_ROLES },
+  );
+
+  // The ordering applied is the registry's field for that token -- and the token itself never
+  // appears as a field anywhere in the query.
+  const ordered = captured.orderBy.map(([field]) => field);
+  assert.ok(ordered.includes("name"), "the registry's field must be used");
+  assert.ok(!ordered.includes("nameAsc"), "the caller's token must never reach Firestore as a field");
+});
+
+test("an unregistered sort token is REFUSED, not silently replaced by the default", async () => {
+  // Silently defaulting would show the user a list that is not in the order they asked for, with
+  // nothing saying so. And accepting the string would let the browser order by any field it names.
+  const db = fakeDb({ docsByCollection: authorizedFixture({ accounts: [] }) });
+  await assert.rejects(
+    readGovernedList(
+      { actorUid: ACTOR, sourceId: "metadataAccounts", sortKey: "ssn" },
+      { db, roles: COMPATIBILITY_ROLES },
+    ),
+    /is not an offered sort/,
+  );
+});
+
+test("a source with ONE ordering refuses a sort request rather than ignoring it", async () => {
+  const db = fakeDb({ docsByCollection: authorizedFixture() });
+  await assert.rejects(
+    readGovernedList(
+      { actorUid: ACTOR, sourceId: "employeeDirectory", sortKey: "anything" },
+      { db, roles: COMPATIBILITY_ROLES },
+    ),
+    /does not offer a choice of sort/,
+  );
+});
+
+test("omitting the sort uses the source's declared default", async () => {
+  const captured = {};
+  const db = fakeDb({ docsByCollection: authorizedFixture({ accounts: [] }), capturedRef: captured });
+  await readGovernedList(
+    { actorUid: ACTOR, sourceId: "metadataAccounts" },
+    { db, roles: COMPATIBILITY_ROLES },
+  );
+  const ordered = captured.orderBy.map(([field, dir]) => `${field}:${dir}`);
+  assert.ok(ordered.includes("updatedAt:desc"), "the declared default sort must apply");
+});

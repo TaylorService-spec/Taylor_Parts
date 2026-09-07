@@ -1,3 +1,9 @@
+// GENERATED FILE — DO NOT EDIT.
+//
+// Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+// Edit the canonical source under functions/src/access/ and re-run the generator;
+// edits made here are overwritten and CI fails on drift.
+
 // THE GOVERNED READ REGISTRY -- the server's closed catalogue of what may be read, by whom, how.
 //
 // ════════════════════ THE INVARIANT THIS FILE EXISTS TO HOLD ════════════════════

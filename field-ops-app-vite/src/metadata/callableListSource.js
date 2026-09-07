@@ -1,4 +1,5 @@
 import { interpretPage } from "./listRuntime.js";
+import { GOVERNED_READS } from "../access/governedReadRegistry.ts";
 
 // Executes a query descriptor against a trusted READ CALLABLE instead of Firestore. The
 // counterpart to firestoreListSource.js's fetchPage, for the entities that declare
@@ -120,6 +121,88 @@ const CALLABLE_SOURCES = Object.freeze({
   listAccountInvoiceAr: { listKey: "invoices", scoped: true },
 });
 
+// ══════════════════════ THE GOVERNED READ SOURCES ══════════════════════
+//
+// Every id in the governed read registry is ALSO a usable `readCallable` name. One deployed
+// callable (`readGovernedList`) serves all of them, so an entity names the SOURCE, not the
+// function: `readCallable: "metadataAccounts"`. That keeps the whole existing dispatch --
+// entityDefinition's readVia check, listViewDefinition's validation, buildQueryDescriptor,
+// useMetadataList's selectListSource -- working unchanged, instead of teaching four modules a
+// second vocabulary for "which read backs this list".
+//
+// GENERATED FROM THE REGISTRY, never hand-listed. The registry is the canonical file
+// (functions/src/access/governedReadRegistry.ts) mirrored here by scripts/syncAccessContracts.mjs
+// with CI drift enforcement, so a source added or removed on the server appears or disappears here
+// with no second table to forget to update.
+//
+// `scoped: "OPTIONAL"`, and that third value is the point. The pre-existing entries are each
+// either always-scoped or never-scoped because each is a purpose-built callable with a fixed
+// parameter list. A governed source is not: `accountContacts` backs the RELATED contacts section
+// under an Account (scope filter present) and `metadataContacts` backs the Contacts INDEX (no
+// scope), through the same mechanism, with the SERVER deciding in both cases whether the named
+// filter it was handed is one this source offers. Forcing it into the true/false pair would
+// falsely reject one surface or the other.
+const GOVERNED_LIST_KEY = "rows";
+const GOVERNED_CALLABLE = "readGovernedList";
+
+const GOVERNED_SOURCES = Object.freeze(
+  Object.fromEntries(
+    Object.keys(GOVERNED_READS).map((sourceId) => [
+      sourceId,
+      Object.freeze({ governed: true, sourceId, listKey: GOVERNED_LIST_KEY, scoped: "OPTIONAL" }),
+    ])
+  )
+);
+
+// A registry source id that collided with a purpose-built callable's name would make
+// `readCallable: "<name>"` mean two different reads depending on which table won the lookup --
+// exactly the "two routers reading the same field and disagreeing" defect this module's own
+// comments name as the program's most-repeated. Checked at MODULE LOAD, so the collision is
+// impossible to ship rather than merely unlikely: any import of this file fails immediately.
+for (const sourceId of Object.keys(GOVERNED_SOURCES)) {
+  if (Object.prototype.hasOwnProperty.call(CALLABLE_SOURCES, sourceId)) {
+    throw new Error(
+      `callableListSource: governed read source "${sourceId}" collides with a purpose-built callable of the same name`
+    );
+  }
+}
+
+/**
+ * The sort TOKEN for a field and direction.
+ *
+ * The server owns the mapping from token to Firestore field (governedReadRegistry's
+ * `allowedSorts`); this only produces the token the caller asks by. The browser therefore never
+ * sends a field name to order by -- it sends `"updatedAtDesc"`, and the server decides that means
+ * `orderBy("updatedAt", "desc")`, or refuses. A client that invented a token gets an
+ * invalid-argument, not a query.
+ *
+ * Exported so `listViewDefinition.js` can check every sortable field a list offers against the
+ * source's registered sorts at DEFINITION time, rather than discovering an unregistered sort when
+ * a user clicks that column header.
+ */
+export function governedSortKey(fieldId, direction) {
+  return `${fieldId}${direction === "DESC" ? "Desc" : "Asc"}`;
+}
+
+/**
+ * The filter NAME for a field and operator.
+ *
+ * Same division as the sort token: the client supplies a name plus a VALUE, and the server
+ * resolves the name to a field and an operator it declared. `status` and `statusIn` are two
+ * different named filters over one field precisely because the operator is the server's to choose
+ * -- the client cannot ask for `!=` on a filter registered as `==`.
+ *
+ * Exported for definition-time validation, for the same reason as `governedSortKey`.
+ */
+export function governedFilterName(fieldId, operator) {
+  return operator === "IN" ? `${fieldId}In` : fieldId;
+}
+
+/** The registry entry for a source id, or null. */
+export function governedSourceSpec(sourceId) {
+  return Object.prototype.hasOwnProperty.call(GOVERNED_READS, sourceId) ? GOVERNED_READS[sourceId] : null;
+}
+
 /**
  * Whether `name` is a callable this module knows how to unwrap.
  *
@@ -131,7 +214,11 @@ const CALLABLE_SOURCES = Object.freeze({
  * keeping a second list that could drift.
  */
 export function isKnownReadCallable(name) {
-  return typeof name === "string" && Object.prototype.hasOwnProperty.call(CALLABLE_SOURCES, name);
+  return (
+    typeof name === "string" &&
+    (Object.prototype.hasOwnProperty.call(CALLABLE_SOURCES, name) ||
+      Object.prototype.hasOwnProperty.call(GOVERNED_SOURCES, name))
+  );
 }
 
 /**
@@ -142,7 +229,8 @@ export function isKnownReadCallable(name) {
  * ever reaches a live request.
  */
 export function readCallableSourceInfo(name) {
-  return isKnownReadCallable(name) ? CALLABLE_SOURCES[name] : null;
+  if (!isKnownReadCallable(name)) return null;
+  return CALLABLE_SOURCES[name] ?? GOVERNED_SOURCES[name];
 }
 
 /**
@@ -168,7 +256,70 @@ export function readCallableSourceInfo(name) {
  * A caller choosing to fall back to a direct Firestore read on any of these is the exact
  * defect this module exists to close, so none of them degrade — they throw.
  */
-export async function fetchPage(descriptor) {
+/**
+ * Fetch one page through the governed read callable.
+ *
+ * WHAT THE BROWSER IS ALLOWED TO SAY. A source id, a sort TOKEN, named filters with values, a page
+ * size, and a cursor string it received from a previous page. That is the whole payload. It names
+ * no collection, no Firestore field, no where() clause, no operator and no orderBy -- the server
+ * resolves every one of those from its own copy of the registry, and refuses anything it did not
+ * declare. This is the difference that makes the migration worth doing: the old direct path let the
+ * browser compose the query, and only Rules stood between a composed query and the data.
+ *
+ * THE CURSOR IS A STRING, and that is invisible above this layer. `useMetadataList` stores whatever
+ * a source returns as `nextCursorDoc` and hands it straight back as `cursorDoc` without ever
+ * looking inside it, so a Firestore document snapshot and an opaque server-issued token are
+ * interchangeable there. Nothing above the list source needed to change.
+ */
+async function fetchGovernedPage(descriptor, governed, cursor) {
+  // Named filters, not clauses. Each descriptor filter becomes one NAME the source declared plus a
+  // value; the operator stays the server's. Two descriptor filters that collapse to one name would
+  // silently drop one of them -- a query narrower or broader than the one presented -- so it
+  // throws instead, the same choice buildQueryDescriptor makes for two array filters.
+  const filters = {};
+  for (const f of descriptor.filters ?? []) {
+    const name = governedFilterName(f.fieldId, f.operator);
+    if (Object.prototype.hasOwnProperty.call(filters, name)) {
+      throw new Error(
+        `callableListSource: two filters on this list both resolve to the governed filter "${name}" — ` +
+          "one of them would be silently dropped"
+      );
+    }
+    filters[name] = f.value;
+  }
+
+  // The descriptor's sort always ends in the client-side tiebreaker (`__name__`, appended
+  // unconditionally by buildQueryDescriptor so cursor paging is total). The governed read applies
+  // its OWN document-id tiebreak server-side for the same reason, so the token describes only the
+  // PRIMARY clause; forwarding the tiebreaker would ask for a sort no source registers. A list
+  // sorted by nothing but the tiebreaker sends no token at all and takes the source's default.
+  const primary = (descriptor.sort ?? []).find((s) => s.fieldId !== "__name__") ?? null;
+
+  const payload = { sourceId: governed.sourceId, pageSize: descriptor.pageSize, filters };
+  if (primary) payload.sortKey = governedSortKey(primary.fieldId, primary.direction);
+  if (cursor) payload.cursor = cursor;
+
+  let data;
+  try {
+    data = await invokeCallable(GOVERNED_CALLABLE, payload);
+  } catch (err) {
+    throw normalizeCallableError(err);
+  }
+
+  const rows = Array.isArray(data?.[GOVERNED_LIST_KEY]) ? data[GOVERNED_LIST_KEY] : [];
+  // The server already ran the limit+1 probe and reports the result as `hasMore`, so the sentinel
+  // is re-appended here purely to reuse interpretPage's single truncation rule rather than write a
+  // second one. interpretPage slices it back off; it never reaches a rendered row.
+  const page = interpretPage(descriptor, data?.hasMore ? [...rows, Object.freeze({ __probe: true })] : rows);
+  // `nextCursorDoc` carries the server's opaque cursor STRING. Named for the field the hook
+  // already round-trips, not for what is inside it -- see the note above.
+  return { ...page, nextCursorDoc: data?.nextCursor ?? null };
+}
+
+export async function fetchPage(descriptor, { cursorDoc = null } = {}) {
+  const governed = descriptor?.readCallable ? GOVERNED_SOURCES[descriptor.readCallable] : null;
+  if (governed) return fetchGovernedPage(descriptor, governed, cursorDoc);
+
   const source = descriptor?.readCallable ? CALLABLE_SOURCES[descriptor.readCallable] : null;
   if (!source) {
     throw new Error(

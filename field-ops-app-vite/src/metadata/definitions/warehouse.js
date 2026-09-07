@@ -78,7 +78,10 @@ export const warehouseEntity = makeEntityDefinition({
   // const inside services/operationsQueries.ts) — the literal here matches that local const and
   // functions/src/constants/collections.js's own WAREHOUSES_COLLECTION = "warehouses".
   collection: "warehouses",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataWarehouses",
   // Rules gate this by role/relationship (admin/dispatcher, or a WAREHOUSE_MANAGER assigned to
   // this specific warehouse), not by a capability. Recorded as null rather than invented — see
   // the header.

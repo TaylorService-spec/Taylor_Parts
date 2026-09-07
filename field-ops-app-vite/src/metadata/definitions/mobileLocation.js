@@ -90,7 +90,10 @@ export const mobileLocationEntity = makeEntityDefinition({
   // MOBILE_LOCATIONS_COLLECTION = "mobile_locations". No client-side collection-name constant
   // exists for this collection anywhere in field-ops-app-vite/src today.
   collection: "mobile_locations",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataMobileLocations",
   // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather
   // than invented — see the header.
   readCapability: null,

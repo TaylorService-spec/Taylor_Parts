@@ -159,7 +159,10 @@ export const inventoryTransactionEntity = makeEntityDefinition({
   label: "Inventory Transaction",
   labelPlural: "Inventory Transactions",
   collection: "inventory_transactions",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataInventoryTransactions",
   // A matching capability id exists in the catalog but nothing evaluates it on this read
   // path — see the header. Recorded as null rather than invented.
   readCapability: null,

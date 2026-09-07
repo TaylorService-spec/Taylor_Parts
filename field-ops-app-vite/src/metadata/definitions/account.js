@@ -67,7 +67,10 @@ export const accountEntity = makeEntityDefinition({
   collection: ACCOUNTS_COLLECTION,
   // Firestore rules are the gate for accounts today; the Phase 0 audit found both
   // patterns in use, and recording which one this is stops the runtime from assuming.
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataAccounts",
   // The account's name is how a human identifies it. There is no reference number for
   // an Account, and declaring one that does not exist would license a surface to render
   // a document id in its place — the exact defect corrected on Sales Orders (#1124).

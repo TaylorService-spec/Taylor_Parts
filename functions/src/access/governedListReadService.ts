@@ -41,6 +41,8 @@ export interface ReadGovernedListInput {
   sourceId: string;
   /** Values for the source's DECLARED filter names. Names, never fields or operators. */
   filters?: Record<string, unknown>;
+  /** A sort TOKEN the source declares. Never a field name -- see resolveSort. */
+  sortKey?: string;
   pageSize?: number;
   cursor?: string;
 }
@@ -170,6 +172,42 @@ function resolveFilters(
   return out;
 }
 
+/**
+ * Resolve the caller's requested sort TOKEN to a field and direction the registry chose.
+ *
+ * THE CLIENT NAMES A SORT; IT NEVER NAMES A FIELD. `sortKey` is looked up in the source's own
+ * allowlist and the resolved value comes from the registry -- the caller's string is compared, never
+ * used. Passing a client-supplied field to orderBy() would let the browser order by anything it can
+ * name: an unindexed query nobody proved, and an oracle besides, since Firestore's orderBy EXCLUDES
+ * documents missing the ordered field and would let a caller probe which records carry which.
+ *
+ * A source with no allowlist has ONE ordering, and a caller asking for a sort on it is refused
+ * rather than silently given the default -- a silently ignored sort shows the user a list that is
+ * not in the order they asked for, with nothing saying so.
+ */
+function resolveSort(
+  spec: GovernedReadSource,
+  sortKey: string | undefined,
+): readonly [string, "asc" | "desc"] {
+  if (sortKey === undefined || sortKey === null || sortKey === "") {
+    if (spec.allowedSorts && spec.defaultSort) {
+      const fallback = spec.allowedSorts[spec.defaultSort];
+      if (fallback) return [fallback.field, fallback.direction] as const;
+    }
+    return spec.orderBy;
+  }
+  if (!spec.allowedSorts) {
+    throw new InvalidInputError("this source does not offer a choice of sort");
+  }
+  if (!Object.prototype.hasOwnProperty.call(spec.allowedSorts, sortKey)) {
+    throw new InvalidInputError(
+      `"${String(sortKey)}" is not an offered sort (allowed: ${Object.keys(spec.allowedSorts).join(", ")})`,
+    );
+  }
+  const chosen = spec.allowedSorts[sortKey];
+  return [chosen.field, chosen.direction] as const;
+}
+
 /** Apply the registry's projection. `null` means the whole document, deliberately. */
 function project(spec: GovernedReadSource, id: string, data: Record<string, unknown>) {
   // THE DOCUMENT ID WINS, ALWAYS -- hence `id` LAST rather than first.
@@ -232,7 +270,7 @@ export async function readGovernedList(
     throw new UnauthorizedActorError(`actor is not authorized for "${spec.capability}"`);
   }
 
-  const [orderField, orderDir] = spec.orderBy;
+  const [orderField, orderDir] = resolveSort(spec, input.sortKey);
   let query = db.collection(spec.source) as FirebaseFirestore.Query;
   for (const f of filters) {
     // DOCUMENT_ID_FIELD is the registry's name for "the document id". Firestore addresses that as

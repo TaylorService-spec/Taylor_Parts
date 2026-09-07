@@ -127,7 +127,10 @@ export const transferOrderEntity = makeEntityDefinition({
   label: "Transfer Order",
   labelPlural: "Transfer Orders",
   collection: "transfer_orders",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataTransferOrders",
   // Rules gate this by role/relationship (admin/dispatcher, or a WAREHOUSE_MANAGER assigned to
   // either endpoint warehouse), not by a capability. Recorded as null rather than invented — see
   // the header.
