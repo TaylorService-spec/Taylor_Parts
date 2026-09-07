@@ -45,7 +45,7 @@ export function useWorkOrder(workOrderId) {
       doc(db, WORK_ORDERS_COLLECTION, workOrderId),
       (snap) => {
         if (!active) return;
-        setWorkOrder(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+        setWorkOrder(snap.exists() ? { ...snap.data(), id: snap.id } : null);
         setError(null);
         setLoading(false);
       },

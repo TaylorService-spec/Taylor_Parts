@@ -45,7 +45,7 @@ export function useWorkOrderSearch(term, { cap = WORK_ORDER_SEARCH_CAP } = {}) {
         );
         const snap = await getDocs(q);
         if (token !== requestRef.current) return;
-        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
+        setRaw({ docs: snap.docs.map((d) => ({ ...d.data(), id: d.id })), loading: false, error: null });
       } catch (error) {
         if (token !== requestRef.current) return;
         // docs stays null, never [], so a failed read is not mistaken for "no such work order".

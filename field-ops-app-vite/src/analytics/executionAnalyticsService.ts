@@ -135,7 +135,7 @@ export interface TechnicianExecutionStats {
 export async function getTechnicianExecutionStats(technicianId: string): Promise<TechnicianExecutionStats> {
   const q = query(collection(db, WORK_ORDERS_COLLECTION), where("assignedTechId", "==", technicianId));
   const snap = await getDocs(q);
-  const workOrders = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WorkOrder);
+  const workOrders = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as WorkOrder);
 
   const workOrderVolumeByStatus: Record<string, number> = {};
   let totalPartsConsumed = 0;

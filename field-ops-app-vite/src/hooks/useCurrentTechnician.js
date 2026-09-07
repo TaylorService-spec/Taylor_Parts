@@ -98,7 +98,7 @@ export function useCurrentTechnician() {
       doc(db, TECHNICIANS_COLLECTION, technicianId),
       (snap) => {
         if (!active) return;
-        setTechnician(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+        setTechnician(snap.exists() ? { ...snap.data(), id: snap.id } : null);
         setError(null);
         setLoading(false);
       },

@@ -73,7 +73,7 @@ export async function transitionWorkOrder(
 
 export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
   const snap = await getDoc(doc(db, WORK_ORDERS_COLLECTION, id));
-  return snap.exists() ? ({ id: snap.id, ...snap.data() } as WorkOrder) : null;
+  return snap.exists() ? ({ ...snap.data(), id: snap.id } as WorkOrder) : null;
 }
 
 // Unfiltered listener -- matches how fieldops_jobs/fieldops_technicians
@@ -91,7 +91,7 @@ export function subscribeToWorkOrders(
   // Orders assigned to them. Without it the denial was swallowed and the
   // surface span forever on "Loading work orders...".
   return onSnapshot(collection(db, WORK_ORDERS_COLLECTION), (snap) => {
-    onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkOrder)));
+    onChange(snap.docs.map((d) => ({ ...d.data(), id: d.id } as WorkOrder)));
   }, (err) => { onError?.(err as Error); });
 }
 
@@ -127,7 +127,7 @@ export function subscribeAssignedWorkOrders(
   return onSnapshot(
     assignedQuery,
     (snap) => {
-      onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkOrder)));
+      onChange(snap.docs.map((d) => ({ ...d.data(), id: d.id } as WorkOrder)));
     },
     (error) => onError?.(error)
   );

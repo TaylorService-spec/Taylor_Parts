@@ -84,7 +84,7 @@ export interface RawPurchaseOrder {
 
 async function listCollection<T>(name: string): Promise<T[]> {
   const snap = await getDocs(collection(db, name));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
 }
 
 /**
@@ -118,7 +118,7 @@ export async function listCollectionPage<T>(
   // cap + 1: the extra row is the truncation probe, matching the convention the trusted
   // read callables and the metadata list runtime already use.
   const snap = await getDocs(query(collection(db, name), orderBy(orderByField), limit(cap + 1)));
-  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
   const truncated = docs.length > cap;
   return { items: truncated ? docs.slice(0, cap) : docs, truncated };
 }
@@ -236,7 +236,7 @@ export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurch
   const requestsSnap = await getDocs(
     query(collection(db, LIVE_REORDER_REQUESTS_COLLECTION), where("status", "in", PROCUREMENT_PO_REQUEST_STATUSES))
   );
-  const requests = requestsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown> & { id: string });
+  const requests = requestsSnap.docs.map((d) => ({ ...d.data(), id: d.id }) as Record<string, unknown> & { id: string });
 
   const ids = requests.map((r) => r.id);
   const purchaseOrdersById: Record<string, Record<string, unknown>> = {};
@@ -246,7 +246,7 @@ export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurch
       query(collection(db, LIVE_REORDER_PURCHASE_ORDERS_COLLECTION), where(documentId(), "in", idChunk))
     );
     snap.forEach((d) => {
-      purchaseOrdersById[d.id] = { id: d.id, ...d.data() };
+      purchaseOrdersById[d.id] = { ...d.data(), id: d.id };
     });
   }
 

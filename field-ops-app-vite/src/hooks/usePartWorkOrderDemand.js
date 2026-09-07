@@ -61,7 +61,7 @@ export function usePartWorkOrderDemand(partId, { scanCap = PART_DEMAND_SCAN_CAP 
     ])
       .then(([snap, countSnap]) => {
         if (cancelled) return;
-        const workOrders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const workOrders = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
         setState({
           status: PART_WORK_ORDER_DEMAND_STATE.READY,
           workOrders,

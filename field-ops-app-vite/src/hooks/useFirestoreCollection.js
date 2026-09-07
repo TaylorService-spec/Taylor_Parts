@@ -33,7 +33,7 @@ export function useFirestoreCollection(path, enabled = true) {
     const unsub = onSnapshot(
       ref,
       (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setData(snap.docs.map((d) => ({ ...d.data(), id: d.id })));
         setError(null);
         setLoading(false);
       },

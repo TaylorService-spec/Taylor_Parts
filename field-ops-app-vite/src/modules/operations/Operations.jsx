@@ -113,7 +113,7 @@ export default function Operations({ accessVersion } = {}) {
         ]) => {
         if (cancelled) return;
 
-        const technicians = techniciansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const technicians = techniciansSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
 
         const transactions = rawTransactions.map(normalizeLedgerTransaction);
         const availableByPart = computeAvailableStockByPart(transactions);

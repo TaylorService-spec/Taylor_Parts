@@ -62,7 +62,7 @@ export function makeCollectionStore(collectionName, { timestamps = TIMESTAMP_SHA
      *  the defect on every edit -- a record created correctly and then edited sank again. */
     timestampValue: stamp,
     list() {
-      return getDocs(colRef).then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      return getDocs(colRef).then((snap) => snap.docs.map((d) => ({ ...d.data(), id: d.id })));
     },
     add(data) {
       // `updatedAt` IS STAMPED ON CREATE, not only on update.
@@ -86,12 +86,17 @@ export function makeCollectionStore(collectionName, { timestamps = TIMESTAMP_SHA
       // collection's governed shape.
       const now = stamp();
       return safeAddDoc(colRef, { createdAt: now, updatedAt: now, ...data }).then((ref) =>
-        ref.blocked ? ref : { id: ref.id, ...data }
+        // THE MINTED DOCUMENT ID WINS over anything the caller happened to put in its payload.
+        // Written the other way round, a caller passing an `id` field would be handed back its own
+        // value as the identity of a document Firestore just minted a DIFFERENT id for -- and the
+        // caller would then key, route and navigate by an id that addresses nothing.
+        ref.blocked ? ref : { ...data, id: ref.id }
       );
     },
     update(id, data) {
       return safeUpdateDoc(doc(db, collectionName, id), data).then((result) =>
-        result?.blocked ? result : { id, ...data }
+        // Same precedence: the id being updated is the authority, never a stray `id` in the patch.
+        result?.blocked ? result : { ...data, id }
       );
     },
     remove(id) {

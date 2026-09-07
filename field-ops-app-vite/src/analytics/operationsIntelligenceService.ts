@@ -80,7 +80,7 @@ async function buildInventoryHealthByPart(): Promise<{
 
 async function fetchAllWorkOrders(): Promise<WorkOrder[]> {
   const snap = await getDocs(collection(db, WORK_ORDERS_COLLECTION));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as WorkOrder);
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as WorkOrder);
 }
 
 export interface OperationalOverview {

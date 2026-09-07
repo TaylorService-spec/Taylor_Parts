@@ -210,6 +210,10 @@
       "runner": "node"
     },
     {
+      "file": "test/documentIdPrecedence.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/domainIndexDenial.test.mjs",
       "runner": "node"
     },
