@@ -16,7 +16,6 @@ import assert from "node:assert/strict";
 import { validateEntityDefinition, validateEntityRegistry, findField, resolveIdentityMode } from "../src/metadata/entityDefinition.js";
 import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
 import { inventoryTransactionEntity } from "../src/metadata/definitions/inventoryTransaction.js";
-import { stockLocationEntity, stockLocationIndexList } from "../src/metadata/definitions/stockLocation.js";
 import { partEntity } from "../src/metadata/definitions/part.js";
 import { warehouseEntity } from "../src/metadata/definitions/warehouse.js";
 import { equipmentModelEntity } from "../src/metadata/definitions/equipmentModel.js";
@@ -30,13 +29,9 @@ test("the Inventory Transaction entity is valid against the contract", () => {
   assert.deepEqual(validateEntityDefinition(inventoryTransactionEntity), []);
 });
 
-test("the Stock Location entity is valid against the contract", () => {
-  assert.deepEqual(validateEntityDefinition(stockLocationEntity), []);
-});
-
-test("the Stock Location index list is valid against the entity", () => {
-  assert.deepEqual(validateListViewDefinition(stockLocationIndexList, stockLocationEntity), []);
-});
+// The Stock Location entity and index list were DELETED with the retired `stock_locations`
+// surface (Decision #160 / ADR-014). Their contract tests went with them rather than being kept
+// green against a definition nothing could reach.
 
 test("REFERENCE fields resolve against the real registered part/warehouse entities", () => {
   // equipmentModelEntity is included because part.js's own equipmentModelId field is now a real
@@ -44,7 +39,7 @@ test("REFERENCE fields resolve against the real registered part/warehouse entiti
   // would report a false "references unknown entity" problem that belongs to part.js, not to
   // either entity this suite actually covers. manufacturerEntity closes the same chain one hop
   // further: equipmentModel.js's own manufacturerId is a REFERENCE to it.
-  const registry = [inventoryTransactionEntity, stockLocationEntity, partEntity, warehouseEntity, equipmentModelEntity, manufacturerEntity];
+  const registry = [inventoryTransactionEntity, partEntity, warehouseEntity, equipmentModelEntity, manufacturerEntity];
   assert.deepEqual(validateEntityRegistry(registry), []);
 });
 
@@ -60,11 +55,6 @@ test("Inventory Transaction identity is SYSTEM_ONLY, explicitly declared -- per 
   assert.ok(findField(inventoryTransactionEntity, "type"));
 });
 
-test("Stock Location identity is a nameField only (binCode) -- caller-supplied, not server-allocated, so never referenceField", () => {
-  assert.equal(stockLocationEntity.identity.nameField, "binCode");
-  assert.equal(stockLocationEntity.identity.referenceField, null);
-});
-
 // ---------------------------------------------------------------------------------------------
 // readVia / readCapability -- role-gated in Rules, a matching capability exists but is unconsumed
 // ---------------------------------------------------------------------------------------------
@@ -72,11 +62,6 @@ test("Stock Location identity is a nameField only (binCode) -- caller-supplied, 
 test("Inventory Transaction read is CLIENT_DIRECT with no capability -- a matching catalog id exists but nothing evaluates it on this read path", () => {
   assert.equal(inventoryTransactionEntity.readVia, "CLIENT_DIRECT");
   assert.equal(inventoryTransactionEntity.readCapability, null);
-});
-
-test("Stock Location read is CLIENT_DIRECT with no capability -- same finding as Inventory Transaction", () => {
-  assert.equal(stockLocationEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(stockLocationEntity.readCapability, null);
 });
 
 // ---------------------------------------------------------------------------------------------

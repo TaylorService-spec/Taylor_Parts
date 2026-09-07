@@ -14,6 +14,8 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { COUNT_CEILING, countGovernedList, readGovernedList } from "../lib/access/governedListReadService.js";
 import { COMPATIBILITY_ROLES } from "../lib/access/compatibilityRoles.js";
+import { GOVERNED_READS } from "../lib/access/governedReadRegistry.js";
+import { PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 
 const ACTOR = "actor-1";
 
@@ -62,7 +64,13 @@ function fakeDb({ docsByCollection = {}, capturedRef = null, countOverride = nul
   });
 
   return {
+    // Every collection this db is asked for, in order. Lets a test assert which data the service
+    // TOUCHED -- distinguishing the authorization feed (users, roleAssignments) from the business
+    // collection behind a source, which is the difference between "checked who you are" and "read
+    // the rows anyway".
+    touched: [],
     collection(name) {
+      this.touched?.push(name);
       return {
         ...makeQuery(name),
         doc(id) {
@@ -437,5 +445,50 @@ test("the readGovernedList callable forwards every input the service declares", 
     // adapter that read it from the wire would be accepting a client-asserted identity.
     if (field === "actorUid") continue;
     assert.match(body, new RegExp(`\\b${field}\\b`), `the readGovernedList adapter drops "${field}"`);
+  }
+});
+
+test("an unauthorized actor's count NEVER touches the underlying data", async () => {
+  // Not merely "is refused". A refusal that had already read the rows would still have read them --
+  // and a count that scanned a collection the caller may not see is a disclosure to anything
+  // observing cost, latency or logs, even when the number is thrown away.
+  const db = fakeDb({ docsByCollection: { users: [{ id: "stranger", data: { accessVersion: 0 } }], roleAssignments: [] } });
+  await assert.rejects(
+    () => countGovernedList({ actorUid: "stranger", sourceId: "metadataAccounts" }, { db, roles: COMPATIBILITY_ROLES }),
+    /is not authorized for/,
+  );
+  // `accounts` is the source's collection. users/roleAssignments are the authorization feed and are
+  // expected -- resolving who the caller is REQUIRES reading them.
+  assert.ok(!db.touched.includes("accounts"), `the data collection was touched: ${db.touched.join(", ")}`);
+});
+
+test("a count and its list read resolve the SAME capability, for every source", () => {
+  // Pinned across the whole registry rather than for one source: the two paths take their
+  // capability from the same spec field, and this is what keeps a future edit from giving the count
+  // a weaker one because it "only returns a number".
+  for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
+    assert.equal(typeof spec.capability, "string", `${sourceId} declares no capability`);
+    assert.ok(spec.capability.length > 0, `${sourceId} has an empty capability`);
+  }
+  // And the count reads it from the registry, not from its own table -- there is no second source
+  // of truth to drift. Asserted structurally: the service holds exactly one GOVERNED_READS lookup
+  // per entry point, and neither hardcodes a capability id.
+  const service = readFileSync(new URL("../src/access/governedListReadService.ts", import.meta.url), "utf8");
+  const body = service.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  assert.match(body, /countGovernedList[\s\S]*?spec\.capability/, "the count must resolve spec.capability");
+  assert.doesNotMatch(
+    body.slice(body.indexOf("export async function countGovernedList")),
+    /capability:\s*"/,
+    "the count must not name a capability of its own",
+  );
+});
+
+test("every governed source is reachable by a capability that EXISTS in the catalog", () => {
+  // A source naming a capability nobody minted denies every caller forever, and looks like a
+  // permissions problem rather than a typo. Cheap to check, and it caught nothing only because the
+  // three new ids were minted first.
+  const ids = new Set(PERMISSION_CATALOG.map((p) => p.id));
+  for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
+    assert.ok(ids.has(spec.capability), `source "${sourceId}" names unknown capability "${spec.capability}"`);
   }
 });

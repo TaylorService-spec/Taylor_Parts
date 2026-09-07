@@ -1,6 +1,6 @@
 # Metadata List Reads — Migration to the Governed Read Path
 
-Where each metadata-driven list gets its rows, and — for the four entities that did not move — the
+Where each metadata-driven list gets its rows, and — for the one entity that did not move — the
 precise reason.
 
 **Authority boundary this serves.** Firebase authenticates. EOS authorizes. A metadata list used to
@@ -23,11 +23,16 @@ A token or filter name the source did not register is **refused**, never silentl
 default. `status` and `statusIn` are two registered filters over one field precisely because the
 operator is the server's to choose.
 
-## Migrated (15)
+## Migrated (17)
 
 `account`, `contact`, `employee`, `equipment`, `inventoryAction`, `inventoryTransaction`,
 `location`, `mobileLocation`, `part`, `purchaseOrder`, `purchaseOrderVoid`, `reorderRequest`,
-`transferOrder`, `truck`, `warehouse`.
+`supplier`, `supplierCatalogItem`, `transferOrder`, `truck`, `warehouse`.
+
+`supplierCatalogItem` has no list view today. It is registered from the FIELD-LEVEL declarations
+its entity already carries, because an entity says how it is read and leaving it `CLIENT_DIRECT`
+would keep a deny-all collection reachable by a client-direct query for a surface that does not
+exist yet.
 
 Each declares `readVia: "CALLABLE"` and a `readCallable` naming its governed source. Every sort and
 filter registered was **measured from the definition that already shipped** — the `sortable: true`
@@ -36,19 +41,16 @@ added, and none was dropped to make a registration tidier: a sort registered tha
 offered is an unindexed query nobody proved, and one omitted is a control that silently stops
 working.
 
-## NOT migrated (4), and why
+## NOT migrated (1) and DELETED (1)
 
 | Entity | Collection | Blocker |
 |---|---|---|
 | `workOrder` | `fieldops_wos` | **Authority boundary is not global.** Work-order read authority includes assigned-technician self scope. Every source in the registry is a global capability check; registering one would either widen the read (a technician seeing every work order) or narrow it (a dispatcher losing rows). The self-scoped read model is a design decision, not a migration step. |
-| `stockLocation` | `stock_locations` | **The surface was retired by decision.** `test/stockLocationSurfaceRetired.test.jsx` asserts the client cannot reach it. Registering a governed read would reopen a surface that was deliberately closed. |
-| `supplier` | `suppliers` | **No capability exists.** There is no `supplier.*` read capability in `permissionCatalog.ts`. Minting one and granting it to a Role is a capability change — an Owner gate, not a migration step. Recorded here rather than decided. |
-| `supplierCatalogItem` | `supplier_catalog` | Same blocker as `supplier`. |
+| `stockLocation` | `stock_locations` | **DELETED, not blocked.** The surface was retired by Decision #160 / ADR-014: nothing ever wrote the collection, it disagreed with the ledger wherever it was seeded, and every backend reader was removed. Measured 2026-09-07 — no route, no registry mount, no `src/` caller. The entity definition, its index list and its definition test were deleted rather than kept alive to hold Firestore access open for dead product. `test/stockLocationSurfaceRetired.test.jsx` still guards the operator surface. The `warehouse.stockLocation.read` capability is left in the catalog untouched: removing a capability is a capability change, and no ruling covers it. |
 
-Because these four still read directly, **`field-ops-app-vite/src/metadata/firestoreListSource.js`
-still has callers and has NOT been deleted.** It is not dormant scaffolding kept "just in case" —
-it is the live path for exactly these four entities. It is deletable the day the last of them
-moves, and not before.
+Because `workOrder` still reads directly, **`field-ops-app-vite/src/metadata/firestoreListSource.js`
+still has a caller and has NOT been deleted.** It is not dormant scaffolding kept "just in case" —
+it is the live path for that one entity, and it goes when the technician/self-scope seam lands.
 
 ## What checks this
 

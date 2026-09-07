@@ -100,6 +100,17 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "crm.contact.read",
   "crm.location.read",
   "service.equipment.read",
+  // Owner ruling 2026-09-07. The three capabilities that unblock the last governed surfaces:
+  // the contacts WRITE half (bulk import), and the two supplier reads.
+  //
+  // IN THE SHARED BASE, AND ONLY HERE. Each replaces an `isAdminOrDispatcher()` rule, so this line
+  // grants dispatcher explicitly; admin and owner acquire them through the existing composition
+  // (ADMIN_ALL_PERMISSIONS spreads the whole catalog, OWNER_PERMISSIONS spreads admin's). The
+  // ruling is explicit that no duplicate admin/owner rows may be added to restate that derivation,
+  // and that no other Role receives these.
+  "crm.contact.create",
+  "supplier.record.read",
+  "supplier.catalog.read",
   // The governed replacement for firestore.rules' `isAdminOrDispatcher()` gate on `employees`.
   // In the SHARED base deliberately: that predicate admits admin AND dispatcher today, and this
   // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in

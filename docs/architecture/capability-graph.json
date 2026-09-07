@@ -12,12 +12,12 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 152,
+    "capabilities": 155,
     "catalogActive": 0,
-    "catalogInactive": 152,
+    "catalogInactive": 155,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 47,
+    "callableExports": 48,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 152,
-    "parsed": 152,
+    "raw": 155,
+    "parsed": 155,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 125,
+    "SERVER_REFERENCED": 128,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -457,6 +457,29 @@
       }
     },
     {
+      "id": "crm.contact.create",
+      "resource": "contact.record",
+      "action": "create",
+      "description": "Create Contact records, including bulk creation through import. Confers no update, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
       "id": "crm.location.read",
       "resource": "location.record",
       "action": "read",
@@ -475,6 +498,56 @@
         ],
         "serverReferenceCount": 2,
         "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "supplier.record.read",
+      "resource": "supplier.record",
+      "action": "read",
+      "description": "Read Supplier records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "supplier.catalog.read",
+      "resource": "supplier.catalog",
+      "action": "read",
+      "description": "Read Supplier catalog items: the parts a supplier offers and the price at which they offer them. Confers no write and no Part Master authority.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4906,6 +4979,14 @@
       "module": "./completeAssignedJob",
       "capabilityHints": [],
       "comment": "--- F-RULES-1 surface: trusted technician job completion (Decision #39) --- Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until Gate D1's Owner produc"
+    },
+    {
+      "names": [
+        "importContacts"
+      ],
+      "module": "./crm/contactImportCommand",
+      "capabilityHints": [],
+      "comment": "CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a workflow: one atomic batch create, gated on crm.contact.create."
     },
     {
       "names": [

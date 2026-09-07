@@ -479,6 +479,55 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  metadataSuppliers: Object.freeze({
+    capability: "supplier.record.read",
+    source: "suppliers",
+    orderBy: Object.freeze(["name", "asc"] as const),
+    allowedSorts: Object.freeze({
+      nameAsc: Object.freeze({ field: "name", direction: "asc" as const }),
+      nameDesc: Object.freeze({ field: "name", direction: "desc" as const }),
+      statusAsc: Object.freeze({ field: "status", direction: "asc" as const }),
+      statusDesc: Object.freeze({ field: "status", direction: "desc" as const }),
+      vendorNumberAsc: Object.freeze({ field: "vendorNumber", direction: "asc" as const }),
+      vendorNumberDesc: Object.freeze({ field: "vendorNumber", direction: "desc" as const }),
+      createdAtAsc: Object.freeze({ field: "createdAt", direction: "asc" as const }),
+      createdAtDesc: Object.freeze({ field: "createdAt", direction: "desc" as const }),
+      updatedAtAsc: Object.freeze({ field: "updatedAt", direction: "asc" as const }),
+      updatedAtDesc: Object.freeze({ field: "updatedAt", direction: "desc" as const }),
+    }),
+    defaultSort: "nameAsc",
+    filters: Object.freeze({
+      status: Object.freeze({ field: "status", op: "==" as const }),
+      statusIn: Object.freeze({ field: "status", op: "in" as const }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  // No list view declares this entity today (`supplierCatalogItem` has an entity definition and no
+  // INDEX or RELATED list). Registered anyway, from the FIELD-LEVEL declarations the definition
+  // already carries -- the entity says how it is read, and leaving it CLIENT_DIRECT would keep a
+  // deny-all collection reachable by a client-direct query for a surface that does not exist yet.
+  // The sorts and filters here are exactly what the definition declares: nothing invented for a
+  // future screen, nothing dropped.
+  metadataSupplierCatalog: Object.freeze({
+    capability: "supplier.catalog.read",
+    source: "supplier_catalog",
+    orderBy: Object.freeze(["unitPrice", "asc"] as const),
+    allowedSorts: Object.freeze({
+      unitPriceAsc: Object.freeze({ field: "unitPrice", direction: "asc" as const }),
+      unitPriceDesc: Object.freeze({ field: "unitPrice", direction: "desc" as const }),
+    }),
+    defaultSort: "unitPriceAsc",
+    filters: Object.freeze({
+      supplierId: Object.freeze({ field: "supplierId", op: "==" as const }),
+      partId: Object.freeze({ field: "partId", op: "==" as const }),
+      available: Object.freeze({ field: "available", op: "==" as const }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
   // ── PARTS ─────────────────────────────────────────────────────────────────────────────────
   // All three reuse the EXISTING inventory.catalog.read -- already in the catalog, already granted,
   // and already exactly "may this person read the parts catalogue". Three sources rather than one

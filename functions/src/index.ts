@@ -180,6 +180,10 @@ export {
   rejectAccessRequest,
 } from "./access/accessCommandCallables";
 
+// CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a
+// workflow: one atomic batch create, gated on crm.contact.create.
+export { importContacts } from "./crm/contactImportCommand";
+
 // --- Issue #325 / ADR-007 D-FN surface: trusted report execution ---
 // Same posture as the six commands above: deployed to eos-platform-sandbox under the per-environment
 // activation program, NOT deployed to the production project. No client calls it (the client

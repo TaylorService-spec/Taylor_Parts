@@ -1,10 +1,13 @@
 // Contact provenance convergence -- every Contact write path (single create, single
 // update, CSV import) must produce the platform's four provenance fields
 // (metadata/v2/provenance.js's PROVENANCE_SYSTEM_NAMES: createdAt/createdBy/updatedAt/
-// updatedBy). Contact is a CLIENT-DIRECT write (no callable, gated by firestore.rules'
-// isAdminOrDispatcher()), so firebase is fully mocked here -- no emulator, no backend
-// touched -- and the actor/timestamp asserted below are the CLIENT-SUPPLIED CLAIMS the
-// domain modules now write, not server-verified provenance.
+// updatedBy). The two SINGLE-record paths are still client-direct writes gated by
+// firestore.rules, so the actor/timestamp asserted for them are CLIENT-SUPPLIED CLAIMS, not
+// server-verified provenance. The CSV IMPORT is not: it now goes through the trusted
+// importContacts command, which writes all four fields itself from request.auth.uid -- so the
+// property asserted for it is inverted, and is that the browser sends no actor at all.
+//
+// Firebase and the callable transport are both fully mocked -- no emulator, no backend touched.
 //
 // Future writes only. This does not assert anything about historical documents.
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -14,10 +17,29 @@ const mockAuth = { currentUser: { uid: "actor-uid-1" } };
 const addDocCalls = [];
 const updateDocCalls = [];
 const batchSets = [];
+// The import is no longer a client write, so it needs a callable recorder rather than a batch one.
+const callableCalls = [];
+let writeBlocked = false;
+const setWriteBlocked = (v) => {
+  writeBlocked = v;
+};
 
 vi.mock("../src/firebase/firebase", () => ({
   db: {},
   auth: mockAuth,
+  // The import resolves `functions` from this module for its callable transport.
+  functions: {},
+}));
+
+vi.mock("../src/config/env", () => ({
+  isWriteBlocked: () => writeBlocked,
+}));
+
+vi.mock("firebase/functions", () => ({
+  httpsCallable: (_functions, name) => async (payload) => {
+    callableCalls.push([name, payload]);
+    return { data: { ids: (payload.contacts ?? []).map((_, i) => `imported-${i}`) } };
+  },
 }));
 
 vi.mock("firebase/firestore", () => ({
@@ -47,6 +69,8 @@ beforeEach(() => {
   addDocCalls.length = 0;
   updateDocCalls.length = 0;
   batchSets.length = 0;
+  callableCalls.length = 0;
+  writeBlocked = false;
   mockAuth.currentUser = { uid: "actor-uid-1" };
 });
 
@@ -93,29 +117,44 @@ describe("updateContact -- writes updatedAt and updatedBy, never createdAt/creat
   });
 });
 
-describe("importContacts -- writes all four provenance fields on every imported row", () => {
-  it("stamps createdAt/createdBy/updatedAt/updatedBy on each row", async () => {
+describe("importContacts -- the browser no longer authors provenance at all", () => {
+  // THE ASSERTIONS INVERTED, because the behaviour moved rather than changed.
+  //
+  // This block used to prove the client stamped createdAt/createdBy/updatedAt/updatedBy on each
+  // row, and that createdBy fell back to null when nobody was signed in. Both were true of a
+  // client-direct writeBatch. The import now goes through the trusted importContacts command, which
+  // resolves the actor from request.auth.uid and writes all four itself
+  // (functions/src/crm/contactImportCommand.ts, covered by functions/test/contactImportCommand.test.mjs).
+  //
+  // So the client-side property worth pinning is the opposite one: that this module sends NOTHING
+  // about who is acting. Asserting the old behaviour here would require the browser to keep
+  // authoring an identity the server ignores.
+  //
+  // The null fallback is GONE, and that is the point rather than a regression: an unauthenticated
+  // caller is now refused outright, so no import can produce a contact whose createdBy is null.
+  it("sends the rows and the account, and no actor field of any kind", async () => {
     const result = await importContacts("account-1", [
       { name: "Ada", email: "ada@x.com" },
       { name: "Grace", email: "grace@x.com" },
     ]);
     expect(result.ids.length).toBe(2);
-    expect(batchSets.length).toBe(2);
-    for (const { data } of batchSets) {
-      for (const field of PROVENANCE_SYSTEM_NAMES) {
-        expect(data).toHaveProperty(field);
-      }
-      expect(typeof data.createdAt).toBe("number");
-      expect(typeof data.updatedAt).toBe("number");
-      expect(data.createdBy).toBe("actor-uid-1");
-      expect(data.updatedBy).toBe("actor-uid-1");
+    expect(callableCalls.length).toBe(1);
+
+    const [name, payload] = callableCalls[0];
+    expect(name).toBe("importContacts");
+    expect(payload.accountId).toBe("account-1");
+    expect(payload.contacts.map((c) => c.name)).toEqual(["Ada", "Grace"]);
+
+    const sent = JSON.stringify(payload);
+    for (const field of [...PROVENANCE_SYSTEM_NAMES, "actorUid", "principalUid", "uid"]) {
+      expect(sent).not.toContain(field);
     }
   });
 
-  it("falls back to null when there is no signed-in user", async () => {
-    mockAuth.currentUser = null;
-    await importContacts("account-1", [{ name: "Ada" }]);
-    expect(batchSets[0].data.createdBy).toBe(null);
-    expect(batchSets[0].data.updatedBy).toBe(null);
+  it("writes nothing when the platform write gate is closed", async () => {
+    setWriteBlocked(true);
+    const result = await importContacts("account-1", [{ name: "Ada" }]);
+    expect(result).toEqual({ blocked: true });
+    expect(callableCalls.length).toBe(0);
   });
 });

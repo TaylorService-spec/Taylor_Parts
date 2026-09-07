@@ -479,6 +479,14 @@ jobs:
         run: npx vitest run test/metadataDefinitionsValidate.test.jsx
         working-directory: field-ops-app-vite
 
+      # The list header count on the governed path, and the one thing it must never do. A count that
+      # renders 0 when the read failed states that the business has no customers, in the calmest
+      # possible way -- so the failure paths are pinned harder than the success one, in BOTH
+      # directions (a genuine zero must still render as zero).
+      - name: Governed list count -- a failed read is null, never zero
+        run: npx vitest run test/governedListCount.test.jsx
+        working-directory: field-ops-app-vite
+
       # The boundary itself: one architecture, one filter UI, one sort UI, one URL layer, and no
       # screen building its own bounded query.
       - name: Object list metadata authority boundary

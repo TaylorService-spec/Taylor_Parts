@@ -88,10 +88,39 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "contact.record",
     action: "read",
   }),
+  // The WRITE half of the contacts rule, authorized by Owner ruling 2026-09-07 for the same
+  // population its read half already carries. `create` only, and deliberately so: the surface that
+  // needs it (the CSV import) creates rows and does nothing else, and the retired rule split
+  // contacts by action already (`allow delete: if false`). A `crm.contact.write` covering update
+  // would hand the import an authority it never uses.
+  Object.freeze({
+    id: "crm.contact.create",
+    description:
+      "Create Contact records, including bulk creation through import. Confers no update, no delete and no read.",
+    resource: "contact.record",
+    action: "create",
+  }),
   Object.freeze({
     id: "crm.location.read",
     description: "Read Customer Location records. Confers no write.",
     resource: "location.record",
+    action: "read",
+  }),
+  // Suppliers. Two capabilities rather than one, authorized 2026-09-07: supplier IDENTITY and
+  // supplier PRICING are separable questions, and merging them would foreclose ever answering them
+  // differently. Neither is `inventory.catalog.read` -- a Supplier is not a Part, and that
+  // capability's measured population is 18 Roles against the retired rule's admitted 2.
+  Object.freeze({
+    id: "supplier.record.read",
+    description: "Read Supplier records. Confers no write.",
+    resource: "supplier.record",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "supplier.catalog.read",
+    description:
+      "Read Supplier catalog items: the parts a supplier offers and the price at which they offer them. Confers no write and no Part Master authority.",
+    resource: "supplier.catalog",
     action: "read",
   }),
   Object.freeze({

@@ -32,7 +32,6 @@ import * as paymentDefs from "../src/metadata/definitions/payment.js";
 import * as purchaseOrderDefs from "../src/metadata/definitions/purchaseOrder.js";
 import * as salesOrderDefs from "../src/metadata/definitions/salesOrder.js";
 import * as salesTerritoryDefs from "../src/metadata/definitions/salesTerritory.js";
-import * as stockLocationDefs from "../src/metadata/definitions/stockLocation.js";
 import * as supplierDefs from "../src/metadata/definitions/supplier.js";
 import * as truckDefs from "../src/metadata/definitions/truck.js";
 import * as warehouseDefs from "../src/metadata/definitions/warehouse.js";
@@ -787,7 +786,7 @@ function collectDefinitions(...modules) {
 const { entities: realEntities, lists: realLists } = collectDefinitions(
   accountDefs, contactDefs, employeeDefs, equipmentDefs, equipmentModelDefs, invoiceDefs,
   locationDefs, manufacturerDefs, mobileLocationDefs, opportunityDefs, partDefs, paymentDefs,
-  purchaseOrderDefs, salesOrderDefs, salesTerritoryDefs, stockLocationDefs, supplierDefs,
+  purchaseOrderDefs, salesOrderDefs, salesTerritoryDefs, supplierDefs,
   truckDefs, warehouseDefs, workOrderDefs
 );
 

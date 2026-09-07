@@ -84,7 +84,7 @@ counts) are NOT represented — their absence here means "not yet measured", nev
 
 | Domain | Action | Why not a workflow |
 |---|---|---|
-| CRM | `contactImport` (`domain/contactImport.js`) | A bulk `writeBatch` of contact records. No lifecycle, no state machine, no approval, no precondition beyond row validation, no governed side effect. It is creation of many rows in one round trip. Class C only because it is a direct client write, **not** because it is a business action. **STILL CLIENT-DIRECT — blocked, see below.** |
+| CRM | `contactImport` (`domain/contactImport.js`) | A bulk creation of contact records. No lifecycle, no state machine, no approval, no precondition beyond row validation, no governed side effect. It is creation of many rows in one round trip. **MIGRATED** to the trusted `importContacts` command (Owner ruling 2026-09-07, `crm.contact.create`) and **still CRUD** — moving the write to the server changed the authority, not the nature of the action. Writes **no audit event**, and that is measured rather than omitted: unlike the reorder commands, whose idempotency mechanism IS an audit document, a batch create needs no deterministic replay id, so adding one would be adding it merely because it seemed desirable. |
 | Reorder | `reviewReorderRequest`, `assignReorderRequest`, `startPurchasing`, `updatePurchasingProgress` | **Provisionally CRUD — see UNCLEAR.** |
 
 ---
@@ -98,17 +98,24 @@ counts) are NOT represented — their absence here means "not yet measured", nev
 
 ---
 
-## BLOCKED on a capability that does not exist
+## RESOLVED — the three capability blockers (Owner ruling 2026-09-07)
 
-Not a technical blocker and not a design question — a governance gate. Each of these has a
-straightforward trusted-command shape; what is missing is a capability to gate it on, and minting
-one plus granting it to a Role is a capability change.
+All three are authorized and minted. Dispatcher holds each explicitly through
+`SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS`; administrator and owner acquire them through the
+existing EOS composition, with **no duplicate grant rows added to restate that derivation**, and no
+other Role receives them.
 
-| Surface | Needed | Population the retired Rule admitted |
+| Surface | Capability | Measured holders |
 |---|---|---|
-| `contactImport` (write) | a Contact **create** capability. `permissionCatalog.ts` has `crm.contact.read` and no write of any kind for the `contact.record` resource. | `isAdminOrDispatcher()` |
-| `supplier` list (read) | a Supplier read capability. No `supplier.*` capability exists. | `isAdminOrDispatcher()` |
-| `supplierCatalogItem` list (read) | as above | `isAdminOrDispatcher()` |
+| `contactImport` (write) | `crm.contact.create` | admin, dispatcher, owner |
+| `supplier` list (read) | `supplier.record.read` | admin, dispatcher, owner |
+| `supplierCatalogItem` list (read) | `supplier.catalog.read` | admin, dispatcher, owner |
+
+Identical to `crm.contact.read`, which migrated from the same `isAdminOrDispatcher()` predicate.
+The owner difference is **accepted** by the ruling. `OWNER_PERMISSIONS` is unchanged and no
+supplier-specific owner exception exists.
+
+The reasoning behind each is preserved in `capability-parity-proposals.md`.
 
 A measured parity proposal for each — exact Rules predicate, proposed capability id and meaning,
 exact grants, proof that the proposed Role population matches the admitted one, scope, and why no

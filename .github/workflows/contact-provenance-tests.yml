@@ -13,6 +13,8 @@ on:
     paths:
       - "field-ops-app-vite/src/domain/contacts.js"
       - "field-ops-app-vite/src/domain/contactImport.js"
+      - "functions/src/crm/contactImportCommand.ts"
+      - "functions/test/contactImportCommand.test.mjs"
       - "field-ops-app-vite/test/contactProvenance.test.jsx"
       - ".github/workflows/contact-provenance-tests.yml"
   push:
@@ -20,6 +22,8 @@ on:
     paths:
       - "field-ops-app-vite/src/domain/contacts.js"
       - "field-ops-app-vite/src/domain/contactImport.js"
+      - "functions/src/crm/contactImportCommand.ts"
+      - "functions/test/contactImportCommand.test.mjs"
       - "field-ops-app-vite/test/contactProvenance.test.jsx"
       - ".github/workflows/contact-provenance-tests.yml"
   workflow_dispatch:
@@ -56,6 +60,15 @@ jobs:
       - name: Contact write-path provenance tests (vitest + jsdom)
         run: npx vitest run test/contactProvenance.test.jsx
         working-directory: field-ops-app-vite
+      # The SERVER half of the same migration. The import is now a trusted command, so the
+      # provenance property this lane exists to protect is enforced there -- and a lane that ran
+      # only the client half could go green while the fields it asserts stopped being written.
+      - name: Install functions dependencies
+        run: npm ci
+        working-directory: functions
+      - name: Contact import command decisions (build + run)
+        run: npm run test:contactImport
+        working-directory: functions
       - name: Lint the touched surfaces (oxlint)
         run: npx oxlint src/domain/contacts.js src/domain/contactImport.js
         working-directory: field-ops-app-vite

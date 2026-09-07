@@ -73,7 +73,10 @@ export const supplierEntity = makeEntityDefinition({
   // inside services/operationsQueries.ts) — the literal here matches that local const and
   // functions/src/constants/collections.ts's own SUPPLIERS_COLLECTION = "suppliers".
   collection: "suppliers",
-  readVia: "CLIENT_DIRECT",
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataSuppliers",
   // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather than
   // invented — see the header.
   readCapability: null,
