@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { EQUIPMENT_COLLECTION, WORK_ORDERS_COLLECTION } from "../domain/constants";
@@ -38,23 +39,30 @@ export function useEquipmentForAccount(accountId) {
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, EQUIPMENT_COLLECTION), where("accountId", "==", accountId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        // Fail closed: surface nothing rather than a stale/partial list.
+    // GOVERNED READ. `equipment` is denied to every client in Rules now; this resolves
+    // service.equipment.read server-side. The accountId filter is REQUIRED by the source, so a
+    // missing id is a refusal rather than a silent read of every equipment record.
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({ sourceId: "accountEquipment", filters: { accountId } })
+      .then((outcome) => {
+        if (!active) return;
+        if (outcome.ok) {
+          setData(outcome.items);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+        // Fail closed: surface nothing rather than a stale/partial list, and never render a
+        // refused read as "this account has no equipment".
         setData([]);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(loadErrorMessage(new Error(outcome.result), { entity: ENTITY }));
         setLoading(false);
-      }
-    );
+      });
 
-    return () => unsub();
+    return () => {
+      active = false;
+    };
   }, [accountId]);
 
   return { data, loading, error };
@@ -76,22 +84,25 @@ export function useEquipmentForLocation(locationId) {
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, EQUIPMENT_COLLECTION), where("locationId", "==", locationId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({ sourceId: "locationEquipment", filters: { locationId } })
+      .then((outcome) => {
+        if (!active) return;
+        if (outcome.ok) {
+          setData(outcome.items);
+          setError(null);
+          setLoading(false);
+          return;
+        }
         setData([]);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(loadErrorMessage(new Error(outcome.result), { entity: ENTITY }));
         setLoading(false);
-      }
-    );
+      });
 
-    return () => unsub();
+    return () => {
+      active = false;
+    };
   }, [locationId]);
 
   return { data, loading, error };

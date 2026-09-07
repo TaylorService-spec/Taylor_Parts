@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { ACCOUNTS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 const ENTITY = "customers";
@@ -61,30 +59,32 @@ export function useAccount(accountId) {
     let active = true;
     setLoading(true);
     setError(null);
-    const unsub = onSnapshot(
-      doc(db, ACCOUNTS_COLLECTION, accountId),
-      (snap) => {
+    // ONE RECORD, through the keyed-lookup source with a single id. No separate "read one"
+    // seam: the authorization question is identical (customer.record.read) and only the query
+    // shape differs, so a second seam would be a second place for that answer to drift.
+    governedCollectionClient
+      .readGovernedList({ sourceId: "accountsByIds", filters: { ids: [accountId] } })
+      .then((outcome) => {
         if (!active) return;
-        setAccount(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setError(null);
-        setLoading(false);
-        setCheckedAt(Date.now());
-      },
-      (err) => {
-        if (!active) return;
-        // Fail closed: clear any stale account rather than leave a previous
-        // id's data on screen looking current, and never render a failure as
-        // "no such customer".
+        if (outcome.ok) {
+          // An empty result is a genuine "no such customer"; a FAILED read is not, and is handled
+          // below. Keeping them apart is why this branches on outcome.ok rather than on length.
+          setAccount(outcome.items[0] ?? null);
+          setError(null);
+          setLoading(false);
+          setCheckedAt(Date.now());
+          return;
+        }
+        // Fail closed: clear any stale account rather than leave a previous id's data on screen
+        // looking current, and never render a failure as "no such customer".
         setAccount(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(loadErrorMessage(new Error(outcome.result), { entity: ENTITY }));
         setLoading(false);
         setCheckedAt(Date.now());
-      }
-    );
+      });
 
     return () => {
       active = false;
-      unsub();
     };
   }, [accountId, attempt]);
 

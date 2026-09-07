@@ -27,7 +27,8 @@ import type { Role } from "../types/access";
 import { resolveEffectivePermission, type TargetContext } from "./resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { InvalidInputError, UnauthorizedActorError } from "./trustedWriterCommands";
-import { GOVERNED_READS, type GovernedReadSource } from "./governedReadRegistry";
+import { GOVERNED_READS, DOCUMENT_ID_FIELD, type GovernedReadSource } from "./governedReadRegistry";
+import { FieldPath } from "firebase-admin/firestore";
 
 const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
@@ -128,8 +129,8 @@ function decodeCursor(raw: string, sourceId: string): CursorPayload {
 function resolveFilters(
   spec: GovernedReadSource,
   supplied: Record<string, unknown>,
-): Array<{ field: string; op: GovernedReadSource["filters"][string]["op"]; value: unknown }> {
-  const out = [];
+): Array<{ field: string; op: FirebaseFirestore.WhereFilterOp; value: unknown }> {
+  const out: Array<{ field: string; op: FirebaseFirestore.WhereFilterOp; value: unknown }> = [];
   for (const name of Object.keys(supplied)) {
     if (!spec.filters[name]) {
       const allowed = Object.keys(spec.filters).join(", ") || "none";
@@ -144,6 +145,25 @@ function resolveFilters(
     }
     if (f.op === "in" && (!Array.isArray(value) || value.length === 0 || value.length > 30)) {
       throw new InvalidInputError(`"${name}" needs an array of 1..30 values`);
+    }
+    if (f.op === "prefix") {
+      if (typeof value !== "string" || value.length === 0) {
+        throw new InvalidInputError(`"${name}" needs a non-empty string`);
+      }
+      // The server builds the range; the caller never holds two open-ended comparison operators.
+      //
+      // \uf8ff is the standard high sentinel for a Firestore prefix scan -- a private-use code
+      // point that sorts after every ordinary character -- so [term, term + \uf8ff] is exactly
+      // "starts with term".
+      //
+      // Written as an ESCAPE, never as the literal character. The literal is invisible in most
+      // editors and does not survive every tool that touches a file; it was lost once while
+      // writing this, which silently reduced the range to `>= term AND <= term`, i.e. exact
+      // equality. A typeahead that quietly matches only exact names reads as "no results yet"
+      // rather than as a bug, which is the worst way for this to fail.
+      out.push({ field: f.field, op: ">=" as const, value });
+      out.push({ field: f.field, op: "<=" as const, value: `${value}\uf8ff` });
+      continue;
     }
     out.push({ field: f.field, op: f.op, value });
   }
@@ -202,11 +222,27 @@ export async function readGovernedList(
 
   const [orderField, orderDir] = spec.orderBy;
   let query = db.collection(spec.source) as FirebaseFirestore.Query;
-  for (const f of filters) query = query.where(f.field, f.op, f.value);
+  for (const f of filters) {
+    // DOCUMENT_ID_FIELD is the registry's name for "the document id". Firestore addresses that as
+    // FieldPath.documentId(), not as a field name, so the translation happens here -- the caller
+    // never learns the id is addressed differently from any other field.
+    query = query.where(
+      f.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : f.field,
+      f.op,
+      f.value,
+    );
+  }
   // Ordered by the registry's field, then by document id. The id tiebreak is what makes the cursor
   // total: without it, rows sharing an orderBy value can be skipped or repeated across a boundary.
-  query = query.orderBy(orderField, orderDir).orderBy("__name__", orderDir);
-  if (cursor) query = query.startAfter(cursor.v, cursor.d);
+  query =
+    orderField === DOCUMENT_ID_FIELD
+      // Already ordered by id: a second __name__ ordering would be a duplicate orderBy and is also
+      // unnecessary -- the id is unique, so it is its own tiebreak.
+      ? query.orderBy(FieldPath.documentId(), orderDir)
+      : query.orderBy(orderField, orderDir).orderBy(FieldPath.documentId(), orderDir);
+  if (cursor) {
+    query = orderField === DOCUMENT_ID_FIELD ? query.startAfter(cursor.d) : query.startAfter(cursor.v, cursor.d);
+  }
 
   // One MORE than the page. `hasMore` is then observed rather than inferred -- comparing a returned
   // count to the limit cannot distinguish a full final page from a truncated one.
@@ -222,7 +258,7 @@ export async function readGovernedList(
       hasMore && last
         ? encodeCursor({
             s: input.sourceId,
-            v: (last.data() as Record<string, unknown>)[orderField] ?? null,
+            v: orderField === DOCUMENT_ID_FIELD ? last.id : ((last.data() as Record<string, unknown>)[orderField] ?? null),
             d: last.id,
           })
         : null,

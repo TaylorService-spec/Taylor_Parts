@@ -36,10 +36,30 @@
 // server derives "me" from request.auth.uid. Those get dedicated trusted reads with their own scope
 // resolution; forcing them through a generic registry is exactly the widening this migration must
 // not do.
-export type GovernedFilterOperator = "==" | "in" | "array-contains";
+// The filter SHAPES a source may declare. Each is a query shape, never an authorization concept:
+// adding one lets a registered source answer a question it already answered before this migration,
+// and lets none of them answer a question about data the capability did not already cover.
+//
+//   "=="              equality on a stored field
+//   "in"              membership, 1..30 values -- the batched keyed lookup shape
+//   "array-contains"  membership within a stored array
+//   "prefix"          starts-with. The caller supplies ONE string; the server builds the
+//                     >= term / <= term +  range itself. Declared as its own shape rather
+//                     than exposing >= and <= because two open-ended range operators in a caller's
+//                     hands is a query language, and this is a typeahead.
+export type GovernedFilterOperator = "==" | "in" | "array-contains" | "prefix";
+
+/**
+ * The sentinel for "filter on the document id rather than a stored field".
+ *
+ * Firestore addresses this as FieldPath.documentId(), which is not a field name and cannot be
+ * passed as one. The registry names it explicitly so a source can declare a keyed lookup without
+ * the caller ever learning that the id is addressed differently from any other field.
+ */
+export const DOCUMENT_ID_FIELD = "__documentId__";
 
 export interface GovernedFilterSpec {
-  /** The stored field this named parameter filters on. Fixed by the registry. */
+  /** The stored field this named parameter filters on, or DOCUMENT_ID_FIELD. Fixed by the registry. */
   readonly field: string;
   readonly op: GovernedFilterOperator;
   /** When true the read is refused unless the caller supplies this parameter. */
@@ -73,6 +93,12 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // THE ACCOUNT READS. Four client shapes existed against `accounts` before this migration and all
+  // four are preserved exactly -- one capability, four question shapes, no widening:
+  //   accountDirectory  ordered list / picker
+  //   accountsByIds     the batched keyed lookup useAccountNames did with documentId() in [chunk]
+  //   accountSearch     the typeahead's prefix range
+  // (the single-record read is readGovernedRecord, which uses accountDirectory's own entry).
   accountDirectory: Object.freeze({
     capability: "customer.record.read",
     source: "accounts",
@@ -82,6 +108,31 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     }),
     projection: null,
     maxPageSize: 200,
+  }),
+
+  accountsByIds: Object.freeze({
+    capability: "customer.record.read",
+    source: "accounts",
+    // Ordered by id: this source answers "resolve these ids to names", and the caller keys the
+    // result by id rather than reading it in order. Ordering by name here would add a sort the
+    // previous documentId()-in query never paid for.
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 30,
+  }),
+
+  accountSearch: Object.freeze({
+    capability: "customer.record.read",
+    source: "accounts",
+    orderBy: Object.freeze(["name", "asc"] as const),
+    filters: Object.freeze({
+      namePrefix: Object.freeze({ field: "name", op: "prefix" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 50,
   }),
 
   // accountId is REQUIRED on these three: they exist to answer "this account's contacts", and a
@@ -108,14 +159,52 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // EQUIPMENT. Four client shapes existed and each gets its own source rather than being folded
+  // into one entry with optional filters. "Equipment for this account" and "equipment at this
+  // location" are different questions, and an entry whose filters are all optional is an entry that
+  // silently answers "all equipment" the moment a caller forgets a parameter.
   accountEquipment: Object.freeze({
     capability: "service.equipment.read",
     source: "equipment",
     orderBy: Object.freeze(["name", "asc"] as const),
     filters: Object.freeze({
       accountId: Object.freeze({ field: "accountId", op: "==" as const, required: true }),
-      locationId: Object.freeze({ field: "locationId", op: "==" as const }),
     }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  locationEquipment: Object.freeze({
+    capability: "service.equipment.read",
+    source: "equipment",
+    orderBy: Object.freeze(["name", "asc"] as const),
+    filters: Object.freeze({
+      locationId: Object.freeze({ field: "locationId", op: "==" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  equipmentByIds: Object.freeze({
+    capability: "service.equipment.read",
+    source: "equipment",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 30,
+  }),
+
+  // The installed-base register: every equipment record, id-ordered and cursor-paged. Ordered by
+  // DOCUMENT ID because that is what the page it replaces ordered by, and the reason is in that
+  // page's own header -- ordering by createdAt silently EXCLUDES records missing that field, which
+  // is a register quietly losing rows rather than reporting fewer.
+  equipmentRegister: Object.freeze({
+    capability: "service.equipment.read",
+    source: "equipment",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
     projection: null,
     maxPageSize: 200,
   }),

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { collection, getDocs, limit as fsLimit, orderBy, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { accountSearchQueryShape, interpretAccountSearchRead, ACCOUNT_SEARCH_CAP } from "../domain/accountSearch.js";
 
 // The ONLY place this feature touches Firestore. domain/accountSearch.js decided
@@ -38,16 +37,24 @@ export function useAccountSearch(term, { cap = ACCOUNT_SEARCH_CAP } = {}) {
 
     const timer = setTimeout(async () => {
       try {
-        const q = query(
-          collection(db, shape.collection),
-          where(shape.fieldPath, ">=", shape.start),
-          where(shape.fieldPath, "<=", shape.end),
-          orderBy(shape.fieldPath, "asc"),
-          fsLimit(shape.limit)
-        );
-        const snap = await getDocs(q);
+        // THE PREFIX RANGE IS BUILT SERVER-SIDE now. The pure `shape` helper still decides
+        // WHETHER to search and what the normalized term is; what it no longer does is hand the
+        // client two open-ended comparison operators. The source declares a "prefix" filter and
+        // the server derives [term, term + ] itself -- same query, same ordering, same
+        // limit, one fewer lever in the caller's hands.
+        const outcome = await governedCollectionClient.readGovernedList({
+          sourceId: "accountSearch",
+          filters: { namePrefix: shape.start },
+          pageSize: shape.limit,
+        });
         if (token !== requestRef.current) return;
-        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
+        if (!outcome.ok) {
+          // docs stays null, not [], so a failed read is never mistaken downstream for a search
+          // that ran and found nothing.
+          setRaw({ docs: null, loading: false, error: new Error(outcome.result) });
+          return;
+        }
+        setRaw({ docs: outcome.items, loading: false, error: null });
       } catch (error) {
         if (token !== requestRef.current) return;
         // docs stays null, not [], so a failed read is never mistaken downstream for a
