@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { governedCollectionClient } from "../access/governedCollectionClient";
-import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
+import { REORDER_REQUEST_STATUS } from "../domain/constants";
 
 // Bug fix -- Reorder Request notifications/queues (Notification Panel,
 // Parts Manager Queue, Parts Associate Queue, PartDetail.jsx) only
@@ -25,22 +23,14 @@ import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/c
 // External signatures are unchanged -- no caller (PartsList.jsx/
 // PartDetail.jsx/AppHeader.jsx) needed to change.
 //
-// firestore.rules' reorder_requests read rule (`allow read: if
-// isAdminOrDispatcher();`) is unconditional on document fields, so it
-// already supports any query shape (get or list) -- no rule change
-// needed. Firestore also doesn't require a composite index for
-// queries using only `==` filters (even multiple, as in
-// useReorderRequestsAssignedTo below) -- only range/orderBy
-// combinations do -- so no firestore.indexes.json change either.
+// SUPERSEDED, and recorded rather than deleted: the paragraphs above describe an onSnapshot
+// design that no longer exists. Rules no longer decide access for reorder_requests -- Firebase
+// authenticates and EOS authorizes -- so every read here now resolves reorder.request.read.queue
+// server-side through the governed source. The realtime behaviour those paragraphs won IS lost:
+// a callable cannot stream, so these are one-shot reads and a queue no longer repaints when
+// another component writes. Every caller already re-reads after its own write.
 //
-// Writes still go exclusively through domain/inventoryReorderRequests.js
-// (createReorderRequest/reviewReorderRequest/assignReorderRequest/
-// startPurchasing) -- nothing here writes, only reads.
-const reorderRequestsRef = collection(db, REORDER_REQUESTS_COLLECTION);
-
-function toDocs(snap) {
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
+// Writes still go exclusively through domain/inventoryReorderRequests.js -- nothing here writes.
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Filtered
 // to PENDING_REVIEW only. Shared by PartsList.jsx (to know which Parts
@@ -190,31 +180,36 @@ export function useReorderRequestForPart(partId, requestId) {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     if (requestId) {
-      const ref = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
-      const unsubscribe = onSnapshot(
-        ref,
-        (snap) => {
-          if (!snap.exists()) {
+      let active = true;
+      governedCollectionClient
+        .readGovernedList({ sourceId: "reorderRequestsQueue", filters: { ids: [requestId] }, pageSize: 1 })
+        .then((outcome) => {
+          if (!active) return;
+          if (!outcome.ok) {
+            // "not_found" comes ONLY from an empty successful read, never from a failure -- a
+            // denied or unavailable read is not the same fact as "this document does not exist",
+            // and PartDetail needs to tell them apart.
+            setState({
+              data: null,
+              loading: false,
+              error: outcome.result === "DENIED" ? "permission-denied" : "unknown",
+            });
+            return;
+          }
+          const data = outcome.items[0] ?? null;
+          if (!data) {
             setState({ data: null, loading: false, error: "not_found" });
             return;
           }
-          const data = { id: snap.id, ...snap.data() };
           if (data.partId !== partId) {
             setState({ data: null, loading: false, error: "mismatch" });
             return;
           }
           setState({ data, loading: false, error: null });
-        },
-        // Site-work r4 C, Fix 2: preserve the real read error (mirrors
-        // useReorderRequestById/useReorderRequestsByStatus above) instead of
-        // discarding it into "not_found" -- a denied/failed read is not the same
-        // fact as "this document does not exist", and a caller (PartDetail.jsx)
-        // needs to tell them apart. "not_found" now only ever comes from the
-        // snap.exists() check above, never from this error callback.
-        (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-      );
-
-      return unsubscribe;
+        });
+      return () => {
+        active = false;
+      };
     }
 
     // The most-recent request for this part. Sorting stays CLIENT-SIDE and unchanged: the source
@@ -317,13 +312,31 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
 // render, through the same state machine production traffic uses, with
 // no network mocking and no component-level bypass.
 export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, cursor }) {
-  const constraints = [where("status", "in", statuses), orderBy("createdAt", "desc"), limit(pageSize)];
-  if (cursor) constraints.push(startAfter(cursor));
-  const snap = await getDocs(query(reorderRequestsRef, ...constraints));
+  // GOVERNED, and the page contract is unchanged. `cursor` was already OPAQUE to the hook above --
+  // it round-trips whatever this returns as `lastVisible` and never inspects it -- so swapping a
+  // Firestore DocumentSnapshot for the server's opaque page token is invisible to every caller.
+  // Ordering (createdAt desc) and the status filter are the source's, matching this query exactly.
+  const outcome = await governedCollectionClient.readGovernedList({
+    sourceId: "reorderRequestsHistory",
+    filters: { statuses },
+    pageSize,
+    cursor: cursor ?? undefined,
+  });
+  if (!outcome.ok) {
+    // The hook catches and reads `err.code`, so the shape it expects is preserved rather than
+    // changing this function's failure mode from throw to return.
+    const err = new Error("reorder history read failed");
+    err.code = outcome.result === "DENIED" ? "permission-denied" : "unknown";
+    throw err;
+  }
   return {
-    docs: toDocs(snap),
-    lastVisible: snap.docs.length ? snap.docs[snap.docs.length - 1] : null,
-    size: snap.docs.length,
+    docs: outcome.items,
+    lastVisible: outcome.nextCursor,
+    // `size` STILL, because the hook derives hasMore from `size === pageSize` and that heuristic is
+    // deliberately left alone. The server now reports an exact `hasMore` (it fetches pageSize + 1),
+    // which would be strictly better -- but adopting it changes when "Load More" disappears, and
+    // that is a behaviour change rather than a migration. Recorded here, not taken.
+    size: outcome.items.length,
   };
 }
 
@@ -405,20 +418,40 @@ export function useReviewedRequestsHistory(uid) {
     let cancelled = false;
     setState({ data: [], loading: true, error: null });
 
+    // STILL TWO INDEPENDENT READS, merged and de-duplicated by id exactly as before. Firestore has
+    // no OR across two fields without a composite arrangement, and that has not changed by moving
+    // the read server-side -- so the shape stays two queries, not one, and the client-side
+    // terminal-status filter stays client-side.
     Promise.all([
-      getDocs(query(reorderRequestsRef, where("reviewedBy", "==", uid))),
-      getDocs(query(reorderRequestsRef, where("assignedBy", "==", uid))),
-    ])
-      .then(([reviewedSnap, assignedSnap]) => {
-        if (cancelled) return;
-        const byId = new Map();
-        for (const d of [...toDocs(reviewedSnap), ...toDocs(assignedSnap)]) byId.set(d.id, d);
-        const relevant = [...byId.values()].filter((d) => TERMINAL_STATUSES.has(d.status));
-        setState({ data: relevant, loading: false, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) setState({ data: [], loading: false, error: err.code ?? "unknown" });
-      });
+      governedCollectionClient.readGovernedList({
+        sourceId: "reorderRequestsQueue",
+        filters: { reviewedBy: uid },
+        pageSize: 200,
+      }),
+      governedCollectionClient.readGovernedList({
+        sourceId: "reorderRequestsQueue",
+        filters: { assignedBy: uid },
+        pageSize: 200,
+      }),
+    ]).then(([reviewed, assigned]) => {
+      if (cancelled) return;
+      if (!reviewed.ok || !assigned.ok) {
+        // EITHER failing fails the whole read. A merge of one successful half with one refused
+        // half is a partial history presented as complete -- the exact "personal history that
+        // silently omits records" this hook must not produce.
+        const failed = reviewed.ok ? assigned : reviewed;
+        setState({
+          data: [],
+          loading: false,
+          error: failed.result === "DENIED" ? "permission-denied" : "unknown",
+        });
+        return;
+      }
+      const byId = new Map();
+      for (const d of [...reviewed.items, ...assigned.items]) byId.set(d.id, d);
+      const relevant = [...byId.values()].filter((d) => TERMINAL_STATUSES.has(d.status));
+      setState({ data: relevant, loading: false, error: null });
+    });
 
     return () => {
       cancelled = true;
@@ -445,20 +478,33 @@ export function useReorderRequestById(requestId) {
     }
 
     setState({ data: null, loading: true, error: null });
-    const ref = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
-    const unsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setState({ data: null, loading: false, error: "not_found" });
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({ sourceId: "reorderRequestsQueue", filters: { ids: [requestId] }, pageSize: 1 })
+      .then((outcome) => {
+        if (!active) return;
+        if (!outcome.ok) {
+          // "not_found" stays reserved for an empty SUCCESSFUL read. A refused or unreachable read
+          // is a different fact, and collapsing them would tell a caller a request does not exist
+          // when the truth is that they could not look.
+          setState({
+            data: null,
+            loading: false,
+            error: outcome.result === "DENIED" ? "permission-denied" : "unknown",
+          });
           return;
         }
-        setState({ data: { id: snap.id, ...snap.data() }, loading: false, error: null });
-      },
-      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-    );
+        const data = outcome.items[0] ?? null;
+        setState(
+          data
+            ? { data, loading: false, error: null }
+            : { data: null, loading: false, error: "not_found" },
+        );
+      });
 
-    return unsubscribe;
+    return () => {
+      active = false;
+    };
   }, [requestId]);
 
   return state;

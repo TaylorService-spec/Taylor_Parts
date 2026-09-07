@@ -224,6 +224,10 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
       partId: Object.freeze({ field: "partId", op: "==" as const }),
       reviewedBy: Object.freeze({ field: "reviewedBy", op: "==" as const }),
       assignedBy: Object.freeze({ field: "assignedBy", op: "==" as const }),
+      // Serves the by-id reads too. Same source rather than a separate one because the
+      // authorization question and the ordering are identical and only the predicate differs -- a
+      // second entry would be a second place for that same answer to drift.
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const }),
     }),
     projection: null,
     maxPageSize: 200,
