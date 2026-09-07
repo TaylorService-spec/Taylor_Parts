@@ -24,18 +24,12 @@
 // "we could not offer you the parts", never as "there are none", because the second would invite
 // somebody to conclude the part they are holding is not in the system.
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 // The pure shaping lives in the domain layer so it is testable without a firebase module resolving.
 // Re-exported here so existing importers of the hook keep one place to reach for.
 import { SERIAL_CONTROL_TYPE, toSerialPartOptions } from "../domain/serialTrackedPartOptions";
 
 export { SERIAL_CONTROL_TYPE, toSerialPartOptions };
-
-// Declared here for the same reason hooks/useWholeUnitParts.js declares its own: `parts` is not in
-// domain/constants.js, and adding it there to serve one hook would be a wider change than this
-// surface earns.
-const PARTS_COLLECTION = "parts";
 
 
 /** A guard against an unexpectedly large catalogue, not an expected size. */
@@ -59,24 +53,33 @@ export function useSerialTrackedParts({ enabled = true } = {}) {
     let cancelled = false;
     setState({ options: [], status: SERIAL_PARTS_STATUS.LOADING });
 
-    getDocs(query(
-      collection(db, PARTS_COLLECTION),
-      where("controlType", "==", SERIAL_CONTROL_TYPE),
-      limit(SERIAL_PART_READ_CAP),
-    ))
-      .then((snap) => {
-        if (cancelled) return;
-        const docs = snap.docs.map((d) => ({ partId: d.id, ...d.data() }));
-        setState({ options: toSerialPartOptions(docs), status: SERIAL_PARTS_STATUS.READY });
+    // GOVERNED READ. `parts` is denied to every client in Rules now; this resolves the EXISTING
+    // inventory.catalog.read server-side -- the same authority, relocated. The controlType filter
+    // is required by the source, so it can never silently become a read of every part.
+    //
+    // The cap is unchanged and still passed as the page size: this is a picker, and the cap is its
+    // deliberate bound rather than an accident of pagination.
+    governedCollectionClient
+      .readGovernedList({
+        sourceId: "partsBySerialControl",
+        filters: { controlType: SERIAL_CONTROL_TYPE },
+        pageSize: SERIAL_PART_READ_CAP,
       })
-      .catch((err) => {
+      .then((outcome) => {
         if (cancelled) return;
+        if (outcome.ok) {
+          // `partId` from the document id, exactly as before -- the governed row carries the
+          // authoritative id in `id`, and this hook's option shape names it partId.
+          const docs = outcome.items.map(({ id, ...data }) => ({ partId: id, ...data }));
+          setState({ options: toSerialPartOptions(docs), status: SERIAL_PARTS_STATUS.READY });
+          return;
+        }
         // DENIED and UNAVAILABLE are different facts about the world and the surface says different
         // things about them. Collapsing them would tell somebody their data is missing when the
         // truth is that their role is narrow.
         setState({
           options: [],
-          status: err?.code === "permission-denied" ? SERIAL_PARTS_STATUS.DENIED : SERIAL_PARTS_STATUS.UNAVAILABLE,
+          status: outcome.result === "DENIED" ? SERIAL_PARTS_STATUS.DENIED : SERIAL_PARTS_STATUS.UNAVAILABLE,
         });
       });
 

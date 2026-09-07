@@ -114,6 +114,61 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 30,
   }),
 
+  // ── PARTS ─────────────────────────────────────────────────────────────────────────────────
+  // All three reuse the EXISTING inventory.catalog.read -- already in the catalog, already granted,
+  // and already exactly "may this person read the parts catalogue". Three sources rather than one
+  // with optional filters because two of them are DEFINED by their filter: "serial-tracked parts"
+  // and "whole-unit parts" are the questions, and an optional filter would silently answer "every
+  // part" the moment a caller omitted it. partMaster is the deliberate unfiltered read.
+  partsBySerialControl: Object.freeze({
+    capability: "inventory.catalog.read",
+    source: "parts",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      controlType: Object.freeze({ field: "controlType", op: "==" as const, required: true }),
+    }),
+    projection: null,
+    // 500 because that is the cap the picker this replaces already used, and the cap is a
+    // deliberate guard against an unexpectedly large catalogue rather than an expected size. A
+    // lower ceiling here would REJECT the caller's existing page size outright -- pageSize above
+    // maxPageSize is an input error, not a silent clamp -- so a mismatch would not quietly truncate
+    // the picker, it would break it.
+    maxPageSize: 500,
+  }),
+
+  partsWholeUnit: Object.freeze({
+    capability: "inventory.catalog.read",
+    source: "parts",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      wholeUnit: Object.freeze({ field: "wholeUnit", op: "==" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  partMaster: Object.freeze({
+    capability: "inventory.catalog.read",
+    source: "parts",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  // Inventory actions for ONE part. partId is required: this answers "what happened to this part",
+  // and unfiltered it would be the whole activity ledger.
+  inventoryActionsForPart: Object.freeze({
+    capability: "inventory.action.read",
+    source: "inventory_actions",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      partId: Object.freeze({ field: "partId", op: "==" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
   // ── THE TRUCK REGISTRY ────────────────────────────────────────────────────────────────────
   // Two collections, one capability, because they are one object: a truck IS its mobile location,
   // the registry reads them together, and Rules gated them identically. Both are unfiltered
