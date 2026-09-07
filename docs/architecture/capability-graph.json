@@ -465,12 +465,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/contactImportCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },

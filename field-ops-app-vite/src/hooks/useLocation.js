@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { READ_RESULT, readGovernedList } from "../access/governedCollectionClient.js";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 const ENTITY = "locations";
@@ -38,25 +36,40 @@ export function useLocation(locationId) {
     let active = true;
     setLoading(true);
     setError(null);
-    const unsub = onSnapshot(
-      doc(db, LOCATIONS_COLLECTION, locationId),
-      (snap) => {
-        if (!active) return;
-        setLocation(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        if (!active) return;
+    // One record, asked as a one-element id set through the governed `locationsByIds` source --
+    // the same source and the same capability the batched name lookup uses, because "may this
+    // person read customer locations" does not change with the size of the id set.
+    //
+    // ONE-SHOT, NOT A SUBSCRIPTION. This was an onSnapshot and a governed callable cannot stream.
+    // The record page re-reads on navigation and on retry, which is what it always did in practice;
+    // nothing here rendered a live-updating badge that would now be quietly stale.
+    //
+    // A stored `id` field can no longer displace the document id: this used to spread
+    // `{ id: snap.id, ...snap.data() }`, which resolved that conflict in favour of the DATA, and
+    // every consumer keys and routes by this value. The server's projection puts the document id
+    // last, so `row.id` is authoritative.
+    (async () => {
+      const page = await readGovernedList({
+        sourceId: "locationsByIds",
+        filters: { ids: [locationId] },
+        pageSize: 1,
+      });
+      if (!active) return;
+      if (!page.ok) {
         setLocation(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        // A DENIED read and an unavailable one stay distinguishable, and both stay distinct from a
+        // CONFIRMED absence below -- a successful read that found no such location.
+        setError(loadErrorMessage({ code: page.result === READ_RESULT.DENIED ? "permission-denied" : "unavailable" }, { entity: ENTITY }));
         setLoading(false);
+        return;
       }
-    );
+      setLocation(page.items[0] ?? null);
+      setError(null);
+      setLoading(false);
+    })();
 
     return () => {
       active = false;
-      unsub();
     };
   }, [locationId, attempt]);
 

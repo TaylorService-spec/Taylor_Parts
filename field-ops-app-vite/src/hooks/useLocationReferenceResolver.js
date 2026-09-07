@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, documentId, getDocs, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { READ_RESULT, readGovernedList } from "../access/governedCollectionClient.js";
 import { REFERENCE_STATE } from "../metadata/referenceResolution.js";
 
 // RESOLVE LOCATION REFERENCES FOR A METADATA LIST, IN ONE BATCHED READ.
@@ -78,18 +76,30 @@ export function useLocationNames(locationIds) {
     (async () => {
       const map = new Map();
       let status = LOCATION_NAMES_STATUS.READY;
-      try {
-        for (let i = 0; i < ids.length; i += CHUNK) {
-          const snap = await getDocs(
-            query(collection(db, LOCATIONS_COLLECTION), where(documentId(), "in", ids.slice(i, i + CHUNK))),
-          );
-          snap.forEach((d) => {
-            const name = pickLocationName(d.data());
-            if (name) map.set(d.id, name);
-          });
+      // Through the governed `locationsByIds` source. The client names the source and the id set;
+      // the server owns the collection, the documentId() predicate and the crm.location.read check.
+      // CHUNK still matches that source's maxPageSize -- an id set larger than the source accepts is
+      // REFUSED rather than silently truncated, so the chunking has to stay on this side.
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const page = await readGovernedList({
+          sourceId: "locationsByIds",
+          filters: { ids: ids.slice(i, i + CHUNK) },
+          pageSize: CHUNK,
+        });
+        if (!page.ok) {
+          // The governed client resolves rather than rejects, so this reads an outcome instead of
+          // catching. DENIED stays distinct from ERROR for the reason it always did: telling
+          // someone to retry a read that will never succeed is worse than telling them they cannot
+          // see it.
+          status = page.result === READ_RESULT.DENIED ? LOCATION_NAMES_STATUS.DENIED : LOCATION_NAMES_STATUS.ERROR;
+          break;
         }
-      } catch (err) {
-        status = err?.code === "permission-denied" ? LOCATION_NAMES_STATUS.DENIED : LOCATION_NAMES_STATUS.ERROR;
+        for (const row of page.items) {
+          const name = pickLocationName(row);
+          // `row.id` is the authoritative document id: the server's projection puts it LAST over
+          // the stored data, so a stored `id` field cannot displace it.
+          if (name) map.set(row.id, name);
+        }
       }
       // On failure the partial map is DISCARDED. A half-filled map reported as READY would
       // present the ids that happened not to arrive as sites that do not exist.

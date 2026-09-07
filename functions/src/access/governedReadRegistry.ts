@@ -673,6 +673,23 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // The SAME question asked of several accounts at once -- the candidate-set read behind the
+  // duplicate-customer check, which issued one `where("accountId", "in", ids)`. A separate source
+  // rather than a second optional filter on `accountLocations`, because that entry's `accountId` is
+  // `required: true` and an entry whose filters are all optional silently answers "all locations"
+  // the moment a caller forgets a parameter. Same capability, same collection, same rows: only the
+  // shape of the predicate differs, and `in` is bounded to 30 by the service.
+  accountsLocations: Object.freeze({
+    capability: "crm.location.read",
+    source: "locations",
+    orderBy: Object.freeze(["name", "asc"] as const),
+    filters: Object.freeze({
+      accountIds: Object.freeze({ field: "accountId", op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
   // EQUIPMENT. Four client shapes existed and each gets its own source rather than being folded
   // into one entry with optional filters. "Equipment for this account" and "equipment at this
   // location" are different questions, and an entry whose filters are all optional is an entry that

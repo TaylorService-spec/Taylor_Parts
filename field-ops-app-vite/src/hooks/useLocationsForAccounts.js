@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { readGovernedList } from "../access/governedCollectionClient.js";
 
 // Work Order wizard -- Customer picker. Fetches the locations for the BOUNDED
 // set of visible candidate accounts in ONE batched query
@@ -41,34 +39,39 @@ export function useLocationsForAccounts(accountIds = []) {
     }
     setLoading(true);
     let active = true;
-    const q = query(collection(db, LOCATIONS_COLLECTION), where("accountId", "in", ids));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        if (!active) return; // obsolete callback -- must not restore stale data
-        const grouped = new Map();
-        for (const d of snap.docs) {
-          const loc = { id: d.id, ...d.data() };
-          const list = grouped.get(loc.accountId) ?? [];
-          list.push(loc);
-          grouped.set(loc.accountId, list);
-        }
-        setByAccount(grouped);
-        setError(false);
-        setLoading(false);
-      },
-      (err) => {
-        if (!active) return;
+    // ONE-SHOT, NOT A SUBSCRIPTION -- a deliberate, recorded behaviour change. This was an
+    // onSnapshot; a governed callable cannot stream. The read backs a duplicate-customer check on a
+    // candidate set the caller assembled a moment earlier, and it is re-run whenever that set
+    // changes or `retry()` fires, so nothing here depended on a location edited elsewhere arriving
+    // mid-check. Where a live re-read genuinely mattered (the reorder queue) this migration built an
+    // explicit change signal instead of quietly dropping to one-shot; here it does not.
+    (async () => {
+      const page = await readGovernedList({
+        sourceId: "accountsLocations",
+        filters: { accountIds: ids },
+        pageSize: 200,
+      });
+      if (!active) return; // obsolete callback -- must not restore stale data
+      if (!page.ok) {
         // Dev-only log; NEVER surfaced to the UI (no raw message/code/id).
-        console.error("useLocationsForAccounts: locations query failed", err);
+        console.error("useLocationsForAccounts: governed locations read failed", page.result);
         setByAccount(new Map()); // clear any stale/partial results
         setError(true);
         setLoading(false);
+        return;
       }
-    );
+      const grouped = new Map();
+      for (const loc of page.items) {
+        const list = grouped.get(loc.accountId) ?? [];
+        list.push(loc);
+        grouped.set(loc.accountId, list);
+      }
+      setByAccount(grouped);
+      setError(false);
+      setLoading(false);
+    })();
     return () => {
       active = false;
-      unsub();
     };
   }, [key, retryNonce]);
 

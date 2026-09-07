@@ -15,12 +15,23 @@
 // drive each path directly, exactly as test/inventoryRoleReadErrorContract.test.jsx
 // already does for the collection-read hooks.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { renderHook, act, cleanup } from "@testing-library/react";
+import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
 
 let capturedNext;
 let capturedError;
 let unsubscribeCount;
-vi.mock("../src/firebase/firebase", () => ({ db: {} }));
+vi.mock("../src/firebase/firebase", () => ({ db: {}, functions: {} }));
+
+// useLocation is no longer a Firestore subscription -- it reads the governed `locationsByIds`
+// source. Its half of this contract is unchanged and still worth guarding: DENIED, a failed read
+// and a CONFIRMED ABSENCE must stay three distinguishable outcomes. Only the seam moved, so the
+// mock moved with it. useWorkOrder is still onSnapshot (the work-order family is blocked pending
+// the technician/self-scope seam) and keeps the callback-capturing mock below.
+let governedResult = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
+vi.mock("../src/access/governedCollectionClient.js", () => ({
+  READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+  readGovernedList: async () => governedResult,
+}));
 vi.mock("firebase/firestore", () => ({
   doc: (_db, ...pathParts) => ({ path: pathParts.join("/") }),
   onSnapshot: (_ref, next, error) => {
@@ -39,6 +50,7 @@ beforeEach(() => {
   capturedNext = undefined;
   capturedError = undefined;
   unsubscribeCount = 0;
+  governedResult = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
 });
 afterEach(() => {
   cleanup();
@@ -88,20 +100,41 @@ describe("useLocation -- read-error contract (H14)", () => {
     expect(result.current.error).toBe(null);
   });
 
-  it("a denied read resolves loading to false and exposes a safe error -- never hangs forever", () => {
+  it("a denied read resolves loading to false and exposes a safe error -- never hangs forever", async () => {
+    governedResult = { ok: false, result: "DENIED", items: [] };
     const { result } = renderHook(() => useLocation("loc-1"));
-    expect(capturedError).toBeTypeOf("function");
-    act(() => capturedError({ code: "permission-denied" }));
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("You do not have permission to view these locations.");
     expect(result.current.location).toBe(null);
   });
 
-  it("a confirmed absence (successful read, no such doc) is distinct from a failed read", () => {
+  it("an unavailable read is an error too, and still resolves", async () => {
+    governedResult = { ok: false, result: "UNAVAILABLE", items: [] };
     const { result } = renderHook(() => useLocation("loc-1"));
-    act(() => capturedNext({ id: "loc-1", exists: () => false }));
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.location).toBe(null);
+  });
+
+  it("a confirmed absence (successful read, no such record) is distinct from a failed read", async () => {
+    // THE DISTINCTION THIS FILE EXISTS FOR, and it survives the seam change: a successful read that
+    // found nothing reports NO error, while a failed one reports one. Both leave `location` null,
+    // so the error is the only thing telling a caller which happened.
+    governedResult = { ok: true, result: "OK", items: [] };
+    const { result } = renderHook(() => useLocation("loc-1"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(null);
     expect(result.current.location).toBe(null);
+  });
+
+  it("a found record is returned with the SERVER's document id", async () => {
+    // The stored-id conflict this hook used to resolve the wrong way round: it spread
+    // `{ id: snap.id, ...snap.data() }`, letting a stored `id` displace the document id every
+    // consumer keys and routes by.
+    governedResult = { ok: true, result: "OK", items: [{ id: "loc-1", name: "Site A" }] };
+    const { result } = renderHook(() => useLocation("loc-1"));
+    await waitFor(() => expect(result.current.location).not.toBe(null));
+    expect(result.current.location.id).toBe("loc-1");
+    expect(result.current.error).toBe(null);
   });
 });
