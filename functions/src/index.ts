@@ -148,10 +148,14 @@ export { interpretWorkOrderReadinessContext } from "./ai/workOrderReadinessConte
 export { completeAssignedJob } from "./completeAssignedJob";
 
 // --- Issue #226 surface: Enterprise Access & Administration Platform ---
-// Exactly these six -- see docs/deployment/enterprise-access-deployment-
-// manifest.md Section B. Deployed to eos-platform-sandbox under the per-environment activation program;
-// NOT deployed to the production project. No client calls them until a separate, later Owner production
-// authorization (Implementation Plan Row 19+) is issued.
+// See docs/deployment/enterprise-access-deployment-manifest.md Section B. Deployed to
+// eos-platform-sandbox under the per-environment activation program; NOT deployed to the
+// production project.
+//
+// readPrincipalAccessState (Owner ruling 2026-09-06 §4) is the READ half of this surface and the
+// newest member: the write commands here have been deployed for months while Administration >
+// Users had no governed way to see the state they change, which left "Account Status: Not
+// available" on the record page and made revokeRole uncallable for want of an assignmentId.
 export {
   grantRole,
   revokeRole,
@@ -159,6 +163,7 @@ export {
   requestPrivilegedRole,
   decidePrivilegedRoleRequest,
   listPrivilegedRoleRequests,
+  readPrincipalAccessState,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,
@@ -225,9 +230,14 @@ export {
 // record-scoped Change History read ---
 // Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
 // activation program, NOT deployed to the production project. Both re-authorize server-side on a
-// governed capability (admin.employeeProfile.write / audit.event.read), and both DENY today in
-// every environment for the standing platform reason -- no principal holds a roleAssignments
-// document -- which the Users surface states on screen rather than hiding. Neither weakens
+// governed capability (admin.employeeProfile.write / audit.event.read).
+//
+// CORRECTED 2026-09-06. This said both "DENY today in every environment for the standing platform
+// reason -- no principal holds a roleAssignments document". That was true when written and is now
+// false: eos-platform-sandbox's admin persona has held `roleAssignments/bootstrap-admin-<uid>`
+// (active, roleId admin, global) since the 2026-08-14 compatibility-admin bootstrap, and
+// resolveEffectivePermission returns ALLOW there. What remains true is only that they deny for a
+// principal holding no qualifying Role -- the ordinary fail-closed path. Neither weakens
 // firestore.rules: employees stays client-write-denied and auditEvents stays client-read-denied,
 // so these callables are the only paths that exist.
 export {

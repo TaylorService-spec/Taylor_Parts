@@ -6,11 +6,9 @@ import {
   EMPLOYMENT_STATUS_OPTIONS,
   OPERATING_COMPANY_OPTIONS,
   OPERATIONAL_ROLE_OPTIONS,
-  SECURITY_ROLE_MIRROR_CAPTION,
   changedProfileFields,
   employeeDisplayName,
   newTrustedIdempotencyKey,
-  securityRoleWords,
   seedEditValues,
   validateProfileValues,
 } from "../../domain/employeeProfile.js";
@@ -23,9 +21,11 @@ import {
 // re-authorizes server-side and writes one Audit Event per changed field. Nothing here writes
 // Firestore: `employees` is client-write-denied by Rules and stays that way.
 //
-// The three things this form CANNOT change are the point of it. Security Role is displayed as
-// read-only context and has no control at all -- it is a mirror of the governed Role, and offering
-// a control over a mirror would let somebody believe they had changed what a person can do. EOS
+// The three things this form CANNOT change are the point of it. Security Role is ABSENT ENTIRELY:
+// a control over a stale-able mirror of users/{uid}.role would let somebody believe they had
+// changed what a person can do, and even rendered read-only it was a fact about the record rather
+// than something being edited -- so it lives on the detail view, with its caption, and not in a
+// form whose every other row is editable. EOS
 // account status has its own confirmed action in the Access & Security section, owned by
 // setUserStatus. The Employee-User linkage is written only by the reciprocal provisioning path.
 // The command rejects all three by name, so the boundary is enforced rather than merely observed
@@ -247,22 +247,8 @@ export default function UserEditPanel({ employee, candidates, client, onClose, o
         {/* Outside the fieldset, and so outside the grid: this sentence is about the whole section
             and reads across its full width, not as a ninth item in a column of roles. */}
         <p className="fo-muted fo-role-grid__note">
-          Operational roles are eligibility for work. Changing them does not change this
-          person&apos;s Security Role, and never has.
-        </p>
-      </RuledSection>
-
-      <RuledSection title="Security" panel>
-        {/* READ-ONLY, AND NOT A DISABLED CONTROL. A greyed-out <select> would say "you may not
-            change this here"; the truth is that changing this value here would change nothing at
-            all, because the field is a mirror. So it is rendered as the fact it is. */}
-        <dl className="fo-detail-list">
-          <dt>Security Role</dt>
-          <dd>{securityRoleWords(base) ?? <span className="fo-muted">Not recorded</span>}</dd>
-        </dl>
-        <p className="fo-muted">
-          {SECURITY_ROLE_MIRROR_CAPTION} It is changed through the governed Role assignment
-          commands, on Roles &amp; Permissions — never by editing this profile.
+          Operational roles are eligibility for work. Changing them does not change what this
+          person can access, and never has.
         </p>
       </RuledSection>
 

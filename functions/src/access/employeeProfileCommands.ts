@@ -19,8 +19,13 @@
 //   securityRole  -- a denormalized, read-only mirror of users/{uid}.role (BusinessEntityModel
 //                    Section 8a). Writing the mirror does not change what anyone can do; it makes
 //                    the directory disagree with the access model while looking authoritative.
-//                    Security role changes belong to the governed Role commands (grantRole /
-//                    assignApprovedRole), which write the authority and let the mirror follow.
+//                    CORRECTED 2026-09-06: this note used to end "changes belong to the governed
+//                    Role commands, which write the authority and let the mirror follow". The
+//                    mirror does NOT follow. grantRole/assignApprovedRole write roleAssignments
+//                    documents and never read or write this field; the only writer is
+//                    functions/scripts/auditSecurityRoleMirror.js, re-mirroring from the linked
+//                    users/{uid}.role. Legacy compatibility state and governed access are two
+//                    disjoint systems, and this field belongs to the first one.
 //   userId        -- the governed Employee<->User linkage, written only by the reciprocal
 //                    two-way provisioning path. A one-sided write here would produce exactly the
 //                    non-reciprocal linkage adminCredentialCommands' resolveEmployeeLinkFacts
@@ -218,8 +223,16 @@ const FIELD_BY_KEY = new Map(EDITABLE_EMPLOYEE_FIELDS.map((f) => [f.key, f]));
 
 /** Fields this command refuses BY NAME, so the refusal is a message rather than a mystery. */
 const REFUSED_FIELDS: Readonly<Record<string, string>> = Object.freeze({
+  // CORRECTED 2026-09-06 (Owner ruling §8). This message used to say securityRole is "a read-only
+  // mirror of the governed Role; change it through the Role assignment commands". Both halves were
+  // wrong, and the second actively misdirected: securityRole mirrors the LEGACY users/{uid}.role
+  // string, not any governed Role, and the Role assignment commands (assignApprovedRole /
+  // revokeRole) write roleAssignments documents and never touch this field. An administrator who
+  // followed that instruction would assign a Role, see this value unchanged, and conclude the
+  // command had failed. The only writer is functions/scripts/auditSecurityRoleMirror.js, which
+  // re-mirrors it from the linked users/{uid}.role.
   securityRole:
-    "securityRole is a read-only mirror of the governed Role; change it through the Role assignment commands, never here",
+    "securityRole is a legacy compatibility mirror of users/{uid}.role, not governed access, and no command writes it -- governed access is changed through the Role assignment commands, which do not touch this field",
   role: "role is application-access identity (users/{uid}), not an Employee profile field",
   userId: "userId is the governed Employee-User linkage and is written only by the provisioning path",
   employeeId: "employeeId is the immutable document identifier",

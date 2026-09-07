@@ -233,6 +233,19 @@ export const ADMINISTRATION_USERS_SURFACE_CAPABILITIES = Object.freeze([
   "admin.userStatus.write",
   "audit.event.read",
   "admin.credentialReset.initiate",
+  // ROLE ASSIGNMENT, added for the same reason as the four above and no other. ADMIN_ROLE has
+  // granted `admin.roleAssignment.write` since Row 7 (access/compatibilityRoles.ts), and the
+  // sandbox admin persona holds ADMIN_ROLE through the bootstrap assignment described above -- so
+  // the resolver already answers ALLOW there. The only thing missing was the question. Asking is
+  // not granting: a principal without the grant gets a decision of false and the control stays
+  // protected, exactly as Enable/Disable does today.
+  "admin.roleAssignment.write",
+  // THE READ (Owner ruling 2026-09-06 §3). Separate from the write ids above and asked for
+  // separately, because the two answers drive different things and can differ: a principal holding
+  // only this one sees the person's true account status and governed Roles with every mutating
+  // control protected -- which is a coherent and useful state, not a half-broken one. The reverse
+  // (write without read) is what this surface shipped as, and it is the defect being closed.
+  "admin.principalAccess.read",
 ]);
 
 /**

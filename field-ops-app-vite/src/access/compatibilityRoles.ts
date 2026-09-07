@@ -160,6 +160,11 @@ const ADMIN_CURATED_PERMISSIONS = [
     "admin.userStatus.write",
     "admin.roleAssignment.write",
     "admin.accessRequest.decide",
+    // Owner ruling 2026-09-06 §3: the trusted principal-access READ, to ADMIN ONLY. Never to
+    // dispatcher -- the Users directory is visible to more people than another person's account
+    // status and Role assignments should be. OWNER inherits it through OWNER_PERMISSIONS, which
+    // spreads ADMIN_ROLE.permissions, so no second grant is written for it.
+    "admin.principalAccess.read",
     // Sales/Fulfillment/Finance spine -- FINANCE grant (Phase 6a). ADMIN-only
     // (NOT in the shared base) so DISPATCHER does not hold billing/AR authority;
     // OWNER inherits these via OWNER_PERMISSIONS composition. Same GRANT !=

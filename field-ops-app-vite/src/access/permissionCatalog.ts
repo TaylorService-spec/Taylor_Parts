@@ -958,6 +958,32 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.roleAssignment",
     action: "write",
   }),
+  // ONE PRINCIPAL'S CURRENT ACCESS STATE, read (Owner ruling 2026-09-06 §3).
+  //
+  // ITS OWN RESOURCE, deliberately NOT `admin.userStatus.read`. The read answers with account
+  // status AND the principal's active roleAssignments, and naming it after userStatus would
+  // describe half of what it returns -- a capability whose id understates its reach is how a
+  // grant gets made on a false understanding of what it confers. `admin.principalAccess` is the
+  // resource because "this principal's access state" is the actual object being read.
+  //
+  // SEPARATE FROM THE WRITE SIBLINGS on purpose, and not implied by either. Seeing who holds what
+  // and whether an account is enabled is a different authority from changing it, and this platform
+  // has consistently split read from write rather than letting a write grant confer its own read.
+  // Granted to the Administrator Role only (compatibilityRoles.ts); the governed Owner Role
+  // inherits it by the existing composition (OWNER_PERMISSIONS spreads ADMIN_ROLE.permissions).
+  // NOT granted to dispatcher: being able to open the Users directory is not authority to read
+  // another person's access state.
+  //
+  // Registered ACTIVE, like its Administration siblings: there is no per-environment activation
+  // gate to wait on. It still denies for anyone holding no qualifying Role, which is the ordinary
+  // fail-closed path and not a property of this entry.
+  Object.freeze({
+    id: "admin.principalAccess.read",
+    description:
+      "Read one principal's current access state: whether their account exists and is enabled, and their active governed Role assignments. Confers no change of any kind.",
+    resource: "admin.principalAccess",
+    action: "read",
+  }),
   // ADMINISTRATION USERS CONSOLIDATION -- the governed Employee PROFILE write
   // (employeeProfileCommands.ts). A THIRD Administration authority beside userStatus and
   // roleAssignment, deliberately separate from both: correcting somebody's job title is not
@@ -965,11 +991,16 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // they can do. Holding this one grants no access change of any kind -- the command it
   // guards refuses securityRole, userId and account status outright.
   //
-  // Registered ACTIVE, like its two Administration siblings and unlike the report./dataImport
-  // ids: there is no per-environment activation gate to wait on here. It still denies today
-  // for the reason every governed capability denies today -- no principal holds a
-  // roleAssignments document in any environment -- which is the standing platform blocker,
-  // not a property of this entry.
+  // Registered ACTIVE, like its Administration siblings and unlike the report./dataImport ids:
+  // there is no per-environment activation gate to wait on here. It denies for any principal
+  // holding no qualifying Role, which is the ordinary fail-closed path.
+  //
+  // CORRECTED 2026-09-06. This note used to say the capability denies everywhere because "no
+  // principal holds a roleAssignments document in any environment". That was true when written
+  // and is now false: eos-platform-sandbox's admin persona has held
+  // `roleAssignments/bootstrap-admin-<uid>` (active, roleId admin, global scope) since the
+  // 2026-08-14 compatibility-admin bootstrap, and resolveEffectivePermission returns ALLOW there.
+  // A comment asserting a fact about every environment is a comment that will eventually lie.
   Object.freeze({
     id: "admin.employeeProfile.write",
     description:
