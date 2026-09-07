@@ -13,6 +13,16 @@ import { renderHook, act, cleanup } from "@testing-library/react";
 
 let capturedNext;
 let capturedError;
+// THE TWO REORDER HOOKS READ THROUGH THE GOVERNED SEAM NOW, not Firestore. The contract under
+// test is unchanged -- a failed read must surface a code, never an empty list -- so the test
+// drives the same contract through the seam that now produces it. useInventoryActionsForPart is
+// still a Firestore read and still uses the onSnapshot capture below.
+let governedOutcome;
+vi.mock("../src/access/governedCollectionClient", () => ({
+  governedCollectionClient: {
+    readGovernedList: () => Promise.resolve(governedOutcome),
+  },
+}));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({
   collection: () => ({}),
@@ -28,9 +38,19 @@ vi.mock("firebase/firestore", () => ({
 import { useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../src/hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../src/hooks/useInventoryActions";
 
+/** Render a hook whose read resolves through the seam, and let that promise settle. */
+async function renderGoverned(fn) {
+  let rendered;
+  await act(async () => {
+    rendered = renderHook(fn);
+  });
+  return rendered;
+}
+
 beforeEach(() => {
   capturedNext = undefined;
   capturedError = undefined;
+  governedOutcome = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
 });
 afterEach(() => {
   cleanup();
@@ -43,28 +63,31 @@ describe("useReorderRequestsByStatus -- read-error contract", () => {
     expect(result.current.error).toBe(null);
   });
 
-  it("a failed read sets error to the Firestore error code (not swallowed)", () => {
-    const { result } = renderHook(() => useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER"));
-    act(() => capturedError({ code: "permission-denied" }));
+  it("a refused read sets error to a code, never an empty list", async () => {
+    // The CONTRACT is unchanged -- a failed read must stay distinguishable from a genuinely empty
+    // queue. Only the producer moved: the seam reports DENIED, and the hook maps it to the same
+    // "permission-denied" string consumers already switch on.
+    governedOutcome = { ok: false, result: "DENIED", items: [] };
+    const { result } = await renderGoverned(() => useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER"));
     expect(result.current.error).toBe("permission-denied");
     expect(result.current.loading).toBe(false);
     expect(result.current.data).toEqual([]);
   });
 
-  it("a successful read clears error back to null", () => {
-    const { result } = renderHook(() => useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER"));
-    act(() => capturedError({ code: "unavailable" }));
-    expect(result.current.error).toBe("unavailable");
-    act(() => capturedNext({ docs: [] }));
+  it("a successful read reports error: null", async () => {
+    governedOutcome = { ok: true, result: "OK", items: [{ id: "r1" }] };
+    const { result } = await renderGoverned(() => useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER"));
     expect(result.current.error).toBe(null);
+    expect(result.current.data).toEqual([{ id: "r1" }]);
   });
 });
 
 describe("useReorderRequestsAssignedTo -- read-error contract", () => {
-  it("a failed read sets error; a code-less error falls back to 'unknown'", () => {
-    const { result } = renderHook(() => useReorderRequestsAssignedTo("u1", "ASSIGNED_TO_PARTS_ASSOCIATE"));
-    expect(result.current.error).toBe(null);
-    act(() => capturedError({}));
+  it("a non-denial failure falls back to 'unknown'", async () => {
+    // UNAVAILABLE and every other non-denial map to "unknown", preserving the previous
+    // code-less-error fallback exactly.
+    governedOutcome = { ok: false, result: "UNAVAILABLE", items: [] };
+    const { result } = await renderGoverned(() => useReorderRequestsAssignedTo("u1", "ASSIGNED_TO_PARTS_ASSOCIATE"));
     expect(result.current.error).toBe("unknown");
     expect(result.current.data).toEqual([]);
   });

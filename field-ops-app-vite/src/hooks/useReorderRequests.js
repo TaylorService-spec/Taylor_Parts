@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
@@ -57,6 +58,33 @@ function toDocs(snap) {
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. Built on top of
 // useReorderRequestsByStatus() below (one read implementation, not
 // two) -- external signature/behavior unchanged.
+
+// GOVERNED READ, one shape for the four list hooks below.
+//
+// `reorder_requests` is denied to every client in firestore.rules now; these resolve
+// reorder.request.read.queue server-side. The filters are DISPLAY filters and were never an
+// access-control boundary -- Rules gated this collection at role level and the capability does
+// the same, so the authority is unchanged by this migration.
+//
+// The error shape is preserved exactly: consumers switch on a string code, so a refused read
+// still surfaces as "permission-denied" and anything else as "unknown". A failed read never
+// becomes an empty list.
+function subscribeGoverned(filters, apply) {
+  let active = true;
+  governedCollectionClient
+    .readGovernedList({ sourceId: "reorderRequestsQueue", filters, pageSize: 200 })
+    .then((outcome) => {
+      if (!active) return;
+      apply(
+        outcome.ok
+          ? { data: outcome.items, loading: false, error: null }
+          : { data: [], loading: false, error: outcome.result === "DENIED" ? "permission-denied" : "unknown" },
+      );
+    });
+  return () => {
+    active = false;
+  };
+}
 export function useReorderRequests(enabled = true) {
   return useReorderRequestsByStatus(REORDER_REQUEST_STATUS.PENDING_REVIEW, enabled);
 }
@@ -76,17 +104,7 @@ export function useReorderRequestsByStatus(status, enabled = true) {
     }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("status", "==", status));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      // W2: preserve the read error instead of swallowing it, so consumers can
-      // distinguish a failed read from a genuinely-empty result (mirrors
-      // useReorderRequestsByStatuses). err.code is the Firestore SDK error code.
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
+    return subscribeGoverned({ status }, setState);
   }, [status, enabled]);
 
   return state;
@@ -116,17 +134,11 @@ export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
     }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("assignedToUserId", "==", userId), where("status", "==", status));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      // W2: preserve the read error (see useReorderRequestsByStatus) so the
-      // Parts Associate Waiting/In-Progress sections can distinguish a failed
-      // read from genuinely-empty personal work.
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
+    // assignedToUserId stays a caller-supplied DISPLAY filter, exactly as it is today -- the
+    // comment above already records that it was never an access-control boundary, and the
+    // capability behind this read is role-level just as the Rule was. Making it a server-derived
+    // "me" would be a scope change, which this migration deliberately does not make.
+    return subscribeGoverned({ assignedToUserId: userId, status }, setState);
   }, [userId, status, enabled]);
 
   return state;
@@ -205,21 +217,32 @@ export function useReorderRequestForPart(partId, requestId) {
       return unsubscribe;
     }
 
-    const q = query(reorderRequestsRef, where("partId", "==", partId));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const forPart = toDocs(snap).sort((a, b) => b.createdAt - a.createdAt);
+    // The most-recent request for this part. Sorting stays CLIENT-SIDE and unchanged: the source
+    // returns document-id order (exactly what the unordered Firestore query returned), and this
+    // hook has always picked the newest itself. Moving the sort server-side would need a second
+    // ordering on the source and would change nothing a caller can see.
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({ sourceId: "reorderRequestsQueue", filters: { partId }, pageSize: 200 })
+      .then((outcome) => {
+        if (!active) return;
+        if (!outcome.ok) {
+          // Preserved from the retrofit this replaces: a failed read must not render identically
+          // to "no request exists yet", which hid denied reads from the caller.
+          setState({
+            data: null,
+            loading: false,
+            error: outcome.result === "DENIED" ? "permission-denied" : "unknown",
+          });
+          return;
+        }
+        const forPart = [...outcome.items].sort((a, b) => b.createdAt - a.createdAt);
         setState({ data: forPart[0] ?? null, loading: false, error: null });
-      },
-      // Site-work r4 C, Fix 2: preserve the real read error instead of discarding
-      // it to null -- a failed read on the no-requestId (most-recent-for-part)
-      // path used to render identically to "no request exists yet", hiding a
-      // denied/unavailable read from the caller.
-      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-    );
+      });
 
-    return unsubscribe;
+    return () => {
+      active = false;
+    };
   }, [partId, requestId]);
 
   const refresh = useCallback(() => {}, []);
@@ -255,14 +278,7 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
     }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("status", "in", statuses));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
+    return subscribeGoverned({ statuses }, setState);
   }, [statuses.join(","), enabled]);
 
   return state;

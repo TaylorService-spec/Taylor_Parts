@@ -196,6 +196,61 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 30,
   }),
 
+  // ── REORDER REQUESTS ──────────────────────────────────────────────────────────────────────
+  //
+  // TWO SOURCES BECAUSE THERE ARE TWO ORDERINGS, and ordering is visible. The queue hooks issue
+  // Firestore queries with NO orderBy, which returns document-id order; History explicitly orders
+  // by createdAt desc. Folding both into one source would silently re-sort every queue on screen.
+  //
+  // The filters are all OPTIONAL here, unlike accountContacts where the account id is required.
+  // That is not an oversight: for contacts the filter IS the question, and a missing one would
+  // silently answer "every contact in the company". For the reorder queue, "every open request" is
+  // the intended, authorized answer -- it is what the Parts queue shows -- so an unfiltered read is
+  // a legitimate query rather than an accidental disclosure.
+  //
+  // assignedToUserId / reviewedBy / assignedBy are DISPLAY FILTERS, not scope boundaries, exactly
+  // as they are today: firestore.rules gated this collection at role level (admin/dispatcher) and
+  // these where() clauses never were an access-control boundary -- the hook's own comment says so.
+  // The capability is likewise role-level, so this migration preserves the authority precisely. If
+  // these should ever become real self-scope, that is the server-derived-"me" work, not a filter.
+  reorderRequestsQueue: Object.freeze({
+    capability: "reorder.request.read.queue",
+    source: "reorder_requests",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      status: Object.freeze({ field: "status", op: "==" as const }),
+      statuses: Object.freeze({ field: "status", op: "in" as const }),
+      assignedToUserId: Object.freeze({ field: "assignedToUserId", op: "==" as const }),
+      partId: Object.freeze({ field: "partId", op: "==" as const }),
+      reviewedBy: Object.freeze({ field: "reviewedBy", op: "==" as const }),
+      assignedBy: Object.freeze({ field: "assignedBy", op: "==" as const }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  reorderRequestsHistory: Object.freeze({
+    capability: "reorder.request.read.queue",
+    source: "reorder_requests",
+    orderBy: Object.freeze(["createdAt", "desc"] as const),
+    filters: Object.freeze({
+      statuses: Object.freeze({ field: "status", op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 100,
+  }),
+
+  purchaseOrdersByIds: Object.freeze({
+    capability: "reorder.purchaseOrder.read",
+    source: "reorder_purchase_orders",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 30,
+  }),
+
   // The installed-base register: every equipment record, id-ordered and cursor-paged. Ordered by
   // DOCUMENT ID because that is what the page it replaces ordered by, and the reason is in that
   // page's own header -- ordering by createdAt silently EXCLUDES records missing that field, which
