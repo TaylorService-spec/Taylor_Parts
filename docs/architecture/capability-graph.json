@@ -3155,14 +3155,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/workforceDirectoryReadService.ts"
+          "functions/src/access/compatibilityRoles.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },

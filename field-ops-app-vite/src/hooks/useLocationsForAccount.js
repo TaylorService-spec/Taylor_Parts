@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { governedCollectionClient } from "../access/governedCollectionClient";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
 import {
   locationSuccessOutcome,
   locationFailureOutcome,
@@ -66,15 +65,15 @@ export function useLocationsForAccount(accountId) {
     // unreachable read is passed as one: the failure path stays the failure path, and an empty
     // list is never manufactured from a denial.
     governedCollectionClient
-      .readGovernedCollection({
-        collection: LOCATIONS_COLLECTION,
-        filters: [{ field: "accountId", op: "==", value: accountId }],
+      .readGovernedList({
+        sourceId: "accountLocations",
+        filters: { accountId },
       })
       .then((outcome) => {
         if (!active) return;
         apply(
           outcome.ok
-            ? locationSuccessOutcome(outcome.rows)
+            ? locationSuccessOutcome(outcome.items)
             : locationFailureOutcome(new Error(outcome.result)),
         );
       });

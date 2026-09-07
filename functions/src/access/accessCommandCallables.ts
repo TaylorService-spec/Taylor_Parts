@@ -26,8 +26,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import * as commands from "./trustedWriterCommands";
-import * as workforceDirectory from "./workforceDirectoryReadService";
-import * as governedReads from "./governedCollectionReadService";
+import * as governedReads from "./governedListReadService";
 
 const REGION = "us-central1";
 
@@ -283,40 +282,22 @@ export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (req
   }
 });
 
-// ONE REGISTERED COLLECTION, read under its own capability.
+// ONE PAGE OF ONE REGISTERED SOURCE, under that source's own capability.
 //
-// The generic-looking signature is not a generic database endpoint: `collection` is a key into a
-// CLOSED registry compiled into this deploy, and each entry declares which fields may be filtered
-// and with which operator. A collection absent from the registry is unreadable through this path by
-// anyone; a filter the entry does not declare is refused by name rather than dropped.
-export const readGovernedCollection = onCall({ region: REGION }, async (request) => {
+// The client sends a SOURCE ID -- an EOS concept like "accountContacts" -- plus values for that
+// source's declared filter names, a page size and an opaque cursor. It does not send a collection,
+// a Firestore path, a where() clause, a sort field or a raw cursor: every one of those is
+// registry-owned server-side. Firebase authenticates; EOS authorizes.
+export const readGovernedList = onCall({ region: REGION }, async (request) => {
   const actorUid = requireActorUid(request);
   const data = asRecord(request.data);
   try {
-    return await governedReads.readGovernedCollection({
+    return await governedReads.readGovernedList({
       actorUid,
-      collection: data.collection as string,
-      filters: Array.isArray(data.filters) ? (data.filters as never[]) : undefined,
-      limit: typeof data.limit === "number" ? data.limit : undefined,
-    });
-  } catch (err) {
-    throw mapCommandError(err);
-  }
-});
-
-// THE WORKFORCE DIRECTORY. The governed replacement for the client-direct `employees` read.
-//
-// Firestore Rules currently decide who may see the directory, using the legacy `users/{uid}.role`.
-// This callable moves that decision onto `workforce.directory.read`, so `employees` read can become
-// `if false` and Firebase stops holding the policy. Same population, same data -- different
-// authority.
-export const listWorkforceDirectory = onCall({ region: REGION }, async (request) => {
-  const actorUid = requireActorUid(request);
-  const data = asRecord(request.data);
-  try {
-    return await workforceDirectory.listWorkforceDirectory({
-      actorUid,
-      limit: typeof data.limit === "number" ? data.limit : undefined,
+      sourceId: data.sourceId as string,
+      filters: asRecord(data.filters),
+      pageSize: typeof data.pageSize === "number" ? data.pageSize : undefined,
+      cursor: typeof data.cursor === "string" ? data.cursor : undefined,
     });
   } catch (err) {
     throw mapCommandError(err);

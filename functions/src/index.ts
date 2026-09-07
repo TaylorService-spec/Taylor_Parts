@@ -164,11 +164,11 @@ export {
   decidePrivilegedRoleRequest,
   listPrivilegedRoleRequests,
   readPrincipalAccessState,
-  // The governed reads that replace client-direct Firestore access as rules management comes out
-  // of Firebase. listWorkforceDirectory serves `employees`; readGovernedCollection serves the
-  // registry in governedCollectionReadService.ts, one capability per collection.
-  listWorkforceDirectory,
-  readGovernedCollection,
+  // THE governed read path that replaces client-direct Firestore access as rules management comes
+  // out of Firebase. ONE paginated callable over the closed source registry
+  // (governedReadRegistry.ts), one capability per source. The client names an EOS source id, never
+  // a collection, a where() clause, a sort field or a raw cursor.
+  readGovernedList,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,

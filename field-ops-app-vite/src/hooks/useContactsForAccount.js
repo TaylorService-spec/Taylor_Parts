@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { governedCollectionClient } from "../access/governedCollectionClient";
-import { CONTACTS_COLLECTION } from "../domain/constants";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 const ENTITY = "contacts";
@@ -45,14 +44,14 @@ export function useContactsForAccount(accountId) {
     // somebody else edits a contact. `retry()` is the refresh path and was already wired to the
     // section's onRetry.
     governedCollectionClient
-      .readGovernedCollection({
-        collection: CONTACTS_COLLECTION,
-        filters: [{ field: "accountId", op: "==", value: accountId }],
+      .readGovernedList({
+        sourceId: "accountContacts",
+        filters: { accountId },
       })
       .then((outcome) => {
         if (!active) return;
         if (outcome.ok) {
-          setData(outcome.rows);
+          setData(outcome.items);
           setError(null);
           setLoading(false);
           return;
