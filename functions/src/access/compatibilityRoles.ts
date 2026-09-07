@@ -105,6 +105,9 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in
   // the same change would hide an access change inside an architectural one.
   "workforce.directory.read",
+  // The Truck Registry read, replacing the same admin/dispatcher Rules grant on trucks and
+  // mobile_locations. Same population, new venue; truck writes keep their own trusted commands.
+  "inventory.truckRegistry.read",
   // Sales/Fulfillment spine -- OPERATIONAL grant (per-environment-capability-
   // activation-spec Phase 6a, Owner-directed 2026-08-14). Granted directly to
   // ADMIN + DISPATCHER (both spread this base); OWNER inherits by composition

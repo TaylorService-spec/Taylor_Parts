@@ -1002,6 +1002,29 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Registered ACTIVE, like its Administration siblings: there is no per-environment activation
   // gate to wait on. It still denies for anyone holding no qualifying Role, which is the ordinary
   // fail-closed path and not a property of this entry.
+  // THE TRUCK REGISTRY, read. The governed replacement for firestore.rules' admin/dispatcher grant
+  // on `trucks` and `mobile_locations`.
+  //
+  // ONE CAPABILITY FOR BOTH COLLECTIONS, because they are one object: a truck IS its mobile
+  // location, the registry view reads them together, and Rules gated them identically. Splitting
+  // them would create an authority distinction that has never existed and that nobody has asked
+  // for -- which is inventing an authorization model, not migrating one.
+  //
+  // NOT inventory.location.display.read, which is a different and narrower thing: a bounded
+  // id -> label lookup, registered active:false and granted to no Role. Reusing it would silently
+  // widen that capability from "resolve these ids" to "enumerate the registry".
+  //
+  // Granted to the shared admin+dispatcher base -- exactly the population the Rule admitted. WHERE
+  // the decision is made changes; WHO it admits does not. Read only: truck WRITES already go
+  // through their own trusted callables and are untouched by this.
+  Object.freeze({
+    id: "inventory.truckRegistry.read",
+    description:
+      "Read the Truck Registry: trucks and their mobile locations. Confers no write -- truck mutations have their own trusted commands.",
+    resource: "inventory.truckRegistry",
+    action: "read",
+  }),
+
   // THE WORKFORCE DIRECTORY, read (Owner direction 2026-09-07: "Firebase should give access to the
   // system and nothing else -- what can be done on the system is controlled by the admin").
   //

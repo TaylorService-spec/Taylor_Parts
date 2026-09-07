@@ -172,11 +172,23 @@ function resolveFilters(
 
 /** Apply the registry's projection. `null` means the whole document, deliberately. */
 function project(spec: GovernedReadSource, id: string, data: Record<string, unknown>) {
-  if (!spec.projection) return { id, ...data };
-  const out: Record<string, unknown> = { id };
+  // THE DOCUMENT ID WINS, ALWAYS -- hence `id` LAST rather than first.
+  //
+  // `{ id, ...data }` reads naturally and is wrong: a document carrying its own stored `id` field
+  // silently overwrites the authoritative Firestore document id, and every consumer keys, links and
+  // navigates by that value. The registry collections are exactly where this bites -- the truck
+  // registry's own read helper separates docId from data specifically because "the registry
+  // contract fails closed on a stored-id conflict", and a projection that resolves that conflict
+  // the other way would defeat it silently.
+  //
+  // A stored `id` that disagrees with the document id is corrupt data either way; this decides
+  // which of the two a reader is handed, and the answer is the one Firestore guarantees.
+  if (!spec.projection) return { ...data, id };
+  const out: Record<string, unknown> = {};
   for (const field of spec.projection) {
     if (field in data) out[field] = data[field];
   }
+  out.id = id;
   return out;
 }
 

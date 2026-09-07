@@ -13,8 +13,8 @@
 // (config/truckManagementReadiness.js) is true; useTruckManagement guarantees ZERO
 // invocations while readiness is false. This file performs no runtime probing.
 import { httpsCallable } from "firebase/functions";
-import { collection, getDocs } from "firebase/firestore";
-import { functions, db } from "../firebase/firebase";
+import { governedCollectionClient } from "../access/governedCollectionClient";
+import { functions } from "../firebase/firebase";
 
 // onCall export names (functions/src/index.ts), region bound by firebase.js.
 export const TRUCK_CALLABLES = Object.freeze({
@@ -64,14 +64,39 @@ export const truckRegistryCommandClient = Object.freeze({
     call(TRUCK_CALLABLES.deleteCreatedInError, { idempotencyKey, truckId, expectedVersion, deletionReason }),
 });
 
-// Bounded pick-list read for the home-warehouse selector: one-shot getDocs of the
-// `warehouses` collection, mapped to { id, label }. Only fetched when management is
+// Bounded pick-list read for the home-warehouse selector: a governed read of the
+// `warehouses` source, mapped to { id, label }. Only fetched when management is
 // authorized AND write-ready (never in the current fail-closed production posture).
 // Warehouse active/existence is authoritatively re-checked by the trusted service.
 export async function fetchWarehouseOptions() {
-  const snap = await getDocs(collection(db, "warehouses"));
-  return snap.docs
-    .map((d) => ({ id: d.id, label: (d.data()?.name ?? d.id) }))
+  // GOVERNED, reusing the EXISTING warehouse.record.read -- already granted to the same population
+  // the Rule admitted. No truck-flavoured capability: "may this person see the warehouses" does not
+  // change because a truck form is what is asking.
+  //
+  // Paged to exhaustion. This is a selector: a truncated list silently removes warehouses a person
+  // is entitled to choose, and the omission is invisible on screen.
+  const options = [];
+  let cursor = null;
+  do {
+    const outcome = await governedCollectionClient.readGovernedList({
+      sourceId: "warehouseDirectory",
+      pageSize: 200,
+      cursor,
+    });
+    if (!outcome.ok) {
+      // Throws like the getDocs it replaces, rather than returning [] -- an empty selector reads as
+      // "this company has no warehouses" and would send someone looking for the wrong problem.
+      const err = new Error("warehouse options read failed");
+      err.code = outcome.result === "DENIED" ? "permission-denied" : "unavailable";
+      throw err;
+    }
+    for (const row of outcome.items) options.push({ id: row.id, label: row?.name ?? row.id });
+    cursor = outcome.nextCursor;
+  } while (cursor);
+
+  // Sorting stays CLIENT-SIDE and unchanged: the source orders by document id (what an unordered
+  // Firestore read returned), and this selector has always sorted by label itself.
+  return options
     .filter((w) => typeof w.id === "string" && w.id !== "")
     .sort((a, b) => String(a.label).localeCompare(String(b.label)));
 }

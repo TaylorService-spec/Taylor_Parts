@@ -11,14 +11,23 @@ vi.mock("firebase/functions", () => ({
     return Promise.resolve({ data: { name } });
   },
 }));
-vi.mock("firebase/firestore", () => ({
-  collection: (_db, name) => ({ name }),
-  getDocs: async () => ({
-    docs: [
-      { id: "WH-2", data: () => ({ name: "Beta" }) },
-      { id: "WH-1", data: () => ({ name: "Alpha" }) },
-    ],
-  }),
+// The warehouse pick-list is a GOVERNED read now, not a client-direct getDocs -- it resolves
+// warehouse.record.read server-side. The mock returns rows in registry order (document id), which
+// is what the source produces, so the test still proves the client-side sort by LABEL: "Beta"
+// arrives before "Alpha" and must come out after it.
+vi.mock("../src/access/governedCollectionClient", () => ({
+  governedCollectionClient: {
+    readGovernedList: async () => ({
+      ok: true,
+      result: "OK",
+      items: [
+        { id: "WH-2", name: "Beta" },
+        { id: "WH-1", name: "Alpha" },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    }),
+  },
 }));
 
 import { truckRegistryCommandClient, fetchWarehouseOptions, TRUCK_CALLABLES } from "../src/services/truckRegistryCommandClient.js";

@@ -1,7 +1,7 @@
 {
  "catalog": {
-  "total": 151,
-  "active": 42,
+  "total": 152,
+  "active": 43,
   "inactive": 109
  },
  "heldByNobody": [],
@@ -161,8 +161,8 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 151,
-   "operableCount": 42,
+   "grantedCount": 152,
+   "operableCount": 43,
    "blockedCount": 109,
    "granted": [
     "admin.accessRequest.decide",
@@ -231,6 +231,7 @@
     "inventory.transfer.create",
     "inventory.transfer.dispatch",
     "inventory.transfer.receive",
+    "inventory.truckRegistry.read",
     "opportunity.createSalesOrder",
     "opportunity.read",
     "opportunity.write",
@@ -337,6 +338,7 @@
     "inventory.catalog.manage",
     "inventory.stock.receive",
     "inventory.transaction.read",
+    "inventory.truckRegistry.read",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
     "reorder.purchaseOrder.void",

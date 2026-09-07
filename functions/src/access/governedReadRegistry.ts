@@ -99,6 +99,57 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
   //   accountsByIds     the batched keyed lookup useAccountNames did with documentId() in [chunk]
   //   accountSearch     the typeahead's prefix range
   // (the single-record read is readGovernedRecord, which uses accountDirectory's own entry).
+  // Employee records by id -- the keyed lookup the truck registry uses to resolve driver names.
+  // Shares workforce.directory.read with employeeDirectory rather than getting its own capability:
+  // the code it replaces calls it "the same unfiltered admin/dispatcher directory read
+  // useEmployeeDirectory already relies on (no new permission)", and that is exactly right.
+  employeesByIds: Object.freeze({
+    capability: "workforce.directory.read",
+    source: "employees",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({
+      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 30,
+  }),
+
+  // ── THE TRUCK REGISTRY ────────────────────────────────────────────────────────────────────
+  // Two collections, one capability, because they are one object: a truck IS its mobile location,
+  // the registry reads them together, and Rules gated them identically. Both are unfiltered
+  // full-collection reads today, so neither declares a filter -- adding one nobody uses would be
+  // designing rather than migrating.
+  truckRegistry: Object.freeze({
+    capability: "inventory.truckRegistry.read",
+    source: "trucks",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  // The warehouse pick-list. Reuses the EXISTING warehouse.record.read -- already in the catalog,
+  // already granted to the shared admin+dispatcher base -- rather than adding a truck-flavoured
+  // one. The question "may this person see the warehouses" does not change because a truck form is
+  // what is asking.
+  warehouseDirectory: Object.freeze({
+    capability: "warehouse.record.read",
+    source: "warehouses",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  mobileLocations: Object.freeze({
+    capability: "inventory.truckRegistry.read",
+    source: "mobile_locations",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
   accountDirectory: Object.freeze({
     capability: "customer.record.read",
     source: "accounts",
