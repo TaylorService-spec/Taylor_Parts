@@ -492,3 +492,74 @@ test("every governed source is reachable by a capability that EXISTS in the cata
     assert.ok(ids.has(spec.capability), `source "${sourceId}" names unknown capability "${spec.capability}"`);
   }
 });
+
+// ════════════════════ REGISTRY INVARIANTS ════════════════════
+
+test("a source declaring a `!=` filter orders by that same field FIRST", () => {
+  // Firestore requires the first orderBy to be the inequality's own field. A source that breaks
+  // this fails with failed-precondition on EVERY call -- not on an edge case, not under load, but
+  // the first time anyone opens the screen. Cheap to state, and impossible to notice by reading a
+  // registry entry whose filter block and orderBy sit twenty lines apart.
+  for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
+    const inequality = Object.values(spec.filters).find((f) => f.op === "!=");
+    if (!inequality) continue;
+    assert.equal(
+      spec.orderBy[0],
+      inequality.field,
+      `source "${sourceId}" filters "${inequality.field}" with != but orders by "${spec.orderBy[0]}"`,
+    );
+  }
+});
+
+test("every allowedSorts entry, and every defaultSort, is internally consistent", () => {
+  // A defaultSort naming a token the source does not offer resolves to nothing and silently falls
+  // back -- so the source's declared default would not be its actual default.
+  for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
+    if (spec.defaultSort !== undefined) {
+      assert.ok(spec.allowedSorts, `source "${sourceId}" declares defaultSort but no allowedSorts`);
+      assert.ok(
+        Object.prototype.hasOwnProperty.call(spec.allowedSorts, spec.defaultSort),
+        `source "${sourceId}" defaults to unregistered sort "${spec.defaultSort}"`,
+      );
+    }
+    for (const [token, sort] of Object.entries(spec.allowedSorts ?? {})) {
+      assert.ok(sort.field, `source "${sourceId}" sort "${token}" names no field`);
+      assert.ok(
+        sort.direction === "asc" || sort.direction === "desc",
+        `source "${sourceId}" sort "${token}" has direction "${sort.direction}"`,
+      );
+    }
+  }
+});
+
+test("a required filter is never also the only thing standing between a caller and the whole collection by accident", () => {
+  // Not a style check. Every source whose filters are ALL optional returns its entire collection
+  // when a caller sends none -- which is correct for a directory and wrong for a scoped read. This
+  // pins the ones that are deliberately unscoped, so adding a new unscoped source is a decision
+  // someone makes on purpose rather than by omitting `required`.
+  const deliberatelyUnscoped = new Set([
+    "employeeDirectory",
+    "assignableEmployeesAll",
+    "accountDirectory",
+    "accountSearch",
+    "equipmentRegister",
+    "partsBySerialControl",
+    "partsWholeUnit",
+    "partMaster",
+    "reorderRequestsQueue",
+    "reorderRequestsHistory",
+    "truckRegistry",
+    "mobileLocations",
+    "warehouseDirectory",
+  ]);
+  for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
+    if (sourceId.startsWith("metadata")) continue; // list sources are unscoped INDEX reads by design
+    const hasRequired = Object.values(spec.filters).some((f) => f.required);
+    if (!hasRequired && !deliberatelyUnscoped.has(sourceId)) {
+      assert.fail(
+        `source "${sourceId}" has no required filter and is not in the deliberately-unscoped list — ` +
+          "either scope it, or add it to that list on purpose",
+      );
+    }
+  }
+});

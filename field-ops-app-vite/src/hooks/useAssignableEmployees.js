@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { onSnapshot } from "firebase/firestore";
-import { buildAssignableEmployeesQuery } from "../domain/employees";
+import { readAssignableEmployees } from "../domain/employees";
 import { OPERATIONAL_ROLE, ROLES } from "../domain/constants";
 
 // Phase 3 -- Platform Assignment Foundation (docs/specifications/
@@ -68,24 +67,38 @@ export function useAssignableEmployees({ requiredOperationalRole, requireLinkedU
     }
 
     setState((prev) => ({ ...prev, loading: true }));
-    const q = buildAssignableEmployeesQuery({ requiredOperationalRole, requireLinkedUser });
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        if (requiredOperationalRole !== OPERATIONAL_ROLE.PARTS_ASSOCIATE) {
-          setState({ employees: all, loading: false, error: null, securityRoleWarningCount: 0 });
-          return;
-        }
+    // ONE-SHOT, NOT A SUBSCRIPTION -- recorded rather than glossed. This was an onSnapshot and a
+    // governed callable cannot stream. The read backs an assignment PICKER: it is re-read whenever
+    // the picker's inputs change, and an employee whose employment status changes while a dispatcher
+    // has the dropdown open is not a case this hook was protecting against. Where a live re-read
+    // genuinely mattered -- the reorder queue -- this migration built an explicit change signal
+    // instead of quietly dropping to one-shot.
+    let active = true;
+    (async () => {
+      const page = await readAssignableEmployees({ requiredOperationalRole, requireLinkedUser });
+      if (!active) return; // obsolete callback -- must not restore stale data
+      if (!page.ok) {
+        // The governed client resolves rather than rejects. The outcome is passed through as the
+        // error so callers keep the same shape they had; the rows are cleared, never left partial.
+        setState({ employees: [], loading: false, error: page.result, securityRoleWarningCount: 0 });
+        return;
+      }
+      // `row.id` is the server's document id -- the projection puts it last over the stored data.
+      const all = page.items;
 
-        const { employees, securityRoleWarningCount } = applyPartsAssociateSecurityRoleEligibility(all);
-        setState({ employees, loading: false, error: null, securityRoleWarningCount });
-      },
-      (error) => setState({ employees: [], loading: false, error, securityRoleWarningCount: 0 })
-    );
+      if (requiredOperationalRole !== OPERATIONAL_ROLE.PARTS_ASSOCIATE) {
+        setState({ employees: all, loading: false, error: null, securityRoleWarningCount: 0 });
+        return;
+      }
 
-    return unsubscribe;
+      const { employees, securityRoleWarningCount } = applyPartsAssociateSecurityRoleEligibility(all);
+      setState({ employees, loading: false, error: null, securityRoleWarningCount });
+    })();
+
+    return () => {
+      active = false;
+    };
   }, [requiredOperationalRole, requireLinkedUser, enabled]);
 
   return {

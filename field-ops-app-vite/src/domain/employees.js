@@ -1,53 +1,60 @@
-import { collection, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { EMPLOYEES_COLLECTION, EMPLOYMENT_STATUS } from "./constants";
+import { readGovernedList } from "../access/governedCollectionClient.js";
+import { EMPLOYMENT_STATUS } from "./constants";
 
-// Phase 3 -- Platform Assignment Foundation (docs/specifications/
-// employee-foundation.md). Read-only query service over the
-// employees collection -- there is no write function here, and none
-// should ever be added. The only writer of employees/{employeeId} is
-// functions/scripts/provisionEmployeeAccess.js (Admin SDK, bypasses
-// firestore.rules by design, same posture as inventory_transactions'
-// Admin-SDK-only write path). Consumed by hooks/useAssignableEmployees.js.
+// Phase 3 -- Platform Assignment Foundation (docs/specifications/employee-foundation.md).
+// Read-only query service over employees -- there is no write function here, and none should ever
+// be added. The only writer of employees/{employeeId} is functions/scripts/provisionEmployeeAccess.js
+// (Admin SDK, by design).
 //
-// employmentStatus is the authoritative Employee lifecycle field --
-// there is no `active` boolean anywhere in this schema. Phase 3
-// assignment eligibility is EMPLOYMENT_STATUS.ACTIVE only.
-const employeesRef = collection(db, EMPLOYEES_COLLECTION);
+// THROUGH THE GOVERNED SOURCES, not a client-composed Firestore query. This module used to build
+// `query(collection(db, "employees"), ...clauses)` and hand it to a caller's onSnapshot. It now
+// names a source id and supplies values for that source's declared filters; the server owns the
+// collection, the field names, the operators and the workforce.directory.read check.
+//
+// employmentStatus remains the authoritative Employee lifecycle field -- there is no `active`
+// boolean anywhere in this schema, and Phase 3 assignment eligibility is ACTIVE only.
 
-// requireLinkedUser defaults to true because every Phase 3 consumer of
-// this query (EmployeeAssignmentPicker, later Reorder Request
-// assignment adoption) needs a real users/{uid} to assign work to --
-// an Employee with no linked User can't be the target of a later
-// per-user-restricted write (see firestore.rules' reorder_requests
-// assignment-transition pattern this collection is meant to feed).
-export function buildAssignableEmployeesQuery({ requiredOperationalRole, requireLinkedUser = true } = {}) {
-  const clauses = [where("employmentStatus", "==", EMPLOYMENT_STATUS.ACTIVE)];
+// TWO SOURCES, because the two shapes cannot share an ordering (see governedReadRegistry.ts).
+// `requireLinkedUser` selects between them rather than toggling a filter: the linked read carries a
+// `userId != null` inequality, which Firestore requires be the first orderBy, while the unlinked
+// read must NOT order by userId -- orderBy silently excludes documents missing the field, which is
+// precisely the population "unlinked" exists to include.
+const SOURCE_LINKED = "assignableEmployeesLinked";
+const SOURCE_ALL = "assignableEmployeesAll";
 
-  if (requiredOperationalRole) {
-    clauses.push(where("operationalRoles", "array-contains", requiredOperationalRole));
-  }
+/**
+ * Employees who may be assigned work.
+ *
+ * `requireLinkedUser` defaults to true because every Phase 3 consumer needs a real `users/{uid}` to
+ * assign work to -- an Employee with no linked User cannot be the target of a later
+ * per-user-restricted write.
+ *
+ * Returns the governed client's own outcome shape (`{ ok, result, items, ... }`) rather than
+ * throwing, so a caller can keep DENIED distinct from UNAVAILABLE.
+ */
+export function readAssignableEmployees({ requiredOperationalRole, requireLinkedUser = true } = {}) {
+  const filters = { employmentStatus: EMPLOYMENT_STATUS.ACTIVE };
+  if (requiredOperationalRole) filters.operationalRole = requiredOperationalRole;
+  // The value is only ever `null` -- the source declares the operator (`!=`), so this supplies the
+  // right-hand side and nothing else. A caller cannot turn this into a different comparison.
+  if (requireLinkedUser) filters.hasLinkedUser = null;
 
-  if (requireLinkedUser) {
-    clauses.push(where("userId", "!=", null));
-  }
-
-  return query(employeesRef, ...clauses);
+  return readGovernedList({
+    sourceId: requireLinkedUser ? SOURCE_LINKED : SOURCE_ALL,
+    filters,
+    pageSize: 200,
+  });
 }
 
-// PR #105 follow-up -- resolving an already-persisted actor uid
-// (Reorder Request's assignedToUserId/orderedBy/receivedBy/
-// purchasingStartedBy) back to a display name. Deliberately
-// UNFILTERED -- no employmentStatus/operationalRoles/userId clause --
-// because a historical actor may since have gone INACTIVE, lost their
-// operationalRoles, or (an admin/dispatcher acting in their security
-// role, not an operational one) never have had a linked Employee at
-// all. The read itself is safe: firestore.rules' employees/{employeeId}
-// grants admin/dispatcher an unconditional, unfiltered directory read
-// (the same permission buildAssignableEmployeesQuery's callers already
-// rely on) -- this is a narrower client-side query against the same
-// granted read, not a new permission. Consumed by
-// hooks/useEmployeeDirectory.js.
-export function buildEmployeeDirectoryQuery() {
-  return query(employeesRef);
+/**
+ * The whole directory, unfiltered.
+ *
+ * Deliberately carries NO employmentStatus/operationalRoles/userId clause: it resolves an
+ * already-persisted actor uid back to a display name, and a historical actor may since have gone
+ * INACTIVE, lost their operationalRoles, or -- an admin or dispatcher acting in a security role
+ * rather than an operational one -- never have had a linked Employee at all. Filtering here would
+ * turn a real past actor into an unresolvable id.
+ */
+export function readEmployeeDirectory() {
+  return readGovernedList({ sourceId: "employeeDirectory", pageSize: 200 });
 }

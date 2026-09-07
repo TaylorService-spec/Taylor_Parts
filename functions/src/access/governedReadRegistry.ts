@@ -47,7 +47,15 @@
 //                     >= term / <= term +  range itself. Declared as its own shape rather
 //                     than exposing >= and <= because two open-ended range operators in a caller's
 //                     hands is a query language, and this is a typeahead.
-export type GovernedFilterOperator = "==" | "in" | "array-contains" | "prefix";
+//   "!="        Exists AND differs. Firestore's `!=` also EXCLUDES documents missing the field
+//               entirely, which is why the one caller that needs it -- "employees with a linked
+//               user account" -- is expressible at all. Added for that query and no other.
+//
+//               IT CONSTRAINS THE SORT, and a source using it must say so. Firestore requires the
+//               first orderBy to be the inequality's own field, so a source declaring a `!=` filter
+//               MUST order by that same field or every call fails failed-precondition. That is not
+//               a style rule; it is checked by `governedReadRegistry.test.mjs`.
+export type GovernedFilterOperator = "==" | "!=" | "in" | "array-contains" | "prefix";
 
 /**
  * The sentinel for "filter on the document id rather than a stored field".
@@ -132,6 +140,45 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
   // Shares workforce.directory.read with employeeDirectory rather than getting its own capability:
   // the code it replaces calls it "the same unfiltered admin/dispatcher directory read
   // useEmployeeDirectory already relies on (no new permission)", and that is exactly right.
+  // ASSIGNABLE EMPLOYEES -- the assignment picker's read (buildAssignableEmployeesQuery).
+  //
+  // TWO SOURCES, not one with an optional `userId` filter, because the two shapes cannot share an
+  // ordering. The linked variant carries a `!=` inequality, and Firestore demands the first orderBy
+  // be that same field; the unlinked variant must NOT order by `userId`, because orderBy silently
+  // excludes documents missing the field -- which is exactly the population "unlinked" means to
+  // include. One source with an optional filter would therefore be correct for one caller and
+  // silently wrong for the other.
+  //
+  // `employmentStatus` is required in both. It is required in the query being replaced, and an
+  // optional version would answer "every employee, including terminated ones" the moment a caller
+  // omitted it.
+  assignableEmployeesLinked: Object.freeze({
+    capability: "workforce.directory.read",
+    source: "employees",
+    // userId FIRST, forced by its own `!=` filter. This also matches the implicit ordering the
+    // client query already received from Firestore, so no caller sees a different order.
+    orderBy: Object.freeze(["userId", "asc"] as const),
+    filters: Object.freeze({
+      employmentStatus: Object.freeze({ field: "employmentStatus", op: "==" as const, required: true }),
+      operationalRole: Object.freeze({ field: "operationalRoles", op: "array-contains" as const }),
+      hasLinkedUser: Object.freeze({ field: "userId", op: "!=" as const, required: true }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
+  assignableEmployeesAll: Object.freeze({
+    capability: "workforce.directory.read",
+    source: "employees",
+    orderBy: Object.freeze(["displayName", "asc"] as const),
+    filters: Object.freeze({
+      employmentStatus: Object.freeze({ field: "employmentStatus", op: "==" as const, required: true }),
+      operationalRole: Object.freeze({ field: "operationalRoles", op: "array-contains" as const }),
+    }),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
   employeesByIds: Object.freeze({
     capability: "workforce.directory.read",
     source: "employees",
