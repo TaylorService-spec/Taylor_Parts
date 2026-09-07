@@ -1,5 +1,4 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { submitCreateReorderRequest } from "../services/reorderCallableClient.js";
+import { submitCancelReorderRequest, submitCreateReorderRequest } from "../services/reorderCallableClient.js";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth, db } from "../firebase/firebase";
@@ -10,7 +9,6 @@ import { notifyReorderRequestsChanged } from "./reorderRequestsChanged";
 // builder and its tests remain in domain/reorderRequestPayload.js -- retiring them is a separate
 // cleanup, and deleting a tested module as a side effect of an authority migration would be scope
 // this change has no business taking.
-import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry; Inventory
@@ -341,38 +339,22 @@ export function receiveReorderRequest(requestId) {
 }
 
 // Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/
-// reorder-request-cancellation.md). The only writer of a cancellation.
-// Reachable from READY_FOR_PARTS_MANAGER, ASSIGNED_TO_PARTS_ASSOCIATE, or
-// PURCHASING_IN_PROGRESS -- i.e. any pre-ORDERED active status. Terminal.
-// Requires a genuinely non-blank reason, trimmed here before the write
-// (firestore.rules independently rejects a whitespace-only value
-// server-side too -- see the Specification's "Reason validation"), same
-// posture as reviewReorderRequest()'s REJECTED-requires-reviewNotes
-// check above. Authorization is isAdminOrDispatcher() alone -- no
-// per-user restriction, matching every other hand-off-type action on
-// this object (review, assign) -- enforced in firestore.rules, not
-// here; this function does not itself check the caller's role.
+// reorder-request-cancellation.md). The only writer of a cancellation. Terminal.
 //
-// site-work round-2 #7 -- status guard. This was previously the one
-// writer on this object with no client-side check of the request's
-// CURRENT status before writing CANCELLED, unlike its transactional
-// siblings in domain/reorderPurchaseOrders.js (recordPurchaseOrder()'s
-// PURCHASING_IN_PROGRESS check, voidPurchaseOrder()'s ORDERED check) --
-// a stray call or a Rules regression could otherwise cancel an
-// already-terminal/received request. Now reads the request inside a
-// transaction (same "all reads before any writes" Firestore
-// transaction shape those two functions use) and only proceeds when
-// the current status is one of the three pre-ORDERED active statuses
-// firestore.rules itself allows a Cancel from (see the rule's
-// resource.data.status disjunction). Rules remain the actual
-// enforcement -- this is defense-in-depth, not a replacement.
+// AUTHORITY MOVED OFF THE CLIENT. This used to read the request inside a client transaction,
+// check isCancellableReorderRequestStatus() as defense-in-depth, and write CANCELLED with a
+// browser-asserted `cancelledBy` -- with firestore.rules as the actual enforcement. The trusted
+// cancelReorderRequest command is now the enforcement: it resolves the actor from
+// request.auth.uid, resolves the `reorder.request.cancel` capability fail-closed, and applies the
+// same cancellable-status allowlist server-side.
 //
-// The allow/reject decision itself is isCancellableReorderRequestStatus()
-// (domain/reorderRequestCancelGuard.js) -- a PURE, separately unit-tested
-// predicate, split out the same way buildReorderRequestFields() (used by
-// createReorderRequest() above) already lives in reorderRequestPayload.js:
-// this file imports Firebase (auth/db), so nothing in it is directly
-// importable under this project's plain-Node test runner.
+// The allowlist itself still exists in two places on purpose -- domain/reorderRequestCancelGuard.js
+// for any client-side presentation that needs to know whether Cancel is offerable, and
+// CANCELLABLE_REORDER_REQUEST_STATUSES in functions/src/reorderRequest/reorderCommands.ts for the
+// decision. Only the second one authorizes anything.
+//
+// The reason is still trimmed and required here, so an empty one is refused before a round trip.
+// The server refuses it too rather than trusting that this ran.
 export function cancelReorderRequest(requestId, { reason }) {
   if (isWriteBlocked()) {
     console.warn("WRITE BLOCKED (cancelReorderRequest)", requestId);
@@ -384,29 +366,22 @@ export function cancelReorderRequest(requestId, { reason }) {
     throw new Error("A reason is required to cancel this Reorder Request.");
   }
 
-  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
-
-  return runTransaction(db, async (transaction) => {
-    // Firestore transactions require all reads before any writes.
-    const reorderRequestSnap = await transaction.get(reorderRequestRef);
-
-    if (!reorderRequestSnap.exists()) {
-      throw new Error("Reorder Request not found.");
-    }
-    if (!isCancellableReorderRequestStatus(reorderRequestSnap.data().status)) {
-      throw new Error("This Reorder Request can no longer be cancelled from its current status.");
-    }
-
-    transaction.update(reorderRequestRef, {
-      status: REORDER_REQUEST_STATUS.CANCELLED,
-      cancelledBy: auth.currentUser?.uid ?? null,
-      cancelledAt: Date.now(),
-      cancellationReason: trimmedReason,
-    });
-  }).then((result) => {
-    // Same signal as every other reorder write. This path is still a client-direct transaction --
-    // it is Class C, awaiting its own trusted command -- and it must refresh listening views in the
-    // meantime, or cancelling from one screen leaves a stale queue on another.
+  // THROUGH THE TRUSTED COMMAND, not a client transaction.
+  //
+  // The decision is unchanged -- the same cancellable-status allowlist, the same required reason,
+  // the same four fields written. What moved is the authority for it. The browser used to compose
+  // the write, assert `cancelledBy` from `auth.currentUser`, and let Rules judge the result; the
+  // server now resolves the actor from request.auth.uid, resolves `reorder.request.cancel`
+  // fail-closed, reads the request itself and applies the patch. A browser can no longer say who
+  // cancelled something.
+  //
+  // NO FALLBACK to the transaction on failure: that would recreate two write authorities for one
+  // command, which is exactly what retiring the direct path exists to prevent.
+  return submitCancelReorderRequest({ reorderRequestId: requestId, reason: trimmedReason }).then((result) => {
+    // Same signal as every other reorder write. Announced on the CLIENT even though the write is
+    // now the server's: the signal exists to refresh listening views in this browser, and the
+    // server has no way to reach them. Without it, cancelling from one screen leaves a stale
+    // queue on another.
     notifyReorderRequestsChanged();
     return result;
   });

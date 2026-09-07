@@ -29,6 +29,10 @@ export const REORDER_CALLABLES = Object.freeze({
   // R-17. The warehouse pick-list. A trusted projection, NOT a `warehouses` collection read: the
   // browser has no LIST authority on that collection and is not gaining one.
   listReorderWarehouseOptions: "listReorderWarehouseOptions",
+  // The two Class C writes moved off the client-direct `runTransaction` path. Same posture as the
+  // pair above: no fallback to Firestore, no client-asserted identity.
+  cancelReorderRequest: "cancelReorderRequest",
+  voidPurchaseOrder: "voidPurchaseOrder",
 });
 
 async function defaultInvoke(name, payload) {
@@ -126,6 +130,35 @@ export async function submitRecordReorderPurchaseOrder(input, invoke = defaultIn
     idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
   };
   return invoke(REORDER_CALLABLES.recordReorderPurchaseOrder, payload);
+}
+
+/**
+ * Cancel a reorder request.
+ *
+ * `cancelledBy` is NOT in this payload and cannot be: the server writes the actor it resolved from
+ * request.auth.uid. The browser sends what it is cancelling and why, and nothing about who it is.
+ */
+export async function submitCancelReorderRequest(input, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.cancelReorderRequest, {
+    reorderRequestId: input.reorderRequestId,
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
+  });
+}
+
+/**
+ * Void a recorded purchase order.
+ *
+ * The assignee check the retired Rules branch enforced (`auth.uid == the request's own
+ * assignedToUserId`) is now made SERVER-SIDE against the request document, so there is nothing to
+ * send for it. A browser that lied about who it was would be lying to a check it cannot reach.
+ */
+export async function submitVoidPurchaseOrder(input, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.voidPurchaseOrder, {
+    reorderRequestId: input.reorderRequestId,
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
+  });
 }
 
 /**

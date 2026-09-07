@@ -34,15 +34,15 @@ counts) are NOT represented — their absence here means "not yet measured", nev
 |---|---|
 | **Domain** | Reorder / Purchasing |
 | **Action** | `cancelReorderRequest` |
-| **Current implementation** | Client-direct Firestore `runTransaction` (`domain/inventoryReorderRequests.js`). Class C in the write census — awaiting its trusted command. |
+| **Current implementation** | **MIGRATED.** Trusted callable `cancelReorderRequest` (`functions/src/reorderRequest/reorderCallables.ts`), pure decision in `buildCancelReorderRequest`. The client-direct `runTransaction` is deleted, not disabled. |
 | **Target object** | `reorder_requests/{id}` |
 | **From state** | Any status for which `isCancellableReorderRequestStatus()` is true (`domain/reorderRequestCancelGuard.js`) |
 | **To state** | `CANCELLED` |
-| **Current capability** | `reorder.request.cancel` exists in the catalog; the client-direct path does not resolve it — it ran under the old Rules grant |
-| **Current role/scope** | Role-level (admin/dispatcher under the retired Rule). No record or self scope. |
+| **Current capability** | `reorder.request.cancel`, now actually resolved fail-closed by the callable. The client-direct path never resolved it — it ran under the old Rules grant |
+| **Current role/scope** | Capability-level. No record or self scope. |
 | **Prerequisites** | Request must exist; status must be cancellable; a non-empty reason is required |
 | **Side effects** | Writes `cancelledBy`, `cancelledAt`, `cancellationReason`; fires the reorder change signal so other components refresh |
-| **Current audit action** | **None** — the client transaction writes no audit event. A trusted command would add one. |
+| **Current audit action** | `cancelReorderRequest`. **This is a real behavior change, not a like-for-like migration**: the client path wrote none. It exists because the idempotency mechanism IS the audit document (a deterministic id whose prior existence is the already-applied check) — there is no version of this command in this shape without one. |
 | **Notes** | The state guard is already a pure, tested module, which is what makes this a transition rather than an update. |
 
 ### Purchasing — void a purchase order
@@ -51,15 +51,15 @@ counts) are NOT represented — their absence here means "not yet measured", nev
 |---|---|
 | **Domain** | Purchasing |
 | **Action** | `voidPurchaseOrder` |
-| **Current implementation** | Client-direct Firestore `runTransaction` (`domain/reorderPurchaseOrders.js`). Class C. |
+| **Current implementation** | **MIGRATED.** Trusted callable `voidPurchaseOrder`, pure decision in `buildVoidPurchaseOrder`. The client-direct `runTransaction` is deleted. `domain/reorderPurchaseOrders.js` now imports no Firestore at all. |
 | **Target object** | `reorder_purchase_orders/{reorderRequestId}` + an append-only record in `reorder_purchase_order_voids/{reorderRequestId}` |
 | **From state** | A recorded purchase order that has not been voided |
 | **To state** | `VOIDED`, with a separate void record |
-| **Current capability** | `reorder.purchaseOrder.void` exists in the catalog |
-| **Current role/scope** | Role-level. No record or self scope. |
+| **Current capability** | `reorder.purchaseOrder.void`, resolved fail-closed by the callable |
+| **Current role/scope** | Capability **AND a record scope**: the actor must be the request's own `assignedToUserId`. Both survived the migration — the scope is now resolved server-side from the request document, against `request.auth.uid`, so the browser cannot assert it. |
 | **Prerequisites** | Purchase order must exist; must not already be voided |
 | **Side effects** | Writes the void record AND updates the linked reorder request — two documents, atomically |
-| **Current audit action** | **None** from the client path |
+| **Current audit action** | `voidPurchaseOrder`. Same note as Cancel above: new, and structural to the command pattern rather than added because it seemed desirable. |
 | **Notes** | The append-only void record beside the mutated order is the tell: this is a reversal event, not an edit. Its multi-document atomicity is the reason it needs a real command rather than two calls. |
 
 ### Work Orders — lifecycle transitions
@@ -84,7 +84,7 @@ counts) are NOT represented — their absence here means "not yet measured", nev
 
 | Domain | Action | Why not a workflow |
 |---|---|---|
-| CRM | `contactImport` (`domain/contactImport.js`) | A bulk `writeBatch` of contact records. No lifecycle, no state machine, no approval, no precondition beyond row validation, no governed side effect. It is creation of many rows in one round trip. Class C only because it is a direct client write, **not** because it is a business action. |
+| CRM | `contactImport` (`domain/contactImport.js`) | A bulk `writeBatch` of contact records. No lifecycle, no state machine, no approval, no precondition beyond row validation, no governed side effect. It is creation of many rows in one round trip. Class C only because it is a direct client write, **not** because it is a business action. **STILL CLIENT-DIRECT — blocked, see below.** |
 | Reorder | `reviewReorderRequest`, `assignReorderRequest`, `startPurchasing`, `updatePurchasingProgress` | **Provisionally CRUD — see UNCLEAR.** |
 
 ---
@@ -95,6 +95,30 @@ counts) are NOT represented — their absence here means "not yet measured", nev
 |---|---|---|
 | Reorder | `reviewReorderRequest` (APPROVED/REJECTED), `assignReorderRequest`, `startPurchasing` | Each moves the record between named statuses and changes `currentOwner`, which looks like a workflow. But they still run as client-direct store updates with no audit event and no capability check, so their *current implementation* is CRUD-shaped while their *behaviour* is transition-shaped. Classifying them either way now would prejudge whether the Workflows workstream adopts them. Recorded as-is. |
 | Inventory | `recordInventoryAction` | **Retired** (Owner ruling 2026-08-30) — throws unconditionally, no writer remains. Listed only so a future reader does not rediscover it and assume it is live. |
+
+---
+
+## BLOCKED on a capability that does not exist
+
+Not a technical blocker and not a design question — a governance gate. Each of these has a
+straightforward trusted-command shape; what is missing is a capability to gate it on, and minting
+one plus granting it to a Role is a capability change.
+
+| Surface | Needed | Population the retired Rule admitted |
+|---|---|---|
+| `contactImport` (write) | a Contact **create** capability. `permissionCatalog.ts` has `crm.contact.read` and no write of any kind for the `contact.record` resource. | `isAdminOrDispatcher()` |
+| `supplier` list (read) | a Supplier read capability. No `supplier.*` capability exists. | `isAdminOrDispatcher()` |
+| `supplierCatalogItem` list (read) | as above | `isAdminOrDispatcher()` |
+
+Deliberately NOT resolved here by minting the capabilities and granting them to the compatibility
+roles, even though that would preserve exactly the current population. Granting capabilities is the
+one thing this migration is not authorized to decide for itself, and doing it quietly — inside a
+change whose entire purpose is to move authority somewhere it can be seen — would be the wrong
+place to make an exception.
+
+Consequence, stated plainly: `contactImport` still writes `contacts` directly from the browser, and
+`field-ops-app-vite/src/metadata/firestoreListSource.js` still has live callers and cannot be
+deleted. Both are one Owner decision away.
 
 ---
 

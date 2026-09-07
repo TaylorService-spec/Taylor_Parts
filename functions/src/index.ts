@@ -47,6 +47,10 @@ export { createOpportunity, transitionOpportunity, updateOpportunity } from "./o
 export {
   createReorderRequest,
   recordReorderPurchaseOrder,
+  // The two Class C reorder writes, moved off the client-direct Firestore transaction path.
+  // EXPORT != DEPLOY, the same posture as the pair above.
+  cancelReorderRequest,
+  voidPurchaseOrder,
   // R-17. The trusted warehouse projection the reorder picker reads, INSTEAD of a `warehouses`
   // collection LIST. Same capability as the create it serves; no warehouse.list capability exists.
   listReorderWarehouseOptions,

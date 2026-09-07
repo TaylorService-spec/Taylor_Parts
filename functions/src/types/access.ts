@@ -504,6 +504,11 @@ export type AuditAction =
   // Runtime mirror in access/auditEventWriter.ts, and the two MUST stay symmetrical
   | "createReorderRequest"
   | "recordReorderPurchaseOrder"
+  // The two Class C reorder writes moved off the client-direct transaction path. Both are reversal
+  // or termination events on a request that a purchasing user is acting on, so the trail records
+  // WHO ended it and WHY -- the client-direct path they replace recorded neither.
+  | "cancelReorderRequest"
+  | "voidPurchaseOrder"
   // Email Connections + Inbound Work -- the intake and decision trail. Nine actions, not one, because the
   // question this trail must answer is "why does this Work Order exist, who accepted it, and which inbound
   // request created it" and a single "inboundWork" action could not distinguish taking a message in from

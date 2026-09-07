@@ -1,15 +1,9 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { submitRecordReorderPurchaseOrder } from "../services/reorderCallableClient.js";
-import { db, auth } from "../firebase/firebase";
+import { submitRecordReorderPurchaseOrder, submitVoidPurchaseOrder } from "../services/reorderCallableClient.js";
 import { fromMajorString } from "./money.js";
 import { isWriteBlocked } from "../config/env";
-import {
-  PURCHASE_ORDERS_COLLECTION,
-  PURCHASE_ORDER_STATUS,
-  REORDER_PURCHASE_ORDER_VOIDS_COLLECTION,
-  REORDER_REQUESTS_COLLECTION,
-  REORDER_REQUEST_STATUS,
-} from "./constants";
+// No collection names and no status constants are imported here any more. Both writers go through
+// the trusted transport, and the server names its own collections and its own target statuses --
+// a client-side copy of either would be a second answer to a question it no longer asks.
 
 // Sprint 2.1.10 -- Purchase Order Foundation. The ONLY writer of
 // reorder_purchase_orders, and the only place that ever transitions a
@@ -144,35 +138,18 @@ export function recordPurchaseOrder(
 }
 
 // Cancel/Void schema deployment sequence, PR 5 of 6 (docs/specifications/
-// reorder-request-cancellation.md). The ONLY writer of a
-// reorder_purchase_order_voids record. Atomically creates the void
-// record AND transitions the linked Reorder Request to VOIDED, in a
-// single Firestore transaction.
+// reorder-request-cancellation.md). The ONLY writer of a reorder_purchase_order_voids record.
+// Creates the void record AND transitions the linked Reorder Request to VOIDED, atomically.
 //
-// This USED to say "same atomicity pattern recordPurchaseOrder() above
-// already established". It no longer is: Workstream 2B moved that one
-// to a trusted callable, because recording a PO authors a governed
-// company fact. Void authors none -- it writes a void record and closes
-// a request -- so it stays client-direct under unchanged Rules, and its
-// atomicity is still this client transaction plus the Rules'
-// cross-document invariant.
+// NOW A TRUSTED COMMAND, like recordPurchaseOrder() above. The earlier note here argued Void
+// could stay client-direct because it authors no operating-company fact -- true, and no longer
+// the criterion: the browser was still the one composing a two-document write and asserting its
+// own identity, with Rules as the only thing standing between the two. The atomicity did not move
+// to the client, it moved to the server; the cross-document invariant and the assignee scope moved
+// with it.
 //
-// The original reorder_purchase_orders document is read
-// (to confirm it exists, confirm its status is ORDERED, and copy
-// partId) but NEVER written -- Void never modifies or deletes it.
-// Stamps Date.now() into a local `now` variable exactly once and
-// writes that same value as both reorder_requests.voidedAt and
-// reorder_purchase_order_voids.createdAt -- never two separate
-// Date.now() calls for one void event (see firestore.rules' cross-
-// document invariant requiring these two values to agree).
-//
-// Authorization: Rules enforce isAdminOrDispatcher() AND
-// request.auth.uid == the request's own assignedToUserId -- BOTH
-// conditions. This function only checks assignee identity
-// client-side (the security role isn't loaded here, same posture as
-// recordPurchaseOrder() above and cancelReorderRequest() in
-// domain/inventoryReorderRequests.js) -- Rules are the actual
-// enforcement, not this check.
+// The reorder_purchase_orders document is still read (to confirm it exists, confirm its status is
+// ORDERED, and copy partId) and still NEVER written -- Void never modifies or deletes it.
 export function voidPurchaseOrder(reorderRequestId, { reason }) {
   if (isWriteBlocked()) {
     console.warn("WRITE BLOCKED (voidPurchaseOrder)", reorderRequestId);
@@ -184,58 +161,20 @@ export function voidPurchaseOrder(reorderRequestId, { reason }) {
     throw new Error("A reason is required to void this Purchase Order.");
   }
 
-  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, reorderRequestId);
-  const purchaseOrderRef = doc(db, PURCHASE_ORDERS_COLLECTION, reorderRequestId);
-  const voidRef = doc(db, REORDER_PURCHASE_ORDER_VOIDS_COLLECTION, reorderRequestId);
-
-  return runTransaction(db, async (transaction) => {
-    // Firestore transactions require all reads before any writes.
-    const [reorderRequestSnap, purchaseOrderSnap, voidSnap] = await Promise.all([
-      transaction.get(reorderRequestRef),
-      transaction.get(purchaseOrderRef),
-      transaction.get(voidRef),
-    ]);
-
-    if (!reorderRequestSnap.exists()) {
-      throw new Error("Reorder Request not found.");
-    }
-    if (!purchaseOrderSnap.exists()) {
-      throw new Error("No Purchase Order is recorded for this Reorder Request.");
-    }
-    if (voidSnap.exists()) {
-      throw new Error("This Purchase Order has already been voided.");
-    }
-
-    const reorderRequest = reorderRequestSnap.data();
-    const purchaseOrder = purchaseOrderSnap.data();
-
-    if (reorderRequest.status !== REORDER_REQUEST_STATUS.ORDERED) {
-      throw new Error("This Reorder Request is not currently ORDERED.");
-    }
-    if (purchaseOrder.status !== PURCHASE_ORDER_STATUS.ORDERED) {
-      throw new Error("This Purchase Order is not currently ORDERED.");
-    }
-    if (reorderRequest.assignedToUserId !== (auth.currentUser?.uid ?? null)) {
-      throw new Error("Only the assigned Parts Associate can void this Purchase Order.");
-    }
-
-    const now = Date.now();
-    const voidedBy = auth.currentUser?.uid ?? null;
-
-    transaction.set(voidRef, {
-      reorderPurchaseOrderId: reorderRequestId,
-      reorderRequestId,
-      partId: purchaseOrder.partId,
-      voidedBy,
-      reason: trimmedReason,
-      createdAt: now,
-    });
-
-    transaction.update(reorderRequestRef, {
-      status: REORDER_REQUEST_STATUS.VOIDED,
-      voidedBy,
-      voidedAt: now,
-      voidReason: trimmedReason,
-    });
-  });
+  // THROUGH THE TRUSTED COMMAND, not a client transaction.
+  //
+  // Every condition survives, enforced where it can no longer be bypassed: the request must exist
+  // and be ORDERED, the purchase order must exist and be ORDERED, the void must not already exist,
+  // and the actor must be the request's own assignedToUserId. That last one used to be checked here
+  // against `auth.currentUser` with the comment "Rules are the actual enforcement, not this check";
+  // the server now compares request.auth.uid against the value it reads from the request document,
+  // so there is no client-side check left to be advisory about.
+  //
+  // The cross-document invariant survives too: one server-side `nowMillis` is written as both
+  // reorder_requests.voidedAt and reorder_purchase_order_voids.createdAt, in one transaction. The
+  // purchase order itself is still read and never written.
+  //
+  // NO FALLBACK to the transaction on failure -- two write authorities for one command is the thing
+  // being removed.
+  return submitVoidPurchaseOrder({ reorderRequestId, reason: trimmedReason });
 }

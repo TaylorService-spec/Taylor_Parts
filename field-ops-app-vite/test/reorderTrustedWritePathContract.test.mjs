@@ -165,3 +165,56 @@ test("R-17: the warehouse pick-list bought NO new Rules read authority", () => {
   // And no capability was invented for it either: the callable reuses the reorder-create capability.
   assert.doesNotMatch(rules, /warehouse\.list/, "no warehouse.list capability may appear in Rules");
 });
+
+// ============================ THE TWO CLASS C WRITES ============================
+//
+// Cancel and Void moved off their client-direct `runTransaction`s. Same contract as the four
+// assertions above, for the same reason: catch an intentional caller at review time rather than as
+// a permission-denied in someone's face, and stop a future change from quietly reopening a second
+// write authority.
+
+test("no application code writes a reorder cancellation directly", () => {
+  // The retired path composed the write in the browser: a transaction that set status CANCELLED and
+  // asserted `cancelledBy` from `auth.currentUser`. Either half reappearing in client source means
+  // the browser is authoring a cancellation again.
+  // `: null` is excluded deliberately. domain/reorderRequestPayload.js initializes the whole
+  // 35-field record with nulls, including this one; RESERVING a field is not authoring a value for
+  // it, and a test that cannot tell those apart gets muted rather than obeyed.
+  // The lookahead sits against the COLON, not after `\s*`. Written as `\s*(?!null)` the quantifier
+  // simply matches zero spaces and the lookahead then reads a space rather than "null" -- so it
+  // succeeds on `cancelledBy: null` and the exclusion silently does nothing.
+  const offenders = FILES.filter((f) => /cancelledBy\s*:(?!\s*null\b)/.test(code(f.text)));
+  assert.deepEqual(
+    offenders.map((f) => f.path),
+    [],
+    "these author a cancellation client-side; the trusted cancelReorderRequest command writes cancelledBy",
+  );
+});
+
+test("no application code writes a purchase-order void directly", () => {
+  // Void wrote two documents: the append-only void record (its distinguishing field is
+  // `reorderPurchaseOrderId`) and the request's transition (`voidedBy`). Neither may be composed in
+  // the browser now.
+  const offenders = FILES.filter((f) => /(voidedBy|reorderPurchaseOrderId)\s*:(?!\s*null\b)/.test(code(f.text)));
+  assert.deepEqual(
+    offenders.map((f) => f.path),
+    [],
+    "these author a void client-side; the trusted voidPurchaseOrder command writes both documents",
+  );
+});
+
+test("neither Class C command lets the browser assert who is acting", () => {
+  // The transport is the whole client surface for these two. A payload field naming the actor would
+  // be a client-asserted identity even if the server currently ignores it -- and "the server
+  // ignores it" is exactly the kind of thing that stops being true.
+  const transport = FILES.find((f) => f.path === "services/reorderCallableClient.js");
+  assert.ok(transport, "the reorder callable transport must exist");
+  const body = code(transport.text);
+  for (const forbidden of ["cancelledBy", "voidedBy", "assignedToUserId", "actorUid", "principalUid"]) {
+    assert.doesNotMatch(
+      body,
+      new RegExp(`\\b${forbidden}\\b`),
+      `the transport must never send ${forbidden} -- the server resolves the actor from request.auth.uid`,
+    );
+  }
+});
