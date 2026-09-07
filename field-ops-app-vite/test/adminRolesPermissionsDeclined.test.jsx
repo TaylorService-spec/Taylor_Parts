@@ -14,20 +14,17 @@
 //     directory listing) -- there is no EntityDefinition for a Role, a RoleAssignment, or a
 //     principal/User to bind a metadata list to.
 //   - AdminRolesPermissions.jsx (src/modules/administration/AdminRolesPermissions.jsx) does
-//     not read any collection at all. It is a static informational panel plus one
-//     unconditionally-disabled form (a `<select>` of assignable Role ids sourced from the
-//     pure, dependency-free COMPATIBILITY_ROLES catalog, and a disabled "Assign Role"
-//     button). There is no list of principals/roleAssignments being rendered here to
-//     migrate -- the surface's own copy states plainly that "no trusted read exists yet to
-//     list real principals to act on." A_ENTITY_LIST migration has no read to attach to.
+//     not read any collection at all. It renders the static access contracts, plus the
+//     Approval Requests queue. There is no list of principals/roleAssignments being rendered
+//     here to migrate, and since the dead Assign form was removed there is not even a control
+//     that implies one. A_ENTITY_LIST migration has no read to attach to.
 //   - This is recorded independently in the ledger (docs/orchestration/metadata-program/
 //     ledger.json, id S-ADM-ROLES): "No trusted READ exists to list real principals" /
 //     "Inventory only; form is unconditionally disabled."
 //
 // Migrating this surface is therefore impossible today, not merely undesirable: there is no
 // definition to migrate onto and no data read to route through one. This file locks the
-// facts the decline depends on (no definition exists, the form stays disabled, the
-// assignable-Role list still excludes privileged Roles, no id-as-content anywhere) so that a
+// facts the decline depends on (no definition exists, and no principal-facing control) so that a
 // future change -- a new role.js/user.js definition, or a live read path landing -- fails
 // this suite loudly and prompts re-evaluation instead of the decline going stale silently.
 //
@@ -54,7 +51,6 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
-import { COMPATIBILITY_ROLES } from "../src/access/compatibilityRoles";
 
 const { default: AdminRolesPermissions } = await import(
   "../src/modules/administration/AdminRolesPermissions.jsx"
@@ -94,48 +90,16 @@ describe("S-ADM-ROLES decline -- no EntityDefinition exists, and the surface has
   // permission catalog, the object mapping -- which are repo data, not a collection. Nothing
   // about that creates a list to migrate.
   //
-  // Only the copy moved. The old sentence promised a trusted read path; the current copy states
-  // the same fact where it actually bites, on the Assign form. Asserting on the substance rather
-  // than the old wording keeps this locking the DECLINE instead of locking a paragraph.
-  it("still states that no trusted read of principals exists, and keeps Assign Role unconditionally disabled", () => {
+  // The Assign form is now GONE rather than disabled, which does not weaken this decline -- it
+  // removes the last thing on the surface that pretended to act on a list of principals. The
+  // assertion is therefore the absence of any principal-facing control. The non-privileged-only
+  // invariant the old options test guarded is covered where it belongs, against the data:
+  // test/adminMutationAssignableRoles.test.mjs. Two tests that only inspected the dead select's
+  // <option> elements went with it rather than passing vacuously over an empty list.
+  it("offers no principal-facing control at all -- there is still no list of principals to act on", () => {
     render(<AdminRolesPermissions />);
     expect(screen.getByText(/Roles & Permissions/i)).toBeTruthy();
-    expect(
-      screen.getByText(/no trusted read exists yet to list real principals/i),
-    ).toBeTruthy();
-
-    // Queried by its accessible name. It previously had none, and `{ name: "" }` was how this
-    // reached it; the control is labelled now, which is a fix rather than a regression -- an
-    // unlabelled select is unusable to a screen reader whether or not it is disabled.
-    const select = screen.getByRole("combobox", { name: /select a role/i });
-    expect(select.disabled).toBe(true);
-
-    const button = screen.getByRole("button", { name: /Assign Role/i });
-    expect(button.disabled).toBe(true);
-  });
-
-  it("the assignable-Role options exclude every privileged compatibility Role (admin)", () => {
-    render(<AdminRolesPermissions />);
-    const options = Array.from(document.querySelectorAll("option")).map((o) => o.value);
-    expect(options).not.toContain("admin");
-    expect(options).toContain("dispatcher");
-    expect(options).toContain("technician");
-
-    const privilegedIds = Object.values(COMPATIBILITY_ROLES)
-      .filter((role) => role.privileged)
-      .map((role) => role.id);
-    for (const id of privilegedIds) {
-      expect(options).not.toContain(id);
-    }
-  });
-
-  it("never renders a Role's raw id as unlabeled visible content beyond its own option value (no id-as-content fallback)", () => {
-    render(<AdminRolesPermissions />);
-    // Every option's visible text is exactly its id (role.id is the only label source --
-    // there is no separate display name being discarded in favor of a raw id fallback).
-    const options = Array.from(document.querySelectorAll("option[value]:not([value=''])"));
-    for (const option of options) {
-      expect(option.textContent.trim()).toBe(option.value);
-    }
+    expect(screen.queryByRole("combobox", { name: /select a role/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Assign Role/i })).toBeNull();
   });
 });
