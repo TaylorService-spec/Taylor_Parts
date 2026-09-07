@@ -88,7 +88,15 @@ test("domainOf takes the id's first segment", () => {
 test("groupByDomain returns sorted groups with every capability kept", () => {
   const { granted } = resolveRoleAccess(COMPATIBILITY_ROLES.admin);
   const groups = groupByDomain(granted);
-  assert.deepEqual(groups.map((g) => g.domain), [...groups.map((g) => g.domain)].sort());
+  // ALPHABETICAL AS A PERSON READS IT, which is what the screen needs and what groupByDomain
+  // actually does (localeCompare). This previously compared against a bare `.sort()`, i.e. UTF-16
+  // code-unit order, where every capital letter sorts before every lowercase one. The two agreed
+  // only by accident -- no two domains had differed in case at the position that decides them --
+  // and adding `workforce` beside `workOrder` broke the tie: code-unit order puts workOrder first
+  // ('O' < 'f'), a reader looking at a sorted list expects workforce first. The implementation was
+  // right; the oracle was wrong, so the oracle is fixed rather than the sort.
+  const domains = groups.map((g) => g.domain);
+  assert.deepEqual(domains, [...domains].sort((a, b) => a.localeCompare(b)));
   assert.equal(groups.reduce((n, g) => n + g.capabilities.length, 0), granted.length, "no capability may be lost in grouping");
 });
 

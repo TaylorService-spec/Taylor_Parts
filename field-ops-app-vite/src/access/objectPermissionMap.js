@@ -72,8 +72,15 @@ export const OBJECT_PERMISSIONS = Object.freeze([
     C: ["finance.payment.apply"], R: ["finance.read"], E: ["finance.refund.record"], D: [] },
   { object: "Notifications", domain: "Platform",
     C: [], R: ["reorder.request.read.queue"], E: [], D: [] },
+  // READ WAS EMPTY HERE, and it was empty for a reason that is now being removed: seeing people was
+  // decided by firestore.rules' isAdminOrDispatcher() over the legacy users/{uid}.role, so there
+  // was no capability to name and the cell rendered as ungoverned. Both reads are governed
+  // capabilities now -- the directory (workforce.directory.read) and one person's access state
+  // (admin.principalAccess.read) -- so Users/Read is a real, administrable cell in this grid rather
+  // than a blank that quietly meant "Firestore decides".
   { object: "Users", domain: "Administration",
-    C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
+    C: [], R: ["workforce.directory.read", "admin.principalAccess.read"],
+    E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
   { object: "Roles / Permissions", domain: "Administration",
     C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"], D: [] },
   { object: "Audit Log", domain: "Administration",

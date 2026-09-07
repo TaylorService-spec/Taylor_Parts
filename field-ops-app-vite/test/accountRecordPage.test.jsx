@@ -158,11 +158,25 @@ describe("editability comes from the governed command, not from optimism", () =>
     expect(pageFieldIds.has("updatedAt")).toBe(true);
   });
 
-  it("the two governed fields are admin-only, mirroring Rules rather than restating it", () => {
-    // firestore.rules accountGovernedFieldsUnchanged(): a dispatcher may update only if these are
-    // unchanged. Asserted against the rule text so the mirror cannot drift from the enforcement.
+  it("the two governed fields are admin-only, and the client is no longer the mirror of a Rule", () => {
+    // WHAT THIS USED TO ASSERT, and why it cannot any more. firestore.rules carried
+    // accountGovernedFieldsUnchanged() -- a dispatcher could update an account only if
+    // paymentTerms/taxStatus were unchanged -- and this test pinned the client's admin-only marking
+    // against that rule TEXT so the two could not drift.
+    //
+    // Rules no longer decide anything for `accounts` (Owner direction 2026-09-07): client-direct
+    // account writes are denied outright, so there is no rule text left to mirror and no dispatcher
+    // write for it to constrain. The enforcement these fields need moves to the governed command
+    // that replaces those writes, authorized on `customer.governedField.write` -- the capability
+    // that already exists for exactly this pair.
+    //
+    // So the assertion narrows to what this page is actually responsible for: marking the two
+    // fields admin-only in its own UI. That is a presentation decision, and it was never the
+    // boundary -- it was always a mirror of one. Deliberately NOT asserted here: that the command
+    // enforces it, which belongs to the command's own suite, not to a page test reaching across
+    // into a file it does not own.
+    expect(RULES).not.toMatch(/accountGovernedFieldsUnchanged/);
     for (const fieldId of ACCOUNT_GOVERNED_FIELD_IDS) {
-      expect(RULES).toMatch(new RegExp(`request\\.resource\\.data\\.get\\('${fieldId}'`));
       expect(fieldEditability(accountRecordPage, fieldId, { isAdmin: false, adminOnlyFieldIds: ACCOUNT_GOVERNED_FIELD_IDS }))
         .toEqual({ editable: false, reason: "ADMIN_ONLY" });
       expect(fieldEditability(accountRecordPage, fieldId, { isAdmin: true, adminOnlyFieldIds: ACCOUNT_GOVERNED_FIELD_IDS }).editable)

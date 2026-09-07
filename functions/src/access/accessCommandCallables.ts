@@ -26,6 +26,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import * as commands from "./trustedWriterCommands";
+import * as workforceDirectory from "./workforceDirectoryReadService";
 
 const REGION = "us-central1";
 
@@ -275,6 +276,25 @@ export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (req
         authTimeSeconds: request.auth?.token?.auth_time ?? null,
         signInProvider: request.auth?.token?.firebase?.sign_in_provider ?? null,
       },
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// THE WORKFORCE DIRECTORY. The governed replacement for the client-direct `employees` read.
+//
+// Firestore Rules currently decide who may see the directory, using the legacy `users/{uid}.role`.
+// This callable moves that decision onto `workforce.directory.read`, so `employees` read can become
+// `if false` and Firebase stops holding the policy. Same population, same data -- different
+// authority.
+export const listWorkforceDirectory = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await workforceDirectory.listWorkforceDirectory({
+      actorUid,
+      limit: typeof data.limit === "number" ? data.limit : undefined,
     });
   } catch (err) {
     throw mapCommandError(err);

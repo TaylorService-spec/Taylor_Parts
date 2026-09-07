@@ -435,8 +435,20 @@ test("the deny-all client boundary is not weakened by these fixtures", () => {
   const rules = require_("node:fs").readFileSync(
     new URL("../../firestore.rules", import.meta.url), "utf8",
   ).replace(/\r\n/g, "\n");
+  // THE PER-COLLECTION DENY BLOCKS ARE GONE, AND DENY IS NOW UNIVERSAL. These two collections each
+  // used to carry their own `allow read, write: if false`, and this asserted the exact text. Rules
+  // no longer decide access for any collection (Owner direction 2026-09-07): everything outside
+  // session identity and the parts picker falls to a catch-all denial, so an explicit per-collection
+  // block would be redundant rather than protective.
+  //
+  // Asserting the old text would now demand that these two collections be RE-ADDED to a ruleset
+  // whose whole point is that they are covered without being named. So the assertion becomes the
+  // two facts that actually guarantee the boundary: the catch-all denies everything, and neither
+  // collection has been carved out of it.
+  assert.match(rules, /match \/\{document=\*\*\} \{\s*\n\s*allow read, write: if false;/,
+    "the catch-all denial must exist -- it is what closes every unnamed collection");
   for (const collection of ["technician_working_availability", "technician_blocked_time"]) {
-    const m = new RegExp(`match /${collection}/\\{[^}]+\\} \\{\\s*\\n\\s*allow read, write: if false;`).exec(rules);
-    assert.ok(m, `${collection} must remain deny-all for every client`);
+    assert.doesNotMatch(rules, new RegExp(`match /${collection}/`),
+      `${collection} must not be granted any client access`);
   }
 });

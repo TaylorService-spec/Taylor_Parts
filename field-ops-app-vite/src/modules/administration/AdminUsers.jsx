@@ -144,14 +144,19 @@ export default function AdminUsers() {
         holds. EOS Account shows whether an application account exists for this person; whether that
         account is enabled or disabled is Firebase Auth state that no governed read exposes yet.
       </p>
-      {/* THE DIRECTORY IS MEASURED AGAINST ITSELF, NOT THE WINDOW. This wrapper exists only to
-          be a containment context: `.fo-users-directory` in index.css asks how much width the
-          directory actually has once the application rail has taken its share, and recomposes
-          the six columns into the shared labelled-card grammar below 760px of its OWN width.
-          The rail is why a 900px window was clipping View and Edit off the right edge while the
-          640px phone breakpoint sat unfired -- the numbers are in the CSS comment and in
-          scripts/adminUsersResponsiveProbe.mjs. No second Users table: same grid, same cells,
-          same data-labels, recomposed. */}
+      {/* ONE CARD PER PERSON, at every width. This wrapper is the containment context;
+          `.fo-users-directory` in index.css does the recomposition, and it now applies always
+          rather than only below 760px of the directory's own width.
+
+          A directory of PEOPLE is not tabular data. Its six fields are identity, status and two
+          different kinds of role, and the question an administrator arrives with is about one
+          person -- which a table makes them reassemble from six cells spread across a row.
+
+          NO SECOND USERS SURFACE, and deliberately no rebuild into <div>s: this is still
+          MetadataListGrid's table, one <tr> per person, same cells and data-labels. The <thead>
+          stays in the DOM (clipped, not display:none), so the columns keep their accessible names
+          and every cell keeps its label. Rebuilding the markup would have thrown that away to
+          change what is only a presentation decision. */}
       <div className="fo-users-directory">
         <MetadataListGrid
           presentation={withDisplayWords}

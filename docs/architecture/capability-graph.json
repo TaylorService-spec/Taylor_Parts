@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 147,
+    "capabilities": 148,
     "catalogActive": 0,
-    "catalogInactive": 147,
+    "catalogInactive": 148,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
     "callableExports": 47,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 147,
-    "parsed": 147,
+    "raw": 148,
+    "parsed": 148,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 120,
+    "SERVER_REFERENCED": 121,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -3075,6 +3075,30 @@
       }
     },
     {
+      "id": "workforce.directory.read",
+      "resource": "workforce.directory",
+      "action": "read",
+      "description": "Read the workforce directory: the Employee records the Administration > Users surface lists, and the actor/manager names other surfaces resolve. Confers no write of any kind.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
       "id": "admin.principalAccess.read",
       "resource": "admin.principalAccess",
       "action": "read",
@@ -3089,10 +3113,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

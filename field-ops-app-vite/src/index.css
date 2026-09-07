@@ -4541,24 +4541,55 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    NOTHING IS DROPPED TO FIT. The cards carry Name, Employment Status, Operational Roles,
    EOS Account, Security Role AND the View/Edit actions; the labels are the data-label the
    shared grid already writes on every cell. */
+/* ONE CARD PER PERSON, AT EVERY WIDTH.
+   =============================================================================
+   This grammar already existed and was gated behind a 760px container query: a
+   table on the desktop, cards on a phone. It is now the presentation at all
+   widths, because a directory of PEOPLE is not tabular data. Its six fields are
+   a mix of identity, status and two different kinds of role -- read down a
+   column and "Active / Active / Contractor" is a meaningful series, but the
+   question an administrator actually arrives with is about one person, and a
+   table makes them reassemble that person from six cells spread across a row.
+   The card puts one person in one bounded object with every field labelled.
+
+   THE MARKUP IS UNCHANGED -- still MetadataListGrid's <table>, still one <tr>
+   per person, still the same cells and data-labels. Only the display changes.
+   That matters for more than diff size: <thead> stays in the DOM (clipped, not
+   display:none), so every column keeps its accessible name and each cell keeps
+   its label through the ::before, and the a11y tree still describes a table.
+   Rebuilding this as <div>s would have silently discarded that.
+
+   AT WIDTH, THE CARDS FLOW INTO A GRID rather than each stretching the full
+   measure -- a 1440px-wide card holding six short values is mostly empty space,
+   and the eye has to travel the whole width to pair a label with its value.
+   auto-fill with a 340px floor gives four columns on a desktop, two on a
+   tablet, one on a phone, with no breakpoint to maintain. */
 .fo-users-directory { container-type: inline-size; container-name: fo-users-directory; }
-@container fo-users-directory (max-width: 760px) {
-  .fo-users-directory .fo-table--stack thead { position: absolute; width: 1px; height: 1px;
-    padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-  .fo-users-directory .fo-table--stack,
-  .fo-users-directory .fo-table--stack tbody,
-  .fo-users-directory .fo-table--stack tr,
-  .fo-users-directory .fo-table--stack td { display: block; }
-  .fo-users-directory .fo-table--stack tr { border: 1px solid var(--color-border);
-    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
-  .fo-users-directory .fo-table--stack td { border: 0; padding: 4px 0; display: flex;
-    justify-content: space-between; gap: 12px; align-items: baseline; }
-  .fo-users-directory .fo-table--stack td[data-label]::before { content: attr(data-label);
-    color: var(--color-text-muted); font-size: 11px; text-transform: uppercase;
-    letter-spacing: .03em; flex: none; }
-  .fo-users-directory .fo-table--stack td a { display: inline-flex; align-items: center;
-    min-height: 44px; }
+.fo-users-directory .fo-table--stack thead { position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.fo-users-directory .fo-table--stack,
+.fo-users-directory .fo-table--stack tbody,
+.fo-users-directory .fo-table--stack tr,
+.fo-users-directory .fo-table--stack td { display: block; }
+.fo-users-directory .fo-table--stack tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
 }
+.fo-users-directory .fo-table--stack tr { border: 1px solid var(--color-border);
+  border-radius: 10px; padding: 10px 12px; }
+/* The first cell is the person's name -- the card's title, so it reads as a heading rather than
+   as one more labelled row. Its label is redundant on a card whose whole subject is that name. */
+.fo-users-directory .fo-table--stack td:first-child { font-weight: 600; font-size: 15px;
+  padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--color-border); }
+.fo-users-directory .fo-table--stack td:first-child::before { content: none; }
+.fo-users-directory .fo-table--stack td { border: 0; padding: 4px 0; display: flex;
+  justify-content: space-between; gap: 12px; align-items: baseline; }
+.fo-users-directory .fo-table--stack td[data-label]::before { content: attr(data-label);
+  color: var(--color-text-muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .03em; flex: none; }
+.fo-users-directory .fo-table--stack td a { display: inline-flex; align-items: center;
+  min-height: 44px; }
 
 /* =============================================================================
    SCHEDULING BOARD x BUTTON PRIMITIVE -- the compact-context override.

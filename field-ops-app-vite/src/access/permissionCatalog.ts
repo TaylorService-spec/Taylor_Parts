@@ -977,6 +977,27 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Registered ACTIVE, like its Administration siblings: there is no per-environment activation
   // gate to wait on. It still denies for anyone holding no qualifying Role, which is the ordinary
   // fail-closed path and not a property of this entry.
+  // THE WORKFORCE DIRECTORY, read (Owner direction 2026-09-07: "Firebase should give access to the
+  // system and nothing else -- what can be done on the system is controlled by the admin").
+  //
+  // WHY A CAPABILITY FOR A READ THAT ALREADY WORKS. It already works through `firestore.rules`,
+  // which gates it on `isAdminOrDispatcher()` -- i.e. on the LEGACY `users/{uid}.role` string. That
+  // makes Firestore Rules the rule keeper for who may see the workforce, and the legacy role the
+  // thing it keeps rules about. Both are exactly what the governed access model exists to replace.
+  //
+  // This id is the governed answer to the same question. Once `listWorkforceDirectory` is the only
+  // path to the data, `employees` read becomes `if false` in Rules and the decision moves out of
+  // Firebase entirely: Rules hold a locked door, this capability holds the policy, and the admin
+  // page administers it. Granted to admin + dispatcher, which is precisely the population
+  // `isAdminOrDispatcher()` admits today -- this migration must not change WHO can see the
+  // directory, only WHERE that is decided.
+  Object.freeze({
+    id: "workforce.directory.read",
+    description:
+      "Read the workforce directory: the Employee records the Administration > Users surface lists, and the actor/manager names other surfaces resolve. Confers no write of any kind.",
+    resource: "workforce.directory",
+    action: "read",
+  }),
   Object.freeze({
     id: "admin.principalAccess.read",
     description:

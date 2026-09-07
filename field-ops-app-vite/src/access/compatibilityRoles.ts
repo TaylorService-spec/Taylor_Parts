@@ -100,6 +100,11 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "warehouse.record.read",
   "warehouse.stockLocation.read",
   "warehouse.transferOrder.read",
+  // The governed replacement for firestore.rules' `isAdminOrDispatcher()` gate on `employees`.
+  // In the SHARED base deliberately: that predicate admits admin AND dispatcher today, and this
+  // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in
+  // the same change would hide an access change inside an architectural one.
+  "workforce.directory.read",
   // Sales/Fulfillment spine -- OPERATIONAL grant (per-environment-capability-
   // activation-spec Phase 6a, Owner-directed 2026-08-14). Granted directly to
   // ADMIN + DISPATCHER (both spread this base); OWNER inherits by composition

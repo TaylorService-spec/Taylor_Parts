@@ -118,11 +118,18 @@ describe("the client cannot reach stock_locations at all", () => {
   it("Firestore Rules grant no read on stock_locations, in EITHER governed copy", () => {
     for (const rel of ["../firestore.rules", "firestore.rules"]) {
       const rules = src(rel);
-      // Absent means deny-all -- the same posture bins / bin_code_claims / bin_placements use.
       expect(rules).not.toMatch(/match \/stock_locations\//);
-      // And the neighbours this narrowing must not have touched:
-      expect(rules).toMatch(/match \/warehouses\//);
-      expect(rules).toMatch(/match \/transfer_orders\//);
+      // THE ANCHOR CHANGED, AND THE PROPERTY GOT STRONGER. This used to assert that the
+      // `warehouses` and `transfer_orders` match blocks still existed -- a sanity check that the
+      // narrowing which removed stock_locations had not removed its neighbours by accident.
+      //
+      // Those blocks are gone now, and not by accident: Rules no longer decide access for any
+      // collection (Owner direction 2026-09-07). "Absent means deny-all" is no longer an inference
+      // from Firestore's default either -- the catch-all states it. So the anchor is the catch-all
+      // itself, which is what actually guarantees this test's subject: stock_locations is
+      // unreachable because EVERYTHING is, unless a governed capability says otherwise.
+      expect(rules).toMatch(/match \/\{document=\*\*\}/);
+      expect(rules).toMatch(/allow read, write: if false/);
     }
   });
 });

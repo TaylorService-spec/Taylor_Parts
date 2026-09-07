@@ -106,8 +106,8 @@ function ByObject({ roles }) {
                     {row.object}
                   </button>
                   {row.rulesOnly && (
-                    <span className="fo-muted" title={`Governed by firestore.rules on ${row.rulesOnly}, outside the capability model`}>
-                      {" "}(rules-governed)
+                    <span className="fo-muted" title={`No capability governs ${row.rulesOnly} yet. firestore.rules used to decide it and no longer decides anything, so every action on it is denied until a capability is defined here.`}>
+                      {" "}(no capability yet)
                     </span>
                   )}
                 </td>
@@ -205,7 +205,7 @@ function ObjectDiagnostics({ roles }) {
           <li key={o.object}>
             {o.object}{" "}
             <span className="fo-muted">
-              ({o.domain}){o.rulesOnly ? " — governed by firestore.rules" : ""}
+              ({o.domain}){o.rulesOnly ? " — no capability defines this yet; denied until one does" : ""}
             </span>
           </li>
         ))}

@@ -68,13 +68,17 @@ export default function RoleObjectGrid({ role, label }) {
                 {/* Governed by firestore.rules rather than by the capability model. Said on the
                     row because the grid otherwise renders it as a normal object whose cells
                     happen to be empty, which is a different and wrong story. */}
+                {/* NOT "rules-governed" any more. Rules decide nothing (Owner direction
+                    2026-09-07), so an object that was governed only by firestore.rules is now
+                    governed by NOTHING and denied outright. Saying "rules-governed" here would
+                    describe an authority that no longer exists and imply the object is handled. */}
                 {entry.rulesOnly && (
                   <span
                     className="fo-muted"
-                    title={`Governed by firestore.rules on ${entry.rulesOnly}, outside the capability model`}
+                    title={`No capability governs ${entry.rulesOnly} yet. firestore.rules used to decide it and no longer decides anything, so every action on it is denied until a capability is defined here.`}
                   >
                     {" "}
-                    (rules-governed)
+                    (no capability yet)
                   </span>
                 )}
               </td>

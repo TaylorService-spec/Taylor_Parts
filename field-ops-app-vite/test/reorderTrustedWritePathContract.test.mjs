@@ -149,13 +149,18 @@ test("R-17: the warehouse pick-list bought NO new Rules read authority", () => {
   // The mirror in this tree is byte-identical to the root ruleset (the Rules regression runner
   // checks that), so reading it here is reading the shipped rules.
   const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
-  const block = /match \/warehouses\/\{warehouseId\} \{([\s\S]*?)\n    \}/.exec(rules);
-  assert.ok(block, "the warehouses match block must exist");
-  const body = block[1].replace(/\/\/[^\n]*/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
-  assert.deepEqual(body, [
-    "allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);",
-    "allow create, update, delete: if false;",
-  ], "warehouses rules must be unchanged -- no LIST widening for the reorder picker");
+
+  // THE PROPERTY HELD AND THEN GOT STRONGER. This used to assert the exact body of the
+  // `warehouses` match block, so a LIST widening added to serve the pick-list would show up as a
+  // changed rule. That block is gone: Rules no longer grant read on `warehouses` -- or on anything
+  // else outside session identity and the parts picker (Owner direction 2026-09-07).
+  //
+  // Asserting the old body now would demand the RESTORATION of a client read grant this test
+  // exists to keep narrow, which is the opposite of its purpose. So it asserts the end state
+  // instead: no warehouses grant at all, and the catch-all denial that guarantees it.
+  assert.doesNotMatch(rules, /match \/warehouses\//, "no warehouses read grant may reappear");
+  assert.match(rules, /match \/\{document=\*\*\}/, "the catch-all denial is what closes it");
+  assert.match(rules, /allow read, write: if false/);
 
   // And no capability was invented for it either: the callable reuses the reorder-create capability.
   assert.doesNotMatch(rules, /warehouse\.list/, "no warehouse.list capability may appear in Rules");
