@@ -5,28 +5,20 @@ import { isWriteBlocked } from "../config/env";
 // the trusted transport, and the server names its own collections and its own target statuses --
 // a client-side copy of either would be a second answer to a question it no longer asks.
 
-// Sprint 2.1.10 -- Purchase Order Foundation. The ONLY writer of
-// reorder_purchase_orders, and the only place that ever transitions a
-// Reorder Request to ORDERED. Both writes happen inside a single
-// Firestore client-side transaction (runTransaction()) -- NOT two
-// separate calls -- so the two documents can never drift out of sync:
-// either both writes commit together, or neither does. This is a
-// standard Firestore Web SDK feature (reads-then-writes, atomic,
-// automatic retry on conflicting concurrent transactions) and does
-// NOT require a Cloud Function or Admin SDK -- both target
-// collections (reorder_requests, reorder_purchase_orders) are already
-// client-direct-write-with-rules collections, unlike Sprint 2.1.9's
-// inventory_transactions blocker (which needed a trusted server write
-// specifically because that collection is Admin-SDK-only).
+// Sprint 2.1.10 -- Purchase Order Foundation. The entry point for recording a purchase
+// order and transitioning its Reorder Request to ORDERED.
 //
-// Duplicate-Purchase-Order prevention is enforced by Firestore itself,
-// not just this check: the Purchase Order's document ID IS the
-// reorderRequestId (see constants.js), so a second attempt at the
-// same ID is evaluated by firestore.rules as an `update` (since the
-// document already exists), which that collection's rule denies
-// unconditionally. The transaction's own existence check below is a
-// fast, friendly client-side error -- the rule is what actually makes
-// this safe against a race between two concurrent attempts.
+// THIS HEADER USED TO DESCRIBE A CLIENT-SIDE runTransaction() and argued at length that no
+// Cloud Function was needed because both collections accepted client-direct writes under
+// Rules. Every sentence of that is now historical: Workstream 2B moved the write to the
+// trusted recordReorderPurchaseOrder command, and nothing in this file touches Firestore.
+// It is rewritten rather than annotated because a header whose first claim is false is
+// worse than no header -- the correction used to sit ten lines below the claim.
+//
+// Both documents still commit together or not at all; the atomicity moved to an Admin-SDK
+// transaction on the server. Duplicate prevention is likewise the server's: the purchase
+// order's document id IS the reorderRequestId, and the command refuses a second one rather
+// than relying on a Rules `update` denial to catch it.
 //
 // Every field here is validated before the transaction starts, not
 // just relied on for the rule to reject -- same "validated here, not
