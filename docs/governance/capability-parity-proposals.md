@@ -1,13 +1,23 @@
-# Three Capability Parity Proposals
+# Capability Parity Proposals
 
-**PROPOSAL ONLY. Nothing here is implemented.** No capability is minted, no Role is edited, no
-`permissionCatalog.ts` or `compatibilityRoles.ts` line is changed by this document. It exists so an
-authorization-definition decision can be made from measured facts rather than from a migration's
-convenience.
+How a capability blocker in the Firebase-removal workstream is brought to a ruling: the exact Rules
+predicate it replaces, the proposed id and meaning, the exact grants, PROOF that the proposed Role
+population matches the admitted one, the scope, and why no existing capability can be reused.
 
-Three surfaces are blocked on a capability that does not exist. Each is otherwise ready: the
-trusted-command and governed-read shapes are established and the code pattern is mechanical. What
-is missing is the authority definition, which is not the migration's to decide.
+| # | Capability | Status |
+|---|---|---|
+| 1 | `crm.contact.create` | **RULED AND IMPLEMENTED** 2026-09-07 |
+| 2 | `supplier.record.read` | **RULED AND IMPLEMENTED** 2026-09-07 |
+| 3 | `supplier.catalog.read` | **RULED AND IMPLEMENTED** 2026-09-07 |
+| 4 | `service.technician.create` | **PROPOSED — awaiting ruling** |
+
+The four work-order and technician READ capabilities (`workOrder.read`, `workOrder.assigned.read`,
+`service.technician.read`, `service.technician.self.read`) were ruled directly by the Owner and are
+recorded in `firebase-removal-closure-ledger.md` rather than here.
+
+**The reasoning for 1-3 below is preserved AS WRITTEN BEFORE THE RULING.** It is the record of what
+the decision was made on; rewriting it afterwards to match the outcome would destroy the only
+evidence of what was actually weighed.
 
 ---
 
@@ -128,3 +138,27 @@ governed source or trusted command, and the drift artifacts. The blocked surface
 
 - `docs/governance/workflow-action-census.md` — the blocked table these expand on.
 - `docs/governance/metadata-governed-read-migration.md` — the read surfaces.
+
+---
+
+## 4. `createTechnician` — Technician create authority
+
+**The last direct client governed business write.** Everything else is behind a trusted command.
+
+| | |
+|---|---|
+| **CURRENT FIREBASE AUTHORITY** | `match /fieldops_technicians/{techId} { allow create: if isAdminOrDispatcher() && request.resource.data.status == 'available'; }` — note the status constraint is part of the AUTHORITY, not a client convention: the rule refuses a create that starts a technician in any other state. |
+| **CURRENT EOS CAPABILITY** | **None.** `service.technician.read` and `service.technician.self.read` were minted 2026-09-07 for the reads. There is no write capability for the `technician.record` resource. |
+| **PROPOSED CAPABILITY** | `service.technician.create` — "Create a technician profile record. The record is created `available`; confers no update, no delete and no read." |
+| **PROPOSED GRANTS** | `dispatcher` explicit (shared base). `admin` and `owner` derived, no rows added. |
+| **PARITY** | {admin, dispatcher, owner} vs admitted {admin, dispatcher} — the same structural `owner` derivation accepted for every capability in this workstream. |
+| **SCOPE** | **Global.** The rule is unscoped. |
+| **WHY NO EXISTING CAPABILITY** | `service.technician.read` is a read and says so. There is no other `technician.*` id. Reusing a scheduling or work-order capability would let a holder of one authority create people records under another. |
+
+**The `status == 'available'` constraint must move with it.** A trusted command has to enforce it
+server-side, not accept it as a payload field — otherwise the migration would drop a condition the
+retired rule enforced, which is a narrowing of the authority in the dangerous direction.
+
+Not proposed: any technician **update** or **delete** capability. Update is admin/dispatcher-only
+under the retired rule but no blocked surface needs it, and delete is denied outright.
+

@@ -120,6 +120,7 @@
     "test:reorderTrustedCommands": "npm run build && node --test test/reorderTrustedCommands.test.mjs test/bindingScopePolicy.test.mjs",
     "test:reorderCancelVoid": "npm run build && node --test test/reorderCancelVoidCommands.test.mjs",
     "test:contactImport": "npm run build && node --test test/contactImportCommand.test.mjs",
+    "test:scopedWorkOrder": "npm run build && node --test test/scopedWorkOrderRead.test.mjs",
     "test:reorderRequestNumbering": "npm run build && node test/reorderRequestNumbering.test.mjs",
     "test:partMasterCallables": "npm run build && node test/partMasterCallablesExport.test.mjs && node test/partMasterCallables.test.mjs",
     "test:manufacturerCallables": "npm run build && node test/manufacturerCallablesExport.test.mjs && node test/manufacturerCallables.test.mjs",

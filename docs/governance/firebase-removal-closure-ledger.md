@@ -20,53 +20,97 @@ everything else is `allow read, write: if false`.
 **It is SOURCE ONLY and must not be deployed.** Direct callers still exist for the work-order
 family, so deploying deny-all now would break surviving paths.
 
-## Direct client governed business WRITES: 0 outside the blocked family
+## Direct client Firestore WRITE CALLS: **0**
 
-| Path | Status |
-|---|---|
-| `domain/jobActions.js` (2 × `runTransaction`) | **BLOCKED** — the work-order family. Requires the server-derived technician/self-scope seam. |
+Measured: zero `writeBatch` / `runTransaction` / `setDoc` / `updateDoc` / `addDoc` / `deleteDoc`
+call sites in `src/` outside the two infrastructure wrappers.
 
-Every other business write goes through a trusted command: `createReorderRequest`,
+The last two were `jobActions.js`'s `assignJob` and `updateJobStatus`, and they were **deleted, not
+migrated** — measured 2026-09-07 as having no importer anywhere. Minting permanent trusted-command
+authority, and the capability grants that go with it, for a surface nothing calls would create
+authority for dead product. Their transitions are recorded in `workflow-action-census.md`.
+
+Every business write now goes through a trusted command: `createReorderRequest`,
 `recordReorderPurchaseOrder`, `cancelReorderRequest`, `voidPurchaseOrder`, `importContacts`.
+
+**One store-mediated write remains.** `createTechnician` writes `fieldops_technicians` through
+`techniciansStore` (which is why it does not appear in the call-site count above — the wrapper does).
+It is blocked on a capability that does not exist; see proposal 4 in
+`capability-parity-proposals.md`. The retired rule's `status == 'available'` constraint is part of
+that authority and must move with it.
 
 ## Direct client governed business READS
 
-### Blocked by ruling — the work-order family
+### The work-order family — the SEAM EXISTS; five consumers not yet wired
 
-Kept client-direct **on purpose**. Forcing them through a global governed read would either widen
-the read (a technician seeing every work order) or narrow it (a dispatcher losing rows). The
-authority is not global, and the migration must not weaken it to finish.
+**The authority problem is solved.** `functions/src/workOrder/scopedWorkOrderReadService.ts` is
+built, tested (20 tests) and CI-covered, with four capabilities ruled and granted:
 
-| File | Reads |
+| Capability | Holders (asked of the resolver) |
 |---|---|
-| `domain/accountWorkOrders.js` | `fieldops_wos` |
-| `domain/jobActions.js` | `fieldops_jobs`, `fieldops_technicians` |
-| `hooks/useAssignedJobs.js` | `fieldops_jobs` |
-| `hooks/usePartWorkOrderDemand.js` | `fieldops_wos` |
-| `hooks/useWorkOrder.js` | `fieldops_wos` |
-| `hooks/useWorkOrderSearch.js` | `fieldops_wos` |
-| `hooks/useEquipment.js` | `fieldops_wos` only — its equipment read is migrated |
+| `workOrder.read` | admin, dispatcher, owner |
+| `workOrder.assigned.read` | admin, owner, technician |
+| `service.technician.read` | admin, dispatcher, owner |
+| `service.technician.self.read` | admin, owner, technician |
 
-Two more survive **because** of this, and go the day it does:
+Global is resolved **before** self, and that ordering is load-bearing: admin derives the whole
+catalogue and therefore holds the self capabilities too, so checking self first would scope an
+administrator to a technician identity they do not have and return nothing, silently.
 
-| File | Why it survives |
-|---|---|
-| `metadata/firestoreListSource.js` | `workOrder` is now its ONLY caller. Not dormant scaffolding — a live path for one entity. |
-| `hooks/useListViewChrome.js` | Its `getCountFromServer` branch now serves only `workOrder`; every other list counts through `countGovernedList`. |
+The metadata `workOrder` list and its count are migrated. These consumers still read directly
+and are the remaining wiring work — the seam already carries a registered mode for each:
 
-### Blocked on a capability that does not exist
-
-| Surface | Collection | Needed |
+| File | Reads | Seam mode that replaces it |
 |---|---|---|
-| `hooks/useCurrentTechnician.js` | `fieldops_technicians` | No `technician.*` read capability exists in `permissionCatalog.ts`. |
-| `modules/operations/Operations.jsx` | `fieldops_technicians` | As above. |
+| `domain/accountWorkOrders.js` | `fieldops_wos` | `accountOpen`, `accountRecent`, `accountScheduled` |
+| `hooks/usePartWorkOrderDemand.js` | `fieldops_wos` | `openDemand` + `countScopedWorkOrders` |
+| `hooks/useWorkOrder.js` | `fieldops_wos` (by id) | `readScopedWorkOrderById` |
+| `hooks/useWorkOrderSearch.js` | `fieldops_wos` | `search` |
+| `hooks/useEquipment.js` | `fieldops_wos` only — its equipment read is migrated | `byEquipment` |
 
-Same class as the three capabilities resolved on 2026-09-07 and handled the same way: measured,
-recorded, **not** minted. Minting a capability and granting it to a Role is an
-authorization-definition decision. A parity table in the shape
-`capability-parity-proposals.md` uses can be produced on request.
+`domain/jobActions.js` is NOT in this list any more: it no longer imports Firestore at all.
 
-Note that `fieldops_technicians` is also read by `jobActions.js`, which is blocked independently.
+`hooks/useAssignedJobs.js` is also not: it reads **`fieldops_jobs`**, the legacy jobs surface, not
+`fieldops_wos`. That was measured, not assumed — the ruling listed it among the work-order
+consumers, and it is not one. It belongs to the jobs lane, whose remaining question is whether that
+object should exist at all beside `fieldops_wos`; see `workflow-action-census.md`.
+
+**`metadata/firestoreListSource.js` is DELETED.** Zero callers proven first, the `CLIENT_DIRECT`
+branch removed from both dispatchers, and three obsolete mocks removed with their suites rewritten —
+the routing tests now assert the opposite property, that a `CLIENT_DIRECT` definition fails closed
+rather than being quietly served through the callable path.
+
+`hooks/useListViewChrome.js`'s Firestore aggregate branch is now unreachable for the same reason:
+every list, work orders included, counts through a trusted callable. It is removed when the last
+consumer above is wired.
+
+### `fieldops_technicians` — capability ruled, but blocked on a MEASURED realtime dependency
+
+`service.technician.read` and `service.technician.self.read` are minted and granted, so the
+authority is no longer the blocker. **A realtime dependency is**, and it was found by measuring
+rather than assumed away:
+
+`useCurrentTechnician` subscribes to `fieldops_technicians/{id}`, and
+`TechnicianDashboard.jsx` renders `technician.status` as a live status pill. The writer that flips
+that status **cross-session** is a dispatcher assigning work — a different person, in a different
+session, on a different screen. A one-shot read would silently drop an update the technician
+currently receives without acting.
+
+Per the ruling's "measure, don't guess": this is returned as an **explicit parity blocker**, not
+absorbed. The smallest non-Firestore mechanism (the module-scoped change signal built for the
+reorder queue) cannot help — it does not cross sessions.
+
+**It resolves on its own**, and here is the measured reason: the cross-session writer was
+`jobActions.assignJob`, which has now been **deleted as dead code**. The only remaining writer of
+technician status is the trusted `completeAssignedJob` callable, which a technician invokes from
+their own session — where a post-action refresh is exact parity. The dependency should be
+re-measured against live behaviour before these two files are migrated, rather than declared gone
+on the strength of this reasoning alone.
+
+| Surface | Collection |
+|---|---|
+| `hooks/useCurrentTechnician.js` | `fieldops_technicians`, `users/{uid}` |
+| `modules/operations/Operations.jsx` | `fieldops_technicians` |
 
 ## Not business data — explicitly classified
 

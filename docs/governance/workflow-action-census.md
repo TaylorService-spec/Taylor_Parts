@@ -141,3 +141,42 @@ deleted. Both are one Owner decision away.
 - **UNCLEAR: 4** (three reorder transitions, one retired action)
 
 Counts are of *actions measured so far*, not of the system.
+
+---
+
+## The legacy `fieldops_jobs` surface — MEASURED, and mostly dead
+
+Measured 2026-09-07 while migrating the last direct writes. Recorded here as measurement so the
+later Workflows workstream starts from what this code actually did, rather than from memory of a
+module that no longer exists.
+
+**Three of `domain/jobActions.js`'s four exports had NO importer anywhere in `src/` or `test/`.**
+They carried the last two client-direct Firestore `runTransaction` calls in the application, and
+were **deleted** rather than migrated: minting permanent trusted-command authority, and the
+capability grants that go with it, for a surface nothing calls would create authority for dead
+product.
+
+| Action | Class | What it did | Why it was dead |
+|---|---|---|---|
+| `assignJob` | **WORKFLOW_CANDIDATE** | Transaction over `fieldops_jobs` + `fieldops_technicians`: refused unless the technician was `available` (an **assignment-conflict** guard, thrown as `AssignmentConflictError`), then set the job to `ASSIGNED` with its `technicianId` AND the technician to `ON_JOB`. Two documents, one commit. | `Dispatch.jsx` is the canonical dispatch surface and assigns through the governed `transitionWorkOrder` transition against `fieldops_wos`. Its own header records that "the legacy assignJob() client transaction against fieldops_jobs is no longer used here." |
+| `updateJobStatus` | **WORKFLOW_CANDIDATE** | Transaction: validated the transition through the pure `canTransitionJob()`, wrote the new job status, and on completion set the technician back to `AVAILABLE`. | No importer. `completionFlow.test.mjs` already asserts no legacy job write path remains in the completion flow. |
+| `createJob` | CRUD | `jobsStore.add` — open, unassigned, no workOrderId. | No importer. |
+
+**Authority these ran under** (retired Rules, `fieldops_jobs`): create and lifecycle/assignment
+updates were `isAdminOrDispatcher()`; a technician could perform a **status-only** `assigned ->
+in_progress` on their **own** job (`resource.data.technicianId == callerTechnicianId()` plus a
+`hasOnly(['status'])` allowlist); a `complete` job was terminal for every client, and completion
+itself was Function-only (`completeAssignedJob`).
+
+**Audit behaviour:** none. Neither transaction wrote an audit event.
+
+**Not resolved here, deliberately:** whether the `fieldops_jobs` object should exist at all
+alongside `fieldops_wos`. Both were live once; the dispatch surface moved to work orders and the
+job surface was left behind. That is a product decision, not a migration step.
+
+### The one surviving direct write
+
+| Action | Class | Status |
+|---|---|---|
+| `createTechnician` | CRUD | **STILL CLIENT-DIRECT.** One live caller (`modules/technicians/Technicians.jsx`), writing `fieldops_technicians` through `techniciansStore`. Blocked on a capability that does not exist — see `capability-parity-proposals.md`. |
+
