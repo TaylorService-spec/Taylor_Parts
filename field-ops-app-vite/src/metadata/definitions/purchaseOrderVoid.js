@@ -119,8 +119,10 @@ export const purchaseOrderVoidEntity = makeEntityDefinition({
   // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
   readVia: "CALLABLE",
   readCallable: "metadataPurchaseOrderVoids",
-  // No matching read capability exists in the catalog — see the file header.
-  readCapability: null,
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "reorder.purchaseOrder.read",
   // SYSTEM_ONLY, explicitly declared. See the file header.
   identity: makeIdentity({ mode: "SYSTEM_ONLY" }),
   description:

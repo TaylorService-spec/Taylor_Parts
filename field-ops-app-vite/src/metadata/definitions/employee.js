@@ -111,10 +111,10 @@ export const employeeEntity = makeEntityDefinition({
   // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
   readVia: "CALLABLE",
   readCallable: "metadataEmployees",
-  // Rules gate this by role/relationship (admin/dispatcher directory, self-read, or a
-  // narrow PARTS_MANAGER candidate read), not by a capability. Recorded as null rather
-  // than invented — see the header.
-  readCapability: null,
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "workforce.directory.read",
   identity: makeIdentity({ nameField: "displayName" }),
   description: "The authoritative workforce identity — separate from users/{uid}'s application-access identity. Linked to a User by an Admin-SDK-only, two-way pointer pair.",
   fields: [

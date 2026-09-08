@@ -36,9 +36,9 @@ test("the entity id is exactly \"truck\", collection is the live `trucks` collec
   assert.equal(truckEntity.collection, "trucks");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role (admin/dispatcher), not by capability", () => {
-  assert.equal(truckEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(truckEntity.readCapability, null);
+test("read is GOVERNED and names its capability -- the CLIENT_DIRECT posture and the null were findings, both resolved", () => {
+  assert.equal(truckEntity.readVia, "CALLABLE");
+  assert.equal(truckEntity.readCapability, "inventory.truckRegistry.read");
 });
 
 test("identity is a nameField only -- displayLabel, deliberately NOT vehicleNumber", () => {

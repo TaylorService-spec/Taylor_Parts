@@ -36,9 +36,13 @@ test("entity id is \"supplierCatalogItem\", collection is the real `supplier_cat
   assert.equal(supplierCatalogItemEntity.collection, "supplier_catalog");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role (admin/dispatcher), not by capability", () => {
-  assert.equal(supplierCatalogItemEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(supplierCatalogItemEntity.readCapability, null);
+test("read is GOVERNED and names its capability -- the null was a finding, and it is resolved", () => {
+  // This asserted CLIENT_DIRECT with a null capability, and both halves were true reports of the
+  // state: Rules gated the collection by role, and no supplier-catalog capability existed to name.
+  // One was authorized when the Rules read grants were retired, so the definition names it.
+  assert.equal(supplierCatalogItemEntity.readVia, "CALLABLE");
+  assert.equal(supplierCatalogItemEntity.readCallable, "metadataSupplierCatalog");
+  assert.equal(supplierCatalogItemEntity.readCapability, "supplier.catalog.read");
 });
 
 test("identity is SYSTEM_ONLY, explicitly declared -- neither foreign key is a name or a reference", () => {

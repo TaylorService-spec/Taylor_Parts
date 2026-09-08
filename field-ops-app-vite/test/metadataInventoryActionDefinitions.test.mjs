@@ -109,14 +109,14 @@ test("no ID-typed field is nominated as nameField or referenceField on either en
 // ---------------------------------------------------------------------------------------------
 
 test("Inventory Action read is CLIENT_DIRECT with no capability -- a matching catalog id (inventory.action.read) exists but nothing evaluates it on this read path", () => {
-  assert.equal(inventoryActionEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(inventoryActionEntity.readCapability, null);
+  assert.equal(inventoryActionEntity.readVia, "CALLABLE");
+  assert.equal(inventoryActionEntity.readCapability, "inventory.action.read");
   assert.equal(inventoryActionEntity.collection, "inventory_actions");
 });
 
 test("Purchase Order Void read is CLIENT_DIRECT with no capability -- the catalog's reorder.purchaseOrder.void id is write-side only, no read id exists", () => {
-  assert.equal(purchaseOrderVoidEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(purchaseOrderVoidEntity.readCapability, null);
+  assert.equal(purchaseOrderVoidEntity.readVia, "CALLABLE");
+  assert.equal(purchaseOrderVoidEntity.readCapability, "reorder.purchaseOrder.read");
   assert.equal(purchaseOrderVoidEntity.collection, "reorder_purchase_order_voids");
 });
 

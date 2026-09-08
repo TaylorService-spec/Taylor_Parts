@@ -270,6 +270,86 @@ assignments. The transport site is named separately and held to a stricter contr
 exception — it may not compare the value to anything.
 
 ---
+## The Rules regression, converted — 836 assertions
+
+The suites were written against the pre-contraction `firestore.rules`. **127 assertions across
+16 suites proved that a retired grant still succeeded** — a measurement of a file that no longer
+exists. Every one was FLIPPED, never deleted: their purpose changed rather than ended, and they
+now prove that authority cannot accidentally migrate BACK into Rules.
+
+### Contracts ported BEFORE anything was flipped
+
+An assertion can carry two things at once — *this role may write here* and *this is what a valid
+record looks like* — and only the first was retired. Each of these was proven in its new home
+first; only then did the Rules assertion become a denial.
+
+| Contract | Was proven by | Now proven by |
+|---|---|---|
+| Equipment NAME validity in any script, and that `trim()` alone does not catch a zero-width space | `equipmentRules` | `equipmentWriteCommands` — `nameValid` against CJK, Arabic RTL, emoji, combining marks, NBSP, plus the invisible-only refusals and the 200-character ceiling |
+| Equipment optional fields: absent and null are valid, present-and-not-a-string is not | `equipmentRules` | `equipmentWriteCommands` — `optionalFieldsValid` |
+| An IMPORTED equipment record stays ordinarily editable, and its server-derived key is unforgeable | `equipmentImportInteropRules` | `equipmentWriteCommands` — `serialNumberKey` named explicitly in the trusted-field-preservation proof |
+| Account governed VALUE SETS: `paymentTerms` ∈ COD/NET_30/NET_60/NET_90, `taxStatus` ∈ UNKNOWN/TAXABLE/EXEMPT/RESELLER | `accountsGovernedFieldsRules` — **and nowhere else** | `crmWriteCommands` — `governedValuesValid`, enforced in both account builders |
+| Reorder Cancel adds EXACTLY `cancelledBy`/`cancelledAt`/`cancellationReason` and touches nothing else | `reorderRequestsRules` | `reorderRecordGenerationParity` — exact patch key sets, void trio absent |
+| Both reorder record generations transition identically, and no transition emits `warehouseId`/`operatingCompanyId` | `reorderRequestsRules` | `reorderRecordGenerationParity` — byte-identical patches across generations |
+| The reorder ASSIGNEE record scope on in-flight transitions | `reorderRequestsRules` | `reorderTransitionParity` + `reorderRecordGenerationParity` |
+
+**The account value sets are the one that would have been lost outright.** They lived ONLY in
+Rules; nothing server-side re-checked them. Retiring the client write would have left a capability
+holder able to stamp `paymentTerms: "whenever"` on a customer — because the capability says WHO
+may set a governed field and never said WHAT it may contain. Conflating those is how a governed
+field quietly becomes a free-text one, and a holder of `customer.governedField.write` is now
+explicitly NOT excused from the value check.
+
+### What a flipped assertion proves instead
+
+Where the original had more to say than a grant, the replacement says the other half:
+
+- **a DENIED Cancel leaves the document byte-for-byte untouched** — no partial apply
+- **a DENIED Void leaves the request untouched AND writes no orphan void record** — a half-applied
+  cross-document write on a refused request is the failure hardest to notice afterwards
+
+### The parts matrix is the case worth keeping
+
+Four principals used to be admitted — admin, dispatcher, an ACTIVE PARTS_MANAGER, an ACTIVE
+WAREHOUSE_MANAGER — and they are the four most likely to be handed a direct read back later,
+because each plainly needs the data. All twelve now expect denial, **including a fully restored,
+correctly linked, ACTIVE PARTS_MANAGER**: there is no residual back door for the deserving case.
+
+### The retained picker was not flipped
+
+Its positive cases still prove the exact candidate set (authenticated, reciprocally linked, ACTIVE,
+PARTS_ASSOCIATE-eligible, `userId` present). Its negative cases still prove it cannot be stretched
+into a general directory, an arbitrary own-Employee read, another operational role's directory, or
+an inactive/unlinked/non-candidate record. And a principal with no `employeeId` must be **DENIED
+cleanly, never a rules evaluation error** — an evaluator exception is not a denial.
+
+---
+
+## Two record-scope differences, MEASURED and NOT decided here
+
+These are not defects and not silent. They are differences between what the retired Rules
+branches expressed and what the governed capabilities express, surfaced so they can be somebody's
+decision rather than somebody's discovery.
+
+**1. Reorder request reads.** The retired rule gave OPERATIONAL roles record-scoped access:
+a PARTS_MANAGER saw the queue statuses plus requests they personally reviewed or assigned; a
+PARTS_ASSOCIATE saw only requests assigned to them (`assignedToUserId == request.auth.uid`). The
+governed `reorder.request.read.queue` is role-level and unscoped, and the EOS `partsManager` Role
+holds it while `partsAssociate` does not. So the PARTS_MANAGER population is BROADER within the
+queue and the PARTS_ASSOCIATE self-scope is GONE. Note the populations differ in kind — operational
+roles on the employee record versus EOS Roles — so this is not a like-for-like widening, and the
+capability and Role both predate this workstream.
+
+**2. Warehouse and transfer-order reads.** The retired rules admitted a warehouse-scoped manager
+to their own warehouse and to transfer orders on either endpoint (`isAssignedToWarehouse`). The
+governed `warehouse.record.read` and `warehouse.transferOrder.read` are role-level and unscoped.
+
+In both cases the CLIENT can no longer read these collections at all, so nothing was widened by the
+Rules change itself. What differs is the shape of the authority on the governed side. Restoring
+record scope means server-side scope resolution on those sources — a decision with an owner, not a
+cleanup.
+
+---
 ## What this workstream migrated
 
 **Reads.** 17 metadata list entities; the CRM, equipment, parts, inventory, reorder, purchase

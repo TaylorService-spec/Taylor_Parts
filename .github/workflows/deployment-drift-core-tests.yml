@@ -31,7 +31,8 @@ on:
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
       - "scripts/listIndexCoverage.mjs"
-      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/src/**"
+      - "field-ops-app-vite/test/clientFirestoreCensus.test.jsx"
       - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
@@ -72,7 +73,8 @@ on:
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
       - "scripts/listIndexCoverage.mjs"
-      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/src/**"
+      - "field-ops-app-vite/test/clientFirestoreCensus.test.jsx"
       - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
@@ -192,6 +194,15 @@ jobs:
       - name: A created record is reachable from its list
         run: npm run build && node --test test/writeCommandTimestampContract.test.mjs
         working-directory: functions
+
+      # THE CENSUS. Three numbers reduce the whole Firebase-removal claim to something runnable:
+      # zero direct governed client reads, zero writes, zero authorization decisions. It also
+      # resolves every relative import, which is what catches a module left pointing at deleted
+      # code -- a break neither tsc nor vitest sees, because these are untyped .js modules and the
+      # importing module is mocked wherever a test reaches it.
+      - name: The client Firestore census (reads, writes, authorization, dangling imports)
+        run: npx vitest run test/clientFirestoreCensus.test.jsx
+        working-directory: field-ops-app-vite
 
       # Ten surfaces each hand-rolled the same technician lookup and nine of them fell back to
       # rendering the raw document id where a person's name belongs.

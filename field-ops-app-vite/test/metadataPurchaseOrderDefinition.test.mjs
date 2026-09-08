@@ -30,9 +30,9 @@ test("the entity id is exactly \"purchaseOrder\", collection is the LIVE reorder
   assert.notEqual(purchaseOrderEntity.collection, "purchase_orders");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role/relationship, not by capability", () => {
-  assert.equal(purchaseOrderEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(purchaseOrderEntity.readCapability, null);
+test("read is GOVERNED and names its capability -- the CLIENT_DIRECT posture and the null were findings, both resolved", () => {
+  assert.equal(purchaseOrderEntity.readVia, "CALLABLE");
+  assert.equal(purchaseOrderEntity.readCapability, "reorder.purchaseOrder.read");
 });
 
 test("identity is a nameField only -- no server-allocated reference exists to promote", () => {

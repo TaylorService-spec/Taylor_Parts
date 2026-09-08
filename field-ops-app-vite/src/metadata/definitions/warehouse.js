@@ -82,10 +82,10 @@ export const warehouseEntity = makeEntityDefinition({
   // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
   readVia: "CALLABLE",
   readCallable: "metadataWarehouses",
-  // Rules gate this by role/relationship (admin/dispatcher, or a WAREHOUSE_MANAGER assigned to
-  // this specific warehouse), not by a capability. Recorded as null rather than invented — see
-  // the header.
-  readCapability: null,
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "warehouse.record.read",
   identity: makeIdentity({ nameField: "name" }),
   description:
     "A physical stock-holding location (Epic 4 Warehouse + Fulfillment) — a bin-level inventory registry, " +

@@ -65,25 +65,46 @@ test("withSearchableName pairs the display name with its derived copy, unchanged
 
 // --- the writers -------------------------------------------------------------
 
-test("both canonical writers derive the field, and neither does it at the call site", () => {
-  // Derivation lives IN the writer so a caller cannot forget what it never had to remember.
+// ════════════════════ THE DERIVATION MOVED TO THE SERVER ════════════════════
+//
+// The client no longer writes accounts at all: both paths are trusted commands, and the search
+// name is derived in `buildAccountCreate` / `buildAccountUpdate`. So the guard follows the
+// derivation rather than staying where it used to live -- a structural test asserting a client
+// function still derives a field it no longer writes would pass or fail for reasons that have
+// nothing to do with whether customers are findable.
+//
+// The BEHAVIOUR is proven server-side in functions/test/crmWriteCommands.test.mjs ("the create
+// paths derive the search name, trimmed and lowercased" and "an account update touches the
+// search name ONLY when the patch touches the name"). What is asserted HERE is the shape that
+// behaviour depends on, and the two client-side properties that still matter.
+
+test("the client writer submits to the command and derives nothing itself", () => {
   const src = readFileSync(path.join(srcDir, CANONICAL_WRITER), "utf8");
   const create = src.match(/export function createAccount[\s\S]*?\n\}/);
   const update = src.match(/export function updateAccount[\s\S]*?\n\}/);
   assert.ok(create, "createAccount not found -- this guard's premise has expired");
   assert.ok(update, "updateAccount not found -- this guard's premise has expired");
-  assert.match(create[0], /withDerivedSearchName/, "createAccount writes a name without deriving nameLower");
-  assert.match(update[0], /withDerivedSearchName/, "updateAccount writes a name without deriving nameLower");
+  // Submits, rather than writes. A client that derived the field would be a SECOND writer of a
+  // derived value, which is the exact failure this file exists to prevent -- now in the form of
+  // two implementations that can disagree instead of one caller that forgets.
+  for (const [name, fn] of [["createAccount", create[0]], ["updateAccount", update[0]]]) {
+    assert.match(fn, /submit(Create|Update)Account/, `${name} must go through the trusted command`);
+    assert.doesNotMatch(fn, /nameLower|normalizeNameForSearch|withSearchableName/, `${name} must not derive the search name client-side`);
+  }
 });
 
-test("a partial update that does not touch the name must not clobber the derived field", () => {
+test("the SERVER command derives it, and only when the patch carries a name", () => {
   // Deriving unconditionally would write nameLower:"" for any status-only edit, silently removing
-  // that customer from search. The writer must skip derivation when `name` is absent -- asserted
-  // here against the source, since the branch is what matters.
-  const src = readFileSync(path.join(srcDir, CANONICAL_WRITER), "utf8");
-  const fn = src.match(/function withDerivedSearchName[\s\S]*?\n\}/);
-  assert.ok(fn, "withDerivedSearchName not found");
-  assert.match(fn[0], /"name" in data/, "the derivation must be conditional on the payload carrying a name");
+  // that customer from search. The conditional branch is the whole contract, so it is asserted
+  // where it now lives.
+  const command = readFileSync(
+    path.resolve(here, "../../functions/src/crm/crmWriteCommands.ts"),
+    "utf8",
+  );
+  assert.match(command, /normalizeAccountSearchName/, "the command must derive the search name");
+  const update = command.match(/export function buildAccountUpdate[\s\S]*?\n\}/);
+  assert.ok(update, "buildAccountUpdate not found -- this guard's premise has expired");
+  assert.match(update[0], /"name" in clean/, "the derivation must be conditional on the patch carrying a name");
 });
 
 // --- the structural invariant ------------------------------------------------
@@ -115,8 +136,31 @@ test("no module outside the canonical writer writes the accounts collection", ()
 test("MUTATION: the structural sweep can actually fail", () => {
   // Proves the sweep is looking at real files with a real pattern, rather than passing because it
   // silently matched nothing -- the failure mode of every allowlist-shaped guard.
+  //
+  // ITS PREMISE CHANGED, in the best possible way. This used to prove the regex was live by
+  // finding at least one real Firestore writer in the tree. There are now ZERO: every business
+  // write is a trusted command, and `field-ops-app-vite/test/clientFirestoreCensus.test.jsx`
+  // asserts that count outright. Requiring a real offender to exist would mean this guard could
+  // only pass while the thing it guards against was still happening.
+  //
+  // So the two halves are proven separately: the sweep reads a real tree, and the pattern matches
+  // a fabricated writer. Both must hold for the sweep above to mean anything.
   const files = sourceFiles(srcDir);
   assert.ok(files.length > 50, `the sweep found only ${files.length} source files -- it is not reading the tree`);
-  const anyWriter = files.filter((f) => /\b(addDoc|setDoc|updateDoc)\s*\(/.test(readFileSync(f, "utf8")));
-  assert.ok(anyWriter.length > 0, "the write pattern matches nothing anywhere -- the regex has gone stale");
+
+  const WRITE = /\b(addDoc|setDoc|updateDoc)\s*\(/;
+  const fabricatedOffender = 'import { addDoc } from "firebase/firestore";\naddDoc(collection(db, ACCOUNTS_COLLECTION), { name: "x" });';
+  assert.ok(WRITE.test(fabricatedOffender), "the write pattern has gone stale -- it no longer matches a writer");
+  assert.ok(
+    /ACCOUNTS_COLLECTION|["'`]accounts["'`]/.test(fabricatedOffender),
+    "the collection pattern has gone stale -- it no longer matches an accounts reference",
+  );
+
+  // And the sweep genuinely finds nothing today, which is the closure this file now records.
+  const realWriters = files.filter((file) => WRITE.test(readFileSync(file, "utf8")));
+  assert.deepEqual(
+    realWriters.map((file) => path.relative(srcDir, file)),
+    [],
+    "a client-direct Firestore write reappeared -- every business write belongs in a trusted command",
+  );
 });

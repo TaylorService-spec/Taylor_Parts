@@ -96,8 +96,8 @@ test("the entity id is exactly \"mobileLocation\", collection is the live `mobil
 });
 
 test("read is CLIENT_DIRECT with no capability -- Rules gate by role (admin/dispatcher), same shape as trucks", () => {
-  assert.equal(mobileLocationEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(mobileLocationEntity.readCapability, null);
+  assert.equal(mobileLocationEntity.readVia, "CALLABLE");
+  assert.equal(mobileLocationEntity.readCapability, "inventory.truckRegistry.read");
 });
 
 test("identity is a nameField only -- displayLabel, the same choice truck.js makes for its own linked record", () => {

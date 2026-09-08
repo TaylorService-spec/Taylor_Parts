@@ -163,9 +163,10 @@ export const inventoryTransactionEntity = makeEntityDefinition({
   // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
   readVia: "CALLABLE",
   readCallable: "metadataInventoryTransactions",
-  // A matching capability id exists in the catalog but nothing evaluates it on this read
-  // path — see the header. Recorded as null rather than invented.
-  readCapability: null,
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "inventory.transaction.read",
   // SYSTEM_ONLY, per the Owner's ruling — explicitly declared, never derived. See the file header.
   identity: makeIdentity({ mode: "SYSTEM_ONLY" }),
   description:

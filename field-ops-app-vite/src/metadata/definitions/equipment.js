@@ -110,9 +110,10 @@ export const equipmentEntity = makeEntityDefinition({
   // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
   readVia: "CALLABLE",
   readCallable: "metadataEquipment",
-  // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null
-  // rather than invented — see the header.
-  readCapability: null,
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "service.equipment.read",
   identity: makeIdentity({ nameField: "name" }),
   description: "An installed, customer-serviceable asset at one Account Location, moving through a governed ACTIVE/INACTIVE/RETIRED lifecycle. Not the equipment_models compatibility catalog — see the file header.",
   fields: [

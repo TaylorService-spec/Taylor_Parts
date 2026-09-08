@@ -48,8 +48,8 @@ test("employeeId is declared as its own ID field, not promoted into identity", (
   assert.notEqual(employeeEntity.identity.referenceField, "employeeId");
 });
 
-test("no capability gates this collection -- Rules admit by role/relationship, not by capability", () => {
-  assert.equal(employeeEntity.readCapability, null);
+test("a capability now gates this collection, and the definition names it", () => {
+  assert.equal(employeeEntity.readCapability, "workforce.directory.read");
 });
 
 test("provenance: createdAt/updatedAt are declared NUMBER, and no actor fields exist", () => {

@@ -543,9 +543,15 @@ export const accountEntity = makeEntityDefinition({
       toEntityId: "contact",
       viaField: "accountId",
       cardinality: "ONE_TO_MANY",
-      // No traversalCapability: nothing gates contacts by capability today. Rules admit
-      // admin and dispatcher by ROLE, and declaring an authority nothing enforces would be
-      // a false statement about the system rather than a stricter one.
+      // THE TARGET'S OWN AUTHORITY, as account.opportunities already carried. This was null,
+      // and the null was an honest FINDING rather than a preference: Rules admitted admin and
+      // dispatcher by ROLE, no contact capability existed, and declaring one nothing enforced
+      // would have been a false statement about the system rather than a stricter one.
+      //
+      // `crm.contact.read` exists now and the governed source resolves it server-side before a
+      // row is returned, so the declaration is true. Reading an Account still does not entitle a
+      // viewer to its contacts.
+      traversalCapability: "crm.contact.read",
     }),
     // location.js exists (S-CRM-LOCATION-DEFINITION) but could not declare this edge itself
     // — findParentRelationship requires a RELATED list's parent relationship to be declared
