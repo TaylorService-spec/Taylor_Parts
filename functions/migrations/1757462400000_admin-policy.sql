@@ -1,20 +1,19 @@
+-- Up Migration
 -- EOS Administration policy — the PostgreSQL schema.
 --
 -- ============================================================================
--- THIS FILE IS NOT WIRED TO ANY RUNNER, AND THAT IS DELIBERATE.
+-- MIGRATION 001. This file IS the schema authority -- there is no second copy of it anywhere, and
+-- the reviewable-DDL version that used to sit under src/adminPolicy/schema/ was MOVED here rather
+-- than duplicated. Two files describing one schema is how a database and its documentation start
+-- disagreeing.
 --
--- Measured: this repository has no PostgreSQL, no DAL and no migration tooling -- no `pg`, `knex`,
--- `kysely`, `drizzle-orm`, `prisma`, `typeorm` or `sequelize` in any package.json, and no source
--- file that mentions Postgres. Choosing one is a new architectural dependency with no precedent
--- here, so it is NAMED DECISION D-1 for the Owner rather than something settled inside an
--- implementation task.
+-- Owner ruling D-1 (2026-09-08) selected PostgreSQL + node-pg-migrate + node-postgres. Run through
+-- `npm run migrate:up` in functions/; the runner owns its own transaction per migration, which is
+-- why there is no BEGIN/COMMIT here.
 --
--- So this ships as REVIEWABLE DDL: the shape the domain contracts imply, written where it can be
--- read and argued with before anything depends on it. Nothing executes it. Falling back to
--- Firestore was explicitly refused, and no table below has a Firestore equivalent.
---
--- When the driver is chosen, this becomes migration 001 and one adapter implements
--- policyRepository.ts against it.
+-- STANDARD POSTGRESQL ONLY. The production target is Render, but nothing below uses a
+-- Render-specific API, extension or type -- the same file must run on a local cluster, in CI, and
+-- on any managed Postgres.
 -- ============================================================================
 --
 -- CONVENTIONS
@@ -30,7 +29,6 @@
 --   No ON DELETE CASCADE from a policy row to an audit row, anywhere. Audit outlives the thing it
 --   describes; that is the whole point of it.
 
-BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS eos_policy;
 SET search_path = eos_policy, public;
@@ -362,4 +360,16 @@ CREATE TABLE audit_events (
 CREATE INDEX audit_events_by_tenant_time ON audit_events (tenant_id, occurred_at DESC);
 CREATE INDEX audit_events_by_target      ON audit_events (tenant_id, target_kind, target_id);
 
-COMMIT;
+
+
+-- Down Migration
+--
+-- ============================ rolling back ============================
+--
+-- DROP SCHEMA CASCADE rather than table-by-table, deliberately: the drop order of fifteen tables
+-- with foreign keys between them is a second statement of the dependency graph, and a stale one is
+-- a down migration that fails halfway and leaves a half-dropped schema behind.
+--
+-- This is destructive by definition. It exists so a test can prove up/down round-trips and so a
+-- bad deploy can be rolled back -- not as routine tooling.
+DROP SCHEMA IF EXISTS eos_policy CASCADE;

@@ -35,6 +35,10 @@ on:
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
+      - "functions/test/adminPolicyPostgres.test.mjs"
+      - "functions/test/adminPolicySeed.test.mjs"
+      - "functions/migrations/**"
+      - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "docs/architecture/eos-admin-policy-workflow-reconciliation.md"
@@ -54,6 +58,9 @@ on:
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
+      - "functions/test/adminPolicyPostgres.test.mjs"
+      - "functions/test/adminPolicySeed.test.mjs"
+      - "functions/migrations/**"
       - "field-ops-app-vite/src/domain/adminPolicyView.js"
       - "field-ops-app-vite/src/metadata/entityRegistry.js"
       - "field-ops-app-vite/src/modules/administration/**"
@@ -70,9 +77,32 @@ permissions:
 
 jobs:
   policy:
-    name: Admin policy engine -- authorization, workflow, tenancy, no-Firebase
+    name: Admin policy engine -- authorization, workflow, tenancy, schema, seed
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # A REAL POSTGRESQL, not an emulator. The migration, the unique indexes, the foreign keys, the
+    # CHECK constraints and transactional rollback are properties of the database itself; something
+    # that approximates them proves nothing about the one that will actually hold the policy.
+    #
+    # Ephemeral, empty, and local to the job -- it holds no data anybody owns.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: eos
+          POSTGRES_PASSWORD: eos
+          POSTGRES_DB: eos_policy
+        ports:
+          - 5432:5432
+        # Without the health check the job races the container's startup and fails intermittently,
+        # which is worse than failing consistently.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -93,9 +123,25 @@ jobs:
         run: npm run build
         working-directory: functions
 
-      - name: Admin policy proofs (build + run)
+      # Offline first: if the pure engine is broken, a database failure underneath it is noise.
+      - name: Admin policy proofs -- offline (build + run)
         run: npm run test:adminPolicy
         working-directory: functions
+        env:
+          # Deliberately UNSET here, so this step also proves the suites skip cleanly without a
+          # database rather than silently depending on one.
+          POLICY_TEST_DATABASE_URL: ""
+
+      - name: Migration, schema, constraints and seed -- real PostgreSQL
+        run: npm run test:adminPolicyPostgres
+        working-directory: functions
+        env:
+          POLICY_TEST_DATABASE_URL: postgres://eos:eos@localhost:5432/eos_policy
+
+      # The snapshot is GENERATED from the client metadata registry. A definition change that was
+      # not re-snapshotted would seed a stale model, and this is what says so.
+      - name: Seed snapshot is not stale
+        run: node scripts/buildAdminPolicySeedSnapshot.mjs --check
 
   surfaces:
     name: Admin policy surfaces -- view model, entity registry, rendered grid

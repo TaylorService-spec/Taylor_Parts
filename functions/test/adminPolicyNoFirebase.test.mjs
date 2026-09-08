@@ -21,6 +21,21 @@ const POLICY_DIR = "src/adminPolicy";
 /** Files permitted to read Firestore for MIGRATION only. Each needs a reason, and today there are none. */
 const TRANSITIONAL_ADAPTERS = Object.freeze({});
 
+/**
+ * Source with comments removed.
+ *
+ * Every check here is about CODE. A header explaining why a layer must never touch Firestore is
+ * exactly the comment that should survive -- banning the word outright would delete the reasoning
+ * along with the coupling, which is how a boundary loses the note saying why it exists.
+ */
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+}
+
 function sourceFiles(dir) {
   const out = [];
   for (const entry of readdirSync(dir)) {
@@ -99,17 +114,80 @@ test("the policy modules name no Firestore collection as their persistence", () 
   assert.deepEqual(offences, [], "the access version and role assignments live in EOS storage, not Firestore");
 });
 
+// The TWO files allowed to know what a database is. Everything else receives a repository and has
+// no other way to reach storage. Named individually rather than by a directory, so adding a third
+// is a deliberate edit to this list and shows up in review.
+const DATABASE_LAYER = Object.freeze([
+  "src\\adminPolicy\\policyDatabase.ts",
+  "src\\adminPolicy\\postgresPolicyRepository.ts",
+]);
+const isDatabaseLayer = (file) => DATABASE_LAYER.includes(file) || DATABASE_LAYER.includes(file.replace(/\//g, "\\"));
+
 test("the DAL port is the only way the policy modules reach storage", () => {
-  // Nothing in this subsystem may construct its own client, open its own connection, or read an
-  // environment variable that would let it. The adapter behind the port is the single seam.
+  // Nothing outside the database layer may construct a client, open a connection, or read the
+  // environment variable that would let it.
   const offences = [];
   for (const file of sourceFiles(POLICY_DIR)) {
+    if (isDatabaseLayer(file)) continue;
     const source = readFileSync(file, "utf8");
     if (/\bnew\s+(?:Pool|Client)\s*\(/.test(source)) offences.push(`${file}: constructs a database client`);
     if (/process\.env\./.test(source)) offences.push(`${file}: reads process.env`);
     if (/\bfetch\s*\(/.test(source)) offences.push(`${file}: makes a network call`);
+    if (/from\s+["']pg["']/.test(source)) offences.push(`${file}: imports the postgres driver`);
   }
   assert.deepEqual(offences, [], "storage is reached only through the injected repository");
+});
+
+test("the database layer is exactly the two files it is meant to be", () => {
+  // The allowlist above is only as good as its accuracy. If a third file starts importing pg, this
+  // fails -- rather than the allowlist quietly covering it.
+  const importers = sourceFiles(POLICY_DIR).filter((file) => /from\s+["']pg["']/.test(readFileSync(file, "utf8")));
+  assert.deepEqual(
+    importers.map((f) => f.replace(/\//g, "\\")).sort(),
+    [...DATABASE_LAYER].sort(),
+    "only the pool factory and the Postgres adapter may import the driver",
+  );
+});
+
+test("no SQL is written outside the Postgres adapter", () => {
+  // SQL in a command or a resolver is the database implementation leaking upward -- the exact
+  // boundary the DAL exists to hold. The adapter owns every statement.
+  const SQL = /\b(?:SELECT|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|CREATE\s+TABLE)\b/;
+  const offences = [];
+  for (const file of sourceFiles(POLICY_DIR)) {
+    if (isDatabaseLayer(file)) continue;
+    const source = readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    if (SQL.test(source)) offences.push(`${file}: contains SQL`);
+  }
+  assert.deepEqual(offences, [], "SQL stops at the adapter");
+});
+
+test("POSTGRES PROOF: the database layer persists policy in Postgres and nowhere else", () => {
+  // Owner ruling item 11. The adapter is the file most likely to acquire a "just for now" Firestore
+  // read during a migration, so it gets its own assertion rather than sharing the general one.
+  for (const file of DATABASE_LAYER.map((f) => f.replace(/\\/g, "/"))) {
+    const source = readFileSync(file, "utf8");
+    for (const { pattern, what } of FORBIDDEN) {
+      assert.equal(pattern.test(source), false, `${file} must not contain ${what}`);
+    }
+    // CODE, not comments. A header explaining why this layer must never touch Firestore is exactly
+    // the comment that should survive -- banning the word outright would delete the reasoning along
+    // with the coupling, which is how a boundary loses the note saying why it exists.
+    assert.equal(/firebase/i.test(stripComments(source)), false, `${file} must not reference firebase in code`);
+  }
+});
+
+test("the Postgres adapter parameterises every value it sends", () => {
+  // A column name is chosen from a literal list in this adapter; a VALUE never is. Template
+  // interpolation inside a SQL string is how a caller's data becomes SQL text, so the only
+  // interpolation permitted in a query is the schema constant.
+  const source = readFileSync("src/adminPolicy/postgresPolicyRepository.ts", "utf8");
+  const interpolations = [...source.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1].trim());
+  const allowed = new Set(["SCHEMA", "sets.join(\", \")", "values.length", "values.length - 1", "column", "kind", "table", "row.version", "row.status", "input.key"]);
+  const unexpected = interpolations.filter((expr) => !allowed.has(expr));
+  assert.deepEqual(unexpected, [], "only the schema name and locally-built fragments may be interpolated");
 });
 
 test("the guard would actually catch an offence", () => {
