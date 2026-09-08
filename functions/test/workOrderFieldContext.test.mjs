@@ -153,12 +153,18 @@ ok("the raw id is NEVER returned as a display fallback", () => {
 
 // ------------------------------------------------- no authority was widened
 
-ok("technician Account/Location Rules remain admin/dispatcher-only", () => {
+ok("a technician gains NO Account/Location read from Rules -- both are denied outright now", () => {
+  // This asserted the two collections stayed admin/dispatcher-only, which was the guard: the
+  // projection must not have been implemented by widening a Rules read for technicians. The
+  // contraction removed both blocks, so the guard holds in its strongest form -- nobody reads
+  // either collection from the client, technician included.
   const rules = readFileSync(RULES, "utf8");
-  const accounts = rules.slice(rules.indexOf("match /accounts/{accountId}"));
-  assert.match(accounts.slice(0, 200), /allow read: if isAdminOrDispatcher\(\)/);
-  const locations = rules.slice(rules.indexOf("match /locations/{locationId}"));
-  assert.match(locations.slice(0, 200), /allow read: if isAdminOrDispatcher\(\)/);
+  for (const collection of ["accounts", "locations"]) {
+    assert.ok(
+      !new RegExp("match /" + collection + "/").test(rules),
+      `${collection} must have NO match block -- denied by the catch-all`,
+    );
+  }
 });
 
 ok("no broad customer-read capability is granted to implement this seam", () => {

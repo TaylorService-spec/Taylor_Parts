@@ -142,16 +142,22 @@ test("NO inventory quantity of any kind appears in a source option", () => {
   }
 });
 
-test("firestore.rules is UNCHANGED — no client read was widened to make this work", () => {
-  // The claim the whole design rests on. If this ever fails, the trusted projection was abandoned in
-  // favour of a grant, and Decision #171's reasoning no longer holds.
+test("no client read was widened to make this work — and all three are now denied outright", () => {
+  // The claim the whole design rests on. If this ever fails, the trusted projection was abandoned
+  // in favour of a grant, and Decision #171's reasoning no longer holds.
+  //
+  // It used to assert the exact grants each collection carried. The Rules contraction removed
+  // them, so the claim is now unconditional: none of the three has a match block, and the
+  // catch-all denies. The trusted projection is the ONLY way this data reaches a client, which is
+  // what #171 argued for in the first place.
   const rules = readFileSync(join(HERE, "..", "..", "firestore.rules"), "utf8");
-  const warehouses = rules.slice(rules.indexOf("match /warehouses/"), rules.indexOf("match /warehouses/") + 260);
-  assert.match(warehouses, /allow read: if isAdminOrDispatcher\(\) \|\| isAssignedToWarehouse\(warehouseId\);/);
-  const mobile = rules.slice(rules.indexOf("match /mobile_locations/"), rules.indexOf("match /mobile_locations/") + 220);
-  assert.match(mobile, /allow read: if isAdminOrDispatcher\(\);/);
-  // And bin_placements still has no match block at all — deny-all by absence.
-  assert.ok(!/match \/bin_placements\//.test(rules));
+  for (const collection of ["warehouses", "mobile_locations", "bin_placements"]) {
+    assert.ok(
+      !new RegExp("match /" + collection + "/").test(rules),
+      `${collection} must have NO match block -- denied by the catch-all`,
+    );
+  }
+  assert.match(rules, /match \/\{document=\*\*\} \{\s*allow read, write: if false;/);
 });
 
 test("the trusted read is gated by the SAME actor boundary that records usage", () => {

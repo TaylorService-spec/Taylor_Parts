@@ -78,166 +78,40 @@ export interface LegacySurfaceEntry {
  * helper in Rules to a capability check inside the trusted callables. That is exactly the
  * convergence this gate was built to track, so the number moves in the same change that moved
  * the authority, and nothing was waived to make a lane green.
+ *
+ * ============================ 44 -> 0 (Rules contraction, 2026-09-08) ============================
+ *
+ * The same move, for every remaining domain at once. `firestore.rules` went from 1,876 lines and
+ * 88 role-dependent clauses across 56 collections to three grants and no business authority. No
+ * authorization was lost: each collection's decisions moved to the governed capabilities its
+ * entry below used to name as the expected destination.
  */
+// ════════════════════ THE SURFACE IS ZERO ════════════════════
+//
+// 47 -> 44 -> 0. Every legacy-role call site in `firestore.rules` is gone: the file no longer
+// resolves ANY authorization decision through `users/{uid}.role`, because it no longer resolves
+// business authorization at all. What it grants is a signed-in principal's own session document
+// and the PARTS_MANAGER assignment-candidate picker; everything else is denied, and access
+// reaches the client through governed callables that resolve a capability server-side.
+//
+// THIS IS THE OUTCOME THE CORPUS EXISTED TO EVIDENCE. ADR-005 §2.7 criterion 1 required that no
+// direct admin/dispatcher/technician authorization checks remain outside the compatibility
+// boundary before legacy-role retirement; the drift gate was built so the surface could not
+// silently GROW while convergence was in progress. It caught this change too -- the array below
+// went empty in the same commit that emptied the Rules, which is exactly the discipline the gate
+// was for, applied in the shrinking direction.
+//
+// WHAT IS NOT CLAIMED. Zero here is a statement about `firestore.rules` and nothing else. The
+// legacy field still EXISTS and is still carried to the browser by the session projection for
+// nav gating and display. The separate proof that nothing DECIDES anything with it server-side
+// is functions/test/legacyRoleIsNotAuthority.test.mjs, which asserts zero authorization
+// consumers and pins the single transport site to a stricter contract than an exception.
+//
+// The array stays rather than being deleted, and so does the gate: a re-introduced legacy call
+// site must fail CI, and an empty corpus with a live parser is what makes that true. The rows
+// (Issue #226 #265-#268) are answered, not abandoned -- each domain's authority moved to the
+// capabilities its entry used to name as its expected destination.
 const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
-    // ── Row 23 · Customer / Account ──────────────────────────────────────
-    {
-      collection: "accounts",
-      sites: { isAdminOrDispatcher: 3, isAdmin: 2 },
-      row: "row23",
-      permissions: [
-        "customer.record.read",
-        "customer.record.create",
-        "customer.record.update",
-        "customer.governedField.write",
-      ],
-    },
-    {
-      collection: "locations",
-      sites: { isAdminOrDispatcher: 2 },
-      row: "row23",
-      permissions: [],
-    },
-    {
-      collection: "contacts",
-      sites: { isAdminOrDispatcher: 2 },
-      row: "row23",
-      permissions: [],
-    },
-
-    // ── Row 24 · Inventory / Reorder / Purchasing ────────────────────────
-    {
-      // 10 -> 8: the create rule is now `allow create: if false` and the Record-PO update branch
-      // is gone; both authorizations live in the trusted callables as capability checks.
-      collection: "reorder_requests",
-      sites: { isAdminOrDispatcher: 8 },
-      row: "row24",
-      permissions: [
-        "reorder.request.read.queue",
-        "reorder.request.read.own",
-        "reorder.request.create.manual",
-        "reorder.request.create.system",
-        "reorder.request.approve",
-        "reorder.request.reject",
-        "reorder.request.assign",
-        "reorder.request.startPurchasing",
-        "reorder.request.postPurchasingUpdate",
-        "reorder.request.recordPurchaseOrder",
-        "reorder.request.markReceived",
-        "reorder.request.cancel",
-      ],
-    },
-    {
-      // 2 -> 1: the create rule is now `allow create: if false`. The remaining site is the read.
-      collection: "reorder_purchase_orders",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [
-        "reorder.purchaseOrder.read",
-        "reorder.purchaseOrder.create",
-        "reorder.purchaseOrder.void",
-      ],
-    },
-    {
-      collection: "reorder_purchase_order_voids",
-      sites: { isAdminOrDispatcher: 2 },
-      row: "row24",
-      permissions: ["reorder.purchaseOrder.void"],
-    },
-    {
-      collection: "inventory_actions",
-      sites: { isAdminOrDispatcher: 2 },
-      row: "row24",
-      permissions: ["inventory.action.read", "inventory.action.create"],
-    },
-    {
-      collection: "inventory_transactions",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: ["inventory.transaction.read"],
-    },
-    {
-      collection: "parts",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "warehouses",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "transfer_orders",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "mobile_locations",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "trucks",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "suppliers",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "supplier_catalog",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-    {
-      collection: "purchase_orders",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "row24",
-      permissions: [],
-    },
-
-    // ── Row 25 · Service / Work Orders ───────────────────────────────────
-    {
-      collection: "fieldops_wos",
-      sites: { isAdminOrDispatcher: 1, isTechnician: 1 },
-      row: "row25",
-      permissions: ["workOrder.create", "workOrder.transition", "workOrder.cancel"],
-    },
-    {
-      collection: "fieldops_jobs",
-      sites: { isAdminOrDispatcher: 3 },
-      row: "row25",
-      permissions: [],
-    },
-    {
-      collection: "fieldops_technicians",
-      sites: { isAdminOrDispatcher: 3 },
-      row: "row25",
-      permissions: [],
-    },
-    {
-      collection: "equipment",
-      sites: { isAdminOrDispatcher: 3 },
-      row: "row25",
-      permissions: [],
-    },
-
-    // ── Unassigned · no cutover row currently owns these ─────────────────
-    {
-      collection: "employees",
-      sites: { isAdminOrDispatcher: 1 },
-      row: "unassigned",
-      permissions: [],
-    },
 ];
 
 export const LEGACY_AUTHORIZATION_SURFACE: readonly LegacySurfaceEntry[] =

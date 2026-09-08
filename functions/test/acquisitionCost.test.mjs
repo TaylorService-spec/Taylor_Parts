@@ -267,14 +267,20 @@ test("a later supplier-quote change cannot mutate a committed PO price or a rece
   // update it", because it means no future caller can either.
   const poWriter = code("reorderRequest/reorderCommands.ts");
   assert.ok(!/^import .*partSupplierItems/m.test(poWriter), "the PO writer must not read the supplier quote");
-  // The purchase order is immutable by Rules (allow update, delete: if false), so a stored committed
-  // price has no update path at all.
+  // The purchase order has no client write path AT ALL. This used to read the
+  // reorder_purchase_orders match block and assert its `allow update, delete: if false` -- the
+  // Rules contraction removed the block, so the collection falls through to the catch-all and the
+  // immutability claim got stronger: not just no update, no client operation of any kind.
   const rules = readFileSync(join(HERE, "..", "..", "firestore.rules"), "utf8");
-  const start = rules.indexOf("match /reorder_purchase_orders/");
-  // To the END of that match block, not a fixed window: the block carries a long governance comment,
-  // and a short slice would silently miss the rule and pass for the wrong reason.
-  const block = rules.slice(start, rules.indexOf("match /", rules.indexOf("allow create: if false;", start)));
-  assert.match(block, /allow update, delete: if false;/, "the committed purchase order must stay immutable");
+  assert.ok(
+    !/match \/reorder_purchase_orders\//.test(rules),
+    "reorder_purchase_orders must have NO match block -- denied by the catch-all",
+  );
+  assert.match(
+    rules,
+    /match \/\{document=\*\*\} \{\s*allow read, write: if false;/,
+    "the committed purchase order must stay immutable",
+  );
 });
 
 // ══════════════════════════════ THE LIVE PATH IS CANONICAL; EPIC-5 IS NOT ══════════════════════════════

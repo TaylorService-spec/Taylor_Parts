@@ -123,13 +123,23 @@ test("D5: every recorded entry is assigned to a cutover row", () => {
   }
 });
 
-test("D6: the per-row burn-down is reportable (no row silently empty of scope)", () => {
-  // Rows 23-25 must each own at least one collection; if a row owns nothing,
-  // either the surface was mis-assigned or the row's scope is misunderstood.
-  for (const row of ["row23", "row24", "row25"]) {
-    assert.ok(
-      entriesForRow(row).length > 0,
-      `Cutover ${row} owns no legacy collections — check the row assignment.`,
+test("D6: the per-row burn-down is COMPLETE -- every row owns nothing, because the surface is zero", () => {
+  // THE ASSERTION INVERTED WHEN THE WORK FINISHED, and the inversion is the point rather than a
+  // waiver. It required rows 23-25 to each own at least one collection, because a row owning
+  // nothing meant the surface had been mis-assigned or its scope misunderstood -- while there was
+  // still a surface to assign.
+  //
+  // `firestore.rules` resolves no business authorization at all now, so every row owns nothing
+  // for the opposite reason: there is nothing left to cut over. Keeping the old form would have
+  // required the legacy surface to keep existing in order for this test to pass, which is a guard
+  // that can only be satisfied by the problem it guards against.
+  //
+  // The burn-down is still asserted, in the direction that is now true: zero, for every row.
+  for (const row of ["row23", "row24", "row25", "row26", "unassigned"]) {
+    assert.equal(
+      entriesForRow(row).length,
+      0,
+      `Cutover ${row} owns legacy collections again — a legacy-role call site returned to firestore.rules.`,
     );
   }
 });

@@ -69,10 +69,21 @@ test("line endings 3/6: CR-only live source vs LF governed pin PASSES", async ()
 // The other half of the contract. Normalization forgives newline representation and NOTHING else --
 // if any of these three started passing, the verifier would be blind to a real Rules change, which is
 // strictly worse than the defect it was introduced to fix.
+//
+// THE MUTATION TARGETS MOVED WITH THE RULES. These substituted against the
+// technician_working_availability / technician_blocked_time deny-all blocks, which the Rules
+// contraction removed along with every other per-collection block. Their preconditions caught
+// that honestly -- "the substitution must have applied" -- rather than passing on a no-op, which
+// is the failure mode a mutation guard exists to avoid in the first place.
+//
+// They now target what the contracted ruleset actually contains: the catch-all deny that is the
+// whole file's load-bearing clause, and the one retained Employee picker grant.
 test("line endings 4/6: a CHANGED CONDITION still FAILS, in any line ending", async () => {
+  // The catch-all flipped from deny-all to allow-all: the single most consequential mutation
+  // possible against this ruleset, since every collection now falls through to it.
   const changed = GOVERNED_SOURCE.replace(
-    "match /technician_blocked_time/{blockId} {\n      allow read, write: if false;",
-    "match /technician_blocked_time/{blockId} {\n      allow read, write: if true;",
+    "match /{document=**} {\n      allow read, write: if false;",
+    "match /{document=**} {\n      allow read, write: if true;",
   );
   assert.notEqual(changed, GOVERNED_SOURCE, "precondition: the substitution must have applied");
   for (const [label, src] of [["LF", changed], ["CRLF", changed.replace(/\n/g, "\r\n")]]) {
@@ -85,9 +96,11 @@ test("line endings 4/6: a CHANGED CONDITION still FAILS, in any line ending", as
 });
 
 test("line endings 5/6: an ADDED rule still FAILS", async () => {
+  // A collection smuggled in AHEAD of the catch-all, which is the only place an addition could
+  // grant anything now: a block after the catch-all would be unreachable.
   const added = GOVERNED_SOURCE.replace(
-    "    match /technician_blocked_time/{blockId} {",
-    "    match /smuggled_collection/{docId} {\n      allow read, write: if true;\n    }\n    match /technician_blocked_time/{blockId} {",
+    "    match /{document=**} {",
+    "    match /smuggled_collection/{docId} {\n      allow read, write: if true;\n    }\n    match /{document=**} {",
   );
   assert.notEqual(added, GOVERNED_SOURCE, "precondition: the substitution must have applied");
   await assert.rejects(runVerification(makeDeps({ liveSource: added }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
@@ -95,9 +108,11 @@ test("line endings 5/6: an ADDED rule still FAILS", async () => {
 });
 
 test("line endings 6/6: a REMOVED rule still FAILS, and whitespace is NOT forgiven either", async () => {
+  // Removing the one retained Employee grant. It is the narrowest surviving business-shaped
+  // clause, so a verifier blind to its disappearance would be blind to anything.
   const removed = GOVERNED_SOURCE.replace(
-    "    match /technician_working_availability/{technicianId} {\n      allow read, write: if false;\n    }\n",
-    "",
+    "      allow create, update, delete: if false;\n    }\n\n    // \u2500\u2500 EVERYTHING ELSE",
+    "      allow create, update, delete: if false;\n    }\n\n    // \u2500\u2500 GONE",
   );
   assert.notEqual(removed, GOVERNED_SOURCE, "precondition: the substitution must have applied");
   await assert.rejects(runVerification(makeDeps({ liveSource: removed }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);
@@ -105,8 +120,8 @@ test("line endings 6/6: a REMOVED rule still FAILS, and whitespace is NOT forgiv
   // Normalization is newline REPRESENTATION only -- it does not trim, collapse blank lines, or
   // reformat. A ruleset differing by real whitespace is a different ruleset.
   const reindented = GOVERNED_SOURCE.replace(
-    "      allow read, write: if false;",
-    "          allow read, write: if false;",
+    "      allow read: if isSignedIn()",
+    "          allow read: if isSignedIn()",
   );
   assert.notEqual(reindented, GOVERNED_SOURCE);
   await assert.rejects(runVerification(makeDeps({ liveSource: reindented }).deps), /LIVE-EXTRACTED-SOURCE != GOVERNED/);

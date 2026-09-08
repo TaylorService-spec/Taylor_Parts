@@ -207,7 +207,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 835 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 836 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -261,8 +261,13 @@ await okAsync("7. a fully-passing run reports exactly 835 passed, 0 failed", asy
   // client path, the key is unforgeable on create and unmodifiable/undeletable afterwards, and
   // both shapes (with and without it) stay valid with every governed field still governed. No
   // Rules change was required, which is why this is a registration and not a correction.
-  assert.equal(EXPECTED_TOTAL, 835); // Data Import P1: +20 equipmentImportInteropRules (was 815)
-  assert.ok(lines.some((l) => /835 passed, 0 failed/.test(l)), "summary must state 835 passed, 0 failed");
+  // 835 -> 836: the Rules contraction. 127 assertions across 16 suites proved a RETIRED grant
+  // still succeeded; each was FLIPPED to prove it is now refused rather than deleted, so the total
+  // is unchanged by those. The +1 is genuinely new: a principal with no employeeId must be DENIED
+  // CLEANLY, never a rules evaluation error -- found when the contracted picker predicate
+  // dereferenced a missing linkage field and the engine faulted instead of denying.
+  assert.equal(EXPECTED_TOTAL, 836); // Rules contraction: +1 employeesRules missing-employeeId (was 835)
+  assert.ok(lines.some((l) => /836 passed, 0 failed/.test(l)), "summary must state 836 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
