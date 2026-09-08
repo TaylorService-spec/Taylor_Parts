@@ -342,6 +342,82 @@ None from this tranche.
    `users/{uid}.accessVersion`, and the legacy role strings in the two workflow mirrors. *Not yet
    done.*
 
+## 10. Seed coverage — the reconciliation, and the omission it found
+
+**Section 1 above is a census of what existed BEFORE this work. It is left as written.** This
+section records what the seed actually covers now, and the gap that measuring it exposed.
+
+### The omission
+
+The first seed derived its objects from the CRUD matrix alone — 24 rows. The metadata registry has
+29 entities. Sixteen appear in both, so **thirteen entities carrying 166 fields reached neither the
+policy model nor any Administration screen**:
+
+> Supplier · Warehouse · Truck · Reorder Request · Sales Agreement · Part Alias · Stock Location ·
+> Manufacturer · Equipment Model · Mobile Location · Sales Territory · Purchase Order Void ·
+> Supplier Catalog Item
+
+Nothing failed. No count looked wrong, because nobody was comparing the two lists — which is the
+defining shape of a silent omission and the reason the Owner asked for the reconciliation.
+
+### The reconciliation
+
+| | |
+|---|---|
+| source registry | **29 entities · 394 fields** |
+| seeded objects | **37** = 29 entity-backed + 8 matrix rows with no `EntityDefinition` |
+| seeded fields | **394** |
+| excluded entities | **0** |
+| excluded fields | **0** |
+
+Business fields were **seeded** rather than explained away, per the ruling. The bounded exclusion
+vocabulary exists so that a future exclusion must name one of six reasons —
+`TECHNICAL_INTERNAL`, `DERIVED_DISPLAY_ONLY`, `LEGACY_RETIRED`, `ALIAS_DUPLICATE`,
+`NON_PERSISTED`, `NON_GOVERNABLE_SYSTEM_FIELD` — and today every count is zero.
+
+### How it cannot happen again
+
+- **One union, two consumers.** `field-ops-app-vite/src/access/policyObjectRegistry.js` is the union
+  of the CRUD matrix and the metadata registry. The seed generator and the Administration grid both
+  read it, so "which objects can policy govern?" has one answer rather than two.
+- **A generated ledger.** `functions/src/adminPolicy/seed/policySeedCoverage.json` accounts for every
+  entity and every field, and `adminPolicySeedCoverage.test.mjs` fails if one is unaccounted for, if
+  an exclusion names a reason outside the vocabulary, or if the committed artifacts drift from the
+  generator.
+
+### Capability gaps: three filled, one left open
+
+`warehouse.record.read`, `warehouse.stockLocation.read` and the four `salesAgreement.*` ids exist in
+the catalog and the CRUD matrix claims none of them. Mapping them to their objects is a coverage
+fix, and a test enforces that this table may only ever use ids the matrix does not claim — so no
+capability answers to two objects.
+
+**NEEDS OWNER DECISION.** The twelve `reorder.request.*` capabilities are already attributed to the
+matrix's *Purchase Orders* row — one row covering two records, the reorder request and the purchase
+order. Mapping them to the Reorder Request object as well would give one capability two owners, and
+deciding which object owns them is a business decision about the matrix rather than a coverage fix.
+The object is seeded with every verb ungrantable, so it is visible and nothing is hidden.
+
+---
+
+## 11. Workflow terminology
+
+Administration presents **3 business areas** over **5 versioned state machines**:
+
+| Area | State machines |
+|---|---|
+| Parts / Purchasing | 1 |
+| Technician / Work Order | 1 |
+| Sales | 3 — Opportunity, Agreement, Order |
+
+The implementation is unchanged and must stay unchanged. Sales is three machines chained by
+**events**, not transitions: a won Opportunity *creates* an Agreement, and there is no edge from
+`WON` to `DRAFT`. An **area** is a presentation grouping with no state, no transition and no Role
+binding of its own — asserted, because the moment it had one it would be a fourth thing authority
+could be resolved against.
+
+---
+
 ### What remains after this tranche
 
 - **Execution routing.** No business record moves through the new Workflow definitions. They are
