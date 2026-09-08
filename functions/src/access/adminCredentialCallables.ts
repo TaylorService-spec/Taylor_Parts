@@ -17,9 +17,13 @@ import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import * as commands from "./adminCredentialCommands";
+import { resolveEffectiveAccess } from "./effectiveAccessFeed";
 import { buildNativeResetSender } from "./oobCodeOutbound";
 
 const REGION = "us-central1";
+
+/** The governed authority for this surface. Registered `active: false`; see resolveActorFacts. */
+const CREDENTIAL_RESET_CAPABILITY = "admin.credentialReset.initiate";
 
 function mapError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
@@ -115,27 +119,36 @@ export async function resolveTargetFacts(targetUid: string): Promise<commands.Ta
     uid: targetUid,
   });
 
-  // Final-active-recoverable-admin protection. If the target is an admin and no
-  // OTHER active admin roleAssignment exists, protect. Fail-safe: if the query
-  // cannot run, treat an admin target as final (protect).
-  const targetIsAdmin = userData?.role === "admin";
-  let isFinalActiveAdmin = false;
-  if (targetIsAdmin) {
-    const activeAdmins = await db
-      .collection("roleAssignments")
-      .where("roleId", "==", "admin")
-      .where("status", "==", "active")
-      .get()
-      .catch(() => null);
-    if (activeAdmins) {
-      const others = activeAdmins.docs.filter(
-        (d) => (d.data() as { principalUid?: unknown }).principalUid !== targetUid,
-      );
-      isFinalActiveAdmin = others.length === 0;
-    } else {
-      isFinalActiveAdmin = true;
-    }
-  }
+  // ════════════════════ FINAL-ACTIVE-RECOVERABLE-ADMIN PROTECTION ════════════════════
+  //
+  // Whether the TARGET is an administrator now comes from the authoritative governed Role
+  // assignments, never from `users/{uid}.role`. The two could disagree, and when they did this
+  // protection was evaluated against a person the platform no longer considers an administrator
+  // -- or skipped entirely for one it does, which is the direction that loses the last recoverable
+  // admin account.
+  //
+  // ONE QUERY answers both halves: every active admin assignment. The target holds Admin if any
+  // names them; they are the FINAL one if no other principal does.
+  //
+  // FAIL SAFE, in every direction. If the query cannot run, or returns something malformed, the
+  // target is PROTECTED rather than reset -- and there is deliberately no fallback to the legacy
+  // role, because a fallback is the old authority waiting for an error to reinstate it.
+  const activeAdmins = await db
+    .collection("roleAssignments")
+    .where("roleId", "==", "admin")
+    .where("status", "==", "active")
+    .get()
+    .catch(() => null);
+  // The JUDGEMENT is pure and lives with the other evaluators, where it is tested without a
+  // database; this adapter only fetches. Values are passed through UNFILTERED, malformed ones
+  // included: an entry the resolver cannot read is evidence about the population, and dropping
+  // it here would hand a clean-looking set to a function whose whole job is to distrust it.
+  const { isFinalActiveAdmin } = commands.resolveFinalActiveAdmin(
+    activeAdmins === null
+      ? null
+      : activeAdmins.docs.map((d) => (d.data() as { principalUid?: unknown }).principalUid),
+    targetUid,
+  );
 
   return {
     authExists,
@@ -168,8 +181,19 @@ export async function resolveActorFacts(actorUid: string): Promise<commands.Acto
   const db = getFirestore();
   const userSnap = await db.collection("users").doc(actorUid).get();
   const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : undefined;
-  const isAdmin = userData?.role === "admin";
   const userEmployeeId = userData?.employeeId;
+
+  // ════════════════════ THE ACTOR'S AUTHORITY IS A CAPABILITY ════════════════════
+  //
+  // This was `userData?.role === "admin"` -- the legacy string, read off a Firestore document,
+  // deciding who could reset another person's credentials. It was the last server-side
+  // authorization the platform answered from Firebase data rather than from EOS.
+  //
+  // `admin.credentialReset.initiate` is `active: false` and is excluded even from
+  // per-environment sandbox activation, so this resolves FALSE in every environment today and
+  // the command fails closed. Deliberate: activation is a separate production/security gate,
+  // and no legacy fallback exists to make an emulator authorize in the meantime.
+  const holdsCredentialResetCapability = await resolveCredentialResetCapability(actorUid);
 
   // Read the EXACT reciprocally-linked Employee document (governed userId back-link
   // only) and its authoritative employmentStatus. The pure resolver enforces the
@@ -198,11 +222,31 @@ export async function resolveActorFacts(actorUid: string): Promise<commands.Acto
   return {
     authExists,
     disabled,
-    isAdmin,
+    holdsCredentialResetCapability,
     hasEmployeeLink: link.hasEmployeeLink,
     employeeLinkReciprocal: link.employeeLinkReciprocal,
     employmentStatus: link.employmentStatus,
   };
+}
+
+/**
+ * Resolve the credential-reset capability for one principal. FAIL-CLOSED.
+ *
+ * A resolver that throws is a DENIAL, never an allow. A capability check whose error path lets
+ * the caller through is worse than no check at all, because it looks like one -- and this
+ * particular caller is asking to reset somebody else's credentials.
+ */
+async function resolveCredentialResetCapability(principalUid: string): Promise<boolean> {
+  try {
+    const { decisions } = await resolveEffectiveAccess({
+      principalUid,
+      permissionIds: [CREDENTIAL_RESET_CAPABILITY],
+    });
+    return decisions[CREDENTIAL_RESET_CAPABILITY] === true;
+  } catch (err) {
+    console.error("[adminCredential] capability resolution failed", err);
+    return false;
+  }
 }
 
 // Single source of the actor-authorization gate for BOTH callables: the deployed

@@ -1,20 +1,20 @@
-// `users/{uid}.role` IS NOT AN EOS AUTHORITY — pinned structurally, and pinned HONESTLY.
+// `users/{uid}.role` MAKES ZERO AUTHORIZATION DECISIONS — server-side, repository-wide.
 //
-// The session projection carries that legacy string to the browser for nav gating and display,
-// which is the one thing that makes it dangerous: a field that crosses the wire looking like a role
-// is a field somebody will eventually branch on. This suite exists so that becomes a failing test
-// rather than a discovery.
+// This suite used to be an ALLOWLIST, because the claim could not honestly be zero: the
+// credential-reset surface still resolved its administrator from that legacy string. It does not
+// any more — the actor authorizes on `admin.credentialReset.initiate` and the target's admin status
+// comes from the governed Role assignments — so the shape changed with the fact rather than the
+// exception being quietly carried forward.
 //
-// ════════════════════ WHAT THIS DOES NOT CLAIM ════════════════════
+// ════════════════════ WHAT REMAINS, AND WHY IT IS NOT AN EXCEPTION ════════════════════
 //
-// It does not claim the number is zero. It is not. `adminCredentialCallables.ts` still resolves the
-// legacy administrator from `users/{uid}.role === "admin"` for the credential-reset surface, by
-// design and documented as legacy compatibility awaiting a 1:1 resolver swap. Asserting zero here
-// would be a validator that passes by describing something other than the codebase.
+// Exactly one file still reads the field: `employeeSessionProjection.ts`, which TRANSPORTS it to
+// the browser for nav gating and display. That is a different kind of thing from an exception to
+// this rule, and the difference is the whole point — it is named separately below and held to a
+// stricter contract than "please don't": it may not compare the value to anything.
 //
-// So the shape is an ALLOWLIST: every server-side consumer of that field is named below, and a new
-// one fails this test. What is forbidden outright is the governed machinery — capability
-// resolution, the read services, the write commands — consulting it at all.
+// A field that crosses the wire looking like a role is a field somebody eventually branches on.
+// This file is what makes that a failing test rather than a discovery.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -44,49 +44,61 @@ const rel = (p) => path.relative(SRC, p).split(path.sep).join("/");
 // and `env.role` are different fields entirely and are not what this guards.
 const LEGACY_ROLE_READ = /\buserData\??\.role\b|\buser\??\.role\s*===|\bdata\.role\s*===/;
 
-// The ONLY files permitted to touch it, each for a stated reason.
-const ALLOWED = new Map([
-  [
-    "access/employeeSessionProjection.ts",
-    "carries it to the client for nav gating and display, and makes no decision with it",
-  ],
-  [
-    "access/adminCredentialCallables.ts",
-    "the legacy compatibility administrator for the credential-reset surface, awaiting a 1:1 resolver swap",
-  ],
-  [
-    "access/adminCredentialCommands.ts",
-    "the pure half of the same legacy administrator resolution",
-  ],
-]);
+// A DECISION made from it: a comparison against a role name, or a branch on its truthiness.
+const LEGACY_ROLE_DECISION = /(?<!typeof )\brole\s*===\s*"|\brole\s*!==\s*"|if\s*\(\s*[A-Za-z.?]*\brole\b\s*\)/;
 
-test("no NEW server-side consumer of users/{uid}.role has appeared", () => {
-  const found = everyTsFile(SRC)
-    .filter((f) => LEGACY_ROLE_READ.test(code(readFileSync(f, "utf8"))))
-    .map(rel)
+// The single TRANSPORT site. Not an exception to the rule above -- it makes no decision, which the
+// last test proves separately and more strictly.
+const TRANSPORT_ONLY = "access/employeeSessionProjection.ts";
+
+const FILES = everyTsFile(SRC).map((f) => ({ path: rel(f), text: code(readFileSync(f, "utf8")) }));
+
+test("LEGACY ROLE AUTHORIZATION CONSUMERS: 0", () => {
+  // The headline number. Any file that both reads the legacy role AND decides something from it is
+  // an authorization consumer, and there must be none.
+  const consumers = FILES.filter((f) => LEGACY_ROLE_READ.test(f.text) && LEGACY_ROLE_DECISION.test(f.text))
+    .map((f) => f.path)
     .sort();
-  const unexpected = found.filter((f) => !ALLOWED.has(f));
   assert.deepEqual(
-    unexpected,
+    consumers,
     [],
-    `these files read the legacy users/{uid}.role and are not on the allowlist:\n  ${unexpected.join("\n  ")}\n` +
-      "If one of them is a legitimate legacy-compatibility surface, add it here WITH ITS REASON. " +
-      "If it is a governed authorization decision, it belongs on a capability instead.",
+    `these files make an authorization decision from users/{uid}.role:\n  ${consumers.join("\n  ")}\n` +
+      "Authority belongs on a governed capability or a Role assignment, never on that string.",
   );
 });
 
-test("the allowlist has no stale entries: every named file still reads the field", () => {
-  // A validator whose exceptions outlive the thing they excused stops being a validator. When one
-  // of these is finally migrated, this test is what says so.
-  for (const [file, why] of ALLOWED) {
-    const src = code(readFileSync(path.join(SRC, file), "utf8"));
-    assert.ok(LEGACY_ROLE_READ.test(src), `${file} no longer reads the legacy role -- remove it from the allowlist (${why})`);
-  }
+test("the field is READ in exactly one place, and that place only transports it", () => {
+  const readers = FILES.filter((f) => LEGACY_ROLE_READ.test(f.text)).map((f) => f.path).sort();
+  assert.deepEqual(
+    readers,
+    [TRANSPORT_ONLY],
+    "the only server-side read of the legacy role is the session projection that carries it to the client",
+  );
 });
 
-test("the GOVERNED machinery never consults it", () => {
+test("the credential-reset surface authorizes on a CAPABILITY", () => {
+  // Named explicitly because it was the last consumer, and because a rename without a real swap
+  // would look identical from the outside.
+  const callables = FILES.find((f) => f.path === "access/adminCredentialCallables.ts").text;
+  const commands = FILES.find((f) => f.path === "access/adminCredentialCommands.ts").text;
+  assert.ok(callables.includes("admin.credentialReset.initiate"), "the actor authority is the capability");
+  assert.ok(callables.includes("resolveEffectiveAccess"), "resolved through the governed access feed");
+  assert.ok(commands.includes("holdsCredentialResetCapability"), "the fact is the capability, not a role");
+  // And the old fact name is gone rather than kept alongside as a second way in.
+  assert.ok(!/\bisAdmin\b/.test(callables));
+  assert.ok(!/\bisAdmin\b/.test(commands));
+});
+
+test("target admin status comes from Role ASSIGNMENTS, not from the user document", () => {
+  const callables = FILES.find((f) => f.path === "access/adminCredentialCallables.ts").text;
+  assert.ok(callables.includes("roleAssignments"), "the authoritative source");
+  assert.ok(callables.includes("resolveFinalActiveAdmin"), "and the judgement is the pure resolver");
+});
+
+test("the GOVERNED machinery never consults the legacy role", () => {
   // Capability resolution, the read services and the write commands are where this field becoming
-  // authority would actually matter. None of them may look at it under any circumstance.
+  // authority would actually matter. Kept as a named list even though the global count is already
+  // zero: it is the list that would be checked first if the count ever moved.
   const governed = [
     "access/resolveEffectivePermission.ts",
     "access/effectiveAccessFeed.ts",
@@ -98,19 +110,19 @@ test("the GOVERNED machinery never consults it", () => {
     "reorderRequest/reorderTransitionCommands.ts",
   ];
   for (const file of governed) {
-    const src = code(readFileSync(path.join(SRC, file), "utf8"));
+    const src = FILES.find((f) => f.path === file).text;
     assert.ok(!LEGACY_ROLE_READ.test(src), `${file} must not consult users/{uid}.role`);
   }
 });
 
-test("the session projection returns the role but decides nothing with it", () => {
-  const src = code(readFileSync(path.join(SRC, "access/employeeSessionProjection.ts"), "utf8"));
-  // It is read once, off the user document, type-checked, and assigned. What it is never
-  // compared against is a ROLE NAME -- that comparison is the entire difference between carrying
-  // a value and honouring it. `typeof role === "string"` is a shape check and is not that.
+test("the session projection carries the role and decides nothing with it", () => {
+  const src = FILES.find((f) => f.path === TRANSPORT_ONLY).text;
+  // Read once, off the user document, type-checked, assigned. What it never does is compare the
+  // value to a ROLE NAME -- that comparison is the entire difference between carrying a value and
+  // honouring it. `typeof role === "string"` is a shape check and is not that.
   assert.ok(/const role = userData\?\.role \?\? null;/.test(src));
   assert.ok(
-    !/(?<!typeof )\brole\s*===\s*"/.test(src),
-    "the projection must never compare the legacy role against a role name",
+    !LEGACY_ROLE_DECISION.test(src),
+    "the projection must never make a decision from the legacy role",
   );
 });

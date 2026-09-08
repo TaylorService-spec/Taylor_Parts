@@ -129,7 +129,7 @@ ok("disabled outranks inactive employment (both neutral; disabled checked first)
 const AUTHZ_ACTOR = Object.freeze({
   authExists: true,
   disabled: false,
-  isAdmin: true,
+  holdsCredentialResetCapability: true,
   hasEmployeeLink: true,
   employeeLinkReciprocal: true,
   employmentStatus: "ACTIVE",
@@ -155,9 +155,9 @@ ok("actor: disabled/inactive account -> denied", () => {
   });
 });
 ok("actor: non-admin role -> denied", () => {
-  assert.deepStrictEqual(evaluateActorAuthorization(actor({ isAdmin: false })), {
+  assert.deepStrictEqual(evaluateActorAuthorization(actor({ holdsCredentialResetCapability: false })), {
     authorized: false,
-    category: "not-admin",
+    category: "missing-capability",
   });
 });
 ok("actor: missing employee link -> denied", () => {
@@ -174,7 +174,7 @@ ok("actor: non-reciprocal (malformed) link -> denied", () => {
 });
 ok("actor: no-account outranks disabled/non-admin (fail-closed order)", () => {
   assert.strictEqual(
-    evaluateActorAuthorization(actor({ authExists: false, disabled: true, isAdmin: false })).category,
+    evaluateActorAuthorization(actor({ authExists: false, disabled: true, holdsCredentialResetCapability: false })).category,
     "no-auth-account",
   );
 });

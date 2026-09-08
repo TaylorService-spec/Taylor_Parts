@@ -15,18 +15,26 @@ count, because an import count is what hid two whole categories of write the fir
 
 ## Scoreboard
 
-| Target | Status |
+Three boundaries, measured **separately**. Collapsing them into one number is how a gap hides:
+each is a different way Firebase could still be deciding something, and closing two of them
+says nothing about the third.
+
+| Boundary | Measure | Status |
+|---|---|---|
+| **A. Firestore Rule authority** | business authorization decisions in `firestore.rules` | **0** |
+| **B. Client Firestore business data** | direct governed reads / writes from the browser | **0** / **0** |
+| **C. Legacy `users/{uid}.role` authority** | server-side authorization consumers | **0** |
+
+| Supporting | Status |
 |---|---|
-| Direct client governed business **reads** | **0** |
-| Direct client governed business **writes** | **0** |
-| Firestore-based EOS authorization decisions | **0** |
 | `firestoreListSource` callers | **0** (file deleted) |
 | `useFirestoreCollection` callers | **0** (file deleted) |
 | `collectionStore` / `firebaseSafe` callers | **0** (both files deleted) |
 
 **Rules closure: READY.** Every governed business read and every governed business write goes
-through a trusted seam, and the shared client transports are deleted rather than dormant. The
-staged `firestore.rules` is still NOT DEPLOYED — that is a separate authorized action.
+through a trusted seam, the shared client transports are deleted rather than dormant, and no
+server-side authorization is decided by the legacy role. The staged `firestore.rules` is still
+NOT DEPLOYED — that is a separate authorized action.
 
 ### The count is now a test, not a claim
 
@@ -211,6 +219,55 @@ not contradiction.
 consumers — `adminCredentialCallables.ts` still resolves the legacy administrator for the
 credential-reset surface — it holds an ALLOWLIST with a reason per entry, fails on a new consumer,
 fails on a stale entry, and forbids the governed machinery from consulting the field at all.
+
+---
+## Boundary C — the last server-side legacy authority
+
+Two decisions came out of `users/{uid}.role === "admin"` in the credential-reset surface, and
+both were Firebase data answering an EOS question:
+
+| Decision | Was | Is |
+|---|---|---|
+| May this ACTOR reset somebody's credentials? | `users/{actorUid}.role === "admin"` | the governed capability **`admin.credentialReset.initiate`**, resolved server-side through `resolveEffectiveAccess` |
+| Is the TARGET an administrator worth protecting from losing the last recoverable account? | `users/{targetUid}.role === "admin"` | an **ACTIVE `roleAssignment` with `roleId: "admin"`** naming that principal |
+
+**No capability was invented and none was activated.** `admin.credentialReset.initiate` already
+existed in the catalog as the declared future contract. It remains `active: false`, and it is
+excluded even from per-environment *sandbox* activation — so the credential-reset command now
+fails closed in **every** environment. That is the intended state, not a regression: activation
+is a separate production/security gate.
+
+**The legacy check was replaced, not joined.** There is no OR between the old authority and the
+new one, and no fallback on error — an OR between an old authority and a new one is the old
+authority with extra steps, and a fallback is the old authority waiting for an error to
+reinstate it. A fully-linked, ACTIVE, enabled actor whose user document says `role: "admin"` is
+now REFUSED, proved against the real adapter in `adminCredentialActorFacts.test.mjs`.
+
+**The target protection fails safe in every direction.** The judgement was split out of the
+Firestore adapter into a pure `resolveFinalActiveAdmin`, because that is the half that can be
+wrong in a way no emulator round trip would reveal:
+
+| Situation | Result | Why |
+|---|---|---|
+| the assignment query cannot run | **PROTECT** | refusing a legitimate reset is recoverable; resetting the last administrator is not |
+| a malformed `principalUid` beside an admin target | **PROTECT** | the unreadable entry might BE the target, so it cannot be counted as somebody else |
+| two active assignments naming the same person | **PROTECT** | one administrator, not two — counting rows would clear the protection on the last account |
+| the target holds no admin assignment | no protection | absence is absence; none is invented |
+
+**One more transport removed on the way.** The eligible-user list projection carried the legacy
+`role` as a display column that no component rendered. A legacy role string travelling to the
+browser inside an *admin* surface's list is precisely the shape somebody later gates on, so it
+is gone. The session projection is the single place that transports the field, and that
+statement is now true rather than nearly true.
+
+### The proof changed shape with the fact
+
+`legacyRoleIsNotAuthority.test.mjs` used to hold an ALLOWLIST, because zero was not honest while
+the credential surface still consumed the field. It now asserts **0 authorization consumers**
+outright, plus: the field is READ in exactly one place, that place only transports it, the
+credential surface authorizes on the capability, and target admin status comes from role
+assignments. The transport site is named separately and held to a stricter contract than an
+exception — it may not compare the value to anything.
 
 ---
 ## What this workstream migrated

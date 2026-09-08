@@ -31,8 +31,8 @@
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 139,
-    "CLIENT_ONLY": 2,
+    "SERVER_REFERENCED": 140,
+    "CLIENT_ONLY": 1,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
   "guideStatuses": {},
@@ -3706,15 +3706,17 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
-        "serverReferences": [],
+        "serverReferences": [
+          "functions/src/access/adminCredentialCallables.ts"
+        ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/adminPasswordReset.js"
         ],
-        "serverReferenceCount": 0,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 3,
-        "evidence": "CLIENT_ONLY"
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": false,

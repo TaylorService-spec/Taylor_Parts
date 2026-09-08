@@ -28,7 +28,6 @@ import {
   listResetEligibleUsers,
   NOT_CONFIGURED_NATIVE_SEND,
   UnauthorizedActorError,
-  DeliveryUnavailableError,
 } from "../lib/access/adminCredentialCommands.js";
 
 admin.initializeApp({ projectId: "demo-authpr2actor" });
@@ -58,7 +57,22 @@ async function okAsync(name, fn) { await fn(); passed += 1; console.log("PASS --
 
 async function verdictFor(uid) {
   const facts = await resolveActorFacts(uid);
-  return { facts, verdict: evaluateActorAuthorization(facts) };
+  return {
+    facts,
+    verdict: evaluateActorAuthorization(facts),
+    // ══════════ WHY THERE IS A SECOND VERDICT ══════════
+    //
+    // The capability gate runs FIRST and is currently inactive everywhere, so every real verdict
+    // below is `missing-capability` and the ordering underneath it -- disabled beats inactive
+    // employment, a broken link beats employment status -- would stop being exercised at all.
+    // Deleting those cases would quietly drop coverage of the fail-closed order the day the
+    // capability is activated, which is precisely when it starts mattering.
+    //
+    // So each case asserts BOTH: the real verdict (denied, on the capability) and the verdict the
+    // SAME facts would produce for a capability holder. The second is a hypothetical about the
+    // evaluator, never a claim that anybody is authorized today.
+    verdictIfCapabilityHeld: evaluateActorAuthorization({ ...facts, holdsCredentialResetCapability: true }),
+  };
 }
 
 async function main() {
@@ -67,21 +81,34 @@ async function main() {
     assert.strictEqual(actorAuthorizationDeps().resolveActorFacts, resolveActorFacts);
   });
 
-  // -- exact userId + ACTIVE + enabled admin -> authorized --------------------
+  // ══════════ A LEGACY ADMIN DOCUMENT NO LONGER AUTHORIZES ══════════
+  //
+  // This case used to seed `users/{uid}.role = "admin"` and assert `authorized`. That was the
+  // last server-side authorization the platform answered from Firebase data, and it is gone: the
+  // actor now authorizes on the GOVERNED `admin.credentialReset.initiate` capability, which is
+  // registered `active: false` and excluded even from per-environment sandbox activation.
+  //
+  // So the fully-linked, ACTIVE, enabled, legacy-admin actor is DENIED, and the reason is
+  // missing-capability rather than anything about their employment or their linkage. That is the
+  // intended state, not a regression -- activation is a separate production/security gate, and
+  // this assertion is what would fail if a legacy fallback were ever restored to make the
+  // emulator surface authorize again.
   const okUid = uniq("ok-admin");
-  await okAsync("exact userId + employmentStatus ACTIVE + enabled admin -> authorized", async () => {
+  await okAsync("a legacy admin document is DENIED: authority is the capability, which is inactive", async () => {
     const emp = `${okUid}-emp`;
-    await seed({ uid: okUid, employeeId: emp, employee: { userId: okUid, employmentStatus: "ACTIVE" } });
-    const { facts, verdict } = await verdictFor(okUid);
+    await seed({ uid: okUid, role: "admin", employeeId: emp, employee: { userId: okUid, employmentStatus: "ACTIVE" } });
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(okUid);
     assert.deepStrictEqual(facts, {
       authExists: true,
       disabled: false,
-      isAdmin: true,
+      // Every OTHER fact resolves exactly as before -- the adapter still reads Auth state and the
+      // reciprocal Employee link correctly. Only the authority changed.
+      holdsCredentialResetCapability: false,
       hasEmployeeLink: true,
       employeeLinkReciprocal: true,
       employmentStatus: "ACTIVE",
     });
-    assert.deepStrictEqual(verdict, { authorized: true, category: "authorized" });
+    assert.deepStrictEqual(verdict, { authorized: false, category: "missing-capability" });
   });
 
   // -- disabled Auth account -> denied ---------------------------------------
@@ -89,9 +116,13 @@ async function main() {
     const uid = uniq("disabled");
     const emp = `${uid}-emp`;
     await seed({ uid, employeeId: emp, disabled: true, employee: { userId: uid, employmentStatus: "ACTIVE" } });
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.disabled, true);
-    assert.strictEqual(verdict.category, "disabled-actor");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "disabled-actor");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
 
   // -- non-ACTIVE / malformed / missing employmentStatus -> denied -----------
@@ -100,25 +131,37 @@ async function main() {
       const uid = uniq("emp-" + label);
       const emp = `${uid}-emp`;
       await seed({ uid, employeeId: emp, employee: { userId: uid, employmentStatus: status } });
-      const { verdict } = await verdictFor(uid);
-      assert.strictEqual(verdict.category, "inactive-employment");
+      const { verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
+      assert.strictEqual(verdictIfCapabilityHeld.category, "inactive-employment");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
     });
   }
   await okAsync("missing employmentStatus -> inactive-employment (null)", async () => {
     const uid = uniq("emp-missing");
     const emp = `${uid}-emp`;
     await seed({ uid, employeeId: emp, employee: { userId: uid } });
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.employmentStatus, null);
-    assert.strictEqual(verdict.category, "inactive-employment");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "inactive-employment");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
   await okAsync("malformed (non-string) employmentStatus -> inactive-employment (null)", async () => {
     const uid = uniq("emp-malformed");
     const emp = `${uid}-emp`;
     await seed({ uid, employeeId: emp, employee: { userId: uid, employmentStatus: 42 } });
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.employmentStatus, null);
-    assert.strictEqual(verdict.category, "inactive-employment");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "inactive-employment");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
 
   // -- reciprocal link uses employees.userId ONLY ----------------------------
@@ -126,41 +169,60 @@ async function main() {
     const uid = uniq("mismatch");
     const emp = `${uid}-emp`;
     await seed({ uid, employeeId: emp, employee: { userId: "someone-else", employmentStatus: "ACTIVE" } });
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.employeeLinkReciprocal, false);
     assert.strictEqual(facts.employmentStatus, null);
-    assert.strictEqual(verdict.category, "missing-or-nonreciprocal-employee-link");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "missing-or-nonreciprocal-employee-link");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
   await okAsync("alias-only authUid/uid with MISSING userId -> denied (aliases not honored)", async () => {
     const uid = uniq("alias");
     const emp = `${uid}-emp`;
     await seed({ uid, employeeId: emp, employee: { authUid: uid, uid, employmentStatus: "ACTIVE" } });
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.employeeLinkReciprocal, false, "authUid/uid must NOT authorize");
-    assert.strictEqual(verdict.category, "missing-or-nonreciprocal-employee-link");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "missing-or-nonreciprocal-employee-link");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
   await okAsync("missing employeeId on user doc -> no link", async () => {
     const uid = uniq("nolink");
     await seed({ uid }); // no employeeId, no employee doc
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.hasEmployeeLink, false);
-    assert.strictEqual(verdict.category, "missing-or-nonreciprocal-employee-link");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "missing-or-nonreciprocal-employee-link");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
   await okAsync("employeeId set but employee doc missing -> not reciprocal", async () => {
     const uid = uniq("empmissing");
     await seed({ uid, employeeId: `${uid}-emp` }); // employee doc not written
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.employeeLinkReciprocal, false);
-    assert.strictEqual(verdict.category, "missing-or-nonreciprocal-employee-link");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "missing-or-nonreciprocal-employee-link");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
 
-  // -- non-admin role --------------------------------------------------------
-  await okAsync("non-admin role -> not-admin", async () => {
+  // -- no capability, whatever the legacy role says --------------------------
+  await okAsync("a non-admin legacy role is denied for the SAME reason as an admin one", async () => {
+    // The point is that the legacy role no longer distinguishes anybody: "admin" and "technician"
+    // now reach the identical verdict, which is what it means for the field to have stopped
+    // being an authority.
     const uid = uniq("tech");
     const emp = `${uid}-emp`;
     await seed({ uid, role: "technician", employeeId: emp, employee: { userId: uid, employmentStatus: "ACTIVE" } });
-    const { verdict } = await verdictFor(uid);
-    assert.strictEqual(verdict.category, "not-admin");
+    const { verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
+    assert.strictEqual(verdict.category, "missing-capability");
   });
 
   // -- missing Auth account (Auth lookup miss) -> denied ---------------------
@@ -169,27 +231,43 @@ async function main() {
     const emp = `${uid}-emp`;
     // Firestore records exist but the Auth user is never created; getUser misses.
     await seed({ uid, employeeId: emp, createAuth: false, employee: { userId: uid, employmentStatus: "ACTIVE" } });
-    const { facts, verdict } = await verdictFor(uid);
+    const { facts, verdict, verdictIfCapabilityHeld } = await verdictFor(uid);
     assert.strictEqual(facts.authExists, false);
-    assert.strictEqual(verdict.category, "no-auth-account");
+    assert.strictEqual(verdictIfCapabilityHeld.category, "no-auth-account");
+    // And today the real verdict DENIES. Not necessarily on the capability: authExists and
+    // disabled are checked before it, so an absent or disabled Auth account still denies for its
+    // own earlier reason. What no case may be is authorized.
+    assert.strictEqual(verdict.authorized, false);
   });
 
-  // -- both callables' command cores use the tested adapter path -------------
-  // Authorized admin passes the real actor gate: initiate then fails only on the
-  // unconfigured send (proving the gate was passed), and list returns rows.
-  await okAsync("initiate uses the real adapter: authorized admin passes actor gate", async () => {
+  // ══════════ BOTH CALLABLES ARE INERT END TO END ══════════
+  //
+  // These two cases used to seed a legacy admin, watch them PASS the actor gate, and assert that
+  // initiate then failed only on the unconfigured send. That is no longer reachable: with the
+  // capability inactive, `okUid` -- fully linked, ACTIVE, enabled, and `role: "admin"` in
+  // Firestore -- is refused at the gate by both callables.
+  //
+  // WHAT THIS COSTS, said plainly rather than quietly dropped: the end-to-end path BELOW the
+  // actor gate (reaching the unconfigured send, listing rows) is no longer exercised through the
+  // real adapter, and cannot be until the capability is activated at its own gate. The injected-
+  // facts suite (adminCredentialCommands.test.mjs) still covers that path with the gate satisfied
+  // by construction, so the coverage moved rather than vanished.
+  await okAsync("initiate refuses a legacy admin through the real adapter", async () => {
     await assert.rejects(
       initiateAdminPasswordReset(
         { actorUid: okUid, targetUid: uniq("target"), idempotencyKey: freshKey() },
         { ...actorAuthorizationDeps(), resolveTargetFacts: async () => ({ authExists: false }), nativeSend: NOT_CONFIGURED_NATIVE_SEND },
       ),
-      (e) => e instanceof DeliveryUnavailableError,
-      "authorized actor should pass the gate and reach the (unconfigured) send check",
+      (e) => e instanceof UnauthorizedActorError,
+      "a legacy admin document must not authorize a credential reset",
     );
   });
-  await okAsync("list uses the real adapter: authorized admin gets rows", async () => {
-    const rows = await listResetEligibleUsers({ actorUid: okUid }, actorAuthorizationDeps());
-    assert.ok(Array.isArray(rows));
+  await okAsync("list refuses a legacy admin through the real adapter", async () => {
+    await assert.rejects(
+      listResetEligibleUsers({ actorUid: okUid }, actorAuthorizationDeps()),
+      (e) => e instanceof UnauthorizedActorError,
+      "the eligible-user list is a governed read, not a legacy-admin one",
+    );
   });
   // Denied admin (disabled) is rejected by BOTH callables via the real adapter.
   const badUid = uniq("bad-disabled");
