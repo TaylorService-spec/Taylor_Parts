@@ -180,6 +180,16 @@ export {
   rejectAccessRequest,
 } from "./access/accessCommandCallables";
 
+// WORK ORDERS -- the ONE scoped read seam. Not a governed list source: work-order read authority
+// admits a GLOBAL population and a SELF (assigned-technician) population by different predicates,
+// and a global source would widen or narrow one of them. The technician identity is derived
+// server-side from request.auth.uid and forced into the query; no client sends one.
+export {
+  readScopedWorkOrders,
+  countScopedWorkOrders,
+  readScopedWorkOrderById,
+} from "./workOrder/scopedWorkOrderCallables";
+
 // CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a
 // workflow: one atomic batch create, gated on crm.contact.create.
 export { importContacts } from "./crm/contactImportCommand";

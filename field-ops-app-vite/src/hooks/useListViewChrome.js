@@ -5,6 +5,7 @@ import { selectableSavedViews } from "../metadata/listViewSummary.js";
 import { buildQueryDescriptor } from "../metadata/listRuntime.js";
 import { makeCriterion } from "../metadata/listUrlState.js";
 import { governedFilterName, governedSourceSpec } from "../metadata/callableListSource.js";
+import { countScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
 
 // SAVED VIEWS AND AN HONEST COUNT — the two things every list header needs, once.
 //
@@ -100,7 +101,11 @@ export function useListViewChrome(def, entity, criteria, apply) {
     // expose no count) -- honestly has no count available and renders none.
     const governedSourceId = entity?.readVia === "CALLABLE" ? entity?.readCallable ?? null : null;
     const governedSpec = governedSourceId ? governedSourceSpec(governedSourceId) : null;
-    if (!governedSpec && (entity?.readVia !== "CLIENT_DIRECT" || !entity?.collection)) return undefined;
+    // Work Orders count through their own scoped seam -- same authority and same scope as the list
+    // above them, so the number never disagrees with the rows. A technician sees the count of THEIR
+    // work; a global reader sees all of it. Neither is told which, because neither asked.
+    const scopedWorkOrder = governedSourceId === "readScopedWorkOrders";
+    if (!governedSpec && !scopedWorkOrder && (entity?.readVia !== "CLIENT_DIRECT" || !entity?.collection)) return undefined;
 
     const { descriptor, errors } = buildQueryDescriptor(def, entity, {
       filters: criteria?.filters ?? [],
@@ -112,6 +117,14 @@ export function useListViewChrome(def, entity, criteria, apply) {
 
     (async () => {
       try {
+        if (scopedWorkOrder) {
+          const params = {};
+          for (const cf of descriptor.filters ?? []) params[governedFilterName(cf.fieldId, cf.operator)] = cf.value;
+          const res = await countScopedWorkOrders({ mode: "index", params });
+          // NULL on failure, never 0 -- a zero here would state that there is no work.
+          if (!cancelled) setTotal(res.ok && typeof res.count === "number" ? res.count : null);
+          return;
+        }
         if (governedSpec) {
           // Named filters and a source id. No collection, no field, no operator -- the same
           // division the read uses, so a count cannot reach past what the read may see.

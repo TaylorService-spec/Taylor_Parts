@@ -44,7 +44,12 @@ export const workOrderEntity = makeEntityDefinition({
   label: "Work Order",
   labelPlural: "Work Orders",
   collection: WORK_ORDERS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
+  // Read through the SCOPED work-order seam, not a client-direct query and not a governed list
+  // source. Work-order read authority admits a global population and a self (assigned-technician)
+  // population by different predicates; the server resolves which applies from request.auth.uid and
+  // forces the assignment predicate in. The browser names a MODE, never a scope.
+  readVia: "CALLABLE",
+  readCallable: "readScopedWorkOrders",
   // Reference only, deliberately. A Work Order is called by its number, and the nearest
   // thing to a name — the complaint text — is OPTIONAL on the record. An identity field
   // that is frequently absent is worse than none: it licenses a surface to fall back to

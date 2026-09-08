@@ -32,14 +32,18 @@
 // Everything else — which filters are legal, the total sort order, the bound, the +1 truncation
 // probe, the cursor rule — belongs to the runtime and is not re-implemented here. This module owns
 // the row PROJECTION and nothing more.
-import { fetchPage } from "../metadata/firestoreListSource.js";
+// THROUGH THE CALLABLE SOURCE. The Part entity reads via the governed `metadataParts` source now;
+// pointing this at the Firestore source would issue a client-direct query against a collection the
+// staged Rules deny, and would have failed the moment those Rules deployed rather than at review.
+import { fetchPage } from "../metadata/callableListSource.js";
 import { toPartListView } from "../domain/partMasterView";
 
 /**
  * Fetch one page described by a bounded query descriptor.
  *
  * @param descriptor from metadata/listRuntime.buildQueryDescriptor
- * @param cursor     the `nextCursor` from a previous call (a Firestore document snapshot)
+ * @param cursor     the `nextCursor` from a previous call. OPAQUE: it was a Firestore document
+ *                   snapshot and is now a server-issued string, and this module never inspected it.
  *
  * Resolves `{ ok:true, parts, invalid, hasMore, nextCursor }` or `{ ok:false, code }` where code is
  * "permission-denied" (denied by Rules) or "unavailable".
@@ -54,8 +58,9 @@ export async function fetchPartMasterPage({ descriptor = null, cursor = null } =
       ok: true,
       ...view,
       hasMore: page.hasMore,
-      // A Firestore CURSOR IS A DOCUMENT, not a set of values. Passing it back opaquely means this
-      // screen never has to know that, and never has to reconstruct one from rendered fields.
+      // The cursor is OPAQUE and always was. It changed from a Firestore document snapshot to a
+      // server-issued token when this moved to the governed source, and nothing here noticed --
+      // which is the property that made the change safe.
       nextCursor: page.nextCursorDoc,
     };
   } catch (err) {

@@ -156,6 +156,45 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "workOrder",
     action: "create",
   }),
+  // ══════════════ WORK ORDER AND TECHNICIAN READS (Owner ruling 2026-09-07) ══════════════
+  //
+  // FOUR capabilities, in two pairs, because the authority they replace is not one authority. Each
+  // legacy rule admitted a GLOBAL population and a SELF population by different predicates, and
+  // collapsing either pair into a single id would make "may read every work order" and "may read
+  // the ones assigned to me" indistinguishable to the resolver -- which is the exact widening this
+  // migration exists to prevent.
+  //
+  // The `.self` / `.assigned` half is not a weaker version of the global one. It carries a SCOPE the
+  // server derives from request.auth.uid and forces into the query; a holder of it can never obtain
+  // the global read by omitting a filter, because the predicate is not theirs to omit.
+  Object.freeze({
+    id: "workOrder.read",
+    description:
+      "Read any Work Order. The unscoped read: replaces firestore.rules' isAdminOrDispatcher() branch on fieldops_wos. Confers no write and no transition.",
+    resource: "workOrder",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "workOrder.assigned.read",
+    description:
+      "Read ONLY the Work Orders assigned to the authenticated principal's own technician identity. Scope is server-derived from request.auth.uid and forced into every query; the caller cannot omit, widen or substitute it. Replaces firestore.rules' isTechnician() && isOwnTechnician(assignedTechId) branch. Confers no unscoped read.",
+    resource: "workOrder",
+    action: "read.assigned",
+  }),
+  Object.freeze({
+    id: "service.technician.read",
+    description:
+      "Read any technician profile record. Replaces firestore.rules' isAdminOrDispatcher() branch on fieldops_technicians. Confers no write.",
+    resource: "technician.record",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "service.technician.self.read",
+    description:
+      "Read ONLY the technician profile mapped to the authenticated principal. Scope is server-derived; the caller never names which technician. Replaces firestore.rules' techId == callerTechnicianId() branch. Confers no directory read and no write.",
+    resource: "technician.record",
+    action: "read.self",
+  }),
   Object.freeze({
     id: "workOrder.transition",
     description:

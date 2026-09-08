@@ -1,5 +1,6 @@
 import { interpretPage } from "./listRuntime.js";
 import { GOVERNED_READS } from "../access/governedReadRegistry.ts";
+import { readScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
 
 // Executes a query descriptor against a trusted READ CALLABLE instead of Firestore. The
 // counterpart to firestoreListSource.js's fetchPage, for the entities that declare
@@ -214,6 +215,7 @@ export function governedSourceSpec(sourceId) {
  * keeping a second list that could drift.
  */
 export function isKnownReadCallable(name) {
+  if (name === SCOPED_WORK_ORDER_CALLABLE) return true;
   return (
     typeof name === "string" &&
     (Object.prototype.hasOwnProperty.call(CALLABLE_SOURCES, name) ||
@@ -229,6 +231,9 @@ export function isKnownReadCallable(name) {
  * ever reaches a live request.
  */
 export function readCallableSourceInfo(name) {
+  // The scoped work-order seam serves an INDEX list and adds its own scope; like a governed source
+  // it is neither always-scoped nor never-scoped from the list runtime is point of view.
+  if (name === SCOPED_WORK_ORDER_CALLABLE) return { scopedWorkOrder: true, listKey: "items", scoped: "OPTIONAL" };
   if (!isKnownReadCallable(name)) return null;
   return CALLABLE_SOURCES[name] ?? GOVERNED_SOURCES[name];
 }
@@ -316,7 +321,76 @@ async function fetchGovernedPage(descriptor, governed, cursor) {
   return { ...page, nextCursorDoc: data?.nextCursor ?? null };
 }
 
+
+// ══════════════════════ THE SCOPED WORK-ORDER SEAM ══════════════════════
+//
+// One callable name, standing for a read whose authority is not global. It is NOT in
+// CALLABLE_SOURCES and NOT in GOVERNED_SOURCES because it is neither: it takes a registered MODE
+// plus that mode's declared parameters, and the server adds an assignment predicate the caller
+// neither supplies nor can see.
+const SCOPED_WORK_ORDER_CALLABLE = "readScopedWorkOrders";
+
+/**
+ * Fetch one page of the metadata Work Order list through the scoped seam.
+ *
+ * Maps the descriptor onto the seam's `index` mode. The descriptor's own filters become that mode's
+ * declared parameters by NAME -- `status` / `statusIn` / `customerId` -- exactly as the governed
+ * path does; the field and the operator stay the server's.
+ *
+ * THERE IS NO SCOPE PARAMETER TO SET. Whether this reader sees every work order or only their own
+ * assigned ones is decided server-side from request.auth.uid. The list runtime cannot tell the
+ * difference, and must not: a technician's Work Orders list is their assigned work, which is what
+ * `firestore.rules` produced for them before this seam existed.
+ */
+async function fetchScopedWorkOrderPage(descriptor) {
+  const params = {};
+  for (const f of descriptor.filters ?? []) {
+    const name = governedFilterName(f.fieldId, f.operator);
+    if (Object.prototype.hasOwnProperty.call(params, name)) {
+      throw new Error(
+        `callableListSource: two filters on this list both resolve to the work-order parameter "${name}"`,
+      );
+    }
+    params[name] = f.value;
+  }
+
+  // The client-side tiebreaker is dropped for the same reason as on the governed path: the seam
+  // applies its own document-id tiebreak server-side, and forwarding `__name__` would ask for a
+  // sort no mode registers.
+  const primary = (descriptor.sort ?? []).find((s) => s.fieldId !== "__name__") ?? null;
+
+  const page = await readScopedWorkOrders({
+    mode: "index",
+    params,
+    ...(primary ? { sortKey: governedSortKey(primary.fieldId, primary.direction) } : {}),
+    pageSize: descriptor.pageSize,
+  });
+
+  if (!page.ok) {
+    // Normalized to the SAME code shape a Firestore read produced, so useMetadataList's existing
+    // denied/unavailable split keeps working without learning a third error dialect.
+    const err = new Error("scoped work order read failed");
+    err.code = page.result === "DENIED" ? "permission-denied" : "unavailable";
+    throw err;
+  }
+
+  // `hasMore` is the server's observed probe. Re-appended as a sentinel row only so interpretPage's
+  // single truncation rule is reused rather than a second one written here; it never reaches a
+  // rendered row.
+  const interpreted = interpretPage(descriptor, page.hasMore ? [...page.items, Object.freeze({ __probe: true })] : page.items);
+  // No cursor: the seam pages by bound, and the metadata Work Order list has never requested a
+  // second page through a cursor.
+  return { ...interpreted, nextCursorDoc: null };
+}
+
 export async function fetchPage(descriptor, { cursorDoc = null } = {}) {
+  // WORK ORDERS SPEAK A DIFFERENT VOCABULARY, and that is the point rather than an inconsistency.
+  // Every governed source is a global capability check; the work-order read is not, so its seam
+  // takes a registered MODE and adds a scope predicate the caller neither supplies nor can see.
+  // Routing it here keeps the entity/list dispatch, buildQueryDescriptor and useMetadataList
+  // unchanged -- the list runtime never learns that this one read is scoped.
+  if (descriptor?.readCallable === SCOPED_WORK_ORDER_CALLABLE) return fetchScopedWorkOrderPage(descriptor);
+
   const governed = descriptor?.readCallable ? GOVERNED_SOURCES[descriptor.readCallable] : null;
   if (governed) return fetchGovernedPage(descriptor, governed, cursorDoc);
 

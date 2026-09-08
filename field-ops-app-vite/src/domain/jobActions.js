@@ -1,131 +1,44 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { db, auth } from "../firebase/firebase";
-import { jobsStore, techniciansStore } from "../firebase/collectionStore";
-import { canTransitionJob } from "./jobWorkflow";
-import { JOB_STATUS, TECH_STATUS, JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "./constants";
-import { AssignmentConflictError } from "./errors";
-import { isWriteBlocked } from "../config/env";
+import { techniciansStore } from "../firebase/collectionStore";
+import { TECH_STATUS } from "./constants";
 
-// The only place allowed to write job/technician data. Components must call
-// these instead of touching jobsStore/techniciansStore or Firestore directly,
-// so every transition goes through canTransitionJob().
+// What is left of the legacy `fieldops_jobs` surface: one function.
 //
-// Jobs never own customer data directly -- they resolve upward via
-// workOrderId: job -> workOrder -> customer. The canonical WO is fieldops_wos (ADR-002).
+// ============================ WHAT WAS DELETED, AND WHY ============================
 //
-// createJob()/createTechnician() write through jobsStore/techniciansStore
-// (firebase/collectionStore.js), which already gate through
-// lib/firebaseSafe.js. assignJob()/updateJobStatus() write via
-// runTransaction()/tx.update() directly (for the atomicity guarantees
-// described below), which firebaseSafe.js's safe*Doc wrappers don't
-// cover -- so each checks isWriteBlocked() itself, before ever opening a
-// transaction, returning the same { blocked: true } sentinel.
-
-// address: { street, city, state, zip } -- optional, additive field.
-// `geo` (lat/lng) is intentionally not implemented yet; reserved for a
-// future sprint once a geocoding source is chosen. Backward compatible:
-// omitting address entirely (as every call site before this field
-// existed did) still works, jobs simply have no address recorded.
-export function createJob(customer, description, address = null) {
-  return jobsStore.add({
-    customer,
-    description,
-    status: JOB_STATUS.OPEN,
-    technicianId: null,
-    workOrderId: null,
-    address,
-  });
-}
-
+// This module used to export four functions. Three were DEAD CODE, measured 2026-09-07:
+//
+//   createJob()        no importer anywhere in src/ or test/
+//   assignJob()        no importer. Dispatch.jsx's own header records why -- it "IS now the
+//                      canonical Work Order dispatch surface", assigns through the governed
+//                      `transitionWorkOrder` transition against fieldops_wos, and says in as many
+//                      words that "the legacy assignJob() client transaction against fieldops_jobs
+//                      is no longer used here".
+//   updateJobStatus()  no importer. completionFlow.test.mjs already asserts that no legacy job
+//                      write path remains in the completion flow.
+//
+// Those three carried the last two client-direct Firestore `runTransaction` calls in the
+// application. They were DELETED rather than migrated: minting permanent trusted-command authority
+// -- and the capability grants that go with it -- for a surface nothing calls would create
+// authority for dead product, which is worse than the direct writes it replaced.
+//
+// The transitions they encoded are recorded in docs/governance/workflow-action-census.md as
+// measurement, so the later Workflows workstream starts from what this code actually did rather
+// than from memory of it.
+//
+// ============================ WHAT SURVIVES ============================
+//
+// createTechnician() has exactly one live caller (modules/technicians/Technicians.jsx). It writes
+// through techniciansStore, which gates on lib/firebaseSafe.js's demo/panic write block, and is
+// therefore still a CLIENT-DIRECT write to `fieldops_technicians`.
+//
+// It is the LAST direct client governed business write in the application, and it is NOT migrated
+// here: no Contact-style `service.technician.create` capability exists, and minting one plus
+// granting it to a Role is an authorization-definition decision rather than a migration step. The
+// parity table is in docs/governance/capability-parity-proposals.md.
+//
+// `status: available` is not a default this file chose -- the retired Rule REQUIRED it
+// (`allow create: if isAdminOrDispatcher() && request.resource.data.status == 'available'`), and a
+// trusted command replacing this must keep enforcing it server-side.
 export function createTechnician(name, phone) {
   return techniciansStore.add({ name, phone, status: TECH_STATUS.AVAILABLE });
-}
-
-export async function updateJobStatus(job, nextStatus) {
-  if (!auth.currentUser) {
-    throw new Error("Unauthenticated write attempt blocked");
-  }
-
-  if (isWriteBlocked()) {
-    console.warn("WRITE BLOCKED (updateJobStatus)", job.id, nextStatus);
-    return { blocked: true };
-  }
-
-  try {
-    return await runTransaction(db, async (tx) => {
-      const jobRef = doc(db, JOBS_COLLECTION, job.id);
-      const jobSnap = await tx.get(jobRef);
-
-      if (!jobSnap.exists()) {
-        throw new Error("Job not found");
-      }
-
-      const currentStatus = jobSnap.data().status;
-
-      if (!canTransitionJob(currentStatus, nextStatus)) {
-        throw new Error(`Invalid transition: ${currentStatus} → ${nextStatus}`);
-      }
-
-      const technicianId = jobSnap.data().technicianId;
-      let techRef = null;
-
-      if (nextStatus === JOB_STATUS.COMPLETE && technicianId) {
-        techRef = doc(db, TECHNICIANS_COLLECTION, technicianId);
-        await tx.get(techRef);
-      }
-
-      tx.update(jobRef, { status: nextStatus });
-
-      if (techRef) {
-        tx.update(techRef, { status: TECH_STATUS.AVAILABLE });
-      }
-    });
-  } catch (e) {
-    console.error("Firestore write failed:", e);
-    throw e;
-  }
-}
-
-export async function assignJob(job, technician) {
-  if (!auth.currentUser) {
-    throw new Error("Unauthenticated write attempt blocked");
-  }
-
-  if (!job || !technician) throw new Error("Missing job or technician");
-
-  if (!canTransitionJob(job.status, JOB_STATUS.ASSIGNED)) {
-    throw new Error(`Invalid transition: ${job.status} → assigned`);
-  }
-
-  if (isWriteBlocked()) {
-    console.warn("WRITE BLOCKED (assignJob)", job.id, technician.id);
-    return { blocked: true };
-  }
-
-  try {
-    return await runTransaction(db, async (tx) => {
-      const techRef = doc(db, TECHNICIANS_COLLECTION, technician.id);
-      const jobRef = doc(db, JOBS_COLLECTION, job.id);
-
-      const techSnap = await tx.get(techRef);
-
-      if (!techSnap.exists() || techSnap.data().status !== TECH_STATUS.AVAILABLE) {
-        throw new AssignmentConflictError("Technician no longer available");
-      }
-
-      tx.update(jobRef, {
-        technicianId: technician.id,
-        status: JOB_STATUS.ASSIGNED,
-      });
-
-      tx.update(techRef, {
-        status: TECH_STATUS.ON_JOB,
-      });
-    });
-  } catch (e) {
-    if (!(e instanceof AssignmentConflictError)) {
-      console.error("Firestore write failed:", e);
-    }
-    throw e;
-  }
 }

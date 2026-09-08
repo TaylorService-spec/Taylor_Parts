@@ -117,6 +117,14 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "crm.contact.create",
   "supplier.record.read",
   "supplier.catalog.read",
+  // Owner ruling 2026-09-07, the GLOBAL half of the work-order and technician reads. Both replace
+  // an isAdminOrDispatcher() branch, so both belong in the shared base: same population, new venue.
+  // Their SELF counterparts (workOrder.assigned.read, service.technician.self.read) are granted to
+  // the technician Role only and deliberately do NOT appear here -- a global reader has no use for
+  // a scope that narrows to their own technician identity, and admin/dispatcher principals need not
+  // have one at all.
+  "workOrder.read",
+  "service.technician.read",
   // The governed replacement for firestore.rules' `isAdminOrDispatcher()` gate on `employees`.
   // In the SHARED base deliberately: that predicate admits admin AND dispatcher today, and this
   // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in
@@ -327,6 +335,12 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: true,
   permissions: [
+    // Owner ruling 2026-09-07, the SELF half. Each carries a scope the SERVER derives from
+    // request.auth.uid and forces into the query -- holding one confers no unscoped read, and a
+    // holder cannot reach the global read by omitting a filter, because the predicate is not theirs
+    // to omit. Granted to technician ONLY, matching the legacy predicates exactly.
+    "workOrder.assigned.read",
+    "service.technician.self.read",
     "workOrder.transition",
     "reorder.request.read.own",
     "reorder.request.startPurchasing",
