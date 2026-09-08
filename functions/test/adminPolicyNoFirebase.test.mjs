@@ -19,7 +19,19 @@ import { join } from "node:path";
 const POLICY_DIR = "src/adminPolicy";
 
 /** Files permitted to read Firestore for MIGRATION only. Each needs a reason, and today there are none. */
-const TRANSITIONAL_ADAPTERS = Object.freeze({});
+const TRANSITIONAL_ADAPTERS = Object.freeze({
+  "src\\adminPolicy\\migration\\firestorePolicyParityHarness.ts":
+    "MIGRATION PARITY ONLY, and READ ONLY. It compares the legacy Firestore roleAssignments and " +
+    "users/{uid}.accessVersion against the PostgreSQL policy so a cutover can be proved rather than " +
+    "assumed. Nothing in the running system calls it, it returns no Firestore data as policy, and " +
+    "it has no write path. DELETE it -- and this entry -- once every tenant reports IN_PARITY and " +
+    "the legacy collection is unread.",
+});
+
+/** Windows and POSIX spell the same path differently; the allowlist should not have to care. */
+const isTransitional = (file) =>
+  Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file) ||
+  Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file.replace(/\//g, "\\"));
 
 /**
  * Source with comments removed.
@@ -60,7 +72,7 @@ const FORBIDDEN = [
 test("no Admin policy module imports Firebase or Firestore", () => {
   const offences = [];
   for (const file of sourceFiles(POLICY_DIR)) {
-    if (Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file)) continue;
+    if (isTransitional(file)) continue;
     const source = readFileSync(file, "utf8");
     for (const { pattern, what } of FORBIDDEN) {
       if (pattern.test(source)) offences.push(`${file}: ${what}`);
@@ -75,7 +87,7 @@ test("no Admin policy module writes a Firestore document", () => {
   const WRITES = [/\.\s*set\s*\(/, /\.\s*add\s*\(/, /\.\s*update\s*\(/, /\.\s*delete\s*\(/, /\bwriteBatch\s*\(/, /\brunTransaction\s*\(/];
   const offences = [];
   for (const file of sourceFiles(POLICY_DIR)) {
-    if (Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file)) continue;
+    if (isTransitional(file)) continue;
     const source = readFileSync(file, "utf8");
     // `tx.set...` on the policy port is this subsystem's own vocabulary and is not a Firestore call,
     // so the check is anchored to a Firestore-shaped receiver rather than to the verb alone.
@@ -99,6 +111,10 @@ test("the policy modules name no Firestore collection as their persistence", () 
   const COLLECTIONS = ["roleAssignments", "users/", '"users"'];
   const offences = [];
   for (const file of sourceFiles(POLICY_DIR)) {
+    // The parity harness NAMES these collections on purpose -- reading them is its entire job, and
+    // it is the one file allowed to. Its allowlist entry carries the reason and the condition under
+    // which it gets deleted.
+    if (isTransitional(file)) continue;
     const source = readFileSync(file, "utf8");
     // Comments are where these SHOULD appear -- explaining what was replaced and why. Strip them and
     // check the code, so the reasoning stays and the coupling cannot come back.
@@ -205,4 +221,58 @@ test("the guard would actually catch an offence", () => {
   assert.ok(hits.includes('import from "firebase-admin/firestore"'), "catches the import");
   assert.ok(hits.includes("a getFirestore() call"), "catches the call");
   assert.ok(hits.includes("a Firestore collection() call"), "catches the collection access");
+});
+
+// ════════════════════ the transitional allowlist ════════════════════
+//
+// An allowlist is a hole in a guard. These keep it the size it was meant to be.
+
+test("every transitional entry names a real file and carries a reason", () => {
+  const files = new Set(sourceFiles(POLICY_DIR).map((f) => f.replace(/\//g, "\\")));
+  for (const [file, reason] of Object.entries(TRANSITIONAL_ADAPTERS)) {
+    assert.ok(files.has(file), `${file} is allowlisted but does not exist -- stale entry`);
+    assert.ok(reason.length > 80, `${file}'s reason must explain itself, not just assert`);
+    assert.match(reason, /DELETE/, `${file}'s reason must say when it goes away`);
+  }
+});
+
+test("the transitional harness is READ ONLY against Firestore", () => {
+  // The allowlist buys it a READ. It does not buy it a write, and the difference is the whole
+  // reason the migration cannot quietly become a dual-write.
+  // ANCHORED TO A FIRESTORE-SHAPED RECEIVER, like the sibling check above. A bare verb list is too
+  // broad to be useful here: `principals.add(uid)` is a JavaScript Set, and failing on it would
+  // train somebody to loosen the guard rather than fix a real write.
+  const firestoreShaped = /\b(?:doc|collection|docRef|batch|firestore)\s*(?:\([^)]*\))?\s*\./;
+  const WRITE_VERBS = [/set\s*\(/, /add\s*\(/, /update\s*\(/, /delete\s*\(/, /create\s*\(/];
+  for (const file of Object.keys(TRANSITIONAL_ADAPTERS)) {
+    const code = stripComments(readFileSync(file.replace(/\\/g, "/"), "utf8"));
+    for (const verb of WRITE_VERBS) {
+      const combined = new RegExp(firestoreShaped.source + verb.source);
+      assert.equal(combined.test(code), false, `${file}: a Firestore write appears in a read-only harness`);
+    }
+    for (const bulk of [/\bwriteBatch\s*\(/, /\brunTransaction\s*\(/, /\bbulkWriter\s*\(/]) {
+      assert.equal(bulk.test(code), false, `${file}: a Firestore bulk writer appears in a read-only harness`);
+    }
+  }
+});
+
+test("NOTHING in the running system imports the transitional harness", () => {
+  // A dual read is what this becomes if a resolver, a command or a callable starts calling it. The
+  // check is repo-wide rather than directory-wide, because the import that would matter most is the
+  // one from outside this subsystem.
+  const roots = ["src", "../field-ops-app-vite/src"];
+  const offenders = [];
+  const walk = (dir) => {
+    let entries = [];
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const entry of entries) {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) { walk(path); continue; }
+      if (!/\.(ts|tsx|js|jsx|mjs)$/.test(entry)) continue;
+      if (path.includes("firestorePolicyParityHarness")) continue;
+      if (/firestorePolicyParityHarness/.test(readFileSync(path, "utf8"))) offenders.push(path);
+    }
+  };
+  for (const root of roots) walk(root);
+  assert.deepEqual(offenders, [], "the parity harness is run by a person, never by the product");
 });
