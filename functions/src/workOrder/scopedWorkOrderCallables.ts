@@ -12,6 +12,7 @@ import {
   countScopedWorkOrders as countService,
   readScopedWorkOrderById as readByIdService,
   readScopedWorkOrders as readService,
+  readSelfTechnician as readSelfTechnicianService,
 } from "./scopedWorkOrderReadService";
 
 const REGION = "us-central1";
@@ -64,6 +65,17 @@ export const countScopedWorkOrders = onCall({ region: REGION }, async (request) 
       mode: data.mode as string,
       params: asRecord(data.params),
     });
+  } catch (err) {
+    throw mapError(err);
+  }
+});
+
+// The caller own technician profile. Takes NO input beyond authentication -- the whole point is
+// that the caller cannot name which technician.
+export const readSelfTechnician = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireUid(request);
+  try {
+    return await readSelfTechnicianService(actorUid);
   } catch (err) {
     throw mapError(err);
   }

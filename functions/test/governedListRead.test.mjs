@@ -551,6 +551,8 @@ test("a required filter is never also the only thing standing between a caller a
     "truckRegistry",
     "mobileLocations",
     "warehouseDirectory",
+    // The technician directory: the dispatch surfaces read every technician, and always did.
+    "technicianDirectory",
   ]);
   for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
     if (sourceId.startsWith("metadata")) continue; // list sources are unscoped INDEX reads by design

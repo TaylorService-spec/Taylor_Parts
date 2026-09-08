@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, limit, getDocs, getCountFromServer } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import {
+  WORK_ORDER_READ_RESULT,
+  countScopedWorkOrders,
+  readScopedWorkOrders,
+} from "../access/scopedWorkOrderClient.js";
 import { OPEN_WORK_ORDER_STATUSES } from "../domain/accountWorkOrders";
 
 // Part -> Work Order Demand (Wave 7 Item 3) -- the READ half. Answers "Which Work Orders need this part?"
@@ -50,31 +52,38 @@ export function usePartWorkOrderDemand(partId, { scanCap = PART_DEMAND_SCAN_CAP 
     let cancelled = false;
     setState({ status: PART_WORK_ORDER_DEMAND_STATE.LOADING });
 
-    const base = collection(db, WORK_ORDERS_COLLECTION);
-    const openFilter = where("status", "in", OPEN_WORK_ORDER_STATUSES);
+    // Both reads go through the scoped seam, and BOTH are therefore scoped the same way: a
+    // technician's demand view counts and lists only work orders assigned to them. That is not a
+    // reduction -- it is what the retired Rules produced, and the alternative (a global count over a
+    // scoped list) would put a number over a table that disagrees with it.
+    const params = { statuses: OPEN_WORK_ORDER_STATUSES };
 
     Promise.all([
-      getDocs(query(base, openFilter, orderBy("createdAt", "desc"), limit(scanCap))),
-      // Independent of the bounded page fetch -- a failure here degrades the disclosure (handled below),
-      // it must never block or hide the rows the page fetch DID succeed in reading.
-      getCountFromServer(query(base, openFilter)).catch(() => null),
+      readScopedWorkOrders({ mode: "openDemand", params, pageSize: scanCap }),
+      // Independent of the bounded page fetch -- a failure here degrades the disclosure (handled
+      // below), it must never block or hide the rows the page fetch DID succeed in reading. The
+      // seam resolves rather than rejects, so this needs no catch.
+      countScopedWorkOrders({ mode: "openDemand", params }),
     ])
-      .then(([snap, countSnap]) => {
+      .then(([page, count]) => {
         if (cancelled) return;
-        const workOrders = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+        if (!page.ok) {
+          setState({
+            status:
+              page.result === WORK_ORDER_READ_RESULT.DENIED
+                ? PART_WORK_ORDER_DEMAND_STATE.DENIED
+                : PART_WORK_ORDER_DEMAND_STATE.UNAVAILABLE,
+          });
+          return;
+        }
+        const workOrders = page.items;
         setState({
           status: PART_WORK_ORDER_DEMAND_STATE.READY,
           workOrders,
           scannedCount: workOrders.length,
-          // null (not 0) when the count read itself failed -- the disclosure must not claim a total it
-          // doesn't actually know.
-          totalOpenWorkOrders: countSnap ? countSnap.data().count : null,
-        });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setState({
-          status: err?.code === "permission-denied" ? PART_WORK_ORDER_DEMAND_STATE.DENIED : PART_WORK_ORDER_DEMAND_STATE.UNAVAILABLE,
+          // null (not 0) when the count read itself failed -- the disclosure must not claim a total
+          // it doesn't actually know. `count.count` is already null on failure.
+          totalOpenWorkOrders: count.ok ? count.count : null,
         });
       });
 

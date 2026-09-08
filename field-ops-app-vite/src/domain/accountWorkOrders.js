@@ -1,15 +1,6 @@
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  limit,
-  startAfter,
-  getDocs,
-  getCountFromServer,
-} from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "./constants";
+// No Firestore, no collection name, no status constant used as a query value: the seam owns all
+// three. WORK_ORDERS_COLLECTION is gone with the query it addressed.
+import { countScopedWorkOrders, readScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity
 // (docs/specifications/customer-account-business-model.md). Account-scoped
@@ -55,10 +46,12 @@ export const SERVICE_ACTIVITY_PAGE_SIZE = 10;
 // recomputing the timeline's loaded pages. Both use the composite index
 // fieldops_wos(customerId ASC, status ASC).
 async function fetchAccountWorkOrderCountForStatuses(accountId, statuses) {
-  const snap = await getCountFromServer(
-    query(collection(db, WORK_ORDERS_COLLECTION), where("customerId", "==", accountId), where("status", "in", statuses))
-  );
-  return snap.data().count;
+  const res = await countScopedWorkOrders({ mode: "accountOpen", params: { accountId, statuses } });
+  // NULL, NEVER 0, on any failure. A zero here would state that this customer has no open work,
+  // which is a claim about the business made on the strength of a failed read. The two callers
+  // already treat a missing count as "unavailable" rather than rendering a number.
+  if (!res.ok) throw new Error(`account work order count unavailable: ${res.result}`);
+  return res.count;
 }
 
 // Completed = COMPLETED/CLOSED.
@@ -82,16 +75,25 @@ export async function fetchAccountWorkOrderTimelinePage(
   accountId,
   { pageSize = SERVICE_ACTIVITY_PAGE_SIZE, afterDoc = null } = {}
 ) {
-  const base = collection(db, WORK_ORDERS_COLLECTION);
-  const constraints = [where("customerId", "==", accountId), orderBy("createdAt", "desc")];
-  if (afterDoc) constraints.push(startAfter(afterDoc));
-  constraints.push(limit(pageSize));
-
-  const snap = await getDocs(query(base, ...constraints));
-  const items = snap.docs.map((d) => {
-    const data = d.data();
+  // PAGE BY BOUND, not by cursor. The seam pages with an observed `hasMore` probe rather than a
+  // Firestore startAfter, so this asks for everything up to and including the requested page and
+  // slices the tail. `afterDoc` is retained in the signature and IGNORED -- the two callers pass it
+  // back opaquely and never inspect it, so nothing above this function changes.
+  //
+  // Honest about the cost: this re-reads earlier pages on each "load more". The timeline is bounded
+  // at ten rows a page over one account's history, so the read is small and the alternative --
+  // teaching the seam a cursor vocabulary for one caller -- is more machinery than the problem.
+  const alreadyLoaded = afterDoc ? Number(afterDoc.loadedCount ?? 0) : 0;
+  const res = await readScopedWorkOrders({
+    mode: "accountRecent",
+    params: { accountId },
+    pageSize: alreadyLoaded + pageSize,
+  });
+  if (!res.ok) throw new Error(`account work order timeline unavailable: ${res.result}`);
+  const window = res.items.slice(alreadyLoaded, alreadyLoaded + pageSize);
+  const items = window.map((data) => {
     return {
-      id: d.id,
+      id: data.id,
       woNumber: data.woNumber ?? null,
       status: data.status ?? null,
       createdAt: data.createdAt ?? null, // Firestore Timestamp | null
@@ -106,8 +108,10 @@ export async function fetchAccountWorkOrderTimelinePage(
       assignedTechId: data.assignedTechId ?? null, // fieldops_technicians doc id | null
     };
   });
-  const lastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
-  return { items, lastDoc, hasMore: snap.docs.length === pageSize };
+  // The "cursor" is now a count of what has been shown. Opaque to every caller, exactly as the
+  // DocumentSnapshot it replaces was -- both were passed straight back as `afterDoc`.
+  const lastDoc = items.length ? { loadedCount: alreadyLoaded + items.length } : null;
+  return { items, lastDoc, hasMore: res.hasMore || items.length === pageSize };
 }
 
 // Wave 7 extension, PART 1.6 -- Account Attention. A bounded, honest, account-scoped read of this
@@ -127,22 +131,21 @@ export async function fetchAccountWorkOrderTimelinePage(
 // of confidently under-reporting past-due WOs it never saw -- mirrors accountArView.js's own "a truncated
 // page is never labeled ready" rule.
 export async function fetchAccountScheduledWorkOrdersForAttention(accountId, { limit: pageLimit = 200 } = {}) {
-  const snap = await getDocs(
-    query(
-      collection(db, WORK_ORDERS_COLLECTION),
-      where("customerId", "==", accountId),
-      where("status", "==", "SCHEDULED"),
-      limit(pageLimit)
-    )
-  );
-  const items = snap.docs.map((d) => {
-    const data = d.data();
+  // The SCHEDULED status is the MODE's, not a parameter: `accountScheduled` means exactly this
+  // question, and a caller that could choose the status would be `accountOpen` with extra steps.
+  const res = await readScopedWorkOrders({
+    mode: "accountScheduled",
+    params: { accountId },
+    pageSize: pageLimit,
+  });
+  if (!res.ok) throw new Error(`account scheduled work orders unavailable: ${res.result}`);
+  const items = res.items.map((data) => {
     return {
-      id: d.id,
+      id: data.id,
       woNumber: data.woNumber ?? null,
       status: data.status ?? null,
       scheduledStart: data.scheduledStart ?? null,
     };
   });
-  return { items, hasMore: snap.docs.length === pageLimit };
+  return { items, hasMore: res.hasMore || res.items.length === pageLimit };
 }

@@ -32,6 +32,7 @@ import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 
 const WORK_ORDERS = "fieldops_wos";
 const USERS = "users";
+const TECHNICIANS = "fieldops_technicians";
 
 export const WORK_ORDER_READ_GLOBAL = "workOrder.read";
 export const WORK_ORDER_READ_ASSIGNED = "workOrder.assigned.read";
@@ -411,4 +412,78 @@ export async function readScopedWorkOrderById(
     throw new UnauthorizedActorError("this work order is not assigned to you");
   }
   return { workOrder: { ...data, id: snap.id }, scope: scope.kind };
+}
+
+// ============================ THE CALLER'S OWN TECHNICIAN PROFILE ============================
+//
+// Lives here rather than in the governed read registry because "the technician mapped to the
+// caller" is a SCOPE, not a filter. Every registry source answers a global capability check plus
+// values the client supplies; this answers a question the client cannot phrase, because the
+// technician id is never theirs to name.
+//
+// TWO CAPABILITIES, RESOLVED GLOBAL-FIRST, for the same reason as the work-order read: admin
+// derives the whole catalogue and therefore holds the self capability too. A holder of
+// `service.technician.read` may read any technician profile including their own; a holder of only
+// `service.technician.self.read` may read exactly one, and the server decides which.
+export const TECHNICIAN_READ_GLOBAL = "service.technician.read";
+export const TECHNICIAN_READ_SELF = "service.technician.self.read";
+
+export interface SelfTechnicianResult {
+  /** The caller's own technician profile, or null when the mapping resolves to no record. */
+  readonly technician: Record<string, unknown> | null;
+  /** The id the SERVER resolved. Returned so a caller can pass it to reads that take one -- it is
+   *  an output, never an input. */
+  readonly technicianId: string | null;
+}
+
+/**
+ * Read the technician profile mapped to the authenticated principal.
+ *
+ * TRANSITIONAL PLUMBING, same as the work-order scope resolver and recorded the same way: the
+ * uid -> technician mapping still lives on `users/{uid}.technicianId`, the field the retired Rules
+ * predicate read. It is encapsulated server-side so no client touches it, and it is not authority --
+ * the capability is; this only answers "which technician is this principal".
+ *
+ * A principal with the capability but NO mapping gets `{ technician: null, technicianId: null }`,
+ * not a refusal: an unmapped user is a real, benign state (the mapping is an out-of-band operator
+ * action), and the surfaces that consume this already render an unmapped technician as "no
+ * operational identity" rather than as an error.
+ */
+export async function readSelfTechnician(
+  actorUid: string,
+  deps: ScopedWorkOrderDeps = {},
+): Promise<SelfTechnicianResult> {
+  if (typeof actorUid !== "string" || !actorUid) throw new InvalidInputError("actorUid is required");
+  const db = deps.db ?? getFirestore();
+
+  const resolve =
+    deps.resolveAccess ??
+    (async (uid: string, ids: readonly string[]) => {
+      const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [...ids] });
+      return decisions as Record<string, boolean>;
+    });
+
+  let decisions: Record<string, boolean>;
+  try {
+    decisions = await resolve(actorUid, [TECHNICIAN_READ_GLOBAL, TECHNICIAN_READ_SELF]);
+  } catch (err) {
+    console.error("[technician] capability resolution failed", err);
+    throw new UnauthorizedActorError("authorization could not be resolved");
+  }
+  if (decisions[TECHNICIAN_READ_GLOBAL] !== true && decisions[TECHNICIAN_READ_SELF] !== true) {
+    throw new UnauthorizedActorError("actor may not read technician profiles");
+  }
+
+  const userSnap = await db.collection(USERS).doc(actorUid).get();
+  const technicianId = userSnap.exists ? (userSnap.data()?.technicianId as string | undefined) : undefined;
+  if (typeof technicianId !== "string" || technicianId === "") {
+    return { technician: null, technicianId: null };
+  }
+
+  const techSnap = await db.collection(TECHNICIANS).doc(technicianId).get();
+  return {
+    // The document id LAST, so a stored `id` cannot displace the authoritative one.
+    technician: techSnap.exists ? { ...(techSnap.data() as Record<string, unknown>), id: techSnap.id } : null,
+    technicianId,
+  };
 }

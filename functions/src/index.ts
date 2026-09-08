@@ -188,6 +188,7 @@ export {
   readScopedWorkOrders,
   countScopedWorkOrders,
   readScopedWorkOrderById,
+  readSelfTechnician,
 } from "./workOrder/scopedWorkOrderCallables";
 
 // CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a

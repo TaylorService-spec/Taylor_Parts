@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../firebase/firebase";
+import { governedCollectionClient } from "../../access/governedCollectionClient";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import {
   fetchInventoryTransactions,
   fetchWarehouses,
@@ -95,7 +93,9 @@ export default function Operations({ accessVersion } = {}) {
       fetchSuppliers(),
       fetchSupplierCatalog(),
       fetchProcurementPurchaseOrders(),
-      getDocs(collection(db, TECHNICIANS_COLLECTION)),
+      // Through the governed technicianDirectory source. Already a one-shot read, so nothing about
+      // freshness changes -- only who decides the caller may see it.
+      governedCollectionClient.readGovernedList({ sourceId: "technicianDirectory", pageSize: 200 }),
       getInventoryConsumptionSnapshot(),
       getTechnicianVolumeBreakdown(),
     ])
@@ -113,7 +113,9 @@ export default function Operations({ accessVersion } = {}) {
         ]) => {
         if (cancelled) return;
 
-        const technicians = techniciansSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+        // A denied or failed read yields an EMPTY list here, exactly as a failed getDocs did before
+        // -- this dashboard already renders an absent technician set rather than an error.
+        const technicians = techniciansSnap.ok ? techniciansSnap.items : [];
 
         const transactions = rawTransactions.map(normalizeLedgerTransaction);
         const availableByPart = computeAvailableStockByPart(transactions);

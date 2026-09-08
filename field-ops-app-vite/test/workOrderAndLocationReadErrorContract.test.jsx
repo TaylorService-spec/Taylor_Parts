@@ -28,6 +28,14 @@ vi.mock("../src/firebase/firebase", () => ({ db: {}, functions: {} }));
 // mock moved with it. useWorkOrder is still onSnapshot (the work-order family is blocked pending
 // the technician/self-scope seam) and keeps the callback-capturing mock below.
 let governedResult = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
+// useWorkOrder now reads by id through the SCOPED work-order seam -- the one read whose authority
+// is not global. Its half of this contract is unchanged and still worth guarding: DENIED, a failed
+// read and a CONFIRMED ABSENCE stay three distinguishable outcomes. Only the seam moved.
+let scopedResult = { ok: true, result: "OK", workOrder: null, scope: "GLOBAL" };
+vi.mock("../src/access/scopedWorkOrderClient.js", () => ({
+  WORK_ORDER_READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+  readScopedWorkOrderById: async () => scopedResult,
+}));
 vi.mock("../src/access/governedCollectionClient.js", () => ({
   READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
   readGovernedList: async () => governedResult,
@@ -51,6 +59,7 @@ beforeEach(() => {
   capturedError = undefined;
   unsubscribeCount = 0;
   governedResult = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
+  scopedResult = { ok: true, result: "OK", workOrder: null, scope: "GLOBAL" };
 });
 afterEach(() => {
   cleanup();
@@ -64,32 +73,43 @@ describe("useWorkOrder -- read-error contract (H14)", () => {
     expect(result.current.error).toBe(null);
   });
 
-  it("a denied read resolves loading to false and exposes a safe error -- never hangs forever", () => {
+  it("a denied read resolves loading to false and exposes a safe error -- never hangs forever", async () => {
+    // A SCOPE refusal reaches here as DENIED: a technician who is not assigned this work order gets
+    // a permission message, NOT an absence. Collapsing the two would tell them the record does not
+    // exist, which is both false and a different fact about the business.
+    scopedResult = { ok: false, result: "DENIED", workOrder: null };
     const { result } = renderHook(() => useWorkOrder("wo-1"));
-    expect(capturedError).toBeTypeOf("function");
-    act(() => capturedError({ code: "permission-denied" }));
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("You do not have permission to view these work orders.");
     expect(result.current.workOrder).toBe(null);
   });
 
-  it("a confirmed absence (successful read, no such doc) is distinct from a failed read", () => {
+  it("a confirmed absence (successful read, no such record) is distinct from a failed read", async () => {
+    scopedResult = { ok: true, result: "OK", workOrder: null, scope: "GLOBAL" };
     const { result } = renderHook(() => useWorkOrder("wo-1"));
-    act(() => capturedNext({ id: "wo-1", exists: () => false }));
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(null);
     expect(result.current.workOrder).toBe(null);
   });
 
-  it("retry() re-subscribes (tears down the stale listener and clears the error)", () => {
+  it("retry() re-reads and clears the error", async () => {
+    // The teardown assertion went with the subscription -- there is no listener to unsubscribe now.
+    // What retry() must still do is the part that mattered: clear the stale error and read again.
+    scopedResult = { ok: false, result: "UNAVAILABLE", workOrder: null };
     const { result } = renderHook(() => useWorkOrder("wo-1"));
-    act(() => capturedError({ code: "unavailable" }));
-    expect(result.current.error).toContain("Can't reach the server");
-    const unsubBefore = unsubscribeCount;
+    await waitFor(() => expect(result.current.error).toContain("Can't reach the server"));
+
+    scopedResult = { ok: true, result: "OK", workOrder: { id: "wo-1", woNumber: "WO-1" }, scope: "GLOBAL" };
     act(() => result.current.retry());
-    expect(unsubscribeCount).toBe(unsubBefore + 1);
-    expect(result.current.loading).toBe(true);
-    expect(result.current.error).toBe(null);
+    await waitFor(() => expect(result.current.error).toBe(null));
+    expect(result.current.workOrder.id).toBe("wo-1");
+  });
+
+  it("a found record carries the SERVER's document id", async () => {
+    scopedResult = { ok: true, result: "OK", workOrder: { id: "wo-1", woNumber: "WO-1" }, scope: "ASSIGNED" };
+    const { result } = renderHook(() => useWorkOrder("wo-1"));
+    await waitFor(() => expect(result.current.workOrder).not.toBe(null));
+    expect(result.current.workOrder.id).toBe("wo-1");
   });
 });
 

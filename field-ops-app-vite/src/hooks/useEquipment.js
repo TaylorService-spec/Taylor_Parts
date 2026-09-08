@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { governedCollectionClient, READ_RESULT } from "../access/governedCollectionClient";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-// EQUIPMENT_COLLECTION is gone with the client-direct equipment read. WORK_ORDERS_COLLECTION
-// remains: the work-order query below is part of the BLOCKED work-order family, which keeps
-// its client-direct path until the technician/self-scope seam lands.
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { WORK_ORDER_READ_RESULT, readScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
+
+// No collection names remain: both reads go through trusted seams that own their own.
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 // Issue #232 unit E2 -- the Equipment read path.
@@ -137,24 +134,38 @@ export function useWorkOrdersForEquipment(equipmentId) {
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, WORK_ORDERS_COLLECTION), where("equipmentId", "==", equipmentId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ ...d.data(), id: d.id })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        // Fail closed: an empty history is honest; a partial one is a lie about an
-        // asset's service record.
+    // Through the scoped seam. For a GLOBAL reader this is every work order on the equipment; for a
+    // TECHNICIAN it is intersected server-side with their own assignment -- exactly what the retired
+    // Rules produced. Widening it to "all work orders for equipment X" would show one technician
+    // another's work, which is the specific narrowing this migration must not undo.
+    //
+    // ONE-SHOT: a governed callable cannot stream. This is an asset's service HISTORY on a detail
+    // page; it re-reads when the equipment changes.
+    let active = true;
+    (async () => {
+      const res = await readScopedWorkOrders({ mode: "byEquipment", params: { equipmentId }, pageSize: 200 });
+      if (!active) return;
+      if (!res.ok) {
+        // Fail closed: an empty history is honest; a partial one is a lie about an asset's service
+        // record.
         setData([]);
-        setError(loadErrorMessage(err, { entity: "work orders" }));
+        setError(
+          loadErrorMessage(
+            { code: res.result === WORK_ORDER_READ_RESULT.DENIED ? "permission-denied" : "unavailable" },
+            { entity: "work orders" },
+          ),
+        );
         setLoading(false);
+        return;
       }
-    );
+      setData(res.items);
+      setError(null);
+      setLoading(false);
+    })();
 
-    return () => unsub();
+    return () => {
+      active = false;
+    };
   }, [equipmentId]);
 
   return { data, loading, error };

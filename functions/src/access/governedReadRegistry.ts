@@ -569,6 +569,22 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // TECHNICIAN PROFILES. The unscoped directory read, behind the capability ruled 2026-09-07.
+  //
+  // The SELF read is deliberately NOT a source here. "The technician mapped to the caller" is not a
+  // filter a client supplies -- it is a scope the server derives from request.auth.uid -- and
+  // expressing it as a governed filter would put a technician id back in the browser's hands, which
+  // is the one thing the whole scoped seam exists to prevent. It lives in the scoped work-order
+  // service instead, beside the assignment scope that resolves the same identity.
+  technicianDirectory: Object.freeze({
+    capability: "service.technician.read",
+    source: "fieldops_technicians",
+    orderBy: Object.freeze(["name", "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 200,
+  }),
+
   // ── PARTS ─────────────────────────────────────────────────────────────────────────────────
   // All three reuse the EXISTING inventory.catalog.read -- already in the catalog, already granted,
   // and already exactly "may this person read the parts catalogue". Three sources rather than one

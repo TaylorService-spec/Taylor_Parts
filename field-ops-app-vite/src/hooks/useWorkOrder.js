@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { WORK_ORDER_READ_RESULT, readScopedWorkOrderById } from "../access/scopedWorkOrderClient.js";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 const ENTITY = "work orders";
@@ -41,28 +39,41 @@ export function useWorkOrder(workOrderId) {
     let active = true;
     setLoading(true);
     setError(null);
-    const unsub = onSnapshot(
-      doc(db, WORK_ORDERS_COLLECTION, workOrderId),
-      (snap) => {
-        if (!active) return;
-        setWorkOrder(snap.exists() ? { ...snap.data(), id: snap.id } : null);
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        if (!active) return;
-        // Fail closed: clear any stale work order rather than leave a
-        // previous id's data on screen looking current, and never render a
-        // failure as "no such work order".
+    // KNOWING AN ID DOES NOT BYPASS SCOPE. The server checks the stored assignedTechId against the
+    // technician identity it resolved from request.auth.uid, and refuses when they differ -- so this
+    // hook cannot be used to read another technician's work by guessing a URL.
+    //
+    // A SCOPE REFUSAL IS DENIED, NOT "NOT FOUND". That distinction is this hook's existing contract
+    // (loadErrorMessage renders a permission message distinct from an absence) and the seam
+    // preserves it deliberately rather than collapsing both into a missing record.
+    //
+    // ONE-SHOT, NOT A SUBSCRIPTION: a governed callable cannot stream. The record page re-reads on
+    // navigation and on retry(), which is what it did in practice.
+    (async () => {
+      const res = await readScopedWorkOrderById(workOrderId);
+      if (!active) return;
+      if (!res.ok) {
+        // Fail closed: clear any stale work order rather than leave a previous id's data on screen
+        // looking current, and never render a failure as "no such work order".
         setWorkOrder(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(
+          loadErrorMessage(
+            { code: res.result === WORK_ORDER_READ_RESULT.DENIED ? "permission-denied" : "unavailable" },
+            { entity: ENTITY },
+          ),
+        );
         setLoading(false);
+        return;
       }
-    );
+      // A CONFIRMED ABSENCE: a successful read that found no such record. Null with NO error, which
+      // is what tells a caller this is different from the refusal above.
+      setWorkOrder(res.workOrder);
+      setError(null);
+      setLoading(false);
+    })();
 
     return () => {
       active = false;
-      unsub();
     };
   }, [workOrderId, attempt]);
 
