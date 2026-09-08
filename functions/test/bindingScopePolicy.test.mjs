@@ -431,9 +431,34 @@ test("DEFECT GUARD: neither reorder callable gates create.manual on a global tar
     "utf8",
   );
   // recordReorderPurchaseOrder legitimately keeps its gate: its capability carries no location
-  // binding, so a global target is the correct question for it. Exactly one gate may remain.
-  const gates = src.match(/await requireCapability\(/g) ?? [];
-  assert.equal(gates.length, 1, "only recordReorderPurchaseOrder may gate on a global capability check");
+  // binding, so a global target is the correct question for it.
+  //
+  // THE COUNT WAS A PROXY, AND IT STOPPED BEING ONE. `exactly one gate may remain` meant
+  // `create.manual is not gated globally` at a time when this file held one other callable. It
+  // now holds three -- cancelReorderRequest and voidPurchaseOrder joined it when those two writes
+  // moved off the client -- and each gates on its OWN capability, neither of which carries a
+  // location binding either. Counting would fail on a legitimate addition and, worse, would pass
+  // if somebody swapped one gate's capability for create.manual.
+  //
+  // So the property is asserted directly: an ALLOWLIST of capabilities that may be gated on a
+  // global target, and a refusal of anything else. Adding a callable here means adding its
+  // capability to this list and saying why it is global -- which is the decision the count was
+  // standing in for.
+  const GLOBAL_GATE_ALLOWED = [
+    "REORDER_RECORD_PO_CAPABILITY",
+    "REORDER_CANCEL_CAPABILITY",
+    "REORDER_VOID_PO_CAPABILITY",
+  ];
+  const gated = [...src.matchAll(/await requireCapability\(request\.auth\.uid, (\w+)\)/g)].map((m) => m[1]);
+  assert.ok(gated.length > 0, "the gates must still be findable -- the pattern has not gone stale");
+  for (const capability of gated) {
+    assert.ok(
+      GLOBAL_GATE_ALLOWED.includes(capability),
+      `"${capability}" is gated on a GLOBAL capability check. If it carries a location binding, ` +
+        "that gate breaks every location-scoped manager -- resolve it through the warehouse " +
+        "authority instead. If it genuinely is global, add it here with the reason.",
+    );
+  }
   assert.equal(
     src.includes("await requireCapability(request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY)"),
     false,

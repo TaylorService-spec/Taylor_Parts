@@ -61,6 +61,8 @@ on:
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
       - "functions/test/governedListRead.test.mjs"
+      - "field-ops-app-vite/test/clientFirestoreCensus.test.jsx"
+      - "field-ops-app-vite/src/**"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
       - "field-ops-app-vite/test/accountSearch.test.mjs"
       - "field-ops-app-vite/src/domain/accountSearch.js"
@@ -325,10 +327,27 @@ jobs:
         working-directory: field-ops-app-vite
       # The client no longer translates a list descriptor into a Firestore query -- it names an EOS
       # source id and the SERVER owns the collection, the filters, the ordering and the cursor. The
-      # translation contract therefore moved to where the translation happens.
+      # translation contract therefore moved to where the translation happens -- which means this
+      # job needs the functions dependency tree as well as the client one. It compiles TypeScript;
+      # a job that only installed the client would fail on the import, not on the contract.
+      - name: Install functions dependencies
+        run: npm ci
+        working-directory: functions
       - name: Governed list source translation tests (build + node:test)
         run: npm run build && node --test test/governedListRead.test.mjs
         working-directory: functions
+
+      # THE CENSUS. Three numbers reduce the whole Firebase-removal claim to something runnable:
+      # zero direct governed client reads, zero writes, zero Firestore authorization decisions --
+      # each surviving reader enumerated WITH the reason it survives, so a new one fails by name.
+      #
+      # It also resolves every relative import under src/. That catches a module left pointing at
+      # deleted code, a break neither tsc nor vitest sees: these are untyped .js modules, and the
+      # importing module is mocked wherever a test reaches it. Only the production build noticed,
+      # and only after the branch had been green for several commits.
+      - name: The client Firestore census (reads, writes, authorization, dangling imports)
+        run: npx vitest run test/clientFirestoreCensus.test.jsx
+        working-directory: field-ops-app-vite
       - name: Customers surface tests (vitest, jsdom)
         run: npx vitest run test/customersSurface.test.jsx
         working-directory: field-ops-app-vite
