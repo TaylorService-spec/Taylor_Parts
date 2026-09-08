@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
-import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
+import { TECH_STATUS } from "../../domain/constants";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
@@ -90,7 +90,7 @@ export default function Dispatch() {
   // The technicians read can fail independently of the work-order read. Unchecked, the assignment
   // dropdown rendered with zero options and no explanation -- silently non-functional, and
   // indistinguishable from "there are no technicians".
-  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, error: techniciansError } = useTechnicianDirectory();
   const [dispatchError, setDispatchError] = useState(null);
   // H20 fix: reassigning a job away from the technician it was Scheduled for is a distinct, audited,
   // reason-required action (Owner ruling) -- never a silent side effect of picking someone else from this

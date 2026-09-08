@@ -8,8 +8,7 @@ import {
   useAccountWorkOrderCount,
   useAccountWorkOrderTimeline,
 } from "../../hooks/useAccountServiceActivity";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { workOrderStatusWords } from "../../domain/workOrderNorthStar.js";
 import { formatDateOnly } from "../../domain/displayTimestamp.js";
@@ -138,7 +137,7 @@ export default function ServiceActivitySection({ accountId }) {
     data: technicians,
     loading: techniciansLoading,
     error: techniciansError,
-  } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  } = useTechnicianDirectory();
 
   return (
     <section className="ns-section" aria-label="Service activity">

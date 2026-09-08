@@ -1,4 +1,5 @@
 import { isWriteBlocked } from "../config/env";
+import { notifyTechnicianDirectoryChanged } from "./technicianDirectoryChanged.js";
 
 // What is left of the legacy `fieldops_jobs` surface: one function, and it no longer writes
 // Firestore.
@@ -55,6 +56,11 @@ export async function createTechnician(name, phone) {
     const res = await httpsCallable(functions, "createTechnician")({ name, phone: phone ?? null });
     // `{ id, name, phone, status }` -- the caller closes its modal, focuses the new row by this id
     // and announces the name. The id is the one the SERVER minted.
+    //
+    // AFTER SUCCESS ONLY. Announced so the directory beside the modal re-reads immediately instead
+    // of waiting out a poll interval -- a rejected create announces nothing, so a failed mutation
+    // cannot make every listening surface re-read for a change that did not happen.
+    notifyTechnicianDirectoryChanged();
     return res?.data ?? null;
   } catch (err) {
     // THROWS, as the store did. Technicians.jsx relies on that to keep the modal open with safe

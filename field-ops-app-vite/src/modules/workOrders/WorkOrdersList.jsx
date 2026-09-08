@@ -6,8 +6,7 @@ import { useListCriteria } from "../../hooks/useListCriteria.js";
 import { useAccountReferenceResolver } from "../../hooks/useAccountReferenceResolver.js";
 import { useWorkOrderSearch } from "../../hooks/useWorkOrderSearch.js";
 import { useAccountPicker } from "../../hooks/useAccountPicker";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName";
 import { REFERENCE_STATE } from "../../metadata/referenceResolution.js";
 import { ACCOUNT_NAMES_STATUS } from "../../hooks/useAccountNames.js";
@@ -121,7 +120,7 @@ export default function WorkOrdersList() {
 
   // Technicians are bounded reference data (one small collection), so one read serves the
   // whole page rather than one per row.
-  const { data: technicians, loading: techLoading, error: techError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, loading: techLoading, error: techError } = useTechnicianDirectory();
 
   const resolveReference = useCallback((fieldId, id) => {
     if (fieldId !== "assignedTechId") return resolveAccount(fieldId, id);

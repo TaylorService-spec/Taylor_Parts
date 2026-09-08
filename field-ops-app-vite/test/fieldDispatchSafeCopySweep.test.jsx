@@ -154,8 +154,8 @@ describe("DispatcherBoard -- safe error copy for a failed dispatch (site-work r3
         error: null,
       }),
     }));
-    vi.doMock("../src/hooks/useFirestoreCollection", () => ({
-      useFirestoreCollection: () => ({ data: [{ id: "tech1", name: "Tech One" }], loading: false, error: null }),
+    vi.doMock("../src/hooks/useTechnicianDirectory", () => ({
+      useTechnicianDirectory: () => ({ data: [{ id: "tech1", name: "Tech One" }], loading: false, error: null }),
     }));
     transitionWorkOrder.mockRejectedValueOnce(new Error(RAW_MESSAGE));
 

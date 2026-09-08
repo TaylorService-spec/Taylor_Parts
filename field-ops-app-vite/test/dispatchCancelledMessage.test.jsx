@@ -14,10 +14,10 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({ useTechnicianDirectory: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../src/hooks/useTechnicianDirectory";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 
 afterEach(() => {
@@ -35,7 +35,7 @@ describe("Dispatch -- cancelled, never-dispatched work order body text", () => {
       // never assigned
     };
     useWorkOrders.mockReturnValue({ data: [cancelledJob], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
 
     render(<Dispatch />);
 
@@ -51,7 +51,7 @@ describe("Dispatch -- cancelled, never-dispatched work order body text", () => {
       description: "Just created, not yet scheduled",
     };
     useWorkOrders.mockReturnValue({ data: [createdJob], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
 
     render(<Dispatch />);
 

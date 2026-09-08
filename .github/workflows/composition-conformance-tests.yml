@@ -483,6 +483,15 @@ jobs:
       # renders 0 when the read failed states that the business has no customers, in the calmest
       # possible way -- so the failure paths are pinned harder than the success one, in BOTH
       # directions (a genuine zero must still render as zero).
+      # THE TECHNICIAN DIRECTORY REALTIME PARITY. old = Firestore push; new = automatic governed
+      # refresh bounded <= 5s. A deliberate behaviour change, so the properties that make it
+      # acceptable are pinned with fake timers: immediate mount fetch, polling, hidden pause,
+      # visible/focus refresh, full teardown, and -- the one that matters most -- a failed refresh
+      # keeping the last good directory instead of reading as "no technicians".
+      - name: Technician directory -- bounded governed refresh parity
+        run: npx vitest run test/technicianDirectoryPolling.test.jsx
+        working-directory: field-ops-app-vite
+
       - name: Governed list count -- a failed read is null, never zero
         run: npx vitest run test/governedListCount.test.jsx
         working-directory: field-ops-app-vite

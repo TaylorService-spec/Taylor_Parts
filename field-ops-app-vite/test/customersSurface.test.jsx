@@ -20,7 +20,7 @@ vi.mock("../src/hooks/useAccountPortfolioSummary", () => ({
 // If the page ever reacquires a collection subscription, this mock is the tripwire: the
 // import would resolve and the test asserting it is unused would fail.
 const subscribeSpy = vi.fn(() => ({ data: [], loading: false, error: null }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: subscribeSpy }));
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({ useTechnicianDirectory: subscribeSpy }));
 // The governed Account search hook issues its own bounded Firestore read (see
 // domain/accountSearch.js); this suite is about the surface's rendering contract, not
 // Firestore, so the hook is mocked here the same way useMetadataList and

@@ -25,7 +25,7 @@ import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
 //
 // ════════════════════ THE ROSTER IS NOT RE-QUERIED ════════════════════
 //
-// `technicians` is the board's existing `useFirestoreCollection(TECHNICIANS_COLLECTION)` array,
+// `technicians` is the board's existing `useTechnicianDirectory()` array,
 // passed down. There is no second roster read here and there must not be: two reads is two answers to
 // "who works here", and the one this control offers would eventually disagree with the one the lanes
 // are drawn from.

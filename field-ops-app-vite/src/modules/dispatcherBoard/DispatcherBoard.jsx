@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { useSessionActivityFeed } from "../../hooks/useSessionActivityFeed";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import {
@@ -94,7 +93,7 @@ export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   const { data: technicians, loading: techniciansLoading, error: techniciansError } =
-    useFirestoreCollection(TECHNICIANS_COLLECTION);
+    useTechnicianDirectory();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 

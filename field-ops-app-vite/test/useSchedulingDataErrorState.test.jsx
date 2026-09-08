@@ -6,16 +6,16 @@
 // fieldops_wos read yielded loading=false/error=null/workOrders=[], and SchedulingWorkspace rendered a
 // normal empty week instead of its wired FailureState.
 //
-// vitest + @testing-library/react (jsdom). useWorkOrders and useFirestoreCollection are mocked directly
+// vitest + @testing-library/react (jsdom). useWorkOrders and useTechnicianDirectory are mocked directly
 // (no Firebase, no network) so both read paths can be driven independently.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { renderHook, cleanup } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({ useTechnicianDirectory: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../src/hooks/useTechnicianDirectory";
 import { useSchedulingData } from "../src/hooks/useSchedulingData";
 
 const PERMISSION_ERROR = { code: "permission-denied" };
@@ -28,7 +28,7 @@ afterEach(() => {
 describe("useSchedulingData -- a failed work-orders read is not swallowed into a false empty", () => {
   it("surfaces the useWorkOrders error even though the technicians read succeeded", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
 
     const { result } = renderHook(() => useSchedulingData());
 
@@ -41,7 +41,7 @@ describe("useSchedulingData -- a failed work-orders read is not swallowed into a
 
   it("still surfaces the technicians error when only that read fails", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
 
     const { result } = renderHook(() => useSchedulingData());
 
@@ -50,7 +50,7 @@ describe("useSchedulingData -- a failed work-orders read is not swallowed into a
 
   it("stays honestly null/empty when both reads succeed with no data", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
 
     const { result } = renderHook(() => useSchedulingData());
 
@@ -62,7 +62,7 @@ describe("useSchedulingData -- a failed work-orders read is not swallowed into a
 
   it("loading is true while either read is still loading", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: true, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
 
     const { result } = renderHook(() => useSchedulingData());
 
