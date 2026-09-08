@@ -125,7 +125,12 @@ test("REGRESSION: a stored trusted/audit field does not make ordinary editing im
   assert.equal(patch.updatedAt, CTX.nowMillis);
 
   // THE TRUSTED FIELDS ARE NOT IN THE PATCH AT ALL -- so they are neither rewritten nor stripped.
-  for (const trusted of ["auditEventId", "retiredAt", "lineageId", "accountId", "locationId", "createdAt"]) {
+  // `serialNumberKey` is named EXPLICITLY, not merely covered by the pattern: it is the
+  // server-derived key the EOS Data Import writes and the client writer never does, and
+  // functions/test/equipmentImportInteropRules.test.js used to be the only proof that an IMPORTED
+  // record stays ordinarily editable because of it. That suite's positive cases are denials now
+  // (there is no client-direct equipment write to make), so the invariant lives here.
+  for (const trusted of ["auditEventId", "retiredAt", "lineageId", "accountId", "locationId", "createdAt", "serialNumberKey"]) {
     assert.equal(trusted in patch, false, `${trusted} must not appear in an ordinary edit patch`);
   }
 });

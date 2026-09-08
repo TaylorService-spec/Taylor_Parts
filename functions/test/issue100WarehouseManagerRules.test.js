@@ -153,22 +153,22 @@ async function main() {
 
   // === Allowed reads ===
 
-  report("WAREHOUSE_MANAGER reads inventory_actions",
-    (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 200);
+  report("WAREHOUSE_MANAGER reads inventory_actions -- NOW DENIED (inventory reads moved to governed sources (inventory.action.read, inventory.transaction.read))",
+    (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 403);
 
-  report("admin still reads inventory_actions (regression, unchanged)",
-    (await getDocAt("inventory_actions", "action-1", tokens["user-admin-1"])) === 200);
+  report("admin still reads inventory_actions (regression, unchanged) -- NOW DENIED (inventory reads moved to governed sources (inventory.action.read, inventory.transaction.read))",
+    (await getDocAt("inventory_actions", "action-1", tokens["user-admin-1"])) === 403);
 
-  report("dispatcher still reads inventory_actions (regression, unchanged)",
-    (await getDocAt("inventory_actions", "action-1", tokens["user-dispatcher-1"])) === 200);
+  report("dispatcher still reads inventory_actions (regression, unchanged) -- NOW DENIED (inventory reads moved to governed sources (inventory.action.read, inventory.transaction.read))",
+    (await getDocAt("inventory_actions", "action-1", tokens["user-dispatcher-1"])) === 403);
 
   // === PR 1a's shared inventory_transactions grant survives this PR's diff ===
 
-  report("PARTS_MANAGER still reads inventory_transactions (PR 1a's grant, unaffected by this PR)",
-    (await getDocAt("inventory_transactions", "txn-1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER still reads inventory_transactions (PR 1a's grant, unaffected by this PR) -- NOW DENIED (inventory reads moved to governed sources (inventory.action.read, inventory.transaction.read))",
+    (await getDocAt("inventory_transactions", "txn-1", tokens["user-pm-1"])) === 403);
 
-  report("WAREHOUSE_MANAGER still reads inventory_transactions (PR 1a's grant, unaffected by this PR)",
-    (await getDocAt("inventory_transactions", "txn-1", tokens["user-wm-1"])) === 200);
+  report("WAREHOUSE_MANAGER still reads inventory_transactions (PR 1a's grant, unaffected by this PR) -- NOW DENIED (inventory reads moved to governed sources (inventory.action.read, inventory.transaction.read))",
+    (await getDocAt("inventory_transactions", "txn-1", tokens["user-wm-1"])) === 403);
 
   // === Excluded capabilities -- this PR does NOT widen inventory_actions
   // to PARTS_MANAGER/PARTS_ASSOCIATE, nor grant any write ===

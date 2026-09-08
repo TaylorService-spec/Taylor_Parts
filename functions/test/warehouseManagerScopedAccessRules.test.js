@@ -194,10 +194,10 @@ async function main() {
 
   // === Admin/dispatcher regression -- unconditional, unaffected by this Row ===
 
-  report("admin still reads warehouses (regression, unaffected)",
-    (await getDocAt("warehouses", "wh-satellite", tokens["user-admin-wh"])) === 200);
-  report("dispatcher still reads warehouses (regression, unaffected)",
-    (await getDocAt("warehouses", "wh-satellite", tokens["user-dispatcher-wh"])) === 200);
+  report("admin still reads warehouses (regression, unaffected) -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("warehouses", "wh-satellite", tokens["user-admin-wh"])) === 403);
+  report("dispatcher still reads warehouses (regression, unaffected) -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("warehouses", "wh-satellite", tokens["user-dispatcher-wh"])) === 403);
   // BIN-P2R: stock_locations is retired (Decision #160 / ADR-014). Its read arm is gone from both
   // governed Rules copies, so DENIAL is now the regression to protect -- including for the two roles
   // that previously had unconditional access. A collection with no match block is deny-all.
@@ -205,21 +205,21 @@ async function main() {
     (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-admin-wh"])) === 403);
   report("dispatcher is DENIED stock_locations (retired authority)",
     (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-dispatcher-wh"])) === 403);
-  report("admin still reads transfer_orders (regression, unaffected)",
-    (await getDocAt("transfer_orders", "to-other-other", tokens["user-admin-wh"])) === 200);
-  report("dispatcher still reads transfer_orders (regression, unaffected)",
-    (await getDocAt("transfer_orders", "to-other-other", tokens["user-dispatcher-wh"])) === 200);
+  report("admin still reads transfer_orders (regression, unaffected) -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("transfer_orders", "to-other-other", tokens["user-admin-wh"])) === 403);
+  report("dispatcher still reads transfer_orders (regression, unaffected) -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("transfer_orders", "to-other-other", tokens["user-dispatcher-wh"])) === 403);
 
   // === Scoped WAREHOUSE_MANAGER -- assigned warehouse is readable ===
 
-  report("Scoped manager reads warehouses/wh-main (their assigned warehouse)",
-    (await getDocAt("warehouses", "wh-main", tokens["user-wm-scoped-1"])) === 200);
+  report("Scoped manager reads warehouses/wh-main (their assigned warehouse) -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("warehouses", "wh-main", tokens["user-wm-scoped-1"])) === 403);
   report("Scoped manager is DENIED stock_locations even for their assigned warehouse",
     (await getDocAt("stock_locations", "sl-main-1", tokens["user-wm-scoped-1"])) === 403);
-  report("Scoped manager reads a transfer_order where their warehouse is the FROM endpoint",
-    (await getDocAt("transfer_orders", "to-main-to-satellite", tokens["user-wm-scoped-1"])) === 200);
-  report("A different scoped manager reads the SAME transfer_order via the TO endpoint",
-    (await getDocAt("transfer_orders", "to-main-to-satellite", tokens["user-wm-scoped-2"])) === 200);
+  report("Scoped manager reads a transfer_order where their warehouse is the FROM endpoint -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("transfer_orders", "to-main-to-satellite", tokens["user-wm-scoped-1"])) === 403);
+  report("A different scoped manager reads the SAME transfer_order via the TO endpoint -- NOW DENIED (warehouse and transfer-order reads moved to governed sources (warehouse.record.read, warehouse.transferOrder.read))",
+    (await getDocAt("transfer_orders", "to-main-to-satellite", tokens["user-wm-scoped-2"])) === 403);
 
   // === Scoped WAREHOUSE_MANAGER -- unassigned warehouse stays denied ===
 

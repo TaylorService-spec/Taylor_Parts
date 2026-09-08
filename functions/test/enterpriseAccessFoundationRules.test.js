@@ -162,13 +162,17 @@ async function main() {
   // No-regression spot checks: existing, already-covered surfaces behave
   // exactly as before this Row (this Row touches only the five new
   // match blocks -- it must not have altered anything else).
+  // Both of these used to be no-regression spot checks on surfaces this Row did not touch. The
+  // Rules contraction touched them: the accounts collection is read through customer.record.read
+  // on a governed source, and a principal's own Employee record through the
+  // resolveCurrentEmployeeSession callable. Kept as denials so an accidental re-widening fails.
   report(
-    "no regression: admin still reads the accounts collection",
-    (await getDoc("accounts/does-not-exist", adminToken)) === 404 // 404 = Rule allowed the read, doc absent
+    "the accounts collection -- NOW DENIED (moved to customer.record.read on a governed source)",
+    (await getDoc("accounts/does-not-exist", adminToken)) === 403
   );
   report(
-    "no regression: PARTS_MANAGER technician still reads their own Employee",
-    (await getDoc("employees/emp-pm-1", technicianToken)) === 200
+    "a principal reading their OWN Employee -- NOW DENIED (moved to resolveCurrentEmployeeSession)",
+    (await getDoc("employees/emp-pm-1", technicianToken)) === 403
   );
 
   console.log(`\n${passed} passed, ${failed} failed`);

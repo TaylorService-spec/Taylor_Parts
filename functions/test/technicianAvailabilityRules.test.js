@@ -137,8 +137,13 @@ async function main() {
   // --- neighboring collections are UNCHANGED by this edit (3) ---
   // fieldops_technicians is the collection these two describe, and its posture must not have moved:
   // admin/dispatcher still read it, and a technician still reads their OWN record.
-  report("neighbor fieldops_technicians READ still ALLOWED for admin", allowed(await rest("GET", "fieldops_technicians/tav-tech-1", tokens.admin)));
-  report("neighbor fieldops_technicians READ still ALLOWED for the technician it describes", allowed(await rest("GET", "fieldops_technicians/tav-tech-1", tokens.technician)));
+  // The neighbour posture changed with the contraction. The technician DIRECTORY is read through a
+  // governed source on service.technician.read, and a technician reads their OWN profile through
+  // the readSelfTechnician callable on service.technician.self.read -- so both directions of this
+  // read lose their Firestore grant, including the self case, which is the one most likely to be
+  // argued back in as harmless.
+  report("neighbor fieldops_technicians READ -- NOW DENIED for admin (service.technician.read on a governed source)", denied(await rest("GET", "fieldops_technicians/tav-tech-1", tokens.admin)));
+  report("neighbor fieldops_technicians READ -- NOW DENIED for the technician it describes (service.technician.self.read via readSelfTechnician)", denied(await rest("GET", "fieldops_technicians/tav-tech-1", tokens.technician)));
   report("neighbor fieldops_technicians CREATE still DENIED for technician", denied(await rest("PATCH", "fieldops_technicians/tav-new-1", tokens.technician, PROBE_BODY)));
 
   console.log(`\n${passed} passed, ${failed} failed`);

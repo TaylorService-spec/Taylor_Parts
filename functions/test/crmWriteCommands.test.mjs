@@ -7,6 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  governedValuesValid,
   ACCOUNT_GOVERNED_FIELDS,
   buildAccountCreate,
   buildAccountUpdate,
@@ -216,4 +217,63 @@ test("contacts and locations keep EPOCH MILLIS, because that is what their defin
     assert.equal(out.createdAt, CTX.nowMillis);
     assert.equal(typeof out.updatedAt, "number");
   }
+});
+
+// ============================ THE GOVERNED VALUE SETS, PORTED ============================
+//
+// These lived ONLY in `firestore.rules`:
+//
+//   paymentTerms in ['COD', 'NET_30', 'NET_60', 'NET_90']
+//   taxStatus    in ['UNKNOWN', 'TAXABLE', 'EXEMPT', 'RESELLER']
+//
+// Nothing server-side re-checked them. Retiring the client-direct write would have retired the only
+// enforcement of what these fields may CONTAIN, leaving a capability holder able to stamp
+// `paymentTerms: "whenever"` on a customer -- because the capability says WHO may set a governed
+// field and never said WHAT it may say. Ported from
+// functions/test/accountsGovernedFieldsRules.test.js before those assertions became denials.
+
+test("every governed value the retired rule accepted is still accepted", () => {
+  for (const paymentTerms of ["COD", "NET_30", "NET_60", "NET_90"]) {
+    assert.equal(governedValuesValid({ paymentTerms }), true, paymentTerms);
+  }
+  for (const taxStatus of ["UNKNOWN", "TAXABLE", "EXEMPT", "RESELLER"]) {
+    assert.equal(governedValuesValid({ taxStatus }), true, taxStatus);
+  }
+  assert.equal(governedValuesValid({ paymentTerms: "NET_30", taxStatus: "EXEMPT" }), true);
+});
+
+test("unset and null stay legitimate states, exactly as the rule's null branch allowed", () => {
+  assert.equal(governedValuesValid({}), true, "absent is not invalid");
+  assert.equal(governedValuesValid({ paymentTerms: null, taxStatus: null }), true, "cleared is not invalid");
+  assert.equal(governedValuesValid({ name: "Acme" }), true, "a patch that mentions neither is fine");
+});
+
+test("a value outside the governed set is REFUSED, whoever the caller is", () => {
+  for (const bad of ["whenever", "net_30", "NET_45", "", " ", "COD "]) {
+    assert.equal(governedValuesValid({ paymentTerms: bad }), false, JSON.stringify(bad));
+  }
+  for (const bad of ["taxable", "NONE", "EXEMPT_2"]) {
+    assert.equal(governedValuesValid({ taxStatus: bad }), false, JSON.stringify(bad));
+  }
+  // A non-string is not a governed value either -- the rule compared against a list of strings.
+  assert.equal(governedValuesValid({ paymentTerms: 30 }), false);
+  assert.equal(governedValuesValid({ taxStatus: { forged: true } }), false);
+});
+
+test("the value check runs on CREATE and on UPDATE, and the capability does not excuse it", () => {
+  // The important case: a caller who legitimately HOLDS customer.governedField.write still cannot
+  // put an ungoverned value in a governed field. Authority over a field is not authorship of its
+  // vocabulary.
+  const ctx = { actorUid: "uid-1", nowValue: 1, mayWriteGovernedFields: true };
+  assert.throws(
+    () => buildAccountCreate({ name: "Acme", paymentTerms: "whenever" }, ctx),
+    /GOVERNED_VALUE_INVALID|governed values/i,
+  );
+  assert.throws(
+    () => buildAccountUpdate({ taxStatus: "NONE" }, { name: "Acme" }, ctx),
+    /GOVERNED_VALUE_INVALID|governed values/i,
+  );
+  // And the legitimate paths still work, including adding a term to a legacy account with none.
+  assert.ok(buildAccountCreate({ name: "Acme", paymentTerms: "NET_30" }, ctx));
+  assert.ok(buildAccountUpdate({ paymentTerms: "NET_60" }, { name: "Acme" }, ctx));
 });

@@ -144,14 +144,14 @@ async function main() {
 
   // === fieldops_wos reads -- role/ownership-scoped ===
 
-  report("admin reads fieldops_wos (any assignment)",
-    (await getDocAt("fieldops_wos", "wo-1", tokens["user-admin-1"])) === 200);
+  report("admin reads fieldops_wos (any assignment) -- NOW DENIED (work-order reads moved to the scoped seam (workOrder.read / workOrder.assigned.read))",
+    (await getDocAt("fieldops_wos", "wo-1", tokens["user-admin-1"])) === 403);
 
-  report("dispatcher reads fieldops_wos (any assignment)",
-    (await getDocAt("fieldops_wos", "wo-1", tokens["user-dispatcher-1"])) === 200);
+  report("dispatcher reads fieldops_wos (any assignment) -- NOW DENIED (work-order reads moved to the scoped seam (workOrder.read / workOrder.assigned.read))",
+    (await getDocAt("fieldops_wos", "wo-1", tokens["user-dispatcher-1"])) === 403);
 
-  report("technician assigned to this Work Order reads it",
-    (await getDocAt("fieldops_wos", "wo-1", tokens["user-tech-own-1"])) === 200);
+  report("technician assigned to this Work Order reads it -- NOW DENIED (work-order reads moved to the scoped seam (workOrder.read / workOrder.assigned.read))",
+    (await getDocAt("fieldops_wos", "wo-1", tokens["user-tech-own-1"])) === 403);
 
   report("technician NOT assigned to this Work Order is denied (ownership gate enforced)",
     (await getDocAt("fieldops_wos", "wo-1", tokens["user-tech-other-1"])) === 403);

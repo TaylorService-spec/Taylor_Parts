@@ -46,6 +46,42 @@ export const LOCATION_UPDATE = "crm.location.update";
  */
 export const ACCOUNT_GOVERNED_FIELDS = Object.freeze(["paymentTerms", "taxStatus"] as const);
 
+// ════════════════════ THE GOVERNED VALUE SETS ════════════════════
+//
+// These lived ONLY in `firestore.rules`:
+//
+//   paymentTerms in ['COD', 'NET_30', 'NET_60', 'NET_90']
+//   taxStatus    in ['UNKNOWN', 'TAXABLE', 'EXEMPT', 'RESELLER']
+//
+// Nothing server-side re-checked them, so retiring the client-direct write would have retired
+// the only enforcement of what these fields may CONTAIN -- leaving a capability holder able to
+// stamp `paymentTerms: "whenever"` on a customer. The capability says WHO may set a governed
+// field; it never said WHAT the field may say, and conflating the two is how a governed field
+// quietly becomes a free-text one.
+//
+// `null` and an absent field are permitted, exactly as the rule's `data.get(field, null) == null`
+// branch permitted them: unset is a legitimate state, and taxStatus has an explicit UNKNOWN.
+export const ACCOUNT_GOVERNED_VALUES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  paymentTerms: Object.freeze(["COD", "NET_30", "NET_60", "NET_90"]),
+  taxStatus: Object.freeze(["UNKNOWN", "TAXABLE", "EXEMPT", "RESELLER"]),
+});
+
+/**
+ * Mirrors the retired `accountGovernedValuesValid()` predicate: a governed field is either unset
+ * or one of its declared values. Checked on every account write, not only the ones that CHANGE a
+ * governed field -- a create that sets a nonsense value never had a previous value to compare to.
+ */
+export function governedValuesValid(data: Record<string, unknown>): boolean {
+  for (const field of ACCOUNT_GOVERNED_FIELDS) {
+    if (!(field in data)) continue;
+    const value = data[field] ?? null;
+    if (value === null) continue;
+    if (typeof value !== "string") return false;
+    if (!ACCOUNT_GOVERNED_VALUES[field].includes(value)) return false;
+  }
+  return true;
+}
+
 /** Mirrors the retired `accountGovernedCreateBaseline()` predicate exactly. */
 export function isGovernedCreateBaseline(data: Record<string, unknown>): boolean {
   const paymentTerms = data.paymentTerms ?? null;
@@ -148,6 +184,15 @@ export function buildAccountCreate(
     );
   }
 
+  // THE VALUE SET, checked on every write. The capability decides WHO may set a governed field;
+  // it never decided WHAT the field may contain, and this is the half that lived only in Rules.
+  if (!governedValuesValid(clean)) {
+    throw new CrmCommandError(
+      "GOVERNED_VALUE_INVALID",
+      `${ACCOUNT_GOVERNED_FIELDS.join(" and ")} must each be unset or one of their governed values.`,
+    );
+  }
+
   return {
     ...clean,
     [SEARCH_NAME_FIELD]: normalizeAccountSearchName(clean.name as string),
@@ -172,6 +217,15 @@ export function buildAccountUpdate(
     throw new CrmCommandError(
       "GOVERNED_FIELD_DENIED",
       `Changing ${ACCOUNT_GOVERNED_FIELDS.join(" or ")} requires ${ACCOUNT_GOVERNED_FIELD_WRITE}.`,
+    );
+  }
+
+  // THE VALUE SET, checked on every write. The capability decides WHO may set a governed field;
+  // it never decided WHAT the field may contain, and this is the half that lived only in Rules.
+  if (!governedValuesValid(clean)) {
+    throw new CrmCommandError(
+      "GOVERNED_VALUE_INVALID",
+      `${ACCOUNT_GOVERNED_FIELDS.join(" and ")} must each be unset or one of their governed values.`,
     );
   }
 

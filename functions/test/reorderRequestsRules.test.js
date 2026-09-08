@@ -796,12 +796,12 @@ async function main() {
     purchaseOrderId: "rr-received-happy-path",
   });
   report(
-    "ORDERED -> RECEIVED accepted for the assignee",
+    "ORDERED -> RECEIVED accepted for the assignee -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)",
     (await updateReorderRequest("rr-received-happy-path", adminToken, {
       status: str("RECEIVED"),
       receivedBy: str("user-admin-rr"),
       receivedAt: int(Date.now()),
-    })) === 200
+    })) === 403
   );
 
   await seedReorderRequest("rr-received-non-assignee", {
@@ -862,13 +862,13 @@ async function main() {
     assignedToUserId: null,
   });
   report(
-    "READY_FOR_PARTS_MANAGER -> CANCELLED accepted for admin, with a genuine reason",
+    "READY_FOR_PARTS_MANAGER -> CANCELLED accepted for admin, with a genuine reason -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)",
     (await updateReorderRequest("rr-cancel-from-ready-for-pm", adminToken, {
       status: str("CANCELLED"),
       cancelledBy: str("user-admin-rr"),
       cancelledAt: int(Date.now()),
       cancellationReason: str("Duplicate request, already ordered under PART-CANCEL9"),
-    })) === 200
+    })) === 403
   );
 
   await seedReorderRequest("rr-cancel-from-assigned", {
@@ -887,13 +887,13 @@ async function main() {
   const preCancelSnapshot = (await db.doc("reorder_requests/rr-cancel-from-assigned").get()).data();
 
   report(
-    "ASSIGNED_TO_PARTS_ASSOCIATE -> CANCELLED accepted for dispatcher (not just admin, not just the assignee)",
+    "ASSIGNED_TO_PARTS_ASSOCIATE -> CANCELLED accepted for dispatcher (not just admin, not just the assignee) -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)",
     (await updateReorderRequest("rr-cancel-from-assigned", dispatcherToken, {
       status: str("CANCELLED"),
       cancelledBy: str("user-dispatcher-rr"),
       cancelledAt: int(Date.now()),
       cancellationReason: str("Part no longer needed"),
-    })) === 200
+    })) === 403
   );
 
   {
@@ -929,10 +929,26 @@ async function main() {
       !("voidedAt" in postCancelSnapshot) &&
       !("voidReason" in postCancelSnapshot);
 
+    // ══════════ WHAT THIS ASSERTION BECAME, AND WHY IT IS STILL WORTH RUNNING ══════════
+    //
+    // It proved the RULES' key-set diff: a Cancel added exactly cancelledBy / cancelledAt /
+    // cancellationReason and touched nothing else. The client-direct write is retired, so there
+    // is no longer a client Cancel for it to measure -- and that contract now lives in
+    // functions/test/reorderRecordGenerationParity.test.mjs, which asserts the builder's patch
+    // key set exactly, on both record generations, WITH the void trio absent.
+    //
+    // What is proven HERE instead is the other half, and it is not redundant: a REFUSED write
+    // left the document byte-for-byte untouched. A partial apply on a denied write would be a
+    // worse failure than the one the original assertion guarded, and nothing else checks it.
+    const unchangedByTheDenial =
+      postKeys.size === preKeys.size &&
+      [...preKeys].every((key) => postKeys.has(key)) &&
+      [...preKeys].every((key) => preCancelSnapshot[key] === postCancelSnapshot[key]);
     report(
-      "Legacy document (six Cancel/Void keys entirely absent pre-transition): post-transition key set equals pre-transition key set plus exactly cancelledBy/cancelledAt/cancellationReason; every non-owned field byte-for-byte unchanged; voidedBy/voidedAt/voidReason still genuinely absent",
-      keySetMatches && everyOtherFieldPinned && ownedFieldsCorrect && voidFieldsStillAbsent
+      "a DENIED Cancel leaves the document byte-for-byte untouched -- no partial apply -- and the Cancel/Void keys stay absent (the key-set contract moved to reorderRecordGenerationParity)",
+      unchangedByTheDenial && voidFieldsStillAbsent && !("cancelledBy" in postCancelSnapshot)
     );
+    void keySetMatches; void everyOtherFieldPinned; void ownedFieldsCorrect;
   }
 
   await seedReorderRequest("rr-cancel-from-purchasing", {
@@ -941,13 +957,13 @@ async function main() {
     assignedToUserId: "user-admin-rr",
   });
   report(
-    "PURCHASING_IN_PROGRESS -> CANCELLED accepted for admin",
+    "PURCHASING_IN_PROGRESS -> CANCELLED accepted for admin -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)",
     (await updateReorderRequest("rr-cancel-from-purchasing", adminToken, {
       status: str("CANCELLED"),
       cancelledBy: str("user-admin-rr"),
       cancelledAt: int(Date.now()),
       cancellationReason: str("Wrong part identified"),
-    })) === 200
+    })) === 403
   );
 
   await seedReorderRequest("rr-cancel-auth-rejected", {
@@ -1148,8 +1164,8 @@ async function main() {
     voidFields.reorderPurchaseOrderId = str("rr-void-happy-path");
     voidFields.reorderRequestId = str("rr-void-happy-path");
     report(
-      "ORDERED -> VOIDED accepted for the assignee (isAdminOrDispatcher() AND assignedToUserId, both conditions)",
-      (await voidCommit("rr-void-happy-path", adminToken, { requestFields, voidFields })) === 200
+      "ORDERED -> VOIDED accepted for the assignee (isAdminOrDispatcher() AND assignedToUserId, both conditions) -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)",
+      (await voidCommit("rr-void-happy-path", adminToken, { requestFields, voidFields })) === 403
     );
   }
 
@@ -1188,10 +1204,27 @@ async function main() {
         (key) => key in voidRecordSnapshot
       );
 
+    // The client-direct Void is retired, so the commit is REFUSED and the two-document
+    // invariant it used to prove -- request patch and void record written from one clock, the
+    // void record carrying exactly its six keys -- moved to
+    // functions/test/reorderCancelVoidCommands.test.mjs, which proves it against the builder.
+    //
+    // Retained here: a refused Void leaves BOTH documents alone. Neither a partial request patch
+    // nor an orphan void record may survive a denial, and a half-applied cross-document write is
+    // precisely the failure that is hardest to notice afterwards.
+    const requestUntouched =
+      postKeys.size === preKeys.size &&
+      [...preKeys].every((key) => postKeys.has(key)) &&
+      [...preKeys].every((key) => preVoidSnapshot[key] === postVoidSnapshot[key]);
     report(
-      "Legacy document (six Cancel/Void keys entirely absent pre-transition): Void adds ONLY status(value)/voidedBy/voidedAt/voidReason to reorder_requests -- cancelledBy/cancelledAt/cancellationReason never backfilled, every other field pinned, and the void record itself has exactly its six required keys",
-      commitStatus === 200 && keySetMatches && cancelFieldsStillAbsent && everyOtherFieldPinned && voidRecordKeySetExact
+      "a DENIED Void leaves the request untouched AND writes no void record (the two-document contract moved to reorderCancelVoidCommands)",
+      commitStatus === 403 &&
+        requestUntouched &&
+        cancelFieldsStillAbsent &&
+        !("voidedBy" in postVoidSnapshot) &&
+        voidRecordSnapshot === undefined
     );
+    void keySetMatches; void everyOtherFieldPinned; void voidRecordKeySetExact;
   }
 
   // NEGATIVE -- authorization: plain technician (not admin/dispatcher),
@@ -1613,32 +1646,32 @@ async function main() {
       const id = warehouse === null ? "rr-2b-legacy" : "rr-2b-new";
       await seedGeneration(id, { status: "READY_FOR_PARTS_MANAGER", assignedToUserId: null, warehouse });
       report(
-        `2B: Assign still accepted on a ${label} record`,
+        `2B: Assign on a ${label} record -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)`,
         (await updateReorderRequest(id, adminToken, {
           status: str("ASSIGNED_TO_PARTS_ASSOCIATE"),
           currentOwner: str("PARTS_ASSOCIATE"),
           assignedToUserId: str("user-admin-rr"),
           assignedBy: str("user-admin-rr"),
           assignedAt: int(Date.now()),
-        })) === 200
+        })) === 403
       );
       report(
-        `2B: Start Purchasing still accepted on a ${label} record`,
+        `2B: Start Purchasing still accepted on a ${label} record -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)`,
         (await updateReorderRequest(id, adminToken, {
           status: str("PURCHASING_IN_PROGRESS"),
           purchasingStartedAt: int(Date.now()),
           purchasingStartedBy: str("user-admin-rr"),
-        })) === 200
+        })) === 403
       );
       report(
-        `2B: a Purchasing Update still accepted on a ${label} record`,
+        `2B: a Purchasing Update still accepted on a ${label} record -- NOW DENIED (reorder lifecycle moved to trusted transition commands; contracts proven in reorderRecordGenerationParity/reorderTransitionParity/reorderCancelVoidCommands)`,
         (await updateReorderRequest(id, adminToken, {
           purchasingNotes: str("Vendor contacted."),
           vendorContacted: { booleanValue: true },
           expectedAvailabilityDate: nul(),
           lastPurchasingUpdateAt: int(Date.now()),
           lastPurchasingUpdateBy: str("user-admin-rr"),
-        })) === 200
+        })) === 403
       );
     }
 

@@ -142,7 +142,22 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "location.record",
     action: "read",
   }),
-  // Suppliers. Two capabilities rather than one, authorized 2026-09-07: supplier IDENTITY and
+  // ══════════ SUPPLIERS — DECISION #78 AS NARROWED (Owner ruling, 2026-09-08) ══════════
+  //
+  //   Supplier MUTATION capabilities remain PROHIBITED unless separately authorized.
+  //   Specifically approved supplier READ capabilities are permitted, and only through governed
+  //   registered read sources.
+  //
+  // Approved reads: supplier.record.read, supplier.catalog.read, supplier.purchaseOrder.read.
+  // NOT authorized: supplier.create / .update / .delete, supplier.catalog.write,
+  // supplier.purchaseOrder.write, or a generic supplier.write. Supplier ADMINISTRATION stays
+  // CATALOG-governed through inventory.catalog.manage/.activate.
+  //
+  // functions/test/permissionCatalog.test.mjs enforces both halves: reads only, and each one named
+  // by a registered governed read source -- a read capability nothing resolves is the symmetry-only
+  // permission #78 refused, wearing .read as a disguise.
+  //
+  // Two capabilities rather than one, authorized 2026-09-07: supplier IDENTITY and
   // supplier PRICING are separable questions, and merging them would foreclose ever answering them
   // differently. Neither is `inventory.catalog.read` -- a Supplier is not a Part, and that
   // capability's measured population is 18 Roles against the retired rule's admitted 2.

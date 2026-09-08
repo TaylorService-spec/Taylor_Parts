@@ -92,7 +92,9 @@ async function main() {
   report("no client CREATE probe leaked a receiving_orders document", leaked.empty);
 
   // --- neighboring collection (inventory_transactions) permissions UNCHANGED by this edit ---
-  report("neighbor inventory_transactions READ still ALLOWED for admin", allowed(await rest("GET", "inventory_transactions/IT-SEED-1", tokens.admin)));
+  // The neighbour posture changed with the contraction: inventory_transactions is read through a
+  // governed source (inventory.transaction.read), so admin loses the direct read too.
+  report("neighbor inventory_transactions READ -- NOW DENIED for admin (inventory.transaction.read on a governed source)", denied(await rest("GET", "inventory_transactions/IT-SEED-1", tokens.admin)));
   report("neighbor inventory_transactions READ still DENIED for technician", denied(await rest("GET", "inventory_transactions/IT-SEED-1", tokens.technician)));
   report("neighbor inventory_transactions CREATE still DENIED for admin", denied(await rest("PATCH", "inventory_transactions/IT-NEW-1", tokens.admin, PROBE_BODY)));
 

@@ -524,22 +524,35 @@ check("fulfillment.coordinatedVisit.read is registered exactly once, active: fal
 // The honest form is a recorded GAP, which is what these are. Each entry names the decision that
 // refused it, so adding one has to be someone's argued choice rather than a spreadsheet symmetry.
 const MUST_NOT_EXIST = [
-  // NARROWED 2026-09-08, by ruling rather than by convenience. DECISIONS #78 refused a
+  // ══════════════════════ DECISION #78, AS NARROWED (Owner ruling, 2026-09-08) ══════════════════════
+  //
+  // THE RULING, in full:
+  //
+  //   Supplier MUTATION capabilities remain PROHIBITED unless separately authorized.
+  //   Specifically approved supplier READ capabilities are permitted, and only through
+  //   governed registered read sources.
+  //
+  // The three approved reads, and there are no others:
+  //
+  //   supplier.record.read        (Owner, 2026-09-07)
+  //   supplier.catalog.read       (Owner, 2026-09-07)
+  //   supplier.purchaseOrder.read (Owner, 2026-09-07, the dormant Epic-5 purchase orders)
+  //
+  // This does NOT authorize, and the test below fails on any of them:
+  //
+  //   supplier.create · supplier.update · supplier.delete · supplier.catalog.write
+  //   supplier.purchaseOrder.write · a generic supplier.write
+  //
+  // WHY THE ORIGINAL BAN WAS RIGHT AND STAYS RIGHT FOR WRITES. #78 refused a
   // `supplier.manage` / `supplier.read` PAIR as symmetry-only: Supplier administration is
   // CATALOG-governed and reuses inventory.catalog.manage/.activate, so a management capability
-  // here would make a Role look authorized while nothing enforced it.
+  // here would make a Role look authorized while nothing enforced it. That reasoning is about
+  // WRITE authority and is untouched.
   //
-  // That reasoning was about WRITE authority, and it still holds. Supplier READS are a different
-  // question and were answered separately: the Owner authorized supplier.record.read and
-  // supplier.catalog.read by name (2026-09-07) to replace the retired firestore.rules read
-  // grants, and supplier.purchaseOrder.read (2026-09-07) for the dormant Epic-5 purchase orders
-  // under the final read cutover's conditional authorization. Each has an ENGINE behind it --
+  // The reads are a different question, answered separately, and each has an ENGINE behind it:
   // governedReadRegistry.ts resolves it server-side before a row is returned -- which is exactly
-  // the property this guard exists to require.
-  //
-  // So the entry keeps its teeth where they belong: no supplier WRITE or MANAGEMENT capability,
-  // which is the invention DECISIONS #78 actually refused.
-  { prefix: "supplier.", why: "DECISIONS #78: Supplier administration is CATALOG-governed and reuses inventory.catalog.manage/.activate. A supplier management capability would be a symmetry-only permission and a temporary path R-1 would then have to retire. Supplier READS were authorized separately (Owner, 2026-09-07) and are enforced by the governed read registry.", allow: (id) => id.endsWith(".read") },
+  // the property #78 demanded and the symmetry-only permission lacked.
+  { prefix: "supplier.", why: "DECISIONS #78 as narrowed (Owner, 2026-09-08): supplier MUTATION capabilities remain prohibited unless separately authorized; specifically approved supplier READ capabilities are permitted, and only through governed registered read sources. Supplier administration stays CATALOG-governed through inventory.catalog.manage/.activate -- a supplier management capability would be a symmetry-only permission and a temporary path R-1 would then have to retire.", allow: (id) => id.endsWith(".read") },
   { prefix: "marketing.", why: "Owner ruling 2026-08-19: the matrix gives Marketing CRED over Marketing Initiatives and no engine governs them. Marketing Manager was created with the reads it can really hold; the rest is a recorded catalog gap, not an unenforced grant." },
   { prefix: "commission.", why: "Recorded catalog gap beside Marketing Initiatives, Technician Time and Notifications. Commissions are UNMODELLED -- the matrix expresses intent the platform does not implement." },
 ];
@@ -562,9 +575,29 @@ check("no capability is invented to make the business-intent matrix look symmetr
   }
 });
 
-check("the supplier narrowing admits READS only -- no write or management capability", () => {
-  // The narrowing above must not become the hole. Every registered supplier capability is a read,
-  // and a write one would fail here even though the prefix entry now carries an allowance.
+check("the supplier narrowing admits READS only, enforced by a governed source", () => {
+  // The narrowing must not become the hole. Two things are required of every supplier capability,
+  // and the second is the one that makes the first mean anything: it must be a READ, and it must
+  // be ENFORCED -- named by a registered governed read source. A read capability nothing resolves
+  // is the symmetry-only permission #78 refused, wearing `.read` as a disguise.
+  //
+  // The named mutations are checked explicitly rather than left to the suffix rule, so the
+  // prohibition reads the same in the test as it does in the ruling.
+  for (const forbidden of [
+    "supplier.create",
+    "supplier.update",
+    "supplier.delete",
+    "supplier.write",
+    "supplier.catalog.write",
+    "supplier.purchaseOrder.write",
+  ]) {
+    assert.ok(
+      !PERMISSION_CATALOG.some((p) => p.id === forbidden),
+      `"${forbidden}" is a supplier MUTATION capability. DECISIONS #78 as narrowed prohibits it ` +
+        "unless separately authorized; Supplier administration is CATALOG-governed through " +
+        "inventory.catalog.manage/.activate.",
+    );
+  }
   const supplierIds = PERMISSION_CATALOG.map((p) => p.id).filter((id) => id.startsWith("supplier."));
   assert.ok(supplierIds.length > 0, "the supplier reads exist -- otherwise this guard proves nothing");
   for (const id of supplierIds) {
