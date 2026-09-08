@@ -18,15 +18,33 @@ count, because an import count is what hid two whole categories of write the fir
 | Target | Status |
 |---|---|
 | Firestore-based EOS authorization decisions | **0** |
-| Direct client governed business **reads** | **0** |
 | Direct client governed business **writes** | **0** |
+| Direct client governed business **reads** | **14 call sites, 4 files — NOT ZERO** |
 | `firestoreListSource` callers | **0** (file deleted) |
 | `useFirestoreCollection` callers | **0** (file deleted) |
 | `collectionStore` / `firebaseSafe` callers | **0** (both files deleted) |
 
-**Rules closure: READY.** Every governed business read and write goes through a trusted seam, and
-the shared client write transport is gone rather than dormant. The staged `firestore.rules` is
-still NOT DEPLOYED — that is a separate authorized action.
+**Rules closure: NOT READY — and an earlier revision of this ledger said READY, which was wrong.**
+The write side is closed and the shared client write transport is deleted. The read side is closed
+**for the families this workstream migrated**, and that result was generalized to "repository-wide
+0" without measuring four files that were never in its scope. Re-measured by CALL SITE:
+
+| File | Sites | Collections | Live consumers |
+|---|---|---|---|
+| `services/workOrderService.ts` | 3 | `fieldops_wos` | Dispatch, DispatcherBoard, Jobs, ControlTower, FieldMode, TechnicianDashboard, ScanWorkspace |
+| `services/operationsQueries.ts` | 6 | `warehouses`, `transfer_orders`, `suppliers`, `supplier_catalog`, `purchase_orders`, `inventory_transactions`, `reorder_requests`, `reorder_purchase_orders` | PartDetail, PartsList, Transfers, Receiving, CycleCounts, AdminWarehouseRacking, Operations |
+| `analytics/executionAnalyticsService.ts` | 4 | `fieldops_wos` (two are unbounded collection scans) | Operations, PerformanceSnapshot |
+| `analytics/operationsIntelligenceService.ts` | 1 | `fieldops_wos` (unbounded scan) | via `executionAnalyticsService` |
+
+None is dormant. Deploying the staged Rules today would dark those screens.
+
+A fifteenth read is `auth/employeeSession.js`'s `employees/{own employeeId}`. It is genuinely
+self-scoped, but the surviving picker grant does not cover it — a principal who is not a
+PARTS_MANAGER assignment candidate would be denied their own employee record, which is what resolves
+operational identity at session bootstrap. Either the grant widens to "own linked employee record"
+or that read moves behind a governed callable; **that is a decision, not a cleanup.**
+
+The staged `firestore.rules` is NOT DEPLOYED, and this is now why as well as when.
 
 ---
 
@@ -42,7 +60,11 @@ still NOT DEPLOYED — that is a separate authorized action.
 | `access/useSerializedAssetAcquireCapability.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
 | `access/useWorkOrderPartsPlanCapability.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
 | `metadata/definitions/accountPageComponents.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
-| `auth/employeeSession.js` | `getDoc`, `onSnapshot` | `users/{own uid}`, `employees/{own employeeId}` | **B** session / operational identity | Resolves the SIGNED-IN principal's OWN employee record via `users/{uid}.employeeId`. Self-scoped by construction — not a directory read, and cannot become one. |
+| `auth/employeeSession.js` | `getDoc` ×2 | `users/{own uid}`, `employees/{own employeeId}` | **B** session / operational identity — **not covered by the staged Rules** | Resolves the SIGNED-IN principal's OWN employee record via `users/{uid}.employeeId`. Self-scoped by construction and cannot become a directory read — but the picker grant does not admit it, so it is a closure blocker rather than a clean survivor. |
+| `services/workOrderService.ts` | `getDoc`, `onSnapshot` ×2 | `fieldops_wos` | **A** governed business read — **UNMIGRATED** | Never in this workstream's scope. The scoped work-order seam exists server-side and is the destination. |
+| `services/operationsQueries.ts` | `getDocs` ×6 | eight collections, see above | **A** governed business read — **UNMIGRATED** | Never in scope. Several are whole-collection reads with client-side paging. |
+| `analytics/executionAnalyticsService.ts` | `getDoc`, `getDocs` ×3 | `fieldops_wos` | **A** governed business read — **UNMIGRATED** | Two are unbounded collection scans, gated only by a comment saying admin/dispatcher only. |
+| `analytics/operationsIntelligenceService.ts` | `getDocs` | `fieldops_wos` | **A** governed business read — **UNMIGRATED** | Unbounded collection scan. |
 | `firebase/firebase.js` | — | — | **E** technical | SDK initialisation. |
 
 **`lib/firebaseSafe.js` and `firebase/collectionStore.js` are DELETED.** They were the shared

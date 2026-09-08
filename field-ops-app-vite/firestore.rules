@@ -34,24 +34,42 @@ rules_version = '2';
 // inferred. Access reaches the client through governed trusted callables that resolve a capability
 // server-side (the pattern: workforce.directory.read -> listWorkforceDirectory).
 //
-// ════════════════════ THE CLIENT HAS CAUGHT UP ════════════════════
+// ════════════════════ WHERE THE CLIENT ACTUALLY IS ════════════════════
 //
-// This header used to warn that deploying would dark every surface still talking to Firestore
-// directly, and listed ~10 collections across 76 client files for reads plus ELEVEN collections
-// accepting client-direct writes. THAT IS NO LONGER THE STATE, and leaving the warning would be as
-// misleading as the over-confident draft it replaced.
+// MEASURED, repository-wide and by CALL SITE rather than by import count, at the head of
+// feat/rules-out-of-firebase. An earlier draft of this header claimed three zeros. Two of them
+// hold. The read zero DOES NOT, and stating it was a scope error: this workstream's own migrated
+// surfaces reached zero, and that was generalized to the repository without measuring the analytics
+// and work-order services, which were never in its scope.
 //
-// MEASURED, repository-wide and by OPERATION rather than by import count:
-//
-//   DIRECT CLIENT GOVERNED BUSINESS READS    0
 //   DIRECT CLIENT GOVERNED BUSINESS WRITES   0
-//   FIRESTORE EOS AUTHORIZATION DECISIONS    0
+//   FIRESTORE EOS AUTHORIZATION DECISIONS    0   (no rule reads users/{uid}.role)
+//   DIRECT CLIENT GOVERNED BUSINESS READS   14   across 4 files -- NOT ZERO
 //
-// Every business read goes through a governed source (governedReadRegistry.ts + readGovernedList /
-// countGovernedList) or the scoped work-order seam. Every business write goes through a trusted
-// command that resolves a capability server-side. The shared client write transport
-// (collectionStore / firebaseSafe) and the generic direct-read hooks (firestoreListSource,
-// useFirestoreCollection) are DELETED, not disabled -- there is no dormant escape hatch left.
+//   services/workOrderService.ts             3   fieldops_wos (getDoc + two onSnapshot)
+//   services/operationsQueries.ts            6   warehouses, transfer_orders, suppliers,
+//                                                supplier_catalog, purchase_orders,
+//                                                inventory_transactions, reorder_requests,
+//                                                reorder_purchase_orders
+//   analytics/executionAnalyticsService.ts   4   fieldops_wos (two are full-collection scans)
+//   analytics/operationsIntelligenceService  1   fieldops_wos (full-collection scan)
+//
+// All fourteen are LIVE, not dormant: their consumers include Dispatch, DispatcherBoard, Jobs,
+// ControlTower, FieldMode, TechnicianDashboard, PartDetail, PartsList, Transfers and Receiving.
+//
+// A FIFTEENTH is auth/employeeSession.js's read of the caller's OWN employees/{employeeId}. It is
+// self-scoped, but the picker grant below does not cover it -- a signed-in principal who is not a
+// PARTS_MANAGER assignment candidate would be denied their own employee record, which is what
+// resolves operational identity at session bootstrap.
+//
+// The work this file's closure DID complete: every business WRITE goes through a trusted command
+// that resolves a capability server-side, the shared client write transport (collectionStore /
+// firebaseSafe) and the generic direct-read hooks (firestoreListSource, useFirestoreCollection) are
+// DELETED rather than disabled, and the migrated read families go through governedReadRegistry.ts
+// with readGovernedList / countGovernedList or the scoped work-order seam.
+//
+// THIS FILE IS THEREFORE NOT YET SAFE TO DEPLOY, and the reason is recorded here rather than
+// discovered at deploy time. The four files above must be migrated first.
 //
 // The governed-field protections that lived HERE as Rules predicates moved into the commands that
 // replace those writes and are tested there: accounts' admin-only paymentTerms/taxStatus, the
