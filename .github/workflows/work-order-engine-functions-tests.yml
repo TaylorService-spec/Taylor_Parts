@@ -16,6 +16,7 @@ on:
       - "functions/src/transitionWorkOrder.ts"
       - "functions/src/workOrder/**"
       - "functions/test/scopedWorkOrderRead.test.mjs"
+      - "functions/test/technicianCommands.test.mjs"
       - "functions/src/access/permissionCatalog.ts"
       - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"

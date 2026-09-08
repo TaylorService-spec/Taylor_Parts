@@ -191,6 +191,10 @@ export {
   readSelfTechnician,
 } from "./workOrder/scopedWorkOrderCallables";
 
+// The technician profile create -- the LAST direct client write, moved to a trusted command. The
+// retired rule required status == "available"; the command chooses it rather than validating it.
+export { createTechnician } from "./workOrder/technicianCommands";
+
 // CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a
 // workflow: one atomic batch create, gated on crm.contact.create.
 export { importContacts } from "./crm/contactImportCommand";

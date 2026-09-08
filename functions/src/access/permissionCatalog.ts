@@ -188,6 +188,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "technician.record",
     action: "read",
   }),
+  // The technician CREATE, ruled 2026-09-07 conditional on measured parity. The retired rule was
+  // `isAdminOrDispatcher() && request.resource.data.status == 'available'` — and that status
+  // constraint is part of the AUTHORITY, not a client convention: the rule REFUSED a create that
+  // started a technician in any other state. The trusted command therefore chooses the status
+  // itself and ignores anything the caller sends, rather than validating a supplied one.
+  Object.freeze({
+    id: "service.technician.create",
+    description:
+      "Create a technician profile record. The record is always created in the available state, chosen by the server and never by the caller. Confers no update, no delete and no read.",
+    resource: "technician.record",
+    action: "create",
+  }),
   Object.freeze({
     id: "service.technician.self.read",
     description:

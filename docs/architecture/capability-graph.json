@@ -12,12 +12,12 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 159,
+    "capabilities": 160,
     "catalogActive": 0,
-    "catalogInactive": 159,
+    "catalogInactive": 160,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 48,
+    "callableExports": 49,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 159,
-    "parsed": 159,
+    "raw": 160,
+    "parsed": 160,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 132,
+    "SERVER_REFERENCED": 133,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -772,6 +772,29 @@
         ],
         "serverReferenceCount": 3,
         "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.technician.create",
+      "resource": "technician.record",
+      "action": "create",
+      "description": "Create a technician profile record. The record is always created in the available state, chosen by the server and never by the caller. Confers no update, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -5078,6 +5101,14 @@
       "module": "./completeAssignedJob",
       "capabilityHints": [],
       "comment": "--- F-RULES-1 surface: trusted technician job completion (Decision #39) --- Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until Gate D1's Owner produc"
+    },
+    {
+      "names": [
+        "createTechnician"
+      ],
+      "module": "./workOrder/technicianCommands",
+      "capabilityHints": [],
+      "comment": "The technician profile create -- the LAST direct client write, moved to a trusted command. The retired rule required status == \"available\"; the command chooses it rather than validating it."
     },
     {
       "names": [

@@ -1,7 +1,7 @@
-import { techniciansStore } from "../firebase/collectionStore";
-import { TECH_STATUS } from "./constants";
+import { isWriteBlocked } from "../config/env";
 
-// What is left of the legacy `fieldops_jobs` surface: one function.
+// What is left of the legacy `fieldops_jobs` surface: one function, and it no longer writes
+// Firestore.
 //
 // ============================ WHAT WAS DELETED, AND WHY ============================
 //
@@ -19,26 +19,50 @@ import { TECH_STATUS } from "./constants";
 // Those three carried the last two client-direct Firestore `runTransaction` calls in the
 // application. They were DELETED rather than migrated: minting permanent trusted-command authority
 // -- and the capability grants that go with it -- for a surface nothing calls would create
-// authority for dead product, which is worse than the direct writes it replaced.
+// authority for dead product.
 //
 // The transitions they encoded are recorded in docs/governance/workflow-action-census.md as
-// measurement, so the later Workflows workstream starts from what this code actually did rather
-// than from memory of it.
+// measurement, so the later Workflows workstream starts from what this code actually did.
 //
 // ============================ WHAT SURVIVES ============================
 //
-// createTechnician() has exactly one live caller (modules/technicians/Technicians.jsx). It writes
-// through techniciansStore, which gates on lib/firebaseSafe.js's demo/panic write block, and is
-// therefore still a CLIENT-DIRECT write to `fieldops_technicians`.
+// createTechnician(), now a TRUSTED COMMAND. It was the last direct client governed business write
+// in the application: `techniciansStore.add(...)` against `fieldops_technicians`, reached from the
+// Technicians surface's New Technician modal.
 //
-// It is the LAST direct client governed business write in the application, and it is NOT migrated
-// here: no Contact-style `service.technician.create` capability exists, and minting one plus
-// granting it to a Role is an authorization-definition decision rather than a migration step. The
-// parity table is in docs/governance/capability-parity-proposals.md.
+// THE STATUS IS NO LONGER SENT. The retired rule was
+// `isAdminOrDispatcher() && request.resource.data.status == 'available'`, and that second clause was
+// part of the AUTHORITY rather than a client convention. The server now chooses `available` itself
+// and accepts no status at all, so there is nothing here for a caller to get wrong.
 //
-// `status: available` is not a default this file chose -- the retired Rule REQUIRED it
-// (`allow create: if isAdminOrDispatcher() && request.resource.data.status == 'available'`), and a
-// trusted command replacing this must keep enforcing it server-side.
-export function createTechnician(name, phone) {
-  return techniciansStore.add({ name, phone, status: TECH_STATUS.AVAILABLE });
+// The demo/panic write gate still runs BEFORE the round trip, returning the same `{ blocked: true }`
+// sentinel the store did -- Technicians.jsx checks for exactly that and keeps its modal open.
+
+export async function createTechnician(name, phone) {
+  if (isWriteBlocked()) {
+    console.warn("WRITE BLOCKED (createTechnician)", name);
+    return { blocked: true };
+  }
+
+  // Lazy, matching every other trusted-command client here: firebase/firebase.js runs initializeApp
+  // on import, so a static import would give this module an import-time side effect.
+  const [{ httpsCallable }, { functions }] = await Promise.all([
+    import("firebase/functions"),
+    import("../firebase/firebase.js"),
+  ]);
+
+  try {
+    const res = await httpsCallable(functions, "createTechnician")({ name, phone: phone ?? null });
+    // `{ id, name, phone, status }` -- the caller closes its modal, focuses the new row by this id
+    // and announces the name. The id is the one the SERVER minted.
+    return res?.data ?? null;
+  } catch (err) {
+    // THROWS, as the store did. Technicians.jsx relies on that to keep the modal open with safe
+    // copy and nothing persisted; swallowing it here would close the modal on a failed create.
+    const raw = typeof err?.code === "string" ? err.code : "";
+    const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
+    const normalized = new Error(err?.message ?? "technician could not be created");
+    normalized.code = code === "permission-denied" ? "permission-denied" : "unavailable";
+    throw normalized;
+  }
 }
