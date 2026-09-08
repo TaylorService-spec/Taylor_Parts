@@ -12,12 +12,12 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 165,
+    "capabilities": 166,
     "catalogActive": 0,
-    "catalogInactive": 165,
+    "catalogInactive": 166,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 50,
+    "callableExports": 51,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 165,
-    "parsed": 165,
+    "raw": 166,
+    "parsed": 166,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 138,
+    "SERVER_REFERENCED": 139,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -630,6 +630,31 @@
       }
     },
     {
+      "id": "supplier.purchaseOrder.read",
+      "resource": "supplier.purchaseOrder",
+      "action": "read",
+      "description": "Read the legacy Epic-5 Purchase Order records. Confers no write and no authority over reorder purchase orders.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
       "id": "service.equipment.read",
       "resource": "equipment.record",
       "action": "read",
@@ -864,12 +889,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/equipment/equipmentWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -887,12 +913,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/equipment/equipmentWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -5230,6 +5257,14 @@
       "module": "./completeAssignedJob",
       "capabilityHints": [],
       "comment": "--- F-RULES-1 surface: trusted technician job completion (Decision #39) --- Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until Gate D1's Owner produc"
+    },
+    {
+      "names": [
+        "resolveCurrentEmployeeSession"
+      ],
+      "module": "./access/employeeSessionCallable",
+      "capabilityHints": [],
+      "comment": "SESSION IDENTITY -- \"which employee am I\". Requires authentication and NO capability: it reads only the caller's own linkage, and requiring workforce.directory.read here would mean a technician could not learn their own name. It replaces the browser's direct read of its own employees/{employeeId} do"
     },
     {
       "names": [

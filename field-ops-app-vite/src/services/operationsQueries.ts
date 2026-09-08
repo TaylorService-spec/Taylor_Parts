@@ -1,24 +1,75 @@
-// Operations dashboard -- one-shot reads only (getDocs, not onSnapshot),
-// same precedent as firebase/collectionStore.js's list() and
-// AuthContext's role lookup. These seven collections are all
-// Cloud-Function-only writes (firestore.rules denies create/update/
-// delete unconditionally) -- this file never writes to any of them,
-// it only reads what an admin/dispatcher is allowed to see.
-import { collection, getDocs, query, where, documentId, orderBy, limit, Timestamp } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import {
-  REORDER_REQUESTS_COLLECTION as LIVE_REORDER_REQUESTS_COLLECTION,
-  REORDER_REQUEST_STATUS,
-  PURCHASE_ORDERS_COLLECTION as LIVE_REORDER_PURCHASE_ORDERS_COLLECTION,
-} from "../domain/constants";
+// Operations reads -- one-shot, read-only, and NO LONGER A DIRECT-FIRESTORE ESCAPE HATCH.
+//
+// ════════════════════ WHAT THIS FILE USED TO BE ════════════════════
+//
+// A generic listCollection(name) over eight collections, with firestore.rules deciding who saw
+// what from users/{uid}.role. Anything could be added to it by passing another string, which is
+// exactly the property that makes a helper like this outlive the decision that authorized it.
+//
+// Every read now names an EOS SOURCE ID -- never a collection, a field, an operator, an orderBy
+// or a raw cursor -- and the server resolves that source's own capability. EACH RESOURCE KEEPS
+// ITS OWN AUTHORITY: warehouse.record.read, supplier.record.read, supplier.catalog.read,
+// warehouse.transferOrder.read, inventory.transaction.read, reorder.request.read.queue,
+// reorder.purchaseOrder.read and supplier.purchaseOrder.read. There is deliberately no single
+// operations-wide read capability: one capability spanning eight resources would grant the
+// Suppliers workspace to anyone who could see a warehouse.
+//
+// ════════════════════ BOUNDED LIST vs COMPLETE AGGREGATE ════════════════════
+//
+// The distinction this file already drew is PRESERVED, and it is why two kinds of fetcher still
+// stand side by side:
+//
+//   list surfaces     Warehouses, Suppliers, Transfers -- one bounded page plus an honest
+//                     truncated flag. A page is a truthful answer to a list.
+//   netting consumers available stock, reconciliation positions, consumption totals, the
+//                     operational overview -- the COMPLETE population, paged to exhaustion.
+//
+// Capping the shared reader would have bounded both, and a total computed over a truncated input
+// is not partial: it is wrong, presented as complete, which is worse than a slow honest read.
+// readAllGoverned FAILS rather than truncating, so a complete-population read cannot quietly
+// degrade into a partial one.
+import { governedCollectionClient, READ_RESULT } from "../access/governedCollectionClient";
+import { REORDER_REQUEST_STATUS } from "../domain/constants";
 import { buildPurchaseOrdersView } from "../domain/purchaseOrdersView.js";
 
-const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
-const WAREHOUSES_COLLECTION = "warehouses";
-const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
-const SUPPLIERS_COLLECTION = "suppliers";
-const SUPPLIER_CATALOG_COLLECTION = "supplier_catalog";
-const PURCHASE_ORDERS_COLLECTION = "purchase_orders";
+// EOS source ids, not collection names. The server owns the mapping from these to storage, and
+// the pairs below differ only in ordering: the *_PAGE sources carry the display ordering a list
+// surface wants, the complete-population sources are ordered by document id because orderBy
+// silently excludes documents missing the ordered field -- which is invisible in a page and
+// catastrophic in a total.
+const SOURCE_INVENTORY_TRANSACTIONS = "inventoryTransactionLedger";
+const SOURCE_WAREHOUSES_COMPLETE = "warehouseDirectory";
+const SOURCE_WAREHOUSES_PAGE = "metadataWarehouses";
+const SOURCE_TRANSFER_ORDERS_COMPLETE = "transferOrderDirectory";
+const SOURCE_TRANSFER_ORDERS_PAGE = "metadataTransferOrders";
+const SOURCE_SUPPLIERS_COMPLETE = "supplierDirectory";
+const SOURCE_SUPPLIERS_PAGE = "metadataSuppliers";
+const SOURCE_SUPPLIER_CATALOG = "supplierCatalogDirectory";
+const SOURCE_LEGACY_PURCHASE_ORDERS = "legacyPurchaseOrders";
+const SOURCE_REORDER_REQUESTS = "reorderRequestsQueue";
+const SOURCE_REORDER_PURCHASE_ORDERS = "purchaseOrdersByIds";
+const SOURCE_REORDER_PURCHASE_ORDERS_ALL = "purchaseOrderDirectory";
+
+/**
+ * A refused or failed governed read THROWS, exactly as the Firestore read it replaces did.
+ *
+ * Returning an empty array on a denial would hand a netting consumer a total of zero and a list
+ * surface the words no suppliers -- both of which are claims about the business manufactured out
+ * of a permission decision.
+ */
+function failRead(result: string): never {
+  throw new Error(
+    result === READ_RESULT.DENIED
+      ? "You do not have access to this operations data."
+      : "Operations data could not be loaded.",
+  );
+}
+
+async function readComplete<T>(sourceId: string, filters?: Record<string, unknown>): Promise<T[]> {
+  const res = await governedCollectionClient.readAllGoverned({ sourceId, filters });
+  if (!res.ok) failRead(res.result);
+  return res.items as T[];
+}
 
 export interface RawInventoryTransaction {
   id: string;
@@ -26,7 +77,10 @@ export interface RawInventoryTransaction {
   partId: string;
   type: "RESERVED" | "RELEASED" | "CONSUMED";
   quantity: number;
-  timestamp: Timestamp;
+  // Arrives over a governed callable, where a Firestore Timestamp is JSON rather than an object
+  // carrying methods. The normaliser this feeds (normalizeLedgerTransaction) already routes it
+  // through domain/timestampMillis.js's toMillis(), which reads every shape.
+  timestamp: unknown;
 }
 
 export interface RawWarehouse {
@@ -82,11 +136,6 @@ export interface RawPurchaseOrder {
   totalCost: number;
 }
 
-async function listCollection<T>(name: string): Promise<T[]> {
-  const snap = await getDocs(collection(db, name));
-  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
-}
-
 /**
  * Default cap for BOUNDED list reads. Generous enough that no current dataset truncates,
  * so adopting it is behaviour-preserving today.
@@ -112,23 +161,24 @@ export const LIST_READ_CAP = 200;
  * unbounded fetcher and stays recorded as blocked on an authoritative aggregate.
  */
 export async function listCollectionPage<T>(
-  name: string,
-  { cap = LIST_READ_CAP, orderByField = "name" }: { cap?: number; orderByField?: string } = {},
+  sourceId: string,
+  { cap = LIST_READ_CAP }: { cap?: number } = {},
 ): Promise<{ items: T[]; truncated: boolean }> {
-  // cap + 1: the extra row is the truncation probe, matching the convention the trusted
-  // read callables and the metadata list runtime already use.
-  const snap = await getDocs(query(collection(db, name), orderBy(orderByField), limit(cap + 1)));
-  const docs = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
-  const truncated = docs.length > cap;
-  return { items: truncated ? docs.slice(0, cap) : docs, truncated };
+  // `truncated` is OBSERVED, from the server's own one-more-than-the-page probe, rather than
+  // inferred by comparing a returned count to the limit -- which cannot tell a full final page
+  // from a cut-off one. There is no orderByField parameter any more: the ordering belongs to the
+  // registered source, because a client that could choose it could choose what falls off the end.
+  const res = await governedCollectionClient.readGovernedList({ sourceId, pageSize: cap });
+  if (!res.ok) failRead(res.result);
+  return { items: res.items as T[], truncated: res.hasMore };
 }
 
-/** Bounded variants for LIST surfaces. The unbounded originals remain for aggregate consumers. */
+/** Bounded variants for LIST surfaces. The complete-population reads remain for the aggregates. */
 export const fetchWarehousesPage = (opts?: { cap?: number }) =>
-  listCollectionPage<RawWarehouse>(WAREHOUSES_COLLECTION, { ...opts, orderByField: "name" });
+  listCollectionPage<RawWarehouse>(SOURCE_WAREHOUSES_PAGE, opts);
 
 export const fetchSuppliersPage = (opts?: { cap?: number }) =>
-  listCollectionPage<RawSupplier>(SUPPLIERS_COLLECTION, { ...opts, orderByField: "name" });
+  listCollectionPage<RawSupplier>(SOURCE_SUPPLIERS_PAGE, opts);
 
 // EI-P1c-2: a dedicated transfer-order read that preserves the authoritative Firestore
 // document id SEPARATELY from the stored data, so the transfer-order adapter can compare
@@ -138,10 +188,27 @@ export interface TransferOrderDoc {
   docId: string;
   data: Record<string, unknown>;
 }
+/**
+ * THE STORAGE ID STAYS OUT OF THE DATA, and that contract is load-bearing rather than tidy.
+ *
+ * The transfer-order adapter compares docId against any id stored INSIDE the document and fails
+ * closed on a conflict. Merging the two -- letting a stored data.id win, or spreading the
+ * document over the id -- would destroy the very evidence that comparison depends on, which is
+ * why the governed items are split back apart here rather than passed through as records.
+ *
+ * The governed seam returns `{ ...data, id }` with the storage id last, so `id` IS the document
+ * id; the rest of the document is handed on unchanged, including any stored id field, so the
+ * adapter still sees the conflict it is there to catch.
+ */
 export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
-  const snap = await getDocs(collection(db, TRANSFER_ORDERS_COLLECTION));
-  return snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
+  const rows = await readComplete<Record<string, unknown>>(SOURCE_TRANSFER_ORDERS_COMPLETE);
+  return rows.map((row) => splitStorageId(row));
 };
+
+function splitStorageId(row: Record<string, unknown>): TransferOrderDoc {
+  const { id: _storageId, ...rest } = row;
+  return { docId: String(row.id), data: rest as Record<string, unknown> };
+}
 
 // X-TRANSFER-ORDERS-UNBOUNDED-READ remediation: a bounded, ordered read of transfer_orders in
 // the SAME { docId, data } shape as fetchTransferOrderDocs above (docId kept separate from the
@@ -160,34 +227,42 @@ export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
 export const fetchTransferOrderDocsPage = async (
   { cap = LIST_READ_CAP }: { cap?: number } = {},
 ): Promise<{ items: TransferOrderDoc[]; truncated: boolean }> => {
-  const snap = await getDocs(
-    query(collection(db, TRANSFER_ORDERS_COLLECTION), orderBy(documentId()), limit(cap + 1)),
-  );
-  const docs = snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
-  const truncated = docs.length > cap;
-  return { items: truncated ? docs.slice(0, cap) : docs, truncated };
+  const page = await listCollectionPage<Record<string, unknown>>(SOURCE_TRANSFER_ORDERS_PAGE, { cap });
+  return { items: page.items.map(splitStorageId), truncated: page.truncated };
 };
 
-export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);
-export const fetchWarehouses = () => listCollection<RawWarehouse>(WAREHOUSES_COLLECTION);
-export const fetchTransferOrders = () => listCollection<RawTransferOrder>(TRANSFER_ORDERS_COLLECTION);
-export const fetchSuppliers = () => listCollection<RawSupplier>(SUPPLIERS_COLLECTION);
-export const fetchSupplierCatalog = () => listCollection<RawSupplierCatalogItem>(SUPPLIER_CATALOG_COLLECTION);
-export const fetchPurchaseOrders = () => listCollection<RawPurchaseOrder>(PURCHASE_ORDERS_COLLECTION);
+// The COMPLETE-population reads. Each is paged to exhaustion by readComplete and fails rather
+// than truncating, because every one of them feeds a total.
+export const fetchInventoryTransactions = () =>
+  readComplete<RawInventoryTransaction>(SOURCE_INVENTORY_TRANSACTIONS);
+export const fetchWarehouses = () => readComplete<RawWarehouse>(SOURCE_WAREHOUSES_COMPLETE);
+export const fetchTransferOrders = () => readComplete<RawTransferOrder>(SOURCE_TRANSFER_ORDERS_COMPLETE);
+export const fetchSuppliers = () => readComplete<RawSupplier>(SOURCE_SUPPLIERS_COMPLETE);
+export const fetchSupplierCatalog = () => readComplete<RawSupplierCatalogItem>(SOURCE_SUPPLIER_CATALOG);
+
+// ════════════════════ A DORMANT COLLECTION, MIGRATED AS DORMANT ════════════════════
+//
+// The Epic-5 `purchase_orders` collection. Its only writer is a demo seed script -- no deployed
+// callable writes it -- and the LIVE purchase orders are `reorder_purchase_orders`, which
+// fetchProcurementPurchaseOrders below already reads. The Operations overview's
+// openProcurementCount still counts THIS one, and that fact is preserved rather than quietly
+// corrected: repointing a metric at a different collection is a correctness change with an owner
+// and a visible number attached, not a side effect of moving a read off Firestore.
+//
+// PRODUCT DEBT, recorded in docs/governance/firebase-removal-closure-ledger.md.
+export const fetchPurchaseOrders = () => readComplete<RawPurchaseOrder>(SOURCE_LEGACY_PURCHASE_ORDERS);
 
 // INV-CONVERGENCE-E Stage A completion -- one-shot read-only lists of the reorder
 // workflow collections for the shadow-parity diagnostic. These two collections ARE
 // client-writable elsewhere (the reorder lifecycle), but this file only READS them
 // (getDocs, no subscription, no filter/index/query-shape change). The PO list is the
 // LIVE `reorder_purchase_orders`, NOT the dormant Epic-5 `purchase_orders` above.
-const REORDER_REQUESTS_COLLECTION = "reorder_requests";
-const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
-
 export interface RawReorderRequest { id: string; partId: string; status: string; }
 export interface RawReorderPurchaseOrder { id: string; partId: string; status: string; }
 
-export const fetchReorderRequests = () => listCollection<RawReorderRequest>(REORDER_REQUESTS_COLLECTION);
-export const fetchReorderPurchaseOrders = () => listCollection<RawReorderPurchaseOrder>(REORDER_PURCHASE_ORDERS_COLLECTION);
+export const fetchReorderRequests = () => readComplete<RawReorderRequest>(SOURCE_REORDER_REQUESTS);
+export const fetchReorderPurchaseOrders = () =>
+  readComplete<RawReorderPurchaseOrder>(SOURCE_REORDER_PURCHASE_ORDERS_ALL);
 
 // site-work r4 item A: the Operations dashboard's Procurement panel was reading the
 // dormant Epic-5 `purchase_orders` collection above (fetchPurchaseOrders) -- its only
@@ -233,21 +308,23 @@ export interface ProcurementPurchaseOrderRow {
 }
 
 export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurchaseOrderRow[]> => {
-  const requestsSnap = await getDocs(
-    query(collection(db, LIVE_REORDER_REQUESTS_COLLECTION), where("status", "in", PROCUREMENT_PO_REQUEST_STATUSES))
-  );
-  const requests = requestsSnap.docs.map((d) => ({ ...d.data(), id: d.id }) as Record<string, unknown> & { id: string });
+  const requests = await readComplete<Record<string, unknown> & { id: string }>(SOURCE_REORDER_REQUESTS, {
+    statuses: PROCUREMENT_PO_REQUEST_STATUSES,
+  });
 
   const ids = requests.map((r) => r.id);
   const purchaseOrdersById: Record<string, Record<string, unknown>> = {};
+  // Chunked at ten because the underlying predicate is an `in`, which Firestore bounds. The
+  // chunking is preserved rather than widened: the registered source declares the same bound
+  // server-side, so a larger chunk would be refused, not silently accepted.
   for (const idChunk of chunkIds(ids, 10)) {
     if (idChunk.length === 0) continue;
-    const snap = await getDocs(
-      query(collection(db, LIVE_REORDER_PURCHASE_ORDERS_COLLECTION), where(documentId(), "in", idChunk))
+    // eslint-disable-next-line no-await-in-loop -- one round trip per chunk, as before.
+    const rows = await readComplete<Record<string, unknown> & { id: string }>(
+      SOURCE_REORDER_PURCHASE_ORDERS,
+      { ids: idChunk },
     );
-    snap.forEach((d) => {
-      purchaseOrdersById[d.id] = { ...d.data(), id: d.id };
-    });
+    for (const row of rows) purchaseOrdersById[row.id] = row;
   }
 
   const view = buildPurchaseOrdersView({

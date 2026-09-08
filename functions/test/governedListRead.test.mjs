@@ -553,6 +553,21 @@ test("a required filter is never also the only thing standing between a caller a
     "warehouseDirectory",
     // The technician directory: the dispatch surfaces read every technician, and always did.
     "technicianDirectory",
+    // ── THE COMPLETE-POPULATION SOURCES, added by the final read cutover ──
+    //
+    // Unscoped ON PURPOSE, and the purpose is the whole reason they exist: their consumers NET
+    // over them -- available stock, reconciliation positions, consumption totals, the operational
+    // overview. A scoped or bounded read here does not produce a smaller answer, it produces a
+    // WRONG one wearing a total's name. Each replaces a read that was already unscoped and
+    // unbounded; the authority did not widen, only the venue changed.
+    "inventoryTransactionLedger",
+    "transferOrderDirectory",
+    "supplierDirectory",
+    "supplierCatalogDirectory",
+    "purchaseOrderDirectory",
+    // The dormant Epic-5 purchase orders, migrated AS dormant rather than quietly repointed at
+    // the live collection. Product debt, recorded in the closure ledger.
+    "legacyPurchaseOrders",
   ]);
   for (const [sourceId, spec] of Object.entries(GOVERNED_READS)) {
     if (sourceId.startsWith("metadata")) continue; // list sources are unscoped INDEX reads by design

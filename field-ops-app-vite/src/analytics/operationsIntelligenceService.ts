@@ -22,9 +22,6 @@
 // "client + server mirrors" precedent used throughout this repo
 // (see inventoryAnalyticsEngine.ts's header comment) rather than a new
 // pattern invented for this epic.
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
 import { getCatalogItem } from "../data/partsCatalog";
 import type { WorkOrder } from "../types/workOrder";
 import {
@@ -39,7 +36,11 @@ import {
   type RiskLevel,
   type InventoryHealthEntry,
 } from "../domain/inventoryAnalyticsEngine";
-import { getInventoryConsumptionSnapshot, getTechnicianVolumeBreakdown } from "./executionAnalyticsService";
+import {
+  getInventoryConsumptionSnapshot,
+  getTechnicianVolumeBreakdown,
+  readCompleteWorkOrderPopulation,
+} from "./executionAnalyticsService";
 
 const ACTIVE_WORK_ORDER_STATUSES = new Set(["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"]);
 const HIGH_RISK_LEVELS = new Set<RiskLevel>(["HIGH", "CRITICAL"]);
@@ -78,10 +79,11 @@ async function buildInventoryHealthByPart(): Promise<{
   return { healthByPart: new Map(healthEntries.map((h) => [h.partId, h])), transactions };
 }
 
-async function fetchAllWorkOrders(): Promise<WorkOrder[]> {
-  const snap = await getDocs(collection(db, WORK_ORDERS_COLLECTION));
-  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as WorkOrder);
-}
+// The composite layer reads Work Orders through the SAME governed seam its sibling analytics
+// module uses -- not a second path with the same shape. This service composes existing engines and
+// owns no read of its own; a private collection scan here would have been a governance hole hidden
+// behind a composition.
+const fetchAllWorkOrders = (): Promise<WorkOrder[]> => readCompleteWorkOrderPopulation();
 
 export interface OperationalOverview {
   totalWorkOrdersCompleted: number;

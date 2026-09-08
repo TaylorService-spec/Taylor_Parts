@@ -30,6 +30,13 @@ touched. Domains not yet visited — sales, fulfilment, finance, receiving, cycl
 represented, and their absence means "not yet measured", never "no candidates". The
 repository-wide sweep happens after Firebase removal closes.
 
+**The final read cutover (2026-09-07) added no entries, and that is a measurement, not an**
+**omission.** It migrated four read services and the session-identity bootstrap. A read is not a
+business action, and "which employee am I" is authentication-shaped rather than a decision
+anybody takes: no approval, no state transition, no record changes hands. The one thing that
+could have been mistaken for a new action — `resolveCurrentEmployeeSession` — is bootstrap, and
+it is recorded here so a later reader does not go looking for the entry it does not have.
+
 ---
 
 ## WORKFLOW_CANDIDATE — live

@@ -203,6 +203,12 @@ export {
   readSelfTechnician,
 } from "./workOrder/scopedWorkOrderCallables";
 
+// SESSION IDENTITY -- "which employee am I". Requires authentication and NO capability: it reads
+// only the caller's own linkage, and requiring workforce.directory.read here would mean a
+// technician could not learn their own name. It replaces the browser's direct read of its own
+// employees/{employeeId} document, which the surviving Rules picker grant does not admit.
+export { resolveCurrentEmployeeSession } from "./access/employeeSessionCallable";
+
 // The technician profile create -- the LAST direct client write, moved to a trusted command. The
 // retired rule required status == "available"; the command chooses it rather than validating it.
 export { createTechnician } from "./workOrder/technicianCommands";

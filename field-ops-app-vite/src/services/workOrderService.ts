@@ -1,17 +1,48 @@
-// Work Order Engine v1.2 -- client service layer.
+// Work Order Engine -- client service layer.
 //
-// Writes go ONLY through the three Cloud Functions (createWorkOrder/
-// transitionWorkOrder/updateWorkOrderExecutionData, the last added in
-// Epic 6 Phase 6.3) -- firestore.rules denies all direct client
-// writes to fieldops_wos/counters unconditionally. Reads bypass
-// Functions entirely and go straight to Firestore (rules-enforced,
-// role-scoped), mirroring firebase/collectionStore.js's existing read
-// patterns for fieldops_jobs/fieldops_technicians.
+// Writes go ONLY through the Cloud Functions (createWorkOrder / transitionWorkOrder /
+// updateWorkOrderExecutionData). READS NOW GO THE SAME WAY.
+//
+// ════════════════════ THE READS MOVED, AND WHY ════════════════════
+//
+// This file used to read fieldops_wos directly -- one getDoc and two onSnapshot subscriptions --
+// with firestore.rules deciding who saw what from users/{uid}.role. That is the arrangement the
+// governed access model exists to replace: Firebase authenticates, EOS authorizes. All three now
+// go through the scoped Work Order seam, which resolves workOrder.read / workOrder.assigned.read
+// server-side, derives the technician identity from request.auth.uid, and forces the assignment
+// predicate in where it applies.
+//
+// The subscription API is UNCHANGED on purpose -- same callback, same unsubscribe -- so no
+// consumer needed rewriting to stop talking to Firestore. What changed is underneath it, and it is
+// a real behaviour change rather than parity: a governed callable cannot push, so a Firestore
+// snapshot became an automatic refresh bounded at five seconds (access/governedAutoRefresh.js).
 import { httpsCallable } from "firebase/functions";
-import { collection, doc, getDoc, limit, onSnapshot, query, where, type Unsubscribe } from "firebase/firestore";
-import { db, functions } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { functions } from "../firebase/firebase";
+import {
+  WORK_ORDER_READ_RESULT,
+  readAllScopedWorkOrders,
+  readScopedWorkOrderById,
+  readScopedWorkOrders,
+} from "../access/scopedWorkOrderClient.js";
+import { startGovernedRefresh } from "../access/governedAutoRefresh.js";
 import type { WorkOrder, Priority, Severity, WorkOrderType, ActionName } from "../types/workOrder";
+
+type Unsubscribe = () => void;
+
+/**
+ * Turn a seam refusal into the error the Firestore listener used to deliver.
+ *
+ * DENIED stays DENIED. The surfaces below distinguish a permission refusal from a failure and say
+ * different things about them, and collapsing the two would tell a technician the system is broken
+ * when it is in fact working exactly as configured.
+ */
+function readError(result: string): Error {
+  return new Error(
+    result === WORK_ORDER_READ_RESULT.DENIED
+      ? "You do not have access to these work orders."
+      : "Work orders could not be loaded.",
+  );
+}
 
 interface CreateWorkOrderInput {
   customerId: string;
@@ -71,65 +102,79 @@ export async function transitionWorkOrder(
   return result.data;
 }
 
+/**
+ * One Work Order by id.
+ *
+ * THE THREE OUTCOMES STAY THREE. An authorized read of an existing record returns it; an
+ * authorized read of an absent one returns null; a SCOPE REFUSAL THROWS. Knowing an id does not
+ * bypass scope -- the server checks the stored assignedTechId against the technician identity it
+ * derived -- and a refusal must not arrive as null, because null means the work order is not there,
+ * which is a claim about the business rather than about permission.
+ */
 export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
-  const snap = await getDoc(doc(db, WORK_ORDERS_COLLECTION, id));
-  return snap.exists() ? ({ ...snap.data(), id: snap.id } as WorkOrder) : null;
+  const res = await readScopedWorkOrderById(id);
+  if (!res.ok) throw readError(res.result);
+  return (res.workOrder as WorkOrder | null) ?? null;
 }
 
-// Unfiltered listener -- matches how fieldops_jobs/fieldops_technicians
-// are read today (useFirestoreCollection). A technician-scoped,
-// status-filtered query is a Phase 2 concern (would need a composite
-// index, see firestore.indexes.json's commit note) -- not implemented
-// here since this pass only wires the admin/dispatcher-facing Control
-// Tower view.
+/**
+ * Every Work Order this principal may see, refreshed automatically.
+ *
+ * THE POPULATION IS COMPLETE, not a page. This replaced an unfiltered collection listener feeding
+ * the operations boards, which count and bucket what they are given; handing them one page would
+ * turn every board total into a number about a page while still being labelled a total. The seam
+ * is therefore paged to exhaustion, and a run that cannot finish reports a failure rather than a
+ * short list.
+ *
+ * GLOBAL AUTHORITY IS REQUIRED and is not asserted here -- the server resolves it. A technician
+ * reaching this path holds only workOrder.assigned.read, so the seam scopes them to their own
+ * assignments rather than serving an unscoped board; nothing in this file could widen that.
+ *
+ * The error channel is not optional in practice: a swallowed refusal left this surface spinning on
+ * "Loading work orders..." forever, which is how a permission decision became a hang.
+ */
 export function subscribeToWorkOrders(
   onChange: (workOrders: WorkOrder[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  // The error channel is not optional in practice: this is an UNFILTERED
-  // collection listener, and firestore.rules only lets a technician read Work
-  // Orders assigned to them. Without it the denial was swallowed and the
-  // surface span forever on "Loading work orders...".
-  return onSnapshot(collection(db, WORK_ORDERS_COLLECTION), (snap) => {
-    onChange(snap.docs.map((d) => ({ ...d.data(), id: d.id } as WorkOrder)));
-  }, (err) => { onError?.(err as Error); });
+  return startGovernedRefresh(
+    async () => {
+      const res = await readAllScopedWorkOrders({ mode: "all" });
+      if (!res.ok) throw readError(res.result);
+      return res.items as WorkOrder[];
+    },
+    onChange,
+    (err: Error) => { onError?.(err); },
+  );
 }
 
-// PT-002 -- Assigned Work Order Query Layer. A separate, additional
-// listener (not a modification of subscribeToWorkOrders() above,
-// which dispatcher/admin callers keep using unchanged): queries only
-// the signed-in technician's own Work Orders via a where() clause on
-// assignedTechId, matching firestore.rules' fieldops_wos rule
-// (`isTechnician() && isOwnTechnician(resource.data.assignedTechId)`).
-//
-// Real, unresolved uncertainty, not glossed over: firestore.rules'
-// isOwnTechnician() check depends on a get()-based lookup
-// (userData().technicianId), not a value directly comparable to
-// request.auth.uid. Whether Firestore's rule engine can actually prove
-// this where("assignedTechId", "==", technicianId) query satisfies
-// that rule for every possible result (a requirement for LIST queries
-// specifically, distinct from single-document get() reads) has NOT
-// been empirically verified against the live rules or the emulator --
-// this repo has no test credentials available to do so in this
-// session (see docs/epics/EPIC-6-Technician-Execution-Workspace.md's
-// Section 8 for the same caveat). Verify this actually returns data
-// (not a permission-denied query rejection) with a real
-// technician-role account before relying on it.
+/**
+ * One technician's assignments, refreshed automatically.
+ *
+ * THE TECHNICIAN ID IS NOT AUTHORITY. It names WHOSE assignments are wanted -- a business input --
+ * and the server checks it against the identity it derived from request.auth.uid: a principal
+ * scoped to their own assignments may name only themselves and is REFUSED otherwise, and naming
+ * somebody else is possible only for a principal who already holds the global work-order read.
+ * The parameter survives because every caller has a technician id in hand, not because it decides
+ * anything.
+ *
+ * BOUNDED AT 100, exactly as the listener it replaces was: without a cap every historical
+ * assignment stayed subscribed forever, and a technician's phone is the device paying for it. The
+ * dashboard applies its own active/today view filtering on top, unchanged.
+ */
 export function subscribeAssignedWorkOrders(
   technicianId: string,
   onChange: (workOrders: WorkOrder[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
-  // Bound the live listener: without this cap every historical assignment remains subscribed forever.
-  // Ordering is deliberately not added here because it would require a new composite index; the cap is safe
-  // with the existing Rules/index posture and the dashboard still applies its active/today view filtering.
-  const assignedQuery = query(collection(db, WORK_ORDERS_COLLECTION), where("assignedTechId", "==", technicianId), limit(100));
-  return onSnapshot(
-    assignedQuery,
-    (snap) => {
-      onChange(snap.docs.map((d) => ({ ...d.data(), id: d.id } as WorkOrder)));
+  return startGovernedRefresh(
+    async () => {
+      const res = await readScopedWorkOrders({ mode: "assigned", params: { technicianId }, pageSize: 100 });
+      if (!res.ok) throw readError(res.result);
+      return res.items as WorkOrder[];
     },
-    (error) => onError?.(error)
+    onChange,
+    (err: Error) => { onError?.(err); },
   );
 }
 

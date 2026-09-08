@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toMillis } from "../../domain/timestampMillis.js";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
@@ -785,8 +786,10 @@ function reasonPromptContext(pending, technicians) {
   return `${pending.workOrder.woNumber} → ${name}, ${at} for ${minutes} min.`;
 }
 
+// toMillis() reads every shape, including the JSON a Firestore Timestamp becomes crossing a
+// governed callable -- where the old `value?.toMillis?.()` silently produced the epoch.
 function millisOf(value) {
-  return value?.toMillis?.() ?? (typeof value === "number" ? value : 0);
+  return toMillis(value) ?? 0;
 }
 
 // The GOVERNED display label, never a hand-rolled lowercase of the enum. A locally humanised status

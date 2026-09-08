@@ -1,4 +1,5 @@
 import { computeWorkOrderSignalFromDoc } from "../../domain/workOrderScoring";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
 import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
@@ -84,7 +85,7 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
         <div>
           {timestampRows.map(([label, value]) => (
             <span key={label} className="fo-muted">
-              {label}: {value.toDate().toLocaleString()}{" "}
+              {label}: {formatTimestamp(value)}{" "}
             </span>
           ))}
         </div>

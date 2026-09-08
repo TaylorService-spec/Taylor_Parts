@@ -6,10 +6,15 @@
 // MODE + that mode's declared parameters) precisely because the server has to add a scope predicate
 // the caller neither supplies nor can see.
 //
-// WHAT THIS FILE MAY NOT DO. It never sends a technician id, an actor uid, "me", or an
-// assignedTechId. There is no parameter for any of them on any mode; the server derives the
-// technician identity from request.auth.uid and forces the assignment predicate in. A browser that
-// wanted to read someone else's work has nothing to put it in.
+// WHAT THIS FILE MAY NOT DO. It never sends an actor uid, "me", or an assignedTechId, and it never
+// claims WHO IS ASKING. The server derives the technician identity from request.auth.uid and forces
+// the assignment predicate in.
+//
+// The "assigned" mode does carry a technicianId, and the distinction is the point: it names WHOSE
+// assignments are wanted, which is a business input, not a claim about the caller. It is not
+// authority and cannot be used as any -- a principal scoped to their own assignments may name only
+// themselves and is REFUSED otherwise, and naming somebody else is possible only for a principal
+// who already holds the global work-order read.
 //
 // Resolves rather than rejects, matching governedCollectionClient, so callers keep DENIED distinct
 // from UNAVAILABLE instead of parsing an error dialect.
@@ -44,26 +49,67 @@ async function invoke(name, payload) {
  *                  refused by the server rather than ignored.
  * @param sortKey   A sort TOKEN the mode registered. The server chooses the field.
  */
-export async function readScopedWorkOrders({ mode, params, sortKey, pageSize } = {}) {
+export async function readScopedWorkOrders({ mode, params, sortKey, pageSize, cursor } = {}) {
   try {
     const d = await invoke("readScopedWorkOrders", {
       mode,
       ...(params ? { params } : {}),
       ...(sortKey ? { sortKey } : {}),
       ...(pageSize ? { pageSize } : {}),
+      ...(cursor ? { cursor } : {}),
     });
     return {
       ok: true,
       result: WORK_ORDER_READ_RESULT.OK,
       items: Array.isArray(d?.items) ? d.items : [],
       hasMore: Boolean(d?.hasMore),
+      // The token for the NEXT page. Opaque, and bound server-side to the mode that issued it.
+      nextCursor: d?.nextCursor ?? null,
       // Which scope the SERVER applied. Reported so a surface can say "your assigned work" honestly
       // rather than implying it is showing everything.
       scope: d?.scope ?? null,
     };
   } catch (err) {
-    return { ok: false, result: classify(err), items: [], hasMore: false, scope: null };
+    return { ok: false, result: classify(err), items: [], hasMore: false, nextCursor: null, scope: null };
   }
+}
+
+// The exhaustion ceiling. NOT a truncation point: reaching it FAILS the read rather than returning
+// a short population, because the two consumers below net totals over the result and a total
+// computed on a silently-shortened input is not partial -- it is wrong, presented as complete.
+const MAX_PAGES = 200;
+
+/**
+ * EVERY Work Order this principal may see, by paging the governed seam to exhaustion.
+ *
+ * The callers that need this -- the operations board (which replaced an unfiltered collection
+ * listener) and the analytics metrics (which net over the whole collection) -- have a COMPLETE
+ * population as part of what they mean. Returning one bounded page and calling the result a total
+ * would be exactly the failure this seam exists to prevent.
+ *
+ * NO SILENT TRUNCATION: a partial result is only ever returned with ok:false and no rows.
+ *
+ * @param {{ mode?: string, params?: Record<string, unknown>, pageSize?: number }} [options]
+ */
+export async function readAllScopedWorkOrders({ mode = "all", params, pageSize = 500 } = {}) {
+  const items = [];
+  let cursor = null;
+  let scope = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    // eslint-disable-next-line no-await-in-loop -- the pages are sequential by construction: each
+    // one needs the cursor the previous one returned.
+    const res = await readScopedWorkOrders({ mode, params, pageSize, cursor: cursor ?? undefined });
+    if (!res.ok) return { ok: false, result: res.result, items: [], scope: null };
+    items.push(...res.items);
+    scope = res.scope ?? scope;
+    if (!res.hasMore || !res.nextCursor) {
+      return { ok: true, result: WORK_ORDER_READ_RESULT.OK, items, scope };
+    }
+    cursor = res.nextCursor;
+  }
+  // The ceiling was reached with more still to come. Reported as a FAILURE with no rows: a caller
+  // handed these would net a total over a population it believes is complete.
+  return { ok: false, result: WORK_ORDER_READ_RESULT.UNAVAILABLE, items: [], scope: null };
 }
 
 /** The aggregate, behind the same authority and the same scope as the read. */

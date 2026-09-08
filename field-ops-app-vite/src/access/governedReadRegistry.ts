@@ -398,6 +398,80 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // ════════════════════ A DORMANT COLLECTION, MIGRATED AS DORMANT ════════════════════
+  //
+  // The Epic-5 `purchase_orders` collection. Its only writer is a demo seed script -- no deployed
+  // callable writes it -- and the live purchase orders are `reorder_purchase_orders` above. The
+  // Operations overview's `openProcurementCount` still reads THIS one, so it is registered as it
+  // is rather than quietly repointed: changing which collection a metric counts is a correctness
+  // change with an owner, not a side effect of moving a read off Firestore. Recorded as product
+  // debt in the closure ledger.
+  // ════════════════════ THE COMPLETE-POPULATION SOURCES ════════════════════
+  //
+  // Four sources that differ from their metadata siblings in ONE respect: they are ordered by
+  // DOCUMENT ID. That is not a stylistic preference. Firestore's orderBy SILENTLY EXCLUDES any
+  // document missing the ordered field, so paging a whole collection by createdAt / occurredAt /
+  // unitPrice hands the caller a population that is short by exactly the documents that lack it --
+  // and these four feed netting: available stock, reconciliation position, inventory consumption,
+  // the operational overview. A total computed over a quietly short population is not partial, it
+  // is wrong under a complete name. Every document has an id.
+  //
+  // They reuse their resource's EXISTING capability rather than minting anything: the authority
+  // question is identical, and only the ordering differs.
+  purchaseOrderDirectory: Object.freeze({
+    capability: "reorder.purchaseOrder.read",
+    source: "reorder_purchase_orders",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 500,
+  }),
+
+  transferOrderDirectory: Object.freeze({
+    capability: "warehouse.transferOrder.read",
+    source: "transfer_orders",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 500,
+  }),
+
+  inventoryTransactionLedger: Object.freeze({
+    capability: "inventory.transaction.read",
+    source: "inventory_transactions",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 500,
+  }),
+
+  supplierDirectory: Object.freeze({
+    capability: "supplier.record.read",
+    source: "suppliers",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 500,
+  }),
+
+  supplierCatalogDirectory: Object.freeze({
+    capability: "supplier.catalog.read",
+    source: "supplier_catalog",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 500,
+  }),
+
+  legacyPurchaseOrders: Object.freeze({
+    capability: "supplier.purchaseOrder.read",
+    source: "purchase_orders",
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    filters: Object.freeze({}),
+    projection: null,
+    maxPageSize: 500,
+  }),
+
   metadataPurchaseOrderVoids: Object.freeze({
     capability: "reorder.purchaseOrder.read",
     source: "reorder_purchase_order_voids",

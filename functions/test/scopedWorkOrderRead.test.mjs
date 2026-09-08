@@ -171,12 +171,24 @@ test("a global reader gets NO assignment predicate", async () => {
 
 test("the caller cannot omit, substitute or override the assignment predicate", async () => {
   const db = fakeDb({ users: USERS });
-  // There is no parameter for it, on any mode.
+  // There is no parameter for it on any mode but ONE, and that one is the whole point of the
+  // distinction: `assigned` names WHOSE assignments are wanted, which is a business input. It is
+  // not authority, and it cannot be used as any -- a principal scoped to their own assignments
+  // may name only themselves and is refused otherwise, proved by execution in
+  // test/scopedWorkOrderPaging.test.mjs. Every OTHER mode must stay unable to mention the field
+  // at all, because on those modes the predicate is the server's alone.
+  const NAMED_EXCEPTION = "assigned";
   for (const [modeId, mode] of Object.entries(WORK_ORDER_MODES)) {
+    if (modeId === NAMED_EXCEPTION) continue;
     for (const name of Object.keys(mode.params)) {
       assert.notEqual(mode.params[name].field, "assignedTechId", `mode "${modeId}" exposes the assignment field`);
     }
   }
+  // And the exception is exactly one mode, so this contract cannot be widened by adding another.
+  const exposing = Object.entries(WORK_ORDER_MODES)
+    .filter(([, mode]) => Object.values(mode.params).some((param) => param.field === "assignedTechId"))
+    .map(([modeId]) => modeId);
+  assert.deepEqual(exposing, [NAMED_EXCEPTION]);
   // And an unknown parameter is refused by name rather than ignored.
   await assert.rejects(
     () =>

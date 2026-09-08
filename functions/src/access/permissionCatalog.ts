@@ -153,6 +153,19 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "supplier.catalog",
     action: "read",
   }),
+  // The Epic-5 `purchase_orders` collection, minted 2026-09-07 under the final read cutover's
+  // conditional authorization. The retired predicate was EXACTLY `isAdminOrDispatcher()`: no self
+  // scope, no warehouse scope, no field restriction, no narrower record predicate -- which is the
+  // only shape that clause admits. It is deliberately NOT `reorder.purchaseOrder.read`: that
+  // capability governs the LIVE reorder purchase orders, and merging a dormant legacy collection
+  // into it would silently widen what that capability grants.
+  Object.freeze({
+    id: "supplier.purchaseOrder.read",
+    description:
+      "Read the legacy Epic-5 Purchase Order records. Confers no write and no authority over reorder purchase orders.",
+    resource: "supplier.purchaseOrder",
+    action: "read",
+  }),
   Object.freeze({
     id: "service.equipment.read",
     description: "Read Equipment / installed-base records. Confers no write.",

@@ -50,6 +50,7 @@ export const readScopedWorkOrders = onCall({ region: REGION }, async (request) =
       params: asRecord(data.params),
       sortKey: typeof data.sortKey === "string" ? data.sortKey : undefined,
       pageSize: typeof data.pageSize === "number" ? data.pageSize : undefined,
+      cursor: typeof data.cursor === "string" ? data.cursor : undefined,
     });
   } catch (err) {
     throw mapError(err);

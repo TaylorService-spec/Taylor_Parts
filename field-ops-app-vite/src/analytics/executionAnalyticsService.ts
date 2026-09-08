@@ -47,9 +47,19 @@
 // rejects the whole query for that role -- same reasoning documented
 // on subscribeAssignedWorkOrders()'s header comment). Do not wire
 // either of those two into a technician-facing screen.
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+// ════════════════════ NO ANALYTICS BACKDOOR AROUND WORK ORDER GOVERNANCE ════════════════════
+//
+// Every Work Order input on this page comes through the SAME scoped seam the operational surfaces
+// use, resolving workOrder.read / workOrder.assigned.read server-side. An analytics module reading
+// the collection directly would be a second, quieter answer to the question the seam exists to
+// answer once -- and analytics is exactly where such a path survives unnoticed, because nobody
+// checks a dashboard's permissions the way they check a record page's.
+import {
+  WORK_ORDER_READ_RESULT,
+  readAllScopedWorkOrders,
+  readScopedWorkOrderById,
+} from "../access/scopedWorkOrderClient.js";
+import { toMillis } from "../domain/timestampMillis.js";
 import type { WorkOrder, InventorySnapshotItem, ExecutionLogEntry } from "../types/workOrder";
 
 export interface NormalizedPartUsage {
@@ -84,12 +94,36 @@ export interface WorkOrderExecutionSummary {
   lastUpdated: number | null; // epoch ms, null if never touched by updateWorkOrderExecutionData
 }
 
+/**
+ * Turn a seam refusal into a thrown error, preserving what the direct reads did.
+ *
+ * A denied read has always thrown here, and the panels above distinguish an error from an empty
+ * result. Returning empty on a refusal would report zero parts consumed as a fact about the
+ * business.
+ */
+function failRead(result: string): never {
+  throw new Error(
+    result === WORK_ORDER_READ_RESULT.DENIED
+      ? "You do not have access to this work order data."
+      : "Work order analytics could not be loaded.",
+  );
+}
+
+export async function readCompleteWorkOrderPopulation(
+  params?: { mode?: string; params?: Record<string, unknown> },
+): Promise<WorkOrder[]> {
+  const res = await readAllScopedWorkOrders({ mode: params?.mode ?? "all", params: params?.params });
+  if (!res.ok) failRead(res.result);
+  return res.items as WorkOrder[];
+}
+
 // 1. getWorkOrderExecutionSummary(workOrderId)
 export async function getWorkOrderExecutionSummary(workOrderId: string): Promise<WorkOrderExecutionSummary | null> {
-  const snap = await getDoc(doc(db, WORK_ORDERS_COLLECTION, workOrderId));
-  if (!snap.exists()) return null;
+  const res = await readScopedWorkOrderById(workOrderId);
+  if (!res.ok) failRead(res.result);
+  if (!res.workOrder) return null;
 
-  const wo = snap.data() as WorkOrder;
+  const wo = res.workOrder as WorkOrder;
   const partsUsed = normalizeQtyUsed(wo.inventorySnapshot);
   const executionLog = sortLogOldestFirst(wo.executionLog);
 
@@ -99,7 +133,10 @@ export async function getWorkOrderExecutionSummary(workOrderId: string): Promise
     partsUsed,
     executionNotes: executionLog.map((entry) => entry.note),
     executionLog,
-    lastUpdated: wo.lastUpdated?.toMillis?.() ?? null,
+    // toMillis() rather than the Timestamp method: the record now arrives over a callable, where a
+    // Firestore Timestamp is JSON and has no methods. Calling .toMillis?.() on it would have
+    // silently produced null -- "never updated" -- for every work order that had been.
+    lastUpdated: toMillis(wo.lastUpdated),
   };
 }
 
@@ -132,10 +169,14 @@ export interface TechnicianExecutionStats {
 // averageCompletionTimeMs uses the real workStartedAt/completedAt
 // lifecycle timestamps (already written by transitionWorkOrder(), not
 // anything new) -- only over Work Orders where both exist.
+//
+// THE TWO POPULATIONS ARE PRESERVED AND THE SERVER DECIDES WHICH ONE APPLIES. A global reader may
+// compute these for the technician they name; a technician may compute them only for themselves,
+// and naming somebody else is REFUSED rather than silently answered about themselves -- an answer
+// under the wrong name is worse than a refusal. The caller-supplied id is a business input here,
+// never authority.
 export async function getTechnicianExecutionStats(technicianId: string): Promise<TechnicianExecutionStats> {
-  const q = query(collection(db, WORK_ORDERS_COLLECTION), where("assignedTechId", "==", technicianId));
-  const snap = await getDocs(q);
-  const workOrders = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as WorkOrder);
+  const workOrders = await readCompleteWorkOrderPopulation({ mode: "assigned", params: { technicianId } });
 
   const workOrderVolumeByStatus: Record<string, number> = {};
   let totalPartsConsumed = 0;
@@ -158,8 +199,8 @@ export async function getTechnicianExecutionStats(technicianId: string): Promise
     // Deliberately NOT Math.abs(), NOT Math.max(0, ...), and NOT a silent swap of the two
     // timestamps. Each of those turns evidence the platform cannot explain into a plausible
     // number, which is worse than showing nothing: it is unfalsifiable.
-    const startedAt = wo.workStartedAt?.toMillis?.();
-    const completedAtMs = wo.completedAt?.toMillis?.();
+    const startedAt = toMillis(wo.workStartedAt);
+    const completedAtMs = toMillis(wo.completedAt);
     if (Number.isFinite(startedAt) && Number.isFinite(completedAtMs)) {
       const ms = (completedAtMs as number) - (startedAt as number);
       // Zero is a real measurement (start and completion recorded at the same instant) and is
@@ -215,11 +256,12 @@ export interface InventoryConsumptionSnapshot {
 // / this file's header for the future server-side-aggregation caveat
 // if that changes.
 export async function getInventoryConsumptionSnapshot(): Promise<InventoryConsumptionSnapshot> {
-  const snap = await getDocs(collection(db, WORK_ORDERS_COLLECTION));
+  // COMPLETE POPULATION, paged to exhaustion. This metric is a total; computing it over one page
+  // would put a page's number under a total's name.
+  const workOrders = await readCompleteWorkOrderPopulation();
   const totals = new Map<string, { totalQuantityUsed: number; frequency: number }>();
 
-  snap.docs.forEach((d) => {
-    const wo = d.data() as WorkOrder;
+  workOrders.forEach((wo) => {
     for (const { partId, quantity } of normalizeQtyUsed(wo.inventorySnapshot)) {
       const entry = totals.get(partId) ?? { totalQuantityUsed: 0, frequency: 0 };
       entry.totalQuantityUsed += quantity;
@@ -248,11 +290,10 @@ export interface TechnicianWorkOrderVolume {
 // ADMIN/DISPATCHER-ONLY read-access restriction as
 // getInventoryConsumptionSnapshot(), same reason.
 export async function getTechnicianVolumeBreakdown(): Promise<TechnicianWorkOrderVolume[]> {
-  const snap = await getDocs(collection(db, WORK_ORDERS_COLLECTION));
+  const workOrders = await readCompleteWorkOrderPopulation();
   const byTech = new Map<string, { active: number; completed: number }>();
 
-  snap.docs.forEach((d) => {
-    const wo = d.data() as WorkOrder;
+  workOrders.forEach((wo) => {
     if (!wo.assignedTechId) return;
     const entry = byTech.get(wo.assignedTechId) ?? { active: 0, completed: 0 };
     if (wo.completedAt) entry.completed += 1;

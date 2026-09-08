@@ -360,11 +360,13 @@ describe("Work Order", () => {
     expect(WO).toMatch(/objectListPathWithState\(OBJECT_LIST_KEY\.WORK_ORDERS/);
   });
 
-  it("the realtime dispatch subscription is untouched", () => {
-    // The list migration deliberately left this alone; a record-page package has even less business
-    // near it.
+  it("the realtime dispatch subscription still serves a complete population", () => {
+    // The list migration deliberately left this alone; a record-page package has even less
+    // business near it. The subscription has since moved off Firestore onto the governed seam,
+    // so what is guarded here is the property rather than the mechanism: the whole population,
+    // never a page.
     expect(read("src/services/workOrderService.ts"))
-      .toMatch(/onSnapshot\(collection\(db, WORK_ORDERS_COLLECTION\)/);
+      .toMatch(/readAllScopedWorkOrders\(\{\s*mode:\s*"all"\s*\}\)/);
   });
 });
 

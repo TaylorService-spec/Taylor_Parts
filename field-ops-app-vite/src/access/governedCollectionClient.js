@@ -82,4 +82,34 @@ export async function readGovernedList({ sourceId, filters, pageSize, cursor } =
   }
 }
 
-export const governedCollectionClient = { readGovernedList };
+// The exhaustion ceiling. NOT a truncation point -- see readAllGoverned.
+const MAX_PAGES = 200;
+
+/**
+ * EVERY row of a governed source, by paging to exhaustion.
+ *
+ * For the consumers whose OUTPUT IS A TOTAL: available stock, reconciliation position, inventory
+ * consumption, the operational overview. A bounded page is an honest answer to a list surface and
+ * a wrong one to a netting consumer, because a total over a truncated input is not partial -- it
+ * is false, presented as complete, which is worse than a slow honest read.
+ *
+ * NO SILENT TRUNCATION. Hitting the ceiling returns ok:false with no rows rather than a short
+ * population a caller would happily sum.
+ *
+ * @param {{ sourceId: string, filters?: Record<string, unknown>, pageSize?: number }} [options]
+ */
+export async function readAllGoverned({ sourceId, filters, pageSize = 500 } = {}) {
+  const items = [];
+  let cursor = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    // eslint-disable-next-line no-await-in-loop -- pages are sequential by construction.
+    const res = await readGovernedList({ sourceId, filters, pageSize, cursor: cursor ?? undefined });
+    if (!res.ok) return { ok: false, result: res.result, items: [] };
+    items.push(...res.items);
+    if (!res.hasMore || !res.nextCursor) return { ok: true, result: READ_RESULT.OK, items };
+    cursor = res.nextCursor;
+  }
+  return { ok: false, result: READ_RESULT.UNAVAILABLE, items: [] };
+}
+
+export const governedCollectionClient = { readGovernedList, readAllGoverned };

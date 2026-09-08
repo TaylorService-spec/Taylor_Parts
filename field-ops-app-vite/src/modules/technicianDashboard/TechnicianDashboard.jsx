@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { toMillis } from "../../domain/timestampMillis.js";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { technicianStatusLabel } from "../dispatcherBoard/technicianStatusLabel";
@@ -46,6 +47,14 @@ function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// The completion instant as a Date, or null when the record carries no usable one. Null is the
+// honest answer: a work order whose completedAt cannot be read is not completed TODAY, and
+// defaulting it to now would put somebody else's job in this technician's Completed Today.
+function completedOn(workOrder) {
+  const ms = toMillis(workOrder.completedAt);
+  return ms === null ? null : new Date(ms);
+}
+
 function Section({ title, workOrders, selectedId, onSelect, emptyMessage }) {
   return (
     <div className="fo-card">
@@ -85,7 +94,9 @@ export default function TechnicianDashboard() {
       if (READY_TO_START_STATUSES.has(wo.status)) readyToStart.push(wo);
       else if (IN_PROGRESS_STATUSES.has(wo.status)) inProgress.push(wo);
       else if (WAITING_STATUSES.has(wo.status)) waiting.push(wo);
-      else if (wo.status === "COMPLETED" && wo.completedAt?.toDate && isSameDay(wo.completedAt.toDate(), today)) {
+      // toMillis() rather than .toDate(): over a governed callable a Firestore Timestamp is
+      // JSON with no methods, and the old guard would have quietly emptied Completed Today.
+      else if (wo.status === "COMPLETED" && completedOn(wo) && isSameDay(completedOn(wo), today)) {
         completedToday.push(wo);
       }
     }

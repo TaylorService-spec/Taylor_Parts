@@ -37,46 +37,49 @@ const FIXTURE_PO = {
   createdAt: 5000,
 };
 
-// Records every collection name this test's Firestore mock is asked to read, so
-// the assertions can prove `purchase_orders` (dormant) is never touched and
-// `reorder_requests` / `reorder_purchase_orders` (live) are.
-const queriedCollections = [];
+// Records every SOURCE ID the governed client is asked for, so the assertions can still prove
+// the dormant Epic-5 purchase orders are never read and the live ones are.
+//
+// The mock moved from firebase/firestore to the governed client because that is what this code
+// now talks to: the client names an EOS source id and the server owns the collection. Left
+// mocking Firestore, these tests would have gone on passing against a module the code under test
+// no longer imports -- green, and proving nothing.
+const queriedSources = [];
 
-vi.mock("../src/firebase/firebase", () => ({ db: {} }));
-vi.mock("firebase/firestore", () => ({
-  collection: (_db, name) => ({ __collection: name }),
-  query: (ref, ...constraints) => ({ __collection: ref.__collection, constraints }),
-  where: (field, op, value) => ({ field, op, value }),
-  documentId: () => "__name__",
-  getDocs: async (q) => {
-    queriedCollections.push(q.__collection);
-    let docs = [];
-    if (q.__collection === "reorder_requests") {
-      docs = [{ id: FIXTURE_REQUEST.id, data: () => FIXTURE_REQUEST }];
-    } else if (q.__collection === "reorder_purchase_orders") {
-      docs = [{ id: FIXTURE_PO.reorderRequestId, data: () => FIXTURE_PO }];
+vi.mock("../src/access/governedCollectionClient", () => {
+  const read = async ({ sourceId }) => {
+    queriedSources.push(sourceId);
+    let items = [];
+    if (sourceId === "reorderRequestsQueue") {
+      items = [{ ...FIXTURE_REQUEST }];
+    } else if (sourceId === "purchaseOrdersByIds") {
+      items = [{ ...FIXTURE_PO, id: FIXTURE_PO.reorderRequestId }];
     }
-    // The dormant Epic-5 `purchase_orders` collection (or anything else): always
-    // empty in this fixture -- if the fix regresses to reading it, Part 1's "never
-    // queries purchase_orders" assertion fails, and Part 2's row would come back
-    // empty instead of populated.
-    return { docs, forEach: (fn) => docs.forEach(fn) };
-  },
-}));
+    // `legacyPurchaseOrders` (the dormant Epic-5 collection) and anything else: always empty in
+    // this fixture, so a regression to it fails Part 1's "never reads the dormant source"
+    // assertion AND leaves Part 2's panel empty.
+    return { ok: true, result: "OK", items, hasMore: false, nextCursor: null };
+  };
+  return {
+    READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+    readGovernedList: read,
+    governedCollectionClient: { readGovernedList: read, readAllGoverned: read },
+  };
+});
 
 afterEach(() => {
   cleanup();
-  queriedCollections.length = 0;
+  queriedSources.length = 0;
 });
 
 describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)", () => {
-  it("queries reorder_requests + reorder_purchase_orders, never the dormant purchase_orders collection", async () => {
+  it("reads the LIVE reorder sources, never the dormant legacy purchase orders", async () => {
     const { fetchProcurementPurchaseOrders } = await import("../src/services/operationsQueries");
     const rows = await fetchProcurementPurchaseOrders();
 
-    expect(queriedCollections).toContain("reorder_requests");
-    expect(queriedCollections).toContain("reorder_purchase_orders");
-    expect(queriedCollections).not.toContain("purchase_orders");
+    expect(queriedSources).toContain("reorderRequestsQueue");
+    expect(queriedSources).toContain("purchaseOrdersByIds");
+    expect(queriedSources).not.toContain("legacyPurchaseOrders");
 
     // Non-empty when reorder_purchase_orders has a row -- this is the exact
     // fail-pre/pass-post gate: reading the dormant collection would yield [].

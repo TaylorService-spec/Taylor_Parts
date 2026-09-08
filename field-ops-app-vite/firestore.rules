@@ -36,48 +36,58 @@ rules_version = '2';
 //
 // ════════════════════ WHERE THE CLIENT ACTUALLY IS ════════════════════
 //
-// MEASURED, repository-wide and by CALL SITE rather than by import count, at the head of
-// feat/rules-out-of-firebase. An earlier draft of this header claimed three zeros. Two of them
-// hold. The read zero DOES NOT, and stating it was a scope error: this workstream's own migrated
-// surfaces reached zero, and that was generalized to the repository without measuring the analytics
-// and work-order services, which were never in its scope.
+// MEASURED, repository-wide and by CALL SITE rather than by import count -- and re-measured by a
+// test rather than by hand, because this count has been wrong before. The measurement lives in
+// field-ops-app-vite/test/clientFirestoreCensus.test.jsx, which enumerates every surviving reader
+// WITH ITS REASON and fails on a new one by name.
 //
+//   DIRECT CLIENT GOVERNED BUSINESS READS    0
 //   DIRECT CLIENT GOVERNED BUSINESS WRITES   0
-//   FIRESTORE EOS AUTHORIZATION DECISIONS    0   (no rule reads users/{uid}.role)
-//   DIRECT CLIENT GOVERNED BUSINESS READS   14   across 4 files -- NOT ZERO
+//   FIRESTORE EOS AUTHORIZATION DECISIONS    0
 //
-//   services/workOrderService.ts             3   fieldops_wos (getDoc + two onSnapshot)
-//   services/operationsQueries.ts            6   warehouses, transfer_orders, suppliers,
-//                                                supplier_catalog, purchase_orders,
-//                                                inventory_transactions, reorder_requests,
-//                                                reorder_purchase_orders
-//   analytics/executionAnalyticsService.ts   4   fieldops_wos (two are full-collection scans)
-//   analytics/operationsIntelligenceService  1   fieldops_wos (full-collection scan)
+// EVERY surviving client Firestore operation is one thing: eight subscriptions to the caller's
+// OWN users/{uid} document, which are the governed capability feed watching accessVersion to
+// learn when to ask the server again. Not one of them opens a collection, and not one reads an
+// authorization answer out of the document -- accessVersion says WHEN to ask, never WHAT the
+// answer is.
 //
-// All fourteen are LIVE, not dormant: their consumers include Dispatch, DispatcherBoard, Jobs,
-// ControlTower, FieldMode, TechnicianDashboard, PartDetail, PartsList, Transfers and Receiving.
+// An earlier revision of this header claimed these zeros before they were true, generalising this
+// workstream's own migrated surfaces to the whole repository without measuring four files that
+// were never in its scope. Those four -- services/workOrderService.ts,
+// services/operationsQueries.ts and the two analytics services -- have since been migrated, and
+// the count is now asserted by a test instead of by a claim.
 //
-// A FIFTEENTH is auth/employeeSession.js's read of the caller's OWN employees/{employeeId}. It is
-// self-scoped, but the picker grant below does not cover it -- a signed-in principal who is not a
-// PARTS_MANAGER assignment candidate would be denied their own employee record, which is what
-// resolves operational identity at session bootstrap.
+// HOW EACH KIND OF ACCESS ARRIVES NOW
 //
-// The work this file's closure DID complete: every business WRITE goes through a trusted command
-// that resolves a capability server-side, the shared client write transport (collectionStore /
-// firebaseSafe) and the generic direct-read hooks (firestoreListSource, useFirestoreCollection) are
-// DELETED rather than disabled, and the migrated read families go through governedReadRegistry.ts
-// with readGovernedList / countGovernedList or the scoped work-order seam.
+//   business reads    a governed source id (governedReadRegistry.ts + readGovernedList /
+//                     countGovernedList), or the scoped work-order seam for the one read whose
+//                     authority is not global. The client names a source or a mode -- never a
+//                     collection, a field, an operator, an orderBy or a raw cursor.
+//   business writes   a trusted command that resolves a capability server-side. The shared client
+//                     write transport (collectionStore / firebaseSafe) and the generic direct-read
+//                     hooks (firestoreListSource, useFirestoreCollection) are DELETED rather than
+//                     disabled: a generic path with no caller is what a later change reaches for.
+//   session identity  resolveCurrentEmployeeSession, a trusted callable requiring AUTHENTICATION
+//                     AND NO CAPABILITY. It is why this file needs no general own-Employee read:
+//                     the browser no longer resolves its own operational identity, the server
+//                     does. It is deliberately not gated on workforce.directory.read -- that
+//                     capability reads other people, and requiring it would mean a technician
+//                     could not learn their own name.
 //
-// THIS FILE IS THEREFORE NOT YET SAFE TO DEPLOY, and the reason is recorded here rather than
-// discovered at deploy time. The four files above must be migrated first.
+// The governed-field protections that lived HERE as Rules predicates moved into the commands that
+// replace those writes and are tested there: accounts' admin-only paymentTerms/taxStatus, the
+// reorder status transitions and their assignee record scope, and equipment's changed-key
+// allowlist, cross-document location ownership and ACTIVE<->INACTIVE transition guard. None was
+// dropped.
+//
+// The full file-by-file classification lives in
+// docs/governance/firebase-removal-closure-ledger.md.
 //
 // The governed-field protections that lived HERE as Rules predicates moved into the commands that
 // replace those writes and are tested there: accounts' admin-only paymentTerms/taxStatus, the
 // reorder status transitions and their assignee record scope, and equipment's changed-key allowlist,
 // cross-document location ownership and ACTIVE<->INACTIVE transition guard. None was dropped.
 //
-// The full file-by-file classification of what still touches Firestore lives in
-// docs/governance/firebase-removal-closure-ledger.md.
 //
 // STILL NOT DEPLOYED. Rules are not auto-deployed in this repository (docs/Deployment.md §3) and a
 // rules change is always Tier 2 (docs/DelegationCharter.md §2), so committing this changes nothing

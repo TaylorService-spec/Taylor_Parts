@@ -31,6 +31,8 @@ import { getFirestore, FieldPath, type Firestore } from "firebase-admin/firestor
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 
 const WORK_ORDERS = "fieldops_wos";
+/** The registry's name for "the document id". Firestore addresses it as FieldPath.documentId(). */
+const DOCUMENT_ID_FIELD = "__id__";
 const USERS = "users";
 const TECHNICIANS = "fieldops_technicians";
 
@@ -127,6 +129,30 @@ export const WORK_ORDER_MODES: Readonly<Record<string, Mode>> = Object.freeze({
     orderBy: Object.freeze(["woNumber", "asc"] as const),
     maxPageSize: 200,
   }),
+  // EVERY Work Order this principal may see, for the two consumers that need a COMPLETE population
+  // rather than a page: the operations board (which replaced an unfiltered onSnapshot) and the
+  // analytics metrics (which net over the whole collection).
+  //
+  // ORDERED BY DOCUMENT ID, and that is the point rather than an arbitrary choice. `orderBy`
+  // SILENTLY EXCLUDES documents missing the ordered field, so paging this population by createdAt
+  // would drop any Work Order lacking one and hand the analytics a quietly short population --
+  // exactly the "fast and false" failure mode operationsQueries.ts's own header names. Every
+  // document has an id.
+  all: Object.freeze({
+    params: Object.freeze({}),
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    maxPageSize: 500,
+  }),
+  // One technician's assignments. The technicianId parameter is NOT authority -- see
+  // resolveAssignedTechnicianParam: an ASSIGNED principal may only name themselves, and a GLOBAL
+  // principal (workOrder.read) is the only one who may name somebody else.
+  assigned: Object.freeze({
+    params: Object.freeze({
+      technicianId: Object.freeze({ field: "assignedTechId", op: "==" as const }),
+    }),
+    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
+    maxPageSize: 200,
+  }),
   index: Object.freeze({
     params: Object.freeze({
       status: Object.freeze({ field: "status", op: "==" as const }),
@@ -212,6 +238,37 @@ export async function resolveWorkOrderScope(
   throw new UnauthorizedActorError("actor may not read work orders");
 }
 
+// ============================ THE PAGE TOKEN ============================
+//
+// Opaque, and bound to the MODE it was issued for -- a cursor minted for "all" replayed against
+// "assigned" is refused rather than used as a start position in a different ordering. It carries no
+// authority: the scope is re-resolved from request.auth.uid on every call, so a forged cursor can
+// only change WHERE in an already-authorized result set the page starts.
+interface CursorPayload {
+  m: string;
+  v: unknown;
+  d: string;
+}
+
+function encodeCursor(payload: CursorPayload): string {
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function decodeCursor(raw: string, modeId: string): CursorPayload {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+  } catch {
+    throw new InvalidInputError("cursor is not a valid page token");
+  }
+  const p = parsed as CursorPayload;
+  if (!p || typeof p !== "object" || typeof p.m !== "string" || typeof p.d !== "string") {
+    throw new InvalidInputError("cursor is not a valid page token");
+  }
+  if (p.m !== modeId) throw new InvalidInputError("cursor does not belong to this mode");
+  return p;
+}
+
 interface Clause {
   readonly field: string | FirebaseFirestore.FieldPath;
   readonly op: FirebaseFirestore.WhereFilterOp;
@@ -257,6 +314,42 @@ function resolveClauses(modeId: string, mode: Mode, supplied: Record<string, unk
     out.push({ field: "status", op: "==", value: ACCOUNT_SCHEDULED_STATUS });
   }
   return out;
+}
+
+/**
+ * The `assigned` mode's technicianId parameter, checked against the SERVER-DERIVED identity.
+ *
+ * A caller-supplied technician id is a business input here, never authority, and the two
+ * populations are treated differently on purpose:
+ *
+ *   ASSIGNED principal  may name only themselves. A different id is REFUSED rather than silently
+ *                       intersected into an empty result -- an empty list reads as "you have no
+ *                       work", which is a claim about the business, not about permission.
+ *   GLOBAL principal    must name someone. Omitting it would turn "this technician's assignments"
+ *                       into "every work order", which answers a different question under the same
+ *                       function name.
+ */
+function resolveAssignedTechnicianParam(
+  modeId: string,
+  scope: WorkOrderScope,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (modeId !== "assigned") return params;
+  const requested = params.technicianId;
+  if (scope.kind === "ASSIGNED") {
+    if (requested !== undefined && requested !== null && requested !== scope.technicianId) {
+      throw new UnauthorizedActorError("a technician may only read their own assignments");
+    }
+    // The predicate is NOT added here for this population: applyScope already forces the
+    // identical clause from the server-derived identity, and adding it twice would be a second
+    // equality filter on the same field saying the same thing.
+    const { technicianId: _ignored, ...rest } = params;
+    return rest;
+  }
+  if (typeof requested !== "string" || requested === "") {
+    throw new InvalidInputError('mode "assigned" requires a technicianId');
+  }
+  return params;
 }
 
 function resolveMode(modeId: unknown): { id: string; mode: Mode } {
@@ -308,11 +401,14 @@ export interface ReadScopedWorkOrdersInput {
   readonly params?: Record<string, unknown>;
   readonly sortKey?: string;
   readonly pageSize?: number;
+  /** An opaque token from a previous page's `nextCursor`. Bound to the mode that issued it. */
+  readonly cursor?: string;
 }
 
 export interface ScopedWorkOrderPage {
   readonly items: readonly Record<string, unknown>[];
   readonly hasMore: boolean;
+  readonly nextCursor: string | null;
   readonly scope: "GLOBAL" | "ASSIGNED";
 }
 
@@ -328,7 +424,9 @@ export async function readScopedWorkOrders(
   // fieldops_wos zero times.
   const scope = await resolveWorkOrderScope(input.actorUid, deps);
 
-  const clauses = resolveClauses(id, mode, (input.params ?? {}) as Record<string, unknown>);
+  const params = resolveAssignedTechnicianParam(id, scope, (input.params ?? {}) as Record<string, unknown>);
+  const clauses = resolveClauses(id, mode, params);
+  const cursor = input.cursor ? decodeCursor(input.cursor, id) : null;
   let pageSize = 50;
   if (input.pageSize !== undefined) {
     if (!Number.isInteger(input.pageSize) || input.pageSize < 1 || input.pageSize > mode.maxPageSize) {
@@ -337,18 +435,35 @@ export async function readScopedWorkOrders(
     pageSize = input.pageSize;
   }
   const [orderField, orderDir] = resolveSort(mode, input.sortKey);
+  const orderedById = orderField === DOCUMENT_ID_FIELD;
 
-  let q = buildQuery(db, clauses, scope).orderBy(orderField, orderDir);
+  let q = buildQuery(db, clauses, scope);
   // The document-id tiebreak, matching the direction of the clause before it so the query stays on
-  // the index Firestore maintains for free.
-  q = q.orderBy(FieldPath.documentId(), orderDir);
+  // the index Firestore maintains for free. A mode ALREADY ordered by id needs no tiebreak -- the
+  // id is unique, so it is its own -- and a second __name__ ordering would be a duplicate orderBy.
+  q = orderedById
+    ? q.orderBy(FieldPath.documentId(), orderDir)
+    : q.orderBy(orderField, orderDir).orderBy(FieldPath.documentId(), orderDir);
+  if (cursor) {
+    q = orderedById ? q.startAfter(cursor.d) : q.startAfter(cursor.v, cursor.d);
+  }
 
   // One MORE than the page: `hasMore` is OBSERVED, never inferred from a full page.
   const snap = await q.limit(pageSize + 1).get();
   const docs = snap.docs.slice(0, pageSize);
+  const hasMore = snap.docs.length > pageSize;
+  const last = docs[docs.length - 1];
   return {
     items: docs.map((d) => ({ ...d.data(), id: d.id })),
-    hasMore: snap.docs.length > pageSize,
+    hasMore,
+    nextCursor:
+      hasMore && last
+        ? encodeCursor({
+            m: id,
+            v: orderedById ? last.id : ((last.data() as Record<string, unknown>)[orderField] ?? null),
+            d: last.id,
+          })
+        : null,
     scope: scope.kind,
   };
 }
@@ -373,7 +488,8 @@ export async function countScopedWorkOrders(
   const db = deps.db ?? getFirestore();
   const { id, mode } = resolveMode(input.mode);
   const scope = await resolveWorkOrderScope(input.actorUid, deps);
-  const clauses = resolveClauses(id, mode, (input.params ?? {}) as Record<string, unknown>);
+  const params = resolveAssignedTechnicianParam(id, scope, (input.params ?? {}) as Record<string, unknown>);
+  const clauses = resolveClauses(id, mode, params);
 
   const snap = await buildQuery(db, clauses, scope).limit(WORK_ORDER_COUNT_CEILING).count().get();
   const count = snap.data().count;

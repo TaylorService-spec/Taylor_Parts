@@ -123,6 +123,7 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "crm.location.update",
   "supplier.record.read",
   "supplier.catalog.read",
+  "supplier.purchaseOrder.read",
   // Owner ruling 2026-09-07, the GLOBAL half of the work-order and technician reads. Both replace
   // an isAdminOrDispatcher() branch, so both belong in the shared base: same population, new venue.
   // Their SELF counterparts (workOrder.assigned.read, service.technician.self.read) are granted to
