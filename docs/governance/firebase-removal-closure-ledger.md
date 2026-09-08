@@ -451,13 +451,31 @@ population wearing a migration's name. The old effective scope is preserved serv
 as **transitional scope plumbing**: `functions/src/access/assignedWarehouseScope.ts`, whose header
 carries this reasoning. Reconciling the two is its own decision.
 
+### The principal set, stated precisely
+
+The tables below compare RECORD populations. One caveat belongs beside them, because "identical" is
+a strong word and it is only exactly true of the records:
+
+**Reorder — the population is identical, the principal set is keyed differently.** The retired rule
+asked `isActiveOperationalRole("PARTS_MANAGER")` / `("PARTS_ASSOCIATE")` — an OPERATIONAL role on the
+employee record. The governed capabilities are held by the EOS Roles `partsManager` and
+`partsAssociate`. Given the same principal, the records returned are the same set; where the two
+memberships disagree, the people differ. That difference predates this workstream — the capability
+and the Roles were already there — and closing it means reconciling operational roles with EOS Roles,
+which is its own decision.
+
+**Warehouse — the principal set is exact.** `assignedWarehouseScope.ts` re-checks
+`operationalRoles` contains `WAREHOUSE_MANAGER` on the employee record, exactly as the retired
+`isAssignedToWarehouse` did, so the same people resolve to the same sites. The EOS Role decides only
+whether the actor may take the scoped path at all.
+
 ### Measured parity result
 
 | Authority | Old permitted population | New governed permitted population | Same? |
 |---|---|---|---|
 | reorder — global reader | whole queue | whole queue | yes |
-| reorder — PARTS_MANAGER | 3 queue statuses + personally reviewed/assigned | identical, via `reorder.request.read.managed` | yes |
-| reorder — PARTS_ASSOCIATE | `assignedToUserId == uid` | identical, via `reorder.request.read.own` | yes |
+| reorder — PARTS_MANAGER | 3 queue statuses + personally reviewed/assigned | identical records; principal set keyed by EOS Role — see above | records yes |
+| reorder — PARTS_ASSOCIATE | `assignedToUserId == uid` | identical records; principal set keyed by EOS Role — see above | records yes |
 | reorder — dual-authority holder | global (first matching branch) | global (broadest-first resolution) | yes |
 | warehouses — global reader | every record | every record | yes |
 | dual holder (global + assigned) | global (first matching branch) | global (global capability resolved first) | yes |
