@@ -284,46 +284,72 @@ machine would have invented transitions that no code performs.
 
 ---
 
-## 8. Named decisions for the Owner
+## 8. Named decisions — ALL FOUR RULED (Owner, 2026-09-08)
 
-**D-1 — PostgreSQL driver and migration tooling is a new architectural dependency.**
-There is no Postgres, DAL or migration tooling in this repository, and no precedent for choosing
-one. This tranche therefore builds the domain model and a repository/DAL **port**, ships a
-reference in-memory adapter for tests, and writes the schema as reviewable SQL DDL — but does not
-select a driver, add a dependency, or run a migration. Falling back to Firestore is explicitly
-refused. **Owner decides the driver/migration technology and the hosting posture.**
+**D-1 — PostgreSQL stack. RULED: PostgreSQL + `pg` (node-postgres) + `node-pg-migrate`.**
+No ORM — not Prisma, TypeORM, Sequelize or Drizzle — unless a measured requirement appears that
+`pg` plus the existing DAL cannot reasonably satisfy. The boundary stands:
+`EOS service → PolicyRepository/DAL → PostgreSQL adapter → PostgreSQL`, and the database
+implementation may not leak into UI or domain modules. One bounded, reused pool per service
+process, never one per request. Production targets Render, but the adapter uses standard
+PostgreSQL only and depends on no Render-specific API; connection comes from `DATABASE_URL` or
+injected configuration and no credential is committed. **Implemented.**
 
-**D-2 — Object CRED for a Role must not silently contradict the capability catalog.**
-Two grammars now describe the same authority: 147 capability ids, and Object×CRED. The seeded
-mapping (`objectPermissionMap.js`) reconciles them for shipped objects, but a tenant that grants
-`Sales Orders.Edit` where no capability governs that verb has expressed an intent the engine cannot
-enforce. This tranche stores CRED as the authority and treats the capability mapping as the
-enforcement projection, refusing a grant with no enforcement point. **Owner confirms that a CRED
-cell with no governing capability is a refusal rather than a silent no-op.**
+**D-2 — An unsupported CRED cell. RULED: REFUSE.**
+An administrator cannot persist a CRED grant the enforcement engine has no governed way to enforce.
+Never silently ignored, never persisted as a fake grant, never exposed as effective, and never
+manufactured from a UI checkbox. The Admin UI distinguishes four states — configurable, inherited,
+overridden, and unavailable/not-governed. **Implemented**, including downward inheritance of
+"ungoverned" from an object to its fields.
 
-**D-3 — `warehouseManager` transfer-order scope (carried from #1821).**
-Named in that PR and unresolved: the canonical Detailed CRUD matrix grants a global transfer-order
-read; the retired Rules gave only the assigned-site population. Recorded here because the CRED model
-is where that disagreement will land permanently.
+**D-3 — `warehouseManager` transfer orders. RULED: `Transfer Orders.Read = GLOBAL`.**
+The canonical Detailed CRUD matrix is the authority for the future EOS policy seed. The narrower
+retired `firestore.rules` population is **migration history and does not define future policy**.
+Both authorities and this supersession are recorded beside the seed's own assertion
+(`adminPolicySeed.test.mjs`), so a later change back to the narrower reading fails with the reason
+attached. PR #1821 is not modified by this workstream. **Implemented.**
 
-**D-4 — Governed business Roles do not currently reach governed read sources (§1.2).**
-Fixing it changes live authority for 43 Roles at once. It is not fixed in this tranche.
+**D-4 — Governed business Roles and `readGovernedList`. RULED: do not widen.**
+`COMPATIBILITY_ROLES` is not widened, and the 43 governed business Roles are NOT added to the
+transitional Firestore read resolver merely to make that infrastructure work. The future path is
+`authenticated principal → EOS Authorization Engine → PostgreSQL RoleAssignments → Object/Field
+CRED → DAL → PostgreSQL`. `readGovernedList` + `COMPATIBILITY_ROLES` are **transitional migration
+infrastructure to be retired domain by domain**. **Honoured — nothing was widened.**
+
+### Open questions
+
+None from this tranche.
 
 ---
 
 ## 9. Exact migration path
 
-1. **Foundation (this tranche)** — domain contracts, DAL port, in-memory adapter, SQL DDL,
-   Object/Field CRED resolver, admin mutation services, seeded workflow definitions, proofs.
-2. **Owner decides D-1** — driver and migration tooling.
-3. **Postgres adapter** — implement the port; run the DDL as the first migration.
-4. **Seed** — capability catalog, system Objects/fields from the metadata registry, protected system
-   Roles, the three workflow v1 definitions.
-5. **Dual-read** — resolver reads policy from the DB, falling back to the code declarations while the
-   two are proved equivalent by a parity harness (the shape `shadowParityHarness.ts` already uses).
-6. **Cutover** — DB becomes authoritative; code declarations become the seed only.
-7. **Retire** — `roleAssignments/{id}`, `users/{uid}.accessVersion`, and the legacy role strings in
-   the two workflow mirrors.
+1. ~~**Foundation**~~ — domain contracts, DAL port, in-memory adapter, SQL DDL, Object/Field CRED
+   resolver, admin mutation services, seeded workflow definitions, proofs. **DONE.**
+2. ~~**Owner decides D-1**~~ — **DONE**: PostgreSQL + `pg` + `node-pg-migrate`.
+3. ~~**Postgres adapter**~~ — **DONE**. The DDL MOVED into `functions/migrations/` rather than being
+   copied there, so there is one schema authority. 22 proofs against real PostgreSQL 16.
+4. ~~**Seed**~~ — **DONE**. Generated from the measured client metadata registry and Object×CRED map
+   via `scripts/buildAdminPolicySeedSnapshot.mjs`, with a drift guard. 24 objects, 228 fields, 46
+   Roles, 5 workflow families as DRAFT versions. Deterministic, tenant-aware, idempotent, versioned,
+   auditable and safe to rerun — each asserted.
+5. **Parity, then cutover** — `migration/firestorePolicyParityHarness.ts` reads the legacy Firestore
+   assignments and access versions and reports the difference. It is READ ONLY, is called by nothing
+   in the running system, and is **not** a dual read or a fallback. IN PARITY requires agreement on
+   assignments, scope, status AND access version.
+6. **Cutover** — DB becomes authoritative; code declarations become the seed only. *Not yet done.*
+7. **Retire** — delete the parity harness and its guard allowlist entry, then `roleAssignments/{id}`,
+   `users/{uid}.accessVersion`, and the legacy role strings in the two workflow mirrors. *Not yet
+   done.*
 
-Each step after 1 is separately authorized. **No step in this tranche touches production,
-Certification, Firestore Rules, or any deployment.**
+### What remains after this tranche
+
+- **Execution routing.** No business record moves through the new Workflow definitions. They are
+  drafts, and proving each against measured behaviour comes before publication (ruling item 10).
+- **Admin write surfaces.** The trusted commands exist and are Admin-only; the screens are read-only
+  because the policy database is not stood up in any environment. Creating a custom field from the
+  UI needs a deployed service, which is a separately-authorized step.
+- **Tenant provisioning.** The seed takes a tenant id. Nothing yet creates tenants.
+
+Each step is separately authorized. **No step in this tranche touches production, Certification,
+Firestore Rules, or any deployment.**
