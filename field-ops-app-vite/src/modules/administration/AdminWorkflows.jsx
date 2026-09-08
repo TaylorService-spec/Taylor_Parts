@@ -3,8 +3,12 @@ import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import {
   SEED_WORKFLOW_FAMILIES,
+  WORKFLOW_AREAS,
+  areaForMachine,
   buildWorkflowVersionView,
+  machinesInArea,
   summarizeWorkflowFamily,
+  workflowTerminologyCounts,
 } from "../../domain/adminWorkflowView.js";
 
 // ADMINISTRATION > WORKFLOWS -- the business processes EOS knows about.
@@ -30,11 +34,17 @@ import {
 // Rendering them as though they were live would be the single most misleading thing this screen
 // could do, so every version carries its status and the page says it plainly.
 //
-// ════════════════════ SALES IS THREE WORKFLOWS ════════════════════
+// ════════════════════ THREE AREAS, FIVE STATE MACHINES ════════════════════
 //
-// Opportunity, Agreement and Order are three state machines chained by EVENTS, not transitions --
-// there is no edge from WON to DRAFT; a won opportunity CREATES an agreement, which is a different
-// thing. They are listed separately because collapsing them would draw transitions no code performs.
+// Owner terminology. Administration presents THREE business workflow areas -- Parts / Purchasing,
+// Technician / Work Order, Sales -- over FIVE versioned state machines, because Sales is three:
+// Opportunity, Agreement and Order.
+//
+// Those three are chained by EVENTS, not transitions. There is no edge from WON to DRAFT; a won
+// opportunity CREATES an agreement, which is a different thing. So an AREA is a presentation
+// grouping and nothing more -- it has no state, no transition and no Role binding of its own, and
+// no authority is ever resolved against it. Collapsing Sales into one invented machine would draw
+// transitions no code performs.
 //
 // ════════════════════ READ-ONLY, AND WHY ════════════════════
 //
@@ -65,6 +75,9 @@ export default function AdminWorkflows() {
     [families, selectedKey],
   );
   const view = useMemo(() => (selected ? buildWorkflowVersionView(selected) : null), [selected]);
+  const terminology = workflowTerminologyCounts();
+  // Named for what it is, so the WORKFLOW_AREAS.map below does not shadow it into ambiguity.
+  const selectedArea = selected ? areaForMachine(selected.key) : null;
 
   const toggle = (key) =>
     setExpanded((prev) => {
@@ -91,29 +104,46 @@ export default function AdminWorkflows() {
         </p>
       </section>
 
-      <section className="fo-panel" aria-label="Workflow families">
-        <h3>Workflows</h3>
-        <div className="fo-pill-row">
-          {families.map((family) => {
-            const summary = summarizeWorkflowFamily(family);
-            return (
-              <Button
-                key={family.key}
-                variant={family.key === selected?.key ? "primary" : "secondary"}
-                onClick={() => setSelectedKey(family.key)}
-                aria-pressed={family.key === selected?.key}
-              >
-                {family.name}
-                <span className="fo-muted"> · {summary.stepCount} states · {summary.actionCount} actions</span>
-              </Button>
-            );
-          })}
-        </div>
+      <section className="fo-panel" aria-label="Workflow areas">
+        <h3>
+          Business areas{" "}
+          <span className="fo-muted">
+            · {terminology.areas} areas · {terminology.stateMachines} state machines
+          </span>
+        </h3>
+        {WORKFLOW_AREAS.map((area) => (
+          <div key={area.key} className="fo-wf-area">
+            <h4>
+              {area.name}
+              {area.machineKeys.length > 1 && (
+                <span className="fo-muted"> · {area.machineKeys.length} linked state machines</span>
+              )}
+            </h4>
+            <p className="fo-muted">{area.description}</p>
+            <div className="fo-pill-row">
+              {machinesInArea(area.key).map((family) => {
+                const summary = summarizeWorkflowFamily(family);
+                return (
+                  <Button
+                    key={family.key}
+                    variant={family.key === selected?.key ? "primary" : "secondary"}
+                    onClick={() => setSelectedKey(family.key)}
+                    aria-pressed={family.key === selected?.key}
+                  >
+                    {family.name}
+                    <span className="fo-muted"> · {summary.stepCount} states · {summary.actionCount} actions</span>
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
         <p className="fo-muted">
-          Sales is <strong>three</strong> workflows, not one. Opportunity, Agreement and Order are
-          separate state machines chained by events — a won opportunity <em>creates</em> an
-          agreement rather than transitioning into one — so drawing them as a single process would
-          show transitions no code performs.
+          An <strong>area</strong> groups related processes for reading. It has no states,
+          transitions or Role bindings of its own — every one of those belongs to a state machine,
+          and authority is only ever resolved against a machine. Sales is three machines chained by
+          events: a won Opportunity <em>creates</em> an Agreement rather than transitioning into
+          one, so drawing them as a single process would show transitions no code performs.
         </p>
       </section>
 
@@ -123,6 +153,11 @@ export default function AdminWorkflows() {
             <h3>
               {selected.name} <StatusPill status={view.status} />
             </h3>
+            {selectedArea && (
+              <p className="fo-muted">
+                A state machine in the <strong>{selectedArea.name}</strong> area.
+              </p>
+            )}
             <p className="fo-muted">{selected.description}</p>
             <dl className="fo-wf-meta">
               <div><dt>Version</dt><dd>v{view.version}</dd></div>

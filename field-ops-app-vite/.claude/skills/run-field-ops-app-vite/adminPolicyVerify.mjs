@@ -90,6 +90,28 @@ const run = async () => {
     const boxes = await grid.locator('input[type="checkbox"]').count();
     check("Object CRED cells render", boxes > 0, `${boxes} cells`);
 
+    // THIRTY-SEVEN OBJECTS, not the matrix's 24. Thirteen entities carrying 166 fields -- Supplier,
+    // Warehouse, Truck, Reorder Request, Sales Agreement and eight more -- used to appear on no
+    // Administration screen at all. Asserted by name, so a regression says WHICH went missing.
+    const objectRows = await grid.locator("tbody tr:not(.fo-row-nested)").count();
+    check("the grid shows every governable object", objectRows === 37, `${objectRows} object rows`);
+    // Matched on the row's TEXT, not its accessible name: the name also carries the caret button's
+    // label ("Show the 16 fields of Supplier"), so a name matcher anchored at the start never fires.
+    const objectLabels = [];
+    for (let i = 0; i < objectRows; i += 1) {
+      objectLabels.push(
+        (await grid.locator("tbody tr:not(.fo-row-nested)").nth(i).locator("td").first().innerText())
+          .replace(/\s+/g, " ")
+          .trim(),
+      );
+    }
+    for (const label of ["Supplier", "Warehouse", "Truck", "Reorder Request", "Sales Agreement"]) {
+      check(
+        `previously-missing object is present: ${label}`,
+        objectLabels.some((t) => new RegExp(`(^|▸ )${label} ·`).test(t)),
+      );
+    }
+
     // MATCHES BOTH STATES. The caret's accessible name flips Show <-> Hide on toggle, which is
     // correct behaviour -- and makes a Show-only locator stop matching the moment it is clicked.
     const caret = grid.getByRole("button", { name: /(show|hide) the \d+ fields of Accounts/i }).first();
@@ -161,6 +183,19 @@ const run = async () => {
     // Sales is THREE families, selectable separately.
     const salesButtons = await page.getByRole("button", { name: /^Sales — (Opportunity|Agreement|Order)/ }).count();
     check("Workflows -- Sales is three separate families", salesButtons === 3, `${salesButtons} found`);
+
+    // THREE AREAS, FIVE STATE MACHINES. The grouping must not reduce the machine count -- that
+    // would be the invented-single-Sales-machine failure it exists to avoid.
+    const areaHeadings = await page.locator(".fo-wf-area h4").count();
+    check("Workflows -- three business areas", areaHeadings === 3, `${areaHeadings} areas`);
+    check(
+      "Workflows -- the header states 3 areas over 5 state machines",
+      await page.getByText(/3 areas · 5 state machines/).isVisible(),
+    );
+    check(
+      "Workflows -- Sales is labelled as three LINKED machines",
+      await page.getByText(/3 linked state machines/).isVisible(),
+    );
     if (salesButtons > 0) {
       await page.getByRole("button", { name: /^Sales — Opportunity/ }).click();
       await page.waitForTimeout(300);

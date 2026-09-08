@@ -922,6 +922,13 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-wf-meta dt { color: var(--color-text-secondary); font-size: 13px; }
 .fo-wf-meta dd { margin: 0; font-size: 14px; font-weight: 600; }
 
+/* One business area on the Workflows screen. A grouping for reading, so it is set apart by
+   spacing and a rule rather than by a surface -- a filled card would read as a thing with its own
+   state, and an area has none. */
+.fo-wf-area { margin: 12px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--color-surface-sunken); }
+.fo-wf-area h4 { margin: 0 0 2px; font-size: 15px; }
+.fo-wf-area p { margin: 0 0 6px; }
+
 /* THE COUNTS ON A SELECTED FAMILY BUTTON.
 
    `.fo-muted` is a fixed secondary text colour chosen against the page ground. Inside a FILLED

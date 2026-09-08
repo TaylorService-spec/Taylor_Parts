@@ -15,17 +15,18 @@
 // deployment posture change later -- shared service + shared DB, shared service + dedicated
 // customer DB, dedicated environment -- without EOS business code changing.
 //
-// ════════════════════ WHY A PORT AND NOT A DRIVER ════════════════════
+// ════════════════════ WHY A PORT, NOW THAT THE DRIVER IS CHOSEN ════════════════════
 //
-// Measured: this repository has NO PostgreSQL, no DAL, and no migration tooling -- no `pg`,
-// `knex`, `kysely`, `drizzle-orm`, `prisma`, `typeorm` or `sequelize` in any package.json, and no
-// source file that mentions Postgres. Choosing one is a new architectural dependency with no
-// precedent here, so it is a NAMED DECISION for the Owner (reconciliation document, D-1) rather
-// than something to settle inside an implementation task.
+// Owner ruling D-1 selected PostgreSQL + `pg` + `node-pg-migrate`, and
+// `postgresPolicyRepository.ts` implements this interface against it. The port did not become
+// redundant when that landed -- it is what keeps the choice reversible and the layers apart:
 //
-// Falling back to Firestore was explicitly refused. So the domain is built against this interface,
-// a reference in-memory adapter satisfies it for tests, and the schema ships as reviewable SQL DDL.
-// When the driver is chosen, one adapter implements this file and nothing above it changes.
+//   nothing above this file imports `pg`, sees a row, or knows a column name;
+//   the in-memory adapter still satisfies it, so the resolver's own proofs need no database;
+//   a second deployment posture -- dedicated customer database, dedicated environment -- is an
+//   adapter question rather than an EOS-business-code question.
+//
+// Falling back to Firestore was explicitly refused, and no adapter behind this port may reach it.
 //
 // ════════════════════ TENANCY ════════════════════
 //

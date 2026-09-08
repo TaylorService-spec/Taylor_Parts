@@ -229,3 +229,62 @@ export const workflowBoundRoleKeys = () =>
   Object.freeze([
     ...new Set(SEED_WORKFLOW_FAMILIES.flatMap((f) => f.actions.flatMap((a) => a.roleKeys))),
   ].sort());
+
+// ════════════════════ BUSINESS AREAS vs STATE MACHINES ════════════════════
+//
+// Owner terminology (2026-09-08). Administration presents:
+//
+//   3 BUSINESS WORKFLOW AREAS      Parts / Purchasing, Technician / Work Order, Sales
+//   5 VERSIONED STATE MACHINES     the five families above
+//
+// The IMPLEMENTATION is unchanged and must stay unchanged: Sales is three separate machines --
+// Opportunity, Agreement, Order -- chained by events rather than transitions. A won opportunity
+// CREATES an agreement; there is no edge from WON to DRAFT. Flattening them into one invented
+// machine would draw transitions no code performs, which is precisely what this grouping must not
+// become.
+//
+// So an AREA is a presentation grouping over machines. It has no state, no transition and no Role
+// binding of its own, and nothing resolves authority against it.
+
+export const WORKFLOW_AREAS = Object.freeze([
+  Object.freeze({
+    key: "partsPurchasing",
+    name: "Parts / Purchasing",
+    description: "Raising, approving, assigning, purchasing and receiving a reorder request.",
+    machineKeys: Object.freeze(["partsPurchasing"]),
+  }),
+  Object.freeze({
+    key: "workOrder",
+    name: "Technician / Work Order",
+    description: "Scheduling, dispatching and executing field work through to close.",
+    machineKeys: Object.freeze(["workOrder"]),
+  }),
+  Object.freeze({
+    key: "sales",
+    name: "Sales",
+    description:
+      "Three linked state machines: an Opportunity is won, which creates an Agreement, whose acceptance creates an Order. Chained by events, not by transitions.",
+    machineKeys: Object.freeze(["salesOpportunity", "salesAgreement", "salesOrder"]),
+  }),
+]);
+
+/** The machines in one area, in the order the area declares them. */
+export function machinesInArea(areaKey) {
+  const area = WORKFLOW_AREAS.find((a) => a.key === areaKey);
+  if (!area) return [];
+  return area.machineKeys
+    .map((key) => SEED_WORKFLOW_FAMILIES.find((f) => f.key === key))
+    .filter(Boolean);
+}
+
+/** Which area a machine belongs to, or null. Every machine belongs to exactly one. */
+export function areaForMachine(machineKey) {
+  return WORKFLOW_AREAS.find((a) => a.machineKeys.includes(machineKey)) ?? null;
+}
+
+/** The two numbers the Administration surface reports, so it never has to count them inline. */
+export const workflowTerminologyCounts = () =>
+  Object.freeze({
+    areas: WORKFLOW_AREAS.length,
+    stateMachines: SEED_WORKFLOW_FAMILIES.length,
+  });

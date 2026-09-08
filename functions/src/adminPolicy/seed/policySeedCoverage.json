@@ -1,0 +1,3121 @@
+{
+  "ledgerVersion": 1,
+  "generatedFrom": [
+    "field-ops-app-vite/src/metadata/entityRegistry.js",
+    "field-ops-app-vite/src/access/policyObjectRegistry.js"
+  ],
+  "allowedExclusionReasons": [
+    "TECHNICAL_INTERNAL",
+    "DERIVED_DISPLAY_ONLY",
+    "LEGACY_RETIRED",
+    "ALIAS_DUPLICATE",
+    "NON_PERSISTED",
+    "NON_GOVERNABLE_SYSTEM_FIELD"
+  ],
+  "source": {
+    "entities": 29,
+    "fields": 394
+  },
+  "seeded": {
+    "objects": 37,
+    "objectsWithoutAnEntity": 8,
+    "entities": 29,
+    "fields": 394
+  },
+  "excluded": {
+    "entities": 0,
+    "fields": 0,
+    "fieldsByReason": {
+      "TECHNICAL_INTERNAL": 0,
+      "DERIVED_DISPLAY_ONLY": 0,
+      "LEGACY_RETIRED": 0,
+      "ALIAS_DUPLICATE": 0,
+      "NON_PERSISTED": 0,
+      "NON_GOVERNABLE_SYSTEM_FIELD": 0
+    }
+  },
+  "capabilityGapsFilled": [
+    "salesAgreement",
+    "stockLocation",
+    "warehouse"
+  ],
+  "entities": [
+    {
+      "entityId": "account",
+      "label": "Customer",
+      "declaredFields": 21,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "account",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Customer",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "nameLower",
+          "label": "Customer (sort key)",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "relationshipTypes",
+          "label": "Relationship",
+          "dataType": "ENUM_SET",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "lineOfBusiness",
+          "label": "Line of Business",
+          "dataType": "ENUM_SET",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Last update",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "tags",
+          "label": "Tags",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "defaultCurrency",
+          "label": "Default Currency",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "purchaseOrderRequired",
+          "label": "PO Required",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "invoiceDeliveryMethod",
+          "label": "Invoice Delivery",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "paymentTerms",
+          "label": "Payment Terms",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "taxStatus",
+          "label": "Tax Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "billingContactId",
+          "label": "Billing Contact",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountOwnerEmployeeId",
+          "label": "Owner",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "customerNumber",
+          "label": "Customer #",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "erpId",
+          "label": "ERP ID",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountingId",
+          "label": "Accounting ID",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "legacyId",
+          "label": "Legacy ID",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "notes",
+          "label": "Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "billingAddress",
+          "label": "Billing Address",
+          "dataType": "ADDRESS",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "contact",
+      "label": "Contact",
+      "declaredFields": 6,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "contact",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "email",
+          "label": "Email",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "phone",
+          "label": "Phone",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "role",
+          "label": "Role",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "isPrimary",
+          "label": "Primary",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "employee",
+      "label": "Employee",
+      "declaredFields": 22,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "employee",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "employeeId",
+          "label": "Employee ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "displayName",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "firstName",
+          "label": "First Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "lastName",
+          "label": "Last Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "employeeNumber",
+          "label": "Employee ID",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "middleName",
+          "label": "Middle Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "preferredName",
+          "label": "Preferred Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "workEmail",
+          "label": "Work Email",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "workPhone",
+          "label": "Work Phone",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "mobilePhone",
+          "label": "Mobile Phone",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "jobTitle",
+          "label": "Job Title",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "managerEmployeeId",
+          "label": "Manager",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "operatingCompanyId",
+          "label": "Operating Company",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "hireDate",
+          "label": "Hire Date",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "separationDate",
+          "label": "Separation Date",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "address",
+          "label": "Address",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "employmentStatus",
+          "label": "Employment Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "operationalRoles",
+          "label": "Operational Roles",
+          "dataType": "ENUM_SET",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "securityRole",
+          "label": "Legacy role",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "userId",
+          "label": "Linked User",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "equipment",
+      "label": "Equipment",
+      "declaredFields": 13,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "equipment",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "locationId",
+          "label": "Location",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "manufacturer",
+          "label": "Manufacturer",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "serialNumber",
+          "label": "Serial Number",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "assetTag",
+          "label": "Asset Tag",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "installedDate",
+          "label": "Installed",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "warrantyExpiresDate",
+          "label": "Warranty Expires",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "notes",
+          "label": "Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "equipmentModel",
+      "label": "Equipment Model",
+      "declaredFields": 15,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "equipmentModel",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "equipmentModelId",
+          "label": "Equipment Model ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "displayName",
+          "label": "Display Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "manufacturerId",
+          "label": "Manufacturer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "manufacturerName",
+          "label": "Manufacturer Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "modelNumber",
+          "label": "Model Number",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "family",
+          "label": "Family",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "subtype",
+          "label": "Subtype",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "revision",
+          "label": "Revision",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceAuthority",
+          "label": "Source Authority",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "inventoryAction",
+      "label": "Inventory Action",
+      "declaredFields": 8,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "inventoryAction",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "actionId",
+          "label": "Action ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "transactionType",
+          "label": "Action Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "quantityDelta",
+          "label": "Quantity",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reason",
+          "label": "Reason",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "notes",
+          "label": "Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "inventoryTransaction",
+      "label": "Inventory Transaction",
+      "declaredFields": 15,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "inventoryTransaction",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "transactionId",
+          "label": "Transaction ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "type",
+          "label": "Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "quantity",
+          "label": "Quantity",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "workOrderId",
+          "label": "Work Order",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "timestamp",
+          "label": "Recorded",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "schemaVersion",
+          "label": "Schema Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "direction",
+          "label": "Direction",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "trackingMode",
+          "label": "Tracking Mode",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "serialNo",
+          "label": "Serial #",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "lotId",
+          "label": "Lot #",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "idempotencyKey",
+          "label": "Idempotency Key",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "occurredAt",
+          "label": "Occurred At",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "recordedAt",
+          "label": "Recorded At",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "fingerprint",
+          "label": "Fingerprint",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "invoice",
+      "label": "Invoice",
+      "declaredFields": 20,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "invoice",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "invoiceNumber",
+          "label": "Invoice",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "currency",
+          "label": "Currency",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Account",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "salesOrderId",
+          "label": "Sales Order",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "dueDate",
+          "label": "Due Date",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "issuedAt",
+          "label": "Issued",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "issuedAtMillis",
+          "label": "Issued (ms)",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "totalMinor",
+          "label": "Total",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "outstandingMinor",
+          "label": "Outstanding",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "subtotalMinor",
+          "label": "Subtotal",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "discountMinor",
+          "label": "Discount",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "taxMinor",
+          "label": "Tax",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "appliedMinor",
+          "label": "Applied",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "creditsMinor",
+          "label": "Credits",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "chargesMinor",
+          "label": "Charges",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "writeOffMinor",
+          "label": "Write-offs",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "companyId",
+          "label": "Company",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "taxProvenance",
+          "label": "Tax Provenance",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "location",
+      "label": "Location",
+      "declaredFields": 9,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "location",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Site Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "addressStreet",
+          "label": "Street Address",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "addressCity",
+          "label": "City",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "addressState",
+          "label": "State",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "addressZip",
+          "label": "ZIP",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accessNotes",
+          "label": "Access Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "manufacturer",
+      "label": "Manufacturer",
+      "declaredFields": 9,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "manufacturer",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "manufacturerId",
+          "label": "Manufacturer ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "normalizedName",
+          "label": "Normalized Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "mobileLocation",
+      "label": "Mobile Location",
+      "declaredFields": 9,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "mobileLocation",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "locationId",
+          "label": "Location ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "type",
+          "label": "Location Type",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "displayLabel",
+          "label": "Display Label",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "active",
+          "label": "Active",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "opportunity",
+      "label": "Opportunity",
+      "declaredFields": 10,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "opportunity",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "opportunityNumber",
+          "label": "Opportunity",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "stage",
+          "label": "Stage",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "outcome",
+          "label": "Outcome",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "salesChannel",
+          "label": "Channel",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "expectedValue",
+          "label": "Expected value",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "expectedCloseAt",
+          "label": "Expected close",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "need",
+          "label": "Need",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "ownerEmployeeId",
+          "label": "Owner",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "salesOrderId",
+          "label": "Sales Order",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "part",
+      "label": "Part",
+      "declaredFields": 27,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "part",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "partId",
+          "label": "Part ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "internalPartNumber",
+          "label": "Part Number",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "description",
+          "label": "Description",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "category",
+          "label": "Category",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "stockingClass",
+          "label": "Stocking Class",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "stockingUnit",
+          "label": "Unit",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "controlType",
+          "label": "Control Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "primaryManufacturerId",
+          "label": "Manufacturer",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "primaryManufacturerPartNumber",
+          "label": "Manufacturer Part Number",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "oemStatus",
+          "label": "OEM Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "wholeUnit",
+          "label": "Item Type",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "equipmentModelId",
+          "label": "Equipment Model",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "warehouseAvailable",
+          "label": "Warehouse Available",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "onOrder",
+          "label": "On Order",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reorderPoint",
+          "label": "Reorder Point",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "unitCost",
+          "label": "Unit Cost",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sellPrice",
+          "label": "Sell Price",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "businessLine",
+          "label": "Business Line",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "mobileQuantity",
+          "label": "Truck Stock",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "preferredSupplierId",
+          "label": "Preferred Supplier",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "partAlias",
+      "label": "Part Alias",
+      "declaredFields": 16,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "partAlias",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "aliasType",
+          "label": "Alias Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "originalValue",
+          "label": "Value",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "normalizedValue",
+          "label": "Normalized Value",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "manufacturerId",
+          "label": "Manufacturer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "source",
+          "label": "Source",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "effectiveFrom",
+          "label": "Effective From",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "effectiveTo",
+          "label": "Effective To",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "deactivatedAt",
+          "label": "Deactivated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "deactivatedBy",
+          "label": "Deactivated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "payment",
+      "label": "Payment",
+      "declaredFields": 11,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "payment",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "externalRef",
+          "label": "Reference",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "companyId",
+          "label": "Company",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Account",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "currency",
+          "label": "Currency",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "amountMinor",
+          "label": "Amount",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "method",
+          "label": "Method",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivedAtMillis",
+          "label": "Received",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivedAt",
+          "label": "Received (server)",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "appliedMinor",
+          "label": "Applied",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "unappliedMinor",
+          "label": "Unapplied",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "purchaseOrder",
+      "label": "Purchase Order",
+      "declaredFields": 10,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "purchaseOrder",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "reorderRequestId",
+          "label": "Reorder Request",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "supplierName",
+          "label": "Supplier",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "externalPoNumber",
+          "label": "External PO #",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "orderedQuantity",
+          "label": "Ordered Qty",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "orderedDate",
+          "label": "Ordered Date",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "expectedArrivalDate",
+          "label": "Expected Arrival",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "purchaseOrderVoid",
+      "label": "Purchase Order Void",
+      "declaredFields": 6,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "purchaseOrderVoid",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "reorderPurchaseOrderId",
+          "label": "Purchase Order",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reorderRequestId",
+          "label": "Reorder Request",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "voidedBy",
+          "label": "Voided By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reason",
+          "label": "Reason",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Voided",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "receivingOrder",
+      "label": "Receiving Order",
+      "declaredFields": 18,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "receivingOrder",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "receivingId",
+          "label": "Receiving Order ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivingOrderNumber",
+          "label": "Receiving Order",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "schemaVersion",
+          "label": "Schema Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceType",
+          "label": "Source Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceReorderRequestId",
+          "label": "Source Reorder Request",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourcePurchaseOrderId",
+          "label": "Source Purchase Order",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivingLocationType",
+          "label": "Receiving Location Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivingLocationId",
+          "label": "Receiving Location",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "idempotencyKey",
+          "label": "Idempotency Key",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "actorKind",
+          "label": "Actor Kind",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "actorId",
+          "label": "Actor ID",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "fingerprint",
+          "label": "Fingerprint",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "reorderRequest",
+      "label": "Reorder Request",
+      "declaredFields": 37,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "reorderRequest",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "reorderRequestNumber",
+          "label": "Reorder Request",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "recommendationStatus",
+          "label": "Recommendation",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "urgency",
+          "label": "Urgency",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "quantitySource",
+          "label": "Quantity Source",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "recommendedQty",
+          "label": "Recommended Qty (historical snapshot)",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "requestedQty",
+          "label": "Requested Qty",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "currentOwner",
+          "label": "Current Owner",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "requestedBy",
+          "label": "Requested By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Requested",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reviewedBy",
+          "label": "Reviewed By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reviewedAt",
+          "label": "Reviewed",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reviewDecision",
+          "label": "Review Decision",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "reviewNotes",
+          "label": "Review Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "assignedToUserId",
+          "label": "Assigned To",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "assignedBy",
+          "label": "Assigned By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "assignedAt",
+          "label": "Assigned",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "purchasingStartedAt",
+          "label": "Purchasing Started",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "purchasingStartedBy",
+          "label": "Purchasing Started By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "purchasingNotes",
+          "label": "Purchasing Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "vendorContacted",
+          "label": "Vendor Contacted",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "expectedAvailabilityDate",
+          "label": "Expected Availability",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "lastPurchasingUpdateAt",
+          "label": "Last Purchasing Update",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "lastPurchasingUpdateBy",
+          "label": "Last Purchasing Update By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "purchaseOrderId",
+          "label": "Purchase Order",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "orderedBy",
+          "label": "Ordered By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "orderedAt",
+          "label": "Ordered",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivedBy",
+          "label": "Received By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "receivedAt",
+          "label": "Received",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "cancelledBy",
+          "label": "Cancelled By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "cancelledAt",
+          "label": "Cancelled",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "cancellationReason",
+          "label": "Cancellation Reason",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "voidedBy",
+          "label": "Voided By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "voidedAt",
+          "label": "Voided",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "voidReason",
+          "label": "Void Reason",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "workOrderId",
+          "label": "Work Order",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "salesAgreement",
+      "label": "Sales Agreement",
+      "declaredFields": 24,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "salesAgreement",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "salesAgreementNumber",
+          "label": "Agreement",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "locationId",
+          "label": "Location",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "ownerEmployeeId",
+          "label": "Salesperson",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "totalMinor",
+          "label": "Total",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "subtotalMinor",
+          "label": "Subtotal",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "shippingMinor",
+          "label": "Shipping",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "installChargeMinor",
+          "label": "Install Charge",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "taxMinor",
+          "label": "Tax",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "downPaymentMinor",
+          "label": "Down Payment",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "tradeInMinor",
+          "label": "Trade-In",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "balanceMinor",
+          "label": "Balance Due",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "currency",
+          "label": "Currency",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "customerPO",
+          "label": "Customer PO",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "isLease",
+          "label": "Lease",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "fulfillmentIntent",
+          "label": "Fulfillment",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "shipVia",
+          "label": "Ship Via",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "shippingInstructions",
+          "label": "Shipping Instructions",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "specialInstructions",
+          "label": "Special Instructions",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceOpportunityId",
+          "label": "Source Opportunity",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "salesOrderId",
+          "label": "Sales Order",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "acceptedAtMillis",
+          "label": "Accepted",
+          "dataType": "DATE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "acceptedByUid",
+          "label": "Accepted By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "salesOrder",
+      "label": "Sales Order",
+      "declaredFields": 13,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "salesOrder",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "salesOrderNumber",
+          "label": "Sales Order",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "salesChannel",
+          "label": "Channel",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "totalMinor",
+          "label": "Dollars",
+          "dataType": "CURRENCY_MINOR",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "currency",
+          "label": "Currency",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "accountId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "ownerEmployeeId",
+          "label": "Owner",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "locationId",
+          "label": "Location",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceOpportunityId",
+          "label": "Source Opportunity",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceAgreementId",
+          "label": "Source Agreement",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "sourceOpportunityNumber",
+          "label": "Source Opportunity #",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "customerPO",
+          "label": "Customer PO",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "notes",
+          "label": "Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "salesTerritory",
+      "label": "Sales Territory",
+      "declaredFields": 6,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "salesTerritory",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "kind",
+          "label": "Kind",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAtMillis",
+          "label": "Created (builder)",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "stockLocation",
+      "label": "Stock Location",
+      "declaredFields": 6,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "stockLocation",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "id",
+          "label": "Stock Location ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "warehouseId",
+          "label": "Warehouse",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "binCode",
+          "label": "Bin",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "quantity",
+          "label": "Quantity",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "supplier",
+      "label": "Supplier",
+      "declaredFields": 16,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "supplier",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "supplierId",
+          "label": "Supplier ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "normalizedKey",
+          "label": "Normalized Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "vendorNumber",
+          "label": "Vendor #",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "contactName",
+          "label": "Contact Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "phone",
+          "label": "Phone",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "email",
+          "label": "Email",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "address",
+          "label": "Address",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "paymentTermsRef",
+          "label": "Payment Terms",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "notes",
+          "label": "Notes",
+          "dataType": "TEXT",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "supplierCatalogItem",
+      "label": "Supplier Catalog Item",
+      "declaredFields": 5,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "supplierCatalogItem",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "catalogItemId",
+          "label": "Catalog Item ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "supplierId",
+          "label": "Supplier",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "unitPrice",
+          "label": "Unit Price",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "available",
+          "label": "Available",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "transferOrder",
+      "label": "Transfer Order",
+      "declaredFields": 15,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "transferOrder",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "transferOrderId",
+          "label": "Transfer Order ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "transferOrderNumber",
+          "label": "Transfer Order",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "partId",
+          "label": "Part",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "fromWarehouseId",
+          "label": "From Warehouse",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "toWarehouseId",
+          "label": "To Warehouse",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "trackingMode",
+          "label": "Tracking Mode",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "quantity",
+          "label": "Quantity",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "idempotencyKey",
+          "label": "Idempotency Key",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "fingerprint",
+          "label": "Fingerprint",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "truck",
+      "label": "Truck",
+      "declaredFields": 13,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "truck",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "truckId",
+          "label": "Truck ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "displayLabel",
+          "label": "Display Label",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "vehicleNumber",
+          "label": "Vehicle Number",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "locationId",
+          "label": "Mobile Location",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "homeWarehouseId",
+          "label": "Home Warehouse",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "assignedDriverEmployeeId",
+          "label": "Assigned Driver",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "active",
+          "label": "Active",
+          "dataType": "BOOLEAN",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "version",
+          "label": "Version",
+          "dataType": "NUMBER",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdBy",
+          "label": "Created By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedAt",
+          "label": "Updated",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "updatedBy",
+          "label": "Updated By",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "warehouse",
+      "label": "Warehouse",
+      "declaredFields": 4,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "warehouse",
+      "objectSource": "REGISTRY_ONLY",
+      "fields": [
+        {
+          "key": "warehouseId",
+          "label": "Warehouse ID",
+          "dataType": "ID",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "name",
+          "label": "Name",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "location",
+          "label": "Location",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    },
+    {
+      "entityId": "workOrder",
+      "label": "Work Order",
+      "declaredFields": 10,
+      "status": "SEEDED",
+      "exclusionReason": null,
+      "objectKey": "workOrder",
+      "objectSource": "MATRIX_AND_REGISTRY",
+      "fields": [
+        {
+          "key": "woNumber",
+          "label": "Work Order",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "priority",
+          "label": "Priority",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "customerId",
+          "label": "Customer",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "createdAt",
+          "label": "Created",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "type",
+          "label": "Type",
+          "dataType": "ENUM",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "scheduledStart",
+          "label": "Scheduled",
+          "dataType": "TIMESTAMP",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "equipmentId",
+          "label": "Equipment",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "locationId",
+          "label": "Location",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
+        {
+          "key": "assignedTechId",
+          "label": "Technician",
+          "dataType": "REFERENCE",
+          "status": "SEEDED",
+          "exclusionReason": null
+        }
+      ]
+    }
+  ]
+}

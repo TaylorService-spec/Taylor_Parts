@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { OBJECT_PERMISSIONS, cellState } from "../../access/objectPermissionMap.js";
-import { ENTITY_REGISTRY, displayableFields } from "../../metadata/entityRegistry.js";
+import { cellState } from "../../access/objectPermissionMap.js";
+import { GOVERNABLE_OBJECTS, governedVerbs } from "../../access/policyObjectRegistry.js";
 import {
   CELL_STATE,
   INHERITANCE,
@@ -23,7 +23,14 @@ import {
 //
 // ════════════════════ WHERE EACH NUMBER COMES FROM ════════════════════
 //
-//   OBJECT CRED   the capability model, exactly as RoleObjectGrid reads it. Unchanged.
+//   OBJECT LIST   policyObjectRegistry.js -- the UNION of the CRUD matrix and the metadata
+//                 registry, which is the same list the policy seed writes. It used to be the matrix
+//                 alone, and thirteen entities carrying 166 fields (Supplier, Warehouse, Truck,
+//                 Reorder Request, Sales Agreement and eight more) appeared on no Administration
+//                 screen at all. 37 objects now, not 24.
+//   OBJECT CRED   the capability model, exactly as before for the matrix rows. An object no
+//                 capability governs shows a dash on every verb -- it exists and is real, and
+//                 nothing can be granted on it yet.
 //   FIELD CRED    INHERITED from the object, because that is the truth today: field-level policy
 //                 lives in the EOS policy store, and until that store is stood up there are no
 //                 overrides for any Role. Every field row is therefore drawn as inherited, which is
@@ -42,36 +49,14 @@ import {
 // have no store behind them yet. A control that cannot act still reads as an affordance, so none is
 // drawn -- the caller states the reason in its own words.
 
-/** Business object name in the CRUD matrix -> metadata entity id. Stated once, here. */
-const ENTITY_BY_OBJECT = Object.freeze({
-  Accounts: "account",
-  Contacts: "contact",
-  "Customer Locations": "location",
-  Opportunities: "opportunity",
-  "Sales Orders": "salesOrder",
-  "Work Orders": "workOrder",
-  "Parts Catalog": "part",
-  "Inventory Stock": "inventoryTransaction",
-  "Inventory Adjustments": "inventoryAction",
-  "Purchase Orders": "purchaseOrder",
-  Receiving: "receivingOrder",
-  "Transfer Orders": "transferOrder",
-  "Equipment / Installed Base": "equipment",
-  "Invoices / AR": "invoice",
-  Payments: "payment",
-  Users: "employee",
-});
-
-/** The capability-model cell state, translated into the view model's vocabulary. */
-function toViewState(state) {
-  if (state === "granted") return true;
-  return false;
-}
-
-function ungovernedVerbs(entry) {
-  const governed = {};
-  for (const verb of VERBS) governed[verb] = (entry[verb] ?? []).length > 0;
-  return governed;
+/**
+ * Does this Role hold any capability for this object/verb?
+ *
+ * `cellState` reads a CRUD-matrix row. The union carries the same shape -- `capabilitiesByVerb` --
+ * for every object including the ones the matrix never had a row for, so one function answers both.
+ */
+function grantedFor(role, object, verb) {
+  return cellState(role, object.capabilitiesByVerb, verb) === "granted";
 }
 
 function Cell({ cell }) {
@@ -132,32 +117,33 @@ export default function RolePolicyGrid({ role, label }) {
           </tr>
         </thead>
         <tbody>
-          {OBJECT_PERMISSIONS.map((entry) => {
+          {GOVERNABLE_OBJECTS.map((entry) => {
             const cred = {};
-            for (const verb of VERBS) cred[verb] = toViewState(cellState(role, entry, verb));
+            for (const verb of VERBS) cred[verb] = grantedFor(role, entry, verb);
+            const governed = governedVerbs(entry);
             const objectRow = buildObjectRow({
-              key: entry.object,
-              label: entry.object,
+              key: entry.key,
+              label: entry.label,
               domain: entry.domain,
               cred,
-              governed: ungovernedVerbs(entry),
+              governed,
             });
 
-            const entityId = ENTITY_BY_OBJECT[entry.object];
-            const entity = entityId ? ENTITY_REGISTRY.find((e) => e.id === entityId) : null;
-            const fields = entity ? displayableFields(entity) : [];
-            const isOpen = expanded.has(entry.object);
+            // `displayable: false` fields are declared so their meaning is recorded but are not
+            // offered as columns, and a permissions grid is a column list.
+            const fields = entry.fields.filter((field) => field.displayable !== false);
+            const isOpen = expanded.has(entry.key);
 
             return [
-              <tr key={entry.object}>
+              <tr key={entry.key}>
                 <td>
                   {fields.length > 0 ? (
                     <button
                       type="button"
                       className="fo-caret"
-                      onClick={() => toggle(entry.object)}
+                      onClick={() => toggle(entry.key)}
                       aria-expanded={isOpen}
-                      aria-label={`${isOpen ? "Hide" : "Show"} the ${fields.length} fields of ${entry.object}`}
+                      aria-label={`${isOpen ? "Hide" : "Show"} the ${fields.length} fields of ${entry.label}`}
                     >
                       {isOpen ? "▾" : "▸"}
                     </button>
@@ -167,7 +153,7 @@ export default function RolePolicyGrid({ role, label }) {
                     // nothing would say it could.
                     <span className="fo-caret-placeholder" aria-hidden="true" />
                   )}{" "}
-                  {entry.object}
+                  {entry.label}
                   {entry.rulesOnly && (
                     <span className="fo-muted" title={`Governed by firestore.rules on ${entry.rulesOnly}, outside the capability model`}>
                       {" "}(rules-governed)
@@ -177,7 +163,9 @@ export default function RolePolicyGrid({ role, label }) {
                     <span className="fo-muted"> · {fields.length} fields</span>
                   )}
                 </td>
-                <td className="fo-muted">{entry.domain}</td>
+                {/* An entity the CRUD matrix never carried has no business domain to show. Blank
+                    rather than guessed, so an empty cell reads as "not stated". */}
+                <td className="fo-muted">{entry.domain ?? "—"}</td>
                 {VERBS.map((v) => (
                   <td key={v}><Cell cell={objectRow.cells[v]} /></td>
                 ))}
@@ -195,10 +183,10 @@ export default function RolePolicyGrid({ role, label }) {
                       // The object's ungoverned verbs are ungoverned for its fields too. Without
                       // this a field showed Delete as an empty checkbox while its object showed a
                       // dash -- inviting a request for access no capability can grant.
-                      governed: ungovernedVerbs(entry),
+                      governed,
                     });
                     return (
-                      <tr key={`${entry.object}:${field.id}`} className="fo-row-nested">
+                      <tr key={`${entry.key}:${field.id}`} className="fo-row-nested">
                         <td className="fo-nested-label">
                           <span className="fo-muted">↳</span> {field.label}
                           <span className="fo-muted"> · {field.type}</span>

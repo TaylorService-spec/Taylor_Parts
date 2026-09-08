@@ -2,13 +2,14 @@
 //
 // ════════════════════ WHY THIS EXISTS ════════════════════
 //
-// The PostgreSQL driver is an open Owner decision (reconciliation document, D-1), and the domain
-// must not wait on it. This adapter satisfies the port so the resolver, the mutation services and
-// their proofs are real, running code today rather than an interface with nothing behind it.
+// It is the EXECUTABLE SPECIFICATION OF THE PORT: the shortest complete statement of what an
+// adapter must do. `postgresPolicyRepository.ts` is measured against it rather than only against
+// the interface -- the same suites run over both, so "the resolver behaves identically over
+// Postgres" is a claim with evidence.
 //
-// It is ALSO the executable specification of the port: it is the shortest complete statement of
-// what an adapter must do, so the eventual Postgres adapter has something to be measured against
-// rather than only an interface to satisfy.
+// It is also what lets the resolver's own proofs run without a database. Those properties -- the
+// doorway invariant, additive union, fail-closed on malformed policy -- are decisions the resolver
+// makes, and none of them needs a real database to be wrong.
 //
 // ════════════════════ WHAT IT IS NOT ════════════════════
 //

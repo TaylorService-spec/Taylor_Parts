@@ -12,6 +12,10 @@ import {
   buildWorkflowVersionView,
   summarizeWorkflowFamily,
   workflowBoundRoleKeys,
+  WORKFLOW_AREAS,
+  areaForMachine,
+  machinesInArea,
+  workflowTerminologyCounts,
 } from "../src/domain/adminWorkflowView.js";
 
 const SEED_SOURCE = "../functions/src/adminPolicy/workflowSeeds.ts";
@@ -147,4 +151,61 @@ test("the bound Role keys are the set an administrator would need", () => {
     "salesperson", "salesManager", "operationsManager"]) {
     assert.ok(keys.includes(expected), `${expected} is bound somewhere`);
   }
+});
+
+// ============================ areas over machines ============================
+
+test("THREE business areas over FIVE state machines", () => {
+  // The Owner's terminology. The counts are pinned because the whole point of the grouping is that
+  // it does NOT change the machine count -- if collapsing Sales ever reduced it, that is the
+  // invented-machine failure this grouping exists to avoid.
+  assert.deepEqual(workflowTerminologyCounts(), { areas: 3, stateMachines: 5 });
+  assert.equal(WORKFLOW_AREAS.length, 3);
+  assert.equal(SEED_WORKFLOW_FAMILIES.length, 5);
+});
+
+test("every machine belongs to exactly one area, and every area to real machines", () => {
+  const claimed = WORKFLOW_AREAS.flatMap((a) => a.machineKeys);
+  assert.equal(new Set(claimed).size, claimed.length, "no machine is claimed twice");
+  assert.deepEqual([...claimed].sort(), SEED_WORKFLOW_FAMILIES.map((f) => f.key).sort(), "and none is orphaned");
+
+  for (const area of WORKFLOW_AREAS) {
+    assert.equal(machinesInArea(area.key).length, area.machineKeys.length, `${area.key} resolves all its machines`);
+  }
+  for (const family of SEED_WORKFLOW_FAMILIES) {
+    assert.ok(areaForMachine(family.key), `${family.key} has an area`);
+  }
+});
+
+test("SALES IS ONE AREA OVER THREE MACHINES — not one machine", () => {
+  const sales = WORKFLOW_AREAS.find((a) => a.key === "sales");
+  assert.deepEqual([...sales.machineKeys], ["salesOpportunity", "salesAgreement", "salesOrder"]);
+  assert.equal(machinesInArea("sales").length, 3);
+
+  // And they remain SEPARATE machines: no action in one names a step in another.
+  const stepsByMachine = new Map(machinesInArea("sales").map((f) => [f.key, new Set(f.steps.map((s) => s.key))]));
+  for (const family of machinesInArea("sales")) {
+    for (const action of family.actions) {
+      assert.ok(stepsByMachine.get(family.key).has(action.from), `${family.key}: ${action.key} stays in its machine`);
+      assert.ok(stepsByMachine.get(family.key).has(action.to), `${family.key}: ${action.key} stays in its machine`);
+    }
+  }
+});
+
+test("an AREA carries no states, transitions or Role bindings of its own", () => {
+  // It is a presentation grouping. Giving it any of those would make it a fourth thing authority
+  // could be resolved against, which is exactly what must not happen.
+  for (const area of WORKFLOW_AREAS) {
+    assert.deepEqual(Object.keys(area).sort(), ["description", "key", "machineKeys", "name"]);
+  }
+});
+
+test("the single-machine areas are single, and say so by their machine count", () => {
+  assert.equal(machinesInArea("partsPurchasing").length, 1);
+  assert.equal(machinesInArea("workOrder").length, 1);
+});
+
+test("an unknown area or machine is answered, not thrown at", () => {
+  assert.deepEqual(machinesInArea("nosuchthing"), []);
+  assert.equal(areaForMachine("nosuchthing"), null);
 });

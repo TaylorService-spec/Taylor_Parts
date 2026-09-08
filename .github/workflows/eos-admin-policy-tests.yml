@@ -20,13 +20,20 @@ name: EOS Admin Policy & Workflow Tests
 #
 #   3. NO FIREBASE. A static guard over every module in src/adminPolicy: no Firestore import, no
 #      Firestore-shaped write, no reference to the collections this subsystem replaces, and no way
-#      to reach storage except the injected repository port.
+#      to reach storage except the injected repository port. The Postgres adapter and the pool
+#      factory are the only two files permitted to know what a database is, and the guard names
+#      them individually.
 #
-# INERT. Nothing here is wired into a running surface, no capability is granted, no callable is
-# exported, no Firestore collection is created and no Rules change. The PostgreSQL schema ships as
-# reviewable DDL that nothing executes -- the driver is an open Owner decision.
+#   4. REAL POSTGRESQL. The migration is EXECUTED against an ephemeral postgres:16 service
+#      container -- clean database, migrate, assert the schema; migrate again, assert nothing moved;
+#      down and up again. Constraints, transactional rollback, tenant isolation and the seed are
+#      proved there rather than approximated.
 #
-# Linux runner, offline proofs only, matching every other lane in this repository.
+# INERT ALL THE SAME. Nothing here is wired into a running surface, no capability is granted, no
+# callable is exported, no Firestore collection is created, no Rules change, and no environment has
+# a policy database. The migration runs only against the throwaway container in this job.
+#
+# Linux runner, matching every other lane in this repository.
 
 on:
   pull_request:
@@ -37,6 +44,7 @@ on:
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
+      - "functions/test/adminPolicySeedCoverage.test.mjs"
       - "functions/migrations/**"
       - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
@@ -49,8 +57,10 @@ on:
       - "field-ops-app-vite/src/modules/administration/AdminObjects.jsx"
       - "field-ops-app-vite/src/domain/adminWorkflowView.js"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
+      - "field-ops-app-vite/src/access/policyObjectRegistry.js"
       - "field-ops-app-vite/test/adminPolicyView.test.mjs"
       - "field-ops-app-vite/test/adminWorkflowView.test.mjs"
+      - "field-ops-app-vite/test/policyObjectRegistry.test.mjs"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "field-ops-app-vite/test/entityRegistry.test.mjs"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
@@ -168,7 +178,7 @@ jobs:
       # The view model draws what the server decided and must never become a second implementation
       # of the resolution rules -- one of these assertions is exactly that boundary.
       - name: Pure view model and entity registry (node:test)
-        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs
+        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs test/policyObjectRegistry.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)

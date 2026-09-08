@@ -16,6 +16,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import pg from "pg";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.js";
@@ -525,3 +527,37 @@ const assign = (r, tenantId, principalUid, roleId) =>
       grantedBy: ACTOR.uid, grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion,
     });
   });
+
+// ============================ the registered command is the authority ============================
+
+test("the registered PostgreSQL script runs BOTH suites, serially", () => {
+  // WHY THIS IS A TEST. These two files each drop and re-migrate the same schema, and `node --test`
+  // runs FILES concurrently by default. They raced in CI -- one dropped the schema mid-transaction
+  // of the other -- and the failure was invisible locally because the files had only ever been run
+  // SEPARATELY. "Both suites pass" was true of two runs that never happened at the same time.
+  //
+  // So the registered command is the proof, and this pins its two load-bearing properties: it
+  // covers both files, and it serializes them. Removing either would restore the race silently.
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const command = pkg.scripts["test:adminPolicyPostgres"];
+
+  assert.ok(command, "the registered command exists");
+  assert.match(command, /--test-concurrency=1/, "it must serialize the files that share a schema");
+  assert.match(command, /adminPolicyPostgres\.test\.mjs/, "it must run the schema suite");
+  assert.match(command, /adminPolicySeed\.test\.mjs/, "it must run the seed suite");
+  assert.match(command, /npm run build/, "it must run against a fresh build, not a stale lib/");
+});
+
+test("every suite that resets the schema is covered by that one command", () => {
+  // A third file that drops the schema and is NOT in the registered command would race the other
+  // two exactly as these did. Found by looking for the reset itself rather than by remembering.
+  const resetters = readdirSync("test")
+    .filter((f) => f.endsWith(".test.mjs"))
+    .filter((f) => /DROP SCHEMA/i.test(readFileSync(join("test", f), "utf8")));
+  const command = JSON.parse(readFileSync("package.json", "utf8")).scripts["test:adminPolicyPostgres"];
+
+  assert.ok(resetters.length >= 2, `expected the two known resetters, found ${resetters.length}`);
+  for (const file of resetters) {
+    assert.ok(command.includes(file), `${file} resets the schema but the registered command does not run it`);
+  }
+});

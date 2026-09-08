@@ -3,7 +3,7 @@
 // ════════════════════ WHAT IT SEEDS, AND FROM WHERE ════════════════════
 //
 //   Objects + Fields   policySeedSnapshot.json, GENERATED from the client metadata registry
-//                      (29 entities / 394 declared fields) and the Object x CRED map. One
+//                      (29 entities / 394 declared fields) UNIONED with the Object x CRED map. One
 //                      authority, one generated artifact, one drift guard -- never a second
 //                      hand-maintained field model.
 //   Roles              COMPATIBILITY_ROLES + GOVERNED_BUSINESS_ROLES, imported directly because
@@ -46,7 +46,7 @@ import snapshot from "./policySeedSnapshot.json";
 export const SEED_VERSION = 1;
 
 /** The snapshot shape this file understands. A newer one is refused rather than half-read. */
-const SUPPORTED_SNAPSHOT_VERSION = 1;
+const SUPPORTED_SNAPSHOT_VERSION = 2;
 
 export interface SeedResult {
   readonly tenantId: TenantId;

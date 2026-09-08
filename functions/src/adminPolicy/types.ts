@@ -4,10 +4,10 @@
 //
 // The target architecture is: the authentication provider supplies IDENTITY; EOS decides
 // AUTHORIZATION; and everything a customer configures lives in the EOS database behind the DAL.
-// These are the shapes that travel between those layers. They carry no persistence, no Firebase,
-// and no framework -- deliberately, because the storage decision is still open (see
-// docs/architecture/eos-admin-policy-workflow-reconciliation.md, NAMED DECISION D-1) and the domain
-// must not wait on it.
+// These are the shapes that travel between those layers. They carry no persistence, no Firebase and
+// no framework -- deliberately, and still deliberately now that PostgreSQL is chosen (Owner ruling
+// D-1). A domain type that knew about a column, a driver or a connection would make the storage
+// choice irreversible and would leak the database into every module that names a Role.
 //
 // ════════════════════ WHAT THIS FILE IS NOT ════════════════════
 //
