@@ -134,6 +134,9 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   // The technician CREATE. Same population as the reads above and as the rule it replaces; the
   // status constraint travels with it into the trusted command, not into a Role.
   "service.technician.create",
+  // Equipment CRUD, ruled 2026-09-07. Same population as the rule each replaces.
+  "service.equipment.create",
+  "service.equipment.update",
   // The governed replacement for firestore.rules' `isAdminOrDispatcher()` gate on `employees`.
   // In the SHARED base deliberately: that predicate admits admin AND dispatcher today, and this
   // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in

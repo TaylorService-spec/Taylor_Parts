@@ -12,12 +12,12 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 163,
+    "capabilities": 165,
     "catalogActive": 0,
-    "catalogInactive": 163,
+    "catalogInactive": 165,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 49,
+    "callableExports": 50,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 163,
-    "parsed": 163,
+    "raw": 165,
+    "parsed": 165,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 136,
+    "SERVER_REFERENCED": 138,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -848,6 +848,52 @@
         ],
         "serverReferenceCount": 3,
         "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.equipment.create",
+      "resource": "equipment.record",
+      "action": "create",
+      "description": "Create Equipment records. The owning Location must belong to the named Account, proven server-side. Confers no update, no delete, no read and no lifecycle transition.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.equipment.update",
+      "resource": "equipment.record",
+      "action": "update",
+      "description": "Perform an ordinary Equipment edit: the editable field set, and an ACTIVE<->INACTIVE status change. Confers no create, no delete, no read, and NO authority to retire or reactivate -- those are trusted lifecycle actions.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -5200,6 +5246,15 @@
       "module": "./crm/contactImportCommand",
       "capabilityHints": [],
       "comment": "CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a workflow: one atomic batch create, gated on crm.contact.create."
+    },
+    {
+      "names": [
+        "createEquipmentRecord",
+        "updateEquipmentRecord"
+      ],
+      "module": "./equipment/equipmentWriteCommands",
+      "capabilityHints": [],
+      "comment": "EQUIPMENT create and update -- the LAST governed business writes to leave the browser. Create proves a cross-document relationship (the Location must belong to the Account) by reading the location server-side; update restricts the CHANGED KEYS rather than the document key set, so a record carrying t"
     },
     {
       "names": [

@@ -195,7 +195,7 @@ export const inventoryActionEntity = makeEntityDefinition({
       type: "NUMBER",
       sortable: true,
       description:
-        "Epoch milliseconds, stamped by makeCollectionStore().add() as Date.now() in the caller's browser — " +
+        "Epoch milliseconds. Historically stamped in the caller's browser by the shared collection store; that store is deleted and this collection has no live writer — " +
         "never FieldValue.serverTimestamp(), never a Firestore Timestamp. No updatedAt/updatedBy — this " +
         "document is never updated after creation (allow update, delete: if false).",
     }),

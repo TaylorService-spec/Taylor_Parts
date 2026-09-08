@@ -19,13 +19,14 @@ count, because an import count is what hid two whole categories of write the fir
 |---|---|
 | Firestore-based EOS authorization decisions | **0** |
 | Direct client governed business **reads** | **0** |
-| Direct client governed business **writes** | **1 surface** — equipment create/update, blocked and reported |
+| Direct client governed business **writes** | **0** |
 | `firestoreListSource` callers | **0** (file deleted) |
 | `useFirestoreCollection` callers | **0** (file deleted) |
+| `collectionStore` / `firebaseSafe` callers | **0** (both files deleted) |
 
-**Rules closure: NOT READY.** One business-data write path survives. It is measured, its exact
-retired authority is recorded, and it is blocked on an authorization decision rather than on
-engineering — see the blocked section.
+**Rules closure: READY.** Every governed business read and write goes through a trusted seam, and
+the shared client write transport is gone rather than dormant. The staged `firestore.rules` is
+still NOT DEPLOYED — that is a separate authorized action.
 
 ---
 
@@ -43,9 +44,11 @@ engineering — see the blocked section.
 | `metadata/definitions/accountPageComponents.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
 | `auth/employeeSession.js` | `getDoc`, `onSnapshot` | `users/{own uid}`, `employees/{own employeeId}` | **B** session / operational identity | Resolves the SIGNED-IN principal's OWN employee record via `users/{uid}.employeeId`. Self-scoped by construction — not a directory read, and cannot become one. |
 | `firebase/firebase.js` | — | — | **E** technical | SDK initialisation. |
-| `lib/firebaseSafe.js` | `addDoc`, `setDoc`, `updateDoc`, `deleteDoc` | — | **E** technical wrapper | The demo/panic write gate. It performs no read and names no collection; it wraps whatever it is handed. Its ONLY remaining business client is the equipment store below. |
-| `firebase/collectionStore.js` | `getDocs`, `makeCollectionStore` | parameterised | **E** technical wrapper — **but see below** | Generic transport. NOT infrastructure by virtue of being generic: it is a write path, and it retains exactly one business client. |
-| `domain/equipmentRepository.js` | `makeCollectionStore` | `equipment` | **NOT PERMITTED — blocked** | The one surviving governed business write. See below. |
+
+**`lib/firebaseSafe.js` and `firebase/collectionStore.js` are DELETED.** They were the shared
+client write transport, and their last business client — equipment — moved to a trusted command.
+Deleted rather than retained: a generic direct-Firestore write path with no caller is precisely
+what a later "just this once" change reaches for.
 
 Files that merely MENTION Firestore or the store in prose — `domain/accounts.js`,
 `domain/equipment.js`, `domain/inventoryActions.js`, `domain/inventoryReorderRequests.js`,
@@ -54,7 +57,7 @@ not counted. Verified by grep for live imports and calls, not by eye.
 
 ---
 
-## The one blocked write
+## The last blocked write — CLOSED
 
 | | |
 |---|---|
@@ -63,14 +66,20 @@ not counted. Verified by grep for live imports and calls, not by eye.
 | **Retired CREATE authority** | `isAdminOrDispatcher()` **AND** `equipmentCreateShapeValid(...)` **AND** `equipmentLocationBelongsToAccount(...)` — a **cross-document** referential check |
 | **Retired UPDATE authority** | `isAdminOrDispatcher()` **AND** `affectedKeys().hasOnly(equipmentEditableKeys())` **AND** name validity **AND** optional-field validity **AND** `equipmentTransitionAllowed(storedStatus, nextStatus)` — a status **state machine** — **AND** `updatedAt is number` |
 | **Existing capability** | **None.** `service.equipment.read` exists; there is no `service.equipment.create` or `.update`. |
-| **Why it is not migrated** | The conditional authorization covers actions whose retired rule is "exactly `isAdminOrDispatcher` with no narrower record/field restriction". Equipment fails that test on both actions, and by a wide margin. Migrating on an assumed parity would move a cross-document check and a transition engine into a command without a ruling on either. |
+| **Resolution** | **MIGRATED** under the 2026-09-07 ruling. `service.equipment.create` and `service.equipment.update` minted as TWO capabilities, never one generic `equipment.write`: the two actions are gated by materially different contracts. No `service.equipment.delete` — the rule is `allow delete: if false` for everyone including admin, because Service History is derived from Work Orders that reference the record. |
 
-Two consequences, stated so neither is a surprise:
+**The invariant that made this the hardest one.** `affectedKeys().hasOnly(editableKeys)` restricts
+the CHANGED KEYS, not the document's key set. A record may legitimately carry audit, lifecycle or
+lineage fields stamped by a trusted writer, and requiring the resulting document to contain only
+editable keys would make every such record permanently uneditable. The command therefore computes
+`stored + bounded patch = candidate`, validates the changed-key set, the resulting VALUES and the
+transition — and never reconstructs a document from a client schema or strips unknown fields. Two
+regression proofs pin it: an ordinary name edit on a record carrying a trusted audit field succeeds
+with the trusted field untouched, and an attempt to change that field is refused.
 
-- `firebase/collectionStore.js` and `lib/firebaseSafe.js` survive **because of this one surface**.
-  They are otherwise unreferenced by business code and go with it.
-- The staged restrictive `firestore.rules` cannot be deployed until this closes: it would break
-  equipment creation and editing.
+**Retire and reactivate were NOT wired.** They are trusted lifecycle actions, currently unavailable,
+and the ordinary update refuses both transitions in the words the surface already uses. Building
+them to finish Firebase removal is exactly what the ruling forbade.
 
 ---
 
@@ -108,6 +117,8 @@ through the existing composition, no other Role.
 | `service.technician.read` | `fieldops_technicians` global read branch |
 | `service.technician.self.read` | `fieldops_technicians` own-record branch |
 | `service.technician.create` | `fieldops_technicians` create, incl. its `status == 'available'` constraint |
+| `service.equipment.create` | `equipment` create, incl. its cross-document location-ownership proof |
+| `service.equipment.update` | `equipment` ordinary edit, incl. its changed-key allowlist and ACTIVE↔INACTIVE guard |
 
 The Account governed-commercial-field split reuses the existing `customer.governedField.write`
 rather than minting anything: it is the retired rule's `isAdmin()` branch expressed as authority.

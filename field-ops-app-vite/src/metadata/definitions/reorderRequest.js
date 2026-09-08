@@ -296,7 +296,7 @@ export const reorderRequestEntity = makeEntityDefinition({
       label: "Requested",
       type: "NUMBER",
       sortable: true,
-      description: "Epoch milliseconds (Date.now(), firebase/collectionStore.js's add()), never a Firestore Timestamp. The Reorder Requested event timestamp; never rewritten.",
+      description: "Epoch milliseconds, stamped by the trusted createReorderRequest command, never a Firestore Timestamp. The Reorder Requested event timestamp; never rewritten.",
     }),
     makeFieldDefinition({
       id: "reviewedBy",

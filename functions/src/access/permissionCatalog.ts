@@ -223,6 +223,29 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // constraint is part of the AUTHORITY, not a client convention: the rule REFUSED a create that
   // started a technician in any other state. The trusted command therefore chooses the status
   // itself and ignores anything the caller sends, rather than validating a supplied one.
+  // Equipment CRUD, ruled 2026-09-07. TWO capabilities, never one generic equipment.write: the
+  // retired rules gate create and update by materially different contracts -- create proves a
+  // cross-document ownership relationship, update enforces a changed-key allowlist and a status
+  // transition guard -- and one id would make "may add equipment" and "may edit equipment"
+  // indistinguishable to the resolver.
+  //
+  // NO service.equipment.delete. The rule is `allow delete: if false` for everyone including admin:
+  // Service History is derived from Work Orders that reference the record, so a delete would
+  // silently orphan real history. There is no live delete authority to migrate.
+  Object.freeze({
+    id: "service.equipment.create",
+    description:
+      "Create Equipment records. The owning Location must belong to the named Account, proven server-side. Confers no update, no delete, no read and no lifecycle transition.",
+    resource: "equipment.record",
+    action: "create",
+  }),
+  Object.freeze({
+    id: "service.equipment.update",
+    description:
+      "Perform an ordinary Equipment edit: the editable field set, and an ACTIVE<->INACTIVE status change. Confers no create, no delete, no read, and NO authority to retire or reactivate -- those are trusted lifecycle actions.",
+    resource: "equipment.record",
+    action: "update",
+  }),
   Object.freeze({
     id: "service.technician.create",
     description:

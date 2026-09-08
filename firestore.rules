@@ -34,30 +34,36 @@ rules_version = '2';
 // inferred. Access reaches the client through governed trusted callables that resolve a capability
 // server-side (the pattern: workforce.directory.read -> listWorkforceDirectory).
 //
-// ════════════════════ THIS FILE IS AHEAD OF THE CLIENT ════════════════════
+// ════════════════════ THE CLIENT HAS CAUGHT UP ════════════════════
 //
-// DEPLOYING THIS TODAY WOULD DARK EVERY SURFACE THAT STILL TALKS TO FIRESTORE DIRECTLY, and that is
-// more than reads. Measured against the previous revision of this file, not assumed:
+// This header used to warn that deploying would dark every surface still talking to Firestore
+// directly, and listed ~10 collections across 76 client files for reads plus ELEVEN collections
+// accepting client-direct writes. THAT IS NO LONGER THE STATE, and leaving the warning would be as
+// misleading as the over-confident draft it replaced.
 //
-//   READS -- ~10 collections across 76 client files: parts, accounts, contacts, locations,
-//   equipment, fieldops_wos, reorder_requests, warehouses and the rest.
+// MEASURED, repository-wide and by OPERATION rather than by import count:
 //
-//   WRITES -- ELEVEN collections still accepted client-direct create/update under the old rules,
-//   NOT only trusted commands: accounts, contacts, locations, equipment, fieldops_jobs,
-//   fieldops_technicians, inventory_actions, reorder_requests, reorder_purchase_orders,
-//   reorder_purchase_order_voids. (An earlier draft of this header claimed every previous write
-//   was already `if false`. That was wrong, and wrong in the direction that makes deploying look
-//   safer than it is, so it is corrected here rather than quietly dropped.)
+//   DIRECT CLIENT GOVERNED BUSINESS READS    0
+//   DIRECT CLIENT GOVERNED BUSINESS WRITES   0
+//   FIRESTORE EOS AUTHORIZATION DECISIONS    0
 //
-// Each collection needs the same pieces the workforce directory just got -- a capability, a trusted
-// read or command, a client seam -- and each is a separate change. Governed-field protections that
-// lived here as Rules predicates (accounts' admin-only paymentTerms/taxStatus, reorder_requests'
-// status transitions) move into the commands that replace those writes; they are not dropped.
+// Every business read goes through a governed source (governedReadRegistry.ts + readGovernedList /
+// countGovernedList) or the scoped work-order seam. Every business write goes through a trusted
+// command that resolves a capability server-side. The shared client write transport
+// (collectionStore / firebaseSafe) and the generic direct-read hooks (firestoreListSource,
+// useFirestoreCollection) are DELETED, not disabled -- there is no dormant escape hatch left.
 //
-// Rules are NOT auto-deployed in this repository (docs/Deployment.md sec3) and a rules change is
-// always Tier 2 (docs/DelegationCharter.md sec2), so committing this changes nothing live. It is
-// the destination, written down and reviewable, and the migration is measured against it. Deploy
-// when the migration list is empty, not before -- and verify with the verify-rules-deploy skill.
+// The governed-field protections that lived HERE as Rules predicates moved into the commands that
+// replace those writes and are tested there: accounts' admin-only paymentTerms/taxStatus, the
+// reorder status transitions and their assignee record scope, and equipment's changed-key allowlist,
+// cross-document location ownership and ACTIVE<->INACTIVE transition guard. None was dropped.
+//
+// The full file-by-file classification of what still touches Firestore lives in
+// docs/governance/firebase-removal-closure-ledger.md.
+//
+// STILL NOT DEPLOYED. Rules are not auto-deployed in this repository (docs/Deployment.md §3) and a
+// rules change is always Tier 2 (docs/DelegationCharter.md §2), so committing this changes nothing
+// live. Deployment is its own authorized action -- verify with the verify-rules-deploy skill.
 // =================================================================================================
 
 service cloud.firestore {

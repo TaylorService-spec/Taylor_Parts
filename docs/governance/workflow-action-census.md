@@ -211,7 +211,11 @@ was left behind. That is a product decision, not a migration step.
 
 ## UNCLEAR
 
-| Domain | Action | Why unresolved |
+Nothing is currently unclear.
+
+## RETIRED
+
+| Domain | Action | Status |
 |---|---|---|
 | Inventory | `recordInventoryAction` | **Retired** (Owner ruling 2026-08-30) — throws unconditionally, no writer remains. Listed only so a future reader does not rediscover it and assume it is live. |
 
@@ -222,11 +226,59 @@ capability and validates a named state transition, which is what a workflow cand
 
 ---
 
-## BLOCKED — measured, not migrated
+## Equipment — measured 2026-09-07
 
-| Surface | Why |
+### Equipment — create
+
+| Field | Measured value |
 |---|---|
-| `createEquipment` / `updateEquipment` (`domain/equipmentRepository.js`) | **Not exact parity with a plain `isAdminOrDispatcher()` rule**, so the conditional authorization does not reach it. `create` requires a cross-document check that the location belongs to the account; `update` carries an editable-key allowlist AND a status **transition guard** (`equipmentTransitionAllowed`), plus name/optional-field validation over the whole resulting document. No `service.equipment.create` / `.update` capability exists. Both are LIVE (`EquipmentDetail.jsx`). |
+| **Action** | `createEquipmentRecord` |
+| **Class** | **CRUD** |
+| **Current implementation** | **MIGRATED.** Trusted callable; `buildEquipmentCreate`. |
+| **Capability** | `service.equipment.create` |
+| **Record scope** | **CROSS-DOCUMENT**: the Location must belong to the named Account, proven from `locations/{locationId}` read SERVER-side. A Location object supplied by the browser is not evidence. |
+| **Prerequisites** | Writable-key allowlist (an unknown key denies the whole write), name and optional-field validity |
+| **Side effects** | Status is always ACTIVE — chosen by the server, not validated, so create cannot be a side door into a non-ACTIVE state |
+| **Audit** | None |
+| **Live/historical** | LIVE |
+
+### Equipment — ordinary update
+
+| Field | Measured value |
+|---|---|
+| **Action** | `updateEquipmentRecord` |
+| **Class** | **CRUD with a guarded ACTIVE/INACTIVE state change** |
+| **Current implementation** | **MIGRATED.** `buildEquipmentUpdate`. |
+| **Capability** | `service.equipment.update` |
+| **From → To** | ACTIVE ↔ INACTIVE, or no status change |
+| **Record scope** | The CHANGED-KEY allowlist, evaluated against the stored record — not the document's key set |
+| **Prerequisites** | Resulting values valid; transition legal against the STORED status |
+| **Side effects** | `updatedAt` server-stamped |
+| **Audit** | None |
+| **Live/historical** | LIVE |
+
+### Equipment — retire
+
+| Field | Measured value |
+|---|---|
+| **Action** | `retireEquipment` |
+| **Class** | **WORKFLOW_CANDIDATE** |
+| **Current implementation** | Declared in `domain/equipmentWrites.js` as a trusted-writer contract in a module with NO firebase import — it structurally cannot write. |
+| **From → To** | ACTIVE/INACTIVE → RETIRED |
+| **Capability** | None exists |
+| **Live/historical** | **UNAVAILABLE / FUTURE-BOUND.** The trusted action is not built. |
+| **Notes** | NOT classified CRUD merely because the callable is unavailable. The ordinary update command explicitly refuses this transition and says so in its own words; wiring it here to finish Firebase removal is precisely what must not happen. |
+
+### Equipment — reactivate
+
+| Field | Measured value |
+|---|---|
+| **Action** | `reactivateEquipment` |
+| **Class** | **WORKFLOW_CANDIDATE** |
+| **From → To** | RETIRED → ACTIVE |
+| **Capability** | None exists |
+| **Live/historical** | **UNAVAILABLE / FUTURE-BOUND** |
+| **Notes** | As retire. A RETIRED record stays ordinarily editable, but its status cannot move by this path. |
 
 ---
 
@@ -237,11 +289,17 @@ plausible.
 
 | Class | Count | Entries |
 |---|---|---|
-| WORKFLOW_CANDIDATE — live | **9** | approve, reject, assign, startPurchasing, postPurchasingUpdate, markReceived, cancelReorderRequest, voidPurchaseOrder, work-order transitions |
-| WORKFLOW_CANDIDATE — historical | **2** | assignJob, updateJobStatus |
-| CRUD | **6** | contactImport, account, contact, location, createTechnician, createJob |
-| UNCLEAR | **1** | recordInventoryAction (retired) |
-| BLOCKED | **1** | equipment create/update |
+| WORKFLOW_CANDIDATE — **live** | **9** | approve, reject, assign, startPurchasing, postPurchasingUpdate, markReceived, cancelReorderRequest, voidPurchaseOrder, work-order transitions |
+| WORKFLOW_CANDIDATE — **historical** (code deleted) | **2** | assignJob, updateJobStatus |
+| WORKFLOW_CANDIDATE — **unavailable / future-bound** | **2** | retireEquipment, reactivateEquipment |
+| CRUD | **8** | contactImport, account, contact, location, createTechnician, createJob, equipment create, equipment ordinary update |
+| UNCLEAR | **0** | — |
+| RETIRED | **1** | recordInventoryAction |
+| BLOCKED | **0** | — |
+
+The four buckets are kept SEPARATE deliberately. A historical action and an unavailable one are
+both "not live", and both would inflate the live total if lumped in — which is exactly how a
+Workflows scope estimate gets built on actions nobody can perform.
 
 Counts are of *actions measured so far*, not of the system.
 

@@ -90,10 +90,6 @@
       "runner": "node --test"
     },
     {
-      "file": "test/collectionStoreTimestampContract.test.mjs",
-      "runner": "node --test"
-    },
-    {
       "file": "test/commercialProfile.test.mjs",
       "runner": "node"
     },
@@ -116,10 +112,6 @@
     {
       "file": "test/crashDiagnostics.test.mjs",
       "runner": "node --test"
-    },
-    {
-      "file": "test/createdRecordIsReachable.test.mjs",
-      "runner": "node"
     },
     {
       "file": "test/crmSalesNav.test.mjs",

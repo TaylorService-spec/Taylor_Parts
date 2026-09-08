@@ -119,7 +119,7 @@
     "test:supplierMigrationExecuteEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs",
     "test:reorderTrustedCommands": "npm run build && node --test test/reorderTrustedCommands.test.mjs test/bindingScopePolicy.test.mjs",
     "test:reorderCancelVoid": "npm run build && node --test test/reorderCancelVoidCommands.test.mjs test/reorderTransitionParity.test.mjs",
-    "test:contactImport": "npm run build && node --test test/contactImportCommand.test.mjs test/crmWriteCommands.test.mjs",
+    "test:contactImport": "npm run build && node --test test/contactImportCommand.test.mjs test/crmWriteCommands.test.mjs test/equipmentWriteCommands.test.mjs test/writeCommandTimestampContract.test.mjs",
     "test:scopedWorkOrder": "npm run build && node --test test/scopedWorkOrderRead.test.mjs test/technicianCommands.test.mjs",
     "test:reorderRequestNumbering": "npm run build && node test/reorderRequestNumbering.test.mjs",
     "test:partMasterCallables": "npm run build && node test/partMasterCallablesExport.test.mjs && node test/partMasterCallables.test.mjs",

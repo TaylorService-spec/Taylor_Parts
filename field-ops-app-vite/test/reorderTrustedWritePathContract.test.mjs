@@ -203,14 +203,30 @@ test("no application code writes a purchase-order void directly", () => {
   );
 });
 
-test("neither Class C command lets the browser assert who is acting", () => {
-  // The transport is the whole client surface for these two. A payload field naming the actor would
-  // be a client-asserted identity even if the server currently ignores it -- and "the server
+test("no reorder command lets the browser assert WHO IS ACTING", () => {
+  // The transport is the whole client surface for these commands. A payload field naming the ACTOR
+  // would be a client-asserted identity even if the server currently ignores it -- and "the server
   // ignores it" is exactly the kind of thing that stops being true.
+  //
+  // THE LIST IS ACTOR FIELDS ONLY, and the distinction is the point. `assignedToUserId` was on this
+  // list while the transport had no legitimate reason to send one; it now carries the ASSIGNEE a
+  // Parts Manager chooses, which is a business input, not a claim about the caller. Forbidding it
+  // would forbid the assignment itself. What must never be sent is who DID the assigning --
+  // `assignedBy` -- and that is here.
   const transport = FILES.find((f) => f.path === "services/reorderCallableClient.js");
   assert.ok(transport, "the reorder callable transport must exist");
   const body = code(transport.text);
-  for (const forbidden of ["cancelledBy", "voidedBy", "assignedToUserId", "actorUid", "principalUid"]) {
+  for (const forbidden of [
+    "cancelledBy",
+    "voidedBy",
+    "assignedBy",
+    "reviewedBy",
+    "purchasingStartedBy",
+    "lastPurchasingUpdateBy",
+    "receivedBy",
+    "actorUid",
+    "principalUid",
+  ]) {
     assert.doesNotMatch(
       body,
       new RegExp(`\\b${forbidden}\\b`),

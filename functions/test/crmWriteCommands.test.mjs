@@ -20,8 +20,13 @@ import {
 } from "../lib/crm/crmWriteCommands.js";
 
 const CTX = { actorUid: "uid-actor", nowMillis: 1_700_000_000_000 };
-const PRIVILEGED = { ...CTX, mayWriteGovernedFields: true };
-const PLAIN = { ...CTX, mayWriteGovernedFields: false };
+// ACCOUNTS take a typed `nowValue` rather than a number: their governed type is TIMESTAMP, and a
+// number sorts below every Timestamp under `updatedAt DESC`. A sentinel object stands in for the
+// Firestore Timestamp the callable supplies -- what these prove is that the builder passes the
+// value THROUGH rather than minting a number of its own.
+const NOW_VALUE = { __timestamp: CTX.nowMillis };
+const PRIVILEGED = { actorUid: CTX.actorUid, nowValue: NOW_VALUE, mayWriteGovernedFields: true };
+const PLAIN = { actorUid: CTX.actorUid, nowValue: NOW_VALUE, mayWriteGovernedFields: false };
 
 // ════════════════════ THE GOVERNED COMMERCIAL FIELDS ════════════════════
 
@@ -117,10 +122,12 @@ test("a caller cannot author provenance or an id on ANY of the six paths", () =>
     const out = build();
     assert.equal(out.id, undefined, "an id must never survive from the payload");
     assert.equal(out.updatedBy, "uid-actor");
-    assert.equal(out.updatedAt, CTX.nowMillis);
+    // Accounts carry the typed Timestamp value, the other two carry epoch millis. Both are the
+    // SERVER's, which is the property under test — not the representation.
+    assert.ok(out.updatedAt === CTX.nowMillis || out.updatedAt === NOW_VALUE, "the server stamps updatedAt");
     if ("createdBy" in out) {
       assert.equal(out.createdBy, "uid-actor");
-      assert.equal(out.createdAt, CTX.nowMillis);
+      assert.ok(out.createdAt === CTX.nowMillis || out.createdAt === NOW_VALUE, "the server stamps createdAt");
     }
   }
 });
@@ -176,5 +183,37 @@ test("required fields and missing records are refused by their own codes", () =>
       (e) => e.code === "NOT_FOUND",
       "an update against a record that does not exist must fail, not create one",
     );
+  }
+});
+
+// ════════════════════ THE ACCOUNT TIMESTAMP TYPE ════════════════════
+
+test("an account stamps the TYPED value it is given, never a number of its own", () => {
+  // THE REGRESSION THIS PINS, and it was shipped by this very migration before being caught.
+  //
+  // metadata/definitions/account.js governs createdAt/updatedAt as TIMESTAMP. Firestore orders
+  // ACROSS TYPES BY TYPE FIRST, so an epoch NUMBER sorts BELOW every Timestamp: a Customer created
+  // with millis lands LAST under `updatedAt DESC`, which on a paged list is indistinguishable from
+  // invisible. It has been shipped once before, from the shared store, and again from here.
+  //
+  // Contacts, Locations and Equipment govern these as NUMBER and keep millis -- the type belongs to
+  // the entity definition, and each command must agree with the one it writes to.
+  const created = buildAccountCreate({ name: "Acme" }, PLAIN);
+  assert.equal(created.createdAt, NOW_VALUE);
+  assert.equal(created.updatedAt, NOW_VALUE);
+  assert.notEqual(typeof created.updatedAt, "number", "an account timestamp must not be a bare number");
+
+  const patch = buildAccountUpdate({ name: "Acme Inc" }, {}, PLAIN);
+  assert.equal(patch.updatedAt, NOW_VALUE);
+});
+
+test("contacts and locations keep EPOCH MILLIS, because that is what their definitions govern", () => {
+  for (const build of [
+    () => buildContactCreate("acct-1", { name: "Ada" }, CTX),
+    () => buildLocationCreate("acct-1", { label: "Site" }, CTX),
+  ]) {
+    const out = build();
+    assert.equal(out.createdAt, CTX.nowMillis);
+    assert.equal(typeof out.updatedAt, "number");
   }
 });

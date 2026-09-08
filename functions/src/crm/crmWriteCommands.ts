@@ -12,7 +12,7 @@
 //   * the field set is CLOSED -- a caller cannot introduce a field no rule ever reviewed;
 //   * the document id is minted here and returned, never accepted.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { normalizeAccountSearchName } from "../account/accountImportCommand";
 
@@ -114,9 +114,25 @@ export function stripReservedFields(data: Record<string, unknown>): Record<strin
 
 // ════════════════════════════ ACCOUNTS ════════════════════════════
 
+/**
+ * ACCOUNTS STAMP A FIRESTORE TIMESTAMP, NOT EPOCH MILLIS — and this is not a style choice.
+ *
+ * metadata/definitions/account.js governs createdAt/updatedAt as TIMESTAMP, and the existing
+ * population stores Timestamps. Firestore orders ACROSS TYPES BY TYPE FIRST, so a number sorts
+ * BELOW every Timestamp: a Customer created with epoch millis lands LAST under `updatedAt DESC`,
+ * which on a paged list is indistinguishable from invisible.
+ *
+ * That defect has been shipped once before, and this migration reintroduced it — caught by
+ * test/collectionStoreTimestampContract.test.mjs, which existed precisely because the failure is
+ * silent and the data is already written by the time it is visible.
+ *
+ * Contacts, Locations and Equipment govern these fields as NUMBER, so those commands keep epoch
+ * millis. The type is the entity definition's to decide, and each command agrees with the
+ * definition it writes to.
+ */
 export function buildAccountCreate(
   data: Record<string, unknown>,
-  ctx: { actorUid: string; nowMillis: number; mayWriteGovernedFields: boolean },
+  ctx: { actorUid: string; nowValue: unknown; mayWriteGovernedFields: boolean },
 ): Record<string, unknown> {
   const clean = stripReservedFields(data ?? {});
   if (!text(clean.name)) throw new CrmCommandError("NAME_REQUIRED", "A customer name is required.");
@@ -135,9 +151,9 @@ export function buildAccountCreate(
   return {
     ...clean,
     [SEARCH_NAME_FIELD]: normalizeAccountSearchName(clean.name as string),
-    createdAt: ctx.nowMillis,
+    createdAt: ctx.nowValue,
     createdBy: ctx.actorUid,
-    updatedAt: ctx.nowMillis,
+    updatedAt: ctx.nowValue,
     updatedBy: ctx.actorUid,
   };
 }
@@ -145,7 +161,7 @@ export function buildAccountCreate(
 export function buildAccountUpdate(
   data: Record<string, unknown>,
   current: Record<string, unknown> | null,
-  ctx: { actorUid: string; nowMillis: number; mayWriteGovernedFields: boolean },
+  ctx: { actorUid: string; nowValue: unknown; mayWriteGovernedFields: boolean },
 ): Record<string, unknown> {
   if (current === null) throw new CrmCommandError("NOT_FOUND", "No such customer.");
   const clean = stripReservedFields(data ?? {});
@@ -159,7 +175,7 @@ export function buildAccountUpdate(
     );
   }
 
-  const patch: Record<string, unknown> = { ...clean, updatedAt: ctx.nowMillis, updatedBy: ctx.actorUid };
+  const patch: Record<string, unknown> = { ...clean, updatedAt: ctx.nowValue, updatedBy: ctx.actorUid };
   // MERGE SEMANTICS PRESERVED: the client's update was a partial patch, and an absent `name` meant
   // "not touching the name" — so the stored search derivation must not be clobbered with "".
   if ("name" in clean) patch[SEARCH_NAME_FIELD] = normalizeAccountSearchName(clean.name as string);
@@ -278,7 +294,8 @@ export const createAccountRecord = onCall({ region: "us-central1" }, async (requ
   try {
     const built = buildAccountCreate(asRecord(request.data).data as Record<string, unknown>, {
       actorUid,
-      nowMillis: Date.now(),
+      // A Timestamp, matching the governed type. See buildAccountCreate's note.
+      nowValue: Timestamp.now(),
       mayWriteGovernedFields: d[ACCOUNT_GOVERNED_FIELD_WRITE] === true,
     });
     const ref = db.collection(ACCOUNTS).doc();
@@ -299,7 +316,8 @@ export const updateAccountRecord = onCall({ region: "us-central1" }, async (requ
     const current = await readCurrent(db, ACCOUNTS, payload.id);
     const patch = buildAccountUpdate(asRecord(payload.data), current, {
       actorUid,
-      nowMillis: Date.now(),
+      // A Timestamp, matching the governed type. See buildAccountCreate's note.
+      nowValue: Timestamp.now(),
       mayWriteGovernedFields: d[ACCOUNT_GOVERNED_FIELD_WRITE] === true,
     });
     await db.collection(ACCOUNTS).doc(String(payload.id)).update(patch);
