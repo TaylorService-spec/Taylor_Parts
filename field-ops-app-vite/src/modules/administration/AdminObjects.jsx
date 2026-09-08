@@ -6,7 +6,7 @@ import { OBJECT_PERMISSIONS, VERBS, VERB_LABEL, cellState, cellCapabilities } fr
 import { objectAccessAll, objectDiagnostics } from "../../access/roleAccessModel.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
-import RoleObjectGrid from "./RoleObjectGrid.jsx";
+import RolePolicyGrid from "./RolePolicyGrid.jsx";
 
 // ADMINISTRATION > OBJECTS -- the Role x Object x CRED grid.
 //
@@ -327,8 +327,9 @@ export default function AdminObjects() {
       )}
 
       {/* The SAME component Roles & Permissions renders. This markup used to live here and again
-          there, and the two copies had already diverged in how they drew a cell. */}
-      <RoleObjectGrid role={role} label={selected.label} />
+          there, and the two copies had already diverged in how they drew a cell -- which is why
+          the field expansion landed in ONE place and both screens got it. */}
+      <RolePolicyGrid role={role} label={selected.label} />
 
       {/* The write path is stated, not hidden behind a control that would do nothing. */}
       <p className="fo-warning">

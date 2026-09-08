@@ -38,6 +38,14 @@ on:
       - "functions/package.json"
       - "functions/package-lock.json"
       - "docs/architecture/eos-admin-policy-workflow-reconciliation.md"
+      - "field-ops-app-vite/src/domain/adminPolicyView.js"
+      - "field-ops-app-vite/src/metadata/entityRegistry.js"
+      - "field-ops-app-vite/src/modules/administration/RolePolicyGrid.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminObjects.jsx"
+      - "field-ops-app-vite/test/adminPolicyView.test.mjs"
+      - "field-ops-app-vite/test/entityRegistry.test.mjs"
+      - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
       - ".github/workflows/eos-admin-policy-tests.yml"
   push:
     branches: [main]
@@ -46,6 +54,9 @@ on:
       - "functions/test/adminPolicyAuthorization.test.mjs"
       - "functions/test/adminPolicyWorkflow.test.mjs"
       - "functions/test/adminPolicyNoFirebase.test.mjs"
+      - "field-ops-app-vite/src/domain/adminPolicyView.js"
+      - "field-ops-app-vite/src/metadata/entityRegistry.js"
+      - "field-ops-app-vite/src/modules/administration/**"
       - ".github/workflows/eos-admin-policy-tests.yml"
   workflow_dispatch:
 
@@ -85,3 +96,31 @@ jobs:
       - name: Admin policy proofs (build + run)
         run: npm run test:adminPolicy
         working-directory: functions
+
+  surfaces:
+    name: Admin policy surfaces -- view model, entity registry, rendered grid
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install client dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: field-ops-app-vite
+
+      # The view model draws what the server decided and must never become a second implementation
+      # of the resolution rules -- one of these assertions is exactly that boundary.
+      - name: Pure view model and entity registry (node:test)
+        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Rendered Roles & Permissions grid (vitest + jsdom)
+        run: npx vitest run test/adminRolesPermissions.test.jsx
+        working-directory: field-ops-app-vite

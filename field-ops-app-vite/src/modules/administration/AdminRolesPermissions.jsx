@@ -13,7 +13,7 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { Field } from "../../shared/ui/form";
 import ApprovalRequests from "./ApprovalRequests.jsx";
-import RoleObjectGrid from "./RoleObjectGrid.jsx";
+import RolePolicyGrid from "./RolePolicyGrid.jsx";
 
 // ADMINISTRATION > ROLES & PERMISSIONS -- read-only Role inspector.
 //
@@ -232,13 +232,21 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
               than under them -- and now literally the same component, so a grant cannot read one
               way here and another way there. */}
           <section className="fo-panel" aria-label="Business object reach">
-            <h3>Business objects</h3>
+            <h3>Business objects and fields</h3>
             <p className="fo-muted">
               What this role can touch. C = Create, R = Read, E = Edit, D = Delete. A tick is
               granted, a blank box is not, and a dash means no capability exists for that verb — it
               cannot be granted to anyone.
             </p>
-            <RoleObjectGrid role={role} label={selected.label} />
+            <p className="fo-muted">
+              Expand an object to see its fields. A field INHERITS its object&rsquo;s permission
+              unless the role states otherwise — and no role states otherwise today, because
+              field-level policy lives in the EOS policy store and that store is not yet stood up.
+              Every field row below is therefore genuinely inherited rather than a placeholder. The
+              grid is read-only for the same reason the rest of this page is: role definitions live
+              in code, and editing them is a policy-store operation.
+            </p>
+            <RolePolicyGrid role={role} label={selected.label} />
           </section>
 
           {/* ONE filter over all three capability lists, not one box per section: the question is

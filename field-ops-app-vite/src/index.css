@@ -851,6 +851,35 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-table th, .fo-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--color-surface-sunken); font-size: 14px; }
 .fo-table select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--color-border); }
 
+/* Administration > Roles & Permissions / Objects -- the expandable Object x CRED grid
+   (modules/administration/RolePolicyGrid.jsx). An object row expands to show its fields, each
+   inheriting the object's permission unless the role overrides it.
+
+   THE CARET IS A BUTTON, not a decorated span, because it toggles content and a keyboard user has
+   to reach it. Styled back down to look like the glyph it is -- a control that reads as a control
+   but does not sit in a button-shaped box inside a dense table. The placeholder holds the same
+   width for rows with no fields, so the object names stay aligned in one column instead of
+   stair-stepping wherever a caret is missing. */
+.fo-caret {
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 14px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.fo-caret:hover { color: var(--color-text-primary); }
+.fo-caret:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: 2px; border-radius: 2px; }
+.fo-caret-placeholder { display: inline-block; width: 14px; }
+
+/* A field row, set back beneath its object. The sunken surface is the same token the table already
+   uses for its own rules and for .fo-table tr.is-observed, so a nested row reads as subordinate
+   without introducing a colour this page does not otherwise have. */
+.fo-table tr.fo-row-nested td { background: var(--color-surface-sunken); }
+.fo-nested-label { padding-left: 28px; }
+
 .fo-muted { color: var(--color-text-secondary); font-size: 14px; }
 
 /* Contextual-help slice -- EmptyState's `guidance` line (the "why this collection

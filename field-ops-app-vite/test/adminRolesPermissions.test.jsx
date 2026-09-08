@@ -106,8 +106,24 @@ describe("Roles & Permissions (what it still cannot do, stated honestly)", () =>
     // "Nobody can ever hold this" must not look like "you were not granted it" — the second
     // invites a request for access that cannot be granted to any role in the system.
     render(<AdminRolesPermissions />);
-    const table = screen.getByRole("table", { name: /object permissions/i });
+    // The table is now "object AND FIELD permissions": the grid gained an expand caret per
+    // object, and the accessible name says so. The property under test is unchanged.
+    const table = screen.getByRole("table", { name: /object and field permissions/i });
     expect(within(table).getAllByTitle(/cannot be granted to any role/i).length).toBeGreaterThan(0);
+  });
+
+  it("an object with declared fields offers an expand caret, and opening it shows them", () => {
+    // The question an administrator actually arrives with is "can this role see the credit
+    // limit", and until this grid gained fields the product had no surface that could answer it.
+    render(<AdminRolesPermissions />);
+    const caret = screen.getByRole("button", { name: /show the \d+ fields of Accounts/i });
+    expect(caret.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(caret);
+    expect(caret.getAttribute("aria-expanded")).toBe("true");
+    // Inherited, and SAID so: a field takes its object's permission unless the role states
+    // otherwise, and no role states otherwise until the policy store is stood up.
+    const table = screen.getByRole("table", { name: /object and field permissions/i });
+    expect(within(table).getAllByLabelText(/Inherited from the object/i).length).toBeGreaterThan(0);
   });
 });
 
