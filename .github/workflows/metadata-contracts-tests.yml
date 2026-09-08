@@ -35,7 +35,6 @@ on:
       - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataFleetCatalogDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataBillingDefinitions.test.mjs"
-      - "field-ops-app-vite/test/metadataStockLocationDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataTerritoryMobileDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
@@ -115,7 +114,6 @@ on:
       - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataFleetCatalogDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataBillingDefinitions.test.mjs"
-      - "field-ops-app-vite/test/metadataStockLocationDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataTerritoryMobileDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
@@ -292,9 +290,11 @@ jobs:
       - name: Billing definition tests (node:test)
         run: node --test test/metadataBillingDefinitions.test.mjs
         working-directory: field-ops-app-vite
-      - name: Stock Location definition tests (node:test)
-        run: node --test test/metadataStockLocationDefinition.test.mjs
-        working-directory: field-ops-app-vite
+      # Stock Location's definition and its suite are DELETED. The collection had no live writer
+      # and no reachable reader, and the read-migration ruling was explicit: an unreachable
+      # definition is deleted rather than given governed authority. The step goes with them --
+      # a workflow naming a file that does not exist fails on the missing file, which reads
+      # identically to a real regression.
       - name: Territory + mobile location definition tests (node:test)
         run: node --test test/metadataTerritoryMobileDefinitions.test.mjs
         working-directory: field-ops-app-vite
