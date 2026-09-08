@@ -113,11 +113,21 @@ export interface GovernedSortSpec {
  * warehouse manager the whole network; picking the assigned branch strips an operations manager
  * down to a single site. Both are authorization drift, in opposite directions.
  *
- * So the capability id stays UNSCOPED -- `warehouse.record.read` means the same thing for the
- * operations manager and the controller who legitimately hold it globally -- and the narrowing
- * lives here, in the read resolution, applying to the principal whose warehouse assignment is what
- * admits them. Capability decides WHETHER. This decides WHICH. The browser decides neither: the
- * assignment is derived server-side from the actor, and there is no request field that carries it.
+ * So the source keeps its GLOBAL capability -- `warehouse.record.read` means the same thing for the
+ * operations manager and the controller who hold it globally -- and a SECOND, separate capability
+ * grants the assigned-site population. Two ids, because one id cannot answer "which population is
+ * this holder entitled to" without guessing, and both guesses are wrong in a way that matters.
+ *
+ * THE ORDER IS LOAD-BEARING: the global capability is resolved FIRST. Inferring "this reader is
+ * scoped" from the mere PRESENCE of an assignment would narrow anyone holding both -- an Operations
+ * Manager who is also an operational warehouse manager -- which is the accidental narrowing the
+ * resolution order exists to prevent.
+ *
+ * A holder of ONLY the scoped capability, with no assignment, reads NOTHING. That is what the
+ * retired rule did: `isAssignedToWarehouse` simply never matched. Not everything, and not an error.
+ *
+ * Capability decides WHETHER. Server-derived assignment decides WHICH records. The browser decides
+ * neither -- there is no request field that carries a scope.
  *
  * `fields` is a DISJUNCTION. Firestore has no OR across fields, so more than one field means one
  * query per field, unioned and de-duplicated by authoritative document id -- which is why a
@@ -126,6 +136,11 @@ export interface GovernedSortSpec {
 export interface GovernedScopeSpec {
   /** The only assignment kind that exists today. Named rather than implied so a second one has to be added deliberately. */
   readonly assignment: "WAREHOUSE";
+  /**
+   * The capability that grants the SCOPED population. Distinct from the source's own `capability`,
+   * which grants the global one and is always tried first.
+   */
+  readonly capability: string;
   /** Fields matched against the assignment, OR-ed. DOCUMENT_ID_FIELD means the record IS the warehouse. */
   readonly fields: readonly string[];
 }
@@ -154,9 +169,9 @@ export interface GovernedReadSource {
   readonly projection: readonly string[] | null;
   readonly maxPageSize: number;
   /**
-   * Narrows WHICH records this source returns for a caller who holds an assignment. Absent means the
-   * capability alone settles the population -- true of every source whose retired rule had a single
-   * read predicate.
+   * A SECOND, narrower way into this source, for a caller who holds the scoped capability rather
+   * than the global one. Absent means the capability alone settles the population -- true of every
+   * source whose retired rule had a single read predicate.
    */
   readonly scope?: GovernedScopeSpec;
 }
@@ -478,6 +493,7 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     // Either endpoint, matching the retired rule's two isAssignedToWarehouse branches.
     scope: Object.freeze({
       assignment: "WAREHOUSE" as const,
+      capability: "warehouse.transferOrder.read.assigned",
       fields: Object.freeze(["fromWarehouseId", "toWarehouseId"]),
     }),
   }),
@@ -586,6 +602,7 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
     scope: Object.freeze({
       assignment: "WAREHOUSE" as const,
+      capability: "warehouse.transferOrder.read.assigned",
       fields: Object.freeze(["fromWarehouseId", "toWarehouseId"]),
     }),
   }),
@@ -654,6 +671,7 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
     scope: Object.freeze({
       assignment: "WAREHOUSE" as const,
+      capability: "warehouse.record.read.assigned",
       fields: Object.freeze([DOCUMENT_ID_FIELD]),
     }),
   }),
@@ -807,6 +825,7 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     // retired rule's isAssignedToWarehouse(warehouseId), where warehouseId was the path segment.
     scope: Object.freeze({
       assignment: "WAREHOUSE" as const,
+      capability: "warehouse.record.read.assigned",
       fields: Object.freeze([DOCUMENT_ID_FIELD]),
     }),
   }),

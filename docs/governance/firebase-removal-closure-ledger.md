@@ -382,18 +382,59 @@ The retired rules:
         || isAssignedToWarehouse(resource.data.fromWarehouseId)
         || isAssignedToWarehouse(resource.data.toWarehouseId);
 
-| Reader | Warehouses | Transfer orders |
-|---|---|---|
-| global authorization | every record | every record |
-| Warehouse Manager (assigned) | only the ids in the server-derived scope | every order whose `fromWarehouseId` OR `toWarehouseId` is in that scope |
+| Reader | Capability | Warehouses | Transfer orders |
+|---|---|---|---|
+| global authorization | `warehouse.record.read` / `warehouse.transferOrder.read` | every record | every record |
+| Warehouse Manager | `warehouse.record.read.assigned` / `warehouse.transferOrder.read.assigned` (minted) | only the ids in the server-derived scope | every order whose `fromWarehouseId` OR `toWarehouseId` is in that scope |
 
-`warehouse.record.read` was ABSENT from `WAREHOUSE_MANAGER_ROLE` and is restored;
-`warehouse.transferOrder.read` was present. **Neither capability id was constrained** —
-operationsManager, controller and others legitimately hold both with global reach. The narrowing is
-declared on the four existing governed sources (`warehouseDirectory`, `metadataWarehouses`,
-`transferOrderDirectory`, `metadataTransferOrders`) and applied by `readGovernedList`, so both
-sources over a collection are scoped identically and there is no sibling source to reach the wider
-population through.
+**Two ids, not one narrowed id**, for the same reason the reorder read has three. Neither global
+capability was constrained — operationsManager, controller and others legitimately hold them with
+global reach — and the assigned-site population got its own capability instead.
+
+**That is also what keeps precedence sound.** An earlier version of this change inferred "this
+reader is scoped" from the mere PRESENCE of a warehouse assignment. That silently narrows anyone
+holding both — an Operations Manager who is also an operational warehouse manager — which is exactly
+the accidental narrowing the resolution order exists to prevent. The global capability is now
+resolved FIRST, and holding it wins. A scoped-only holder with no assignment reads **nothing**:
+authorized, and empty, which is what the retired rule did when `isAssignedToWarehouse` never
+matched.
+
+The scope is declared on the four existing governed sources (`warehouseDirectory`,
+`metadataWarehouses`, `transferOrderDirectory`, `metadataTransferOrders`) and applied by
+`readGovernedList`, so both sources over a collection are scoped identically and there is no sibling
+source to reach the wider population through.
+
+### NAMED DECISION — the Transfer Orders matrix cell
+
+Two authorities disagree, and this is surfaced rather than resolved:
+
+| Authority | What it says a Warehouse Manager may read |
+|---|---|
+| canonical Detailed CRUD matrix (Spec 27.4) | Transfer Orders **R, global** |
+| retired `firestore.rules` | only transfers touching one of their **assigned** warehouses |
+
+Owner ruling #1821 rules on exactly this question — "make its Warehouse Manager binding
+location-scoped" — so the Role holds the scoped id and **not** the global one, and
+`governedBusinessRoles.test.mjs` records the supersession with both authorities quoted.
+
+It is narrower than the matrix row. It is **not** narrower than anything a Warehouse Manager could
+actually do: the retired Rules gave them the assigned-site population, and (see the finding below)
+the governed read path resolves its global capabilities against the compatibility Roles only, so
+this Role reached no governed source at all. Against both the written rule and the running system
+this is a restoration. **If the matrix row is the authority the Owner wants, the fix is to grant the
+global id back — never to widen the scoped one, which means the assigned sites by definition.**
+
+### FINDING — governed business Roles do not reach governed sources
+
+Measured while wiring the above, and **not** fixed here. `readGovernedList` resolves a source's
+capability through `actorHolds`, against `COMPATIBILITY_ROLES` — `admin`, `dispatcher`, `technician`
+and nothing else. A governed business Role therefore reaches **no** governed read source, whatever
+its own permission list says. That is why the pre-existing `reorder.request.read.queue` grant on
+`partsManager` had no effect either.
+
+Only the new scoped capability is resolved through the governed access feed, additively, so no
+existing decision changes. Swapping the resolver on the global branch would re-decide every source
+for every governed Role at once — an authorization change with an owner, not a migration detail.
 
 **Query semantics.** Firestore has no OR across fields, so the transfer-order scope is one query per
 endpoint, unioned and de-duplicated by AUTHORITATIVE document id — an order between two assigned
@@ -419,9 +460,10 @@ carries this reasoning. Reconciling the two is its own decision.
 | reorder — PARTS_ASSOCIATE | `assignedToUserId == uid` | identical, via `reorder.request.read.own` | yes |
 | reorder — dual-authority holder | global (first matching branch) | global (broadest-first resolution) | yes |
 | warehouses — global reader | every record | every record | yes |
-| warehouses — assigned manager | assigned ids | assigned ids | yes |
+| dual holder (global + assigned) | global (first matching branch) | global (global capability resolved first) | yes |
+| warehouses — assigned manager | assigned ids | assigned ids, via `warehouse.record.read.assigned` | yes |
 | transfer orders — global reader | every record | every record | yes |
-| transfer orders — assigned manager | either endpoint in assignment | either endpoint, unioned and de-duplicated | yes |
+| transfer orders — assigned manager | either endpoint in assignment | either endpoint, unioned and de-duplicated, via `warehouse.transferOrder.read.assigned` | yes |
 
 Proved by execution, not inspection: `functions/test/scopedReorderRead.test.mjs` (23) and
 `functions/test/warehouseRecordScope.test.mjs` (16), both quoting the retired predicates as the

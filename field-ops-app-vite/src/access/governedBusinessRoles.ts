@@ -748,18 +748,33 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
     "reorder.purchaseOrder.read",
     "reorder.request.create.manual",
     "salesOrder.read",
-    // RESTORED 2026-09-08, as authorization parity rather than a new grant. The retired
-    // firestore.rules admitted this Role's operational counterpart to `warehouses/{warehouseId}`
-    // through `isAssignedToWarehouse(warehouseId)` -- their ASSIGNED warehouses. Migrating that
-    // read off Rules without restoring it would have removed a read the platform already
-    // permitted, which is a narrowing dressed as a migration.
+    // ══════════ THE ASSIGNED-SITE READS, RESTORED 2026-09-08 ══════════
     //
-    // The capability itself stays UNSCOPED: operationsManager and others legitimately hold it with
-    // global reach, and constraining the id would break them in order to constrain this Role. The
-    // scope lives in the READ RESOLUTION -- a principal reaching warehouse data through the
-    // warehouse-manager path sees their assigned warehouses and no others.
-    "warehouse.record.read",
-    "warehouse.transferOrder.read",
+    // Authorization parity, not a new grant. The retired firestore.rules admitted this Role's
+    // operational counterpart to `warehouses/{warehouseId}` and to `transfer_orders` on either
+    // endpoint through `isAssignedToWarehouse(...)` -- their ASSIGNED sites. Migrating that read
+    // off Rules without restoring it removes a read the platform already permitted, which is a
+    // narrowing dressed as a migration.
+    //
+    // THE SCOPED IDS, DELIBERATELY, and this is a NAMED DECISION rather than a detail:
+    //
+    //   `warehouse.record.read` and `warehouse.transferOrder.read` are the GLOBAL reads. The
+    //   canonical Detailed CRUD matrix (Spec 27.4) confines the record read to Operations Manager
+    //   and owner, and this Role does not take it. Granting the global id here would have
+    //   contradicted that matrix; taking nothing would have contradicted the retired rule. The
+    //   scoped ids express the third thing both were describing -- the assigned-site population --
+    //   without restating either as the other.
+    //
+    //   It is also what keeps precedence sound. If scope were inferred from HAVING an assignment,
+    //   a person holding Operations Manager and this Role would be silently narrowed to their
+    //   site. The global id is checked first and wins.
+    //
+    // RECORDED, NOT SETTLED HERE: the same matrix grants this Role the GLOBAL
+    // `warehouse.transferOrder.read`, which the retired rule did not. Taking the scoped id is
+    // narrower than that row. Reconciling the matrix row with the retired rule is the Owner's
+    // decision; this preserves the measured Rules population and names the difference.
+    "warehouse.record.read.assigned",
+    "warehouse.transferOrder.read.assigned",
     // PERFORMANCE GOAL AUTHORITY -- the Owner names Warehouse Manager for parts/warehouse LOCATION
     // goals, and only "where its governed scope actually covers the target". That qualifier needs no
     // new mechanism: a LOCATION goal resolves the capability at { type: "location", value:

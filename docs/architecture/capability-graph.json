@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 167,
+    "capabilities": 169,
     "catalogActive": 0,
-    "catalogInactive": 167,
+    "catalogInactive": 169,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
     "callableExports": 52,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 167,
-    "parsed": 167,
+    "raw": 169,
+    "parsed": 169,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 141,
+    "SERVER_REFERENCED": 143,
     "CLIENT_ONLY": 1,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -1856,7 +1856,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/governedReadRegistry.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/scopedReorderReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -1867,7 +1868,7 @@
           "field-ops-app-vite/src/metadata/definitions/reorderRequest.js",
           "field-ops-app-vite/src/shared/ui/NotificationControl.jsx"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1887,7 +1888,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/scopedReorderReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -1895,7 +1897,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2187,12 +2189,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/governedBusinessRoles.ts"
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/reorderRequest/scopedReorderReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2477,6 +2480,56 @@
         ],
         "serverReferenceCount": 3,
         "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.record.read.assigned",
+      "resource": "warehouse.record",
+      "action": "read.assigned",
+      "description": "Read the warehouses records for the sites this actor is assigned to. The assigned-site half of the retired isAssignedToWarehouse read; the scope is derived server-side from the actor and can never be supplied by a caller.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.transferOrder.read.assigned",
+      "resource": "warehouse.transferOrder",
+      "action": "read.assigned",
+      "description": "Read transfer_orders whose origin OR destination is a site this actor is assigned to. The assigned-site half of the retired read; matched on either endpoint and de-duplicated by document id.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

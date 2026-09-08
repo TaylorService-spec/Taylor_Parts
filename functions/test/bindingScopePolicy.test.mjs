@@ -185,9 +185,17 @@ test("E: a partsManager@global assignment written BEFORE R-32 cannot confer the 
 // ---------------------------------------------------------------------------
 // F(part) / G. CAPABILITY HOME -- the split brain, closed
 // ---------------------------------------------------------------------------
+// The reorder READ entry is `reorder.request.read.managed`, not `...read.queue`, since 2026-09-08.
+//
+// MEASURED AGAINST THE RETIRED RULE, which is the authority these checks exist to encode: a
+// PARTS_MANAGER saw three queue statuses plus the records they personally reviewed or assigned --
+// never the whole queue, which is what `reorder.request.read.queue` means. Leaving that id on the
+// Role would have WIDENED it while migrating the read off Rules. The narrow population got its own
+// id and the Role holds that one; `...read.queue` remains the global read and is asserted below to
+// be gone from this Role.
 const SIX = [
   CREATE,
-  "reorder.request.read.queue",
+  "reorder.request.read.managed",
   "reorder.request.assign",
   TXN,
   "inventory.action.read",
@@ -206,7 +214,7 @@ test("G: technician carries none of the six, and cannot reach them via any opera
 test("G: each of the six now sits on the governed Role its old condition named, and nowhere new", () => {
   const expected = {
     [CREATE]: ["partsManager", "warehouseManager"],
-    "reorder.request.read.queue": ["partsManager"],
+    "reorder.request.read.managed": ["partsManager"],
     "reorder.request.assign": ["partsManager"],
     [TXN]: ["partsManager", "warehouseManager"],
     "inventory.action.read": ["warehouseManager"],
@@ -219,9 +227,16 @@ test("G: each of the six now sits on the governed Role its old condition named, 
   }
   // inventory.action.read was WAREHOUSE_MANAGER-only and must NOT have leaked to partsManager
   assert.equal(ROLES.partsManager.permissions.includes("inventory.action.read"), false);
-  // reorder read.queue/assign were PARTS_MANAGER-only and must NOT have leaked to warehouseManager
+  // reorder read/assign were PARTS_MANAGER-only and must NOT have leaked to warehouseManager
+  assert.equal(ROLES.warehouseManager.permissions.includes("reorder.request.read.managed"), false);
   assert.equal(ROLES.warehouseManager.permissions.includes("reorder.request.read.queue"), false);
   assert.equal(ROLES.warehouseManager.permissions.includes("reorder.request.assign"), false);
+
+  // AND THE GLOBAL QUEUE IS NOT PARTS MANAGER'S. This is the assertion that keeps the split honest:
+  // `reorder.request.read.queue` is the WHOLE collection, which the retired rule gave to
+  // admin/dispatcher and never to a PARTS_MANAGER. A future edit that "restores" it here would be
+  // re-widening the Role, and fails on this line.
+  assert.equal(ROLES.partsManager.permissions.includes("reorder.request.read.queue"), false);
 });
 
 test("G: a plain technician gains no manager authority even holding the compatibility Role", () => {

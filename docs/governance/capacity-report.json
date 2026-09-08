@@ -5,9 +5,9 @@
   "activationOverrides": 91
  },
  "catalog": {
-  "total": 167,
-  "globallyActive": 58,
-  "activeInThisEnvironment": 149,
+  "total": 169,
+  "globallyActive": 60,
+  "activeInThisEnvironment": 151,
   "inactiveInThisEnvironment": 18
  },
  "employeesEvaluated": 47,
@@ -48,10 +48,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2814,
-  "fromCompatibilityRoleOnly": 1870,
-  "fromGovernedRoleOnly": 490,
-  "fromBoth": 454,
+  "operableHoldingsTotal": 2820,
+  "fromCompatibilityRoleOnly": 1874,
+  "fromGovernedRoleOnly": 494,
+  "fromBoth": 452,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -427,8 +427,8 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 167,
-   "operableCount": 149,
+   "grantedCount": 169,
+   "operableCount": 151,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
@@ -1355,8 +1355,8 @@
     "inventoryReturnsIntakeClerk",
     "inventoryBinAdministrator"
    ],
-   "grantedCount": 75,
-   "operableCount": 75,
+   "grantedCount": 77,
+   "operableCount": 77,
    "assignments": [
     {
      "workstream": "TRANSFERS",
@@ -1924,8 +1924,8 @@
    "functionalRoles": [
     "inventoryBinAdministrator"
    ],
-   "grantedCount": 71,
-   "operableCount": 71,
+   "grantedCount": 73,
+   "operableCount": 73,
    "assignments": [
     {
      "workstream": "BIN_ADMINISTRATION",

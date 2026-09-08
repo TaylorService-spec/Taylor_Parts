@@ -1,7 +1,7 @@
 {
  "catalog": {
-  "total": 167,
-  "active": 58,
+  "total": 169,
+  "active": 60,
   "inactive": 109
  },
  "heldByNobody": [],
@@ -161,8 +161,8 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 167,
-   "operableCount": 58,
+   "grantedCount": 169,
+   "operableCount": 60,
    "blockedCount": 109,
    "granted": [
     "admin.accessRequest.decide",
@@ -321,8 +321,10 @@
     "supplier.purchaseOrder.read",
     "supplier.record.read",
     "warehouse.record.read",
+    "warehouse.record.read.assigned",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
+    "warehouse.transferOrder.read.assigned",
     "workOrder.assigned.read",
     "workOrder.cancel",
     "workOrder.create",
@@ -384,8 +386,10 @@
     "supplier.purchaseOrder.read",
     "supplier.record.read",
     "warehouse.record.read",
+    "warehouse.record.read.assigned",
     "warehouse.stockLocation.read",
     "warehouse.transferOrder.read",
+    "warehouse.transferOrder.read.assigned",
     "workOrder.assigned.read",
     "workOrder.cancel",
     "workOrder.create",
@@ -872,8 +876,8 @@
     "reorder.purchaseOrder.read",
     "reorder.request.create.manual",
     "salesOrder.read",
-    "warehouse.record.read",
-    "warehouse.transferOrder.read"
+    "warehouse.record.read.assigned",
+    "warehouse.transferOrder.read.assigned"
    ],
    "operableNow": [
     "audit.event.read",
@@ -883,8 +887,8 @@
     "inventory.transaction.read",
     "reorder.purchaseOrder.read",
     "reorder.request.create.manual",
-    "warehouse.record.read",
-    "warehouse.transferOrder.read"
+    "warehouse.record.read.assigned",
+    "warehouse.transferOrder.read.assigned"
    ],
    "grantedButInactive": [
     "inventory.balance.read",

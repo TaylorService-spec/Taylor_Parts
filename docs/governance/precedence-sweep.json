@@ -7,10 +7,10 @@
  ],
  "totals": {
   "EXPLICIT_OWNER_DECISION": 103,
-  "CANONICAL_MATRIX": 116,
+  "CANONICAL_MATRIX": 115,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2,
-  "UNJUSTIFIED": 6
+  "UNJUSTIFIED": 7
  },
  "rows": [
   {
@@ -391,7 +391,6 @@
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
-    "warehouseManager",
     "warehouseAssociate",
     "purchasingManager",
     "controller",
@@ -1557,23 +1556,17 @@
   },
   {
    "roleId": "warehouseManager",
-   "capability": "warehouse.record.read",
+   "capability": "warehouse.record.read.assigned",
    "classification": "UNJUSTIFIED",
    "basis": "no matrix row, no composition, no recorded decision",
    "alsoHeldBy": []
   },
   {
    "roleId": "warehouseManager",
-   "capability": "warehouse.transferOrder.read",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
-   "alsoHeldBy": [
-    "generalManager",
-    "warehouseAssociate",
-    "purchasingManager",
-    "controller",
-    "accountingManager"
-   ]
+   "capability": "warehouse.transferOrder.read.assigned",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": []
   },
   {
    "roleId": "warehouseManager",
@@ -1770,7 +1763,6 @@
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
     "generalManager",
-    "warehouseManager",
     "purchasingManager",
     "controller",
     "accountingManager"
@@ -2001,7 +1993,6 @@
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
     "generalManager",
-    "warehouseManager",
     "warehouseAssociate",
     "controller",
     "accountingManager"
@@ -2258,7 +2249,6 @@
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
     "generalManager",
-    "warehouseManager",
     "warehouseAssociate",
     "purchasingManager",
     "accountingManager"
@@ -2531,7 +2521,6 @@
    "basis": "Detailed CRUD row",
    "alsoHeldBy": [
     "generalManager",
-    "warehouseManager",
     "warehouseAssociate",
     "purchasingManager",
     "controller"

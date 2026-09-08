@@ -29,6 +29,7 @@ import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { InvalidInputError, UnauthorizedActorError } from "./trustedWriterCommands";
 import { GOVERNED_READS, DOCUMENT_ID_FIELD, type GovernedReadSource } from "./governedReadRegistry";
 import { loadAssignedWarehouseScope } from "./assignedWarehouseScope";
+import { resolveEffectiveAccess } from "./effectiveAccessFeed";
 import { FieldPath } from "firebase-admin/firestore";
 
 const USERS_COLLECTION = "users";
@@ -57,8 +58,10 @@ export interface GovernedListPage {
 export interface GovernedListDeps {
   db?: Firestore;
   roles?: Readonly<Record<string, Role>>;
-  /** Injected by tests. Production derives the actor's assignment server-side; see resolveScopeBranches. */
+  /** Injected by tests. Production derives the actor's assignment server-side; see resolveReadScope. */
   loadScope?: (uid: string) => Promise<readonly string[]>;
+  /** Injected by tests. Production resolves the SCOPED capability through the governed access feed. */
+  resolveScopedAccess?: (uid: string, capability: string) => Promise<boolean>;
 }
 
 // ════════════════════ THE RECORD SCOPE ════════════════════
@@ -72,14 +75,18 @@ export interface GovernedListDeps {
 //   The assignment is DERIVED, never supplied. It comes from the actor's uid. No request field
 //   carries a warehouse id, so there is nothing for a caller to forge.
 //
-//   NO ASSIGNMENT MEANS GLOBAL, not empty. The retired rule was a disjunction: an operations
-//   manager passed on isAdminOrDispatcher() and never reached isAssignedToWarehouse at all. A
-//   person holding BOTH Operations Manager and Warehouse Manager therefore keeps the network --
-//   resolving the narrow branch first would silently shrink them and return it without an error.
+//   THE GLOBAL CAPABILITY IS RESOLVED FIRST, and that is load-bearing. The retired rule was a
+//   disjunction: an operations manager passed on isAdminOrDispatcher() and never reached
+//   isAssignedToWarehouse at all. A person holding BOTH Operations Manager and Warehouse Manager
+//   therefore keeps the network. Inferring "scoped" from the PRESENCE of an assignment would have
+//   silently shrunk exactly that person and returned it without an error.
+//
+//   A SCOPED-ONLY HOLDER WITH NO ASSIGNMENT READS NOTHING -- not everything, and not an error.
+//   That is what the retired rule did: isAssignedToWarehouse simply never matched.
 //
 //   MORE THAN ONE FIELD IS A DISJUNCTION. Firestore has no OR across fields, so each field becomes
 //   its own query and the results are unioned, de-duplicated by AUTHORITATIVE document id. A
-//   transfer order between two assigned warehouses matches both branches and is returned once.
+//   transfer order between two assigned warehouses is returned once.
 
 /** Firestore bounds an `in` filter. A wider assignment is chunked, never silently truncated. */
 const IN_FILTER_LIMIT = 30;
@@ -96,22 +103,67 @@ function chunk<T>(values: readonly T[], size: number): T[][] {
 }
 
 /**
- * The scope clauses this read must run, or NULL for "one unscoped query" -- which covers both a
- * source that declares no scope and a caller who holds no assignment.
+ * WHAT THIS PRINCIPAL MAY READ FROM THIS SOURCE, before a row is touched.
+ *
+ *   GLOBAL   one unscoped query -- the source's own capability, or a source with no scoped way in
+ *   SCOPED   one query per (field, id-chunk), unioned; possibly ZERO ids, which is an empty result
+ *   null     neither capability: the caller is refused by readGovernedList/countGovernedList
  */
-async function resolveScopeBranches(
+type ReadScope =
+  | { readonly kind: "GLOBAL" }
+  | { readonly kind: "SCOPED"; readonly branches: readonly ScopeClause[] };
+
+async function resolveReadScope(
   spec: GovernedReadSource,
   actorUid: string,
   db: Firestore,
+  roles: Readonly<Record<string, Role>>,
   deps: GovernedListDeps,
-): Promise<readonly ScopeClause[] | null> {
+): Promise<ReadScope | null> {
+  // GLOBAL FIRST. The broader valid authority wins, so holding a narrow capability as well can
+  // never shrink a reader who is entitled to everything.
+  if (await actorHolds(db, roles, actorUid, spec.capability)) return { kind: "GLOBAL" };
   if (!spec.scope) return null;
+
+  // ════════════ WHY THE SCOPED CHECK USES A DIFFERENT RESOLVER ════════════
+  //
+  // MEASURED, NOT ASSUMED: `actorHolds` above resolves against COMPATIBILITY_ROLES, which is
+  // `admin`, `dispatcher` and `technician` and nothing else. A governed business Role -- Warehouse
+  // Manager, Operations Manager, Controller -- therefore reaches NO governed source through it,
+  // whatever the Role's own permission list says.
+  //
+  // That is a wider question than this scope, and answering it here by swapping the resolver would
+  // silently re-decide every source for every governed Role at once. So the global branch is left
+  // EXACTLY as it was, and only the new scoped capability is resolved through the governed access
+  // feed -- the same resolver the scoped reorder seam uses. This adds one narrow way in for the
+  // Role the retired rule admitted, and changes no existing decision for anyone.
+  //
+  // RECORDED for the Owner as its own finding: governed business Roles currently cannot read any
+  // governed source. Fixing that is an authorization change with an owner, not a migration detail.
+  const resolveScoped =
+    deps.resolveScopedAccess ??
+    (async (uid: string, capability: string) => {
+      const { decisions } = await resolveEffectiveAccess({ principalUid: uid, permissionIds: [capability] });
+      return (decisions as Record<string, boolean>)[capability] === true;
+    });
+
+  let scopedHeld: boolean;
+  try {
+    scopedHeld = await resolveScoped(actorUid, spec.scope.capability);
+  } catch (err) {
+    // A resolver that cannot answer is a DENIAL, never an allow.
+    console.error("[governedRead] scoped capability resolution failed", err);
+    return null;
+  }
+  if (!scopedHeld) return null;
+
   const load = deps.loadScope ?? ((uid: string) => loadAssignedWarehouseScope(uid, { db }));
   const assigned = await load(actorUid);
-  if (assigned.length === 0) return null;
-  return spec.scope.fields.flatMap((field) =>
+  const branches = spec.scope.fields.flatMap((field) =>
     chunk(assigned, IN_FILTER_LIMIT).map((ids) => ({ field, ids })),
   );
+  // No assignment yields NO branches, and therefore no rows -- authorized, and empty.
+  return { kind: "SCOPED", branches };
 }
 
 /**
@@ -361,12 +413,13 @@ export async function readGovernedList(
   }
   const cursor = input.cursor ? decodeCursor(input.cursor, input.sourceId) : null;
 
-  if (!(await actorHolds(db, roles, input.actorUid, spec.capability))) {
+  const readScope = await resolveReadScope(spec, input.actorUid, db, roles, deps);
+  if (readScope === null) {
     throw new UnauthorizedActorError(`actor is not authorized for "${spec.capability}"`);
   }
 
   const [orderField, orderDir] = resolveSort(spec, input.sortKey);
-  const branches = await resolveScopeBranches(spec, input.actorUid, db, deps);
+  const branches = readScope.kind === "GLOBAL" ? null : readScope.branches;
 
   const buildQuery = (scopeClause: ScopeClause | null) => {
     let query = db.collection(spec.source) as FirebaseFirestore.Query;
@@ -413,7 +466,13 @@ export async function readGovernedList(
   const snaps = await Promise.all(
     (branches ?? [null]).map((clause) => buildQuery(clause).get()),
   );
-  const merged = branches === null ? snaps[0].docs : mergeBranches(snaps, orderField, orderDir);
+  const merged =
+    branches === null
+      ? snaps[0].docs
+      : branches.length === 0
+        // Authorized, assigned to nothing. An empty result, never a denial and never everything.
+        ? []
+        : mergeBranches(snaps, orderField, orderDir);
   const docs = merged.slice(0, pageSize);
   const hasMore = merged.length > pageSize;
   const last = docs[docs.length - 1];
@@ -490,7 +549,8 @@ export async function countGovernedList(
   // discloses only the shape of the registry entry, which the caller named in the first place.
   const filters = resolveFilters(spec, (input.filters ?? {}) as Record<string, unknown>);
 
-  if (!(await actorHolds(db, roles, input.actorUid, spec.capability))) {
+  const readScope = await resolveReadScope(spec, input.actorUid, db, roles, deps);
+  if (readScope === null) {
     throw new UnauthorizedActorError(`actor is not authorized for "${spec.capability}"`);
   }
 
@@ -504,7 +564,8 @@ export async function countGovernedList(
 
   // SAME SCOPE AS THE READ. A count that counted records the read would not return is not a smaller
   // disclosure than returning them -- it is the size of a set the caller may not see.
-  const branches = await resolveScopeBranches(spec, input.actorUid, db, deps);
+  const branches = readScope.kind === "GLOBAL" ? null : readScope.branches;
+  if (branches !== null && branches.length === 0) return { count: 0, atLeast: false };
   if (branches === null) {
     const snap = await base().limit(COUNT_CEILING).count().get();
     const count = snap.data().count;

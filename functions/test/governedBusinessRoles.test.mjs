@@ -1088,6 +1088,14 @@ check("warehouse RECORD and STOCK-LOCATION read stay confined; transferOrder rea
   //
   // Note CRE rows grant READ ONLY here. Transfer EXECUTION is inventoryTransferOperator, a functional
   // Role assigned per employee -- a CRUD cell does not confer it.
+  //
+  // STILL TRUE AFTER 2026-09-08, and worth saying why, because a scoped warehouse read was restored
+  // to Warehouse Manager that day and this check did not move. The restored id is
+  // `warehouse.record.read.assigned` -- a DIFFERENT capability, meaning the actor's assigned sites
+  // and nothing else. The GLOBAL id below, the one that means "the warehouse register", stays
+  // confined exactly as the canonical matrix declares. That is precisely why a second id was minted
+  // instead of granting this one: the matrix's confinement and the retired rule's assigned-site read
+  // are both true, and only two ids can hold both.
   const CONFINED = ["warehouse.record.read", "warehouse.stockLocation.read"];
   for (const role of Object.values(GOVERNED_BUSINESS_ROLES)) {
     if (role.id === "operationsManager") {
@@ -1108,14 +1116,52 @@ check("warehouse RECORD and STOCK-LOCATION read stay confined; transferOrder rea
   // across. This is a restoration of a recorded Role policy, not a new business authority --
   // Finance Manager had drifted DOWN to five permissions, and this is part of the eleven it
   // should never have lost.
+  // warehouseManager REMOVED from the GLOBAL list 2026-09-08, and this is a NAMED DECISION awaiting
+  // the Owner rather than a quiet edit. Two authorities disagree about this one cell:
+  //
+  //   the canonical Detailed CRUD matrix (Spec 27.4)  Transfer Orders R, GLOBAL, to this Role
+  //   the retired firestore.rules                     only transfers whose fromWarehouseId or
+  //                                                   toWarehouseId is one of the actor's ASSIGNED
+  //                                                   warehouses (isAssignedToWarehouse)
+  //
+  // Owner ruling #1821 (2026-09-08) rules on exactly this question -- "make its Warehouse Manager
+  // binding location-scoped" -- so the Role now holds `warehouse.transferOrder.read.assigned`
+  // instead, asserted below.
+  //
+  // WHAT THIS DOES AND DOES NOT COST. It is narrower than the matrix row. It is NOT narrower than
+  // anything a Warehouse Manager could actually do: the retired Rules gave them the assigned-site
+  // population, and the governed read path resolves its global capabilities against the
+  // COMPATIBILITY Roles only, so this Role reached no governed source at all. Against both the
+  // written rule and the running system, this is a restoration.
+  //
+  // If the matrix row is the authority the Owner wants, the fix is to grant the GLOBAL id back here
+  // -- not to widen the scoped one, which means the assigned sites by definition.
   const EXPECTED_TRANSFER_READ = [
     "accountingManager", "controller", "financeManager", "generalManager", "operationsManager",
-    "owner", "purchasingManager", "warehouseAssociate", "warehouseManager",
+    "owner", "purchasingManager", "warehouseAssociate",
   ];
   const actual = Object.values(GOVERNED_BUSINESS_ROLES)
     .filter((r) => r.permissions.includes("warehouse.transferOrder.read"))
     .map((r) => r.id).sort();
   assert.deepEqual(actual, EXPECTED_TRANSFER_READ, "exactly the roles the canonical matrix grants Transfer Orders read");
+
+  // The assigned-site reads live on exactly one Role, and are held by no one who reads globally --
+  // a Role holding both would resolve GLOBAL and the scope would be dead weight rather than a
+  // narrowing, which is the failure this pins.
+  for (const id of ["warehouse.record.read.assigned", "warehouse.transferOrder.read.assigned"]) {
+    // owner excluded for the same reason the confinement loop above excludes it: it mirrors admin
+    // by derivation and appears under every id, and is pinned by its own dedicated check.
+    const holders = Object.values(GOVERNED_BUSINESS_ROLES)
+      .filter((r) => r.id !== "owner" && r.permissions.includes(id))
+      .map((r) => r.id)
+      .sort();
+    assert.deepEqual(holders, ["warehouseManager"], `exactly the Role the retired rule admitted: ${id}`);
+  }
+  assert.equal(
+    GOVERNED_BUSINESS_ROLES.warehouseManager.permissions.includes("warehouse.transferOrder.read"),
+    false,
+    "the scoped Role must not also hold the global id -- it would resolve GLOBAL and the scope would never apply",
+  );
 });
 
 check("Owner mirrors admin's warehouse grant too, since Owner always includes every ADMIN_ROLE id", () => {

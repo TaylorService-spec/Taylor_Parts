@@ -825,6 +825,41 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "warehouse.transferOrder",
     action: "read",
   }),
+  // ══════════ THE WAREHOUSE MANAGER'S ASSIGNED SITES, MINTED 2026-09-08 ══════════
+  //
+  // SEPARATE ids, not second meanings for the two above. The retired firestore.rules admitted two
+  // different populations through two different predicates:
+  //
+  //   isAdminOrDispatcher()          every warehouse, every transfer order
+  //   isAssignedToWarehouse(...)     the actor's ASSIGNED warehouses, and transfer orders on
+  //                                  either endpoint of one
+  //
+  // Overloading one id would force the resolver to guess which population a holder is entitled to,
+  // and both guesses are wrong in a way that matters: narrow silently strips an Operations Manager
+  // down to one site, broad hands a site manager the whole network.
+  //
+  // IT IS ALSO WHAT KEEPS PRECEDENCE SOUND. Deriving "this reader is scoped" from the PRESENCE of
+  // an assignment would narrow anyone who happens to hold both -- an Operations Manager who is also
+  // an operational warehouse manager -- which is exactly the accidental narrowing the resolution
+  // order exists to prevent. Holding the GLOBAL id is what makes a reader global, and it is checked
+  // first.
+  //
+  // A holder of the scoped id with NO assignment reads NOTHING: that is what the retired rule did,
+  // where isAssignedToWarehouse simply never matched. Not everything, and not an error.
+  Object.freeze({
+    id: "warehouse.record.read.assigned",
+    description:
+      "Read the warehouses records for the sites this actor is assigned to. The assigned-site half of the retired isAssignedToWarehouse read; the scope is derived server-side from the actor and can never be supplied by a caller.",
+    resource: "warehouse.record",
+    action: "read.assigned",
+  }),
+  Object.freeze({
+    id: "warehouse.transferOrder.read.assigned",
+    description:
+      "Read transfer_orders whose origin OR destination is a site this actor is assigned to. The assigned-site half of the retired read; matched on either endpoint and de-duplicated by document id.",
+    resource: "warehouse.transferOrder",
+    action: "read.assigned",
+  }),
 
   // --- Report field-level read capabilities (Issue #325 / ADR-007 D-226) ---
   // docs/specifications/governed-object-based-report-creator.md §4/§5,

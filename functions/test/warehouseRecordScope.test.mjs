@@ -42,6 +42,8 @@ const SCOPES = {
   [MANAGER_UID]: ["wh-main"],
   [MANY_UID]: ["wh-north", "wh-south"],
   [STRANGER_UID]: [],
+  // Globally authorized AND assigned to one site. Must read the network, not the site.
+  "uid-ops-and-warehouse": ["wh-main"],
 };
 const loadScope = async (uid) => SCOPES[uid] ?? [];
 
@@ -119,8 +121,22 @@ function fakeDb({ docsByCollection = {}, captured = {} } = {}) {
   };
 }
 
-/** An actor holding the compatibility `admin` Role — every capability under test, globally. */
-function authFixture(uid) {
+// WHO HOLDS WHICH CAPABILITY.
+//
+// Two resolvers, because the service uses two and the difference is the point. The GLOBAL ids are
+// resolved against the compatibility Roles through the actor's roleAssignments (the `admin` fixture
+// below); the SCOPED ids through the governed access feed, injected here.
+const SCOPED_HELD = {
+  [MANAGER_UID]: ["warehouse.record.read.assigned", "warehouse.transferOrder.read.assigned"],
+  [MANY_UID]: ["warehouse.record.read.assigned", "warehouse.transferOrder.read.assigned"],
+  // A person holding BOTH: the global authority AND the warehouse-manager one, with an assignment.
+  // The case most likely to be silently narrowed.
+  "uid-ops-and-warehouse": ["warehouse.record.read.assigned", "warehouse.transferOrder.read.assigned"],
+};
+const resolveScopedAccess = async (uid, capability) => (SCOPED_HELD[uid] ?? []).includes(capability);
+
+/** An actor holding one compatibility Role. `admin` carries the global reads; `technician` none of them. */
+function authFixture(uid, roleId) {
   return {
     users: [{ id: uid, data: { accessVersion: 0 } }],
     roleAssignments: [
@@ -128,7 +144,7 @@ function authFixture(uid) {
         id: `asg-${uid}`,
         data: {
           principalUid: uid,
-          roleId: "admin",
+          roleId,
           scope: { type: "global" },
           status: "active",
           accessVersionAtGrant: 0,
@@ -138,10 +154,26 @@ function authFixture(uid) {
   };
 }
 
+/**
+ * Which compatibility Role each fixture actor holds.
+ *
+ * The GLOBAL actor is not merely "unassigned" -- it HOLDS the global capability. That distinction is
+ * the fix for the precedence bug this model exists to avoid: if scope were inferred from having an
+ * assignment, `uid-ops-and-warehouse` below would be silently narrowed to one site.
+ */
+const ROLE_OF = {
+  [GLOBAL_UID]: "admin",
+  [MANAGER_UID]: "technician",
+  [MANY_UID]: "technician",
+  [STRANGER_UID]: "technician",
+  "uid-ops-and-warehouse": "admin",
+};
+
 function deps(uid, docs = {}, captured = {}) {
   return {
-    db: fakeDb({ docsByCollection: { ...authFixture(uid), ...docs }, captured }),
+    db: fakeDb({ docsByCollection: { ...authFixture(uid, ROLE_OF[uid] ?? "technician"), ...docs }, captured }),
     loadScope,
+    resolveScopedAccess,
   };
 }
 
@@ -196,6 +228,11 @@ test("BOTH sources over each collection declare the SAME scope", () => {
     GOVERNED_READS.transferOrderDirectory.scope,
     GOVERNED_READS.metadataTransferOrders.scope,
   );
+  assert.equal(GOVERNED_READS.warehouseDirectory.scope.capability, "warehouse.record.read.assigned");
+  assert.equal(
+    GOVERNED_READS.transferOrderDirectory.scope.capability,
+    "warehouse.transferOrder.read.assigned",
+  );
   assert.deepEqual(GOVERNED_READS.warehouseDirectory.scope.fields, ["__documentId__"]);
   assert.deepEqual(GOVERNED_READS.transferOrderDirectory.scope.fields, [
     "fromWarehouseId",
@@ -203,11 +240,13 @@ test("BOTH sources over each collection declare the SAME scope", () => {
   ]);
 });
 
-test("the capability ids stay UNSCOPED — the narrowing is on the read, not the id", () => {
-  // Other Roles hold these globally and legitimately. Constraining the id would break every one of
-  // them in order to constrain one Role.
+test("the GLOBAL capability ids are untouched — the scoped population is a SECOND id", () => {
+  // Other Roles hold these globally and legitimately. Constraining either id would have broken
+  // every one of them in order to express one Role's narrower reach, so the narrower reach got its
+  // own id instead -- the same shape the reorder seam uses for its managed population.
   assert.equal(GOVERNED_READS.warehouseDirectory.capability, "warehouse.record.read");
   assert.equal(GOVERNED_READS.transferOrderDirectory.capability, "warehouse.transferOrder.read");
+  assert.notEqual(GOVERNED_READS.warehouseDirectory.capability, GOVERNED_READS.warehouseDirectory.scope.capability);
 });
 
 // ============================ warehouses ============================
@@ -304,17 +343,52 @@ test("a transfer matching BOTH endpoints is returned ONCE, and an unrelated one 
 // ============================ precedence ============================
 
 test("holding a GLOBAL authority AND a warehouse assignment does NOT narrow the reader", async () => {
-  // The retired rule was a disjunction: an operations manager passed on isAdminOrDispatcher() and
-  // never reached the assignment branch. This is the "must not be accidentally narrowed" case, and
-  // it is expressed by the ABSENCE of an assignment being what marks a global reader -- so this
-  // asserts the shape that decides it, on an actor whose assignment loader returns nothing.
+  // THE CASE THE RESOLUTION ORDER EXISTS FOR. `uid-ops-and-warehouse` holds the global capability,
+  // the scoped capability, AND an assignment to wh-main. The retired rule was a disjunction: this
+  // person passed on isAdminOrDispatcher() and never reached isAssignedToWarehouse. Inferring
+  // "scoped" from HAVING an assignment would silently return them one site's worth and no error.
   const captured = {};
   const res = await readGovernedList(
-    { actorUid: GLOBAL_UID, sourceId: "transferOrderDirectory" },
-    deps(GLOBAL_UID, TRANSFERS, captured),
+    { actorUid: "uid-ops-and-warehouse", sourceId: "transferOrderDirectory" },
+    deps("uid-ops-and-warehouse", TRANSFERS, captured),
   );
-  assert.equal(res.items.length, 4, "the whole network, not one site");
-  assert.equal(scopeClauses(captured).length, 0);
+  assert.equal(res.items.length, 4, "the whole network, not the assigned site");
+  assert.equal(scopeClauses(captured).length, 0, "no scope clause was added for a global reader");
+});
+
+test("a scoped holder with NO assignment reads nothing — authorized, and empty", async () => {
+  // What the retired rule did: isAssignedToWarehouse simply never matched. Not everything, and not
+  // a denial. The distinction matters because a denial and an empty list mean different things to
+  // every surface that renders them.
+  const unassigned = "uid-manager-no-sites";
+  SCOPED_HELD[unassigned] = ["warehouse.record.read.assigned"];
+  const captured = {};
+  const res = await readGovernedList(
+    { actorUid: unassigned, sourceId: "warehouseDirectory" },
+    deps(unassigned, { warehouses: [{ id: "wh-main", data: {} }] }, captured),
+  );
+  assert.deepEqual(res.items, [], "no rows");
+  assert.equal(res.hasMore, false);
+
+  const count = await countGovernedList(
+    { actorUid: unassigned, sourceId: "warehouseDirectory" },
+    deps(unassigned, { warehouses: [{ id: "wh-main", data: {} }] }, {}),
+  );
+  assert.deepEqual(count, { count: 0, atLeast: false }, "the count agrees with the read");
+});
+
+test("a scoped capability opens ONLY the sources that declare it", async () => {
+  // The scoped warehouse capability is not a skeleton key. A source with no `scope` still resolves
+  // on its own capability alone, so holding the assigned-site id buys nothing anywhere else.
+  const captured = {};
+  await assert.rejects(
+    () =>
+      readGovernedList(
+        { actorUid: MANAGER_UID, sourceId: "supplierDirectory" },
+        deps(MANAGER_UID, { suppliers: [{ id: "s-1", data: {} }] }, captured),
+      ),
+    /not authorized/,
+  );
 });
 
 // ============================ refusal, paging, counting ============================
@@ -325,7 +399,7 @@ test("an unauthorized actor reads ZERO rows and the collection is never touched"
     // No role assignment for this actor: authorization fails before any business read.
     const db = fakeDb({ docsByCollection: { users: [], roleAssignments: [], ...TRANSFERS }, captured });
     await assert.rejects(
-      () => readGovernedList({ actorUid: STRANGER_UID, sourceId }, { db, loadScope }),
+      () => readGovernedList({ actorUid: STRANGER_UID, sourceId }, { db, loadScope, resolveScopedAccess }),
       /not authorized/,
       `${sourceId} must refuse`,
     );
