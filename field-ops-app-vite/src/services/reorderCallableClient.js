@@ -33,6 +33,15 @@ export const REORDER_CALLABLES = Object.freeze({
   // pair above: no fallback to Firestore, no client-asserted identity.
   cancelReorderRequest: "cancelReorderRequest",
   voidPurchaseOrder: "voidPurchaseOrder",
+  // The five reorder TRANSITIONS, one callable each. Approve and Reject are separate names because
+  // they are separate capabilities and separate outcomes -- collapsing them behind one "review"
+  // endpoint with a decision argument would put the choice of authority in the payload.
+  approveReorderRequest: "approveReorderRequest",
+  rejectReorderRequest: "rejectReorderRequest",
+  assignReorderRequest: "assignReorderRequest",
+  startReorderPurchasing: "startReorderPurchasing",
+  postReorderPurchasingUpdate: "postReorderPurchasingUpdate",
+  markReorderRequestReceived: "markReorderRequestReceived",
 });
 
 async function defaultInvoke(name, payload) {
@@ -130,6 +139,48 @@ export async function submitRecordReorderPurchaseOrder(input, invoke = defaultIn
     idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
   };
   return invoke(REORDER_CALLABLES.recordReorderPurchaseOrder, payload);
+}
+
+// ════════════════════ THE FIVE TRANSITIONS ════════════════════
+//
+// None of these sends an actor field. reviewedBy, assignedBy, purchasingStartedBy,
+// lastPurchasingUpdateBy and receivedBy are all written by the server from request.auth.uid -- the
+// retired rules pinned every one of them to exactly that, and there is no parameter here to carry
+// one. Nor do they send a status: the transition IS the command name.
+
+/** Approve a pending review. Hands the request to the Parts Manager. */
+export async function submitApproveReorderRequest(reorderRequestId, notes, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.approveReorderRequest, { reorderRequestId, notes: notes || null });
+}
+
+/** Reject a pending review. Terminal, and the server requires the reason independently. */
+export async function submitRejectReorderRequest(reorderRequestId, notes, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.rejectReorderRequest, { reorderRequestId, notes });
+}
+
+/** Assign to a Parts Associate. `assignedBy` is the server's, never sent. */
+export async function submitAssignReorderRequest(reorderRequestId, assignedToUserId, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.assignReorderRequest, { reorderRequestId, assignedToUserId });
+}
+
+/** Start purchasing. Assignee-scoped server-side; nothing is sent about who is calling. */
+export async function submitStartReorderPurchasing(reorderRequestId, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.startReorderPurchasing, { reorderRequestId });
+}
+
+/** Post purchasing progress. The editable set is closed server-side, not by what is sent here. */
+export async function submitReorderPurchasingUpdate(reorderRequestId, fields, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.postReorderPurchasingUpdate, {
+    reorderRequestId,
+    purchasingNotes: fields?.purchasingNotes ?? null,
+    vendorContacted: Boolean(fields?.vendorContacted),
+    expectedAvailabilityDate: fields?.expectedAvailabilityDate ?? null,
+  });
+}
+
+/** Mark received. ORDERED -> RECEIVED, assignee-scoped, both stamps server-derived. */
+export async function submitMarkReorderRequestReceived(reorderRequestId, invoke = defaultInvoke) {
+  return invoke(REORDER_CALLABLES.markReorderRequestReceived, { reorderRequestId });
 }
 
 /**

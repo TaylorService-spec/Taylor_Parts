@@ -1,6 +1,14 @@
-import { submitCancelReorderRequest, submitCreateReorderRequest } from "../services/reorderCallableClient.js";
+import {
+  submitApproveReorderRequest,
+  submitAssignReorderRequest,
+  submitCancelReorderRequest,
+  submitCreateReorderRequest,
+  submitMarkReorderRequestReceived,
+  submitRejectReorderRequest,
+  submitReorderPurchasingUpdate,
+  submitStartReorderPurchasing,
+} from "../services/reorderCallableClient.js";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
-import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth, db } from "../firebase/firebase";
 import { isWriteBlocked } from "../config/env";
 import { notifyReorderRequestsChanged } from "./reorderRequestsChanged";
@@ -52,7 +60,6 @@ import { notifyReorderRequestsChanged } from "./reorderRequestsChanged";
 // this file -- they're set exclusively by
 // domain/reorderPurchaseOrders.js's recordPurchaseOrder(), atomically
 // together with creating the linked Reorder Purchase Order record.
-const baseReorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
 
 /**
  * The reorder store, wrapped so a successful mutation announces itself.
@@ -69,21 +76,22 @@ const baseReorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION
  * AFTER SUCCESS ONLY -- the promise chain means a rejected write announces nothing, so a failed
  * mutation cannot make every listening view re-read for a change that did not happen.
  */
-export const reorderRequestsStore = {
-  ...baseReorderRequestsStore,
-  add(data) {
-    return baseReorderRequestsStore.add(data).then((result) => {
-      notifyReorderRequestsChanged();
-      return result;
-    });
-  },
-  update(id, data) {
-    return baseReorderRequestsStore.update(id, data).then((result) => {
-      notifyReorderRequestsChanged();
-      return result;
-    });
-  },
-};
+/**
+ * Announce a successful transition, then pass the result through.
+ *
+ * The wrapped store did this for every mutation. Losing it would silently undo the cross-component
+ * refresh built earlier in this migration: assigning or receiving from one screen would leave a
+ * stale queue on another. AFTER SUCCESS ONLY -- a rejected command announces nothing.
+ */
+function announce(result) {
+  notifyReorderRequestsChanged();
+  return result;
+}
+
+// THE STORE IS GONE. Every reorder write is a trusted command now, so the wrapper had no caller
+// left -- and a store is a live write path to a governed collection, not a harmless export. The
+// change signal it carried moved to announce() above, which the five transitions call after a
+// SUCCESSFUL command: same guarantee, at the calls that still exist.
 
 // Zero-history reorder behavior sprint, PR 3 (docs/specifications/
 // inventory-zero-history-reorder-behavior.md). recommendationStatus/
@@ -232,6 +240,16 @@ export function getDisplayQty(request) {
 // rejection is terminal (`status` = REJECTED, `reviewDecision` =
 // REJECTED) and leaves `currentOwner` with Inventory -- there's no
 // further hand-off for a rejected request.
+// TWO ACTIONS BEHIND ONE FUNCTION SIGNATURE, and the split is now visible in the authority.
+// Approve and Reject are separate capabilities the catalog already declared
+// (reorder.request.approve / reorder.request.reject), and they produce different results -- one
+// hands the request to the Parts Manager, the other terminates it and requires a reason. The caller
+// still REQUESTS a decision; it no longer decides which authority applies or whether the transition
+// is legal.
+//
+// The signature is unchanged so the calling surfaces are untouched, and the client-side validation
+// is kept because it turns a round trip into a sentence a person can act on. The server enforces
+// both independently.
 export function reviewReorderRequest(requestId, { decision, notes }) {
   if (decision !== REORDER_REQUEST_STATUS.APPROVED && decision !== REORDER_REQUEST_STATUS.REJECTED) {
     throw new Error(`Invalid review decision: ${decision}`);
@@ -241,16 +259,9 @@ export function reviewReorderRequest(requestId, { decision, notes }) {
     throw new Error("Review notes are required when rejecting a Reorder Request.");
   }
 
-  const isApproved = decision === REORDER_REQUEST_STATUS.APPROVED;
-
-  return reorderRequestsStore.update(requestId, {
-    status: isApproved ? REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER : REORDER_REQUEST_STATUS.REJECTED,
-    reviewDecision: decision,
-    reviewedBy: auth.currentUser?.uid ?? null,
-    reviewedAt: Date.now(),
-    reviewNotes: trimmedNotes || null,
-    currentOwner: isApproved ? REORDER_REQUEST_OWNER.PARTS_MANAGER : REORDER_REQUEST_OWNER.INVENTORY,
-  });
+  const submit =
+    decision === REORDER_REQUEST_STATUS.APPROVED ? submitApproveReorderRequest : submitRejectReorderRequest;
+  return submit(requestId, trimmedNotes).then(announce);
 }
 
 // Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The only
@@ -261,19 +272,14 @@ export function reviewReorderRequest(requestId, { decision, notes }) {
 // not a picker. This is the platform's first per-user workflow
 // ownership field -- `currentOwner` stays role-level (PARTS_ASSOCIATE),
 // while `assignedToUserId` carries the individual identity.
+// `assignedBy` is no longer sent: the server writes the actor it resolved from request.auth.uid,
+// which is exactly what the retired rule pinned it to.
 export function assignReorderRequest(requestId, { assignedToUserId }) {
   const trimmedUserId = assignedToUserId?.trim() || "";
   if (!trimmedUserId) {
     throw new Error("A Parts Associate user ID is required to assign this Reorder Request.");
   }
-
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
-    currentOwner: REORDER_REQUEST_OWNER.PARTS_ASSOCIATE,
-    assignedToUserId: trimmedUserId,
-    assignedBy: auth.currentUser?.uid ?? null,
-    assignedAt: Date.now(),
-  });
+  return submitAssignReorderRequest(requestId, trimmedUserId).then(announce);
 }
 
 // Sprint 2.1.7 -- Purchase Execution Foundation. The only writer of a
@@ -285,12 +291,11 @@ export function assignReorderRequest(requestId, { assignedToUserId }) {
 // they can still read the request. currentOwner and the assignment
 // fields are untouched -- this is the same person's work moving from
 // waiting to in-progress, not a hand-off.
+// ASSIGNEE-SCOPED SERVER-SIDE. The retired rule required `auth.uid == resource.assignedToUserId`
+// OUTSIDE its role disjunction, so it bound an administrator too. The server re-reads the record
+// and enforces it; nothing here asserts who the caller is.
 export function startPurchasing(requestId) {
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
-    purchasingStartedAt: Date.now(),
-    purchasingStartedBy: auth.currentUser?.uid ?? null,
-  });
+  return submitStartReorderPurchasing(requestId).then(announce);
 }
 
 // Sprint 2.1.8 -- Purchasing Progress Update. The only writer of a
@@ -305,14 +310,14 @@ export function startPurchasing(requestId) {
 // any Vendor Management record -- purchasingNotes/vendorContacted/
 // expectedAvailabilityDate are informal progress fields on the
 // existing Reorder Request, not a new object.
+// Assignee-scoped, and the editable set is CLOSED server-side -- the rule's hasOnly() allowlist is
+// what kept this from being a general-purpose write on a record in flight.
 export function updatePurchasingProgress(requestId, { purchasingNotes, vendorContacted, expectedAvailabilityDate }) {
-  return reorderRequestsStore.update(requestId, {
-    purchasingNotes: purchasingNotes?.trim() || null,
-    vendorContacted: !!vendorContacted,
-    expectedAvailabilityDate: expectedAvailabilityDate || null,
-    lastPurchasingUpdateAt: Date.now(),
-    lastPurchasingUpdateBy: auth.currentUser?.uid ?? null,
-  });
+  return submitReorderPurchasingUpdate(requestId, {
+    purchasingNotes,
+    vendorContacted,
+    expectedAvailabilityDate,
+  }).then(announce);
 }
 
 // Sprint 2.1.11 -- Receiving (Reorder Request closeout). The only
@@ -330,12 +335,11 @@ export function updatePurchasingProgress(requestId, { purchasingNotes, vendorCon
 // the ledger via a Cloud-Function-mediated path once Firebase Blaze
 // is enabled), genuinely blocked on Blaze (issue #15), not solved by
 // this function.
+// Assignee-scoped, and ORDERED -> RECEIVED specifically. That prerequisite carries the linked-PO
+// semantics: a request becomes ORDERED only when a purchase order is recorded against it, so this
+// status check is what stops something never ordered from being marked received.
 export function receiveReorderRequest(requestId) {
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.RECEIVED,
-    receivedAt: Date.now(),
-    receivedBy: auth.currentUser?.uid ?? null,
-  });
+  return submitMarkReorderRequestReceived(requestId).then(announce);
 }
 
 // Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/

@@ -55,6 +55,18 @@ export {
   // collection LIST. Same capability as the create it serves; no warehouse.list capability exists.
   listReorderWarehouseOptions,
 } from "./reorderRequest/reorderCallables";
+// The five reorder TRANSITIONS. One command per transition, each on the capability the catalog
+// already declares -- no replacement generic write authority. Three of them (startPurchasing,
+// postPurchasingUpdate, markReceived) additionally enforce the ASSIGNEE record scope, which in the
+// retired Rules sat outside the role disjunction and therefore bound an administrator too.
+export {
+  approveReorderRequest,
+  rejectReorderRequest,
+  assignReorderRequest,
+  startReorderPurchasing,
+  postReorderPurchasingUpdate,
+  markReorderRequestReceived,
+} from "./reorderRequest/reorderTransitionCommands";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
