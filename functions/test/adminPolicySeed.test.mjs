@@ -223,6 +223,19 @@ test("D-3 EVIDENCE: warehouseManager is seeded with GLOBAL Transfer Orders read"
 
 // ============================ the seed, over PostgreSQL ============================
 
+// ════════════════════ WHY THIS SUITE MUST RUN SERIALLY ════════════════════
+//
+// This test DROPS AND RE-MIGRATES the schema, and so does adminPolicyPostgres.test.mjs. `node --test`
+// runs FILES concurrently by default, so the two race: one drops the schema while the other is
+// mid-transaction, and the loser fails with `relation "eos_policy.tenants" does not exist`.
+//
+// `npm run test:adminPolicyPostgres` therefore passes `--test-concurrency=1`. Reproduced without it
+// three times out of three; with it, clean.
+//
+// CAUGHT BY CI, NOT LOCALLY, and the reason is worth recording: locally the two files had only ever
+// been run SEPARATELY. The npm script that runs them together was registered and never executed
+// against a database until CI did it -- so "both suites pass" was true of two runs that never
+// happened at the same time.
 test("the seed runs over PostgreSQL, and is idempotent there too", { skip: PG_SKIP }, async () => {
   // Idempotence over a Map and idempotence over a store with unique constraints are different
   // claims. A second run must not merely skip -- it must not raise a duplicate key either.
