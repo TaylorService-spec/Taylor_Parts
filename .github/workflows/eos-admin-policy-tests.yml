@@ -47,7 +47,11 @@ on:
       - "field-ops-app-vite/src/modules/administration/RolePolicyGrid.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx"
       - "field-ops-app-vite/src/modules/administration/AdminObjects.jsx"
+      - "field-ops-app-vite/src/domain/adminWorkflowView.js"
+      - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/test/adminPolicyView.test.mjs"
+      - "field-ops-app-vite/test/adminWorkflowView.test.mjs"
+      - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "field-ops-app-vite/test/entityRegistry.test.mjs"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
       - ".github/workflows/eos-admin-policy-tests.yml"
@@ -164,7 +168,7 @@ jobs:
       # The view model draws what the server decided and must never become a second implementation
       # of the resolution rules -- one of these assertions is exactly that boundary.
       - name: Pure view model and entity registry (node:test)
-        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs
+        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)

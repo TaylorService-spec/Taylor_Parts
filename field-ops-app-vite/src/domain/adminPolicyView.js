@@ -99,9 +99,18 @@ export function buildObjectRow({ key, label, domain = null, cred = {}, governed 
  * @param objectCred the server-resolved CRED for the parent Object, used to EXPLAIN, never to decide
  * @param override   the stored partial override, or null. A verb absent from it is inherited.
  */
-export function buildFieldRow({ key, label, effective = {}, objectCred = {}, override = null } = {}) {
+export function buildFieldRow({ key, label, effective = {}, objectCred = {}, override = null, governed = null } = {}) {
   const cells = {};
   for (const verb of VERBS) {
+    // UNGOVERNED INHERITS DOWNWARD. If no capability governs this verb on the OBJECT, no field of
+    // that object can carry it either -- there is no enforcement point at any level. Drawing it as
+    // an empty checkbox on the field rows would reintroduce, one level down, the exact failure the
+    // third cell state exists to prevent: an administrator asking for access nobody can grant.
+    if (governed && governed[verb] === false) {
+      cells[verb] = { state: CELL_STATE.UNAVAILABLE, inheritance: null };
+      continue;
+    }
+
     const stated = override && isBool(override[verb]) ? override[verb] : null;
     const inheritance = stated === null ? INHERITANCE.INHERITED : INHERITANCE.OVERRIDDEN;
 
@@ -135,7 +144,9 @@ export function buildRolePolicyGrid({ objects = [], fieldsByObjectKey = {} } = {
         ...buildObjectRow(object),
         fields: Object.freeze(
           (fieldsByObjectKey[object.key] ?? []).map((field) =>
-            buildFieldRow({ ...field, objectCred: object.cred ?? {} }),
+            // The object's `governed` map is passed DOWN, so an ungoverned verb reads the same on a
+            // field as it does on its object.
+            buildFieldRow({ ...field, objectCred: object.cred ?? {}, governed: object.governed ?? null }),
           ),
         ),
       }),

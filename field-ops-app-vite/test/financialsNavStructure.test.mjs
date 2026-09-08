@@ -207,7 +207,10 @@ test("no existing domain's routes changed — every non-financials domain path s
     // both /administration and /administration/employees to /administration/users, which is a
     // routing fact rather than a nav item, and is asserted where routes are.
     "/administration/overview", "/administration/users", "/administration/roles-permissions",
-    "/administration/objects", "/administration/permission-preview", "/administration/vehicles",
+    // Workflows joined 2026-09-08 -- the third axis of Administration, beside Objects (what data
+    // exists) and Roles & Permissions (who may touch it).
+    "/administration/objects", "/administration/workflows",
+    "/administration/permission-preview", "/administration/vehicles",
     "/administration/regions", "/administration/company-settings", "/administration/duplicate-rules",
     "/administration/warehouse-racking",
     // CERT-FIN-02. Financial Policy is Administration, not Financials, deliberately: it is company

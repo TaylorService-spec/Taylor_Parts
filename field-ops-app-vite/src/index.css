@@ -885,6 +885,56 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-table tr.fo-row-nested td { background: var(--color-surface-sunken); }
 .fo-nested-label { padding-left: 28px; }
 
+/* Administration > Workflows (modules/administration/AdminWorkflows.jsx).
+
+   THE DRAFT/PUBLISHED DISTINCTION IS THE LOAD-BEARING ONE on that screen: a draft routes no
+   records, and a reader who mistakes one for a live process would believe the platform is running
+   something it is not. Draft is therefore the QUIET treatment and published the emphatic one --
+   the opposite of the usual instinct to highlight the thing being edited. */
+.fo-wf-status {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.fo-wf-status--draft {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+}
+.fo-wf-status--published {
+  background: var(--color-success-surface);
+  color: var(--color-success);
+}
+
+/* The version summary. A definition list rather than a table: these are labelled facts about one
+   thing, not rows of comparable things, and a table would invite scanning down a column that has
+   only ever one value in it. */
+.fo-wf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 8px 0 0;
+}
+.fo-wf-meta div { display: flex; gap: 6px; align-items: baseline; }
+.fo-wf-meta dt { color: var(--color-text-secondary); font-size: 13px; }
+.fo-wf-meta dd { margin: 0; font-size: 14px; font-weight: 600; }
+
+/* THE COUNTS ON A SELECTED FAMILY BUTTON.
+
+   `.fo-muted` is a fixed secondary text colour chosen against the page ground. Inside a FILLED
+   button that ground is the brand fill, and the pair was never checked together -- observed in the
+   browser as dark-on-dark, effectively illegible on the selected button while fine on the others.
+
+   Fixed by inheriting the button's own foreground and carrying the de-emphasis with opacity
+   instead, so the counts stay secondary against whichever ground the button actually has. */
+.fo-pill-row button .fo-muted {
+  color: inherit;
+  opacity: 0.75;
+}
+
 .fo-muted { color: var(--color-text-secondary); font-size: 14px; }
 
 /* Contextual-help slice -- EmptyState's `guidance` line (the "why this collection

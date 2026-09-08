@@ -192,6 +192,10 @@ export default function RolePolicyGrid({ role, label }) {
                       effective: cred,
                       objectCred: cred,
                       override: null,
+                      // The object's ungoverned verbs are ungoverned for its fields too. Without
+                      // this a field showed Delete as an empty checkbox while its object showed a
+                      // dash -- inviting a request for access no capability can grant.
+                      governed: ungovernedVerbs(entry),
                     });
                     return (
                       <tr key={`${entry.object}:${field.id}`} className="fo-row-nested">

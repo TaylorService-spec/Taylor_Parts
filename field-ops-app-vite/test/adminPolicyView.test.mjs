@@ -230,3 +230,51 @@ test("a workflow with no versions at all is handled", () => {
   assert.equal(summary.activeVersion, null);
   assert.equal(summary.versionCount, 0);
 });
+
+// ============================ ungoverned inherits downward ============================
+
+test("a verb no capability governs is UNAVAILABLE on the FIELDS too, not an empty box", () => {
+  // FOUND IN THE BROWSER, not in a unit test: the object row drew Delete as a dash and its field
+  // rows drew it as an empty checkbox. That reintroduces one level down the exact failure the third
+  // state exists to prevent -- an administrator asking for access no capability can grant.
+  const row = buildFieldRow({
+    key: "name", label: "Name",
+    effective: CRED(false, true, true, false),
+    objectCred: CRED(false, true, true, false),
+    override: null,
+    governed: { C: true, R: true, E: true, D: false },
+  });
+  assert.equal(row.cells.D.state, CELL_STATE.UNAVAILABLE, "ungoverned at the object is ungoverned at the field");
+  assert.equal(row.cells.D.inheritance, null, "and it is not an inheritance question at all");
+  assert.equal(row.cells.R.state, CELL_STATE.GRANTED, "the governed verbs are unaffected");
+});
+
+test("the grid passes each object's governed map down to its fields", () => {
+  const grid = buildRolePolicyGrid({
+    objects: [{
+      key: "customer", label: "Customer",
+      cred: CRED(false, true, true, false),
+      governed: { C: false, R: true, E: true, D: false },
+    }],
+    fieldsByObjectKey: {
+      customer: [{ key: "name", label: "Name", effective: CRED(false, true, true, false) }],
+    },
+  });
+  const field = grid[0].fields[0];
+  assert.equal(grid[0].cells.D.state, CELL_STATE.UNAVAILABLE, "the object says ungoverned");
+  assert.equal(field.cells.D.state, CELL_STATE.UNAVAILABLE, "and so does its field");
+  assert.equal(grid[0].cells.C.state, CELL_STATE.UNAVAILABLE);
+  assert.equal(field.cells.C.state, CELL_STATE.UNAVAILABLE);
+});
+
+test("with no governed map, every verb is still answerable", () => {
+  // Absent means "all four are governed" -- the pre-existing behaviour, unchanged, so a caller that
+  // does not know about ungoverned verbs gets the same answers it always did.
+  const row = buildFieldRow({
+    key: "name", label: "Name",
+    effective: CRED(false, true, false, false),
+    objectCred: CRED(false, true, false, false),
+  });
+  assert.equal(row.cells.D.state, CELL_STATE.DENIED);
+  assert.equal(row.cells.D.inheritance, INHERITANCE.INHERITED);
+});

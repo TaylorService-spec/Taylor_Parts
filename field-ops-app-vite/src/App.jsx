@@ -70,6 +70,7 @@ const AdminWarehouseRacking = lazy(() => import("./modules/administration/AdminW
 const AdminFinancialPolicy = lazy(() => import("./modules/administration/AdminFinancialPolicy"));
 const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
+const AdminWorkflows = lazy(() => import("./modules/administration/AdminWorkflows.jsx"));
 const UserDetail = lazy(() => import("./modules/administration/UserDetail.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
 const AdminEmailCommunications = lazy(() => import("./modules/administration/AdminEmailCommunications.jsx"));
@@ -447,6 +448,12 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // AppRoutes below, where a redirect can be a route rather than a nav item pretending to be one.
   if (domain.key === "administration" && item.key === "objects") {
     return <AdminObjects />;
+  }
+  // Workflows -- the business processes, beside Objects and Roles & Permissions because they are the
+  // third axis of the same model: Objects is what data exists, Roles & Permissions is who may touch
+  // it, Workflows is what may be DONE. Neither of the first two grants the third.
+  if (domain.key === "administration" && item.key === "workflows") {
+    return <AdminWorkflows />;
   }
   if (domain.key === "customers" && item.key === "salesOrders") {
     return <SalesOrdersList />;
