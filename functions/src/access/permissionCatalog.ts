@@ -100,6 +100,36 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "contact.record",
     action: "create",
   }),
+  // Contact UPDATE, ruled 2026-09-07 conditional on measured parity. The retired rule was
+  // `allow create, update: if isAdminOrDispatcher()` -- create and update shared ONE predicate,
+  // with no field allowlist, no record scope and no narrower condition on either. So this mints the
+  // update half at exactly that population, and `crm.contact.create` is NOT reused as update
+  // authority: a caller authorized to add a contact is not thereby authorized to rewrite one.
+  Object.freeze({
+    id: "crm.contact.update",
+    description:
+      "Update Contact records. Confers no create, no delete and no read.",
+    resource: "contact.record",
+    action: "update",
+  }),
+  // Location CREATE and UPDATE. Measured independently as the ruling required, and the retired rule
+  // is the same shape as contacts: `allow create, update: if isAdminOrDispatcher()`, no record or
+  // field restriction on either, `allow delete: if false`. Two capabilities because they are two
+  // actions, and NO delete capability -- there is no live delete operation to authorize.
+  Object.freeze({
+    id: "crm.location.create",
+    description:
+      "Create Customer Location records. Confers no update, no delete and no read.",
+    resource: "location.record",
+    action: "create",
+  }),
+  Object.freeze({
+    id: "crm.location.update",
+    description:
+      "Update Customer Location records. Confers no create, no delete and no read.",
+    resource: "location.record",
+    action: "update",
+  }),
   Object.freeze({
     id: "crm.location.read",
     description: "Read Customer Location records. Confers no write.",

@@ -15,6 +15,10 @@ on:
       - "field-ops-app-vite/src/domain/contactImport.js"
       - "functions/src/crm/contactImportCommand.ts"
       - "functions/test/contactImportCommand.test.mjs"
+      - "functions/src/crm/crmWriteCommands.ts"
+      - "functions/test/crmWriteCommands.test.mjs"
+      - "field-ops-app-vite/src/domain/accounts.js"
+      - "field-ops-app-vite/src/domain/locations.js"
       - "field-ops-app-vite/test/contactProvenance.test.jsx"
       - ".github/workflows/contact-provenance-tests.yml"
   push:
@@ -24,6 +28,10 @@ on:
       - "field-ops-app-vite/src/domain/contactImport.js"
       - "functions/src/crm/contactImportCommand.ts"
       - "functions/test/contactImportCommand.test.mjs"
+      - "functions/src/crm/crmWriteCommands.ts"
+      - "functions/test/crmWriteCommands.test.mjs"
+      - "field-ops-app-vite/src/domain/accounts.js"
+      - "field-ops-app-vite/src/domain/locations.js"
       - "field-ops-app-vite/test/contactProvenance.test.jsx"
       - ".github/workflows/contact-provenance-tests.yml"
   workflow_dispatch:

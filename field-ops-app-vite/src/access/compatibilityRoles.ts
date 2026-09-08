@@ -115,6 +115,12 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   // ruling is explicit that no duplicate admin/owner rows may be added to restate that derivation,
   // and that no other Role receives these.
   "crm.contact.create",
+  // The contact UPDATE and the two location writes, ruled 2026-09-07. Each replaces a plain
+  // isAdminOrDispatcher() rule with no narrower field or record condition, so each lands in the
+  // shared base at exactly that population: dispatcher explicit, admin and owner derived.
+  "crm.contact.update",
+  "crm.location.create",
+  "crm.location.update",
   "supplier.record.read",
   "supplier.catalog.read",
   // Owner ruling 2026-09-07, the GLOBAL half of the work-order and technician reads. Both replace

@@ -1,5 +1,5 @@
 import { LOCATIONS_COLLECTION } from "./constants";
-import { makeCollectionStore } from "../firebase/collectionStore";
+import { submitCreateLocation, submitUpdateLocation } from "../services/crmWriteClient";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
 // A Location is: { id, accountId, name, address, accessNotes?,
@@ -13,12 +13,16 @@ import { makeCollectionStore } from "../firebase/collectionStore";
 // No standalone Locations list/detail page exists this sprint --
 // Locations are shown only nested inside AccountDetail.jsx. See
 // hooks/useLocationsForAccount.js for the scoped read.
-export const locationsStore = makeCollectionStore(LOCATIONS_COLLECTION);
 
+
+// THROUGH THE TRUSTED COMMANDS. Locations gain the four provenance fields they never had: the
+// store stamped createdAt/updatedAt and nothing else, so who created or last changed a site was
+// simply not recorded. The server writes all four now, which is a small, deliberate widening of what
+// is STORED -- not of who may store it.
 export function createLocation(accountId, data) {
-  return locationsStore.add({ ...data, accountId });
+  return submitCreateLocation(accountId, data);
 }
 
 export function updateLocation(id, data) {
-  return locationsStore.update(id, { ...data, updatedAt: Date.now() });
+  return submitUpdateLocation(id, data);
 }

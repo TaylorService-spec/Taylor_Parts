@@ -1,5 +1,5 @@
 import { ACCOUNTS_COLLECTION } from "./constants";
-import { makeCollectionStore, TIMESTAMP_SHAPE } from "../firebase/collectionStore";
+import { submitCreateAccount, submitUpdateAccount } from "../services/crmWriteClient";
 import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
@@ -50,9 +50,12 @@ import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 //
 // Declared here rather than inferred anywhere: the entity definition is the authority on the type,
 // and this line is the writer agreeing with it.
-export const accountsStore = makeCollectionStore(ACCOUNTS_COLLECTION, {
-  timestamps: TIMESTAMP_SHAPE.SERVER_TIMESTAMP,
-});
+// THE STORE IS GONE with the writes it carried. The timestamp-type hazard it existed to solve is
+// gone with it, and worth recording because it was expensive to find: a NUMBER sorts below every
+// Firestore Timestamp under `updatedAt DESC` (Firestore orders by type first), so a newly created
+// Customer landed at the BOTTOM of a 106-row list with a 50-row page and was unreachable from the
+// list it was created in. The trusted commands write epoch millis for BOTH create and update, from
+// one clock, so create and update can no longer disagree about the type.
 
 // ============================ THE DERIVED SEARCH NAME ============================
 //
@@ -75,16 +78,22 @@ function withDerivedSearchName(data) {
   return { ...data, [SEARCH_NAME_FIELD]: normalizeNameForSearch(data.name) };
 }
 
+// THROUGH THE TRUSTED COMMAND. The search-name derivation moved with the write: it is a promise
+// that the derived field is maintained wherever the source field is written, and the server is now
+// where it is written. `withDerivedSearchName` stays for the seeder/backfill paths that still call
+// it directly.
 export function createAccount(data) {
-  return accountsStore.add(withDerivedSearchName(data));
+  return submitCreateAccount(data);
 }
 
+// THE SAME SHAPE THE CREATE PATH WRITES, and now unavoidably so: both stamps come from one server
+// clock. The defect this note used to describe -- a hardcoded Date.now() on update re-breaking a
+// record created correctly, sinking it down the date-ordered list the moment anybody touched it --
+// cannot recur, because the client no longer supplies a timestamp at all.
+//
+// THE GOVERNED COMMERCIAL FIELDS are enforced server-side: paymentTerms and taxStatus require
+// customer.governedField.write, which dispatcher does not hold. That is the retired rule's
+// isAdmin() branch, expressed as authority instead of a role name.
 export function updateAccount(id, data) {
-  // THE SAME SHAPE THE CREATE PATH WRITES. This hardcoded Date.now(), so an edit re-broke a record
-  // that had been created correctly -- the account sank down the date-ordered list the moment
-  // anybody touched it. Asking the store for its own governed stamp means the two can never drift.
-  return accountsStore.update(id, {
-    ...withDerivedSearchName(data),
-    updatedAt: accountsStore.timestampValue(),
-  });
+  return submitUpdateAccount(id, data);
 }

@@ -100,7 +100,13 @@ describe("useWorkOrder -- read-error contract (H14)", () => {
     await waitFor(() => expect(result.current.error).toContain("Can't reach the server"));
 
     scopedResult = { ok: true, result: "OK", workOrder: { id: "wo-1", woNumber: "WO-1" }, scope: "GLOBAL" };
-    act(() => result.current.retry());
+    // AWAITED. retry() kicks an async read; without awaiting the act, the assertion can observe
+    // the state between the retry and its resolution -- which passed in isolation and failed in a
+    // full run, the classic shape of a test that is timing-dependent rather than wrong.
+    await act(async () => {
+      result.current.retry();
+      await Promise.resolve();
+    });
     await waitFor(() => expect(result.current.error).toBe(null));
     expect(result.current.workOrder.id).toBe("wo-1");
   });

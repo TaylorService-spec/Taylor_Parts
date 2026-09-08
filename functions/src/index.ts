@@ -199,6 +199,18 @@ export { createTechnician } from "./workOrder/technicianCommands";
 // workflow: one atomic batch create, gated on crm.contact.create.
 export { importContacts } from "./crm/contactImportCommand";
 
+// CRM writes -- Account, Contact and Location. These replace the last store-mediated client-direct
+// business writes. The Account pair additionally enforces the governed-commercial-field split the
+// retired rule carried (paymentTerms/taxStatus require customer.governedField.write).
+export {
+  createAccountRecord,
+  updateAccountRecord,
+  createContactRecord,
+  updateContactRecord,
+  createLocationRecord,
+  updateLocationRecord,
+} from "./crm/crmWriteCommands";
+
 // --- Issue #325 / ADR-007 D-FN surface: trusted report execution ---
 // Same posture as the six commands above: deployed to eos-platform-sandbox under the per-environment
 // activation program, NOT deployed to the production project. No client calls it (the client

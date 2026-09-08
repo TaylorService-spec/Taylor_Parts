@@ -1,5 +1,5 @@
 import { CONTACTS_COLLECTION } from "./constants";
-import { makeCollectionStore } from "../firebase/collectionStore";
+import { submitCreateContact, submitUpdateContact } from "../services/crmWriteClient";
 import { auth } from "../firebase/firebase";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
@@ -9,7 +9,7 @@ import { auth } from "../firebase/firebase";
 // AccountDetail.jsx (Add Contact: Name/Phone/Email/Primary Contact) --
 // intentionally lightweight, no standalone Contacts list/detail page
 // or route.
-export const contactsStore = makeCollectionStore(CONTACTS_COLLECTION);
+
 
 // Contact provenance convergence -- Contact is a client-direct write (no
 // callable; gated only by firestore.rules' isAdminOrDispatcher()), so unlike
@@ -25,24 +25,15 @@ export const contactsStore = makeCollectionStore(CONTACTS_COLLECTION);
 // other client-direct-write domain module already uses (e.g.
 // domain/inventoryReorderRequests.js, domain/inventoryActions.js) -- no new
 // actor-resolution path invented here.
+// THROUGH THE TRUSTED COMMAND. The four provenance fields are no longer CLIENT-SUPPLIED CLAIMS
+// read from `auth.currentUser` -- the server resolves the actor from request.auth.uid and stamps
+// its own clock, and strips those keys from any payload that carries them.
 export function createContact(accountId, data) {
-  const now = Date.now();
-  const actorUid = auth.currentUser?.uid ?? null;
-  return contactsStore.add({
-    ...data,
-    accountId,
-    createdBy: actorUid,
-    updatedAt: now,
-    updatedBy: actorUid,
-  });
+  return submitCreateContact(accountId, data);
 }
 
 export function updateContact(id, data) {
-  return contactsStore.update(id, {
-    ...data,
-    updatedAt: Date.now(),
-    updatedBy: auth.currentUser?.uid ?? null,
-  });
+  return submitUpdateContact(id, data);
 }
 
 // Customer Record Page sprint, PR 1 (docs/specifications/customer-record-page-structured-address.md,

@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 160,
+    "capabilities": 163,
     "catalogActive": 0,
-    "catalogInactive": 160,
+    "catalogInactive": 163,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
     "callableExports": 49,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 160,
-    "parsed": 160,
+    "raw": 163,
+    "parsed": 163,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 133,
+    "SERVER_REFERENCED": 136,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
@@ -481,6 +481,75 @@
       }
     },
     {
+      "id": "crm.contact.update",
+      "resource": "contact.record",
+      "action": "update",
+      "description": "Update Contact records. Confers no create, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.location.create",
+      "resource": "location.record",
+      "action": "create",
+      "description": "Create Customer Location records. Confers no update, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.location.update",
+      "resource": "location.record",
+      "action": "update",
+      "description": "Update Customer Location records. Confers no create, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
       "id": "crm.location.read",
       "resource": "location.record",
       "action": "read",
@@ -788,12 +857,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/workOrder/technicianCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },

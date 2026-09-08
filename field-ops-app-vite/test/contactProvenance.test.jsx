@@ -1,11 +1,14 @@
 // Contact provenance convergence -- every Contact write path (single create, single
 // update, CSV import) must produce the platform's four provenance fields
 // (metadata/v2/provenance.js's PROVENANCE_SYSTEM_NAMES: createdAt/createdBy/updatedAt/
-// updatedBy). The two SINGLE-record paths are still client-direct writes gated by
-// firestore.rules, so the actor/timestamp asserted for them are CLIENT-SUPPLIED CLAIMS, not
-// server-verified provenance. The CSV IMPORT is not: it now goes through the trusted
-// importContacts command, which writes all four fields itself from request.auth.uid -- so the
-// property asserted for it is inverted, and is that the browser sends no actor at all.
+// updatedBy). ALL THREE now go through trusted commands, so none of them is a CLIENT-SUPPLIED
+// CLAIM any more: the server resolves the actor from request.auth.uid, stamps its own clock, and
+// strips those four keys from any payload that carries them. That the fields ARE written correctly
+// is asserted server-side (functions/test/crmWriteCommands.test.mjs,
+// functions/test/contactImportCommand.test.mjs).
+//
+// What is asserted HERE is the client half, and it is the inverse of what this file used to check:
+// that the browser sends no actor and no timestamp at all.
 //
 // Firebase and the callable transport are both fully mocked -- no emulator, no backend touched.
 //
@@ -38,7 +41,9 @@ vi.mock("../src/config/env", () => ({
 vi.mock("firebase/functions", () => ({
   httpsCallable: (_functions, name) => async (payload) => {
     callableCalls.push([name, payload]);
-    return { data: { ids: (payload.contacts ?? []).map((_, i) => `imported-${i}`) } };
+    if (name === "importContacts") return { data: { ids: (payload.contacts ?? []).map((_, i) => `imported-${i}`) } };
+    // The two single-record commands echo the written document back.
+    return { data: { id: "new-id", ...(payload.data ?? {}) } };
   },
 }));
 
@@ -74,46 +79,53 @@ beforeEach(() => {
   mockAuth.currentUser = { uid: "actor-uid-1" };
 });
 
-describe("createContact -- writes all four provenance fields", () => {
-  it("writes createdAt, createdBy, updatedAt, updatedBy", async () => {
+describe("createContact / updateContact -- the browser no longer authors provenance", () => {
+  // INVERTED, exactly as the import block below already was, and for the same reason: the behaviour
+  // MOVED rather than changed. Both single-record paths now go through trusted commands
+  // (functions/src/crm/crmWriteCommands.ts), which resolve the actor from request.auth.uid, stamp
+  // the server clock, and STRIP createdAt/createdBy/updatedAt/updatedBy from any payload that
+  // carries them. That the four fields are written, and written correctly, is asserted server-side
+  // in functions/test/crmWriteCommands.test.mjs.
+  //
+  // The null-actor fallback is GONE, and that is the improvement rather than a regression: an
+  // unauthenticated caller is refused outright, so no contact can be created with createdBy null.
+  //
+  // What is worth pinning HERE is the client-side half: this module sends nothing about who is
+  // acting or when. Asserting the old behaviour would require the browser to keep authoring an
+  // identity the server ignores.
+  it("createContact sends the account and the row, and no provenance of any kind", async () => {
     await createContact("account-1", { name: "Ada" });
-    expect(addDocCalls.length).toBe(1);
-    const written = addDocCalls[0].data;
-    for (const field of PROVENANCE_SYSTEM_NAMES) {
-      expect(written).toHaveProperty(field);
+    expect(callableCalls.length).toBe(1);
+    const [name, payload] = callableCalls[0];
+    expect(name).toBe("createContactRecord");
+    expect(payload.accountId).toBe("account-1");
+    expect(payload.data.name).toBe("Ada");
+    const sent = JSON.stringify(payload);
+    for (const field of [...PROVENANCE_SYSTEM_NAMES, "actorUid", "uid"]) {
+      expect(sent).not.toContain(field);
     }
-    expect(typeof written.createdAt).toBe("number");
-    expect(typeof written.updatedAt).toBe("number");
-    expect(written.createdBy).toBe("actor-uid-1");
-    expect(written.updatedBy).toBe("actor-uid-1");
   });
 
-  it("falls back to null when there is no signed-in user, rather than inventing an actor", async () => {
-    mockAuth.currentUser = null;
-    await createContact("account-1", { name: "Ada" });
-    const written = addDocCalls[0].data;
-    expect(written.createdBy).toBe(null);
-    expect(written.updatedBy).toBe(null);
-  });
-});
-
-describe("updateContact -- writes updatedAt and updatedBy, never createdAt/createdBy", () => {
-  it("writes updatedAt and updatedBy", async () => {
+  it("updateContact sends the id and the patch, and no provenance of any kind", async () => {
     await updateContact("contact-1", { name: "Ada Lovelace" });
-    expect(updateDocCalls.length).toBe(1);
-    const written = updateDocCalls[0].data;
-    expect(typeof written.updatedAt).toBe("number");
-    expect(written.updatedBy).toBe("actor-uid-1");
+    expect(callableCalls.length).toBe(1);
+    const [name, payload] = callableCalls[0];
+    expect(name).toBe("updateContactRecord");
+    expect(payload.id).toBe("contact-1");
+    const sent = JSON.stringify(payload);
+    for (const field of PROVENANCE_SYSTEM_NAMES) {
+      expect(sent).not.toContain(field);
+    }
   });
 
-  it("never rewrites createdAt or createdBy, even if the caller's edit payload contains them", async () => {
+  it("a caller-supplied createdAt/createdBy is sent but CANNOT take effect", async () => {
+    // The client does not strip them -- it has no reason to know they are special. The SERVER
+    // strips them, which is the only place that guarantee can live. This pins that the client makes
+    // no claim about it either way, so the server-side test is the single source of that truth.
     await updateContact("contact-1", { name: "Ada", createdAt: 1, createdBy: "someone-else" });
-    const written = updateDocCalls[0].data;
-    // updateContact does not itself strip caller-supplied createdAt/createdBy -- the
-    // invariant it owns is that IT never MINTS a createdAt/createdBy value on an update,
-    // unlike updatedAt/updatedBy which it always sets fresh below.
-    expect(written.updatedAt).not.toBe(1);
-    expect(written.updatedBy).toBe("actor-uid-1");
+    const [, payload] = callableCalls[0];
+    expect(payload.data.createdAt).toBe(1);
+    expect(payload.data.createdBy).toBe("someone-else");
   });
 });
 
