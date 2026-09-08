@@ -9,7 +9,10 @@ population matches the admitted one, the scope, and why no existing capability c
 | 1 | `crm.contact.create` | **RULED AND IMPLEMENTED** 2026-09-07 |
 | 2 | `supplier.record.read` | **RULED AND IMPLEMENTED** 2026-09-07 |
 | 3 | `supplier.catalog.read` | **RULED AND IMPLEMENTED** 2026-09-07 |
-| 4 | `service.technician.create` | **PROPOSED — awaiting ruling** |
+| 4 | `service.technician.create` | **RULED AND IMPLEMENTED** 2026-09-07 |
+| 5 | `crm.contact.update` | **RULED AND IMPLEMENTED** 2026-09-07 |
+| 6 | `crm.location.create` / `crm.location.update` | **RULED AND IMPLEMENTED** 2026-09-07 |
+| 7 | `service.equipment.create` / `.update` | **NOT PROPOSED — parity fails, see §5** |
 
 The four work-order and technician READ capabilities (`workOrder.read`, `workOrder.assigned.read`,
 `service.technician.read`, `service.technician.self.read`) were ruled directly by the Owner and are
@@ -133,6 +136,25 @@ thing, one capability serves both and this table collapses into the previous one
 Each is a small, mechanical change: one `permissionCatalog.ts` entry, one `dispatcher` line, the
 governed source or trusted command, and the drift artifacts. The blocked surfaces then close and
 `firestoreListSource.js` loses its last callers.
+
+## 5. Equipment create/update — NOT PROPOSED, and why
+
+The conditional authorization reaches an action whose retired rule is "exactly
+`isAdminOrDispatcher` with no narrower record/field restriction". Equipment fails that test on
+both actions, so no capability is proposed and the surface stops.
+
+| | |
+|---|---|
+| **CURRENT FIREBASE AUTHORITY (create)** | `isAdminOrDispatcher()` AND `equipmentCreateShapeValid(request.resource.data)` AND `equipmentLocationBelongsToAccount(request.resource.data)` |
+| **CURRENT FIREBASE AUTHORITY (update)** | `isAdminOrDispatcher()` AND `affectedKeys().hasOnly(equipmentEditableKeys())` AND `equipmentNameValid` AND `equipmentOptionalFieldsValid` AND `equipmentTransitionAllowed(stored, next)` AND `updatedAt is number` |
+| **CURRENT EOS CAPABILITY** | **None.** `service.equipment.read` exists; no create or update capability for the `equipment.record` resource. |
+| **WHY NOT A SIMPLE PARITY** | Two things a capability alone cannot carry: a CROSS-DOCUMENT check (the location must belong to the account) and a STATUS TRANSITION GUARD. The update rule also deliberately does NOT re-apply the writable-key set, so a document carrying an audit field stamped by a trusted writer stays ordinarily editable — a subtlety that would be silently lost by a naive port, bricking every record those writers touched. |
+| **WHAT A RULING WOULD NEED TO DECIDE** | Whether the transition guard is authorization or domain validation; whether the cross-document check belongs in the command or in a shared resolver; and whether create and update are one capability or two. |
+
+Recorded rather than decided. The consequence is in the closure ledger: this is the last governed
+business write, and `collectionStore` / `firebaseSafe` survive only to serve it.
+
+---
 
 ## Related
 

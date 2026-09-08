@@ -1,156 +1,138 @@
 # Firebase Removal — Closure Ledger
 
-Every remaining client Firebase use, classified. **Firebase authenticates. EOS authorizes.**
+Every remaining client Firebase use, classified file by file. **Firebase authenticates. EOS
+authorizes.**
 
-The closure targets are: direct client governed business reads **0**, direct client governed
-business writes **0**, Firebase/Firestore EOS authorization decisions **0**. Anything Firebase still
-does must be classifiable as Firebase Auth, session/token plumbing, accessVersion/invalidation
-plumbing, or another explicitly non-business technical use.
+Closure targets: direct client governed business reads **0**, direct client governed business
+writes **0**, Firestore-based EOS authorization decisions **0**. Anything Firebase still does must
+be classifiable as Firebase Auth, token/session plumbing, `accessVersion` invalidation, the
+explicitly retained picker, or another non-business technical mechanism.
 
-Measured at the head of `feat/rules-out-of-firebase`.
+Measured repository-wide at the head of `feat/rules-out-of-firebase` — by OPERATION, not by import
+count, because an import count is what hid two whole categories of write the first time.
 
-## Firestore-based EOS authorization decisions: 0
+---
 
-`firestore.rules` is 136 lines and contains **no** EOS Role names, no capability names, no workforce
-Role logic, no operating-company logic, no technician-assignment logic, no ownership logic and no
-user-governance decisions. What survives is `isSignedIn()`, the `users/{uid}` own-document read the
-capability feed's `accessVersion` subscription needs, and the PARTS_MANAGER picker clause;
-everything else is `allow read, write: if false`.
+## Scoreboard
 
-**It is SOURCE ONLY and must not be deployed.** Direct callers still exist for the work-order
-family, so deploying deny-all now would break surviving paths.
-
-## Direct client Firestore WRITE CALLS: **0**
-
-Measured: zero `writeBatch` / `runTransaction` / `setDoc` / `updateDoc` / `addDoc` / `deleteDoc`
-call sites in `src/` outside the two infrastructure wrappers.
-
-The last two were `jobActions.js`'s `assignJob` and `updateJobStatus`, and they were **deleted, not
-migrated** — measured 2026-09-07 as having no importer anywhere. Minting permanent trusted-command
-authority, and the capability grants that go with it, for a surface nothing calls would create
-authority for dead product. Their transitions are recorded in `workflow-action-census.md`.
-
-Every business write now goes through a trusted command: `createReorderRequest`,
-`recordReorderPurchaseOrder`, `cancelReorderRequest`, `voidPurchaseOrder`, `importContacts`.
-
-**One store-mediated write remains.** `createTechnician` writes `fieldops_technicians` through
-`techniciansStore` (which is why it does not appear in the call-site count above — the wrapper does).
-It is blocked on a capability that does not exist; see proposal 4 in
-`capability-parity-proposals.md`. The retired rule's `status == 'available'` constraint is part of
-that authority and must move with it.
-
-## Direct client governed business READS
-
-### The work-order family — the SEAM EXISTS; five consumers not yet wired
-
-**The authority problem is solved.** `functions/src/workOrder/scopedWorkOrderReadService.ts` is
-built, tested (20 tests) and CI-covered, with four capabilities ruled and granted:
-
-| Capability | Holders (asked of the resolver) |
+| Target | Status |
 |---|---|
-| `workOrder.read` | admin, dispatcher, owner |
-| `workOrder.assigned.read` | admin, owner, technician |
-| `service.technician.read` | admin, dispatcher, owner |
-| `service.technician.self.read` | admin, owner, technician |
+| Firestore-based EOS authorization decisions | **0** |
+| Direct client governed business **reads** | **0** |
+| Direct client governed business **writes** | **1 surface** — equipment create/update, blocked and reported |
+| `firestoreListSource` callers | **0** (file deleted) |
+| `useFirestoreCollection` callers | **0** (file deleted) |
 
-Global is resolved **before** self, and that ordering is load-bearing: admin derives the whole
-catalogue and therefore holds the self capabilities too, so checking self first would scope an
-administrator to a technician identity they do not have and return nothing, silently.
+**Rules closure: NOT READY.** One business-data write path survives. It is measured, its exact
+retired authority is recorded, and it is blocked on an authorization decision rather than on
+engineering — see the blocked section.
 
-The metadata `workOrder` list and its count are migrated. These consumers still read directly
-and are the remaining wiring work — the seam already carries a registered mode for each:
+---
 
-| File | Reads | Seam mode that replaces it |
-|---|---|---|
-| `domain/accountWorkOrders.js` | `fieldops_wos` | `accountOpen`, `accountRecent`, `accountScheduled` |
-| `hooks/usePartWorkOrderDemand.js` | `fieldops_wos` | `openDemand` + `countScopedWorkOrders` |
-| `hooks/useWorkOrder.js` | `fieldops_wos` (by id) | `readScopedWorkOrderById` |
-| `hooks/useWorkOrderSearch.js` | `fieldops_wos` | `search` |
-| `hooks/useEquipment.js` | `fieldops_wos` only — its equipment read is migrated | `byEquipment` |
+## Every surviving client Firestore operation
 
-`domain/jobActions.js` is NOT in this list any more: it no longer imports Firestore at all.
+| File | Operations | Collections | Class | Why it remains |
+|---|---|---|---|---|
+| `access/useGovernedCapabilities.js` | `onSnapshot` | `users/{own uid}` | **C** accessVersion invalidation | The capability feed subscribes to its OWN principal's document to learn when access changed. This is the one client read `firestore.rules` still grants, and it is why. |
+| `access/useEquipmentInstallCapability.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `access/useOpportunityCapabilities.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `access/useReportCapabilities.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `access/useSalesOrderCapabilities.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `access/useSerializedAssetAcquireCapability.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `access/useWorkOrderPartsPlanCapability.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `metadata/definitions/accountPageComponents.js` | `onSnapshot` | `users/{own uid}` | **C** | Same feed. |
+| `auth/employeeSession.js` | `getDoc`, `onSnapshot` | `users/{own uid}`, `employees/{own employeeId}` | **B** session / operational identity | Resolves the SIGNED-IN principal's OWN employee record via `users/{uid}.employeeId`. Self-scoped by construction — not a directory read, and cannot become one. |
+| `firebase/firebase.js` | — | — | **E** technical | SDK initialisation. |
+| `lib/firebaseSafe.js` | `addDoc`, `setDoc`, `updateDoc`, `deleteDoc` | — | **E** technical wrapper | The demo/panic write gate. It performs no read and names no collection; it wraps whatever it is handed. Its ONLY remaining business client is the equipment store below. |
+| `firebase/collectionStore.js` | `getDocs`, `makeCollectionStore` | parameterised | **E** technical wrapper — **but see below** | Generic transport. NOT infrastructure by virtue of being generic: it is a write path, and it retains exactly one business client. |
+| `domain/equipmentRepository.js` | `makeCollectionStore` | `equipment` | **NOT PERMITTED — blocked** | The one surviving governed business write. See below. |
 
-`hooks/useAssignedJobs.js` is also not: it reads **`fieldops_jobs`**, the legacy jobs surface, not
-`fieldops_wos`. That was measured, not assumed — the ruling listed it among the work-order
-consumers, and it is not one. It belongs to the jobs lane, whose remaining question is whether that
-object should exist at all beside `fieldops_wos`; see `workflow-action-census.md`.
+Files that merely MENTION Firestore or the store in prose — `domain/accounts.js`,
+`domain/equipment.js`, `domain/inventoryActions.js`, `domain/inventoryReorderRequests.js`,
+`metadata/definitions/{account,inventoryAction,location}.js` — carry zero live references and are
+not counted. Verified by grep for live imports and calls, not by eye.
 
-**`metadata/firestoreListSource.js` is DELETED.** Zero callers proven first, the `CLIENT_DIRECT`
-branch removed from both dispatchers, and three obsolete mocks removed with their suites rewritten —
-the routing tests now assert the opposite property, that a `CLIENT_DIRECT` definition fails closed
-rather than being quietly served through the callable path.
+---
 
-`hooks/useListViewChrome.js`'s Firestore aggregate branch is now unreachable for the same reason:
-every list, work orders included, counts through a trusted callable. It is removed when the last
-consumer above is wired.
+## The one blocked write
 
-### `fieldops_technicians` — capability ruled, but blocked on a MEASURED realtime dependency
-
-`service.technician.read` and `service.technician.self.read` are minted and granted, so the
-authority is no longer the blocker. **A realtime dependency is**, and it was found by measuring
-rather than assumed away:
-
-`useCurrentTechnician` subscribes to `fieldops_technicians/{id}`, and
-`TechnicianDashboard.jsx` renders `technician.status` as a live status pill. The writer that flips
-that status **cross-session** is a dispatcher assigning work — a different person, in a different
-session, on a different screen. A one-shot read would silently drop an update the technician
-currently receives without acting.
-
-Per the ruling's "measure, don't guess": this is returned as an **explicit parity blocker**, not
-absorbed. The smallest non-Firestore mechanism (the module-scoped change signal built for the
-reorder queue) cannot help — it does not cross sessions.
-
-**It resolves on its own**, and here is the measured reason: the cross-session writer was
-`jobActions.assignJob`, which has now been **deleted as dead code**. The only remaining writer of
-technician status is the trusted `completeAssignedJob` callable, which a technician invokes from
-their own session — where a post-action refresh is exact parity. The dependency should be
-re-measured against live behaviour before these two files are migrated, rather than declared gone
-on the strength of this reasoning alone.
-
-| Surface | Collection |
+| | |
 |---|---|
-| `hooks/useCurrentTechnician.js` | `fieldops_technicians`, `users/{uid}` |
-| `modules/operations/Operations.jsx` | `fieldops_technicians` |
+| **Surface** | `domain/equipmentRepository.js` → `createEquipment` / `updateEquipment`, live from `EquipmentDetail.jsx` |
+| **Collection** | `equipment` |
+| **Retired CREATE authority** | `isAdminOrDispatcher()` **AND** `equipmentCreateShapeValid(...)` **AND** `equipmentLocationBelongsToAccount(...)` — a **cross-document** referential check |
+| **Retired UPDATE authority** | `isAdminOrDispatcher()` **AND** `affectedKeys().hasOnly(equipmentEditableKeys())` **AND** name validity **AND** optional-field validity **AND** `equipmentTransitionAllowed(storedStatus, nextStatus)` — a status **state machine** — **AND** `updatedAt is number` |
+| **Existing capability** | **None.** `service.equipment.read` exists; there is no `service.equipment.create` or `.update`. |
+| **Why it is not migrated** | The conditional authorization covers actions whose retired rule is "exactly `isAdminOrDispatcher` with no narrower record/field restriction". Equipment fails that test on both actions, and by a wide margin. Migrating on an assumed parity would move a cross-document check and a transition engine into a command without a ruling on either. |
 
-## Not business data — explicitly classified
+Two consequences, stated so neither is a surprise:
 
-| Files | Reads | Classification |
-|---|---|---|
-| `access/useGovernedCapabilities.js` + 6 sibling `use*Capabilit*.js` | `users/{uid}` | **accessVersion / invalidation plumbing.** The capability feed subscribes to its own principal's document to learn when access changed. This is the one client read `firestore.rules` still grants, and it is why. |
-| `metadata/definitions/accountPageComponents.js` | `users/{uid}` | Same feed. |
-| `auth/employeeSession.js` | `users/{uid}`, `employees/{own employeeId}` | **Session / operational-identity plumbing.** Resolves the SIGNED-IN PRINCIPAL'S OWN employee record via `users/{uid}.employeeId`. Self-scoped by construction — it is not a directory read and cannot become one. |
-| `firebase/firebase.js` | — | SDK initialisation. |
-| `lib/firebaseSafe.js` | — | The demo/panic write gate. |
-| `firebase/collectionStore.js`, `hooks/useFirestoreCollection.js` | generic | Infrastructure. Reachable only through the paths above; they hold no collection of their own. |
+- `firebase/collectionStore.js` and `lib/firebaseSafe.js` survive **because of this one surface**.
+  They are otherwise unreferenced by business code and go with it.
+- The staged restrictive `firestore.rules` cannot be deployed until this closes: it would break
+  equipment creation and editing.
 
-## Migrated in this workstream
+---
 
-**Reads.** 17 metadata list entities plus the CRM, equipment, parts, inventory, reorder, purchase
-order, truck, warehouse, employee and location read families — all through
-`functions/src/access/governedReadRegistry.ts` and `readGovernedList` / `countGovernedList`.
+## What this workstream migrated
 
-**Writes.** `cancelReorderRequest`, `voidPurchaseOrder`, `importContacts` — client transactions and
-batches **deleted**, not disabled.
+**Reads.** 17 metadata list entities; the CRM, equipment, parts, inventory, reorder, purchase
+order, truck, warehouse, employee, location and technician read families; and the scoped
+work-order seam — all through `governedReadRegistry.ts` / `readGovernedList` / `countGovernedList`,
+or, for work orders, `scopedWorkOrderReadService.ts`.
 
-**Deleted outright.** The `stockLocation` metadata definition and its index list: retired product
-(Decision #160 / ADR-014), measured unreachable, removed rather than kept alive to hold Firestore
-access open.
+**Writes.** `createReorderRequest`, `recordReorderPurchaseOrder`, `cancelReorderRequest`,
+`voidPurchaseOrder`, `importContacts`, `createTechnician`, the six CRM record commands, and the
+five reorder transitions. Client transactions and batches **deleted**, not disabled.
+
+**Deleted outright.** `metadata/firestoreListSource.js`, `hooks/useFirestoreCollection.js`,
+`hooks/useAssignedJobs.js`, the `stockLocation` definition, three of four `jobActions` exports, and
+four now-unreferenced collection stores. Nothing was kept as a dormant alternative path.
+
+---
+
+## Capabilities minted in this workstream
+
+Each on measured parity with the rule it replaces; dispatcher explicit, admin and owner derived
+through the existing composition, no other Role.
+
+| Capability | Replaces |
+|---|---|
+| `crm.contact.create` | `contacts` create |
+| `crm.contact.update` | `contacts` update |
+| `crm.location.create` / `.update` | `locations` create / update |
+| `supplier.record.read` | `suppliers` read |
+| `supplier.catalog.read` | `supplier_catalog` read |
+| `workOrder.read` | `fieldops_wos` global read branch |
+| `workOrder.assigned.read` | `fieldops_wos` assigned-technician branch |
+| `service.technician.read` | `fieldops_technicians` global read branch |
+| `service.technician.self.read` | `fieldops_technicians` own-record branch |
+| `service.technician.create` | `fieldops_technicians` create, incl. its `status == 'available'` constraint |
+
+The Account governed-commercial-field split reuses the existing `customer.governedField.write`
+rather than minting anything: it is the retired rule's `isAdmin()` branch expressed as authority.
+
+---
 
 ## Behaviour changes recorded rather than absorbed
 
-Every `onSnapshot` replaced by a one-shot governed read is listed here, because a governed callable
-cannot stream and "migration-complete" is not "behaviour-complete".
+Every `onSnapshot` replaced by a non-streaming read, because a governed callable cannot push and
+"migration-complete" is not "behaviour-complete".
 
-| Path | Why one-shot is honest here |
-|---|---|
-| `useLocation` | Record page; re-reads on navigation and retry, rendered no live badge. |
-| `useLocationsForAccounts` | Duplicate-customer check over a candidate set assembled moments earlier; re-runs when that set changes. |
-| `useAssignableEmployees` | Assignment picker; re-read whenever its inputs change. |
-| `useEquipment` (equipment record) | Record page, as `useLocation`. |
-| Reorder queue | **NOT absorbed** — a module-scoped change signal was built so cross-component refresh survived without Firestore. |
+| Path | New behaviour | Why it is honest |
+|---|---|---|
+| **Technician directory** | **Automatic governed refresh, bounded ≤ 5s** | The one real realtime requirement: a dispatcher's board must show a technician becoming AVAILABLE without a reload. NOT described as parity — an update that arrived in milliseconds now arrives within five seconds. Interval suspends while hidden; immediate refetch on visibility, focus and same-session mutation; a failed refresh keeps the last good directory rather than reading as "no technicians". |
+| `useLocation`, `useEquipment` (record) | One-shot | Record pages; re-read on navigation and retry, rendered no live badge. |
+| `useLocationsForAccounts` | One-shot | Duplicate-customer check over a candidate set assembled moments earlier. |
+| `useAssignableEmployees` | One-shot | Assignment picker; re-read whenever its inputs change. |
+| `useCurrentTechnician` | One-shot + `retry()` | Measured: the only live mutation of an existing technician is `completeAssignedJob`, invoked by that technician in their own session. The cross-session writer died with `assignJob`. |
+| `useWorkOrder`, `useWorkOrderSearch`, `usePartWorkOrderDemand`, `accountWorkOrders` | One-shot | Record page, debounced search, a bounded demand scan, and an account timeline. |
+| Reorder queue | **Signal, not one-shot** | A module-scoped change signal was built so cross-component refresh survived without Firestore. It moved again when the writes became commands, into `announce()`. |
+
+---
 
 ## Related
 
-- `metadata-governed-read-migration.md` — the read surfaces and the one blocked entity.
-- `workflow-action-census.md` — the write side, measurement only.
+- `workflow-action-census.md` — the business actions, measurement only.
 - `capability-parity-proposals.md` — how a capability blocker is brought to a ruling.
+- `metadata-governed-read-migration.md` — the read surfaces.

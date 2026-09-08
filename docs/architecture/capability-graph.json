@@ -466,12 +466,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/crm/contactImportCommand.ts"
+          "functions/src/crm/contactImportCommand.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -489,12 +490,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -512,12 +514,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -535,12 +538,13 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/compatibilityRoles.ts"
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 2,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
@@ -664,7 +668,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/account/accountImportCommand.ts"
+          "functions/src/account/accountImportCommand.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -673,7 +678,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -694,7 +699,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -703,7 +709,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -724,7 +730,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -733,7 +740,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1901,7 +1908,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -1909,7 +1917,7 @@
           "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1930,7 +1938,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -1939,7 +1948,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1960,7 +1969,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -1969,7 +1979,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2020,7 +2030,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -2028,7 +2039,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2048,7 +2059,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -2056,7 +2068,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -2076,7 +2088,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -2084,7 +2097,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
