@@ -96,13 +96,19 @@ check("production reader bundle wires the existing one-shot readers via readOnce
   assert.ok(!/adapterCommit:\s*null/.test(src), "no longer the foundation null commit");
 });
 check("the one-shot readers use the LIVE reorder SOURCES, not the dormant legacy purchase orders", () => {
-  // The check is the same and its subject moved up a level. operationsQueries no longer names a
-  // COLLECTION -- it names an EOS source id, and the server owns the mapping to storage. So the
-  // live/dormant distinction is asserted on the source ids: `reorderRequestsQueue` and
-  // `purchaseOrdersByIds` / `purchaseOrderDirectory` are the live reorder sources, and
-  // `legacyPurchaseOrders` is the dormant Epic-5 collection this reader must never use.
+  // The check is the same and its subject moved up a level twice. operationsQueries no longer
+  // names a COLLECTION -- it names an EOS source id, and the server owns the mapping to storage --
+  // and the reorder read moved again, off the governed source and onto the SCOPED seam, because
+  // the retired rule admitted three different populations there. So the live/dormant distinction
+  // is asserted on what each reader calls: the reorder reader goes through the scoped seam, the
+  // PO readers through the live governed sources, and `legacyPurchaseOrders` is the dormant Epic-5
+  // collection this reader must never use.
   const src = read("src/services/operationsQueries.ts");
-  assert.ok(/reorderRequestsQueue/.test(src) && /fetchReorderRequests/.test(src));
+  assert.ok(/readCompleteScopedReorder/.test(src) && /fetchReorderRequests/.test(src));
+  assert.ok(
+    !/reorderRequestsQueue|reorderRequestsHistory/.test(src),
+    "the unscoped reorder sources are gone -- a reader naming one would be reading a wider population than the retired rule allowed",
+  );
   assert.ok(/purchaseOrderDirectory/.test(src) && /fetchReorderPurchaseOrders/.test(src));
   // fetchReorderPurchaseOrders must read the LIVE source, never the dormant one.
   const liveReader = /export const fetchReorderPurchaseOrders =[\s\S]{0,200}/.exec(src);

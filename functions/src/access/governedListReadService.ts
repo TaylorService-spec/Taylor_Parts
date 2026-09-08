@@ -28,6 +28,7 @@ import { resolveEffectivePermission, type TargetContext } from "./resolveEffecti
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
 import { InvalidInputError, UnauthorizedActorError } from "./trustedWriterCommands";
 import { GOVERNED_READS, DOCUMENT_ID_FIELD, type GovernedReadSource } from "./governedReadRegistry";
+import { loadAssignedWarehouseScope } from "./assignedWarehouseScope";
 import { FieldPath } from "firebase-admin/firestore";
 
 const USERS_COLLECTION = "users";
@@ -56,6 +57,100 @@ export interface GovernedListPage {
 export interface GovernedListDeps {
   db?: Firestore;
   roles?: Readonly<Record<string, Role>>;
+  /** Injected by tests. Production derives the actor's assignment server-side; see resolveScopeBranches. */
+  loadScope?: (uid: string) => Promise<readonly string[]>;
+}
+
+// ════════════════════ THE RECORD SCOPE ════════════════════
+//
+// A source may declare a `scope` (governedReadRegistry.ts's GovernedScopeSpec). When it does, the
+// capability has already settled WHETHER this caller may read the source, and this settles WHICH
+// records -- reproducing the assignment branch of the retired firestore.rules read predicate.
+//
+// THREE PROPERTIES THIS DELIBERATELY HAS:
+//
+//   The assignment is DERIVED, never supplied. It comes from the actor's uid. No request field
+//   carries a warehouse id, so there is nothing for a caller to forge.
+//
+//   NO ASSIGNMENT MEANS GLOBAL, not empty. The retired rule was a disjunction: an operations
+//   manager passed on isAdminOrDispatcher() and never reached isAssignedToWarehouse at all. A
+//   person holding BOTH Operations Manager and Warehouse Manager therefore keeps the network --
+//   resolving the narrow branch first would silently shrink them and return it without an error.
+//
+//   MORE THAN ONE FIELD IS A DISJUNCTION. Firestore has no OR across fields, so each field becomes
+//   its own query and the results are unioned, de-duplicated by AUTHORITATIVE document id. A
+//   transfer order between two assigned warehouses matches both branches and is returned once.
+
+/** Firestore bounds an `in` filter. A wider assignment is chunked, never silently truncated. */
+const IN_FILTER_LIMIT = 30;
+
+interface ScopeClause {
+  readonly field: string;
+  readonly ids: readonly string[];
+}
+
+function chunk<T>(values: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+/**
+ * The scope clauses this read must run, or NULL for "one unscoped query" -- which covers both a
+ * source that declares no scope and a caller who holds no assignment.
+ */
+async function resolveScopeBranches(
+  spec: GovernedReadSource,
+  actorUid: string,
+  db: Firestore,
+  deps: GovernedListDeps,
+): Promise<readonly ScopeClause[] | null> {
+  if (!spec.scope) return null;
+  const load = deps.loadScope ?? ((uid: string) => loadAssignedWarehouseScope(uid, { db }));
+  const assigned = await load(actorUid);
+  if (assigned.length === 0) return null;
+  return spec.scope.fields.flatMap((field) =>
+    chunk(assigned, IN_FILTER_LIMIT).map((ids) => ({ field, ids })),
+  );
+}
+
+/**
+ * The value a document is ORDERED BY, reduced to something comparable in this process.
+ *
+ * The merge below has to reproduce Firestore's own ordering across branches, and `createdAt` is a
+ * Timestamp -- an object, for which `<` is meaningless. Timestamps become millis; everything else
+ * is compared as it stands. A missing value cannot appear here: orderBy EXCLUDES documents lacking
+ * the ordered field, so every document in a branch carries one.
+ */
+function sortValue(doc: FirebaseFirestore.QueryDocumentSnapshot, orderField: string): unknown {
+  if (orderField === DOCUMENT_ID_FIELD) return doc.id;
+  const raw = (doc.data() as Record<string, unknown>)[orderField];
+  const ts = raw as { toMillis?: () => number } | null;
+  return ts && typeof ts.toMillis === "function" ? ts.toMillis() : raw;
+}
+
+/**
+ * Union the branches into ONE ordered result, de-duplicated by authoritative document id.
+ *
+ * Ordered by (the sort field, then the document id) in the query's own direction -- the SAME total
+ * ordering each branch was fetched in, which is what makes the page boundary and the cursor below
+ * mean the same thing they mean for an unscoped read.
+ */
+function mergeBranches(
+  snaps: readonly FirebaseFirestore.QuerySnapshot[],
+  orderField: string,
+  orderDir: "asc" | "desc",
+): FirebaseFirestore.QueryDocumentSnapshot[] {
+  const byId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+  for (const snap of snaps) {
+    for (const doc of snap.docs) if (!byId.has(doc.id)) byId.set(doc.id, doc);
+  }
+  const sign = orderDir === "desc" ? -1 : 1;
+  const rank = (a: unknown, b: unknown) => (a === b ? 0 : (a as never) < (b as never) ? -1 : 1);
+  return [...byId.values()].sort((a, b) => {
+    const primary = rank(sortValue(a, orderField), sortValue(b, orderField));
+    return sign * (primary !== 0 ? primary : rank(a.id, b.id));
+  });
 }
 
 function readAccessVersion(data: Record<string, unknown> | undefined): number {
@@ -271,34 +366,56 @@ export async function readGovernedList(
   }
 
   const [orderField, orderDir] = resolveSort(spec, input.sortKey);
-  let query = db.collection(spec.source) as FirebaseFirestore.Query;
-  for (const f of filters) {
-    // DOCUMENT_ID_FIELD is the registry's name for "the document id". Firestore addresses that as
-    // FieldPath.documentId(), not as a field name, so the translation happens here -- the caller
-    // never learns the id is addressed differently from any other field.
-    query = query.where(
-      f.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : f.field,
-      f.op,
-      f.value,
-    );
-  }
-  // Ordered by the registry's field, then by document id. The id tiebreak is what makes the cursor
-  // total: without it, rows sharing an orderBy value can be skipped or repeated across a boundary.
-  query =
-    orderField === DOCUMENT_ID_FIELD
-      // Already ordered by id: a second __name__ ordering would be a duplicate orderBy and is also
-      // unnecessary -- the id is unique, so it is its own tiebreak.
-      ? query.orderBy(FieldPath.documentId(), orderDir)
-      : query.orderBy(orderField, orderDir).orderBy(FieldPath.documentId(), orderDir);
-  if (cursor) {
-    query = orderField === DOCUMENT_ID_FIELD ? query.startAfter(cursor.d) : query.startAfter(cursor.v, cursor.d);
-  }
+  const branches = await resolveScopeBranches(spec, input.actorUid, db, deps);
 
-  // One MORE than the page. `hasMore` is then observed rather than inferred -- comparing a returned
-  // count to the limit cannot distinguish a full final page from a truncated one.
-  const snap = await query.limit(pageSize + 1).get();
-  const docs = snap.docs.slice(0, pageSize);
-  const hasMore = snap.docs.length > pageSize;
+  const buildQuery = (scopeClause: ScopeClause | null) => {
+    let query = db.collection(spec.source) as FirebaseFirestore.Query;
+    for (const f of filters) {
+      // DOCUMENT_ID_FIELD is the registry's name for "the document id". Firestore addresses that as
+      // FieldPath.documentId(), not as a field name, so the translation happens here -- the caller
+      // never learns the id is addressed differently from any other field.
+      query = query.where(
+        f.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : f.field,
+        f.op,
+        f.value,
+      );
+    }
+    // The scope clause is added AFTER the caller's named filters and cannot be displaced by one:
+    // a filter narrows within the scope, never out of it.
+    if (scopeClause) {
+      query = query.where(
+        scopeClause.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : scopeClause.field,
+        "in",
+        scopeClause.ids,
+      );
+    }
+    // Ordered by the registry's field, then by document id. The id tiebreak is what makes the cursor
+    // total: without it, rows sharing an orderBy value can be skipped or repeated across a boundary.
+    query =
+      orderField === DOCUMENT_ID_FIELD
+        // Already ordered by id: a second __name__ ordering would be a duplicate orderBy and is also
+        // unnecessary -- the id is unique, so it is its own tiebreak.
+        ? query.orderBy(FieldPath.documentId(), orderDir)
+        : query.orderBy(orderField, orderDir).orderBy(FieldPath.documentId(), orderDir);
+    if (cursor) {
+      query = orderField === DOCUMENT_ID_FIELD ? query.startAfter(cursor.d) : query.startAfter(cursor.v, cursor.d);
+    }
+    // One MORE than the page. `hasMore` is then observed rather than inferred -- comparing a
+    // returned count to the limit cannot distinguish a full final page from a truncated one.
+    //
+    // Asking every branch for pageSize + 1 is also what makes the CURSOR sound across a union: a
+    // branch that contributed k <= pageSize rows at or below the page boundary necessarily also
+    // fetched one above it, so nothing it left unread can sort below the boundary. The next page
+    // therefore resumes correctly for every branch from the single position the cursor names.
+    return query.limit(pageSize + 1);
+  };
+
+  const snaps = await Promise.all(
+    (branches ?? [null]).map((clause) => buildQuery(clause).get()),
+  );
+  const merged = branches === null ? snaps[0].docs : mergeBranches(snaps, orderField, orderDir);
+  const docs = merged.slice(0, pageSize);
+  const hasMore = merged.length > pageSize;
   const last = docs[docs.length - 1];
 
   return {
@@ -377,12 +494,42 @@ export async function countGovernedList(
     throw new UnauthorizedActorError(`actor is not authorized for "${spec.capability}"`);
   }
 
-  let query = db.collection(spec.source) as FirebaseFirestore.Query;
-  for (const f of filters) {
-    query = query.where(f.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : f.field, f.op, f.value);
+  const base = () => {
+    let query = db.collection(spec.source) as FirebaseFirestore.Query;
+    for (const f of filters) {
+      query = query.where(f.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : f.field, f.op, f.value);
+    }
+    return query;
+  };
+
+  // SAME SCOPE AS THE READ. A count that counted records the read would not return is not a smaller
+  // disclosure than returning them -- it is the size of a set the caller may not see.
+  const branches = await resolveScopeBranches(spec, input.actorUid, db, deps);
+  if (branches === null) {
+    const snap = await base().limit(COUNT_CEILING).count().get();
+    const count = snap.data().count;
+    return { count, atLeast: count >= COUNT_CEILING };
   }
 
-  const snap = await query.limit(COUNT_CEILING).count().get();
-  const count = snap.data().count;
+  // A scoped count CANNOT be a sum of branch counts: a transfer order matching both endpoints would
+  // be counted twice, and the header would claim more records than the list can show. So the ids are
+  // read (keys only, via an empty select) and unioned, which is the same de-duplication the read
+  // performs -- bounded by the same ceiling, so it stays a bounded read rather than a full scan.
+  const idSnaps = await Promise.all(
+    branches.map((clause) =>
+      base()
+        .where(
+          clause.field === DOCUMENT_ID_FIELD ? FieldPath.documentId() : clause.field,
+          "in",
+          clause.ids,
+        )
+        .limit(COUNT_CEILING)
+        .select()
+        .get(),
+    ),
+  );
+  const ids = new Set<string>();
+  for (const snap of idSnaps) for (const doc of snap.docs) ids.add(doc.id);
+  const count = Math.min(ids.size, COUNT_CEILING);
   return { count, atLeast: count >= COUNT_CEILING };
 }

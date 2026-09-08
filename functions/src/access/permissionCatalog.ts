@@ -711,6 +711,29 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "reorder.request",
     action: "cancel",
   }),
+  // ══════════ THE PARTS MANAGER'S SCOPED QUEUE, MINTED 2026-09-08 ══════════
+  //
+  // A SEPARATE capability from `reorder.request.read.queue`, not a second meaning for it. The
+  // retired Rules admitted two different populations through two different predicates:
+  //
+  //   isAdminOrDispatcher()                     every reorder request
+  //   isActiveOperationalRole("PARTS_MANAGER")  three statuses, plus the records this actor
+  //                                             personally reviewed or personally assigned
+  //
+  // One capability id cannot safely mean both. A resolver that tried would have to guess which
+  // population a holder was entitled to, and the safe guess (narrow) silently strips an
+  // operations manager down to a parts manager's subset, while the convenient guess (broad)
+  // hands every parts manager the whole queue. Two ids make the question answerable.
+  //
+  // Its meaning is ONLY the retired PARTS_MANAGER population. It is resolved AFTER the global
+  // read, so a principal holding both is never narrowed by holding this one.
+  Object.freeze({
+    id: "reorder.request.read.managed",
+    description:
+      "Read the Reorder Requests a Parts Manager is responsible for: the queue statuses, plus requests this actor personally reviewed or personally assigned. Narrower than the global queue read, and never narrows a holder of it.",
+    resource: "reorder.request",
+    action: "read.managed",
+  }),
   Object.freeze({
     id: "reorder.purchaseOrder.read",
     description: "Read reorder Purchase Orders / Purchase Order Voids.",

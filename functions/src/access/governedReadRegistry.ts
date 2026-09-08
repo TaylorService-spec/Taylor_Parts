@@ -89,6 +89,41 @@ export interface GovernedSortSpec {
   readonly direction: "asc" | "desc";
 }
 
+/**
+ * A RECORD SCOPE: which records a caller may read, once the capability has settled WHETHER.
+ *
+ * ════════════════════ WHY THIS IS SEPARATE FROM THE CAPABILITY ════════════════════
+ *
+ * `firestore.rules` admitted warehouses and transfer orders by TWO predicates, not one:
+ *
+ *   match /warehouses/{warehouseId}
+ *     allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);
+ *   match /transfer_orders/{transferOrderId}
+ *     allow read: if isAdminOrDispatcher()
+ *       || isAssignedToWarehouse(resource.data.fromWarehouseId)
+ *       || isAssignedToWarehouse(resource.data.toWarehouseId);
+ *
+ * A source with no scope would have to pick one of those. Picking the global branch hands every
+ * warehouse manager the whole network; picking the assigned branch strips an operations manager
+ * down to a single site. Both are authorization drift, in opposite directions.
+ *
+ * So the capability id stays UNSCOPED -- `warehouse.record.read` means the same thing for the
+ * operations manager and the controller who legitimately hold it globally -- and the narrowing
+ * lives here, in the read resolution, applying to the principal whose warehouse assignment is what
+ * admits them. Capability decides WHETHER. This decides WHICH. The browser decides neither: the
+ * assignment is derived server-side from the actor, and there is no request field that carries it.
+ *
+ * `fields` is a DISJUNCTION. Firestore has no OR across fields, so more than one field means one
+ * query per field, unioned and de-duplicated by authoritative document id -- which is why a
+ * transfer order between two assigned warehouses is returned once rather than twice.
+ */
+export interface GovernedScopeSpec {
+  /** The only assignment kind that exists today. Named rather than implied so a second one has to be added deliberately. */
+  readonly assignment: "WAREHOUSE";
+  /** Fields matched against the assignment, OR-ed. DOCUMENT_ID_FIELD means the record IS the warehouse. */
+  readonly fields: readonly string[];
+}
+
 export interface GovernedReadSource {
   readonly capability: string;
   readonly source: string;
@@ -112,6 +147,12 @@ export interface GovernedReadSource {
   /** Allowed output fields, or null for the whole document (see the header). */
   readonly projection: readonly string[] | null;
   readonly maxPageSize: number;
+  /**
+   * Narrows WHICH records this source returns for a caller who holds an assignment. Absent means the
+   * capability alone settles the population -- true of every source whose retired rule had a single
+   * read predicate.
+   */
+  readonly scope?: GovernedScopeSpec;
 }
 
 /**
@@ -428,6 +469,11 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     filters: Object.freeze({}),
     projection: null,
     maxPageSize: 500,
+    // Either endpoint, matching the retired rule's two isAssignedToWarehouse branches.
+    scope: Object.freeze({
+      assignment: "WAREHOUSE" as const,
+      fields: Object.freeze(["fromWarehouseId", "toWarehouseId"]),
+    }),
   }),
 
   inventoryTransactionLedger: Object.freeze({
@@ -508,6 +554,9 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // Scoped identically to transferOrderDirectory: the same collection read by a different surface
+  // is the same authorization question, and a scope declared on one source but not its sibling is
+  // exactly how a narrowing gets bypassed by picking the other one.
   metadataTransferOrders: Object.freeze({
     capability: "warehouse.transferOrder.read",
     source: "transfer_orders",
@@ -529,6 +578,10 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     }),
     projection: null,
     maxPageSize: 200,
+    scope: Object.freeze({
+      assignment: "WAREHOUSE" as const,
+      fields: Object.freeze(["fromWarehouseId", "toWarehouseId"]),
+    }),
   }),
 
   metadataTrucks: Object.freeze({
@@ -575,6 +628,7 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 200,
   }),
 
+  // Scoped identically to warehouseDirectory below -- see that entry.
   metadataWarehouses: Object.freeze({
     capability: "warehouse.record.read",
     source: "warehouses",
@@ -592,6 +646,10 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     }),
     projection: null,
     maxPageSize: 200,
+    scope: Object.freeze({
+      assignment: "WAREHOUSE" as const,
+      fields: Object.freeze([DOCUMENT_ID_FIELD]),
+    }),
   }),
 
   metadataSuppliers: Object.freeze({
@@ -739,6 +797,12 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     filters: Object.freeze({}),
     projection: null,
     maxPageSize: 200,
+    // The record IS the warehouse, so the assignment is matched against the document id -- the
+    // retired rule's isAssignedToWarehouse(warehouseId), where warehouseId was the path segment.
+    scope: Object.freeze({
+      assignment: "WAREHOUSE" as const,
+      fields: Object.freeze([DOCUMENT_ID_FIELD]),
+    }),
   }),
 
   mobileLocations: Object.freeze({
@@ -878,53 +942,27 @@ export const GOVERNED_READS: Readonly<Record<string, GovernedReadSource>> = Obje
     maxPageSize: 30,
   }),
 
-  // ── REORDER REQUESTS ──────────────────────────────────────────────────────────────────────
+  // ── REORDER REQUESTS ARE NOT A GOVERNED LIST SOURCE ───────────────────────────────────────
   //
-  // TWO SOURCES BECAUSE THERE ARE TWO ORDERINGS, and ordering is visible. The queue hooks issue
-  // Firestore queries with NO orderBy, which returns document-id order; History explicitly orders
-  // by createdAt desc. Folding both into one source would silently re-sort every queue on screen.
+  // They were: `reorderRequestsQueue` and `reorderRequestsHistory` lived here, and a comment
+  // beside them claimed that assignedToUserId / reviewedBy / assignedBy "never were an
+  // access-control boundary". MEASURED AGAINST THE RETIRED RULE, THAT WAS WRONG, and it is deleted
+  // rather than softened. The rule read:
   //
-  // The filters are all OPTIONAL here, unlike accountContacts where the account id is required.
-  // That is not an oversight: for contacts the filter IS the question, and a missing one would
-  // silently answer "every contact in the company". For the reorder queue, "every open request" is
-  // the intended, authorized answer -- it is what the Parts queue shows -- so an unfiltered read is
-  // a legitimate query rather than an accidental disclosure.
+  //   allow read: if isAdminOrDispatcher()
+  //     || (isActiveOperationalRole("PARTS_MANAGER") && status == "READY_FOR_PARTS_MANAGER")
+  //     || (isActiveOperationalRole("PARTS_MANAGER") && status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
+  //     || (isActiveOperationalRole("PARTS_MANAGER") && (reviewedBy == uid || assignedBy == uid))
+  //     || (isActiveOperationalRole("PARTS_ASSOCIATE") && assignedToUserId == uid);
   //
-  // assignedToUserId / reviewedBy / assignedBy are DISPLAY FILTERS, not scope boundaries, exactly
-  // as they are today: firestore.rules gated this collection at role level (admin/dispatcher) and
-  // these where() clauses never were an access-control boundary -- the hook's own comment says so.
-  // The capability is likewise role-level, so this migration preserves the authority precisely. If
-  // these should ever become real self-scope, that is the server-derived-"me" work, not a filter.
-  reorderRequestsQueue: Object.freeze({
-    capability: "reorder.request.read.queue",
-    source: "reorder_requests",
-    orderBy: Object.freeze([DOCUMENT_ID_FIELD, "asc"] as const),
-    filters: Object.freeze({
-      status: Object.freeze({ field: "status", op: "==" as const }),
-      statuses: Object.freeze({ field: "status", op: "in" as const }),
-      assignedToUserId: Object.freeze({ field: "assignedToUserId", op: "==" as const }),
-      partId: Object.freeze({ field: "partId", op: "==" as const }),
-      reviewedBy: Object.freeze({ field: "reviewedBy", op: "==" as const }),
-      assignedBy: Object.freeze({ field: "assignedBy", op: "==" as const }),
-      // Serves the by-id reads too. Same source rather than a separate one because the
-      // authorization question and the ordering are identical and only the predicate differs -- a
-      // second entry would be a second place for that same answer to drift.
-      ids: Object.freeze({ field: DOCUMENT_ID_FIELD, op: "in" as const }),
-    }),
-    projection: null,
-    maxPageSize: 200,
-  }),
-
-  reorderRequestsHistory: Object.freeze({
-    capability: "reorder.request.read.queue",
-    source: "reorder_requests",
-    orderBy: Object.freeze(["createdAt", "desc"] as const),
-    filters: Object.freeze({
-      statuses: Object.freeze({ field: "status", op: "in" as const, required: true }),
-    }),
-    projection: null,
-    maxPageSize: 100,
-  }),
+  // Those fields WERE the scope for a Parts Manager and a Parts Associate. A single source with a
+  // single capability could only have carried one of the three populations, and carrying the
+  // global one would have handed a Parts Manager the entire queue.
+  //
+  // So the read lives in a dedicated seam that resolves which population this principal gets --
+  // global, then manager-scoped, then own-assignment, broadest first so holding a narrow
+  // capability never shrinks a broader authority. See reorderRequest/scopedReorderReadService.ts.
+  // Nothing is registered here, because a registered source is a reachable one.
 
   // Reorder Purchase Orders are keyed BY the reorder request id -- the document id is the request
   // id, not a separate PO id -- so one keyed-lookup source serves both the batched resolver and the

@@ -46,13 +46,30 @@ const FIXTURE_PO = {
 // no longer imports -- green, and proving nothing.
 const queriedSources = [];
 
+// The reorder read no longer goes through the governed list client at all: its retired Rules
+// admitted three populations, so it resolves through the scoped seam instead. Mocked separately
+// and recorded under its own name, so "read the live reorder requests" is still asserted rather
+// than quietly dropped along with the source id it used to name.
+vi.mock("../src/access/scopedReorderClient.js", () => ({
+  REORDER_READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+  readScopedReorderRequests: async () => {
+    queriedSources.push("scopedReorderRequests");
+    return {
+      ok: true,
+      result: "OK",
+      items: [{ ...FIXTURE_REQUEST }],
+      hasMore: false,
+      nextCursor: null,
+      scope: "GLOBAL",
+    };
+  },
+}));
+
 vi.mock("../src/access/governedCollectionClient", () => {
   const read = async ({ sourceId }) => {
     queriedSources.push(sourceId);
     let items = [];
-    if (sourceId === "reorderRequestsQueue") {
-      items = [{ ...FIXTURE_REQUEST }];
-    } else if (sourceId === "purchaseOrdersByIds") {
+    if (sourceId === "purchaseOrdersByIds") {
       items = [{ ...FIXTURE_PO, id: FIXTURE_PO.reorderRequestId }];
     }
     // `legacyPurchaseOrders` (the dormant Epic-5 collection) and anything else: always empty in
@@ -77,7 +94,7 @@ describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)
     const { fetchProcurementPurchaseOrders } = await import("../src/services/operationsQueries");
     const rows = await fetchProcurementPurchaseOrders();
 
-    expect(queriedSources).toContain("reorderRequestsQueue");
+    expect(queriedSources).toContain("scopedReorderRequests");
     expect(queriedSources).toContain("purchaseOrdersByIds");
     expect(queriedSources).not.toContain("legacyPurchaseOrders");
 

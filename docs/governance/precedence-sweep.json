@@ -10,7 +10,7 @@
   "CANONICAL_MATRIX": 116,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2,
-  "UNJUSTIFIED": 4
+  "UNJUSTIFIED": 6
  },
  "rows": [
   {
@@ -1557,6 +1557,13 @@
   },
   {
    "roleId": "warehouseManager",
+   "capability": "warehouse.record.read",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "warehouseManager",
    "capability": "warehouse.transferOrder.read",
    "classification": "CANONICAL_MATRIX",
    "basis": "Detailed CRUD row",
@@ -1950,9 +1957,7 @@
    "capability": "reorder.request.read.queue",
    "classification": "WORKFLOW_REQUIRED",
    "basis": "Owner roster 2026-08-20 + ruling 2026-08-19 'Purchasing falls under accounting': the buyer must see what needs buying",
-   "alsoHeldBy": [
-    "partsManager"
-   ]
+   "alsoHeldBy": []
   },
   {
    "roleId": "purchasingManager",
@@ -2672,6 +2677,13 @@
   },
   {
    "roleId": "partsAssociate",
+   "capability": "reorder.request.read.own",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": []
+  },
+  {
+   "roleId": "partsAssociate",
    "capability": "salesOrder.read",
    "classification": "EXPLICIT_OWNER_DECISION",
    "basis": "DECISIONS #114",
@@ -2915,12 +2927,10 @@
   },
   {
    "roleId": "partsManager",
-   "capability": "reorder.request.read.queue",
+   "capability": "reorder.request.read.managed",
    "classification": "UNJUSTIFIED",
    "basis": "no matrix row, no composition, no recorded decision",
-   "alsoHeldBy": [
-    "purchasingManager"
-   ]
+   "alsoHeldBy": []
   },
   {
    "roleId": "partsManager",

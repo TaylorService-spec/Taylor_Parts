@@ -17,6 +17,15 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 
 let governedOutcome;
+vi.mock("../src/access/scopedReorderClient.js", () => ({
+  REORDER_READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+  readScopedReorderRequests: () => Promise.resolve(governedOutcome),
+}));
+
+// useInventoryActionsForPart still reads through the GOVERNED list client -- it reads
+// reorder_purchase_orders, whose retired rule had one read predicate and therefore one
+// population. Both mocks stand because this file covers two hooks with two different seams,
+// and dropping either would leave one of them exercising nothing.
 vi.mock("../src/access/governedCollectionClient", () => ({
   governedCollectionClient: {
     readGovernedList: () => Promise.resolve(governedOutcome),
@@ -36,7 +45,7 @@ async function renderGoverned(fn) {
 }
 
 beforeEach(() => {
-  governedOutcome = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false };
+  governedOutcome = { ok: true, result: "OK", items: [], nextCursor: null, hasMore: false, scope: "GLOBAL" };
 });
 afterEach(() => {
   cleanup();

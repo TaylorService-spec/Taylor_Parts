@@ -154,7 +154,7 @@ resources would grant the Suppliers workspace to anyone who could see a warehous
 | `supplier_catalog` | `supplierCatalogDirectory` | `supplier.catalog.read` (existing) |
 | `transfer_orders` | `transferOrderDirectory` / `metadataTransferOrders` | `warehouse.transferOrder.read` (existing) |
 | `inventory_transactions` | `inventoryTransactionLedger` | `inventory.transaction.read` (existing) |
-| `reorder_requests` | `reorderRequestsQueue` | `reorder.request.read.queue` (existing) |
+| `reorder_requests` | *scoped seam, not a registered source* | `reorder.request.read.queue` / `.managed` / `.own` — see Record scope |
 | `reorder_purchase_orders` | `purchaseOrdersByIds` / `purchaseOrderDirectory` | `reorder.purchaseOrder.read` (existing) |
 | `purchase_orders` (dormant Epic-5) | `legacyPurchaseOrders` | **`supplier.purchaseOrder.read` — MINTED** |
 
@@ -325,29 +325,118 @@ cleanly, never a rules evaluation error** — an evaluator exception is not a de
 
 ---
 
-## Two record-scope differences, MEASURED and NOT decided here
+## Record scope — CLOSED, with the measured parity result
 
-These are not defects and not silent. They are differences between what the retired Rules
-branches expressed and what the governed capabilities express, surfaced so they can be somebody's
-decision rather than somebody's discovery.
+Two differences between what the retired Rules branches expressed and what the governed
+capabilities expressed were recorded here as open. Both are now closed, because "the client cannot
+read the collection any more" is a statement about the transport and the closure standard is a
+statement about the EFFECTIVE result: **the old permitted record population equals the new governed
+permitted record population, for every migrated authority**.
 
-**1. Reorder request reads.** The retired rule gave OPERATIONAL roles record-scoped access:
-a PARTS_MANAGER saw the queue statuses plus requests they personally reviewed or assigned; a
-PARTS_ASSOCIATE saw only requests assigned to them (`assignedToUserId == request.auth.uid`). The
-governed `reorder.request.read.queue` is role-level and unscoped, and the EOS `partsManager` Role
-holds it while `partsAssociate` does not. So the PARTS_MANAGER population is BROADER within the
-queue and the PARTS_ASSOCIATE self-scope is GONE. Note the populations differ in kind — operational
-roles on the employee record versus EOS Roles — so this is not a like-for-like widening, and the
-capability and Role both predate this workstream.
+Capability decides WHETHER an actor may read. Server-derived assignment decides WHICH records. The
+browser decides neither, in either case — there is no request field that carries a scope.
 
-**2. Warehouse and transfer-order reads.** The retired rules admitted a warehouse-scoped manager
-to their own warehouse and to transfer orders on either endpoint (`isAssignedToWarehouse`). The
-governed `warehouse.record.read` and `warehouse.transferOrder.read` are role-level and unscoped.
+### 1. Reorder requests — three populations, resolved broadest-first
 
-In both cases the CLIENT can no longer read these collections at all, so nothing was widened by the
-Rules change itself. What differs is the shape of the authority on the governed side. Restoring
-record scope means server-side scope resolution on those sources — a decision with an owner, not a
-cleanup.
+The retired rule, verbatim, is the oracle:
+
+    allow read: if isAdminOrDispatcher()
+      || (isActiveOperationalRole("PARTS_MANAGER") && status == "READY_FOR_PARTS_MANAGER")
+      || (isActiveOperationalRole("PARTS_MANAGER") && status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
+      || (isActiveOperationalRole("PARTS_MANAGER") && (reviewedBy == uid || assignedBy == uid))
+      || (isActiveOperationalRole("PARTS_ASSOCIATE") && assignedToUserId == uid);
+
+| Population | Capability | What the reader gets |
+|---|---|---|
+| GLOBAL | `reorder.request.read.queue` | the whole queue — admin, dispatcher, purchasingManager, operationsManager, owner |
+| MANAGED | `reorder.request.read.managed` (minted) | the three queue statuses, plus records the actor personally reviewed or assigned — admin, partsManager, owner |
+| OWN | `reorder.request.read.own` | records assigned to the actor — admin, dispatcher, technician, partsAssociate, owner |
+
+Resolution is **global → managed → own → deny**. A person holding both Operations Manager and Parts
+Manager keeps the global queue; the narrow capability never shrinks a broader authority.
+
+Three things this deliberately did NOT do. It did not leave `reorder.request.read.queue` on
+`partsManager` — that id means the unscoped queue, and keeping it would have widened a Parts Manager
+from three statuses plus their own records to the entire collection. It did not overload one id to
+mean both populations. And it did not require a Parts Associate to masquerade as the compatibility
+`technician` Role to keep their own visibility: `reorder.request.read.own` was added to
+`partsAssociate` directly.
+
+`reviewedBy` / `assignedBy` / `assignedToUserId` remain available as DISPLAY filters and are applied
+as a conjunction INSIDE the resolved scope, so naming somebody else yields a smaller set, never a
+different one. An OWN-scoped caller naming another assignee is refused rather than narrowed.
+
+The two unscoped governed sources (`reorderRequestsQueue`, `reorderRequestsHistory`) are **deleted
+from the registry**, along with the comment beside them that claimed those fields "never were an
+access-control boundary" — measured against the rule above, that was wrong. A registered source is
+a reachable one, so removing them is what makes the scoped seam the only path.
+
+### 2. Warehouses and transfer orders — scope declared on the existing sources
+
+The retired rules:
+
+    match /warehouses/{warehouseId}
+      allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);
+    match /transfer_orders/{transferOrderId}
+      allow read: if isAdminOrDispatcher()
+        || isAssignedToWarehouse(resource.data.fromWarehouseId)
+        || isAssignedToWarehouse(resource.data.toWarehouseId);
+
+| Reader | Warehouses | Transfer orders |
+|---|---|---|
+| global authorization | every record | every record |
+| Warehouse Manager (assigned) | only the ids in the server-derived scope | every order whose `fromWarehouseId` OR `toWarehouseId` is in that scope |
+
+`warehouse.record.read` was ABSENT from `WAREHOUSE_MANAGER_ROLE` and is restored;
+`warehouse.transferOrder.read` was present. **Neither capability id was constrained** —
+operationsManager, controller and others legitimately hold both with global reach. The narrowing is
+declared on the four existing governed sources (`warehouseDirectory`, `metadataWarehouses`,
+`transferOrderDirectory`, `metadataTransferOrders`) and applied by `readGovernedList`, so both
+sources over a collection are scoped identically and there is no sibling source to reach the wider
+population through.
+
+**Query semantics.** Firestore has no OR across fields, so the transfer-order scope is one query per
+endpoint, unioned and de-duplicated by AUTHORITATIVE document id — an order between two assigned
+warehouses is returned once. The count is de-duplicated the same way rather than summed, so the
+header cannot claim more records than the list can show.
+
+**The location source, and why it is not the governed RoleAssignment scope.** The assignment is read
+from `employees.assignedWarehouseIds` behind the same four clauses the retired
+`isAssignedToWarehouse` required (reciprocal `users/{uid}.employeeId` link, `employmentStatus ==
+"ACTIVE"`, `operationalRoles` contains `WAREHOUSE_MANAGER`, and the id present). The governed
+location-scoped RoleAssignment population is NOT provably synchronised with it — the platform's own
+R-32 census can report the two CONTRADICTORY — so substituting it would have been a silent change of
+population wearing a migration's name. The old effective scope is preserved server-side and recorded
+as **transitional scope plumbing**: `functions/src/access/assignedWarehouseScope.ts`, whose header
+carries this reasoning. Reconciling the two is its own decision.
+
+### Measured parity result
+
+| Authority | Old permitted population | New governed permitted population | Same? |
+|---|---|---|---|
+| reorder — global reader | whole queue | whole queue | yes |
+| reorder — PARTS_MANAGER | 3 queue statuses + personally reviewed/assigned | identical, via `reorder.request.read.managed` | yes |
+| reorder — PARTS_ASSOCIATE | `assignedToUserId == uid` | identical, via `reorder.request.read.own` | yes |
+| reorder — dual-authority holder | global (first matching branch) | global (broadest-first resolution) | yes |
+| warehouses — global reader | every record | every record | yes |
+| warehouses — assigned manager | assigned ids | assigned ids | yes |
+| transfer orders — global reader | every record | every record | yes |
+| transfer orders — assigned manager | either endpoint in assignment | either endpoint, unioned and de-duplicated | yes |
+
+Proved by execution, not inspection: `functions/test/scopedReorderRead.test.mjs` (23) and
+`functions/test/warehouseRecordScope.test.mjs` (16), both quoting the retired predicates as the
+oracle, both wired into CI as `npm run test:recordScope`. Verified fail-first: disabling the scope
+resolution fails 7 of the warehouse assertions rather than passing quietly.
+
+### Truck-registry Rules pin
+
+The pin moved to the contracted ruleset's hash and STAYS there. The old value identifies the retired
+1,876-line artifact, which the repository no longer contains. The hash is an identity and drift
+guard — "is the deployed ruleset the one this repository reviewed" — and **not** the authorization
+proof; that is the Rules regression suite, in which every retained grant is exercised positively and
+every retired grant is asserted DENIED. The standing prohibition is recorded beside the value in
+`functions/scripts/verifyTruckRegistryDeployment.js`: never edit `firestore.rules` merely to make an
+old pin pass.
 
 ---
 ## What this workstream migrated

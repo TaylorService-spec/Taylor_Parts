@@ -203,6 +203,19 @@ export {
   readSelfTechnician,
 } from "./workOrder/scopedWorkOrderCallables";
 
+// REORDER REQUESTS -- the second scoped read seam, for the same reason as the first. The retired
+// Rules admitted THREE populations by three predicates (global; a Parts Manager's queue statuses
+// plus what they personally reviewed or assigned; a Parts Associate's own assignments), so no
+// single global source could carry it. Resolution is global -> managed -> own, broadest first, so
+// holding the narrow capability never narrows a broader authority.
+export { readScopedReorderRequests } from "./reorderRequest/scopedReorderCallables";
+
+// WAREHOUSES AND TRANSFER ORDERS have NO callable of their own, deliberately. Their retired rule
+// differed from the governed sources only in WHICH records it returned, never in the shape of the
+// read -- so the narrowing is declared on the four existing sources (governedReadRegistry.ts's
+// `scope`) and applied by readGovernedList, rather than duplicated into a parallel seam that would
+// have had to re-earn filters, sorts, cursors and counts. See access/assignedWarehouseScope.ts.
+
 // SESSION IDENTITY -- "which employee am I". Requires authentication and NO capability: it reads
 // only the caller's own linkage, and requiring workforce.directory.read here would mean a
 // technician could not learn their own name. It replaces the browser's direct read of its own

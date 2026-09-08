@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { governedCollectionClient } from "../access/governedCollectionClient";
+// THE SCOPED SEAM, not the governed list client. Reorder reads have THREE populations resolved
+// by three capabilities -- global queue, a Parts Manager's managed set, a Parts Associate's own
+// assignments -- and the server decides which one this principal gets. A single-capability
+// source could only have carried one of them.
+import { readScopedReorderRequests } from "../access/scopedReorderClient.js";
 import {
   subscribeReorderRequestsChanged,
   getReorderRequestsVersion,
@@ -79,8 +83,7 @@ function useReorderRequestsVersion() {
 // becomes an empty list.
 function subscribeGoverned(filters, apply) {
   let active = true;
-  governedCollectionClient
-    .readGovernedList({ sourceId: "reorderRequestsQueue", filters, pageSize: 200 })
+  readScopedReorderRequests({ mode: "index", params: filters, pageSize: 200 })
     .then((outcome) => {
       if (!active) return;
       apply(
@@ -201,8 +204,7 @@ export function useReorderRequestForPart(partId, requestId) {
 
     if (requestId) {
       let active = true;
-      governedCollectionClient
-        .readGovernedList({ sourceId: "reorderRequestsQueue", filters: { ids: [requestId] }, pageSize: 1 })
+      readScopedReorderRequests({ mode: "index", params: { ids: [requestId] }, pageSize: 1 })
         .then((outcome) => {
           if (!active) return;
           if (!outcome.ok) {
@@ -237,8 +239,7 @@ export function useReorderRequestForPart(partId, requestId) {
     // hook has always picked the newest itself. Moving the sort server-side would need a second
     // ordering on the source and would change nothing a caller can see.
     let active = true;
-    governedCollectionClient
-      .readGovernedList({ sourceId: "reorderRequestsQueue", filters: { partId }, pageSize: 200 })
+    readScopedReorderRequests({ mode: "index", params: { partId }, pageSize: 200 })
       .then((outcome) => {
         if (!active) return;
         if (!outcome.ok) {
@@ -337,9 +338,17 @@ export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, curs
   // it round-trips whatever this returns as `lastVisible` and never inspects it -- so swapping a
   // Firestore DocumentSnapshot for the server's opaque page token is invisible to every caller.
   // Ordering (createdAt desc) and the status filter are the source's, matching this query exactly.
-  const outcome = await governedCollectionClient.readGovernedList({
-    sourceId: "reorderRequestsHistory",
-    filters: { statuses },
+  // SCOPED, like the queue. A Parts Manager's history is the terminal records they personally
+  // reviewed or assigned -- which is what the retired rule gave them -- not the whole business's.
+  //
+  // The cursor SURVIVES the migration. A scoped history is a union of three branches, and a token
+  // meaning one position in one branch would normally mean nothing in the merged result -- but
+  // every branch is ordered on the same key, so one position describes the whole merge. The seam
+  // mints the token; this hook still treats it as opaque, exactly as it treated the Firestore
+  // document snapshot it replaces.
+  const outcome = await readScopedReorderRequests({
+    mode: "history",
+    params: { statuses },
     pageSize,
     cursor: cursor ?? undefined,
   });
@@ -354,7 +363,7 @@ export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, curs
     docs: outcome.items,
     lastVisible: outcome.nextCursor,
     // `size` STILL, because the hook derives hasMore from `size === pageSize` and that heuristic is
-    // deliberately left alone. The server now reports an exact `hasMore` (it fetches pageSize + 1),
+    // deliberately left alone. The server reports an exact `hasMore` (it fetches pageSize + 1),
     // which would be strictly better -- but adopting it changes when "Load More" disappears, and
     // that is a behaviour change rather than a migration. Recorded here, not taken.
     size: outcome.items.length,
@@ -444,16 +453,8 @@ export function useReviewedRequestsHistory(uid) {
     // the read server-side -- so the shape stays two queries, not one, and the client-side
     // terminal-status filter stays client-side.
     Promise.all([
-      governedCollectionClient.readGovernedList({
-        sourceId: "reorderRequestsQueue",
-        filters: { reviewedBy: uid },
-        pageSize: 200,
-      }),
-      governedCollectionClient.readGovernedList({
-        sourceId: "reorderRequestsQueue",
-        filters: { assignedBy: uid },
-        pageSize: 200,
-      }),
+      readScopedReorderRequests({ mode: "index", params: { reviewedBy: uid }, pageSize: 200 }),
+      readScopedReorderRequests({ mode: "index", params: { assignedBy: uid }, pageSize: 200 }),
     ]).then(([reviewed, assigned]) => {
       if (cancelled) return;
       if (!reviewed.ok || !assigned.ok) {
@@ -500,8 +501,7 @@ export function useReorderRequestById(requestId) {
 
     setState({ data: null, loading: true, error: null });
     let active = true;
-    governedCollectionClient
-      .readGovernedList({ sourceId: "reorderRequestsQueue", filters: { ids: [requestId] }, pageSize: 1 })
+    readScopedReorderRequests({ mode: "index", params: { ids: [requestId] }, pageSize: 1 })
       .then((outcome) => {
         if (!active) return;
         if (!outcome.ok) {

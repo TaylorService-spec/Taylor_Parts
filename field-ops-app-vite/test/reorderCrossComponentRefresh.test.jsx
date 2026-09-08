@@ -17,12 +17,18 @@ import { renderHook, act, cleanup } from "@testing-library/react";
 
 let items;
 let readCount;
-vi.mock("../src/access/governedCollectionClient", () => ({
-  governedCollectionClient: {
-    readGovernedList: () => {
-      readCount += 1;
-      return Promise.resolve({ ok: true, result: "OK", items, nextCursor: null, hasMore: false });
-    },
+vi.mock("../src/access/scopedReorderClient.js", () => ({
+  REORDER_READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+  readScopedReorderRequests: () => {
+    readCount += 1;
+    return Promise.resolve({
+      ok: true,
+      result: "OK",
+      items,
+      nextCursor: null,
+      hasMore: false,
+      scope: "GLOBAL",
+    });
   },
 }));
 

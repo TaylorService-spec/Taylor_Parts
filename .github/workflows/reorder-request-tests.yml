@@ -20,6 +20,8 @@ on:
       - "functions/test/reorderCancelVoidCommands.test.mjs"
       - "functions/test/reorderTransitionParity.test.mjs"
       - "functions/test/governedListRead.test.mjs"
+      - "functions/test/scopedReorderRead.test.mjs"
+      - "functions/test/warehouseRecordScope.test.mjs"
       - "functions/src/crm/**"
       - "functions/test/bindingScopePolicy.test.mjs"
       - "functions/src/access/**"
@@ -36,6 +38,8 @@ on:
       - "functions/test/reorderCancelVoidCommands.test.mjs"
       - "functions/test/reorderTransitionParity.test.mjs"
       - "functions/test/governedListRead.test.mjs"
+      - "functions/test/scopedReorderRead.test.mjs"
+      - "functions/test/warehouseRecordScope.test.mjs"
       - "functions/src/crm/**"
       - "functions/test/bindingScopePolicy.test.mjs"
       - "functions/src/access/**"
@@ -100,4 +104,13 @@ jobs:
       # -- CI-uncovered while looking covered, the same gap Workstream 2B found above.
       - name: Governed list read contract (build + run)
         run: npm run test:governedListRead
+        working-directory: functions
+
+      # RECORD SCOPE -- which records a caller may read, once the capability has settled whether.
+      # The retired firestore.rules read predicates are the oracle in both suites: three reorder
+      # populations, and the warehouse/transfer assignment branch. A suite with no workflow naming
+      # it is CI-uncovered while looking covered, so these are named here rather than left to a
+      # path filter alone.
+      - name: Record-scope parity, reorder + warehouse (build + run)
+        run: npm run test:recordScope
         working-directory: functions

@@ -748,6 +748,17 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
     "reorder.purchaseOrder.read",
     "reorder.request.create.manual",
     "salesOrder.read",
+    // RESTORED 2026-09-08, as authorization parity rather than a new grant. The retired
+    // firestore.rules admitted this Role's operational counterpart to `warehouses/{warehouseId}`
+    // through `isAssignedToWarehouse(warehouseId)` -- their ASSIGNED warehouses. Migrating that
+    // read off Rules without restoring it would have removed a read the platform already
+    // permitted, which is a narrowing dressed as a migration.
+    //
+    // The capability itself stays UNSCOPED: operationsManager and others legitimately hold it with
+    // global reach, and constraining the id would break them in order to constrain this Role. The
+    // scope lives in the READ RESOLUTION -- a principal reaching warehouse data through the
+    // warehouse-manager path sees their assigned warehouses and no others.
+    "warehouse.record.read",
     "warehouse.transferOrder.read",
     // PERFORMANCE GOAL AUTHORITY -- the Owner names Warehouse Manager for parts/warehouse LOCATION
     // goals, and only "where its governed scope actually covers the target". That qualifier needs no
@@ -828,7 +839,27 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
     "inventory.transaction.read",
     "reorder.request.assign",
     "reorder.request.create.manual",
-    "reorder.request.read.queue",
+    // ══════════ THE GLOBAL QUEUE READ IS NOT THIS ROLE'S, AND WAS NOT IN PRACTICE ══════════
+    //
+    // `reorder.request.read.queue` was here, and it was never what a Parts Manager actually saw.
+    // Two authorities coexisted: this capability, which no client read consumed, and
+    // `firestore.rules`, which decided every real reorder read. What the Rules admitted was:
+    //
+    //   isActiveOperationalRole("PARTS_MANAGER") && status == "READY_FOR_PARTS_MANAGER"
+    //   isActiveOperationalRole("PARTS_MANAGER") && status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"]
+    //   isActiveOperationalRole("PARTS_MANAGER") && (reviewedBy == uid || assignedBy == uid)
+    //
+    // Three statuses and the records this person personally touched -- NOT the whole queue.
+    //
+    // Once the read became governed, leaving the global capability here would have WIDENED this
+    // Role from that population to every reorder request in the business, as a side effect of a
+    // transport migration. The closure standard is the effective result: the old permitted record
+    // population must equal the new governed one.
+    //
+    // So the global id is replaced by the scoped one that means exactly the retired population.
+    // Resolution order is global -> managed -> own, so a person who ALSO holds Operations Manager
+    // still reads globally: holding this narrower capability never narrows a broader authority.
+    "reorder.request.read.managed",
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",
@@ -870,6 +901,19 @@ export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    // RESTORED 2026-09-08, as authorization parity. The retired firestore.rules admitted this
+    // Role's operational counterpart to their OWN assigned reorder requests:
+    //
+    //   isActiveOperationalRole("PARTS_ASSOCIATE") && resource.data.assignedToUserId == request.auth.uid
+    //
+    // `reorder.request.read.own` already named that authority, and was held only by the
+    // compatibility `technician` Role -- so preserving the read would otherwise have required a
+    // Parts Associate to carry a technician Role they are not, purely to keep a visibility they
+    // already had. The capability goes where the business fact lives.
+    //
+    // SELF-SCOPED BY THE SERVER: the population is `assignedToUserId == request.auth.uid`, resolved
+    // from the authenticated context. The browser cannot name an assignee.
+    "reorder.request.read.own",
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",

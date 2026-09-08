@@ -5,9 +5,9 @@
   "activationOverrides": 91
  },
  "catalog": {
-  "total": 166,
-  "globallyActive": 57,
-  "activeInThisEnvironment": 148,
+  "total": 167,
+  "globallyActive": 58,
+  "activeInThisEnvironment": 149,
   "inactiveInThisEnvironment": 18
  },
  "employeesEvaluated": 47,
@@ -48,10 +48,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2811,
-  "fromCompatibilityRoleOnly": 1874,
-  "fromGovernedRoleOnly": 488,
-  "fromBoth": 449,
+  "operableHoldingsTotal": 2814,
+  "fromCompatibilityRoleOnly": 1870,
+  "fromGovernedRoleOnly": 490,
+  "fromBoth": 454,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -427,8 +427,8 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 166,
-   "operableCount": 148,
+   "grantedCount": 167,
+   "operableCount": 149,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
@@ -1100,8 +1100,8 @@
     "inventoryCycleCountReconciler",
     "inventoryCatalogAdministrator"
    ],
-   "grantedCount": 73,
-   "operableCount": 73,
+   "grantedCount": 74,
+   "operableCount": 74,
    "assignments": [
     {
      "workstream": "CYCLE_COUNT_RECONCILE",
@@ -1139,8 +1139,8 @@
     "inventoryCycleCountReconciler",
     "inventoryCatalogAdministrator"
    ],
-   "grantedCount": 73,
-   "operableCount": 73,
+   "grantedCount": 74,
+   "operableCount": 74,
    "assignments": [
     {
      "workstream": "CYCLE_COUNT_RECONCILE",

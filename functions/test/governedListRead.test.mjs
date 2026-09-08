@@ -546,8 +546,6 @@ test("a required filter is never also the only thing standing between a caller a
     "partsBySerialControl",
     "partsWholeUnit",
     "partMaster",
-    "reorderRequestsQueue",
-    "reorderRequestsHistory",
     "truckRegistry",
     "mobileLocations",
     "warehouseDirectory",

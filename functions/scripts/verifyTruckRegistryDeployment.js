@@ -112,6 +112,35 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 //
 //     RE-PINNED by synchronisation. Both governed copies were re-verified byte-identical, and
 //     the value is computed from the file rather than copied out of a failure message.
+//
+// ════════════════════ OWNER RULING, 2026-09-08: THE NEW PIN STANDS ════════════════════
+//
+// Recorded here, beside the value it governs, because the question will be asked again the next
+// time this moves and the answer should not have to be reconstructed.
+//
+// The pin was NOT reverted to the pre-contraction value. The old hash identifies the retired
+// 1,876-line authorization artifact; the accepted artifact is now the contracted Rules file, and a
+// pin that names a file the repository no longer contains guards nothing.
+//
+// WHAT THE HASH IS, EXACTLY: an identity and drift guard. It answers "is the deployed ruleset the
+// one this repository reviewed", and nothing else. IT IS NOT THE AUTHORIZATION PROOF. The proof
+// that authority did not widen is the Rules regression suite -- 836 assertions across 21 suites,
+// in which every retained grant is exercised positively and every retired grant is asserted to be
+// DENIED. A hash cannot make that claim and was never asked to.
+//
+// THE STANDING PROHIBITION, which is the reason this note exists at all: NEVER EDIT
+// firestore.rules MERELY TO MAKE AN OLD PIN PASS. That inverts the guard -- it makes the recorded
+// value the authority and the ruleset the thing that yields to it. A deliberate change to the
+// canonical Rules is a decision; re-pinning is bookkeeping that FOLLOWS the decision.
+//
+// The conditions this move was accepted under, each verified before the value below changed:
+//   - the canonical Rules bytes were changed deliberately, under an Owner ruling;
+//   - root firestore.rules and field-ops-app-vite/firestore.rules are byte-identical;
+//   - the Rules regression suite is green at 836/836;
+//   - retained positive grants are exercised as grants, not merely as "not denied";
+//   - retired positive grants are asserted DENIED, one assertion each;
+//   - the value below is computed from the exact committed canonical artifact, never copied out
+//     of a failure message.
 const GOVERNED_RULES_SHA256 = "7322cfe04e089add37e7f74bf1a6c37823c538b99385b47b2d97bff82c15e262";
 const EXPECTED_PROJECT = "taylor-parts";
 

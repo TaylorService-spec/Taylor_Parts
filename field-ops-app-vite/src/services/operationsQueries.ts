@@ -29,6 +29,11 @@
 // readAllGoverned FAILS rather than truncating, so a complete-population read cannot quietly
 // degrade into a partial one.
 import { governedCollectionClient, READ_RESULT } from "../access/governedCollectionClient";
+// Reorder requests do NOT come through the governed list client. That client speaks one
+// capability, one population; the retired Rules admitted THREE (a global queue, a Parts Manager's
+// managed set, a Parts Associate's own assignments), so the server picks which one this principal
+// gets. See access/scopedReorderClient.js.
+import { readScopedReorderRequests } from "../access/scopedReorderClient.js";
 import { REORDER_REQUEST_STATUS } from "../domain/constants";
 import { buildPurchaseOrdersView } from "../domain/purchaseOrdersView.js";
 
@@ -46,7 +51,6 @@ const SOURCE_SUPPLIERS_COMPLETE = "supplierDirectory";
 const SOURCE_SUPPLIERS_PAGE = "metadataSuppliers";
 const SOURCE_SUPPLIER_CATALOG = "supplierCatalogDirectory";
 const SOURCE_LEGACY_PURCHASE_ORDERS = "legacyPurchaseOrders";
-const SOURCE_REORDER_REQUESTS = "reorderRequestsQueue";
 const SOURCE_REORDER_PURCHASE_ORDERS = "purchaseOrdersByIds";
 const SOURCE_REORDER_PURCHASE_ORDERS_ALL = "purchaseOrderDirectory";
 
@@ -69,6 +73,34 @@ async function readComplete<T>(sourceId: string, filters?: Record<string, unknow
   const res = await governedCollectionClient.readAllGoverned({ sourceId, filters });
   if (!res.ok) failRead(res.result);
   return res.items as T[];
+}
+
+/**
+ * The COMPLETE reorder-request population THIS PRINCIPAL MAY SEE, paged to exhaustion.
+ *
+ * The scoped seam's own `readAllGoverned`. Same contract as the governed one above and for the same
+ * reason: these rows feed the Operations dashboard's totals, and a total computed over a truncated
+ * input is not partial -- it is wrong, presented as complete. So this pages until the server stops
+ * issuing tokens and FAILS rather than returning a short answer, exactly like readComplete.
+ *
+ * The population differs by reader, and that is the point rather than a caveat: a global reader
+ * gets the whole queue, a Parts Manager gets the records the retired rule admitted them to. What
+ * this function guarantees is that whichever population applies, it is returned WHOLE.
+ */
+async function readCompleteScopedReorder<T>(params?: Record<string, unknown>): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | undefined;
+  // A ceiling on ROUND TRIPS, not on rows: a token that never stops arriving is a server defect,
+  // and looping forever on it would hang the dashboard instead of reporting it.
+  for (let page = 0; page < 200; page += 1) {
+    // eslint-disable-next-line no-await-in-loop -- pages are sequential by construction.
+    const res = await readScopedReorderRequests({ mode: "index", params, pageSize: 200, cursor });
+    if (!res.ok) failRead(res.result);
+    out.push(...(res.items as T[]));
+    if (!res.nextCursor) return out;
+    cursor = res.nextCursor;
+  }
+  throw new Error("Operations data could not be loaded.");
 }
 
 export interface RawInventoryTransaction {
@@ -260,7 +292,7 @@ export const fetchPurchaseOrders = () => readComplete<RawPurchaseOrder>(SOURCE_L
 export interface RawReorderRequest { id: string; partId: string; status: string; }
 export interface RawReorderPurchaseOrder { id: string; partId: string; status: string; }
 
-export const fetchReorderRequests = () => readComplete<RawReorderRequest>(SOURCE_REORDER_REQUESTS);
+export const fetchReorderRequests = () => readCompleteScopedReorder<RawReorderRequest>();
 export const fetchReorderPurchaseOrders = () =>
   readComplete<RawReorderPurchaseOrder>(SOURCE_REORDER_PURCHASE_ORDERS_ALL);
 
@@ -308,7 +340,7 @@ export interface ProcurementPurchaseOrderRow {
 }
 
 export const fetchProcurementPurchaseOrders = async (): Promise<ProcurementPurchaseOrderRow[]> => {
-  const requests = await readComplete<Record<string, unknown> & { id: string }>(SOURCE_REORDER_REQUESTS, {
+  const requests = await readCompleteScopedReorder<Record<string, unknown> & { id: string }>({
     statuses: PROCUREMENT_PO_REQUEST_STATUSES,
   });
 
