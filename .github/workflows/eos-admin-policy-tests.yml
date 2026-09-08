@@ -1,0 +1,87 @@
+name: EOS Admin Policy & Workflow Tests
+
+# THE ADMINISTRATION POLICY FOUNDATION -- Objects, Roles & Permissions, Users, Workflows.
+#
+# The target architecture is: the authentication provider supplies IDENTITY; EOS decides
+# AUTHORIZATION; and everything a customer configures lives in the EOS database behind the DAL.
+# This lane proves the engine half of that -- the part that must be right before any storage
+# decision is made.
+#
+# THREE THINGS IT PROVES, all offline. No emulator, no Firebase runtime, no database, no secrets:
+#
+#   1. AUTHORIZATION. Object CRED, field inheritance, explicit overrides, and the DOORWAY INVARIANT
+#      -- that a field grant can never open an object the Role cannot read. Plus multi-role union
+#      being additive, malformed policy failing closed, and cross-tenant isolation.
+#
+#   2. WORKFLOW. That workflow authority and data authority are independent in BOTH directions, that
+#      a published version is immutable, that an in-flight instance stays pinned to the version it
+#      began under, and that the current state comes from the store rather than from the request.
+#      Plus the three seeded lifecycles being faithful to the code that runs today.
+#
+#   3. NO FIREBASE. A static guard over every module in src/adminPolicy: no Firestore import, no
+#      Firestore-shaped write, no reference to the collections this subsystem replaces, and no way
+#      to reach storage except the injected repository port.
+#
+# INERT. Nothing here is wired into a running surface, no capability is granted, no callable is
+# exported, no Firestore collection is created and no Rules change. The PostgreSQL schema ships as
+# reviewable DDL that nothing executes -- the driver is an open Owner decision.
+#
+# Linux runner, offline proofs only, matching every other lane in this repository.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/adminPolicy/**"
+      - "functions/test/adminPolicyAuthorization.test.mjs"
+      - "functions/test/adminPolicyWorkflow.test.mjs"
+      - "functions/test/adminPolicyNoFirebase.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "docs/architecture/eos-admin-policy-workflow-reconciliation.md"
+      - ".github/workflows/eos-admin-policy-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/adminPolicy/**"
+      - "functions/test/adminPolicyAuthorization.test.mjs"
+      - "functions/test/adminPolicyWorkflow.test.mjs"
+      - "functions/test/adminPolicyNoFirebase.test.mjs"
+      - ".github/workflows/eos-admin-policy-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Admin policy engine -- authorization, workflow, tenancy, no-Firebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      # Build first: the proofs import the compiled lib/, so a type error must fail the lane rather
+      # than leave the tests running against a stale build that still passes.
+      - name: Typecheck and build
+        run: npm run build
+        working-directory: functions
+
+      - name: Admin policy proofs (build + run)
+        run: npm run test:adminPolicy
+        working-directory: functions
