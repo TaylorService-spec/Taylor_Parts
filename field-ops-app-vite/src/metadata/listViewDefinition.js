@@ -41,7 +41,7 @@ import {
   governedSourceSpec,
   isKnownReadCallable,
   readCallableSourceInfo,
-} from "./callableListSource.js";
+} from "./callableSourceRegistry.js";
 
 /** Sort direction. */
 export const SORT_DIRECTION = Object.freeze(["ASC", "DESC"]);

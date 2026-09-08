@@ -42,7 +42,7 @@ on:
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
-      - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "functions/test/writeCommandTimestampContract.test.mjs"
       - "field-ops-app-vite/test/technicianNameIsNotAnId.test.mjs"
       - "field-ops-app-vite/src/domain/actorDisplayName.js"
       - "field-ops-app-vite/src/firebase/collectionStore.js"
@@ -83,7 +83,7 @@ on:
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
-      - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "functions/test/writeCommandTimestampContract.test.mjs"
       - "field-ops-app-vite/test/technicianNameIsNotAnId.test.mjs"
       - "field-ops-app-vite/src/domain/actorDisplayName.js"
       - "field-ops-app-vite/src/firebase/collectionStore.js"
@@ -183,9 +183,15 @@ jobs:
       # Firestore's orderBy silently drops documents missing the sorted field, so a list that sorts
       # on a field not set at creation omits newly created records with NO error. That is how a
       # newly created Prospect became invisible while still being findable by search.
+      #
+      # The check MOVED with the writes it guards. It used to assert this against the client's own
+      # Firestore transport; that transport is deleted, and every governed write is now a trusted
+      # command, so the contract is asserted where the timestamps are actually stamped -- including
+      # the regression that made new Customers invisible by writing epoch millis under an
+      # updatedAt DESC sort, where numbers order below Timestamps.
       - name: A created record is reachable from its list
-        run: node --test test/createdRecordIsReachable.test.mjs
-        working-directory: field-ops-app-vite
+        run: npm run build && node --test test/writeCommandTimestampContract.test.mjs
+        working-directory: functions
 
       # Ten surfaces each hand-rolled the same technician lookup and nine of them fell back to
       # rendering the raw document id where a person's name belongs.

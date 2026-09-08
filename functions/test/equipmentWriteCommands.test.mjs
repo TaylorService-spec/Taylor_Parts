@@ -15,6 +15,7 @@ import {
   buildEquipmentCreate,
   buildEquipmentUpdate,
   nameValid,
+  optionalFieldsValid,
   transitionAllowed,
 } from "../lib/equipment/equipmentWriteCommands.js";
 
@@ -255,4 +256,55 @@ test("a caller cannot stamp updatedAt itself", () => {
   const stored = { name: "N", status: STATUS.ACTIVE, accountId: "a", locationId: "l" };
   const { patch } = buildEquipmentUpdate(stored, { name: "M", updatedAt: 1 }, CTX);
   assert.equal(patch.updatedAt, CTX.nowMillis);
+});
+
+// ============================ THE NAME CONTRACT, PORTED ============================
+//
+// These cases lived in functions/test/equipmentRules.test.js, where they proved the RULES
+// predicate accepted a legitimate name in any script and rejected one made only of invisible
+// characters. That predicate is retired along with the client-direct write, and the equivalent
+// check is now `nameValid` in the command.
+//
+// They are ported rather than dropped, because the interesting half is not the happy path -- it
+// is that `trim()` ALONE is not enough: U+200B and friends are format characters that survive a
+// trim, so a name of invisible characters would otherwise pass. Deleting these with the Rules
+// they were written against would have quietly retired the only test of that.
+
+test("a legitimate name is accepted in any script", () => {
+  for (const name of [
+    "\u51b7\u5374\u5668",                 // CJK
+    "\u200f\u062c\u0647\u0627\u0632",   // Arabic RTL behind a U+200F RLM prefix
+    "\ud83e\uddca",                       // emoji only
+    "e\u0301quipement",                    // a combining mark
+    "Ice\u00a0Machine",                    // NBSP between words
+    "A",                                    // a single visible character
+    "\u200bUnit 7",                        // a zero-width space BESIDE visible text
+  ]) {
+    assert.equal(nameValid(name), true, `${JSON.stringify(name)} is a legitimate name`);
+  }
+});
+
+test("a name of only invisible characters is REFUSED, which trim() alone would not catch", () => {
+  for (const name of [
+    "",
+    "   ",
+    "\u00a0",       // NBSP
+    "\u200b",       // zero-width space -- survives trim()
+    "\u200f",       // RLM on its own
+    "\u2003\u200b", // em space + zero width
+  ]) {
+    assert.equal(nameValid(name), false, `${JSON.stringify(name)} is not a name`);
+  }
+  assert.equal(nameValid(undefined), false);
+  assert.equal(nameValid(42), false);
+  assert.equal(nameValid("x".repeat(201)), false, "the 200-character ceiling is kept");
+  assert.equal(nameValid("x".repeat(200)), true, "and 200 itself is still a name");
+});
+
+test("an optional field is valid when absent or null, and invalid only when present-and-not-a-string", () => {
+  // The other half of what the retired create/update rules validated.
+  assert.equal(optionalFieldsValid({}), true, "absent is not invalid");
+  assert.equal(optionalFieldsValid({ model: null }), true, "cleared is not invalid");
+  assert.equal(optionalFieldsValid({ model: "CM-3" }), true);
+  assert.equal(optionalFieldsValid({ model: 42 }), false);
 });

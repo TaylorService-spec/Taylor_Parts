@@ -66,7 +66,6 @@ import { governedOpportunitySource } from "../../access/opportunitySource.js";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient.js";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus.js";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";

@@ -231,8 +231,8 @@ async function main() {
   const uniq = (p) => `${p}-${Date.now()}-${n++}`;
 
   // ---- READ authority ------------------------------------------------------
-  report("read: admin ALLOWED", (await readEquipment(SEEDED, adminToken)) === 200);
-  report("read: dispatcher ALLOWED", (await readEquipment(SEEDED, dispatcherToken)) === 200);
+  report("read: admin ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", (await readEquipment(SEEDED, adminToken)) === 403);
+  report("read: dispatcher ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", (await readEquipment(SEEDED, dispatcherToken)) === 403);
 
   // Spec §10 restricts a technician to Equipment reachable through their OWN assigned
   // Work Orders. Rules cannot express that (it needs a QUERY over fieldops_wos, and
@@ -252,10 +252,10 @@ async function main() {
     (await readEquipment(SEEDED, opsRolesToken)) === 403);
 
   // ---- CREATE authority ----------------------------------------------------
-  report("create: admin with a valid record ALLOWED",
-    (await createEquipment(uniq("eq-ok-admin"), adminToken, equipmentFields())) === 200);
-  report("create: dispatcher with a valid record ALLOWED",
-    (await createEquipment(uniq("eq-ok-disp"), dispatcherToken, equipmentFields())) === 200);
+  report("create: admin with a valid record ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
+    (await createEquipment(uniq("eq-ok-admin"), adminToken, equipmentFields())) === 403);
+  report("create: dispatcher with a valid record ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
+    (await createEquipment(uniq("eq-ok-disp"), dispatcherToken, equipmentFields())) === 403);
   report("create: technician DENIED",
     (await createEquipment(uniq("eq-tech"), technicianToken, equipmentFields())) === 403);
   report("create: unauthenticated DENIED",
@@ -272,9 +272,9 @@ async function main() {
   report("create: nonexistent Location DENIED (dangling reference fails closed)",
     (await createEquipment(uniq("eq-dangling"), adminToken,
       equipmentFields({ locationId: str("rules-equip-loc-does-not-exist") }))) === 403);
-  report("create: sibling Location of the SAME Account ALLOWED",
+  report("create: sibling Location of the SAME Account ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
     (await createEquipment(uniq("eq-sibling"), adminToken,
-      equipmentFields({ locationId: str(LOCATION_A2) }))) === 200);
+      equipmentFields({ locationId: str(LOCATION_A2) }))) === 403);
   report("create: Account claimed does not match the Location's owner DENIED",
     (await createEquipment(uniq("eq-mismatch"), adminToken,
       equipmentFields({ accountId: str(ACCOUNT_B), locationId: str(LOCATION_A1) }))) === 403);
@@ -346,8 +346,15 @@ async function main() {
   report("create: vertical-tab-only name DENIED (RE2 \\s excludes \\v -- trim()'s job)",
     (await createEquipment(uniq("eq-vt-name"), adminToken,
       equipmentFields({ name: str("\v\v") }))) === 403);
-  // Real names must not be collateral damage: a false denial on a customer's actual
-  // equipment name would be worse than the hole the guard closes.
+  // Real names must not be collateral damage: a false denial on a customer's actual equipment
+  // name would be worse than the hole the guard closes.
+  //
+  // THE CLIENT-DIRECT CREATE IS RETIRED, so every one of these is now a denial and the loop no
+  // longer proves anything about NAMES -- only that the write path is closed. The name contract
+  // itself was PORTED to functions/test/equipmentWriteCommands.test.mjs, where `nameValid` is
+  // exercised against the identical scripts plus the invisible-character cases. Leaving these
+  // here as denials without porting them would have quietly retired the only test proving that
+  // trim() alone does not catch a zero-width space.
   for (const [label, nm] of [
     ["CJK", "屋上ユニット"],
     ["Arabic RTL with a U+200F RLM prefix", "‏وحدة السطح"],
@@ -356,9 +363,9 @@ async function main() {
     ["NBSP between words", "Rooftop Unit"],
     ["single visible char", "A"],
   ]) {
-    report(`create: legitimate name (${label}) ALLOWED`,
+    report(`create: legitimate name (${label}) -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)`,
       (await createEquipment(uniq("eq-real-name"), adminToken,
-        equipmentFields({ name: str(nm) }))) === 200);
+        equipmentFields({ name: str(nm) }))) === 403);
   }
   // Update side too: equipmentNameValid is shared, but every Unicode assertion above is
   // create-side, so a weaker check inlined at the update call site would go unnoticed.
@@ -366,9 +373,9 @@ async function main() {
     (await updateEquipment(SEEDED, adminToken,
       { name: str(" 　"), updatedAt: int(Date.now()) })) === 403);
 
-  report("create: a name CONTAINING a NBSP but with visible text ALLOWED",
+  report("create: a name CONTAINING a NBSP but with visible text ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
     (await createEquipment(uniq("eq-uni-ok"), adminToken,
-      equipmentFields({ name: str("Rooftop Unit") }))) === 200);
+      equipmentFields({ name: str("Rooftop Unit") }))) === 403);
   report("create: optional field written as a MAP DENIED (Spec §1: string|null)",
     (await createEquipment(uniq("eq-map-notes"), adminToken,
       equipmentFields({ notes: { mapValue: { fields: { evil: str("x") } } } }))) === 403);
@@ -378,19 +385,19 @@ async function main() {
   report("create: optional field written as an ARRAY DENIED",
     (await createEquipment(uniq("eq-arr-model"), adminToken,
       equipmentFields({ model: { arrayValue: { values: [str("x")] } } }))) === 403);
-  report("create: optionals omitted entirely ALLOWED (absent is not invalid)", await (async () => {
+  report("create: optionals omitted entirely ALLOWED (absent is not invalid) -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", await (async () => {
     const f = equipmentFields();
     for (const k of ["manufacturer", "model", "serialNumber", "assetTag", "installedDate", "warrantyExpiresDate", "notes"]) delete f[k];
-    return (await createEquipment(uniq("eq-minimal"), adminToken, f)) === 200;
+    return (await createEquipment(uniq("eq-minimal"), adminToken, f)) === 403;
   })());
 
   // ---- UPDATE: ordinary edit (§6) ------------------------------------------
-  report("update: admin editing a descriptive field ALLOWED",
+  report("update: admin editing a descriptive field ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
     (await updateEquipment(SEEDED, adminToken,
-      { name: str("Renamed"), updatedAt: int(Date.now()) })) === 200);
-  report("update: dispatcher editing a descriptive field ALLOWED",
+      { name: str("Renamed"), updatedAt: int(Date.now()) })) === 403);
+  report("update: dispatcher editing a descriptive field ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
     (await updateEquipment(SEEDED, dispatcherToken,
-      { notes: str("PM done"), updatedAt: int(Date.now()) })) === 200);
+      { notes: str("PM done"), updatedAt: int(Date.now()) })) === 403);
   report("update: technician DENIED",
     (await updateEquipment(SEEDED, technicianToken,
       { name: str("Tech Rename"), updatedAt: int(Date.now()) })) === 403);
@@ -418,9 +425,9 @@ async function main() {
   report("update: governed change SMUGGLED alongside a legitimate edit DENIES the whole write",
     (await updateEquipment(SEEDED, adminToken,
       { name: str("Legit"), locationId: str(LOCATION_A2), updatedAt: int(Date.now()) })) === 403);
-  report("update: re-writing accountId to its SAME value ALLOWED (not a change)",
+  report("update: re-writing accountId to its SAME value ALLOWED (not a change) -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
     (await updateEquipment(SEEDED, adminToken,
-      { accountId: str(ACCOUNT_A), updatedAt: int(Date.now()) })) === 200);
+      { accountId: str(ACCOUNT_A), updatedAt: int(Date.now()) })) === 403);
 
   // ---- UPDATE: injection ---------------------------------------------------
   report("update: trusted/audit field injection DENIED (movedBy/movedAt)",
@@ -449,9 +456,9 @@ async function main() {
   report("update: optional field written as a NUMBER DENIED",
     (await updateEquipment(SEEDED, adminToken,
       { manufacturer: int(42), updatedAt: int(Date.now()) })) === 403);
-  report("update: clearing an optional field to null ALLOWED",
+  report("update: clearing an optional field to null ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
     (await updateEquipment(SEEDED, adminToken,
-      { notes: nul(), updatedAt: int(Date.now()) })) === 200);
+      { notes: nul(), updatedAt: int(Date.now()) })) === 403);
 
   // ---- UPDATE: field REMOVAL and maskless overwrite -------------------------
   // Gaps the first version of this suite missed (independent review of PR #289).
@@ -462,8 +469,8 @@ async function main() {
   report("update: DELETING accountId DENIED", (await deleteFields(SEEDED, adminToken, ["accountId"])) === 403);
   report("update: DELETING locationId DENIED", (await deleteFields(SEEDED, adminToken, ["locationId"])) === 403);
   report("update: DELETING createdAt DENIED", (await deleteFields(SEEDED, adminToken, ["createdAt"])) === 403);
-  report("update: deleting an EDITABLE optional field ALLOWED",
-    (await deleteFields(SEEDED, adminToken, ["assetTag"])) === 200);
+  report("update: deleting an EDITABLE optional field ALLOWED -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)",
+    (await deleteFields(SEEDED, adminToken, ["assetTag"])) === 403);
   // A maskless PATCH on an EXISTING doc replaces it wholesale -- the client-SDK
   // setDoc()-without-merge shape. Anything it drops or changes in governed state must
   // deny, exactly as a masked write would.
@@ -500,11 +507,17 @@ async function main() {
     report(label, (await updateEquipment(id, adminToken, fields)) === expected);
   };
 
-  await tx("update: ACTIVE -> INACTIVE ALLOWED (the plain pair, AC3)", "ACTIVE", "INACTIVE", 200);
-  await tx("update: INACTIVE -> ACTIVE ALLOWED (the plain pair, AC3)", "INACTIVE", "ACTIVE", 200);
-  await tx("update: ACTIVE -> ACTIVE ALLOWED (unchanged status)", "ACTIVE", "ACTIVE", 200);
-  await tx("update: INACTIVE -> INACTIVE ALLOWED (unchanged status)", "INACTIVE", "INACTIVE", 200);
-  await tx("update: RETIRED -> RETIRED ALLOWED (unchanged -- a retired record may be corrected)", "RETIRED", "RETIRED", 200);
+  // THE ALLOWED TRANSITIONS ARE NOW DENIED HERE, because the client cannot write equipment at
+  // all. The ACTIVE<->INACTIVE contract they encode did not go away -- it moved into
+  // `buildEquipmentUpdate`, which judges the transition against the STORED status and refuses
+  // retire/reactivate in the surface's own words (functions/test/equipmentWriteCommands.test.mjs).
+  // The REFUSALS below stay 403 and still mean what they always did.
+  const N = " -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)";
+  await tx("update: ACTIVE -> INACTIVE" + N, "ACTIVE", "INACTIVE", 403);
+  await tx("update: INACTIVE -> ACTIVE" + N, "INACTIVE", "ACTIVE", 403);
+  await tx("update: ACTIVE -> ACTIVE (unchanged status)" + N, "ACTIVE", "ACTIVE", 403);
+  await tx("update: INACTIVE -> INACTIVE (unchanged status)" + N, "INACTIVE", "INACTIVE", 403);
+  await tx("update: RETIRED -> RETIRED (unchanged)" + N, "RETIRED", "RETIRED", 403);
 
   await tx("update: INACTIVE -> RETIRED DENIED (retiring is trusted + audited)", "INACTIVE", "RETIRED", 403);
   await tx("update: RETIRED -> ACTIVE DENIED (reactivation is trusted + audited, E10)", "RETIRED", "ACTIVE", 403);
@@ -568,25 +581,25 @@ async function main() {
   })());
   // ...whereas name/optionals ARE repairable in the same write -- the asymmetry the
   // rule comment now spells out, pinned so the comment cannot drift from the code.
-  report("update: a malformed stored NAME is repairable in the same write", await (async () => {
+  report("update: a malformed stored NAME is repairable in the same write -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", await (async () => {
     const id = uniq("eq-name-repair");
     await seedEquipmentDoc(id);
     await db.doc(`equipment/${id}`).update({ name: "   " });
-    return (await updateEquipment(id, adminToken, { name: str("Repaired"), updatedAt: int(Date.now()) })) === 200;
+    return (await updateEquipment(id, adminToken, { name: str("Repaired"), updatedAt: int(Date.now()) })) === 403;
   })());
-  report("update: a malformed stored OPTIONAL is repairable in the same write", await (async () => {
+  report("update: a malformed stored OPTIONAL is repairable in the same write -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", await (async () => {
     const id = uniq("eq-opt-repair");
     await seedEquipmentDoc(id);
     await db.doc(`equipment/${id}`).update({ notes: 42 });
-    return (await updateEquipment(id, adminToken, { notes: str("repaired"), updatedAt: int(Date.now()) })) === 200;
+    return (await updateEquipment(id, adminToken, { notes: str("repaired"), updatedAt: int(Date.now()) })) === 403;
   })());
   // A pre-existing trusted-writer audit key does NOT brick ordinary editing -- the
   // deliberate key-set carve-out. A client still cannot ADD one (asserted above).
-  report("update: a doc already carrying a trusted-writer audit key stays editable", await (async () => {
+  report("update: a doc already carrying a trusted-writer audit key stays editable -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", await (async () => {
     const id = uniq("eq-audit-key");
     await seedEquipmentDoc(id);
     await db.doc(`equipment/${id}`).update({ retiredBy: "e10-trusted-writer", auditEventId: "evt-1" });
-    return (await updateEquipment(id, adminToken, { name: str("Still Editable"), updatedAt: int(Date.now()) })) === 200;
+    return (await updateEquipment(id, adminToken, { name: str("Still Editable"), updatedAt: int(Date.now()) })) === 403;
   })());
 
   // A legal transition must not become a carrier for an illegal change.
@@ -594,15 +607,15 @@ async function main() {
     { accountId: str(ACCOUNT_B) });
   await tx("update: ACTIVE -> INACTIVE smuggling a locationId change DENIED", "ACTIVE", "INACTIVE", 403,
     { locationId: str(LOCATION_A2) });
-  await tx("update: ACTIVE -> INACTIVE alongside a legitimate rename ALLOWED", "ACTIVE", "INACTIVE", 200,
+  await tx("update: ACTIVE -> INACTIVE alongside a legitimate rename" + N, "ACTIVE", "INACTIVE", 403,
     { name: str("Renamed While Deactivating") });
 
   // ---- UPDATE: a RETIRED record is correctable, not revivable ---------------
-  report("update: descriptive edit of a RETIRED record ALLOWED (Owner decision 2)", await (async () => {
+  report("update: descriptive edit of a RETIRED record ALLOWED (Owner decision 2) -- NOW DENIED (equipment moved to trusted commands + service.equipment.read)", await (async () => {
     const id = uniq("eq-retired-edit");
     await seedEquipmentDoc(id, { status: "RETIRED" });
     return (await updateEquipment(id, adminToken,
-      { name: str("Corrected Name"), notes: str("serial was mistyped"), updatedAt: int(Date.now()) })) === 200;
+      { name: str("Corrected Name"), notes: str("serial was mistyped"), updatedAt: int(Date.now()) })) === 403;
   })());
   report("update: a RETIRED record's accountId still DENIED", await (async () => {
     const id = uniq("eq-retired-acct");

@@ -60,7 +60,7 @@ on:
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
-      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
+      - "functions/test/governedListRead.test.mjs"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
       - "field-ops-app-vite/test/accountSearch.test.mjs"
       - "field-ops-app-vite/src/domain/accountSearch.js"
@@ -138,7 +138,7 @@ on:
       - "field-ops-app-vite/test/boardScope.test.mjs"
       - "field-ops-app-vite/src/config/operationalBoardPolicy.js"
       - "field-ops-app-vite/src/domain/workOrderStatus.js"
-      - "field-ops-app-vite/test/metadataFirestoreListSource.test.jsx"
+      - "functions/test/governedListRead.test.mjs"
       - "field-ops-app-vite/test/customersSurface.test.jsx"
       - "field-ops-app-vite/test/accountSearch.test.mjs"
       - "field-ops-app-vite/src/domain/accountSearch.js"
@@ -323,9 +323,12 @@ jobs:
       - name: Record page renderer tests (vitest, jsdom)
         run: npx vitest run test/metadataRecordPage.test.jsx
         working-directory: field-ops-app-vite
-      - name: Firestore list source translation tests (vitest)
-        run: npx vitest run test/metadataFirestoreListSource.test.jsx
-        working-directory: field-ops-app-vite
+      # The client no longer translates a list descriptor into a Firestore query -- it names an EOS
+      # source id and the SERVER owns the collection, the filters, the ordering and the cursor. The
+      # translation contract therefore moved to where the translation happens.
+      - name: Governed list source translation tests (build + node:test)
+        run: npm run build && node --test test/governedListRead.test.mjs
+        working-directory: functions
       - name: Customers surface tests (vitest, jsdom)
         run: npx vitest run test/customersSurface.test.jsx
         working-directory: field-ops-app-vite

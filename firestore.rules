@@ -108,19 +108,37 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // `.get(field, default)` rather than `.employeeId`, and the difference is not stylistic: a
+    // user document with NO employeeId makes the property access an EVALUATION ERROR, not a null.
+    // A signed-in principal who has never been provisioned an Employee link would then get an
+    // error on every employees read instead of a clean denial -- fail-closed by accident, and
+    // noisy in a way that hides a real denial behind a rules-engine fault. Found by the Rules
+    // regression suite, where an admin with no employeeId hit exactly that path.
     function linkedEmployeeId() {
-      return userData().employeeId;
+      return userData().get("employeeId", null);
     }
 
     // THE PICKER PREDICATE, kept by explicit Owner direction and used by exactly one clause.
-    // Reciprocal-link + ACTIVE + operational-role membership, binding the employee document once
-    // via `let` rather than paying for a second get() per call.
+    // Reciprocal-link + ACTIVE + operational-role membership.
+    //
+    // SPLIT IN TWO ON PURPOSE. The obvious single function binds the employee document with `let`
+    // and guards with `employeeId != null` in the same `&&` chain -- and that DOES NOT WORK: the
+    // binding's path is still resolved, so a principal with no employeeId produces a rules
+    // EVALUATION ERROR rather than a clean denial. Fail-closed by accident, and it hides a real
+    // denial behind an engine fault. `&&` does short-circuit a FUNCTION CALL, so the get() moves
+    // behind one. Caught by the Rules regression suite; the shape is deliberate, not incidental.
     function isActiveOperationalRole(role) {
-      let employeeId = linkedEmployeeId();
-      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
       return isSignedIn()
-        && employeeId != null
-        && employee.userId == request.auth.uid
+        && linkedEmployeeId() is string
+        && employeeLinkGrants(linkedEmployeeId(), role);
+    }
+
+    // Only ever called with an employeeId already proven to be a string. The repeated
+    // linkedEmployeeId() above costs nothing: Firestore caches identical get() calls within one
+    // evaluation.
+    function employeeLinkGrants(employeeId, role) {
+      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
+      return employee.userId == request.auth.uid
         && employee.employmentStatus == "ACTIVE"
         && employee.operationalRoles is list
         && employee.operationalRoles.hasAny([role]);

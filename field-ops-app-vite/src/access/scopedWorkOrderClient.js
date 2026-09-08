@@ -131,6 +131,30 @@ export async function countScopedWorkOrders({ mode, params } = {}) {
 }
 
 /**
+ * The CALLER'S OWN technician profile.
+ *
+ * Takes no argument, and could not take one: the whole point is that the browser cannot name
+ * which technician it is asking about. The server resolves the identity from request.auth.uid.
+ *
+ * `{ ok: true, technicianId: null, technician: null }` is a CONFIRMED absence -- this principal
+ * has no technician linkage -- and means something different from a failed read. The consuming
+ * hook renders those differently, which is why the two are not collapsed.
+ */
+export async function readSelfTechnician() {
+  try {
+    const d = await invoke("readSelfTechnician", {});
+    return {
+      ok: true,
+      result: WORK_ORDER_READ_RESULT.OK,
+      technicianId: d?.technicianId ?? null,
+      technician: d?.technician ?? null,
+    };
+  } catch (err) {
+    return { ok: false, result: classify(err), technicianId: null, technician: null };
+  }
+}
+
+/**
  * One Work Order by id.
  *
  * Knowing an id does not bypass scope: a technician gets the record only when it is assigned to

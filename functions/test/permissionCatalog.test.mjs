@@ -10,6 +10,7 @@
 // Prerequisite: `npm run build` in functions/ first (this test imports
 // the compiled lib/ output, not the TypeScript source).
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { resolveCapabilityOverrides, ENVIRONMENT_ACTIVATION_REGISTRY } from "../lib/access/environmentCapabilityOverrides.js";
 import {
   PERMISSION_CATALOG,
@@ -523,7 +524,22 @@ check("fulfillment.coordinatedVisit.read is registered exactly once, active: fal
 // The honest form is a recorded GAP, which is what these are. Each entry names the decision that
 // refused it, so adding one has to be someone's argued choice rather than a spreadsheet symmetry.
 const MUST_NOT_EXIST = [
-  { prefix: "supplier.", why: "DECISIONS #78: Supplier is a CATALOG-governed object and reuses inventory.catalog.manage/.activate. A supplier.manage/supplier.read pair would be a symmetry-only permission and a temporary path R-1 would then have to retire." },
+  // NARROWED 2026-09-08, by ruling rather than by convenience. DECISIONS #78 refused a
+  // `supplier.manage` / `supplier.read` PAIR as symmetry-only: Supplier administration is
+  // CATALOG-governed and reuses inventory.catalog.manage/.activate, so a management capability
+  // here would make a Role look authorized while nothing enforced it.
+  //
+  // That reasoning was about WRITE authority, and it still holds. Supplier READS are a different
+  // question and were answered separately: the Owner authorized supplier.record.read and
+  // supplier.catalog.read by name (2026-09-07) to replace the retired firestore.rules read
+  // grants, and supplier.purchaseOrder.read (2026-09-07) for the dormant Epic-5 purchase orders
+  // under the final read cutover's conditional authorization. Each has an ENGINE behind it --
+  // governedReadRegistry.ts resolves it server-side before a row is returned -- which is exactly
+  // the property this guard exists to require.
+  //
+  // So the entry keeps its teeth where they belong: no supplier WRITE or MANAGEMENT capability,
+  // which is the invention DECISIONS #78 actually refused.
+  { prefix: "supplier.", why: "DECISIONS #78: Supplier administration is CATALOG-governed and reuses inventory.catalog.manage/.activate. A supplier management capability would be a symmetry-only permission and a temporary path R-1 would then have to retire. Supplier READS were authorized separately (Owner, 2026-09-07) and are enforced by the governed read registry.", allow: (id) => id.endsWith(".read") },
   { prefix: "marketing.", why: "Owner ruling 2026-08-19: the matrix gives Marketing CRED over Marketing Initiatives and no engine governs them. Marketing Manager was created with the reads it can really hold; the rest is a recorded catalog gap, not an unenforced grant." },
   { prefix: "commission.", why: "Recorded catalog gap beside Marketing Initiatives, Technician Time and Notifications. Commissions are UNMODELLED -- the matrix expresses intent the platform does not implement." },
 ];
@@ -531,7 +547,10 @@ const MUST_NOT_EXIST = [
 check("no capability is invented to make the business-intent matrix look symmetrical", () => {
   const ids = PERMISSION_CATALOG.map((p) => p.id);
   for (const entry of MUST_NOT_EXIST) {
-    const found = ids.filter((id) => id.startsWith(entry.prefix));
+    // An `allow` predicate narrows a prefix to the SHAPE the decision actually refused. It is not
+    // an escape hatch: without one, the whole prefix stays banned, and with one the ban still
+    // applies to everything the predicate does not admit.
+    const found = ids.filter((id) => id.startsWith(entry.prefix) && !(entry.allow?.(id) ?? false));
     assert.deepEqual(
       found, [],
       `Capability ids beginning "${entry.prefix}" were registered: ${found.join(", ")}.` +
@@ -540,6 +559,25 @@ check("no capability is invented to make the business-intent matrix look symmetr
       "engine behind it -- register it deliberately and remove this entry, saying what enforces it. " +
       "Registering it to complete a CRUD row is the thing this guard exists to stop.",
     );
+  }
+});
+
+check("the supplier narrowing admits READS only -- no write or management capability", () => {
+  // The narrowing above must not become the hole. Every registered supplier capability is a read,
+  // and a write one would fail here even though the prefix entry now carries an allowance.
+  const supplierIds = PERMISSION_CATALOG.map((p) => p.id).filter((id) => id.startsWith("supplier."));
+  assert.ok(supplierIds.length > 0, "the supplier reads exist -- otherwise this guard proves nothing");
+  for (const id of supplierIds) {
+    assert.ok(
+      id.endsWith(".read"),
+      `"${id}" is a supplier capability that is not a read. DECISIONS #78 refused supplier ` +
+        "management authority: it is CATALOG-governed through inventory.catalog.manage/.activate.",
+    );
+  }
+  // And each one is actually enforced by a registered read source, not merely declared.
+  const registry = readFileSync(new URL("../src/access/governedReadRegistry.ts", import.meta.url), "utf8");
+  for (const id of supplierIds) {
+    assert.ok(registry.includes(`"${id}"`), `"${id}" has no governed read source enforcing it`);
   }
 });
 

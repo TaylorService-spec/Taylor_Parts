@@ -18,7 +18,7 @@
 // ENUMERATED here, each with the reason it survives. An exception nobody can find is how the count
 // drifts back.
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 const SRC = path.resolve(process.cwd(), "src");
@@ -119,6 +119,38 @@ describe("the client Firestore census", () => {
     }
   });
 
+  it("every relative import resolves to a file that exists", () => {
+    // ════════════════════ THE COST OF DELETING THINGS ════════════════════
+    //
+    // This workstream deleted five modules, and twice a file was left importing one of them. Both
+    // times the CLIENT BUILD was the only thing that noticed: `tsc` did not, because these are
+    // untyped .js modules, and vitest did not, because the importing module was mocked in every
+    // test that reached it. The app simply did not build, on a branch whose suites were green.
+    //
+    // A dangling import is not a Firestore question, but it is the same failure this file exists
+    // to prevent -- a deletion that looks complete because nothing measured what still pointed at
+    // it -- and catching it here costs milliseconds instead of a full production build.
+    const unresolved = [];
+    const EXTENSIONS = ["", ".js", ".jsx", ".ts", ".tsx", "/index.js", "/index.jsx", "/index.ts"];
+    for (const file of FILES) {
+      const dir = path.dirname(path.join(SRC, file.path));
+      // Anchored to an actual import STATEMENT. An unanchored /from "..."/ also matches a regex
+      // literal that happens to contain the word, which is how this guard first reported
+      // recordPageManifest.js importing a regular expression.
+      for (const m of file.text.matchAll(/^\s*(?:import\b|export\b|\})[^\n]*?\bfrom\s+"(\.[^"]+)"/gm)) {
+        const spec = m[1];
+        const base = path.resolve(dir, spec);
+        // A `.js` specifier may name a `.ts` source: this project writes extensioned imports and
+        // the bundler resolves them, so the candidate list has to as well.
+        const candidates = [
+          ...EXTENSIONS.map((ext) => base + ext),
+          ...(base.endsWith(".js") ? [base.replace(/\.js$/, ".ts"), base.replace(/\.js$/, ".jsx"), base.replace(/\.js$/, ".tsx")] : []),
+        ];
+        if (!candidates.some((c) => existsSync(c))) unresolved.push(`${file.path} -> ${spec}`);
+      }
+    }
+    expect(unresolved, `these imports point at files that do not exist:\n  ${unresolved.join("\n  ")}`).toEqual([]);
+  });
   it("nothing outside the SDK bootstrap and the feed imports the Firestore SDK for values", () => {
     // A type-only import cannot issue a query, so those are counted separately rather than banned:
     // conflating them would either forbid types or hide a real client.
