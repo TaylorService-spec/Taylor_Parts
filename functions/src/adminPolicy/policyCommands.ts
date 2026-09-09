@@ -396,18 +396,51 @@ export async function setFieldPermissionOverride(
 // ════════════════════ ROLE ASSIGNMENT — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
 
 export interface AssignRoleInput {
-  readonly principalUid: string;
+  readonly principalId: string;
   readonly roleId: string;
   readonly scopeType?: string;
   readonly scopeValue?: string | null;
   readonly reason?: string | null;
 }
 
+/** Two assignments are the SAME EFFECTIVE ASSIGNMENT when these four agree. */
+const sameEffectiveAssignment = (
+  a: Pick<PolicyRoleAssignmentRecord, "roleId" | "scopeType" | "scopeValue">,
+  roleId: string,
+  scopeType: string,
+  scopeValue: string | null,
+): boolean =>
+  a.roleId === roleId &&
+  a.scopeType === scopeType &&
+  // NULL and "" are the same absence of a scope value. Treating them as different is how a
+  // "global" assignment gets two spellings and the uniqueness rule stops meaning anything.
+  (a.scopeValue ?? "") === (scopeValue ?? "");
+
 /**
  * Assign a Role to a principal.
  *
  * ANY ROLE, INCLUDING ADMIN, per the Owner ruling -- role ASSIGNMENT and role DEFINITION are
  * different authorities, and this is the first. The old two-person privileged route is superseded.
+ *
+ * ════════════════════ MEMBERSHIP IS REQUIRED ════════════════════
+ *
+ * A Role granted to somebody who is not a member of this tenant confers nothing -- they resolve to
+ * no context -- so it is not a grant, it is a row that looks like one. Refused here, and made
+ * UNREPRESENTABLE by the composite foreign key in migration 003. Both layers, because an API check
+ * defends the path that goes through the API and a migration or a repair script does not.
+ *
+ * ════════════════════ IDENTICAL ACTIVE ASSIGNMENTS ARE IDEMPOTENT ════════════════════
+ *
+ * Multi-role union stays ADDITIVE: a different Role, or the same Role at a different governed
+ * scope, is a second assignment and confers more. What is NOT a second assignment is the same
+ * principal holding the same Role at the same scope twice -- two active rows saying that confer no
+ * more authority than one, and leave an administrator with two things to revoke before the first
+ * stops applying.
+ *
+ * So this returns the EXISTING canonical row rather than creating a duplicate, writes no audit
+ * event for a change that did not happen, and does not bump the access version -- nothing about
+ * what the principal may do has moved. A revoked assignment does not block a later re-grant: that
+ * one is a real change and gets its own row and its own event.
  */
 export async function assignRole(
   repo: PolicyRepository,
@@ -415,22 +448,35 @@ export async function assignRole(
   input: AssignRoleInput,
 ): Promise<PolicyRoleAssignmentRecord> {
   requireAdministrationAuthority(actor.heldRoleKeys, "assignRole");
-  const principalUid = nonEmpty(input.principalUid, "principalUid");
+  const principalId = nonEmpty(input.principalId, "principalId");
   const roleId = nonEmpty(input.roleId, "roleId");
+  const scopeType = input.scopeType ?? "global";
+  const scopeValue = input.scopeValue ?? null;
 
   const role = (await repo.listRoles(actor.tenantId)).find((r) => r.id === roleId);
   if (!role) throw new PolicyValidationError("role not found");
+
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+
+  const held = await repo.listAssignmentsForPrincipal(actor.tenantId, principalId);
+  const already = held.find(
+    (a) => a.status === "active" && sameEffectiveAssignment(a, roleId, scopeType, scopeValue),
+  );
+  if (already) return already;
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     // BUMP FIRST, then stamp the grant with the NEW version. A grant carrying the old version would
     // be stale the instant it was written -- excluded by the resolver's own staleness rule, which is
     // a grant that silently does nothing.
-    const accessVersion = await tx.bumpAccessVersion(principalUid);
+    const accessVersion = await tx.bumpAccessVersion(principalId);
     const assignment = await tx.createAssignment({
-      principalUid,
+      principalId,
       roleId,
-      scopeType: input.scopeType ?? "global",
-      scopeValue: input.scopeValue ?? null,
+      scopeType,
+      scopeValue,
       status: "active",
       grantedBy: actor.uid,
       grantedAt: new Date().toISOString(),
@@ -486,7 +532,7 @@ export async function revokeRole(
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const updated = await tx.setAssignmentStatus(assignmentId, "disabled");
-    await tx.bumpAccessVersion(target.principalUid);
+    await tx.bumpAccessVersion(target.principalId);
     await tx.appendAudit({
       ...auditBase(actor, "revokeRole", "roleAssignment", assignmentId, input.reason ?? null),
       before: target,
@@ -553,7 +599,7 @@ async function principalsHolding(repo: PolicyRepository, tenantId: TenantId, rol
  * Every principal who could hold a Role in this tenant.
  *
  * MEMBERSHIP FIRST, and that is a correctness fix rather than a tidy-up. This used to be derived
- * ONLY by walking audit events for an `after.principalUid`, which is true of an assignment written
+ * ONLY by walking audit events for an `after.principalId`, which is true of an assignment written
  * by `assignRole` and NOT true of one written by the tenant bootstrap -- so the initial
  * administrator was invisible here, and the "you may not revoke the last administering assignment"
  * guard would have counted zero and let it go.
@@ -568,8 +614,8 @@ async function allPrincipals(repo: PolicyRepository, tenantId: TenantId): Promis
   const uids = new Set<string>(await repo.listTenantPrincipalIds(tenantId));
   const events = await repo.listAuditEvents(tenantId, 10_000);
   for (const e of events) {
-    const after = e.after as { principalUid?: unknown } | null;
-    if (after && typeof after.principalUid === "string") uids.add(after.principalUid);
+    const after = e.after as { principalId?: unknown } | null;
+    if (after && typeof after.principalId === "string") uids.add(after.principalId);
   }
   return [...uids];
 }

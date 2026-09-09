@@ -103,6 +103,17 @@ async function grant(r, subject, roleKey) {
   return result.data;
 }
 
+/** A direct SQL read, for asserting what is actually in the table rather than what a read returns. */
+async function query(text, values = []) {
+  const client = new pg.Client({ connectionString: URL });
+  await client.connect();
+  try {
+    return await client.query(text, values);
+  } finally {
+    await client.end();
+  }
+}
+
 test.after(async () => {
   if (pool) await pool.end();
 });
@@ -429,15 +440,241 @@ test("USERS: Owner, General Manager and Admin may each assign the Admin Role", {
   await grant(r, OWNER_SUBJECT, "owner");
   await grant(r, GM_SUBJECT, "generalManager");
 
-  for (const subject of [OWNER_SUBJECT, GM_SUBJECT, ADMIN_SUBJECT]) {
-    // Each assigns Admin to the plain principal, and each is permitted.
-    const plain = await r.getPrincipalBySubject("firebase", PLAIN_SUBJECT);
+  // A DIFFERENT TARGET EACH TIME. Assigning the same Role to the same principal three times is now
+  // idempotent, so the second and third calls would have returned the FIRST one's row and reported
+  // success without exercising anybody's authority -- a test that passes for the wrong reason.
+  const targets = [OWNER_SUBJECT, GM_SUBJECT, PLAIN_SUBJECT];
+  const created = new Set();
+  for (const [i, subject] of [OWNER_SUBJECT, GM_SUBJECT, ADMIN_SUBJECT].entries()) {
+    const target = await r.getPrincipalBySubject("firebase", targets[i]);
     const result = await executeAdminOperation({ repo: r }, asSubject(subject, "assignRole", {
-      principalId: plain.id, roleId: adminRole.id, reason: `assigned by ${subject}`,
+      principalId: target.id, roleId: adminRole.id, reason: `assigned by ${subject}`,
     }));
     assert.equal(result.ok, true, `${subject} may assign Admin: ${result.ok ? "" : result.message}`);
+    created.add(result.data.id);
   }
+  assert.equal(created.size, 3, "three distinct assignments, one per assigning authority");
 });
+
+// ============================ RULING B — REFERENTIAL INTEGRITY ============================
+
+test("INTEGRITY: an assignment to a principal who does not exist is refused BY THE DATABASE",
+  { skip: SKIP }, async () => {
+    // Below the API, below the command. The composite key means a migration, a repair script or a
+    // psql prompt cannot write this row either -- which is the half an API check cannot defend.
+    const { repo: r, tenant } = await standUpTaylor();
+    const roles = await r.listRoles(tenant.id);
+
+    await assert.rejects(
+      () => r.transact({ tenantId: tenant.id, uid: "direct" }, (tx) => tx.createAssignment({
+        principalId: "a-principal-that-does-not-exist",
+        roleId: roles[0].id,
+        scopeType: "global", scopeValue: null, status: "active",
+        grantedBy: "direct", grantedAt: new Date().toISOString(), accessVersionAtGrant: 0,
+      })),
+      /not a member of this tenant/i,
+      "the store refuses it, not only the command",
+    );
+
+    const rows = await query(
+      "SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE principal_id = $1",
+      ["a-principal-that-does-not-exist"],
+    );
+    assert.equal(rows.rows[0].n, 0, "and nothing landed");
+  });
+
+test("INTEGRITY: a principal who is a member of ANOTHER tenant cannot be assigned here",
+  { skip: SKIP }, async () => {
+    // The failure the composite key exists for. A plain REFERENCES principals(id) would have let
+    // this through: the principal exists, they are simply not in this tenant. That is not a dangling
+    // row, it is a cross-tenant authority leak.
+    const { repo: r, tenant } = await standUpTaylor();
+    const other = await bootstrapTenant(r, { ...OTHER, actorUid: OPERATOR });
+    const stranger = await bootstrapAdministrator(r, {
+      tenantId: other.tenant.id, externalSubject: "firebase-uid-elsewhere", performedBy: OPERATOR,
+    });
+    const roles = await r.listRoles(tenant.id);
+
+    // Through the API: refused as invalid input.
+    const viaApi = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: stranger.principal.id, roleId: roles[0].id,
+    }));
+    assert.equal(viaApi.ok, false);
+    assert.equal(viaApi.code, "INVALID_INPUT");
+
+    // Straight at the store, bypassing the command: refused by the foreign key.
+    await assert.rejects(
+      () => r.transact({ tenantId: tenant.id, uid: "direct" }, (tx) => tx.createAssignment({
+        principalId: stranger.principal.id, roleId: roles[0].id,
+        scopeType: "global", scopeValue: null, status: "active",
+        grantedBy: "direct", grantedAt: new Date().toISOString(), accessVersionAtGrant: 0,
+      })),
+      /not a member of this tenant/i,
+    );
+
+    const leaked = await query(
+      "SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE tenant_id = $1 AND principal_id = $2",
+      [tenant.id, stranger.principal.id],
+    );
+    assert.equal(leaked.rows[0].n, 0, "no assignment crossed the boundary");
+  });
+
+test("INTEGRITY: a valid tenant member IS assignable, and the bootstrap still succeeds",
+  { skip: SKIP }, async () => {
+    // The constraint has to refuse the wrong thing without refusing the right one -- including the
+    // bootstrap, which creates a principal, a membership and an Admin assignment in one transaction
+    // and would fail outright if the ordering were wrong.
+    const { repo: r, tenant, admin, others } = await standUpTaylor();
+
+    assert.ok(admin.assignmentId, "the bootstrap's own assignment landed");
+    const bootstrapRow = await query(
+      "SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE id = $1",
+      [admin.assignmentId],
+    );
+    assert.equal(bootstrapRow.rows[0].n, 1);
+
+    const roles = await r.listRoles(tenant.id);
+    const result = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: roles.find((x) => x.key === "technician").id,
+    }));
+    assert.equal(result.ok, true, result.ok ? "" : result.message);
+    assert.equal(result.data.principalId, others.plain.id);
+  });
+
+test("INTEGRITY: a rejected assignment leaves the transaction atomic", { skip: SKIP }, async () => {
+  // A constraint violation must roll the WHOLE unit of work back, audit event included. A refusal
+  // that left a half-written change would be worse than one that let the write through, because it
+  // would be invisible.
+  const { repo: r, tenant } = await standUpTaylor();
+  const roles = await r.listRoles(tenant.id);
+  const before = await r.listAuditEvents(tenant.id, 500);
+
+  await assert.rejects(() => r.transact({ tenantId: tenant.id, uid: "direct" }, async (tx) => {
+    await tx.createRole({ key: "willRollBack", name: "Will Roll Back", description: null, origin: "CUSTOM", protected: false });
+    await tx.appendAudit({
+      action: "createRole", actorUid: "direct", targetKind: "role", targetId: "x",
+      occurredAt: new Date().toISOString(), reason: null, before: null, after: null,
+    });
+    await tx.createAssignment({
+      principalId: "still-not-a-member", roleId: roles[0].id,
+      scopeType: "global", scopeValue: null, status: "active",
+      grantedBy: "direct", grantedAt: new Date().toISOString(), accessVersionAtGrant: 0,
+    });
+  }));
+
+  const roleGone = await r.getRoleByKey(tenant.id, "willRollBack");
+  assert.equal(roleGone, null, "the role written before the violation is gone");
+  const after = await r.listAuditEvents(tenant.id, 500);
+  assert.equal(after.length, before.length, "and so is its audit event");
+});
+
+// ============================ RULING C — IDENTICAL ACTIVE ASSIGNMENTS ============================
+
+test("IDEMPOTENT: assigning the same Role at the same scope twice returns the SAME assignment",
+  { skip: SKIP }, async () => {
+    const { repo: r, tenant, others } = await standUpTaylor();
+    const roles = await r.listRoles(tenant.id);
+    const technician = roles.find((x) => x.key === "technician");
+
+    const first = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: technician.id,
+    }));
+    assert.equal(first.ok, true, first.ok ? "" : first.message);
+    const versionAfterFirst = (await r.getAccessVersion(tenant.id, others.plain.id)).accessVersion;
+    const auditAfterFirst = (await r.listAuditEvents(tenant.id, 500)).length;
+
+    const second = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: technician.id,
+    }));
+    assert.equal(second.ok, true, "the second call succeeds");
+    assert.equal(second.data.id, first.data.id, "and returns the EXISTING canonical row");
+
+    // No second row, no doubled authority, no misleading duplicate for an administrator to revoke.
+    const rows = await query(
+      `SELECT count(*)::int n FROM eos_policy.user_role_assignments
+       WHERE tenant_id = $1 AND principal_id = $2 AND role_id = $3 AND status = 'active'`,
+      [tenant.id, others.plain.id, technician.id],
+    );
+    assert.equal(rows.rows[0].n, 1, "exactly one active row");
+
+    // Nothing about what they may do moved, so nothing was invalidated and nothing was recorded.
+    assert.equal(
+      (await r.getAccessVersion(tenant.id, others.plain.id)).accessVersion, versionAfterFirst,
+      "the access version did not move for a change that did not happen",
+    );
+    assert.equal((await r.listAuditEvents(tenant.id, 500)).length, auditAfterFirst, "and no audit event");
+
+    const context = await resolvePrincipalContext(r, { externalSubject: PLAIN_SUBJECT });
+    assert.deepEqual(context.heldRoleKeys, ["technician"], "authority is not doubled");
+  });
+
+test("ADDITIVE STILL: a different Role, and the same Role at a different scope, are separate",
+  { skip: SKIP }, async () => {
+    // The ruling narrows exactly one case. Everything the additive model allows still works.
+    const { repo: r, tenant, others } = await standUpTaylor();
+    const roles = await r.listRoles(tenant.id);
+    const technician = roles.find((x) => x.key === "technician");
+    const salesperson = roles.find((x) => x.key === "salesperson");
+
+    const a = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: technician.id,
+    }));
+    const b = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: salesperson.id,
+    }));
+    const c = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: technician.id,
+      scopeType: "location", scopeValue: "wh-main",
+    }));
+
+    for (const [name, result] of [["technician", a], ["salesperson", b], ["technician@wh-main", c]]) {
+      assert.equal(result.ok, true, `${name}: ${result.ok ? "" : result.message}`);
+    }
+    assert.equal(new Set([a.data.id, b.data.id, c.data.id]).size, 3, "three distinct assignments");
+
+    const context = await resolvePrincipalContext(r, { externalSubject: PLAIN_SUBJECT });
+    assert.deepEqual(context.heldRoleKeys, ["salesperson", "technician"], "and the union is additive");
+  });
+
+test("THE DATABASE REFUSES A DUPLICATE TOO, and a revoked one does not block a re-grant",
+  { skip: SKIP }, async () => {
+    const { repo: r, tenant, others } = await standUpTaylor();
+    const roles = await r.listRoles(tenant.id);
+    const technician = roles.find((x) => x.key === "technician");
+
+    const first = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: technician.id,
+    }));
+
+    // Straight at the store, bypassing the command's idempotence: the partial unique index refuses.
+    await assert.rejects(
+      () => r.transact({ tenantId: tenant.id, uid: "direct" }, (tx) => tx.createAssignment({
+        principalId: others.plain.id, roleId: technician.id,
+        scopeType: "global", scopeValue: null, status: "active",
+        grantedBy: "direct", grantedAt: new Date().toISOString(), accessVersionAtGrant: 0,
+      })),
+      /identical active assignment already exists/i,
+    );
+
+    // REVOKED, then re-granted: a real change, and it gets a real new row. The index is partial on
+    // status = 'active' precisely so history never blocks a later decision.
+    const revoked = await executeAdminOperation({ repo: r }, asAdmin("revokeRole", {
+      assignmentId: first.data.id,
+    }));
+    assert.equal(revoked.ok, true, revoked.ok ? "" : revoked.message);
+
+    const again = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
+      principalId: others.plain.id, roleId: technician.id,
+    }));
+    assert.equal(again.ok, true, again.ok ? "" : again.message);
+    assert.notEqual(again.data.id, first.data.id, "a new assignment, not the revoked one revived");
+
+    // And the history is complete: both rows survive, one disabled and one active.
+    const all = await r.listAssignmentsForPrincipal(tenant.id, others.plain.id);
+    const forRole = all.filter((x) => x.roleId === technician.id);
+    assert.equal(forRole.length, 2, "the revoked assignment is still there as history");
+    assert.equal(forRole.filter((x) => x.status === "active").length, 1, "and only one is in force");
+  });
 
 test("USERS: a principal with no assignment authority cannot assign", { skip: SKIP }, async () => {
   const { repo: r, tenant } = await standUpTaylor();

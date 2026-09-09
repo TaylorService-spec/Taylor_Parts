@@ -208,7 +208,7 @@ export async function bootstrapAdministrator(
 
     const accessVersion = await tx.bumpAccessVersion(principal.id);
     const assignment = await tx.createAssignment({
-      principalUid: principal.id,
+      principalId: principal.id,
       roleId: adminRole.id,
       scopeType: "global",
       scopeValue: null,

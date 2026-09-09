@@ -74,7 +74,7 @@ export interface FieldAccessDecision {
 /** Everything the resolver needs, loaded once. Assembled by `loadPrincipalPolicy`. */
 export interface PrincipalPolicy {
   readonly tenantId: TenantId;
-  readonly principalUid: string;
+  readonly principalId: string;
   /** Ids of the assignments that QUALIFIED -- active, and not stale. */
   readonly qualifyingRoleIds: readonly string[];
   readonly objects: readonly ObjectRecord[];
@@ -140,18 +140,18 @@ function isCredOverride(value: unknown): value is CredOverride {
 export async function loadPrincipalPolicy(
   reader: PolicyReader,
   tenantId: TenantId,
-  principalUid: string,
+  principalId: string,
 ): Promise<PrincipalPolicy> {
   if (typeof tenantId !== "string" || tenantId.length === 0) {
     throw new Error("a tenant is required to resolve access");
   }
-  if (typeof principalUid !== "string" || principalUid.length === 0) {
-    return emptyPolicy(tenantId, String(principalUid));
+  if (typeof principalId !== "string" || principalId.length === 0) {
+    return emptyPolicy(tenantId, String(principalId));
   }
 
   const [assignments, versionRow, objects] = await Promise.all([
-    reader.listAssignmentsForPrincipal(tenantId, principalUid),
-    reader.getAccessVersion(tenantId, principalUid),
+    reader.listAssignmentsForPrincipal(tenantId, principalId),
+    reader.getAccessVersion(tenantId, principalId),
     reader.listObjects(tenantId),
   ]);
 
@@ -178,7 +178,7 @@ export async function loadPrincipalPolicy(
 
   return {
     tenantId,
-    principalUid,
+    principalId,
     qualifyingRoleIds: roleIds,
     objects,
     objectPermissions,
@@ -187,10 +187,10 @@ export async function loadPrincipalPolicy(
   };
 }
 
-function emptyPolicy(tenantId: TenantId, principalUid: string): PrincipalPolicy {
+function emptyPolicy(tenantId: TenantId, principalId: string): PrincipalPolicy {
   return {
     tenantId,
-    principalUid,
+    principalId,
     qualifyingRoleIds: [],
     objects: [],
     objectPermissions: [],

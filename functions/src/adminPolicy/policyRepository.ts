@@ -141,7 +141,7 @@ export interface PolicyTransaction {
   createAssignment(input: NewRecord<PolicyRoleAssignmentRecord>): Promise<PolicyRoleAssignmentRecord>;
   setAssignmentStatus(assignmentId: string, status: PolicyAssignmentStatus): Promise<PolicyRoleAssignmentRecord>;
   /** Returns the NEW version. Called by every mutation that can change what a principal may do. */
-  bumpAccessVersion(principalUid: string): Promise<number>;
+  bumpAccessVersion(principalId: string): Promise<number>;
 
   // ── workflows ──
   createWorkflow(input: NewRecord<WorkflowRecord>): Promise<WorkflowRecord>;
@@ -207,8 +207,8 @@ export interface PolicyReader {
   listObjectPermissions(tenantId: TenantId, roleIds: readonly string[]): Promise<readonly RoleObjectPermissionRecord[]>;
   listFieldOverrides(tenantId: TenantId, roleIds: readonly string[]): Promise<readonly RoleFieldPermissionOverrideRecord[]>;
 
-  listAssignmentsForPrincipal(tenantId: TenantId, principalUid: string): Promise<readonly PolicyRoleAssignmentRecord[]>;
-  getAccessVersion(tenantId: TenantId, principalUid: string): Promise<PrincipalAccessVersionRecord | null>;
+  listAssignmentsForPrincipal(tenantId: TenantId, principalId: string): Promise<readonly PolicyRoleAssignmentRecord[]>;
+  getAccessVersion(tenantId: TenantId, principalId: string): Promise<PrincipalAccessVersionRecord | null>;
 
   listWorkflows(tenantId: TenantId): Promise<readonly WorkflowRecord[]>;
   listWorkflowVersions(tenantId: TenantId, workflowId: string): Promise<readonly WorkflowVersionRecord[]>;

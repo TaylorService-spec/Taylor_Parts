@@ -50,14 +50,44 @@ tenant; the server checks that statement against these rows and never adopts it.
 **`tenant_admin_bootstraps` — the first administrator, once.** The tenant is the PRIMARY KEY, so a
 second bootstrap is refused by the database rather than by a check a caller could race.
 
-**One deliberate omission, recorded rather than assumed:** there is NO foreign key from
-`user_role_assignments.principal_uid` onto `principals`. The column holds `principals.id` and the
-trusted API is what writes it, but a schema-level key would also force the foundation's RESOLVER
-proofs — which use synthetic principals to test staleness, scope and union arithmetic — through the
-identity model for no authorization gain. The guarantee is enforced where it matters instead: the
-API refuses to assign a Role to a principal with no ACTIVE membership, and that refusal is proved
-against a real database. Tightening it into a foreign key is a follow-up for when the API is the
-sole writer of assignments.
+**That omission is CLOSED — migration 003 (Owner ruling B).** Migration 002 left
+`user_role_assignments` with no foreign key onto the identity model and enforced membership only at
+the API. The Owner ruled that is not the permanent design, and it is not: an API check protects the
+path that goes through the API, and a migration, a repair script, a future service or a mistake at a
+psql prompt does not.
+
+The constraint is the COMPOSITE one, not the simpler `REFERENCES principals(id)`:
+
+```
+user_role_assignments (tenant_id, principal_id)
+    REFERENCES tenant_memberships (tenant_id, principal_id)
+```
+
+A key onto `principals` alone proves the principal EXISTS. It does not stop tenant A granting a Role
+to somebody who belongs only to tenant B — which is a cross-tenant authority leak rather than a
+dangling row. `principal_access_versions.principal_id` also gains a key onto `principals`.
+
+**Both layers stay.** The database has no opinion about membership `status`; the API refuses a
+membership that is not ACTIVE. Different questions, and the API cannot defend a path that does not
+call it.
+
+The column is renamed `principal_uid` → `principal_id` in both tables. It has held an EOS principal
+id since migration 002, and a column named after a system the platform is leaving is a comment that
+will be believed.
+
+**Ruling C — one active row per effective assignment.** A partial unique index on
+`(tenant_id, principal_id, role_id, scope_type, COALESCE(scope_value, ''))` `WHERE status = 'active'`.
+Multi-role union stays additive: a different Role, or the same Role at a different governed scope,
+is still a separate assignment. What is refused is a SECOND ACTIVE row saying exactly the same
+thing — it confers no more authority and leaves an administrator with two things to revoke before
+the first stops applying. `COALESCE` because NULL is not distinct from NULL in a unique index, so
+without it the commonest case — two global assignments — would slip through.
+
+`assignRole` is correspondingly IDEMPOTENT: an identical active assignment returns the existing
+canonical row, creates nothing, bumps no access version and writes no audit event, because nothing
+changed. A revoked assignment does not block a re-grant — the index is partial on `active` — and
+that re-grant is a real change with its own row and its own event. The Users panel stops offering a
+Role already held at that scope, so the screen does not suggest a no-op.
 
 ### 2.2 Database runtime
 
@@ -236,8 +266,8 @@ Against a **real PostgreSQL database** (a local unprivileged cluster on port 554
 
 | | |
 |---|---|
-| `npm run test:adminPolicyPostgres` | **71** — schema, migrations up/down, constraints, tenancy, and 31 activation proofs |
-| `npm run test:adminPolicy` (offline) | **128** |
+| `npm run test:adminPolicyPostgres` | **78** — schema, migrations up/down, constraints, tenancy, and 38 activation proofs |
+| `npm run test:adminPolicy` (offline) | **131** |
 | `npm run test:governance` | **667** |
 | client `vitest` | **3,282** |
 | client registered suites | **285** |
@@ -245,7 +275,16 @@ Against a **real PostgreSQL database** (a local unprivileged cluster on port 554
 The activation proofs cover bootstrap idempotence, tenant isolation in both directions, a spoofed
 tenant refused, one-time administrator bootstrap, the Objects/Roles/Users/Workflows write paths,
 published-version immutability, an audit event for every mutation and none for a rollback, and a
-RESTART proof that discards every pool and in-process object and finds the state still there. That
+RESTART proof that discards every pool and in-process object and finds the state still there.
+
+Migration 003 adds seven more, each going STRAIGHT AT THE STORE as well as through the API, because
+a rule that only the API enforces is not the rule the Owner asked for: an assignment to a principal
+who does not exist is refused by the database; a principal who is a member of another tenant is
+refused both ways; a valid member is assignable and the bootstrap still succeeds; a violation rolls
+the whole unit of work back including its audit event; an identical assignment returns the existing
+row with no second row, no access-version movement and no audit event; a different Role and the same
+Role at a different scope both remain separate; and a revoked assignment does not block a re-grant
+while staying in the table as history. That
 last one exists because the most likely way for this tranche to be wrong is for the in-memory
 adapter to quietly remain the operational source — everything would pass and nothing would persist.
 

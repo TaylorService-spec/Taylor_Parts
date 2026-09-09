@@ -294,7 +294,7 @@ export type PolicyAssignmentStatus = "active" | "disabled";
  * must not depend on a Firestore type to exist.
  */
 export interface PolicyRoleAssignmentRecord extends TenantOwned, Provenance {
-  readonly principalUid: string;
+  readonly principalId: string;
   readonly roleId: string;
   readonly scopeType: string;
   readonly scopeValue: string | null;
@@ -312,7 +312,7 @@ export interface PolicyRoleAssignmentRecord extends TenantOwned, Provenance {
  * invalidates rather than on a document in a different system.
  */
 export interface PrincipalAccessVersionRecord extends TenantOwned {
-  readonly principalUid: string;
+  readonly principalId: string;
   readonly accessVersion: number;
   readonly updatedAt: string;
 }

@@ -317,6 +317,29 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       },
 
       createAssignment: async (input) => {
+        // THE TWO STORE-LEVEL RULES MIGRATION 003 ADDS, mirrored so the adapters cannot disagree
+        // about what is representable. The commands refuse both first; these are the backstop for a
+        // writer that skipped them.
+        //
+        //   1. the principal must be a MEMBER of this tenant (composite foreign key)
+        //   2. one ACTIVE row per (principal, role, normalized scope) (partial unique index)
+        if (!t.memberships.some((m) => m.tenantId === tenantId && m.principalId === input.principalId)) {
+          throw new PolicyStoreError("that principal is not a member of this tenant");
+        }
+        if (
+          input.status === "active" &&
+          t.assignments.some(
+            (a) =>
+              a.tenantId === tenantId &&
+              a.principalId === input.principalId &&
+              a.roleId === input.roleId &&
+              a.status === "active" &&
+              a.scopeType === input.scopeType &&
+              (a.scopeValue ?? "") === (input.scopeValue ?? ""),
+          )
+        ) {
+          throw new PolicyStoreError("an identical active assignment already exists");
+        }
         requireOwned(t.roles, input.roleId, "role");
         const row: PolicyRoleAssignmentRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
         t.assignments.push(row);
@@ -328,10 +351,10 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return replace(t.assignments, { ...current, status, updatedBy: actor.uid, updatedAt: this.now() });
       },
 
-      bumpAccessVersion: async (principalUid) => {
-        const index = t.accessVersions.findIndex((v) => v.tenantId === tenantId && v.principalUid === principalUid);
+      bumpAccessVersion: async (principalId) => {
+        const index = t.accessVersions.findIndex((v) => v.tenantId === tenantId && v.principalId === principalId);
         const next = index >= 0 ? t.accessVersions[index].accessVersion + 1 : 1;
-        const row: PrincipalAccessVersionRecord = { id: index >= 0 ? t.accessVersions[index].id : this.nextId(), tenantId, principalUid, accessVersion: next, updatedAt: this.now() };
+        const row: PrincipalAccessVersionRecord = { id: index >= 0 ? t.accessVersions[index].id : this.nextId(), tenantId, principalId, accessVersion: next, updatedAt: this.now() };
         if (index >= 0) t.accessVersions[index] = row;
         else t.accessVersions.push(row);
         return next;
@@ -460,11 +483,11 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   async listFieldOverrides(tenantId: TenantId, roleIds: readonly string[]) {
     return this.mine(this.tables.fieldOverrides, tenantId).filter((p) => roleIds.includes(p.roleId));
   }
-  async listAssignmentsForPrincipal(tenantId: TenantId, principalUid: string) {
-    return this.mine(this.tables.assignments, tenantId).filter((a) => a.principalUid === principalUid);
+  async listAssignmentsForPrincipal(tenantId: TenantId, principalId: string) {
+    return this.mine(this.tables.assignments, tenantId).filter((a) => a.principalId === principalId);
   }
-  async getAccessVersion(tenantId: TenantId, principalUid: string) {
-    return this.mine(this.tables.accessVersions, tenantId).find((v) => v.principalUid === principalUid) ?? null;
+  async getAccessVersion(tenantId: TenantId, principalId: string) {
+    return this.mine(this.tables.accessVersions, tenantId).find((v) => v.principalId === principalId) ?? null;
   }
   async listWorkflows(tenantId: TenantId) { return this.mine(this.tables.workflows, tenantId); }
   async listWorkflowVersions(tenantId: TenantId, workflowId: string) {

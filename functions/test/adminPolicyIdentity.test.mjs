@@ -194,6 +194,72 @@ test("an unknown operation is refused before any identity is resolved", async ()
   assert.equal(result.code, "UNKNOWN_OPERATION");
 });
 
+// ============================ listTenantPrincipals returns identity, never authority ============================
+
+test("listTenantPrincipals returns EXACTLY these five fields, and never a sixth", async () => {
+  // Owner ruling A: minimal, and pinned. A field added here in passing -- a token, a claim, a Role,
+  // an access version -- would be a widening nobody reviewed, and it would ship looking like a
+  // convenience. The assertion is the exact key set rather than "does not contain X", because a
+  // deny-list only refuses the things somebody thought of.
+  const { repo, onlyA } = await twoTenants();
+  const result = await executeAdminOperation({ repo }, {
+    caller: { externalSubject: "subject-a" }, operation: "listTenantPrincipals",
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(result.data.length > 0);
+  for (const principal of result.data) {
+    assert.deepEqual(
+      Object.keys(principal).sort(),
+      ["displayName", "externalSubject", "id", "identityProvider", "status"],
+      "exactly the five fields needed to select and administer a principal",
+    );
+  }
+  assert.ok(result.data.some((p) => p.id === onlyA.id));
+});
+
+test("listTenantPrincipals is TENANT-SCOPED: another tenant's principals are not in the answer", async () => {
+  // Not filtered out afterwards -- never in the query. The population comes from this tenant's
+  // memberships, and the tenant came from the caller's own membership.
+  const { repo, both } = await twoTenants();
+
+  const fromA = await executeAdminOperation({ repo }, {
+    caller: { externalSubject: "subject-a" }, operation: "listTenantPrincipals",
+  });
+  const ids = fromA.data.map((p) => p.id);
+
+  // `both` is a member of A and B, so they appear. A principal of B alone must not.
+  assert.ok(ids.includes(both.id), "a member of this tenant appears");
+
+  const onlyB = await repo.transact({ tenantId: "tenant-b", uid: "setup" }, async (tx) => {
+    const principal = await tx.createPrincipal({ externalSubject: "subject-b-only", identityProvider: "firebase" });
+    await tx.createTenantMembership(principal.id);
+    return principal;
+  });
+
+  const again = await executeAdminOperation({ repo }, {
+    caller: { externalSubject: "subject-a" }, operation: "listTenantPrincipals",
+  });
+  assert.equal(
+    again.data.some((p) => p.id === onlyB.id), false,
+    "a principal who belongs only to the other tenant is not in this tenant's answer",
+  );
+});
+
+test("listTenantPrincipals carries NO authority — no Role, no permission, no access version", async () => {
+  const { repo } = await twoTenants();
+  const result = await executeAdminOperation({ repo }, {
+    caller: { externalSubject: "subject-a" }, operation: "listTenantPrincipals",
+  });
+  const serialized = JSON.stringify(result.data);
+  for (const forbidden of ["role", "Role", "permission", "cred", "accessVersion", "token", "claim", "password"]) {
+    assert.equal(
+      serialized.includes(forbidden), false,
+      `"${forbidden}" has no place in an answer about WHO somebody is`,
+    );
+  }
+});
+
 // ============================ the transport carries no authority ============================
 
 test("HTTP: only the VERIFIED subject is used — a body that claims a caller is ignored", async () => {

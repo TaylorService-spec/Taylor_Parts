@@ -105,11 +105,15 @@ async function reorderWorld(repo) {
   return { roles, definition, instance, ...world };
 }
 
+// A Role assignment now requires the principal to be a MEMBER of the tenant (Owner ruling B), so
+// these proofs make them one before granting. The separation being proved is unaffected: it is
+// about which authority a grant confers, not about who may hold one.
 const assignTo = (repo, uid, roleId) =>
   repo.transact({ tenantId: TENANT, uid: SYS }, async (tx) => {
+    if (!(await repo.getMembership(TENANT, uid))) await tx.createTenantMembership(uid);
     const version = await tx.bumpAccessVersion(uid);
     return tx.createAssignment({
-      principalUid: uid, roleId, scopeType: "global", scopeValue: null, status: "active",
+      principalId: uid, roleId, scopeType: "global", scopeValue: null, status: "active",
       grantedBy: SYS, grantedAt: new Date().toISOString(), accessVersionAtGrant: version,
     });
   });

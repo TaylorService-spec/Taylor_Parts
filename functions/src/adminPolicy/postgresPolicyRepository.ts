@@ -222,7 +222,7 @@ const toFieldOverride = (r: Record<string, unknown>): RoleFieldPermissionOverrid
 const toAssignment = (r: Record<string, unknown>): PolicyRoleAssignmentRecord => ({
   id: String(r.id),
   tenantId: String(r.tenant_id),
-  principalUid: String(r.principal_uid),
+  principalId: String(r.principal_id),
   roleId: String(r.role_id),
   scopeType: String(r.scope_type),
   scopeValue: (r.scope_value as string | null) ?? null,
@@ -457,22 +457,22 @@ export class PostgresPolicyRepository implements PolicyRepository {
     );
   }
 
-  listAssignmentsForPrincipal(tenantId: TenantId, principalUid: string) {
+  listAssignmentsForPrincipal(tenantId: TenantId, principalId: string) {
     return this.many(
-      `SELECT * FROM ${SCHEMA}.user_role_assignments WHERE tenant_id = $1 AND principal_uid = $2 ORDER BY granted_at`,
-      [tenantId, principalUid],
+      `SELECT * FROM ${SCHEMA}.user_role_assignments WHERE tenant_id = $1 AND principal_id = $2 ORDER BY granted_at`,
+      [tenantId, principalId],
       toAssignment,
     );
   }
 
-  getAccessVersion(tenantId: TenantId, principalUid: string) {
+  getAccessVersion(tenantId: TenantId, principalId: string) {
     return this.one(
-      `SELECT * FROM ${SCHEMA}.principal_access_versions WHERE tenant_id = $1 AND principal_uid = $2`,
-      [tenantId, principalUid],
+      `SELECT * FROM ${SCHEMA}.principal_access_versions WHERE tenant_id = $1 AND principal_id = $2`,
+      [tenantId, principalId],
       (r): PrincipalAccessVersionRecord => ({
         id: String(r.id),
         tenantId: String(r.tenant_id),
-        principalUid: String(r.principal_uid),
+        principalId: String(r.principal_id),
         accessVersion: Number(r.access_version),
         updatedAt: iso(r.updated_at),
       }),
@@ -810,15 +810,25 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
 
     async createAssignment(input: NewRecord<PolicyRoleAssignmentRecord>) {
       await requireOwned("roles", input.roleId, "role");
-      const { rows } = await q.query(
-        `INSERT INTO ${SCHEMA}.user_role_assignments
-           (id, tenant_id, principal_uid, role_id, scope_type, scope_value, status, granted_by, granted_at,
-            access_version_at_grant, created_by, created_at, updated_by, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-        [newId(), tenantId, input.principalUid, input.roleId, input.scopeType, input.scopeValue,
-          input.status, input.grantedBy, input.grantedAt, input.accessVersionAtGrant, ...stamp()],
-      );
-      return toAssignment(rows[0]);
+      try {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.user_role_assignments
+             (id, tenant_id, principal_id, role_id, scope_type, scope_value, status, granted_by, granted_at,
+              access_version_at_grant, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+          [newId(), tenantId, input.principalId, input.roleId, input.scopeType, input.scopeValue,
+            input.status, input.grantedBy, input.grantedAt, input.accessVersionAtGrant, ...stamp()],
+        );
+        return toAssignment(rows[0]);
+      } catch (err) {
+        // Two different mistakes, and an administrator should be told which. 23503 is the composite
+        // membership foreign key -- a Role granted to somebody who is not in this tenant. 23505 is
+        // the one-active-row index -- the same effective assignment, twice.
+        if ((err as { code?: string })?.code === "23503") {
+          throw new PolicyStoreError("that principal is not a member of this tenant");
+        }
+        return asDuplicate(err, "an identical active assignment already exists");
+      }
     },
 
     async setAssignmentStatus(assignmentId: string, status: PolicyAssignmentStatus) {
@@ -831,18 +841,18 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       return toAssignment(rows[0]);
     },
 
-    async bumpAccessVersion(principalUid: string) {
+    async bumpAccessVersion(principalId: string) {
       // ONE STATEMENT, so two concurrent bumps cannot both read the same old value and write the
       // same new one. A read-then-write here would be a lost update, and a lost access-version bump
       // means a revoked grant stays cached as valid.
       const { rows } = await q.query(
-        `INSERT INTO ${SCHEMA}.principal_access_versions (id, tenant_id, principal_uid, access_version, updated_at)
+        `INSERT INTO ${SCHEMA}.principal_access_versions (id, tenant_id, principal_id, access_version, updated_at)
          VALUES ($1,$2,$3,1,$4)
-         ON CONFLICT (tenant_id, principal_uid) DO UPDATE
+         ON CONFLICT (tenant_id, principal_id) DO UPDATE
            SET access_version = ${SCHEMA}.principal_access_versions.access_version + 1,
                updated_at = EXCLUDED.updated_at
          RETURNING access_version`,
-        [newId(), tenantId, principalUid, nowIso()],
+        [newId(), tenantId, principalId, nowIso()],
       );
       return Number(rows[0].access_version);
     },

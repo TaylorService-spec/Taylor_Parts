@@ -309,6 +309,12 @@ function RoleCredGrid({ roleId }) {
  * ADDITIVE, and there is NO PRIMARY ROLE. Somebody may hold three Roles at once and their authority
  * is the union; removal is by the EXACT assignment, because the same Role may legitimately be held
  * twice at two scopes and revoking "their salesperson role" would silently remove both.
+ *
+ * A ROLE ALREADY HELD AT THIS SCOPE IS NOT OFFERED. The server is idempotent -- a second identical
+ * assignment returns the first one rather than creating a duplicate -- so offering it would present
+ * an action that looks like it adds authority and does nothing. Filtering the option is not the
+ * enforcement; the enforcement is the command and the database. It is the screen declining to
+ * suggest a no-op.
  */
 export function UsersPolicyPanel({ principalId: fixedPrincipalId = null }) {
   const principals = usePolicyStore("listTenantPrincipals");
@@ -357,6 +363,16 @@ function UsersPolicyPanelBody({ principalId, picker, principals }) {
     );
   }
 
+  // The Roles this principal does NOT already hold at the global scope. The panel assigns globally,
+  // so that is the comparison; a scoped assignment is a different effective assignment and stays
+  // offerable when the server grows a scope picker here.
+  const heldGlobally = new Set(
+    (assignments.data?.assignments ?? [])
+      .filter((a) => a.status === "active" && a.scopeType === "global" && !a.scopeValue)
+      .map((a) => a.roleId),
+  );
+  const assignable = (roles.data ?? []).filter((role) => !heldGlobally.has(role.id));
+
   const add = async (event) => {
     event.preventDefault();
     const outcome = await assignments.mutate("assignRole", { principalId, roleId });
@@ -403,7 +419,7 @@ function UsersPolicyPanelBody({ principalId, picker, principals }) {
             <span>Add role</span>
             <select value={roleId} onChange={(e) => setRoleId(e.target.value)} required>
               <option value="">Choose a role…</option>
-              {(roles.data ?? []).map((role) => (
+              {assignable.map((role) => (
                 <option key={role.id} value={role.id}>{role.name}</option>
               ))}
             </select>
@@ -412,6 +428,9 @@ function UsersPolicyPanelBody({ principalId, picker, principals }) {
             <Button type="submit" variant="primary" disabled={!roleId}>Add role</Button>
           </div>
         </div>
+        {assignable.length === 0 && (
+          <p className="fo-muted">This principal already holds every Role at the global scope.</p>
+        )}
       </form>
     </PolicyPanel>
   );

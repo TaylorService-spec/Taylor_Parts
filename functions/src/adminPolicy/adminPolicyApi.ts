@@ -410,23 +410,18 @@ async function dispatch(
         reason,
       });
 
-    case "assignRole": {
-      const principalId = requireString(input.principalId, "principalId");
-      // MEMBERSHIP IS REQUIRED. This is the boundary check migration 002 chose instead of a foreign
-      // key: a Role assigned to somebody who is not a member of the tenant would resolve to no
-      // context and confer nothing, which reads as a broken grant rather than as a missing row.
-      const membership = await repo.getMembership(actor.tenantId, principalId);
-      if (!membership || membership.status !== "active") {
-        throw new PolicyValidationError("that principal is not an active member of this tenant");
-      }
+    case "assignRole":
+      // MEMBERSHIP, and IDEMPOTENCE, are enforced in the COMMAND -- next to the transaction, so a
+      // caller that bypasses this dispatcher gets the same answer. They were briefly checked here
+      // as well; two spellings of one rule is how the two eventually disagree. Migration 003 makes
+      // the membership half unrepresentable at the database as well.
       return assignRole(repo, actor, {
-        principalUid: principalId,
+        principalId: requireString(input.principalId, "principalId"),
         roleId: requireString(input.roleId, "roleId"),
         scopeType: optionalString(input.scopeType) ?? undefined,
         scopeValue: optionalString(input.scopeValue),
         reason,
       });
-    }
 
     case "revokeRole":
       return revokeRole(repo, actor, {

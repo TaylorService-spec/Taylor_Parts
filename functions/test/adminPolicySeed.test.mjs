@@ -192,9 +192,11 @@ test("the seeded policy RESOLVES: a seeded Role reads what its capabilities say"
   const admin = (await repo.listRoles(TENANT)).find((r) => r.key === "admin");
 
   await repo.transact({ tenantId: TENANT, uid: SEEDER }, async (tx) => {
+    // A Role assignment now requires the principal to be a MEMBER of the tenant (Owner ruling B).
+    await tx.createTenantMembership("uid-1");
     const v = await tx.bumpAccessVersion("uid-1");
     await tx.createAssignment({
-      principalUid: "uid-1", roleId: admin.id, scopeType: "global", scopeValue: null,
+      principalId: "uid-1", roleId: admin.id, scopeType: "global", scopeValue: null,
       status: "active", grantedBy: SEEDER, grantedAt: new Date().toISOString(), accessVersionAtGrant: v,
     });
   });

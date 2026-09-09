@@ -68,11 +68,29 @@ async function overrideField(repo, roleId, fieldId, override, tenantId = TENANT)
   await repo.transact({ tenantId, uid: ADMIN }, (tx) => tx.setFieldOverride(roleId, fieldId, override));
 }
 
-async function assign(repo, principalUid, roleId, tenantId = TENANT, status = "active") {
+/**
+ * Make a principal a MEMBER of the tenant before anything is assigned to them.
+ *
+ * Owner ruling B: a Role assignment to somebody who is not a member of the tenant is now
+ * unrepresentable. In PostgreSQL that is a composite foreign key onto `tenant_memberships`; the
+ * in-memory adapter mirrors THAT rule and not the separate `principals` key, because membership is
+ * the one that decides authorization and these proofs are about authorization. The Postgres suites
+ * create real principal rows and prove the full key.
+ *
+ * Idempotent, so a test may assign the same principal several Roles.
+ */
+async function member(repo, principalId, tenantId = TENANT) {
+  if (await repo.getMembership(tenantId, principalId)) return principalId;
+  await repo.transact({ tenantId, uid: ADMIN }, (tx) => tx.createTenantMembership(principalId));
+  return principalId;
+}
+
+async function assign(repo, principalId, roleId, tenantId = TENANT, status = "active") {
+  await member(repo, principalId, tenantId);
   return repo.transact({ tenantId, uid: ADMIN }, async (tx) => {
-    const accessVersion = await tx.bumpAccessVersion(principalUid);
+    const accessVersion = await tx.bumpAccessVersion(principalId);
     return tx.createAssignment({
-      principalUid, roleId, scopeType: "global", scopeValue: null, status,
+      principalId, roleId, scopeType: "global", scopeValue: null, status,
       grantedBy: ADMIN, grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion,
     });
   });
@@ -290,10 +308,11 @@ test("an assignment from the FUTURE is excluded as malformed", async () => {
   const world = await makeWorld(repo);
   const role = await makeRole(repo, "viewer");
   await grantObject(repo, role.id, world.customer.id, READ);
+  await member(repo, "uid-1");
   await repo.transact({ tenantId: TENANT, uid: ADMIN }, async (tx) => {
     await tx.bumpAccessVersion("uid-1");
     await tx.createAssignment({
-      principalUid: "uid-1", roleId: role.id, scopeType: "global", scopeValue: null, status: "active",
+      principalId: "uid-1", roleId: role.id, scopeType: "global", scopeValue: null, status: "active",
       grantedBy: ADMIN, grantedAt: new Date().toISOString(), accessVersionAtGrant: 999,
     });
   });
