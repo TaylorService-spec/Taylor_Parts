@@ -52,3 +52,14 @@ docs/audits/inv-convergence-e-c2-hosting-deploy/** -text
 # Windows checkout landed as +8,480/-8,400 (PR #1808) -- the whole file replaced by line
 # endings, hiding an 84-line change. No churn: the one tracked stylesheet is already stored LF.
 *.css text eol=lf
+
+# Generated-artifact byte stability: the policy seed snapshot and its coverage
+# ledger are compared BYTE FOR BYTE against a fresh generation by
+# `scripts/buildAdminPolicySeedSnapshot.mjs --check`, which the admin-policy
+# gate runs. The generator writes LF; an autocrlf checkout rewrites them to
+# CRLF, and the guard then reports STALE on a tree whose content is identical.
+# A drift guard that cries wolf on Windows is a drift guard people learn to
+# ignore -- which is the failure it exists to prevent. Same reasoning as the
+# migration-readiness evidence above.
+functions/src/adminPolicy/seed/policySeedSnapshot.json text eol=lf
+functions/src/adminPolicy/seed/policySeedCoverage.json text eol=lf

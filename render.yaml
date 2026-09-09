@@ -1,0 +1,79 @@
+# EOS trusted API — NON-PRODUCTION Render Blueprint.
+#
+# ════════════════════ WHAT THIS FILE IS ════════════════════
+#
+# The declaration of the two non-production resources this platform's policy store needs: a
+# PostgreSQL database and the trusted API in front of it. Committing it means the environment is
+# reviewable and reproducible rather than a sequence of dashboard clicks somebody has to remember.
+#
+# ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
+#
+# NO SECRETS, AND NO WAY TO ADD ONE BY ACCIDENT. Every value that is a credential carries
+# `sync: false`, which means Render prompts for it in the dashboard and never reads it from this
+# file. A connection string or a service-account key committed here would be in git history, which
+# outlives every rotation.
+#
+# `DATABASE_URL` is the one exception and it is not a secret in this file: it is wired
+# `fromDatabase`, so Render substitutes the INTERNAL connection string of the database declared
+# below. The value never appears in the repository, never reaches a build log, and never reaches a
+# browser.
+#
+# ════════════════════ NON-PRODUCTION, AND SAYING SO ════════════════════
+#
+# Every name carries `nonprod`. `EOS_ENVIRONMENT` is `nonprod`, and the service REFUSES TO START if
+# it is ever set to production — a check that lives in the process rather than in a naming
+# convention somebody can typo. There is no production blueprint in this repository and this file
+# must not become one by editing a string.
+#
+# ════════════════════ MIGRATIONS ════════════════════
+#
+# Migrations are NOT run by the build. A build that migrates would migrate on every deploy of every
+# instance, concurrently, which is how a schema change races itself. They are a deliberate release
+# step:
+#
+#     cd functions && DATABASE_URL=<internal url> npm run migrate:up
+#
+# The service fails closed if that step has not been run: `requirePolicyDatabaseReady` refuses to
+# open the socket when the database is reachable but unmigrated, so an unmigrated deploy reports
+# unhealthy rather than serving requests that all fail.
+
+databases:
+  - name: eos-policy-nonprod
+    databaseName: eos_policy
+    user: eos
+    # Smallest tier that exists: this database holds one non-production tenant's configuration --
+    # tens of thousands of rows -- and is not a load test. Sizing up to solve a slow query would be
+    # buying capacity to hide a missing index.
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+    ipAllowList: []          # internal connections only; nothing reaches it from the public internet
+
+services:
+  - type: web
+    name: eos-api-nonprod
+    runtime: node
+    plan: starter
+    # The API lives in functions/ alongside the policy subsystem it serves. Render builds and runs
+    # from there rather than from the repository root, which has no package.json.
+    rootDir: functions
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: EOS_ENVIRONMENT
+        value: nonprod
+      - key: DATABASE_URL
+        fromDatabase:
+          name: eos-policy-nonprod
+          property: connectionString
+      # The browser origins permitted to call this API. EXPLICIT, comma-separated, and never "*":
+      # the API answers with one tenant's policy configuration, and a wildcard would let any page a
+      # signed-in administrator visits read it. `readServiceConfig` refuses a "*" outright.
+      - key: EOS_ALLOWED_ORIGINS
+        sync: false
+      # Identity verification. Firebase answers exactly one question -- which subject authenticated
+      # -- and no claim it returns is read as EOS authority. Supplied as a secret in the dashboard.
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false

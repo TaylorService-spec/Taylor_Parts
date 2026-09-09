@@ -256,7 +256,7 @@ sign-off, and this tranche is neither.
 | `GOOGLE_APPLICATION_CREDENTIALS` / service-account config | so `firebase-admin` can verify ID tokens. |
 
 Build `npm --prefix functions ci && npm --prefix functions run build`; start
-`node functions/scripts/runEosApiLocal.mjs` (or an equivalent entry). Migrations run as a release
+`npm start` in `functions/` (`scripts/serveEosApi.mjs`). Migrations run as a release
 step: `npm --prefix functions run migrate:up`.
 
 ### Frontend (Vercel)
