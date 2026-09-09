@@ -29,9 +29,20 @@ name: EOS Admin Policy & Workflow Tests
 #      down and up again. Constraints, transactional rollback, tenant isolation and the seed are
 #      proved there rather than approximated.
 #
+#   5. ACTIVATION. That a tenant can be CREATED and seeded idempotently, that an administrator can
+#      be bootstrapped exactly once, that one tenant can neither read nor mutate another's policy,
+#      that a spoofed tenant id is refused rather than narrowed, that every Admin mutation writes an
+#      audit event and a rolled-back one writes none, and -- the proof this turns on -- that state
+#      SURVIVES A RESTART. If the in-memory adapter were still the operational source, every other
+#      test here would pass and nothing would persist.
+#
+#   6. THE API'S SHAPE. That the operation list is CLOSED: no runSQL, no generic patch, no route
+#      that takes a table name. And that the tenant is never taken from the request.
+#
 # INERT ALL THE SAME. Nothing here is wired into a running surface, no capability is granted, no
 # callable is exported, no Firestore collection is created, no Rules change, and no environment has
-# a policy database. The migration runs only against the throwaway container in this job.
+# a policy database. The migration runs only against the throwaway container in this job. The EOS
+# API process is built and proved, and nothing deploys it.
 #
 # Linux runner, matching every other lane in this repository.
 
@@ -46,6 +57,11 @@ on:
       - "functions/test/adminPolicySeed.test.mjs"
       - "functions/test/adminPolicySeedCoverage.test.mjs"
       - "functions/test/adminPolicyReorderSeparation.test.mjs"
+      - "functions/test/adminPolicyActivation.test.mjs"
+      - "functions/test/adminPolicyIdentity.test.mjs"
+      - "functions/src/eosApi/**"
+      - "functions/scripts/bootstrapEosTenant.mjs"
+      - "functions/scripts/runEosApiLocal.mjs"
       - "functions/migrations/**"
       - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
@@ -63,6 +79,10 @@ on:
       - "field-ops-app-vite/test/adminWorkflowView.test.mjs"
       - "field-ops-app-vite/test/policyObjectRegistry.test.mjs"
       - "field-ops-app-vite/test/reorderAuthoritySeparation.test.mjs"
+      - "field-ops-app-vite/test/adminPolicyApiClient.test.mjs"
+      - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
+      - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
+      - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "field-ops-app-vite/test/entityRegistry.test.mjs"
@@ -77,7 +97,11 @@ on:
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
+      - "functions/test/adminPolicyActivation.test.mjs"
+      - "functions/test/adminPolicyIdentity.test.mjs"
+      - "functions/src/eosApi/**"
       - "functions/migrations/**"
+      - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
       - "field-ops-app-vite/src/domain/adminPolicyView.js"
       - "field-ops-app-vite/src/metadata/entityRegistry.js"
       - "field-ops-app-vite/src/modules/administration/**"
@@ -149,7 +173,10 @@ jobs:
           # database rather than silently depending on one.
           POLICY_TEST_DATABASE_URL: ""
 
-      - name: Migration, schema, constraints and seed -- real PostgreSQL
+      # The ACTIVATION proofs run inside this command, not beside it: test:adminPolicyPostgres is
+      # the registered authority for "everything that needs a real database", and a second
+      # invocation here would be a second list to keep in step with the first.
+      - name: Migration, schema, tenancy, bootstrap and activation -- real PostgreSQL
         run: npm run test:adminPolicyPostgres
         working-directory: functions
         env:
@@ -181,7 +208,7 @@ jobs:
       # The view model draws what the server decided and must never become a second implementation
       # of the resolution rules -- one of these assertions is exactly that boundary.
       - name: Pure view model and entity registry (node:test)
-        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs test/policyObjectRegistry.test.mjs test/reorderAuthoritySeparation.test.mjs
+        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs test/policyObjectRegistry.test.mjs test/reorderAuthoritySeparation.test.mjs test/adminPolicyApiClient.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)

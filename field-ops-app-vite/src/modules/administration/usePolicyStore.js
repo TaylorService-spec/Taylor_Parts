@@ -12,7 +12,7 @@
 // The cost is an extra round trip per change. The alternative is a UI that reports success for a
 // change that did not happen, which is the single most damaging thing an Administration screen can
 // do -- an administrator walks away believing access was granted, or revoked.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { callPolicyApi, describePolicyFailure, isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 
 /**
@@ -35,8 +35,15 @@ export function usePolicyStore(operation, input = null, options = {}) {
   // A reload counter rather than a boolean: two mutations in quick succession must produce two
   // reloads, and a boolean would collapse them into one and leave the second change unshown.
   const [reloadCount, setReloadCount] = useState(0);
-  const live = useRef(true);
-  useEffect(() => () => { live.current = false; }, []);
+
+  // THERE IS NO COMPONENT-LIFETIME "is this still mounted" FLAG, and that is the fix for a defect
+  // the browser found that no unit test would have: a ref set false by an unmount cleanup stays
+  // false FOR EVER, and React StrictMode mounts, unmounts and remounts every component in
+  // development. The second -- real -- mount then discarded its own response, and the panel sat on
+  // "Reading the policy store..." indefinitely with no error anywhere to explain it.
+  //
+  // The per-effect `cancelled` flag below is the correct scope: it belongs to ONE run of the
+  // effect, is created fresh each time, and cancels only that run.
 
   useEffect(() => {
     if (!enabled) {
@@ -49,7 +56,7 @@ export function usePolicyStore(operation, input = null, options = {}) {
 
     (async () => {
       const result = await callPolicyApi(operation, JSON.parse(inputKey), { signal: controller.signal });
-      if (cancelled || !live.current) return;
+      if (cancelled) return;
       if (result.ok) {
         setState({ status: "ready", data: result.data, tenantId: result.tenantId, error: null });
       } else {

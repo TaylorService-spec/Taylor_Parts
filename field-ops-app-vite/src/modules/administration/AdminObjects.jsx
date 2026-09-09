@@ -343,6 +343,10 @@ export default function AdminObjects() {
         governed path to change a tick from this screen yet. Editing becomes available when
         Role definitions move to administered data.
       </p>
+
+      {/* And here is where it becomes available: the tenant's STORED configuration, which is a
+          different thing from the measured grid above and is editable when a policy service exists. */}
+      <ObjectsPolicyPanel />
     </WorkspaceShell>
   );
 }

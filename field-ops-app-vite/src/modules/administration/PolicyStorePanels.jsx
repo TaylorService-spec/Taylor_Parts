@@ -125,6 +125,10 @@ function ObjectFields({ objectKey, onChanged }) {
   return (
     <div className="fo-panel--nested">
       <h4>{view.data.object.label} <span className="fo-muted">· {view.data.fields.length} fields</span></h4>
+      <p className="fo-muted">
+        A SYSTEM field&rsquo;s key and type are fixed: a key is identity, and a type is what every
+        stored value already is. Custom fields are yours to add.
+      </p>
       <table className="fo-table">
         <thead>
           <tr><th>Field</th><th>Key</th><th>Type</th><th>Origin</th></tr>
@@ -135,44 +139,45 @@ function ObjectFields({ objectKey, onChanged }) {
               <td>{field.label}</td>
               <td><code>{field.key}</code></td>
               <td className="fo-muted">{field.dataType}</td>
-              <td className="fo-muted">
-                {field.origin}
-                {field.origin === "SYSTEM" && <span className="fo-muted"> · key and type are fixed</span>}
-              </td>
+              <td className="fo-muted">{field.origin}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <form onSubmit={submit} aria-label="Create a custom field">
+      <form className="fo-form" onSubmit={submit} aria-label="Create a custom field">
         <h4>Add a custom field</h4>
-        <label>
-          Key
-          <input
-            value={draft.key}
-            onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-            placeholder="loyaltyTier"
-            required
-          />
-        </label>
-        <label>
-          Label
-          <input
-            value={draft.label}
-            onChange={(e) => setDraft({ ...draft, label: e.target.value })}
-            placeholder="Loyalty Tier"
-            required
-          />
-        </label>
-        <label>
-          Type
-          <select value={draft.dataType} onChange={(e) => setDraft({ ...draft, dataType: e.target.value })}>
-            {["STRING", "NUMBER", "BOOLEAN", "DATE", "ENUM", "REFERENCE"].map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </label>
-        <Button type="submit" variant="primary">Create field</Button>
+        <div className="fo-form-row">
+          <label className="fo-form-field">
+            <span>Key</span>
+            <input
+              value={draft.key}
+              onChange={(e) => setDraft({ ...draft, key: e.target.value })}
+              placeholder="loyaltyTier"
+              required
+            />
+          </label>
+          <label className="fo-form-field">
+            <span>Label</span>
+            <input
+              value={draft.label}
+              onChange={(e) => setDraft({ ...draft, label: e.target.value })}
+              placeholder="Loyalty Tier"
+              required
+            />
+          </label>
+          <label className="fo-form-field">
+            <span>Type</span>
+            <select value={draft.dataType} onChange={(e) => setDraft({ ...draft, dataType: e.target.value })}>
+              {["STRING", "NUMBER", "BOOLEAN", "DATE", "ENUM", "REFERENCE"].map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="fo-form-actions">
+          <Button type="submit" variant="primary">Create field</Button>
+        </div>
       </form>
       <Refusal result={result} />
       {result?.ok && <p className="fo-muted">Created. The table above was re-read from the store.</p>}
@@ -392,17 +397,21 @@ function UsersPolicyPanelBody({ principalId, picker, principals }) {
         </tbody>
       </table>
 
-      <form onSubmit={add} aria-label="Add a role">
-        <label>
-          Add role
-          <select value={roleId} onChange={(e) => setRoleId(e.target.value)} required>
-            <option value="">Choose a role…</option>
-            {(roles.data ?? []).map((role) => (
-              <option key={role.id} value={role.id}>{role.name}</option>
-            ))}
-          </select>
-        </label>
-        <Button type="submit" variant="primary" disabled={!roleId}>Add role</Button>
+      <form className="fo-form" onSubmit={add} aria-label="Add a role">
+        <div className="fo-form-row">
+          <label className="fo-form-field">
+            <span>Add role</span>
+            <select value={roleId} onChange={(e) => setRoleId(e.target.value)} required>
+              <option value="">Choose a role…</option>
+              {(roles.data ?? []).map((role) => (
+                <option key={role.id} value={role.id}>{role.name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="fo-form-actions">
+            <Button type="submit" variant="primary" disabled={!roleId}>Add role</Button>
+          </div>
+        </div>
       </form>
     </PolicyPanel>
   );

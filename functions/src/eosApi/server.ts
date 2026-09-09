@@ -97,8 +97,12 @@ export function readServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
  */
 export function createFirebaseTokenVerifier(identityProvider: string): TokenVerifier {
   return async function verify(bearerToken: string): Promise<VerifiedIdentity> {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const admin = await import("firebase-admin");
+    // A DYNAMIC IMPORT OF A CJS MODULE lands its exports under `.default`, and firebase-admin is
+    // CJS. Reaching for `admin.initializeApp` directly gets undefined -- which surfaced here as
+    // every token failing to verify with a message that said nothing about the real cause. Both
+    // shapes are handled so this does not depend on how the bundler happens to interop.
+    const imported = (await import("firebase-admin")) as unknown as Record<string, unknown>;
+    const admin = ((imported.default ?? imported) as typeof import("firebase-admin"));
     const app = admin.apps?.length ? admin.app() : admin.initializeApp();
     const decoded = await app.auth().verifyIdToken(bearerToken);
     if (!decoded?.uid) throw new Error("token carries no subject");
