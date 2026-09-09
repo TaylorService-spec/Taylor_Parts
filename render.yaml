@@ -55,7 +55,15 @@ services:
     # The API lives in functions/ alongside the policy subsystem it serves. Render builds and runs
     # from there rather than from the repository root, which has no package.json.
     rootDir: functions
-    buildCommand: npm ci --no-audit --no-fund && npm run build
+    # --include=dev IS LOAD-BEARING. Render sets NODE_ENV=production for a Node service, and
+    # under that npm omits devDependencies -- where `typescript` lives, correctly, because it is a
+    # build tool and not a runtime need. Without this flag `npm run build` fails with "tsc: not
+    # found" on the first deploy. Measured, not assumed: `npm ls typescript --omit=dev` resolves to
+    # (empty) in this package.
+    #
+    # `node-pg-migrate` and `pg` are runtime DEPENDENCIES, so preDeployCommand and the service keep
+    # working whatever the install flags are.
+    buildCommand: npm ci --include=dev --no-audit --no-fund && npm run build
     preDeployCommand: npm run migrate:up
     startCommand: npm start
     healthCheckPath: /health

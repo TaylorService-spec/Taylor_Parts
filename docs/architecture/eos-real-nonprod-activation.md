@@ -107,6 +107,19 @@ The service still fails closed if the database is unreachable or unmigrated:
 `requirePolicyDatabaseReady` refuses to open the socket, so an invalid deploy reports unhealthy
 rather than serving requests that all fail.
 
+### One build flag that would otherwise fail the first deploy
+
+`buildCommand` carries `--include=dev`, and it is load-bearing. Render sets `NODE_ENV=production`
+for a Node service; under that npm omits devDependencies, which is where `typescript` correctly
+lives — it is a build tool, not a runtime need. Without the flag, `npm run build` fails with
+"tsc: not found" before anything else is even attempted.
+
+Measured rather than assumed: `npm ls typescript --omit=dev` resolves to `(empty)` in this package,
+while `npm ls typescript` resolves to `typescript@5.9.3`.
+
+`node-pg-migrate` and `pg` are runtime **dependencies**, so `preDeployCommand` and the service
+itself keep working whatever the install flags are.
+
 ## 4. Proved locally against the exact hosted configuration
 
 Not a substitute for the deployed proof — a demonstration that the Render configuration in this
