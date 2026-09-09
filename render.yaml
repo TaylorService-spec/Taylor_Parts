@@ -27,23 +27,22 @@
 #
 # ════════════════════ MIGRATIONS ════════════════════
 #
-# Migrations are NOT run by the build. A build that migrates would migrate on every deploy of every
-# instance, concurrently, which is how a schema change races itself. They are a deliberate release
-# step:
+# Migrations are NOT run by the build. Render runs `preDeployCommand` after the build and before
+# starting the new service, which is the deployment phase intended for schema migrations. The
+# command runs from this service's `rootDir` (`functions`) and receives the same `DATABASE_URL`
+# supplied below from the internal Render PostgreSQL resource.
 #
-#     cd functions && DATABASE_URL=<internal url> npm run migrate:up
-#
-# The service fails closed if that step has not been run: `requirePolicyDatabaseReady` refuses to
-# open the socket when the database is reachable but unmigrated, so an unmigrated deploy reports
-# unhealthy rather than serving requests that all fail.
+# The service still fails closed if the database is unreachable or unmigrated:
+# `requirePolicyDatabaseReady` refuses to open the socket, so an invalid deploy reports unhealthy
+# rather than serving requests that all fail.
 
 databases:
   - name: eos-policy-nonprod
     databaseName: eos_policy
     user: eos
-    # Smallest tier that exists: this database holds one non-production tenant's configuration --
-    # tens of thousands of rows -- and is not a load test. Sizing up to solve a slow query would be
-    # buying capacity to hide a missing index.
+    # Smallest paid persistent PostgreSQL tier selected for this environment: it holds one
+    # non-production tenant's configuration -- tens of thousands of rows -- and is not a load test.
+    # Sizing up to solve a slow query would be buying capacity to hide a missing index.
     plan: basic-256mb
     postgresMajorVersion: "16"
     ipAllowList: []          # internal connections only; nothing reaches it from the public internet
@@ -57,6 +56,7 @@ services:
     # from there rather than from the repository root, which has no package.json.
     rootDir: functions
     buildCommand: npm ci --no-audit --no-fund && npm run build
+    preDeployCommand: npm run migrate:up
     startCommand: npm start
     healthCheckPath: /health
     envVars:
