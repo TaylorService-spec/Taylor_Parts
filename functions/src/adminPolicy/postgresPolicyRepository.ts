@@ -675,6 +675,31 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       }
     },
 
+    async updateObject(
+      objectId: string,
+      patch: { label?: string; labelPlural?: string | null; description?: string | null },
+    ) {
+      await requireOwned("objects", objectId, "object");
+      // COALESCE keeps an omitted field untouched rather than nulling it: a patch that names only
+      // the label must not silently erase the description.
+      const { rows } = await q.query(
+        `UPDATE ${SCHEMA}.objects
+            SET label        = COALESCE($1, label),
+                label_plural = CASE WHEN $2::boolean THEN $3 ELSE label_plural END,
+                description  = CASE WHEN $4::boolean THEN $5 ELSE description END,
+                updated_by = $6, updated_at = $7
+          WHERE id = $8 AND tenant_id = $9 RETURNING *`,
+        [
+          patch.label ?? null,
+          patch.labelPlural !== undefined, patch.labelPlural ?? null,
+          patch.description !== undefined, patch.description ?? null,
+          actor.uid, nowIso(), objectId, tenantId,
+        ],
+      );
+      if (rows.length === 0) throw new PolicyStoreError("object not found");
+      return toObject(rows[0]);
+    },
+
     async createField(input: NewRecord<ObjectFieldRecord>) {
       await requireOwned("objects", input.objectId, "object");
       try {

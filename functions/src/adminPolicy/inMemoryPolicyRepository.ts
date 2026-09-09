@@ -254,6 +254,19 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return row;
       },
 
+      updateObject: async (objectId, patch) => {
+        const found = requireOwned(t.objects, objectId, "object");
+        const updated: ObjectRecord = {
+          ...found,
+          ...(patch.label === undefined ? {} : { label: patch.label }),
+          ...(patch.labelPlural === undefined ? {} : { labelPlural: patch.labelPlural }),
+          ...(patch.description === undefined ? {} : { description: patch.description }),
+          updatedBy: actor.uid,
+          updatedAt: this.now(),
+        };
+        return replace(t.objects, updated);
+      },
+
       createField: async (input) => {
         requireOwned(t.objects, input.objectId, "object");
         if (t.fields.some((f) => f.tenantId === tenantId && f.objectId === input.objectId && f.key === input.key)) {

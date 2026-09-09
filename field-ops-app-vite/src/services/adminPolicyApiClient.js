@@ -42,6 +42,7 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
+  "updateObjectMetadata",
   "createCustomField",
   "updateCustomFieldMetadata",
   "createRole",

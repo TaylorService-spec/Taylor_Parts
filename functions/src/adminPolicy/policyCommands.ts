@@ -30,6 +30,7 @@ import type {
   FieldDataType,
   FieldSensitivity,
   ObjectFieldRecord,
+  ObjectRecord,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   RoleObjectPermissionRecord,
@@ -236,8 +237,24 @@ export async function updateFieldDefinition(
   if (input.sensitivity && !(FIELD_SENSITIVITIES as readonly string[]).includes(input.sensitivity)) {
     throw new PolicyValidationError(`"${String(input.sensitivity)}" is not a sensitivity`);
   }
-  if (input.lifecycle && current.origin === "SYSTEM") {
-    throw new PolicyValidationError("a SYSTEM field's lifecycle is protected -- application code reads it by name");
+  // ════════════════════ A SYSTEM FIELD DEFINITION IS PROTECTED, FULL STOP ════════════════════
+  //
+  // This used to protect only `lifecycle`, which left a SYSTEM field's label, description,
+  // required, searchable, sortable, reportable and sensitivity all editable. That is not the ruling:
+  // system Field DEFINITIONS are protected and custom Fields are Admin-editable.
+  //
+  // The distinction that makes this safe rather than restrictive: a SYSTEM field's DEFINITION is
+  // fixed, and its POLICY is not. An administrator still governs who may Create/Read/Edit/Delete it
+  // through Role Field CRED, which is the thing they actually need. What they may not do is rename
+  // or reclassify a field that application code reads by name -- `sensitivity` in particular is
+  // read by the field-projection path, so "just a label change" is not.
+  //
+  // Enforced HERE, next to the transaction, rather than by hiding a button: a caller that reaches
+  // the command directly gets the same refusal the UI would have prevented.
+  if (current.origin === "SYSTEM") {
+    throw new PolicyValidationError(
+      "a SYSTEM field's definition is protected -- its policy is configurable through Role field permissions, its definition is not",
+    );
   }
 
   // A MUTABLE builder over the record's EDITABLE fields only. `ObjectFieldRecord` is deeply readonly
@@ -275,6 +292,66 @@ export async function updateFieldDefinition(
 }
 
 // ════════════════════ ROLES AND PERMISSIONS — ADMIN ONLY ════════════════════
+
+export interface UpdateObjectMetadataInput {
+  readonly objectKey: string;
+  readonly label?: string;
+  readonly labelPlural?: string | null;
+  readonly description?: string | null;
+  readonly reason?: string | null;
+}
+
+/**
+ * Change an Object's DISPLAY metadata.
+ *
+ * ════════════════════ WHY THIS EXISTS, AND WHY IT IS THIS SMALL ════════════════════
+ *
+ * Nothing could edit an Object at all -- no command, no port method -- while the Administration
+ * contract said Object definition editing is Admin-only. That gap made "Objects are editable" false
+ * in a screen that claimed it.
+ *
+ * What a tenant legitimately changes is what the Object is CALLED. This platform's own canonical
+ * object is keyed `account` and labelled "Accounts" while the business says Customer; that is
+ * exactly the case, and it is display metadata rather than a schema change.
+ *
+ * WHAT IS DELIBERATELY NOT EDITABLE, and would each be a different kind of change:
+ *
+ *   key              identity. Every stored permission, override and workflow references it.
+ *   origin           whether the platform owns this object, not a preference.
+ *   lifecycle        what the engine will enforce.
+ *   supportsDelete   MEASURED from whether a capability governs Delete. Making it editable would
+ *                    let an administrator promise a Delete grant the engine can never honour.
+ *
+ * There is no generic object patch, and adding one would make authorization a property of the
+ * arguments rather than of the operation.
+ */
+export async function updateObjectMetadata(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: UpdateObjectMetadataInput,
+): Promise<ObjectRecord> {
+  requireAdministrationAuthority(actor.heldRoleKeys, "editObjectDefinition");
+  const objectKey = nonEmpty(input.objectKey, "objectKey");
+
+  const object = await repo.getObjectByKey(actor.tenantId, objectKey);
+  if (!object) throw new PolicyValidationError(`no object "${objectKey}"`);
+
+  const patch: { label?: string; labelPlural?: string | null; description?: string | null } = {};
+  if (input.label !== undefined) patch.label = nonEmpty(input.label, "label");
+  if (input.labelPlural !== undefined) patch.labelPlural = input.labelPlural;
+  if (input.description !== undefined) patch.description = input.description;
+  if (Object.keys(patch).length === 0) throw new PolicyValidationError("nothing to update");
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const updated = await tx.updateObject(object.id, patch);
+    await tx.appendAudit({
+      ...auditBase(actor, "updateObjectMetadata", "object", object.id, input.reason ?? null),
+      before: { label: object.label, labelPlural: object.labelPlural, description: object.description },
+      after: { label: updated.label, labelPlural: updated.labelPlural, description: updated.description },
+    });
+    return updated;
+  });
+}
 
 export interface CreateRoleInput {
   readonly key: string;

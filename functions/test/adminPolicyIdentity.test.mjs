@@ -180,7 +180,11 @@ test("every operation is either a read or a mutation, and none is both", () => {
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",
     "publishWorkflowVersion", "removeFieldPermissionOverride", "revokeRole", "setFieldPermissionOverride",
-    "setObjectPermission", "setWorkflowRoleBinding", "updateCustomFieldMetadata", "updateRole",
+    "setObjectPermission", "setWorkflowRoleBinding", "updateCustomFieldMetadata",
+    // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added because
+    // "Object definition editing is Admin-only" was a contract with no operation behind it.
+    "updateObjectMetadata",
+    "updateRole",
     "updateWorkflowDefinition",
   ]);
 });

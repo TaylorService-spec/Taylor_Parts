@@ -1140,6 +1140,10 @@
     {
       "file": "test/adminPolicyApiClient.test.mjs",
       "runner": "node --test"
+    },
+    {
+      "file": "test/adminPolicySurfaces.test.mjs",
+      "runner": "node --test"
     }
   ]
 }
