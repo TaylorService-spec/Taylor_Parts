@@ -1,8 +1,28 @@
 # EOS policy — NON-PRODUCTION ACTIVATION
 
-**Status: repository-complete, proved locally, NOT DEPLOYED.**
+**Status: MERGED TO `main`. NOT DEPLOYED.**
 No Render service exists. No Vercel environment is configured. Production, Certification and every
 Firebase project are untouched. Nothing routes business execution through the workflow engine.
+
+Merged code is not running code. What follows describes what is now on `main` and what an
+environment would need before any of it does anything.
+
+| | |
+|---|---|
+| policy foundation (#1822) | squash `51819f4763602220cb8feaa311acde3b46a4cbb5` |
+| non-production activation (#1823) | squash `d84389f4570c8f55ef376024f60de44ede01e1f7` |
+| #1823 pre-merge head | `1aed2823105b54a516f666dfe0aa09e1e84be5f3` — reconciled onto the #1822 squash by rebasing its four activation commits |
+| `main` after both | `d84389f4570c8f55ef376024f60de44ede01e1f7` |
+
+On `main`: migrations 001 (policy), 002 (tenant/identity) and 003 (assignment integrity); the
+PostgreSQL `PolicyRepository`; tenant bootstrap and the one-time administrator bootstrap;
+EOS-native principals and tenant memberships; the composite membership foreign key and the
+one-active-assignment index; the trusted Admin API and its HTTP transport; and the Objects,
+Roles & Permissions, Users and Workflows write surfaces.
+
+**Still nothing is deployed.** No environment holds a policy database, the Render and Vercel
+resources in §5 do not exist, and the five workflow machines remain DRAFTS measured from the code
+that runs today.
 
 This document is the companion to `eos-admin-policy-workflow-reconciliation.md`. That one records
 what the policy MODEL is and how the decisions behind it were ruled. This one records what became
