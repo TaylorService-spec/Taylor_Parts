@@ -256,8 +256,17 @@ sign-off, and this tranche is neither.
 | `GOOGLE_APPLICATION_CREDENTIALS` / service-account config | so `firebase-admin` can verify ID tokens. |
 
 Build `npm --prefix functions ci && npm --prefix functions run build`; start
-`node functions/scripts/runEosApiLocal.mjs` (or an equivalent entry). Migrations run as a release
-step: `npm --prefix functions run migrate:up`.
+`npm start` in `functions/` (`scripts/serveEosApi.mjs`). Migrations are handled by
+Render's deploy lifecycle, not the build:
+
+- migrations remain OUT of `buildCommand`
+- Render's `preDeployCommand` runs `npm run migrate:up`
+- it runs after the build and before the service starts (once per deploy)
+- `rootDir` is `functions`, so the command resolves in that directory
+- `DATABASE_URL` is supplied by the Render database binding (`fromDatabase`), not committed
+- `requirePolicyDatabaseReady` remains the fail-closed backstop: an unmigrated or unreachable
+  database reports unhealthy rather than serving requests that would all fail
+- bootstrap remains AFTER successful infrastructure deployment (see the Owner actions below)
 
 ### Frontend (Vercel)
 
