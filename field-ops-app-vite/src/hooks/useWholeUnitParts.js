@@ -16,16 +16,19 @@
 // excluded, so ordering on anything optional would drop Parts from the list without saying so. The
 // result set is small and sorted where it is displayed.
 //
-// FAILS OPEN TO IDS, NOT TO GUESSES. If this read is denied or unavailable, the list still renders
-// every available unit with its serial and raw part id. Losing the labels must never lose the
-// inventory -- somebody deciding what to install needs the units more than they need the words.
+// DISPLAY DEGRADATION, NOT AUTHORIZATION DEGRADATION -- and the distinction is worth stating
+// precisely, because "fails open" is dangerously ambiguous in an access-control context.
+//
+// AUTHORIZATION STILL FAILS CLOSED. This read resolves inventory.catalog.read server-side; a caller
+// without it gets nothing from this hook, and no part data reaches the screen through this path.
+//
+// What degrades is ENRICHMENT. The units themselves come from a different, already-authorized read;
+// this hook only supplies their friendly labels. So when the label read is denied or unavailable,
+// the list still renders every available unit by its serial and raw part id. Losing the words must
+// not lose the inventory -- somebody deciding what to install needs the units more than the names --
+// and showing an authoritative id is not showing data the caller was refused.
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-// The collection name is declared here for the same reason services/partMasterQueries.js declares
-// its own: `parts` is not in domain/constants.js, and adding it there to serve one hook would be a
-// wider change than this surface earns.
-const PARTS_COLLECTION = "parts";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 
 /** One per stocked model. The cap is a guard against a mis-set flag, not an expected size. */
 const WHOLE_UNIT_READ_CAP = 200;
@@ -37,19 +40,27 @@ export function useWholeUnitParts({ enabled = true } = {}) {
     if (!enabled) { setState({ parts: [], loading: false, denied: false, unavailable: false }); return undefined; }
     let cancelled = false;
     setState((prev) => ({ ...prev, loading: true }));
-    getDocs(query(collection(db, PARTS_COLLECTION), where("wholeUnit", "==", true), limit(WHOLE_UNIT_READ_CAP)))
-      .then((snap) => {
-        if (cancelled) return;
-        setState({
-          parts: snap.docs.map((d) => ({ partId: d.id, ...d.data() })),
-          loading: false, denied: false, unavailable: false,
-        });
+    // GOVERNED READ, resolving the EXISTING inventory.catalog.read server-side. The wholeUnit
+    // filter is required by the source, so it can never silently widen into every part. The cap is
+    // unchanged and still the page size.
+    governedCollectionClient
+      .readGovernedList({
+        sourceId: "partsWholeUnit",
+        filters: { wholeUnit: true },
+        pageSize: WHOLE_UNIT_READ_CAP,
       })
-      .catch((err) => {
+      .then((outcome) => {
         if (cancelled) return;
+        if (outcome.ok) {
+          setState({
+            parts: outcome.items.map(({ id, ...data }) => ({ partId: id, ...data })),
+            loading: false, denied: false, unavailable: false,
+          });
+          return;
+        }
         // Denied and unavailable are reported separately because they mean different things to a
         // user: one is "you may not see product names", the other is "we could not load them".
-        const denied = err?.code === "permission-denied";
+        const denied = outcome.result === "DENIED";
         setState({ parts: [], loading: false, denied, unavailable: !denied });
       });
     return () => { cancelled = true; };

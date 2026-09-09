@@ -98,10 +98,14 @@ export const inventoryActionEntity = makeEntityDefinition({
   label: "Inventory Action",
   labelPlural: "Inventory Actions",
   collection: INVENTORY_ACTIONS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
-  // A matching capability id exists in the catalog but nothing evaluates it on this read
-  // path — see the file header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataInventoryActions",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "inventory.action.read",
   // SYSTEM_ONLY, matching inventoryTransaction.js's Owner-ruled precedent. Explicitly
   // declared, never derived. See the file header.
   identity: makeIdentity({ mode: "SYSTEM_ONLY" }),
@@ -192,7 +196,7 @@ export const inventoryActionEntity = makeEntityDefinition({
       type: "NUMBER",
       sortable: true,
       description:
-        "Epoch milliseconds, stamped by makeCollectionStore().add() as Date.now() in the caller's browser — " +
+        "Epoch milliseconds. Historically stamped in the caller's browser by the shared collection store; that store is deleted and this collection has no live writer — " +
         "never FieldValue.serverTimestamp(), never a Firestore Timestamp. No updatedAt/updatedBy — this " +
         "document is never updated after creation (allow update, delete: if false).",
     }),

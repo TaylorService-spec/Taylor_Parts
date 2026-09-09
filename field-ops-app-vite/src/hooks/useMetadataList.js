@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildQueryDescriptor } from "../metadata/listRuntime.js";
 import { buildListPresentation } from "../metadata/listPresentation.js";
-import { fetchPage as fetchFirestorePage } from "../metadata/firestoreListSource.js";
 import { fetchPage as fetchCallablePage } from "../metadata/callableListSource.js";
 
 // Drives a metadata list: descriptor -> page -> presentation model.
@@ -37,7 +36,14 @@ function resolveReadCallable(def, entity) {
 }
 
 function selectListSource(entity, def) {
-  if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
+  // NO CLIENT_DIRECT BRANCH. Every metadata entity now reads through a trusted callable -- the
+  // governed read sources, or the scoped work-order seam -- so there is nothing left for a
+  // Firestore branch to serve. It is DELETED rather than kept returning a source nothing needs:
+  // a dormant direct-Firestore path is exactly what a later "just this once" change reaches for.
+  //
+  // A CLIENT_DIRECT entity now falls through to `null`, which reports "unavailable" -- a
+  // misconfigured entity, never a live read to attempt. Declaring one is a definition error the
+  // shipped-definition validator catches at definition time.
   if (entity?.readVia === "CALLABLE" && resolveReadCallable(def, entity)) return fetchCallablePage;
   // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor
   // the entity declares one): a misconfigured entity, never a live read to attempt.

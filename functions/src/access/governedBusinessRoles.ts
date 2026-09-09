@@ -742,7 +742,33 @@ export const WAREHOUSE_MANAGER_ROLE: Role = Object.freeze({
     "reorder.purchaseOrder.read",
     "reorder.request.create.manual",
     "salesOrder.read",
-    "warehouse.transferOrder.read",
+    // ══════════ THE ASSIGNED-SITE READS, RESTORED 2026-09-08 ══════════
+    //
+    // Authorization parity, not a new grant. The retired firestore.rules admitted this Role's
+    // operational counterpart to `warehouses/{warehouseId}` and to `transfer_orders` on either
+    // endpoint through `isAssignedToWarehouse(...)` -- their ASSIGNED sites. Migrating that read
+    // off Rules without restoring it removes a read the platform already permitted, which is a
+    // narrowing dressed as a migration.
+    //
+    // THE SCOPED IDS, DELIBERATELY, and this is a NAMED DECISION rather than a detail:
+    //
+    //   `warehouse.record.read` and `warehouse.transferOrder.read` are the GLOBAL reads. The
+    //   canonical Detailed CRUD matrix (Spec 27.4) confines the record read to Operations Manager
+    //   and owner, and this Role does not take it. Granting the global id here would have
+    //   contradicted that matrix; taking nothing would have contradicted the retired rule. The
+    //   scoped ids express the third thing both were describing -- the assigned-site population --
+    //   without restating either as the other.
+    //
+    //   It is also what keeps precedence sound. If scope were inferred from HAVING an assignment,
+    //   a person holding Operations Manager and this Role would be silently narrowed to their
+    //   site. The global id is checked first and wins.
+    //
+    // RECORDED, NOT SETTLED HERE: the same matrix grants this Role the GLOBAL
+    // `warehouse.transferOrder.read`, which the retired rule did not. Taking the scoped id is
+    // narrower than that row. Reconciling the matrix row with the retired rule is the Owner's
+    // decision; this preserves the measured Rules population and names the difference.
+    "warehouse.record.read.assigned",
+    "warehouse.transferOrder.read.assigned",
     // PERFORMANCE GOAL AUTHORITY -- the Owner names Warehouse Manager for parts/warehouse LOCATION
     // goals, and only "where its governed scope actually covers the target". That qualifier needs no
     // new mechanism: a LOCATION goal resolves the capability at { type: "location", value:
@@ -822,7 +848,27 @@ export const PARTS_MANAGER_ROLE: Role = Object.freeze({
     "inventory.transaction.read",
     "reorder.request.assign",
     "reorder.request.create.manual",
-    "reorder.request.read.queue",
+    // ══════════ THE GLOBAL QUEUE READ IS NOT THIS ROLE'S, AND WAS NOT IN PRACTICE ══════════
+    //
+    // `reorder.request.read.queue` was here, and it was never what a Parts Manager actually saw.
+    // Two authorities coexisted: this capability, which no client read consumed, and
+    // `firestore.rules`, which decided every real reorder read. What the Rules admitted was:
+    //
+    //   isActiveOperationalRole("PARTS_MANAGER") && status == "READY_FOR_PARTS_MANAGER"
+    //   isActiveOperationalRole("PARTS_MANAGER") && status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"]
+    //   isActiveOperationalRole("PARTS_MANAGER") && (reviewedBy == uid || assignedBy == uid)
+    //
+    // Three statuses and the records this person personally touched -- NOT the whole queue.
+    //
+    // Once the read became governed, leaving the global capability here would have WIDENED this
+    // Role from that population to every reorder request in the business, as a side effect of a
+    // transport migration. The closure standard is the effective result: the old permitted record
+    // population must equal the new governed one.
+    //
+    // So the global id is replaced by the scoped one that means exactly the retired population.
+    // Resolution order is global -> managed -> own, so a person who ALSO holds Operations Manager
+    // still reads globally: holding this narrower capability never narrows a broader authority.
+    "reorder.request.read.managed",
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",
@@ -864,6 +910,19 @@ export const PARTS_ASSOCIATE_ROLE: Role = Object.freeze({
     "inventory.catalog.read",
     "inventory.serializedAsset.read",
     "inventory.transaction.read",
+    // RESTORED 2026-09-08, as authorization parity. The retired firestore.rules admitted this
+    // Role's operational counterpart to their OWN assigned reorder requests:
+    //
+    //   isActiveOperationalRole("PARTS_ASSOCIATE") && resource.data.assignedToUserId == request.auth.uid
+    //
+    // `reorder.request.read.own` already named that authority, and was held only by the
+    // compatibility `technician` Role -- so preserving the read would otherwise have required a
+    // Parts Associate to carry a technician Role they are not, purely to keep a visibility they
+    // already had. The capability goes where the business fact lives.
+    //
+    // SELF-SCOPED BY THE SERVER: the population is `assignedToUserId == request.auth.uid`, resolved
+    // from the authenticated context. The browser cannot name an assignee.
+    "reorder.request.read.own",
     "salesOrder.read",
     "workOrder.create",
     "workOrder.transition",

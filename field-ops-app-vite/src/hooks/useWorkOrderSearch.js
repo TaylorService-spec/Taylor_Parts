@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { collection, getDocs, limit as fsLimit, orderBy, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { WORK_ORDER_READ_RESULT, readScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
 import {
   workOrderSearchQueryShape,
   interpretWorkOrderSearchRead,
@@ -35,22 +33,27 @@ export function useWorkOrderSearch(term, { cap = WORK_ORDER_SEARCH_CAP } = {}) {
     setRaw((prev) => ({ ...prev, loading: true }));
 
     const timer = setTimeout(async () => {
-      try {
-        const q = query(
-          collection(db, shape.collection),
-          where(shape.fieldPath, ">=", shape.start),
-          where(shape.fieldPath, "<=", shape.end),
-          orderBy(shape.fieldPath, "asc"),
-          fsLimit(shape.limit),
-        );
-        const snap = await getDocs(q);
-        if (token !== requestRef.current) return;
-        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
-      } catch (error) {
-        if (token !== requestRef.current) return;
+      // The SERVER builds the prefix range now. domain/workOrderSearch.js still decides the term,
+      // the bound and the truncation probe -- and its `shape` still drives them -- but the two
+      // comparison bounds it used to hand to Firestore are the seam's to construct: a client holding
+      // both ends of a range is a client holding a query language.
+      //
+      // The bound is still shape.limit (cap + 1), so the truncation PROBE survives intact and
+      // interpretWorkOrderSearchRead's TRUNCATED state keeps meaning what it meant.
+      const res = await readScopedWorkOrders({
+        mode: "search",
+        params: { term: shape.term },
+        pageSize: shape.limit,
+      });
+      if (token !== requestRef.current) return;
+      if (!res.ok) {
         // docs stays null, never [], so a failed read is not mistaken for "no such work order".
+        const error = new Error("work order search failed");
+        error.code = res.result === WORK_ORDER_READ_RESULT.DENIED ? "permission-denied" : "unavailable";
         setRaw({ docs: null, loading: false, error });
+        return;
       }
+      setRaw({ docs: res.items, loading: false, error: null });
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);

@@ -149,14 +149,88 @@ test("R-17: the warehouse pick-list bought NO new Rules read authority", () => {
   // The mirror in this tree is byte-identical to the root ruleset (the Rules regression runner
   // checks that), so reading it here is reading the shipped rules.
   const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
-  const block = /match \/warehouses\/\{warehouseId\} \{([\s\S]*?)\n    \}/.exec(rules);
-  assert.ok(block, "the warehouses match block must exist");
-  const body = block[1].replace(/\/\/[^\n]*/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
-  assert.deepEqual(body, [
-    "allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);",
-    "allow create, update, delete: if false;",
-  ], "warehouses rules must be unchanged -- no LIST widening for the reorder picker");
+
+  // THE PROPERTY HELD AND THEN GOT STRONGER. This used to assert the exact body of the
+  // `warehouses` match block, so a LIST widening added to serve the pick-list would show up as a
+  // changed rule. That block is gone: Rules no longer grant read on `warehouses` -- or on anything
+  // else outside session identity and the parts picker (Owner direction 2026-09-07).
+  //
+  // Asserting the old body now would demand the RESTORATION of a client read grant this test
+  // exists to keep narrow, which is the opposite of its purpose. So it asserts the end state
+  // instead: no warehouses grant at all, and the catch-all denial that guarantees it.
+  assert.doesNotMatch(rules, /match \/warehouses\//, "no warehouses read grant may reappear");
+  assert.match(rules, /match \/\{document=\*\*\}/, "the catch-all denial is what closes it");
+  assert.match(rules, /allow read, write: if false/);
 
   // And no capability was invented for it either: the callable reuses the reorder-create capability.
   assert.doesNotMatch(rules, /warehouse\.list/, "no warehouse.list capability may appear in Rules");
+});
+
+// ============================ THE TWO CLASS C WRITES ============================
+//
+// Cancel and Void moved off their client-direct `runTransaction`s. Same contract as the four
+// assertions above, for the same reason: catch an intentional caller at review time rather than as
+// a permission-denied in someone's face, and stop a future change from quietly reopening a second
+// write authority.
+
+test("no application code writes a reorder cancellation directly", () => {
+  // The retired path composed the write in the browser: a transaction that set status CANCELLED and
+  // asserted `cancelledBy` from `auth.currentUser`. Either half reappearing in client source means
+  // the browser is authoring a cancellation again.
+  // `: null` is excluded deliberately. domain/reorderRequestPayload.js initializes the whole
+  // 35-field record with nulls, including this one; RESERVING a field is not authoring a value for
+  // it, and a test that cannot tell those apart gets muted rather than obeyed.
+  // The lookahead sits against the COLON, not after `\s*`. Written as `\s*(?!null)` the quantifier
+  // simply matches zero spaces and the lookahead then reads a space rather than "null" -- so it
+  // succeeds on `cancelledBy: null` and the exclusion silently does nothing.
+  const offenders = FILES.filter((f) => /cancelledBy\s*:(?!\s*null\b)/.test(code(f.text)));
+  assert.deepEqual(
+    offenders.map((f) => f.path),
+    [],
+    "these author a cancellation client-side; the trusted cancelReorderRequest command writes cancelledBy",
+  );
+});
+
+test("no application code writes a purchase-order void directly", () => {
+  // Void wrote two documents: the append-only void record (its distinguishing field is
+  // `reorderPurchaseOrderId`) and the request's transition (`voidedBy`). Neither may be composed in
+  // the browser now.
+  const offenders = FILES.filter((f) => /(voidedBy|reorderPurchaseOrderId)\s*:(?!\s*null\b)/.test(code(f.text)));
+  assert.deepEqual(
+    offenders.map((f) => f.path),
+    [],
+    "these author a void client-side; the trusted voidPurchaseOrder command writes both documents",
+  );
+});
+
+test("no reorder command lets the browser assert WHO IS ACTING", () => {
+  // The transport is the whole client surface for these commands. A payload field naming the ACTOR
+  // would be a client-asserted identity even if the server currently ignores it -- and "the server
+  // ignores it" is exactly the kind of thing that stops being true.
+  //
+  // THE LIST IS ACTOR FIELDS ONLY, and the distinction is the point. `assignedToUserId` was on this
+  // list while the transport had no legitimate reason to send one; it now carries the ASSIGNEE a
+  // Parts Manager chooses, which is a business input, not a claim about the caller. Forbidding it
+  // would forbid the assignment itself. What must never be sent is who DID the assigning --
+  // `assignedBy` -- and that is here.
+  const transport = FILES.find((f) => f.path === "services/reorderCallableClient.js");
+  assert.ok(transport, "the reorder callable transport must exist");
+  const body = code(transport.text);
+  for (const forbidden of [
+    "cancelledBy",
+    "voidedBy",
+    "assignedBy",
+    "reviewedBy",
+    "purchasingStartedBy",
+    "lastPurchasingUpdateBy",
+    "receivedBy",
+    "actorUid",
+    "principalUid",
+  ]) {
+    assert.doesNotMatch(
+      body,
+      new RegExp(`\\b${forbidden}\\b`),
+      `the transport must never send ${forbidden} -- the server resolves the actor from request.auth.uid`,
+    );
+  }
 });

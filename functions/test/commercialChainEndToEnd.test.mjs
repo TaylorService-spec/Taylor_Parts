@@ -463,6 +463,14 @@ test("NO CLIENT-DIRECT WRITE IS POSSIBLE — firestore.rules denies the collecti
   // default is the absence of a decision, and a future catch-all would silently open it.
   const { readFileSync } = await import("node:fs");
   const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
-  const block = /match\s*\/sales_agreements\/\{[^}]*\}\s*\{\s*allow read,\s*write:\s*if false;\s*\}/;
-  assert.match(rules, block, "sales_agreements must be an explicit client deny-all");
+  // The explicit per-collection deny-all became the FILE-WIDE one. The concern this test names --
+  // "an undeclared collection is denied by default, but the default is the absence of a decision,
+  // and a future catch-all would silently open it" -- is now answered directly: there IS a
+  // catch-all, and it denies. sales_agreements has no block of its own and needs none.
+  assert.ok(!/match\s*\/sales_agreements\//.test(rules), "sales_agreements must have no client grant");
+  assert.match(
+    rules,
+    /match \/\{document=\*\*\} \{\s*allow read, write: if false;/,
+    "the catch-all must be an explicit deny, not an absence",
+  );
 });

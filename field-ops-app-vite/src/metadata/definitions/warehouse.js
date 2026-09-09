@@ -78,11 +78,14 @@ export const warehouseEntity = makeEntityDefinition({
   // const inside services/operationsQueries.ts) — the literal here matches that local const and
   // functions/src/constants/collections.js's own WAREHOUSES_COLLECTION = "warehouses".
   collection: "warehouses",
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role/relationship (admin/dispatcher, or a WAREHOUSE_MANAGER assigned to
-  // this specific warehouse), not by a capability. Recorded as null rather than invented — see
-  // the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataWarehouses",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "warehouse.record.read",
   identity: makeIdentity({ nameField: "name" }),
   description:
     "A physical stock-holding location (Epic 4 Warehouse + Fulfillment) — a bin-level inventory registry, " +

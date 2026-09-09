@@ -5,7 +5,7 @@
 // tested in pageRuntime; what is tested HERE is that rendering does not quietly undo them.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import MetadataRecordPage from "../src/metadata/MetadataRecordPage.jsx";
 import { buildRowHref, UNRESOLVED_REFERENCE_LABEL } from "../src/metadata/listPresentation.js";
@@ -14,21 +14,11 @@ import { componentRegistry, actionRegistry } from "../src/metadata/registry.js";
 import { makeEntityDefinition, makeFieldDefinition, makeRelationshipDefinition } from "../src/metadata/entityDefinition.js";
 import { makeListViewDefinition, makeColumn } from "../src/metadata/listViewDefinition.js";
 
-// GAP 2's default RELATED_LIST binding drives the real three-layer list runtime
-// (descriptor -> fetched page -> presentation model). fetchPage is the ONLY place that
-// module touches Firestore (firestoreListSource.js's own header), so mocking it is the
-// same boundary metadataFirestoreListSource.test.mjs mocks at, and it means these tests
-// never need a firebase/firestore mock at all.
-const fetchPageMock = vi.fn();
-vi.mock("../src/metadata/firestoreListSource.js", () => ({
-  fetchPage: (...args) => fetchPageMock(...args),
-}));
-
-// The CALLABLE-readVia counterpart of fetchPageMock, mocked at the same boundary
-// (callableListSource.js's own fetchPage is the ONLY place that module touches a
-// callable) so these tests exercise the routing decision, not either translator's
-// internals — those are covered by metadataCallableListSource.test.jsx and
-// metadataFirestoreListSource.test.jsx.
+// GAP 2 s default RELATED_LIST binding drives the real three-layer list runtime
+// (descriptor -> fetched page -> presentation model). callableListSource.js s fetchPage is the ONLY
+// place that module reaches a backend, so mocking it is the whole boundary -- and since the
+// Firestore list source was deleted, it is now the only source there is. These tests need no
+// firebase mock at all.
 const fetchCallablePageMock = vi.fn();
 vi.mock("../src/metadata/callableListSource.js", () => ({
   fetchPage: (...args) => fetchCallablePageMock(...args),
@@ -44,7 +34,6 @@ beforeEach(() => {
   componentRegistry.register({ id: "record.lifecycle", kind: "RECORD_SECTION", component: Lifecycle });
   componentRegistry.register({ id: "record.blockers", kind: "RECORD_SECTION", component: Blockers });
   componentRegistry.register({ id: "record.gated", kind: "RECORD_SECTION", component: Gated });
-  fetchPageMock.mockReset();
   fetchCallablePageMock.mockReset();
 });
 
@@ -180,7 +169,8 @@ describe("MetadataRecordPage", () => {
     const workOrderEntity = makeEntityDefinition({
       id: "workOrder",
       label: "Work Order",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "workOrders",
       fields: [
         makeFieldDefinition({ id: "priority", entityId: "workOrder", label: "Priority", type: "ENUM", enumLabels: { HIGH: "High priority" } }),
@@ -389,7 +379,8 @@ describe("MetadataRecordPage", () => {
       const workOrderEntityWithReference = makeEntityDefinition({
         id: "workOrder",
         label: "Work Order",
-        readVia: "CLIENT_DIRECT",
+        readVia: "CALLABLE",
+        readCallable: "listOpportunitiesForAccount",
         collection: "workOrders",
         fields: [
           makeFieldDefinition({ id: "customerId", entityId: "workOrder", label: "Customer", type: "REFERENCE", referenceTo: "account" }),
@@ -416,7 +407,8 @@ describe("MetadataRecordPage", () => {
       const accountEntity = makeEntityDefinition({
         id: "account",
         label: "Account",
-        readVia: "CLIENT_DIRECT",
+        readVia: "CALLABLE",
+        readCallable: "listOpportunitiesForAccount",
         collection: "accounts",
         relationships: [
           makeRelationshipDefinition({
@@ -432,7 +424,8 @@ describe("MetadataRecordPage", () => {
       const invoiceEntity = makeEntityDefinition({
         id: "invoice",
         label: "Invoice",
-        readVia: "CLIENT_DIRECT",
+        readVia: "CALLABLE",
+        readCallable: "listOpportunitiesForAccount",
         collection: "invoices",
         fields: [
           makeFieldDefinition({ id: "invoiceNumber", entityId: "invoice", label: "Invoice #", type: "STRING" }),
@@ -457,7 +450,7 @@ describe("MetadataRecordPage", () => {
           makeSection({ id: "invs", kind: "RELATED_LIST", label: "Invoices", region: "MAIN", order: 0, listId: "account.invoices.related" }),
         ],
       });
-      fetchPageMock.mockResolvedValue({
+      fetchCallablePageMock.mockResolvedValue({
         rows: [{ id: "inv-1", invoiceNumber: "INV-000042", salesOrderId: "so-42kX9pQ" }],
         hasMore: false,
         nextCursorDoc: null,
@@ -485,7 +478,8 @@ describe("MetadataRecordPage", () => {
     const accountEntity = makeEntityDefinition({
       id: "account",
       label: "Account",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "accounts",
       relationships: [
         makeRelationshipDefinition({
@@ -501,7 +495,8 @@ describe("MetadataRecordPage", () => {
     const opportunityEntity = makeEntityDefinition({
       id: "opportunity",
       label: "Opportunity",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "opportunities",
       fields: [makeFieldDefinition({ id: "name", entityId: "opportunity", label: "Name", type: "STRING" })],
     });
@@ -526,7 +521,7 @@ describe("MetadataRecordPage", () => {
       });
 
     it("renders rows through the default binding, scoped to the parent record", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       render(
         <MemoryRouter>
           <MetadataRecordPage
@@ -541,7 +536,7 @@ describe("MetadataRecordPage", () => {
       // Scoped to the parent — the exact defect findParentRelationship/buildQueryDescriptor
       // exist to prevent (an unscoped RELATED section reading every record of the target
       // entity, the shape of the account/opportunity defect this file's own history notes).
-      const [descriptor] = fetchPageMock.mock.calls[0];
+      const [descriptor] = fetchCallablePageMock.mock.calls[0];
       expect(descriptor.filters).toContainEqual(expect.objectContaining({ fieldId: "accountId", operator: "EQUALS", value: "acct-1" }));
     });
 
@@ -557,7 +552,7 @@ describe("MetadataRecordPage", () => {
         />
       );
       expect(screen.getByText("custom account.opportunities.related for acct-1")).toBeTruthy();
-      expect(fetchPageMock).not.toHaveBeenCalled();
+      expect(fetchCallablePageMock).not.toHaveBeenCalled();
     });
   });
 
@@ -573,7 +568,8 @@ describe("MetadataRecordPage", () => {
     const accountEntity = makeEntityDefinition({
       id: "account",
       label: "Account",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "accounts",
       relationships: [
         makeRelationshipDefinition({
@@ -617,8 +613,12 @@ describe("MetadataRecordPage", () => {
         </MemoryRouter>
       );
 
-    it("CLIENT_DIRECT invokes the Firestore source and never the callable source", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Direct Deal" }], hasMore: false, nextCursorDoc: null });
+    it("CLIENT_DIRECT fails closed and is NOT quietly routed to the callable source", async () => {
+      // THIS TEST INVERTED WITH THE DISPATCH. It used to prove CLIENT_DIRECT reached the Firestore
+      // source; that source is deleted, so the property worth holding is the opposite one -- a
+      // definition still declaring CLIENT_DIRECT must not be served through the callable path
+      // anyway. Doing so would return rows under an authority the definition never declared, which
+      // is a quieter and worse failure than rendering nothing.
       const opportunityEntity = makeEntityDefinition({
         id: "opportunity",
         label: "Opportunity",
@@ -627,12 +627,10 @@ describe("MetadataRecordPage", () => {
         fields: [nameField("opportunity")],
       });
       renderWithChildEntity(opportunityEntity);
-      expect(await screen.findByText("Direct Deal")).toBeTruthy();
-      expect(fetchPageMock).toHaveBeenCalledTimes(1);
-      expect(fetchCallablePageMock).not.toHaveBeenCalled();
+      await waitFor(() => expect(fetchCallablePageMock).not.toHaveBeenCalled());
     });
 
-    it("CALLABLE with a declared readCallable invokes the callable source and never the Firestore source", async () => {
+    it("CALLABLE with a declared readCallable invokes the callable source", async () => {
       fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Callable Deal" }], hasMore: false, nextCursorDoc: null });
       const opportunityEntity = makeEntityDefinition({
         id: "opportunity",
@@ -644,7 +642,6 @@ describe("MetadataRecordPage", () => {
       renderWithChildEntity(opportunityEntity);
       expect(await screen.findByText("Callable Deal")).toBeTruthy();
       expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
-      expect(fetchPageMock).not.toHaveBeenCalled();
       // The SAME descriptor the Firestore source would have received — the runtime's
       // decisions (parent scope, sort, bound) do not change with the source.
       const [descriptor] = fetchCallablePageMock.mock.calls[0];
@@ -661,7 +658,7 @@ describe("MetadataRecordPage", () => {
       });
       renderWithChildEntity(opportunityEntity);
       expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
-      expect(fetchPageMock).not.toHaveBeenCalled();
+      expect(fetchCallablePageMock).not.toHaveBeenCalled();
       expect(fetchCallablePageMock).not.toHaveBeenCalled();
     });
 
@@ -674,7 +671,7 @@ describe("MetadataRecordPage", () => {
       });
       renderWithChildEntity(opportunityEntity);
       expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
-      expect(fetchPageMock).not.toHaveBeenCalled();
+      expect(fetchCallablePageMock).not.toHaveBeenCalled();
       expect(fetchCallablePageMock).not.toHaveBeenCalled();
     });
 
@@ -752,7 +749,6 @@ describe("MetadataRecordPage", () => {
         </MemoryRouter>
       );
       expect(await screen.findByText("List-Only Deal")).toBeTruthy();
-      expect(fetchPageMock).not.toHaveBeenCalled();
       expect(fetchCallablePageMock).toHaveBeenCalledTimes(1);
     });
   });
@@ -770,7 +766,8 @@ describe("MetadataRecordPage", () => {
     const accountEntity = makeEntityDefinition({
       id: "account",
       label: "Account",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "accounts",
       relationships: [
         makeRelationshipDefinition({
@@ -786,7 +783,8 @@ describe("MetadataRecordPage", () => {
     const opportunityEntity = makeEntityDefinition({
       id: "opportunity",
       label: "Opportunity",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "opportunities",
       fields: [makeFieldDefinition({ id: "name", entityId: "opportunity", label: "Name", type: "STRING" })],
     });
@@ -821,7 +819,7 @@ describe("MetadataRecordPage", () => {
       );
 
     it("a row click navigates to the template with the routing key substituted", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -839,7 +837,7 @@ describe("MetadataRecordPage", () => {
     });
 
     it("a list with no rowNavigationTo renders non-focusable rows and no handler", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -859,7 +857,7 @@ describe("MetadataRecordPage", () => {
     });
 
     it("the document id still never appears as cell content when a route is wired", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -888,7 +886,8 @@ describe("MetadataRecordPage", () => {
     const accountEntity = makeEntityDefinition({
       id: "account",
       label: "Account",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "accounts",
       relationships: [
         makeRelationshipDefinition({
@@ -904,7 +903,8 @@ describe("MetadataRecordPage", () => {
     const opportunityEntity = makeEntityDefinition({
       id: "opportunity",
       label: "Opportunity",
-      readVia: "CLIENT_DIRECT",
+      readVia: "CALLABLE",
+      readCallable: "listOpportunitiesForAccount",
       collection: "opportunities",
       fields: [makeFieldDefinition({ id: "name", entityId: "opportunity", label: "Name", type: "STRING" })],
     });
@@ -932,7 +932,7 @@ describe("MetadataRecordPage", () => {
       );
 
     it("a list with no rowActions declared renders no actions column (unchanged)", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -951,7 +951,7 @@ describe("MetadataRecordPage", () => {
     it("an ungated action resolves and dispatches to its registered handler with the row key", async () => {
       const handler = vi.fn();
       actionRegistry.register({ id: "opportunity.edit", label: "Edit", kind: "NAVIGATION", handler });
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -979,7 +979,7 @@ describe("MetadataRecordPage", () => {
         capabilityRequirement: "opportunity.write",
         handler,
       });
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -1008,7 +1008,7 @@ describe("MetadataRecordPage", () => {
         capabilityRequirement: "opportunity.write",
         handler,
       });
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -1027,7 +1027,7 @@ describe("MetadataRecordPage", () => {
     });
 
     it("an unregistered action id is dropped as a configuration gap, not rendered as a denied action", async () => {
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",
@@ -1053,7 +1053,7 @@ describe("MetadataRecordPage", () => {
     it("activating a row action does not also navigate the row when rowNavigationTo is also declared", async () => {
       const handler = vi.fn();
       actionRegistry.register({ id: "opportunity.edit", label: "Edit", kind: "NAVIGATION", handler });
-      fetchPageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
+      fetchCallablePageMock.mockResolvedValue({ rows: [{ id: "opp-1", name: "Big Deal" }], hasMore: false, nextCursorDoc: null });
       const listDef = makeListViewDefinition({
         id: "account.opportunities.related",
         entityId: "opportunity",

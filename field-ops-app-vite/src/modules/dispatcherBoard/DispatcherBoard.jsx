@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toMillis } from "../../domain/timestampMillis.js";
 
 import { useWorkOrders } from "../../hooks/useWorkOrders";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { useSessionActivityFeed } from "../../hooks/useSessionActivityFeed";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { useAuth } from "../../auth/AuthContext";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import {
@@ -94,7 +94,7 @@ export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } = useWorkOrders();
   const { data: technicians, loading: techniciansLoading, error: techniciansError } =
-    useFirestoreCollection(TECHNICIANS_COLLECTION);
+    useTechnicianDirectory();
   const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
@@ -786,8 +786,10 @@ function reasonPromptContext(pending, technicians) {
   return `${pending.workOrder.woNumber} → ${name}, ${at} for ${minutes} min.`;
 }
 
+// toMillis() reads every shape, including the JSON a Firestore Timestamp becomes crossing a
+// governed callable -- where the old `value?.toMillis?.()` silently produced the epoch.
 function millisOf(value) {
-  return value?.toMillis?.() ?? (typeof value === "number" ? value : 0);
+  return toMillis(value) ?? 0;
 }
 
 // The GOVERNED display label, never a hand-rolled lowercase of the enum. A locally humanised status

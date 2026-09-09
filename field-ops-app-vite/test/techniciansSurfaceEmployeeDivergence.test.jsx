@@ -52,14 +52,14 @@ import { MemoryRouter } from "react-router-dom";
 import { EMPLOYEES_COLLECTION, TECHNICIANS_COLLECTION } from "../src/domain/constants";
 import { employeeEntity } from "../src/metadata/definitions/employee.js";
 
-vi.mock("../src/hooks/useFirestoreCollection", () => ({
-  useFirestoreCollection: vi.fn(),
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({
+  useTechnicianDirectory: vi.fn(),
 }));
 vi.mock("../src/domain/jobActions", () => ({
   createTechnician: vi.fn(),
 }));
 
-const { useFirestoreCollection } = await import("../src/hooks/useFirestoreCollection");
+const { useTechnicianDirectory } = await import("../src/hooks/useTechnicianDirectory");
 const { default: Technicians } = await import("../src/modules/technicians/Technicians.jsx");
 
 const renderPage = () => render(<MemoryRouter><Technicians /></MemoryRouter>);
@@ -90,19 +90,24 @@ describe("S-ADM-EMPLOYEES divergence -- Technicians.jsx reads a different collec
     expect(importLines).not.toMatch(/useMetadataList/);
   });
 
-  it("renders the technician roster from useFirestoreCollection(TECHNICIANS_COLLECTION), unchanged", () => {
-    useFirestoreCollection.mockReturnValue({
+  it("renders the technician roster from the governed technician directory, unchanged", () => {
+    useTechnicianDirectory.mockReturnValue({
       data: [{ id: "tech-doc-id-1", name: "Jordan Alvarez", phone: "555-0100", status: "available" }],
       loading: false,
     });
     renderPage();
-    expect(useFirestoreCollection).toHaveBeenCalledWith(TECHNICIANS_COLLECTION);
+    // THE DIVERGENCE THIS FILE GUARDS IS UNCHANGED: this surface reads the TECHNICIAN directory,
+    // not the employee entity. The hook no longer takes a collection name -- it names a governed
+    // source id server-side -- so the assertion is that it was called at all, and that the rows it
+    // returned are what rendered. A collection name in this assertion would be asserting the very
+    // coupling the migration removed.
+    expect(useTechnicianDirectory).toHaveBeenCalled();
     expect(screen.getByText("Jordan Alvarez")).toBeTruthy();
     expect(screen.getByText("555-0100")).toBeTruthy();
   });
 
   it("never renders the technician's document id as visible content (no DECISIONS #106 fallback)", () => {
-    useFirestoreCollection.mockReturnValue({
+    useTechnicianDirectory.mockReturnValue({
       data: [{ id: "tech-doc-id-only-no-name-fallback", name: "", phone: "", status: "off_shift" }],
       loading: false,
     });
@@ -111,17 +116,17 @@ describe("S-ADM-EMPLOYEES divergence -- Technicians.jsx reads a different collec
   });
 
   it("distinguishes loading, empty, and populated states -- three renderings, not collapsed into one", () => {
-    useFirestoreCollection.mockReturnValue({ data: [], loading: true });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: true });
     const { unmount } = renderPage();
     expect(screen.getByText(/Loading technicians/i)).toBeTruthy();
     unmount();
 
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false });
     const { unmount: unmount2 } = renderPage();
     expect(screen.getByText(/No technicians yet/i)).toBeTruthy();
     unmount2();
 
-    useFirestoreCollection.mockReturnValue({
+    useTechnicianDirectory.mockReturnValue({
       data: [{ id: "t1", name: "Sam Rivera", phone: "555-0101", status: "on_job" }],
       loading: false,
     });

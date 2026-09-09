@@ -9,7 +9,7 @@
 //
 // These tests pin the fix: each surface must render a distinct, alert-role error state
 // (mirroring Jobs.jsx's existing "fail visibly" pattern) instead of its empty state when
-// useWorkOrders() returns a truthy error. useWorkOrders and useFirestoreCollection are
+// useWorkOrders() returns a truthy error. useWorkOrders and useTechnicianDirectory are
 // mocked (no Firebase, no network) so the two states can be driven directly.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
@@ -22,12 +22,12 @@ vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
 vi.mock("../src/hooks/useMetadataList", () => ({ useMetadataList: vi.fn() }));
 vi.mock("../src/hooks/useWorkOrderSearch", () => ({ useWorkOrderSearch: () => ({ state: "IDLE", results: [], truncated: false, message: null }) }));
 vi.mock("../src/hooks/useAccountReferenceResolver", () => ({ useAccountReferenceResolver: () => ({ resolveReference: () => undefined }) }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({ useTechnicianDirectory: vi.fn() }));
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
 import { useMetadataList } from "../src/hooks/useMetadataList";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../src/hooks/useTechnicianDirectory";
 import { useAuth } from "../src/auth/AuthContext";
 import WorkOrdersList from "../src/modules/workOrders/WorkOrdersList";
 import Dispatch from "../src/modules/dispatch/Dispatch";
@@ -52,7 +52,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
       state: "DENIED", columns: [], rows: [], hasMore: false,
       emptyMessage: "You do not have access to work orders.",
     }));
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
@@ -67,7 +67,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
       state: "UNAVAILABLE", columns: [], rows: [], hasMore: false,
       emptyMessage: "Work orders could not be loaded.",
     }));
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
@@ -80,7 +80,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
     useMetadataList.mockReturnValue(listResult({
       state: "EMPTY", columns: [], rows: [], hasMore: false, emptyMessage: null,
     }));
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     render(
       <MemoryRouter>
         <WorkOrdersList />
@@ -94,7 +94,7 @@ describe("WorkOrdersList -- error is not swallowed into the empty state", () => 
 describe("Dispatch -- error is not swallowed into the empty state", () => {
   it("renders an alert, not 'No work orders yet.', when useWorkOrders returns an error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     render(<Dispatch />);
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.queryByText(/no work orders yet\./i)).toBeNull();
@@ -102,7 +102,7 @@ describe("Dispatch -- error is not swallowed into the empty state", () => {
 
   it("still shows the honest empty state when there is no error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     render(<Dispatch />);
     expect(screen.getByText(/no work orders yet\./i)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -112,7 +112,7 @@ describe("Dispatch -- error is not swallowed into the empty state", () => {
 describe("DispatcherBoard -- error is not swallowed into the empty state", () => {
   it("renders an alert, not 'No work orders exist yet.', when useWorkOrders returns an error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     useAuth.mockReturnValue({ role: "dispatcher" });
     render(
       <MemoryRouter>
@@ -125,7 +125,7 @@ describe("DispatcherBoard -- error is not swallowed into the empty state", () =>
 
   it("still shows the honest empty state when there is no error", () => {
     useWorkOrders.mockReturnValue({ data: [], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
     useAuth.mockReturnValue({ role: "dispatcher" });
     render(
       <MemoryRouter>
@@ -141,13 +141,13 @@ describe("DispatcherBoard -- error is not swallowed into the empty state", () =>
   // dispatcher would read that as "there are genuinely no technicians"
   // rather than "this read just failed," with no recommendations, no drop
   // targets, and no indication anything is wrong.
-  it("renders an alert, not the technicians empty state, when useFirestoreCollection(technicians) returns an error", () => {
+  it("renders an alert, not the technicians empty state, when useTechnicianDirectory(technicians) returns an error", () => {
     useWorkOrders.mockReturnValue({
       data: [{ id: "wo1", woNumber: "WO-1", status: "SCHEDULED", customerId: "c1" }],
       loading: false,
       error: null,
     });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: PERMISSION_ERROR });
     useAuth.mockReturnValue({ role: "dispatcher" });
     render(
       <MemoryRouter>

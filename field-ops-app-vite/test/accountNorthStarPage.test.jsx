@@ -46,8 +46,8 @@ vi.mock("../src/hooks/useAccountServiceActivity", async (importOriginal) => ({
   useAccountWorkOrderCount: () => ({ value: null, loading: false, error: null }),
   useAccountWorkOrderTimeline: () => ({ items: [], loading: false, error: null, hasMore: false }),
 }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({
-  useFirestoreCollection: () => ({ data: [], loading: false, error: null }),
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({
+  useTechnicianDirectory: () => ({ data: [], loading: false, error: null }),
 }));
 vi.mock("../src/hooks/useEmployeeDirectory", () => ({
   useEmployeeDirectory: () => ({ byUserId: new Map(), byEmployeeId: new Map(), loading: false, error: null }),

@@ -45,6 +45,9 @@ on:
       - "field-ops-app-vite/src/hooks/useWarehouseOptions.js"
       - "field-ops-app-vite/test/inventoryReorderRequestsCancelGuard.test.mjs"
       - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
+      - "field-ops-app-vite/test/reorderCrossComponentRefresh.test.jsx"
+      - "field-ops-app-vite/src/domain/reorderRequestsChanged.js"
+      - "field-ops-app-vite/src/hooks/useReorderRequests.js"
       - "field-ops-app-vite/test/reorderTrustedWritePathContract.test.mjs"
       - "field-ops-app-vite/test/reorderWarehouseSelector.test.jsx"
       - "field-ops-app-vite/test/reorderWarehouseOptionsSource.test.jsx"
@@ -70,6 +73,9 @@ on:
       - "field-ops-app-vite/src/hooks/useWarehouseOptions.js"
       - "field-ops-app-vite/test/inventoryReorderRequestsCancelGuard.test.mjs"
       - "field-ops-app-vite/test/reorderRequestPayload.test.mjs"
+      - "field-ops-app-vite/test/reorderCrossComponentRefresh.test.jsx"
+      - "field-ops-app-vite/src/domain/reorderRequestsChanged.js"
+      - "field-ops-app-vite/src/hooks/useReorderRequests.js"
       - "field-ops-app-vite/test/reorderTrustedWritePathContract.test.mjs"
       - "field-ops-app-vite/test/reorderWarehouseSelector.test.jsx"
       - "field-ops-app-vite/test/reorderWarehouseOptionsSource.test.jsx"
@@ -126,5 +132,5 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Reorder warehouse selector + required-warehouse gate (jsdom)
-        run: npx vitest run test/reorderWarehouseSelector.test.jsx test/reorderWarehouseOptionsSource.test.jsx test/reorderCreateWarehouseRequired.test.jsx test/inventoryHealthPanelNames.test.jsx
+        run: npx vitest run test/reorderWarehouseSelector.test.jsx test/reorderWarehouseOptionsSource.test.jsx test/reorderCreateWarehouseRequired.test.jsx test/inventoryHealthPanelNames.test.jsx test/reorderCrossComponentRefresh.test.jsx
         working-directory: field-ops-app-vite

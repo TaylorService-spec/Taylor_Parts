@@ -42,7 +42,7 @@ test("serialNumber and assetTag are declared, but not as identity", () => {
 });
 
 test("no capability gates this collection -- Rules admit by ROLE, not by capability", () => {
-  assert.equal(equipmentEntity.readCapability, null);
+  assert.equal(equipmentEntity.readCapability, "service.equipment.read");
 });
 
 test("X-EQUIPMENT-PROVENANCE-GAP: createdAt/updatedAt are declared NUMBER, and no actor fields exist", () => {

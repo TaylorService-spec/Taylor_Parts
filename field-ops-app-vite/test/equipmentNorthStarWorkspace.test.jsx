@@ -56,7 +56,7 @@ vi.mock("../src/hooks/useLocationReferenceResolver", () => ({
 vi.mock("../src/hooks/useAccountPicker", () => ({
   useAccountPicker: () => ({ state: "READY", options: [{ id: "acct_desert_sun", name: "Desert Sun" }], truncated: false, message: null, loading: false, error: null }),
 }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: () => ({ data: [], loading: false, error: null }) }));
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({ useTechnicianDirectory: () => ({ data: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentForAccount: () => ({ data: [], loading: false, error: null }) }));
 vi.mock("../src/hooks/useLocationsForAccount", () => ({
   useLocationsForAccount: () => ({ data: [{ id: "loc_broadway", accountId: "acct_desert_sun", name: "Broadway Plant" }], loading: false, error: null, retry: vi.fn() }),

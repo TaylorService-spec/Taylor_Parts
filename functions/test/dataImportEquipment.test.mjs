@@ -161,16 +161,25 @@ test("a duplicate serial inside the file, and one already registered, are both E
 
 // --------------------------------------------------------------- rules mirror
 
-test("the writable key set mirrors firestore.rules equipmentWritableKeys()", () => {
-  // THE FAILURE THIS STOPS. The Admin SDK evaluates no Rules, so the allow-list that makes
-  // client creates fail closed for fields nobody has thought of yet does not apply to import
-  // -- unless import re-states it. This asserts the two lists are the same list.
-  const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
-  const block = /function equipmentWritableKeys\(\)\s*\{\s*return \[([\s\S]*?)\];/.exec(rules)?.[1];
-  assert.ok(block, "equipmentWritableKeys() must be findable in firestore.rules");
+test("the import writable key set mirrors the ORDINARY create command's", () => {
+  // THE FAILURE THIS STOPS is unchanged. The Admin SDK evaluates no Rules, so the allow-list that
+  // makes ordinary creates fail closed for fields nobody has thought of yet does not apply to
+  // import -- unless import re-states it. This asserts the two lists are the same list.
+  //
+  // WHAT MOVED: the reference list was `equipmentWritableKeys()` in firestore.rules, and the
+  // client-direct equipment create it guarded is retired. The allow-list is now
+  // equipment/equipmentWriteCommands.ts's EQUIPMENT_WRITABLE_KEYS, which the trusted create
+  // applies -- so the comparison is between two server lists rather than a server list and a
+  // Rules list, and it is the same comparison for the same reason.
+  const command = readFileSync(
+    new URL("../src/equipment/equipmentWriteCommands.ts", import.meta.url),
+    "utf8",
+  );
+  const block = /export const EQUIPMENT_WRITABLE_KEYS = Object\.freeze\(\[([\s\S]*?)\]\);/.exec(command)?.[1];
+  assert.ok(block, "EQUIPMENT_WRITABLE_KEYS must be findable in the equipment write commands");
 
-  const fromRules = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
-  assert.deepEqual([...EQUIPMENT_WRITABLE_KEYS].sort(), fromRules);
+  const fromCommand = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+  assert.deepEqual([...EQUIPMENT_WRITABLE_KEYS].sort(), fromCommand);
 });
 
 test("the contract offers no field outside that key set, plus the two it resolves away", () => {

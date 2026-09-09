@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const firestore = {
-  getDoc: vi.fn(),
-  getDocs: vi.fn(),
+// THE HARNESS MOCKS THE GOVERNED SEAM, NOT FIRESTORE, because that is what this service now
+// talks to. It used to mock firebase/firestore directly, and leaving it that way would have been
+// the worse kind of green: the mock would still resolve, the assertions would still pass, and
+// nothing would have been exercising the code under test.
+const seam = {
+  readAllScopedWorkOrders: vi.fn(),
+  readScopedWorkOrderById: vi.fn(),
 };
 
-vi.mock("../src/firebase/firebase", () => ({ db: {} }));
-vi.mock("firebase/firestore", () => ({
-  collection: (...args) => ({ kind: "collection", args }),
-  doc: (...args) => ({ kind: "doc", args }),
-  getDoc: (...args) => firestore.getDoc(...args),
-  getDocs: (...args) => firestore.getDocs(...args),
-  query: (...args) => ({ kind: "query", args }),
-  where: (...args) => ({ kind: "where", args }),
+vi.mock("../src/access/scopedWorkOrderClient.js", () => ({
+  WORK_ORDER_READ_RESULT: { OK: "OK", DENIED: "DENIED", INVALID: "INVALID", UNAVAILABLE: "UNAVAILABLE" },
+  readAllScopedWorkOrders: (...args) => seam.readAllScopedWorkOrders(...args),
+  readScopedWorkOrderById: (...args) => seam.readScopedWorkOrderById(...args),
 }));
 
 import {
@@ -24,7 +24,9 @@ import {
 } from "../src/analytics/executionAnalyticsService";
 
 const stamp = (ms) => ({ toMillis: () => ms });
-const docs = (items) => ({ docs: items.map(({ id, ...data }) => ({ id, data: () => data })) });
+// A COMPLETE population, as the exhaustion helper returns one.
+const page = (items) => ({ ok: true, result: "OK", items, scope: "GLOBAL" });
+const record = (workOrder) => ({ ok: true, result: "OK", workOrder, scope: "GLOBAL" });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -36,17 +38,16 @@ describe("execution analytics service", () => {
   });
 
   it("returns null for a missing work order and a sorted, derived execution summary otherwise", async () => {
-    firestore.getDoc.mockResolvedValueOnce({ exists: () => false });
+    // A CONFIRMED ABSENCE, which is not the same as a refusal -- the seam reports those
+    // separately and this service must keep them apart.
+    seam.readScopedWorkOrderById.mockResolvedValueOnce(record(null));
     await expect(getWorkOrderExecutionSummary("missing")).resolves.toBeNull();
 
-    firestore.getDoc.mockResolvedValueOnce({
-      exists: () => true,
-      data: () => ({
-        inventorySnapshot: [{ sku: "P-1", qtyUsed: 3 }],
-        executionLog: [{ note: "later", at: stamp(20) }, { note: "first", at: stamp(10) }],
-        lastUpdated: stamp(30),
-      }),
-    });
+    seam.readScopedWorkOrderById.mockResolvedValueOnce(record({
+      inventorySnapshot: [{ sku: "P-1", qtyUsed: 3 }],
+      executionLog: [{ note: "later", at: stamp(20) }, { note: "first", at: stamp(10) }],
+      lastUpdated: stamp(30),
+    }));
     await expect(getWorkOrderExecutionSummary("wo-1")).resolves.toMatchObject({
       workOrderId: "wo-1",
       totalPartsUsed: 3,
@@ -57,7 +58,7 @@ describe("execution analytics service", () => {
   });
 
   it("aggregates technician completion, usage, statuses, and durations from its scoped query", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
+    seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
       { id: "a", status: "CLOSED", inventorySnapshot: [{ sku: "P-1", qtyUsed: 2 }], completedAt: stamp(50), workStartedAt: stamp(10) },
       { id: "b", status: "DISPATCHED", inventorySnapshot: [{ sku: "P-2", qtyUsed: 4 }] },
       { id: "c", status: "CLOSED", inventorySnapshot: [{ sku: "P-1", qtyUsed: 1 }], completedAt: stamp(100), workStartedAt: stamp(40) },
@@ -84,7 +85,7 @@ describe("execution analytics service", () => {
   it("a valid span is measured normally, and a zero-length span is a real measurement", () => {
     // Zero is not missing evidence: start and completion were both recorded, at the same instant.
     return (async () => {
-      firestore.getDocs.mockResolvedValueOnce(docs([
+      seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
         { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
         { id: "b", status: "CLOSED", completedAt: stamp(700), workStartedAt: stamp(700) },
       ]));
@@ -95,7 +96,7 @@ describe("execution analytics service", () => {
   });
 
   it("REPRODUCES THE LIVE DEFECT: an inverted pair never becomes a negative average", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
+    seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
       { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
       // completedAt BEFORE workStartedAt -- the shape that produced -1686m live.
       { id: "b", status: "CLOSED", completedAt: stamp(500), workStartedAt: stamp(100_000_000) },
@@ -109,7 +110,7 @@ describe("execution analytics service", () => {
     // The two shortcuts that would make the screen look fine and the number meaningless. abs() would
     // report a huge plausible duration; clamping would report a suspiciously fast job. Both invent a
     // fact from evidence the platform cannot explain.
-    firestore.getDocs.mockResolvedValueOnce(docs([
+    seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
       { id: "b", status: "CLOSED", completedAt: stamp(500), workStartedAt: stamp(900) },
     ]));
     const stats = await getTechnicianExecutionStats("tech-1");
@@ -119,7 +120,7 @@ describe("execution analytics service", () => {
   });
 
   it("missing timestamps are never fabricated, and never counted as inverted", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
+    seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
       { id: "a", status: "CLOSED", completedAt: stamp(1000) },              // no start
       { id: "b", status: "DISPATCHED", workStartedAt: stamp(10) },          // no completion
       { id: "c", status: "CREATED" },                                       // neither
@@ -134,7 +135,7 @@ describe("execution analytics service", () => {
   it("a mixed population withdraws the figure rather than averaging the trustworthy part", async () => {
     // Three good records and one contradictory one. Averaging the three would report a number over a
     // population this projection KNOWS is partly untrustworthy, under a name that claims all of it.
-    firestore.getDocs.mockResolvedValueOnce(docs([
+    seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
       { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
       { id: "b", status: "CLOSED", completedAt: stamp(2000), workStartedAt: stamp(1000) },
       { id: "c", status: "CLOSED", completedAt: stamp(3000), workStartedAt: stamp(2000) },
@@ -147,7 +148,7 @@ describe("execution analytics service", () => {
   });
 
   it("a malformed timestamp is missing evidence, not a duration", async () => {
-    firestore.getDocs.mockResolvedValueOnce(docs([
+    seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
       { id: "a", status: "CLOSED", completedAt: stamp(Number.NaN), workStartedAt: stamp(10) },
       { id: "b", status: "CLOSED", completedAt: { notATimestamp: true }, workStartedAt: stamp(10) },
     ]));
@@ -166,7 +167,7 @@ describe("execution analytics service", () => {
     // beside it. `missing` makes that recoverable: here the figure describes 2 of 4 completed jobs,
     // and a reader can find that out instead of assuming it covers all of them.
     return (async () => {
-      firestore.getDocs.mockResolvedValueOnce(docs([
+      seam.readAllScopedWorkOrders.mockResolvedValueOnce(page([
         { id: "a", status: "CLOSED", completedAt: stamp(1000), workStartedAt: stamp(400) },
         { id: "b", status: "CLOSED", completedAt: stamp(3000), workStartedAt: stamp(1000) },
         { id: "c", status: "CLOSED", completedAt: stamp(5000) },
@@ -183,13 +184,15 @@ describe("execution analytics service", () => {
     })();
   });
   it("builds system-wide part consumption and technician volume rankings", async () => {
-    const snapshot = docs([
+    const population = [
       { id: "a", assignedTechId: "tech-1", inventorySnapshot: [{ sku: "P-1", qtyUsed: 2 }, { sku: "P-2", qtyUsed: 1 }], completedAt: stamp(1) },
       { id: "b", assignedTechId: "tech-1", inventorySnapshot: [{ sku: "P-1", qtyUsed: 3 }] },
       { id: "c", assignedTechId: "tech-2", inventorySnapshot: [{ sku: "P-2", qtyUsed: 1 }], completedAt: stamp(2) },
       { id: "d", inventorySnapshot: [{ sku: "P-1", qtyUsed: 9 }] },
-    ]);
-    firestore.getDocs.mockResolvedValueOnce(snapshot).mockResolvedValueOnce(snapshot);
+    ];
+    seam.readAllScopedWorkOrders
+      .mockResolvedValueOnce(page(population))
+      .mockResolvedValueOnce(page(population));
 
     await expect(getInventoryConsumptionSnapshot()).resolves.toEqual({
       mostConsumedPartId: "P-1",

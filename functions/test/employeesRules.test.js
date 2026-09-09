@@ -189,14 +189,30 @@ async function main() {
     idTokenFor("user-mismatched-1"),
   ]);
 
-  // 1. Admin directory read succeeds.
-  report("admin directory read succeeds", (await getEmployee("emp-directory-1", adminToken)) === 200);
+  // ══════════════════════ WHAT THESE THREE USED TO ASSERT ══════════════════════
+  //
+  // Admin and dispatcher directory reads, and a technician reading their own Employee record.
+  // All three succeeded, and all three are now DENIED -- not by accident, and not as a
+  // regression. Each moved to a governed seam that resolves authority server-side:
+  //
+  //   the directory      -> listWorkforceDirectory, on workforce.directory.read
+  //   own identity       -> resolveCurrentEmployeeSession, on authentication alone
+  //
+  // The self-read is the interesting one. Widening the Rules to admit
+  // `employeeId == users/{uid}.employeeId` was explicitly refused: a self-read predicate over a
+  // BUSINESS collection is still Firestore deciding who may read a business record, which is the
+  // arrangement this whole workstream removes. So the answer is not a narrower rule -- it is no
+  // rule, and a callable instead.
+  //
+  // Asserting the denials keeps this file a measurement of the Rules rather than a memory of them.
+  report("admin directory read is DENIED (moved to listWorkforceDirectory)",
+    (await getEmployee("emp-directory-1", adminToken)) === 403);
 
-  // 2. Dispatcher directory read succeeds.
-  report("dispatcher directory read succeeds", (await getEmployee("emp-directory-1", dispatcherToken)) === 200);
+  report("dispatcher directory read is DENIED (moved to listWorkforceDirectory)",
+    (await getEmployee("emp-directory-1", dispatcherToken)) === 403);
 
-  // 3. Technician self-read succeeds.
-  report("technician self-read succeeds", (await getEmployee("emp-self-1", technicianToken)) === 200);
+  report("technician self-read is DENIED (moved to resolveCurrentEmployeeSession)",
+    (await getEmployee("emp-self-1", technicianToken)) === 403);
 
   // 4. Technician read of another Employee denied.
   report(
@@ -243,11 +259,39 @@ async function main() {
   // final confirmation still needs a real run against the live
   // Firestore console/production query planner before this is treated
   // as fully verified, per the specification's own caveat.
+  // THE ADMIN NO LONGER RUNS THIS QUERY AT ALL. It used to succeed on the general directory
+  // grant; that grant is gone, and an administrator's directory read is now the governed
+  // listWorkforceDirectory callable. The only principal the picker clause admits is a
+  // PARTS_MANAGER, whose identical query is asserted below -- so index coverage for this shape is
+  // still exercised, by the one caller that can still issue it.
+  //
+  // Asserted as a DENIAL rather than deleted: an admin quietly regaining a directory list query
+  // is exactly the widening this file exists to catch.
   const composite = await runCompositeQuery(adminToken);
   report(
-    "composite query (employmentStatus + operationalRoles + userId!=null) runs without emulator-side error",
-    composite.status === 200 && !composite.body?.error,
+    "admin candidate-list query is DENIED (no general directory grant remains)",
+    composite.status === 403,
     JSON.stringify(composite.body).slice(0, 300)
+  );
+
+  // A principal with NO employeeId is DENIED, and the denial no longer carries a MISSING-PROPERTY
+  // fault.
+  //
+  // `userData().employeeId` on a document without the field is an evaluation ERROR, not a null,
+  // so the picker predicate now reads it through `.get(field, default)` and guards with `is
+  // string` before any get() of the employee document. That specific fault -- "Property
+  // employeeId is undefined on object" -- is gone, and this asserts its absence by name.
+  //
+  // WHAT IS NOT CLAIMED: the LIST evaluation still reports a generic `evaluation error` note
+  // alongside the denial. The read is refused either way, and chasing the note further would be
+  // tuning the engine's diagnostics rather than the authority. Asserting its absence would be
+  // asserting something this platform does not currently do.
+  const noLinkComposite = await runCompositeQuery(noLinkToken);
+  const noLinkBody = JSON.stringify(noLinkComposite.body ?? {});
+  report(
+    "a principal with no employeeId is DENIED, with no missing-property fault",
+    noLinkComposite.status === 403 && !/Property employeeId is undefined/i.test(noLinkBody),
+    noLinkBody.slice(0, 300)
   );
 
   // ===== Issue #100 (PR 1b dependency): PARTS_MANAGER assignment-candidate read =====
@@ -286,8 +330,12 @@ async function main() {
   report("PARTS_ASSOCIATE candidate list query denied (branch is PARTS_MANAGER-only)",
     (await runCompositeQuery(associateToken)).status === 403);
 
-  // Regression: a PARTS_MANAGER still reads their OWN Employee via the self-read clause.
-  report("PARTS_MANAGER self-read still succeeds", (await getEmployee("emp-pm-1", pmToken)) === 200);
+  // DENY: not even a PARTS_MANAGER reads their OWN Employee record here. The picker grant admits
+  // assignment CANDIDATES and nothing else, and a PARTS_MANAGER is not one -- so holding the one
+  // surviving operational-role grant does not smuggle a self-read back in beside it. Their own
+  // identity comes from resolveCurrentEmployeeSession like everybody else's.
+  report("PARTS_MANAGER self-read is DENIED (the picker grant is candidates only)",
+    (await getEmployee("emp-pm-1", pmToken)) === 403);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

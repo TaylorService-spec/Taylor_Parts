@@ -12,12 +12,12 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 147,
+    "capabilities": 169,
     "catalogActive": 0,
-    "catalogInactive": 147,
+    "catalogInactive": 169,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 47,
+    "callableExports": 52,
     "destinations": 92,
     "destinationsHidden": 19,
     "guides": 0,
@@ -25,14 +25,14 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 147,
-    "parsed": 147,
+    "raw": 169,
+    "parsed": 169,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 120,
-    "CLIENT_ONLY": 2,
+    "SERVER_REFERENCED": 143,
+    "CLIENT_ONLY": 1,
     "NO_IMPLEMENTATION_EVIDENCE": 4
   },
   "guideStatuses": {},
@@ -403,7 +403,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/governedReadRegistry.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/account/accountPortfolioSummary.ts",
           "functions/src/assistant/assistantStarters.ts",
@@ -413,8 +413,8 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
@@ -422,6 +422,262 @@
         "serverReferenceCount": 8,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.contact.read",
+      "resource": "contact.record",
+      "action": "read",
+      "description": "Read Contact records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/metadata/definitions/account.js",
+          "field-ops-app-vite/src/metadata/definitions/contact.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.contact.create",
+      "resource": "contact.record",
+      "action": "create",
+      "description": "Create Contact records, including bulk creation through import. Confers no update, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/contactImportCommand.ts",
+          "functions/src/crm/crmWriteCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.contact.update",
+      "resource": "contact.record",
+      "action": "update",
+      "description": "Update Contact records. Confers no create, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/crmWriteCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.location.create",
+      "resource": "location.record",
+      "action": "create",
+      "description": "Create Customer Location records. Confers no update, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/crmWriteCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.location.update",
+      "resource": "location.record",
+      "action": "update",
+      "description": "Update Customer Location records. Confers no create, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/crm/crmWriteCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "crm.location.read",
+      "resource": "location.record",
+      "action": "read",
+      "description": "Read Customer Location records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/metadata/definitions/location.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "supplier.record.read",
+      "resource": "supplier.record",
+      "action": "read",
+      "description": "Read Supplier records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/metadata/definitions/supplier.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "supplier.catalog.read",
+      "resource": "supplier.catalog",
+      "action": "read",
+      "description": "Read Supplier catalog items: the parts a supplier offers and the price at which they offer them. Confers no write and no Part Master authority.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/metadata/definitions/supplierCatalogItem.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 3,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "supplier.purchaseOrder.read",
+      "resource": "supplier.purchaseOrder",
+      "action": "read",
+      "description": "Read the legacy Epic-5 Purchase Order records. Confers no write and no authority over reorder purchase orders.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.equipment.read",
+      "resource": "equipment.record",
+      "action": "read",
+      "description": "Read Equipment / installed-base records. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/metadata/definitions/equipment.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": false,
@@ -439,19 +695,18 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/account/accountImportCommand.ts"
+          "functions/src/account/accountImportCommand.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -470,18 +725,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -500,18 +754,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/crm/crmWriteCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -530,20 +783,188 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/App.jsx",
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
         ],
-        "serverReferenceCount": 4,
-        "clientReferenceCount": 7,
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 6,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workOrder.read",
+      "resource": "workOrder",
+      "action": "read",
+      "description": "Read any Work Order. The unscoped read: replaces firestore.rules' isAdminOrDispatcher() branch on fieldops_wos. Confers no write and no transition.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/workOrder/scopedWorkOrderReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workOrder.assigned.read",
+      "resource": "workOrder",
+      "action": "read.assigned",
+      "description": "Read ONLY the Work Orders assigned to the authenticated principal's own technician identity. Scope is server-derived from request.auth.uid and forced into every query; the caller cannot omit, widen or substitute it. Replaces firestore.rules' isTechnician() && isOwnTechnician(assignedTechId) branch. Confers no unscoped read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/workOrder/scopedWorkOrderReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.technician.read",
+      "resource": "technician.record",
+      "action": "read",
+      "description": "Read any technician profile record. Replaces firestore.rules' isAdminOrDispatcher() branch on fieldops_technicians. Confers no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts",
+          "functions/src/workOrder/scopedWorkOrderReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.equipment.create",
+      "resource": "equipment.record",
+      "action": "create",
+      "description": "Create Equipment records. The owning Location must belong to the named Account, proven server-side. Confers no update, no delete, no read and no lifecycle transition.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/equipment/equipmentWriteCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.equipment.update",
+      "resource": "equipment.record",
+      "action": "update",
+      "description": "Perform an ordinary Equipment edit: the editable field set, and an ACTIVE<->INACTIVE status change. Confers no create, no delete, no read, and NO authority to retire or reactivate -- those are trusted lifecycle actions.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/equipment/equipmentWriteCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.technician.create",
+      "resource": "technician.record",
+      "action": "create",
+      "description": "Create a technician profile record. The record is always created in the available state, chosen by the server and never by the caller. Confers no update, no delete and no read.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/workOrder/technicianCommands.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "service.technician.self.read",
+      "resource": "technician.record",
+      "action": "read.self",
+      "description": "Read ONLY the technician profile mapped to the authenticated principal. Scope is server-derived; the caller never names which technician. Replaces firestore.rules' techId == callerTechnicianId() branch. Confers no directory read and no write.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/workOrder/scopedWorkOrderReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -562,19 +983,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/assistant/assistantStarters.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -593,18 +1012,16 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1438,19 +1855,21 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/governedReadRegistry.ts",
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/scopedReorderReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/metadata/definitions/reorderRequest.js",
           "field-ops-app-vite/src/shared/ui/NotificationControl.jsx"
         ],
-        "serverReferenceCount": 4,
-        "clientReferenceCount": 6,
+        "serverReferenceCount": 5,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1468,16 +1887,17 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/scopedReorderReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1497,17 +1917,15 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/performance/performanceGoalAuthority.ts",
           "functions/src/reorderRequest/reorderCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 5,
-        "clientReferenceCount": 3,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1525,16 +1943,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
-        "clientReferenceCount": 3,
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1553,17 +1969,16 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1582,18 +1997,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1612,18 +2026,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1642,19 +2055,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/reorderRequest/reorderCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1672,17 +2083,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1700,17 +2110,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1728,17 +2137,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderTransitionCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1756,16 +2164,39 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "reorder.request.read.managed",
+      "resource": "reorder.request",
+      "action": "read.managed",
+      "description": "Read the Reorder Requests a Parts Manager is responsible for: the queue statuses, plus requests this actor personally reviewed or personally assigned. Narrower than the global queue read, and never narrows a holder of it.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/reorderRequest/scopedReorderReadService.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1784,19 +2215,21 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/governedReadRegistry.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/assistant/assistantStarters.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts"
+          "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js",
+          "field-ops-app-vite/src/metadata/definitions/purchaseOrderVoid.js"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1815,18 +2248,16 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1844,17 +2275,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/reorderRequest/reorderCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1898,18 +2328,19 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/governedReadRegistry.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts"
+          "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/metadata/definitions/inventoryTransaction.js"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1928,18 +2359,19 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
+          "functions/src/access/governedReadRegistry.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/access/parityFixtures.ts"
+          "field-ops-app-vite/src/access/parityFixtures.ts",
+          "field-ops-app-vite/src/metadata/definitions/inventoryAction.js"
         ],
         "serverReferenceCount": 4,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1957,17 +2389,15 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 3,
-        "clientReferenceCount": 4,
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -1985,14 +2415,17 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/governedBusinessRoles.ts"
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/metadata/definitions/warehouse.js"
         ],
-        "serverReferenceCount": 2,
-        "clientReferenceCount": 2,
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -2035,15 +2468,68 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/governedBusinessRoles.ts"
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/objectPermissionMap.js"
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/metadata/definitions/transferOrder.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 5,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.record.read.assigned",
+      "resource": "warehouse.record",
+      "action": "read.assigned",
+      "description": "Read the warehouses records for the sites this actor is assigned to. The assigned-site half of the retired isAssignedToWarehouse read; the scope is derived server-side from the actor and can never be supplied by a caller.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 2,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "warehouse.transferOrder.read.assigned",
+      "resource": "warehouse.transferOrder",
+      "action": "read.assigned",
+      "description": "Read transfer_orders whose origin OR destination is a site this actor is assigned to. The assigned-site half of the retired read; matched on either endpoint and de-duplicated by document id.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3075,6 +3561,60 @@
       }
     },
     {
+      "id": "inventory.truckRegistry.read",
+      "resource": "inventory.truckRegistry",
+      "action": "read",
+      "description": "Read the Truck Registry: trucks and their mobile locations. Confers no write -- truck mutations have their own trusted commands.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/metadata/definitions/mobileLocation.js",
+          "field-ops-app-vite/src/metadata/definitions/truck.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "workforce.directory.read",
+      "resource": "workforce.directory",
+      "action": "read",
+      "description": "Read the workforce directory: the Employee records the Administration > Users surface lists, and the actor/manager names other surfaces resolve. Confers no write of any kind.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/compatibilityRoles.ts",
+          "functions/src/access/governedReadRegistry.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/compatibilityRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/metadata/definitions/employee.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 4,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
       "id": "admin.principalAccess.read",
       "resource": "admin.principalAccess",
       "action": "read",
@@ -3089,10 +3629,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3209,15 +3750,17 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
-        "serverReferences": [],
+        "serverReferences": [
+          "functions/src/access/adminCredentialCallables.ts"
+        ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/adminPasswordReset.js"
         ],
-        "serverReferenceCount": 0,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 3,
-        "evidence": "CLIENT_ONLY"
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": false,
@@ -3315,17 +3858,20 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/access/governedReadRegistry.ts",
           "functions/src/partMaster/manufacturerReadService.ts",
           "functions/src/salesAgreement/productReferenceSearchService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/governedReadRegistry.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
+          "field-ops-app-vite/src/metadata/definitions/manufacturer.js",
+          "field-ops-app-vite/src/metadata/definitions/part.js"
         ],
-        "serverReferenceCount": 4,
-        "clientReferenceCount": 4,
+        "serverReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4758,6 +5304,47 @@
       "module": "./completeAssignedJob",
       "capabilityHints": [],
       "comment": "--- F-RULES-1 surface: trusted technician job completion (Decision #39) --- Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the production project. No client calls it (Field Mode's integration is PR-B, a separate Owner gate) until Gate D1's Owner produc"
+    },
+    {
+      "names": [
+        "readScopedReorderRequests"
+      ],
+      "module": "./reorderRequest/scopedReorderCallables",
+      "capabilityHints": [],
+      "comment": "REORDER REQUESTS -- the second scoped read seam, for the same reason as the first. The retired Rules admitted THREE populations by three predicates (global; a Parts Manager's queue statuses plus what they personally reviewed or assigned; a Parts Associate's own assignments), so no single global sour"
+    },
+    {
+      "names": [
+        "resolveCurrentEmployeeSession"
+      ],
+      "module": "./access/employeeSessionCallable",
+      "capabilityHints": [],
+      "comment": "SESSION IDENTITY -- \"which employee am I\". Requires authentication and NO capability: it reads only the caller's own linkage, and requiring workforce.directory.read here would mean a technician could not learn their own name. It replaces the browser's direct read of its own employees/{employeeId} do"
+    },
+    {
+      "names": [
+        "createTechnician"
+      ],
+      "module": "./workOrder/technicianCommands",
+      "capabilityHints": [],
+      "comment": "The technician profile create -- the LAST direct client write, moved to a trusted command. The retired rule required status == \"available\"; the command chooses it rather than validating it."
+    },
+    {
+      "names": [
+        "importContacts"
+      ],
+      "module": "./crm/contactImportCommand",
+      "capabilityHints": [],
+      "comment": "CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a workflow: one atomic batch create, gated on crm.contact.create."
+    },
+    {
+      "names": [
+        "createEquipmentRecord",
+        "updateEquipmentRecord"
+      ],
+      "module": "./equipment/equipmentWriteCommands",
+      "capabilityHints": [],
+      "comment": "EQUIPMENT create and update -- the LAST governed business writes to leave the browser. Create proves a cross-document relationship (the Location must belong to the Account) by reading the location server-side; update restricts the CHANGED KEYS rather than the document key set, so a record carrying t"
     },
     {
       "names": [

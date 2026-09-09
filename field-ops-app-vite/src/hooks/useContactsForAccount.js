@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { CONTACTS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 const ENTITY = "contacts";
@@ -36,32 +34,37 @@ export function useContactsForAccount(accountId) {
     let active = true;
     setLoading(true);
     setError(null);
-    const q = query(collection(db, CONTACTS_COLLECTION), where("accountId", "==", accountId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    // GOVERNED READ, not a Firestore listener. `contacts` is denied to every client in
+    // firestore.rules now -- rules management came out of Firebase -- so this resolves
+    // `crm.contact.read` server-side instead. The accountId filter is declared by the collection's
+    // registry entry; an undeclared filter is refused rather than silently dropped, which is what
+    // stops a scoped read quietly becoming a read of every contact in the company.
+    //
+    // ONE-SHOT, not a subscription. A callable cannot stream, so this no longer repaints when
+    // somebody else edits a contact. `retry()` is the refresh path and was already wired to the
+    // section's onRetry.
+    governedCollectionClient
+      .readGovernedList({
+        sourceId: "accountContacts",
+        filters: { accountId },
+      })
+      .then((outcome) => {
         if (!active) return;
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      // Without an error handler a denied/failed listener would leave loading
-      // stuck true forever; surface a safe error and stop loading instead.
-      // loadErrorMessage never emits a raw code, path, id, or stack -- the
-      // same discipline useLocationsForAccount applies (site-work #8: this
-      // hook's error was previously a raw Firebase error object that
-      // AccountDetail's Contacts section ignored outright).
-      (err) => {
-        if (!active) return;
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        if (outcome.ok) {
+          setData(outcome.items);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+        // A refused or unreachable read is an ERROR, never an empty list: [] here would state
+        // that this account has no contacts. loadErrorMessage still emits no code, path or stack.
+        setError(loadErrorMessage(new Error(outcome.result), { entity: ENTITY }));
         setData([]);
         setLoading(false);
-      }
-    );
+      });
 
     return () => {
       active = false;
-      unsub();
     };
   }, [accountId, attempt]);
 

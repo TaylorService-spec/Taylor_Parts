@@ -33,13 +33,15 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 // reads, no live writer" honesty this program's collections have recorded before, just inverted
 // from the more common "write path exists, nothing reads it yet" shape.
 //
-// READ IS CLIENT_DIRECT, THE SAME POSTURE AS SUPPLIER AND PURCHASE_ORDERS. firestore.rules'
-// `supplier_catalog/{catalogItemId}`: "allow read: if isAdminOrDispatcher(); allow create, update,
-// delete: if false" — a role check, not a capability, and the exact sibling posture
-// `suppliers/{supplierId}` and `purchase_orders/{purchaseOrderId}` both carry immediately above
-// it in the same Epic 5 Rules block. No `supplier_catalog.read` (or similar) exists anywhere in
-// the capability catalog. readCapability is therefore null, the same finding supplier.js already
-// records for its own sibling collection.
+// READ IS GOVERNED, ON `supplier.catalog.read`. It used to be CLIENT_DIRECT with a null
+// capability, and that null was an honest FINDING rather than a choice: firestore.rules gated
+// `supplier_catalog/{catalogItemId}` with `isAdminOrDispatcher()` — a role check — and no
+// supplier-catalog capability existed anywhere in the catalog to record instead.
+//
+// One was authorized by name (Owner, 2026-09-07) when the Rules read grants were retired, so the
+// finding is resolved rather than still open. Under DECISION #78 as narrowed, a supplier READ
+// capability is permitted and only through a governed registered read source — which is exactly
+// what `metadataSupplierCatalog` is. Supplier MUTATION authority remains prohibited.
 //
 // NO STORED FIELD IS A HUMAN NAME OR A BUSINESS REFERENCE. The stored shape (SupplierCatalogItem,
 // functions/src/types/procurement.ts) is exactly `{ id, supplierId, partId, unitPrice, available
@@ -65,10 +67,13 @@ export const supplierCatalogItemEntity = makeEntityDefinition({
   label: "Supplier Catalog Item",
   labelPlural: "Supplier Catalog Items",
   collection: "supplier_catalog",
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather
-  // than invented -- see the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataSupplierCatalog",
+  // The governed authority, named now that one exists. The SERVER resolves it before a row is
+  // returned; this declaration is what lets a reader of the definition see which.
+  readCapability: "supplier.catalog.read",
   // SYSTEM_ONLY, explicitly declared -- never derived. See the file header for why neither
   // foreign key qualifies as a name or a reference.
   identity: makeIdentity({ mode: "SYSTEM_ONLY" }),

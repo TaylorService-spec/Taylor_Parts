@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import { toMillis } from "../../domain/timestampMillis.js";
 import { snapshotPartName, snapshotPartSku } from "../../domain/workOrderInventorySnapshot";
 import { updateWorkOrderExecutionData, listWorkOrderConsumptionSources } from "../../services/workOrderService";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
@@ -288,10 +290,10 @@ export default function ExecutionCapture({ workOrder }) {
         ) : (
           <ul>
             {[...executionLog]
-              .sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0))
+              .sort((a, b) => (toMillis(b.at) ?? 0) - (toMillis(a.at) ?? 0))
               .map((entry, i) => (
                 <li key={i} className="fo-muted">
-                  {entry.at?.toDate ? entry.at.toDate().toLocaleString() : ""} -- {entry.note}
+                  {formatTimestamp(entry.at, { unknown: "" })} -- {entry.note}
                 </li>
               ))}
           </ul>

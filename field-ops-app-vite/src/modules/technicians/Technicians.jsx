@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createTechnician } from "../../domain/jobActions";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { technicianStatusTone } from "../../domain/technicianStatusTone";
 import NewTechnicianModal from "./NewTechnicianModal";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
@@ -34,7 +34,7 @@ import FailureState from "../../shared/ui/FailureState";
 // create flow are unchanged.
 
 export default function Technicians() {
-  const { data: technicians, loading, error } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, loading, error } = useTechnicianDirectory();
   const [showCreate, setShowCreate] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   // Stable tabIndex=-1 on the new row (focusRowId not cleared) so focusing it

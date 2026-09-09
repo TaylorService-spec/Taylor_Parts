@@ -50,6 +50,14 @@ export type ReorderCommandCode =
   // the price") should not arrive wearing the same label as a malformed field, and a caller that
   // needs to tell activation apart from a bad payload should not have to parse a message.
   | "PO_PRICE_REQUIRED"
+  // Cancel and Void. Each refusal gets its own code for the same reason PO_PRICE_REQUIRED does: a
+  // caller branching on "you must supply a reason" should not have to tell it apart from a
+  // malformed payload by reading prose.
+  | "CANCEL_REASON_REQUIRED"
+  | "VOID_REASON_REQUIRED"
+  | "PO_NOT_FOUND"
+  | "PO_STATE_INVALID"
+  | "PO_ALREADY_VOIDED"
   | "IDEMPOTENCY_PAYLOAD_MISMATCH";
 
 export class ReorderCommandError extends Error {
@@ -414,4 +422,173 @@ export function buildRecordReorderPurchaseOrder(
  */
 export function commandFingerprint(parts: readonly (string | number | null)[]): string {
   return parts.map((p) => (p === null ? "\u0000" : String(p))).join("\u001F");
+}
+
+// ============================ CANCEL A REORDER REQUEST ============================
+//
+// The statuses a Cancel is allowed FROM, and no others. Mirrors the client guard
+// (field-ops-app-vite/src/domain/reorderRequestCancelGuard.js) and the retired Rules branch it was
+// written from, exactly: any pre-ORDERED active status. PENDING_REVIEW (not yet handed off),
+// ORDERED (past the cancel window) and every terminal status are refused, as is an unrecognized or
+// missing status -- the allowlist FAILS CLOSED rather than defaulting to permitted.
+//
+// Declared here rather than imported from the client so the server does not depend on a browser
+// module for a decision it is now the authority for. The two are checked against each other by
+// test, not by hoping they stay in step.
+export const CANCELLABLE_REORDER_REQUEST_STATUSES = Object.freeze([
+  "READY_FOR_PARTS_MANAGER",
+  "ASSIGNED_TO_PARTS_ASSOCIATE",
+  "PURCHASING_IN_PROGRESS",
+] as const);
+
+export interface CancelReorderRequestInput {
+  readonly reorderRequestId?: unknown;
+  readonly reason?: unknown;
+}
+
+export interface CancelledRequestPatch {
+  readonly status: "CANCELLED";
+  readonly cancelledBy: string;
+  readonly cancelledAt: number;
+  readonly cancellationReason: string;
+}
+
+/**
+ * Decide a Cancel. Pure: no Firestore, no clock, no identity of its own.
+ *
+ * The caller hands in the request document it read inside the transaction; this returns the patch
+ * to apply, or throws. Nothing about WHO is cancelling is decided here -- authorization is the
+ * callable's, and `ctx.actorUid` is already the resolved actor, never a payload field.
+ */
+export function buildCancelReorderRequest(
+  input: CancelReorderRequestInput,
+  request: Record<string, unknown> | null,
+  ctx: { actorUid: string; nowMillis: number },
+): { requestPatch: CancelledRequestPatch } {
+  if (!input || typeof input !== "object") throw new ReorderCommandError("INVALID", "Missing input");
+  if (!nonEmpty(input.reorderRequestId)) {
+    throw new ReorderCommandError("INVALID", "reorderRequestId is required");
+  }
+  // A reason is REQUIRED and is the record of why -- the client already refused an empty one, and
+  // the server refuses it too rather than trusting that it did.
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (!reason) {
+    throw new ReorderCommandError("CANCEL_REASON_REQUIRED", "A reason is required to cancel this Reorder Request.");
+  }
+  if (request === null) {
+    throw new ReorderCommandError("REQUEST_NOT_FOUND", `No reorder request ${String(input.reorderRequestId)}`);
+  }
+  const status = request.status;
+  if (!CANCELLABLE_REORDER_REQUEST_STATUSES.includes(status as never)) {
+    throw new ReorderCommandError(
+      "REQUEST_STATE_INVALID",
+      "This Reorder Request can no longer be cancelled from its current status.",
+    );
+  }
+
+  return {
+    requestPatch: {
+      status: "CANCELLED",
+      cancelledBy: ctx.actorUid,
+      cancelledAt: ctx.nowMillis,
+      cancellationReason: reason,
+    },
+  };
+}
+
+// ============================ VOID A PURCHASE ORDER ============================
+//
+// A REVERSAL EVENT, not an edit. The recorded purchase order is READ (to confirm it exists, confirm
+// it is ORDERED, and copy partId) and NEVER written -- the void is recorded as its own append-only
+// document beside it, and the reorder request moves to VOIDED. That shape is why this is a workflow
+// action rather than an update, and why the two writes must commit together or not at all.
+//
+// ONE `nowMillis` FOR BOTH DOCUMENTS. The retired Rules branch carried a cross-document invariant
+// requiring `reorder_requests.voidedAt` and `reorder_purchase_order_voids.createdAt` to be equal.
+// That invariant does not survive by accident: it survives because the value is taken once, by the
+// caller, and written into both halves here.
+
+export interface VoidPurchaseOrderInput {
+  readonly reorderRequestId?: unknown;
+  readonly reason?: unknown;
+}
+
+export interface BuiltPurchaseOrderVoid {
+  readonly reorderPurchaseOrderId: string;
+  readonly reorderRequestId: string;
+  readonly partId: string;
+  readonly voidedBy: string;
+  readonly reason: string;
+  readonly createdAt: number;
+}
+
+export interface VoidedRequestPatch {
+  readonly status: "VOIDED";
+  readonly voidedBy: string;
+  readonly voidedAt: number;
+  readonly voidReason: string;
+}
+
+/**
+ * Decide a Void. Pure, for the same reasons as the Cancel builder above.
+ *
+ * THE ASSIGNEE CHECK IS NOT HERE. The retired Rules branch required BOTH a role AND
+ * `request.auth.uid == the request's own assignedToUserId`. That second condition is a RECORD scope,
+ * so the callable resolves it against the request document it read inside the transaction and
+ * refuses with permission-denied -- an authorization answer, which must not be produced by a
+ * builder whose other refusals are all about state. Keeping it out of here is what stops a
+ * scope failure from reaching the caller dressed as a bad payload.
+ */
+export function buildVoidPurchaseOrder(
+  input: VoidPurchaseOrderInput,
+  request: Record<string, unknown> | null,
+  purchaseOrder: Record<string, unknown> | null,
+  ctx: { actorUid: string; nowMillis: number; alreadyVoided: boolean },
+): { voidRecord: BuiltPurchaseOrderVoid; requestPatch: VoidedRequestPatch } {
+  if (!input || typeof input !== "object") throw new ReorderCommandError("INVALID", "Missing input");
+  if (!nonEmpty(input.reorderRequestId)) {
+    throw new ReorderCommandError("INVALID", "reorderRequestId is required");
+  }
+  const requestId = input.reorderRequestId.trim();
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (!reason) {
+    throw new ReorderCommandError("VOID_REASON_REQUIRED", "A reason is required to void this Purchase Order.");
+  }
+  if (request === null) throw new ReorderCommandError("REQUEST_NOT_FOUND", `No reorder request ${requestId}`);
+  if (purchaseOrder === null) {
+    throw new ReorderCommandError("PO_NOT_FOUND", "No Purchase Order is recorded for this Reorder Request.");
+  }
+  // Checked BEFORE the status conditions: "already voided" is the more precise answer, and a
+  // voided pair would fail the ORDERED checks too and report the vaguer reason instead.
+  if (ctx.alreadyVoided) {
+    throw new ReorderCommandError("PO_ALREADY_VOIDED", "This Purchase Order has already been voided.");
+  }
+  if (request.status !== "ORDERED") {
+    throw new ReorderCommandError("REQUEST_STATE_INVALID", "This Reorder Request is not currently ORDERED.");
+  }
+  if (purchaseOrder.status !== "ORDERED") {
+    throw new ReorderCommandError("PO_STATE_INVALID", "This Purchase Order is not currently ORDERED.");
+  }
+  // Copied from the PURCHASE ORDER, never from the payload: the void must name the part the order
+  // was actually placed against, not one a caller supplied.
+  if (!nonEmpty(purchaseOrder.partId)) {
+    throw new ReorderCommandError("PO_STATE_INVALID", "The recorded Purchase Order has no partId.");
+  }
+
+  return {
+    voidRecord: {
+      reorderPurchaseOrderId: requestId,
+      reorderRequestId: requestId,
+      partId: purchaseOrder.partId.trim(),
+      voidedBy: ctx.actorUid,
+      reason,
+      createdAt: ctx.nowMillis,
+    },
+    requestPatch: {
+      status: "VOIDED",
+      voidedBy: ctx.actorUid,
+      voidedAt: ctx.nowMillis,
+      voidReason: reason,
+    },
+  };
 }

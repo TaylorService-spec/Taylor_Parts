@@ -59,7 +59,7 @@ const facts = (over = {}) => ({ ...ELIGIBLE_FACTS, ...over });
 const AUTHORIZED_ACTOR = Object.freeze({
   authExists: true,
   disabled: false,
-  isAdmin: true,
+  holdsCredentialResetCapability: true,
   hasEmployeeLink: true,
   employeeLinkReciprocal: true,
   employmentStatus: "ACTIVE",
@@ -139,7 +139,7 @@ async function main() {
   await expectThrows("non-admin actor -> UnauthorizedActorError", UnauthorizedActorError, () =>
     initiateAdminPasswordReset(
       { actorUid: TECH, targetUid: TARGET, idempotencyKey: freshKey() },
-      makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps,
+      makeDeps({ actor: actorFacts({ holdsCredentialResetCapability: false }) }).deps,
     ),
   );
   await expectThrows("inactive/disabled admin actor -> UnauthorizedActorError", UnauthorizedActorError, () =>
@@ -371,13 +371,13 @@ async function main() {
   await okAsync("evaluateActorAuthorization is exported and pure", async () => {
     assert.strictEqual(evaluateActorAuthorization(actorFacts()).authorized, true);
     assert.strictEqual(evaluateActorAuthorization(actorFacts({ disabled: true })).category, "disabled-actor");
-    assert.strictEqual(evaluateActorAuthorization(actorFacts({ isAdmin: false })).category, "not-admin");
+    assert.strictEqual(evaluateActorAuthorization(actorFacts({ holdsCredentialResetCapability: false })).category, "missing-capability");
     assert.strictEqual(evaluateActorAuthorization(actorFacts({ employmentStatus: "INACTIVE" })).category, "inactive-employment");
   });
 
   // -- listResetEligibleUsers authorization (same PRE-2 actor gate) ----------
   await expectThrows("list: non-admin -> UnauthorizedActorError", UnauthorizedActorError, () =>
-    listResetEligibleUsers({ actorUid: TECH }, makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps),
+    listResetEligibleUsers({ actorUid: TECH }, makeDeps({ actor: actorFacts({ holdsCredentialResetCapability: false }) }).deps),
   );
   await expectThrows("list: disabled admin -> UnauthorizedActorError", UnauthorizedActorError, () =>
     listResetEligibleUsers({ actorUid: ADMIN }, makeDeps({ actor: actorFacts({ disabled: true }) }).deps),
@@ -433,7 +433,7 @@ async function main() {
   await okAsync("list denial -> a listResetEligibleUsers/denied audit is written; still throws", async () => {
     const before = await listAuditCount("denied");
     await assert.rejects(
-      listResetEligibleUsers({ actorUid: TECH }, makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps),
+      listResetEligibleUsers({ actorUid: TECH }, makeDeps({ actor: actorFacts({ holdsCredentialResetCapability: false }) }).deps),
       (e) => e instanceof UnauthorizedActorError,
     );
     assert.strictEqual(await listAuditCount("denied"), before + 1);
@@ -446,7 +446,7 @@ async function main() {
     );
   });
   await okAsync("list denial-audit failure -> denial remains authoritative (still UnauthorizedActorError)", async () => {
-    const deps = { ...makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps, recordDenialAudit: async () => { throw new Error("audit sink down"); } };
+    const deps = { ...makeDeps({ actor: actorFacts({ holdsCredentialResetCapability: false }) }).deps, recordDenialAudit: async () => { throw new Error("audit sink down"); } };
     await assert.rejects(
       listResetEligibleUsers({ actorUid: TECH }, deps),
       (e) => e instanceof UnauthorizedActorError,

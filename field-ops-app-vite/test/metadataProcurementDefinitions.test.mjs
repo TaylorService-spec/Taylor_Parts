@@ -93,9 +93,9 @@ test("the entity id is exactly \"reorderRequest\", collection is the live reorde
   assert.equal(reorderRequestEntity.collection, "reorder_requests");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role/relationship, not by capability", () => {
-  assert.equal(reorderRequestEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(reorderRequestEntity.readCapability, null);
+test("read is GOVERNED and names its capability -- the CLIENT_DIRECT posture and the null were findings, both resolved", () => {
+  assert.equal(reorderRequestEntity.readVia, "CALLABLE");
+  assert.equal(reorderRequestEntity.readCapability, "reorder.request.read.queue");
 });
 
 test("status is THE authoritative procurement lifecycle status -- not the linked Purchase Order's own status", () => {

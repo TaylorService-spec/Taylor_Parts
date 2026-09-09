@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { PURCHASE_ORDERS_COLLECTION } from "../domain/constants";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { governedCollectionClient } from "../access/governedCollectionClient";
+import {
+  subscribeReorderRequestsChanged,
+  getReorderRequestsVersion,
+} from "../domain/reorderRequestsChanged";
 
 // Sprint 2.1.10 -- Purchase Order Foundation. Realtime, single-document
 // read -- the Reorder Purchase Order's document ID IS the
@@ -23,6 +25,15 @@ import { PURCHASE_ORDERS_COLLECTION } from "../domain/constants";
 // unaffected.
 export function usePurchaseOrderForReorderRequest(reorderRequestId) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
+  // This was a REALTIME doc subscription, and recording a PO is a reorder-lifecycle write made from
+  // a different component than the one displaying it. So it subscribes to the same change signal
+  // the reorder reads use -- the callable cannot stream, and losing the refresh here would be the
+  // same defect in a different card.
+  const changeVersion = useSyncExternalStore(
+    subscribeReorderRequestsChanged,
+    getReorderRequestsVersion,
+    getReorderRequestsVersion,
+  );
 
   useEffect(() => {
     if (!reorderRequestId) {
@@ -31,21 +42,40 @@ export function usePurchaseOrderForReorderRequest(reorderRequestId) {
     }
 
     setState({ data: null, loading: true, error: null });
-    const ref = doc(db, PURCHASE_ORDERS_COLLECTION, reorderRequestId);
-    const unsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setState({ data: null, loading: false, error: "not_found" });
+    // GOVERNED READ. The document id IS the reorder request id, so the keyed-lookup source with a
+    // single value answers exactly what the doc() read did -- same document, same authority
+    // (reorder.purchaseOrder.read), resolved server-side instead of by Rules.
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({
+        sourceId: "purchaseOrdersByIds",
+        filters: { ids: [reorderRequestId] },
+        pageSize: 1,
+      })
+      .then((outcome) => {
+        if (!active) return;
+        if (!outcome.ok) {
+          // "not_found" stays reserved for an empty SUCCESSFUL read: a refused or unreachable read
+          // is a different fact from "no purchase order was ever recorded against this request".
+          setState({
+            data: null,
+            loading: false,
+            error: outcome.result === "DENIED" ? "permission-denied" : "unknown",
+          });
           return;
         }
-        setState({ data: { id: snap.id, ...snap.data() }, loading: false, error: null });
-      },
-      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-    );
+        const data = outcome.items[0] ?? null;
+        setState(
+          data
+            ? { data, loading: false, error: null }
+            : { data: null, loading: false, error: "not_found" },
+        );
+      });
 
-    return unsubscribe;
-  }, [reorderRequestId]);
+    return () => {
+      active = false;
+    };
+  }, [reorderRequestId, changeVersion]);
 
   return state;
 }

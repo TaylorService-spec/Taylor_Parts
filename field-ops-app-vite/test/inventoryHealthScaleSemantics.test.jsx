@@ -105,12 +105,24 @@ test("netting a TRUNCATED ledger produces a number that is wrong, not partial", 
   expectOk(nettedTruncated > nettedFull, "a truncated ledger overstates what is on hand");
 });
 
-test("the shared unbounded fetcher stays unbounded, and says why", () => {
+test("the ledger fetcher still reads a COMPLETE population, and says why", () => {
   const src = read("src/services/operationsQueries.ts");
   // The rule this codebase already wrote down, kept as a test so it survives the next refactor.
   expectMatch(src, /is not "partial" -- it is WRONG, presented as complete/);
-  // fetchInventoryTransactions must NOT quietly acquire a cap.
-  expectMatch(src, /fetchInventoryTransactions = \(\) => listCollection</);
+  // fetchInventoryTransactions must NOT quietly acquire a cap. The read has moved behind the
+  // governed source registry, so what proves it unbounded is no longer the absence of a limit():
+  // it is that it goes through readComplete, which pages to exhaustion and FAILS rather than
+  // returning a short population a caller would happily sum.
+  expectMatch(src, /fetchInventoryTransactions = \(\) =>\s+readComplete</);
+  // And it must not have been quietly pointed at the bounded page reader instead.
+  expectOk(
+    !/fetchInventoryTransactions[\s\S]{0,160}listCollectionPage/.test(src),
+    "the ledger fetcher must not be served by the bounded page reader",
+  );
+  // The ordering is what makes exhaustion SAFE here, and it is the reason this collection could
+  // not be cursor-paged before: no field spans every document (see the sibling test below), but
+  // every document has an id, and the registered source orders by exactly that.
+  expectMatch(read("../functions/src/access/governedReadRegistry.ts"), /inventoryTransactionLedger/);
 });
 
 test("the ledger has NO total-order field spanning every document, so it cannot be cursor-paged", () => {

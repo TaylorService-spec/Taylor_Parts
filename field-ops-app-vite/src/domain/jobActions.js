@@ -1,131 +1,74 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { db, auth } from "../firebase/firebase";
-import { jobsStore, techniciansStore } from "../firebase/collectionStore";
-import { canTransitionJob } from "./jobWorkflow";
-import { JOB_STATUS, TECH_STATUS, JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "./constants";
-import { AssignmentConflictError } from "./errors";
 import { isWriteBlocked } from "../config/env";
+import { notifyTechnicianDirectoryChanged } from "./technicianDirectoryChanged.js";
 
-// The only place allowed to write job/technician data. Components must call
-// these instead of touching jobsStore/techniciansStore or Firestore directly,
-// so every transition goes through canTransitionJob().
+// What is left of the legacy `fieldops_jobs` surface: one function, and it no longer writes
+// Firestore.
 //
-// Jobs never own customer data directly -- they resolve upward via
-// workOrderId: job -> workOrder -> customer. The canonical WO is fieldops_wos (ADR-002).
+// ============================ WHAT WAS DELETED, AND WHY ============================
 //
-// createJob()/createTechnician() write through jobsStore/techniciansStore
-// (firebase/collectionStore.js), which already gate through
-// lib/firebaseSafe.js. assignJob()/updateJobStatus() write via
-// runTransaction()/tx.update() directly (for the atomicity guarantees
-// described below), which firebaseSafe.js's safe*Doc wrappers don't
-// cover -- so each checks isWriteBlocked() itself, before ever opening a
-// transaction, returning the same { blocked: true } sentinel.
+// This module used to export four functions. Three were DEAD CODE, measured 2026-09-07:
+//
+//   createJob()        no importer anywhere in src/ or test/
+//   assignJob()        no importer. Dispatch.jsx's own header records why -- it "IS now the
+//                      canonical Work Order dispatch surface", assigns through the governed
+//                      `transitionWorkOrder` transition against fieldops_wos, and says in as many
+//                      words that "the legacy assignJob() client transaction against fieldops_jobs
+//                      is no longer used here".
+//   updateJobStatus()  no importer. completionFlow.test.mjs already asserts that no legacy job
+//                      write path remains in the completion flow.
+//
+// Those three carried the last two client-direct Firestore `runTransaction` calls in the
+// application. They were DELETED rather than migrated: minting permanent trusted-command authority
+// -- and the capability grants that go with it -- for a surface nothing calls would create
+// authority for dead product.
+//
+// The transitions they encoded are recorded in docs/governance/workflow-action-census.md as
+// measurement, so the later Workflows workstream starts from what this code actually did.
+//
+// ============================ WHAT SURVIVES ============================
+//
+// createTechnician(), now a TRUSTED COMMAND. It was the last direct client governed business write
+// in the application: `techniciansStore.add(...)` against `fieldops_technicians`, reached from the
+// Technicians surface's New Technician modal.
+//
+// THE STATUS IS NO LONGER SENT. The retired rule was
+// `isAdminOrDispatcher() && request.resource.data.status == 'available'`, and that second clause was
+// part of the AUTHORITY rather than a client convention. The server now chooses `available` itself
+// and accepts no status at all, so there is nothing here for a caller to get wrong.
+//
+// The demo/panic write gate still runs BEFORE the round trip, returning the same `{ blocked: true }`
+// sentinel the store did -- Technicians.jsx checks for exactly that and keeps its modal open.
 
-// address: { street, city, state, zip } -- optional, additive field.
-// `geo` (lat/lng) is intentionally not implemented yet; reserved for a
-// future sprint once a geocoding source is chosen. Backward compatible:
-// omitting address entirely (as every call site before this field
-// existed did) still works, jobs simply have no address recorded.
-export function createJob(customer, description, address = null) {
-  return jobsStore.add({
-    customer,
-    description,
-    status: JOB_STATUS.OPEN,
-    technicianId: null,
-    workOrderId: null,
-    address,
-  });
-}
-
-export function createTechnician(name, phone) {
-  return techniciansStore.add({ name, phone, status: TECH_STATUS.AVAILABLE });
-}
-
-export async function updateJobStatus(job, nextStatus) {
-  if (!auth.currentUser) {
-    throw new Error("Unauthenticated write attempt blocked");
-  }
-
+export async function createTechnician(name, phone) {
   if (isWriteBlocked()) {
-    console.warn("WRITE BLOCKED (updateJobStatus)", job.id, nextStatus);
+    console.warn("WRITE BLOCKED (createTechnician)", name);
     return { blocked: true };
   }
 
-  try {
-    return await runTransaction(db, async (tx) => {
-      const jobRef = doc(db, JOBS_COLLECTION, job.id);
-      const jobSnap = await tx.get(jobRef);
-
-      if (!jobSnap.exists()) {
-        throw new Error("Job not found");
-      }
-
-      const currentStatus = jobSnap.data().status;
-
-      if (!canTransitionJob(currentStatus, nextStatus)) {
-        throw new Error(`Invalid transition: ${currentStatus} → ${nextStatus}`);
-      }
-
-      const technicianId = jobSnap.data().technicianId;
-      let techRef = null;
-
-      if (nextStatus === JOB_STATUS.COMPLETE && technicianId) {
-        techRef = doc(db, TECHNICIANS_COLLECTION, technicianId);
-        await tx.get(techRef);
-      }
-
-      tx.update(jobRef, { status: nextStatus });
-
-      if (techRef) {
-        tx.update(techRef, { status: TECH_STATUS.AVAILABLE });
-      }
-    });
-  } catch (e) {
-    console.error("Firestore write failed:", e);
-    throw e;
-  }
-}
-
-export async function assignJob(job, technician) {
-  if (!auth.currentUser) {
-    throw new Error("Unauthenticated write attempt blocked");
-  }
-
-  if (!job || !technician) throw new Error("Missing job or technician");
-
-  if (!canTransitionJob(job.status, JOB_STATUS.ASSIGNED)) {
-    throw new Error(`Invalid transition: ${job.status} → assigned`);
-  }
-
-  if (isWriteBlocked()) {
-    console.warn("WRITE BLOCKED (assignJob)", job.id, technician.id);
-    return { blocked: true };
-  }
+  // Lazy, matching every other trusted-command client here: firebase/firebase.js runs initializeApp
+  // on import, so a static import would give this module an import-time side effect.
+  const [{ httpsCallable }, { functions }] = await Promise.all([
+    import("firebase/functions"),
+    import("../firebase/firebase.js"),
+  ]);
 
   try {
-    return await runTransaction(db, async (tx) => {
-      const techRef = doc(db, TECHNICIANS_COLLECTION, technician.id);
-      const jobRef = doc(db, JOBS_COLLECTION, job.id);
-
-      const techSnap = await tx.get(techRef);
-
-      if (!techSnap.exists() || techSnap.data().status !== TECH_STATUS.AVAILABLE) {
-        throw new AssignmentConflictError("Technician no longer available");
-      }
-
-      tx.update(jobRef, {
-        technicianId: technician.id,
-        status: JOB_STATUS.ASSIGNED,
-      });
-
-      tx.update(techRef, {
-        status: TECH_STATUS.ON_JOB,
-      });
-    });
-  } catch (e) {
-    if (!(e instanceof AssignmentConflictError)) {
-      console.error("Firestore write failed:", e);
-    }
-    throw e;
+    const res = await httpsCallable(functions, "createTechnician")({ name, phone: phone ?? null });
+    // `{ id, name, phone, status }` -- the caller closes its modal, focuses the new row by this id
+    // and announces the name. The id is the one the SERVER minted.
+    //
+    // AFTER SUCCESS ONLY. Announced so the directory beside the modal re-reads immediately instead
+    // of waiting out a poll interval -- a rejected create announces nothing, so a failed mutation
+    // cannot make every listening surface re-read for a change that did not happen.
+    notifyTechnicianDirectoryChanged();
+    return res?.data ?? null;
+  } catch (err) {
+    // THROWS, as the store did. Technicians.jsx relies on that to keep the modal open with safe
+    // copy and nothing persisted; swallowing it here would close the modal on a failed create.
+    const raw = typeof err?.code === "string" ? err.code : "";
+    const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;
+    const normalized = new Error(err?.message ?? "technician could not be created");
+    normalized.code = code === "permission-denied" ? "permission-denied" : "unavailable";
+    throw normalized;
   }
 }

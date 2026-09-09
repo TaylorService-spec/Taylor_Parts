@@ -6,8 +6,7 @@ import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
 import Button from "../../shared/ui/primitives/Button.jsx";
 import { useAuth } from "../../auth/AuthContext";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import { createPermissionPreviewer } from "../../access/navPermissionPreview";
 import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
@@ -46,7 +45,7 @@ export default function Jobs() {
     data: technicians,
     loading: techniciansLoading,
     error: techniciansError,
-  } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  } = useTechnicianDirectory();
   const [announcement, setAnnouncement] = useState("");
   // The new row keeps a stable tabIndex=-1 (focusRowId is not cleared) so focusing
   // it never blurs when a follow-up render runs -- removing tabIndex from the

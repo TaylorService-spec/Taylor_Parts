@@ -203,17 +203,19 @@ test("a governed company-bearing record is a byte-stable no-op, so nothing plans
 
 const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
 
-test("Rules still deny every client write to warehouses -- this amendment granted nothing", () => {
+test("Rules deny every client operation on warehouses -- this amendment granted nothing", () => {
   // The measurement's safety clearance, made permanent. Widening a stored shape cannot hand a
   // client writer anything while this holds, and if it ever stops holding, the clearance that
   // justified the widening has expired.
-  const block = /match \/warehouses\/\{warehouseId\} \{([\s\S]*?)\n    \}/.exec(rules);
-  assert.ok(block, "the warehouses match block must exist");
-  const body = block[1].replace(/\/\/[^\n]*/g, "").split("\n").map((l) => l.trim()).filter(Boolean);
-  assert.deepEqual(body, [
-    "allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);",
-    "allow create, update, delete: if false;",
-  ]);
+  //
+  // The clearance got STRONGER, not weaker. This used to read the warehouses match block and
+  // assert its two lines: an admin/warehouse-scoped read, and a deny-all write. The Rules
+  // contraction removed the block entirely, so warehouses now falls through to the catch-all --
+  // no client read, no client write, nothing to widen. Reads moved to warehouse.record.read on a
+  // governed source.
+  assert.ok(!/match \/warehouses\//.test(rules), "warehouses must have NO match block -- denied by the catch-all");
+  // And the catch-all it falls through to must actually deny.
+  assert.match(rules, /match \/\{document=\*\*\} \{\s*allow read, write: if false;/);
 });
 
 test("no server writer can author or change the company", () => {

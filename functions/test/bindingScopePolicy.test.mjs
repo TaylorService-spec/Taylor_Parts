@@ -185,9 +185,17 @@ test("E: a partsManager@global assignment written BEFORE R-32 cannot confer the 
 // ---------------------------------------------------------------------------
 // F(part) / G. CAPABILITY HOME -- the split brain, closed
 // ---------------------------------------------------------------------------
+// The reorder READ entry is `reorder.request.read.managed`, not `...read.queue`, since 2026-09-08.
+//
+// MEASURED AGAINST THE RETIRED RULE, which is the authority these checks exist to encode: a
+// PARTS_MANAGER saw three queue statuses plus the records they personally reviewed or assigned --
+// never the whole queue, which is what `reorder.request.read.queue` means. Leaving that id on the
+// Role would have WIDENED it while migrating the read off Rules. The narrow population got its own
+// id and the Role holds that one; `...read.queue` remains the global read and is asserted below to
+// be gone from this Role.
 const SIX = [
   CREATE,
-  "reorder.request.read.queue",
+  "reorder.request.read.managed",
   "reorder.request.assign",
   TXN,
   "inventory.action.read",
@@ -206,7 +214,7 @@ test("G: technician carries none of the six, and cannot reach them via any opera
 test("G: each of the six now sits on the governed Role its old condition named, and nowhere new", () => {
   const expected = {
     [CREATE]: ["partsManager", "warehouseManager"],
-    "reorder.request.read.queue": ["partsManager"],
+    "reorder.request.read.managed": ["partsManager"],
     "reorder.request.assign": ["partsManager"],
     [TXN]: ["partsManager", "warehouseManager"],
     "inventory.action.read": ["warehouseManager"],
@@ -219,9 +227,16 @@ test("G: each of the six now sits on the governed Role its old condition named, 
   }
   // inventory.action.read was WAREHOUSE_MANAGER-only and must NOT have leaked to partsManager
   assert.equal(ROLES.partsManager.permissions.includes("inventory.action.read"), false);
-  // reorder read.queue/assign were PARTS_MANAGER-only and must NOT have leaked to warehouseManager
+  // reorder read/assign were PARTS_MANAGER-only and must NOT have leaked to warehouseManager
+  assert.equal(ROLES.warehouseManager.permissions.includes("reorder.request.read.managed"), false);
   assert.equal(ROLES.warehouseManager.permissions.includes("reorder.request.read.queue"), false);
   assert.equal(ROLES.warehouseManager.permissions.includes("reorder.request.assign"), false);
+
+  // AND THE GLOBAL QUEUE IS NOT PARTS MANAGER'S. This is the assertion that keeps the split honest:
+  // `reorder.request.read.queue` is the WHOLE collection, which the retired rule gave to
+  // admin/dispatcher and never to a PARTS_MANAGER. A future edit that "restores" it here would be
+  // re-widening the Role, and fails on this line.
+  assert.equal(ROLES.partsManager.permissions.includes("reorder.request.read.queue"), false);
 });
 
 test("G: a plain technician gains no manager authority even holding the compatibility Role", () => {
@@ -431,9 +446,34 @@ test("DEFECT GUARD: neither reorder callable gates create.manual on a global tar
     "utf8",
   );
   // recordReorderPurchaseOrder legitimately keeps its gate: its capability carries no location
-  // binding, so a global target is the correct question for it. Exactly one gate may remain.
-  const gates = src.match(/await requireCapability\(/g) ?? [];
-  assert.equal(gates.length, 1, "only recordReorderPurchaseOrder may gate on a global capability check");
+  // binding, so a global target is the correct question for it.
+  //
+  // THE COUNT WAS A PROXY, AND IT STOPPED BEING ONE. `exactly one gate may remain` meant
+  // `create.manual is not gated globally` at a time when this file held one other callable. It
+  // now holds three -- cancelReorderRequest and voidPurchaseOrder joined it when those two writes
+  // moved off the client -- and each gates on its OWN capability, neither of which carries a
+  // location binding either. Counting would fail on a legitimate addition and, worse, would pass
+  // if somebody swapped one gate's capability for create.manual.
+  //
+  // So the property is asserted directly: an ALLOWLIST of capabilities that may be gated on a
+  // global target, and a refusal of anything else. Adding a callable here means adding its
+  // capability to this list and saying why it is global -- which is the decision the count was
+  // standing in for.
+  const GLOBAL_GATE_ALLOWED = [
+    "REORDER_RECORD_PO_CAPABILITY",
+    "REORDER_CANCEL_CAPABILITY",
+    "REORDER_VOID_PO_CAPABILITY",
+  ];
+  const gated = [...src.matchAll(/await requireCapability\(request\.auth\.uid, (\w+)\)/g)].map((m) => m[1]);
+  assert.ok(gated.length > 0, "the gates must still be findable -- the pattern has not gone stale");
+  for (const capability of gated) {
+    assert.ok(
+      GLOBAL_GATE_ALLOWED.includes(capability),
+      `"${capability}" is gated on a GLOBAL capability check. If it carries a location binding, ` +
+        "that gate breaks every location-scoped manager -- resolve it through the warehouse " +
+        "authority instead. If it genuinely is global, add it here with the reason.",
+    );
+  }
   assert.equal(
     src.includes("await requireCapability(request.auth.uid, REORDER_CREATE_MANUAL_CAPABILITY)"),
     false,

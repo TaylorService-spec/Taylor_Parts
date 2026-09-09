@@ -23,12 +23,17 @@
 //    break-glass exclusion, missing/non-reciprocal Employee<->Auth linkage,
 //    final-active-recoverable-admin protection, and self-target -- BEFORE any
 //    side effect. The UI is not a security boundary; these live here.
-//  - PERMISSION: authorizes via the single governed admin authority
-//    (server-side `users/{actorUid}.role === "admin"`), encapsulated for the
-//    Issue #226 resolver swap (auth-modernization-architecture.md §6.1). The
-//    catalog id `admin.credentialReset.initiate` is registered INACTIVE
-//    (permissionCatalog.ts, `active:false`) as the declared future contract; it
-//    is not activated or granted here.
+//  - PERMISSION: authorizes on the GOVERNED capability
+//    `admin.credentialReset.initiate`, resolved server-side from the actor's Role
+//    assignments. The legacy `users/{actorUid}.role === "admin"` check it replaced is
+//    GONE rather than kept alongside -- an OR between an old authority and a new one
+//    is the old authority, with extra steps.
+//
+//    The capability is registered `active: false` and is excluded even from
+//    per-environment sandbox activation, so this command currently fails closed in
+//    EVERY environment. That is the intended state: activation is a separate
+//    production/security gate, and no legacy-admin fallback exists to make an
+//    emulator surface authorize in the meantime.
 //
 // PRESERVED FROM AUTH-PR-3:
 //  - actorUid comes from the authenticated callable context only, never client
@@ -150,7 +155,16 @@ export interface TargetFacts {
   employeeLinkReciprocal: boolean; // employees/{employeeId}.userId === uid (exact; no aliases)
   employmentStatus: string | null; // employees/{employeeId}.employmentStatus (from the reciprocal doc)
   isBreakGlass: boolean; // designated break-glass identity
-  isFinalActiveAdmin: boolean; // resetting risks the last recoverable admin
+  /**
+   * Resetting risks the last recoverable administrator.
+   *
+   * Whether the TARGET holds Admin is now decided by the authoritative governed Role
+   * assignments -- an active roleAssignment with roleId "admin" -- never by users/{uid}.role.
+   * The legacy string could disagree with the governed model, and when it did, this protection
+   * would have been evaluated against a person the platform no longer considers an
+   * administrator (or skipped for one it does).
+   */
+  isFinalActiveAdmin: boolean;
 }
 
 export type EligibilityCategory =
@@ -234,7 +248,21 @@ const ACTIVE_EMPLOYMENT_STATUS = "ACTIVE";
 export interface ActorAuthorizationFacts {
   authExists: boolean; // a Firebase Auth user exists for the actor uid
   disabled: boolean; // Auth user is disabled (inactive account)
-  isAdmin: boolean; // governed admin role: users/{actorUid}.role === "admin"
+  /**
+   * Whether the actor holds `admin.credentialReset.initiate`, resolved from the GOVERNED
+   * capability model.
+   *
+   * This used to be `users/{actorUid}.role === "admin"` -- the legacy string, read straight off
+   * a document, deciding who could reset another person's credentials. It was the last
+   * server-side authorization in the system that Firebase data answered rather than EOS.
+   *
+   * The capability is `active: false` and is excluded even from sandbox activation, so this is
+   * currently ALWAYS false and the command fails closed everywhere. That is intentional: the
+   * credential-reset surface is gated behind its own production/security ruling, and restoring
+   * a legacy-admin fallback to make an emulator authorize would put the old authority back
+   * under a new name.
+   */
+  holdsCredentialResetCapability: boolean;
   hasEmployeeLink: boolean; // users/{actorUid}.employeeId present
   employeeLinkReciprocal: boolean; // employees/{employeeId}.userId === actorUid (exact)
   employmentStatus: string | null; // employees/{employeeId}.employmentStatus (from the reciprocal doc)
@@ -244,7 +272,7 @@ export type ActorAuthorizationCategory =
   | "authorized"
   | "no-auth-account"
   | "disabled-actor"
-  | "not-admin"
+  | "missing-capability"
   | "missing-or-nonreciprocal-employee-link"
   | "inactive-employment";
 
@@ -253,14 +281,17 @@ export interface ActorAuthorizationVerdict {
   category: ActorAuthorizationCategory;
 }
 
-// PURE. Fail-closed order: a missing Auth account, a disabled account, a
-// non-admin role, a missing/non-reciprocal Employee<->User link, or a non-ACTIVE
-// employment status each deny. Only a governed admin with an enabled Auth account,
+// PURE. Fail-closed order: a missing Auth account, a disabled account, a principal without the
+// governed credential-reset capability, a missing/non-reciprocal Employee<->User link, or a
+// non-ACTIVE employment status each deny. Only a capability holder with an enabled Auth account,
 // an exact reciprocal Employee link, and employmentStatus === "ACTIVE" is authorized.
+//
+// The capability check REPLACED a legacy-role check and did not join it: there is no remaining
+// branch by which an actor named admin in a Firestore document reaches this surface.
 export function evaluateActorAuthorization(facts: ActorAuthorizationFacts): ActorAuthorizationVerdict {
   if (!facts.authExists) return { authorized: false, category: "no-auth-account" };
   if (facts.disabled) return { authorized: false, category: "disabled-actor" };
-  if (!facts.isAdmin) return { authorized: false, category: "not-admin" };
+  if (!facts.holdsCredentialResetCapability) return { authorized: false, category: "missing-capability" };
   if (!facts.hasEmployeeLink || !facts.employeeLinkReciprocal) {
     return { authorized: false, category: "missing-or-nonreciprocal-employee-link" };
   }
@@ -268,6 +299,42 @@ export function evaluateActorAuthorization(facts: ActorAuthorizationFacts): Acto
     return { authorized: false, category: "inactive-employment" };
   }
   return { authorized: true, category: "authorized" };
+}
+
+/**
+ * PURE. Decide, from the ACTIVE admin Role assignments, whether resetting this target risks the
+ * last recoverable administrator.
+ *
+ * Split out of the Firestore adapter deliberately: this is the judgement, and it is the half
+ * that can be got wrong in a way no emulator round-trip would reveal. The adapter's only job is
+ * to fetch the principals and hand them here.
+ *
+ * @param principals  principalUid of every ACTIVE roleAssignment with roleId "admin", exactly as
+ *                    stored -- including malformed values. They are NOT filtered by the caller,
+ *                    because a value this function cannot read is evidence about the population
+ *                    and dropping it silently would make an untrustworthy set look clean.
+ * @param targetUid   the account being reset.
+ *
+ * FAIL SAFE IN EVERY DIRECTION:
+ *   - `principals === null` (the query could not run): PROTECT. Refusing a legitimate reset is
+ *     recoverable; resetting the last administrator is not.
+ *   - a malformed entry alongside a target who IS an admin: PROTECT. The unreadable entry might
+ *     be the target themselves, so it cannot be counted as somebody else.
+ *   - the target is not among the admins: no protection applies, and none is invented.
+ *
+ * There is deliberately NO fallback to `users/{uid}.role`. A fallback is the old authority
+ * waiting for an error to reinstate it.
+ */
+export function resolveFinalActiveAdmin(
+  principals: readonly unknown[] | null,
+  targetUid: string,
+): { targetIsAdmin: boolean; isFinalActiveAdmin: boolean } {
+  if (principals === null) return { targetIsAdmin: true, isFinalActiveAdmin: true };
+  const targetIsAdmin = principals.includes(targetUid);
+  if (!targetIsAdmin) return { targetIsAdmin: false, isFinalActiveAdmin: false };
+  const malformed = principals.some((uid) => typeof uid !== "string" || uid === "");
+  if (malformed) return { targetIsAdmin: true, isFinalActiveAdmin: true };
+  return { targetIsAdmin: true, isFinalActiveAdmin: principals.every((uid) => uid === targetUid) };
 }
 
 // PURE. Resolve the Employee-link facts from raw document values using the
@@ -695,7 +762,9 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
 export interface ResetEligibleUser {
   uid: string;
   displayName: string | null;
-  role: string | null;
+  // NO `role`. The legacy string was a display column nothing rendered, and a legacy role
+  // travelling to the browser inside an admin list is the shape somebody later gates on. The
+  // session projection is the single place that transports it.
   // GOVERNED reciprocal Employee link: users/{uid}.employeeId present AND
   // employees/{employeeId}.userId === uid (exact; no authUid/uid aliases). A bare
   // users.employeeId with no reciprocal back-link reports false. Authoritative
@@ -779,10 +848,14 @@ export async function listResetEligibleUsers(
         employeeEmploymentStatus: undefined, // not surfaced by the list
         uid: doc.id,
       });
+      // THE LEGACY ROLE IS NOT CARRIED. It was a display column here, rendered by nothing --
+      // buildResetUserRows has no component consumer -- and a legacy role string travelling to
+      // the browser inside an ADMIN surface's list is precisely the shape somebody later gates
+      // on. The session projection is the one place that transports it, deliberately and
+      // singly; a second copy would make that statement false.
       return {
         uid: doc.id,
         displayName: typeof data.displayName === "string" ? data.displayName : null,
-        role: typeof data.role === "string" ? data.role : null,
         hasEmployeeLink: link.employeeLinkReciprocal,
       };
     }),

@@ -220,15 +220,23 @@ async function main() {
   // ================= §5 12-principal matrix =================
   await probePrincipal("P01 signed-out", null, false);
   await probePrincipal("P02 authenticated-no-app-access", tok.noaccess, false);
-  await probePrincipal("P03 admin", tok.admin, true);
-  await probePrincipal("P04 dispatcher", tok.dispatcher, true);
-  await probePrincipal("P05 active PARTS_MANAGER", tok.pm, true);
-  await probePrincipal("P06 active WAREHOUSE_MANAGER", tok.wm, true);
+  // ══════════ EVERY PRINCIPAL NOW EXPECTS DENY, AND THE MATRIX IS WHY IT IS STILL RUN ══════════
+  //
+  // `parts` client reads are retired: the catalogue is read through a governed source on
+  // inventory.catalog.read. Four principals used to be admitted here -- admin, dispatcher, and an
+  // ACTIVE PARTS_MANAGER or WAREHOUSE_MANAGER -- and they are the four most likely to be handed
+  // a direct read back later, because each of them plainly NEEDS the data. That is exactly why
+  // the rows stay: the matrix now proves the collection is closed to all twelve, and a
+  // re-widening for any of them fails here by name.
+  await probePrincipal("P03 admin", tok.admin, false);
+  await probePrincipal("P04 dispatcher", tok.dispatcher, false);
+  await probePrincipal("P05 active PARTS_MANAGER", tok.pm, false);
+  await probePrincipal("P06 active WAREHOUSE_MANAGER", tok.wm, false);
   await probePrincipal("P07 active PARTS_ASSOCIATE only", tok.pa, false);
   await probePrincipal("P08 technician no operational role", tok.tech, false);
   await probePrincipal("P09 suspended employee (was PARTS_MANAGER)", tok.suspended, false);
   await probePrincipal("P10 broken reciprocal linkage", tok.broken, false);
-  await probePrincipal("P11 stale accessVersion + live PARTS_MANAGER", tok.stale, true);
+  await probePrincipal("P11 stale accessVersion + live PARTS_MANAGER", tok.stale, false);
   await probePrincipal("P12 malformed/missing user+employee docs", tok.missing, false);
 
   // ================= Behavioral proofs =================
@@ -245,28 +253,34 @@ async function main() {
   report("PROOF employmentStatus away from ACTIVE -> parts read DENY",
     denied(await rest("GET", "parts/SB-PART-1", tok.pm)));
 
-  // PROOF C: restoring valid reciprocal linkage + approved role + ACTIVE -> ALLOW.
+  // PROOF C: even a fully restored, ACTIVE, correctly linked PARTS_MANAGER is DENIED.
+  //
+  // This is the strongest form of the closure: the principal the retired rule went to the most
+  // trouble to admit -- reciprocal linkage, approved operational role, ACTIVE employment -- gets
+  // nothing from Firestore. The catalogue is read through a governed source on
+  // inventory.catalog.read, and there is no residual back door for the deserving case.
   await db.doc("employees/sb-emp-pm").update({ operationalRoles: ["PARTS_MANAGER"], employmentStatus: "ACTIVE" });
-  report("PROOF restore ACTIVE + PARTS_MANAGER -> parts single read ALLOW",
-    allowed(await rest("GET", "parts/SB-PART-1", tok.pm)));
-  report("PROOF restore ACTIVE + PARTS_MANAGER -> parts list read ALLOW",
-    allowed(await rest("GET", "parts", tok.pm)));
+  report("PROOF a fully restored ACTIVE PARTS_MANAGER still gets NO parts single read -- NOW DENIED (inventory.catalog.read on a governed source)",
+    denied(await rest("GET", "parts/SB-PART-1", tok.pm)));
+  report("PROOF a fully restored ACTIVE PARTS_MANAGER still gets NO parts list read -- NOW DENIED (inventory.catalog.read on a governed source)",
+    denied(await rest("GET", "parts", tok.pm)));
 
   // PROOF D: removing WAREHOUSE_MANAGER from the live record -> DENY.
   await db.doc("employees/sb-emp-wm").update({ operationalRoles: [] });
   report("PROOF removing WAREHOUSE_MANAGER from live record -> parts read DENY",
     denied(await rest("GET", "parts/SB-PART-1", tok.wm)));
 
-  // PROOF E: a stale accessVersion ALONE does not affect this predicate.
-  //          Bump the user's accessVersion mismatch further; the live
-  //          PARTS_MANAGER record still governs -> still ALLOW.
+  // PROOF E: accessVersion is not the reason either way. It was never this predicate's input, and
+  //          it is not the reason for the denial now -- the collection is simply closed.
   await db.doc("users/sb-stale").update({ accessVersion: 0 });
-  report("PROOF stale accessVersion alone does not deny -> parts read ALLOW",
-    allowed(await rest("GET", "parts/SB-PART-1", tok.stale)));
+  report("PROOF the denial does not depend on accessVersion -- NOW DENIED for a stale principal too",
+    denied(await rest("GET", "parts/SB-PART-1", tok.stale)));
 
-  // PROOF F: bare admin / dispatcher compatibility roles RETAIN existing read.
-  report("PROOF bare admin retains parts read ALLOW", allowed(await rest("GET", "parts/SB-PART-1", tok.admin)));
-  report("PROOF bare dispatcher retains parts read ALLOW", allowed(await rest("GET", "parts/SB-PART-1", tok.dispatcher)));
+  // PROOF F: the compatibility roles lose it too. `isAdminOrDispatcher()` was the oldest and
+  //          broadest branch in this file, and it is the one whose removal the platform is most
+  //          likely to be asked to undo.
+  report("PROOF bare admin -- NOW DENIED (inventory.catalog.read on a governed source)", denied(await rest("GET", "parts/SB-PART-1", tok.admin)));
+  report("PROOF bare dispatcher -- NOW DENIED (inventory.catalog.read on a governed source)", denied(await rest("GET", "parts/SB-PART-1", tok.dispatcher)));
 
   // PROOF G: a bare technician security role grants NO canonical parts access.
   report("PROOF bare technician grants no parts read -> DENY", denied(await rest("GET", "parts/SB-PART-1", tok.tech)));

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase/firebase";
 import { useAuth } from "../auth/AuthContext";
-import { USERS_COLLECTION, TECHNICIANS_COLLECTION } from "../domain/constants";
+import { WORK_ORDER_READ_RESULT, readSelfTechnician } from "../access/scopedWorkOrderClient.js";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 const ENTITY = "technician profile";
@@ -56,65 +54,56 @@ export function useCurrentTechnician() {
       return;
     }
 
-    // Obsolete-callback guard: a snapshot or error that arrives after this
-    // effect is torn down (user changed, unmount, or a retry) must not write
-    // state belonging to a subscription that no longer exists.
+    // Obsolete-callback guard: a result or error that arrives after this effect is torn down
+    // (user changed, unmount, or a retry) must not write state belonging to a read that no longer
+    // matters.
     let active = true;
     setLoading(true);
     setError(null);
-    const unsub = onSnapshot(
-      doc(db, USERS_COLLECTION, user.uid),
-      (snap) => {
-        if (!active) return;
-        const id = snap.exists() ? (snap.data().technicianId ?? null) : null;
-        setTechnicianId(id);
-        if (!id) {
-          setTechnician(null);
-          setLoading(false);
-        }
-      },
-      (err) => {
-        if (!active) return;
-        // Fail closed: clear any stale mapping/technician rather than leave
-        // a previous user's data on screen looking current.
+
+    // ONE CALL, WHERE THERE WERE TWO SUBSCRIPTIONS. The seam resolves uid -> technician AND reads
+    // the profile, both server-side, so this hook no longer knows that `users/{uid}.technicianId`
+    // is where the mapping lives -- and no client does.
+    //
+    // ONE-SHOT, AND THAT WAS MEASURED RATHER THAN ASSUMED. The writer census for
+    // fieldops_technicians on this branch found exactly one live mutation path for an EXISTING
+    // technician's status: the trusted `completeAssignedJob` callable, which a technician invokes
+    // from this very session. The cross-session writer that used to exist -- a dispatcher's
+    // `assignJob` flipping a technician to ON_JOB -- was deleted as dead code. So a successful
+    // mutation followed by `retry()` is exact parity here, which is what the ruling allows.
+    //
+    // The uid -> technician MAPPING is changed only by an out-of-band Admin-SDK operator script
+    // (functions/scripts/assignTechnicianToUser.js); there is no in-product administrative
+    // operation for it. `retry()` remains the refresh affordance for that case.
+    (async () => {
+      const res = await readSelfTechnician();
+      if (!active) return;
+      if (!res.ok) {
+        // Fail closed: clear any stale mapping/technician rather than leave a previous user's data
+        // on screen looking current.
         setTechnicianId(null);
         setTechnician(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(
+          loadErrorMessage(
+            { code: res.result === WORK_ORDER_READ_RESULT.DENIED ? "permission-denied" : "unavailable" },
+            { entity: ENTITY },
+          ),
+        );
         setLoading(false);
+        return;
       }
-    );
+      // An UNMAPPED principal is a real, benign state, not an error: the mapping is an out-of-band
+      // operator action, and the consuming surfaces already render "no operational identity".
+      setTechnicianId(res.technicianId);
+      setTechnician(res.technician);
+      setError(null);
+      setLoading(false);
+    })();
 
     return () => {
       active = false;
-      unsub();
     };
   }, [user, attempt]);
-
-  useEffect(() => {
-    if (!technicianId) return undefined;
-
-    let active = true;
-    const unsub = onSnapshot(
-      doc(db, TECHNICIANS_COLLECTION, technicianId),
-      (snap) => {
-        if (!active) return;
-        setTechnician(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        if (!active) return;
-        setTechnician(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
-        setLoading(false);
-      }
-    );
-
-    return () => {
-      active = false;
-      unsub();
-    };
-  }, [technicianId, attempt]);
 
   return { technicianId, technician, loading, error, retry };
 }

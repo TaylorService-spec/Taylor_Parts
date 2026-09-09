@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query, limit } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { ACCOUNTS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { interpretPickerRead, PICKER_READ_CAP } from "../domain/pickerSource.js";
 
 // BOUNDED account read for pickers.
@@ -32,27 +30,25 @@ export function useAccountPicker({ cap = PICKER_READ_CAP } = {}) {
     let cancelled = false;
     setRaw({ docs: null, loading: true, error: null });
 
-    // cap + 1: the extra row is the truncation probe, mirroring the convention the
-    // trusted read callables already use so client and server disclose "there is more"
-    // the same way.
-    const q = query(collection(db, ACCOUNTS_COLLECTION), orderBy("name"), limit(cap + 1));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    // cap + 1 STILL, and still the truncation probe -- the convention is unchanged, only the
+    // reader is. The governed source is ordered by name server-side (the registry owns ordering),
+    // so this asks for one row past the cap exactly as the Firestore query did and hands the raw
+    // rows to the same pure interpreter. Behaviour preserved: same cap, same probe, same truncated
+    // flag.
+    governedCollectionClient
+      .readGovernedList({ sourceId: "accountDirectory", pageSize: cap + 1 })
+      .then((outcome) => {
         if (cancelled) return;
-        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
-      },
-      (error) => {
-        if (cancelled) return;
-        // docs stays null rather than becoming [], so a failed read cannot be mistaken
-        // downstream for an empty collection.
-        setRaw({ docs: null, loading: false, error });
-      }
-    );
+        // docs stays NULL on failure rather than becoming [], so a refused or unreachable read
+        // cannot be mistaken downstream for an empty collection.
+        setRaw(
+          outcome.ok
+            ? { docs: outcome.items, loading: false, error: null }
+            : { docs: null, loading: false, error: new Error(outcome.result) },
+        );
+      });
     return () => {
       cancelled = true;
-      unsub();
     };
   }, [cap]);
 

@@ -1,23 +1,35 @@
-// EI-P1d-2-2b -- client-direct, one-shot reads (getDocs, not onSnapshot) for the Truck
-// Registry: the `trucks` and `mobile_locations` collections. Same precedent as
-// services/operationsQueries.js and hooks/useInstalledEquipmentPage.js's bounded name reads.
+// EI-P1d-2-2b -- one-shot reads for the Truck Registry: the `trucks` and `mobile_locations`
+// collections, plus the bounded driver-name resolution they need.
 //
-// These are governed backend collections: firestore.rules grants admin/dispatcher READ and
-// denies ALL client create/update/delete (writes are a separately-gated trusted-Function
-// concern). This file never writes; it only reads what an admin/dispatcher is allowed to see,
-// and returns { docId, data } pairs so the authoritative Firestore id stays SEPARATE from the
-// stored data (the registry contract fails closed on a stored-id conflict) -- exactly the
-// shape services/operationsQueries.js's fetchTransferOrderDocs uses.
-import { collection, getDocs, query, where, documentId } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { EMPLOYEES_COLLECTION } from "../domain/constants";
+// GOVERNED, NOT CLIENT-DIRECT. These were `getDocs` calls authorized by firestore.rules'
+// admin/dispatcher grant. Firebase authenticates; EOS authorizes -- so they now read governed
+// sources that resolve `inventory.truckRegistry.read` server-side, and the client-direct reads are
+// denied in Rules. The population is unchanged: that capability is granted to the same shared
+// admin+dispatcher base the Rule admitted.
+//
+// This file never writes. Truck mutations go through their own trusted callables
+// (services/truckRegistryCommandClient.js) and are untouched.
+//
+// THE { docId, data } SHAPE IS DELIBERATE AND PRESERVED. The authoritative Firestore document id
+// stays SEPARATE from the stored data so nothing can trust a stored id over the document id -- the
+// registry contract fails closed on a stored-id conflict. The governed read returns a flat row with
+// `id` authoritative (the projection puts the document id last precisely so a stored `id` cannot
+// overwrite it), and this file splits it back apart rather than letting the two merge here.
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { collectDriverEmployeeIds } from "../domain/truckRegistryDrivers.js";
 
 export const TRUCKS_COLLECTION = "trucks";
 export const MOBILE_LOCATIONS_COLLECTION = "mobile_locations";
 
-// Firestore `in` supports at most 10 values -> resolve driver names in bounded batches.
-const NAME_BATCH = 10;
+// The governed source's declared ceiling for an "in" filter, and Firestore's own limit for the
+// query behind it. Was 10; the batching itself is unchanged -- a larger id set is still several
+// reads, never one unbounded one.
+const NAME_BATCH = 30;
+
+// A registry read is a whole small collection, so it pages to exhaustion rather than taking the
+// first page. A truncated registry is not a smaller registry: it is a truck that has silently
+// stopped existing, and the caller has no way to tell.
+const REGISTRY_PAGE = 200;
 
 // --- Read shapes (documented; validated downstream by domain/truckRegistry.js) ---
 //
@@ -30,35 +42,77 @@ const NAME_BATCH = 10;
 // Both are returned as { docId, data } so nothing trusts a stored id over the document id.
 /** @typedef {{ docId: string, data: Record<string, unknown> }} RegistryDoc */
 
-/** @returns {Promise<RegistryDoc[]>} one-shot read of every mobile_locations doc. */
+/**
+ * Read one governed source to exhaustion, as { docId, data } pairs.
+ *
+ * THROWS on a refused or unreachable read, deliberately. Both callers previously propagated a
+ * Firestore rejection, and their consumers distinguish a failed registry load from an empty one --
+ * returning [] here would report "there are no trucks", which is a statement about the business
+ * rather than about the read.
+ */
+async function readRegistrySource(sourceId) {
+  const out = [];
+  let cursor = null;
+  do {
+    const outcome = await governedCollectionClient.readGovernedList({
+      sourceId,
+      pageSize: REGISTRY_PAGE,
+      cursor,
+    });
+    if (!outcome.ok) {
+      const err = new Error(`truck registry read failed (${sourceId})`);
+      // The same code shape a Firestore rejection carried, so downstream error handling that
+      // switches on `code` keeps working unchanged.
+      err.code = outcome.result === "DENIED" ? "permission-denied" : "unavailable";
+      throw err;
+    }
+    for (const row of outcome.items) {
+      const { id, ...data } = row;
+      out.push({ docId: id, data });
+    }
+    cursor = outcome.nextCursor;
+  } while (cursor);
+  return out;
+}
+
+/** @returns {Promise<RegistryDoc[]>} every mobile_locations doc. */
 export async function fetchMobileLocationDocs() {
-  const snap = await getDocs(collection(db, MOBILE_LOCATIONS_COLLECTION));
-  return snap.docs.map((d) => ({ docId: d.id, data: d.data() }));
+  return readRegistrySource("mobileLocations");
 }
 
-/** @returns {Promise<RegistryDoc[]>} one-shot read of every trucks doc. */
+/** @returns {Promise<RegistryDoc[]>} every trucks doc. */
 export async function fetchTruckDocs() {
-  const snap = await getDocs(collection(db, TRUCKS_COLLECTION));
-  return snap.docs.map((d) => ({ docId: d.id, data: d.data() }));
+  return readRegistrySource("truckRegistry");
 }
 
-// Resolve Employee display names for ONLY the driver ids the given trucks reference, in
-// bounded batches -> NO N+1 (one batched pass over a de-duplicated id set, never one read per
-// truck). Reads employees/{employeeId} by documentId -- the same unfiltered admin/dispatcher
-// directory read hooks/useEmployeeDirectory already relies on (no new permission, no index).
-// Returns a Map<employeeId, displayName>; an id with no readable/named Employee simply has no
-// entry, and the registry-source resolver maps that to a null driver (never a raw id).
+/**
+ * Resolve Employee display names for ONLY the driver ids the given trucks reference, in bounded
+ * batches -- NO N+1 (one batched pass over a de-duplicated id set, never one read per truck).
+ *
+ * Reads the same governed workforce directory `useEmployeeDirectory` uses (no new permission).
+ * Returns a Map<employeeId, displayName>; an id with no readable or named Employee simply has no
+ * entry, and the registry-source resolver maps that to a null driver, never a raw id.
+ */
 export async function fetchDriverNames(truckDocs) {
   const ids = collectDriverEmployeeIds(truckDocs);
   const map = new Map();
   for (let i = 0; i < ids.length; i += NAME_BATCH) {
     const batch = ids.slice(i, i + NAME_BATCH);
     if (batch.length === 0) continue;
-    const snap = await getDocs(query(collection(db, EMPLOYEES_COLLECTION), where(documentId(), "in", batch)));
-    snap.docs.forEach((d) => {
-      const name = d.data()?.displayName;
-      if (typeof name === "string" && name.trim() !== "") map.set(d.id, name);
+    const outcome = await governedCollectionClient.readGovernedList({
+      sourceId: "employeesByIds",
+      filters: { ids: batch },
+      pageSize: batch.length,
     });
+    if (!outcome.ok) {
+      const err = new Error("driver name resolution failed");
+      err.code = outcome.result === "DENIED" ? "permission-denied" : "unavailable";
+      throw err;
+    }
+    for (const row of outcome.items) {
+      const name = row?.displayName;
+      if (typeof name === "string" && name.trim() !== "") map.set(row.id, name);
+    }
   }
   return map;
 }

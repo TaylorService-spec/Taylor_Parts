@@ -41,12 +41,17 @@ test("traversing to opportunities carries the TARGET's authority, not the Accoun
   assert.equal(rel.traversalCapability, "opportunity.read");
 });
 
-test("traversing to contacts declares NO authority, because nothing enforces one", () => {
-  // Rules admit admin and dispatcher by ROLE; there is no contact.read in the catalog.
-  // Declaring one would be a false statement about the system, not a stricter one.
+test("traversing to contacts carries the TARGET's authority -- the null was a finding, now resolved", () => {
+  // This asserted null, and the null was a true report: Rules admitted admin and dispatcher by
+  // ROLE and no contact capability existed, so declaring one would have been a false statement
+  // about the system rather than a stricter one. `crm.contact.read` exists now and the governed
+  // source resolves it before a row is returned, so the declaration is true.
+  //
+  // Reading an Account still does not entitle a viewer to its contacts, which is what the edge
+  // was always about.
   const rel = accountRelationships.find((r) => r.id === "account.contacts");
-  assert.equal(rel.traversalCapability, null);
-  assert.equal(contactEntity.readCapability, null);
+  assert.equal(rel.traversalCapability, "crm.contact.read");
+  assert.equal(contactEntity.readCapability, "crm.contact.read");
 });
 
 test("Contact claims no reference number and no provenance it does not have", () => {

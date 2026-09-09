@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, documentId } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { PURCHASE_ORDERS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 
 // Purchasing > Purchase Orders (item C). Resolves a SET of reorder-request ids ->
 // { purchaseOrderId(==id): reorder_purchase_orders doc } for the cross-request PO
@@ -44,20 +42,31 @@ export function usePurchaseOrdersByIds(reorderRequestIds) {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     (async () => {
       const map = {};
-      try {
-        for (const idChunk of chunk(ids, 10)) {
-          const snap = await getDocs(
-            query(collection(db, PURCHASE_ORDERS_COLLECTION), where(documentId(), "in", idChunk))
-          );
-          snap.forEach((d) => {
-            map[d.id] = { id: d.id, ...d.data() };
-          });
+      // CHUNKED STILL -- 30 now rather than 10, the source's declared ceiling for an "in" filter
+      // and Firestore's own limit for the query behind it. Resolving a set of ids larger than one
+      // page is still several reads; that has not changed by moving the read server-side.
+      for (const idChunk of chunk(ids, 30)) {
+        const outcome = await governedCollectionClient.readGovernedList({
+          sourceId: "purchaseOrdersByIds",
+          filters: { ids: idChunk },
+          pageSize: idChunk.length,
+        });
+        if (!outcome.ok) {
+          // Preserve the failure -> the view-model fails the surface closed, instead of rendering a
+          // permission/connection failure as spurious ORPHAN rows. A partial map is discarded for
+          // the same reason: the ids that happened not to arrive would read as orphans.
+          if (!cancelled) {
+            setState({
+              purchaseOrdersById: {},
+              loading: false,
+              error: outcome.result === "DENIED" ? "permission-denied" : "unknown",
+            });
+          }
+          return;
         }
-      } catch (err) {
-        // Preserve the failure -> the view-model fails the surface closed, instead
-        // of rendering a permission/connection failure as spurious ORPHAN rows.
-        if (!cancelled) setState({ purchaseOrdersById: {}, loading: false, error: err?.code ?? "unknown" });
-        return;
+        for (const row of outcome.items) {
+          map[row.id] = row;
+        }
       }
       if (!cancelled) setState({ purchaseOrdersById: map, loading: false, error: null });
     })();

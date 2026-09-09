@@ -208,11 +208,11 @@ async function main() {
   // -- COMPAT (must hold now) --
   record("unauthenticated cannot read a job", "COMPAT", "DENY", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", null));
   record("unauthenticated cannot create a job", "COMPAT", "DENY", await createDoc("fieldops_jobs", "job-unauth-fr1", null, validJobCreateFields()));
-  record("admin can read a job", "COMPAT", "ALLOW", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", adminTok));
-  record("dispatcher can read a job", "COMPAT", "ALLOW", await readDoc("fieldops_jobs", "job-open-fr1", dispTok));
-  record("admin can create a valid (open, unassigned) job", "COMPAT", "ALLOW", await createDoc("fieldops_jobs", "job-admin-new-fr1", adminTok, validJobCreateFields()));
-  record("dispatcher can assign a job (technicianId + status)", "COMPAT", "ALLOW", await updateDoc("fieldops_jobs", "job-open-fr1", dispTok, { technicianId: str("T1-fr1"), status: str("assigned") }));
-  record("assigned technician can start own job (assigned->in_progress, status only)", "COMPAT", "ALLOW", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress") }));
+  record("admin can read a job -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", adminTok));
+  record("dispatcher can read a job -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await readDoc("fieldops_jobs", "job-open-fr1", dispTok));
+  record("admin can create a valid (open, unassigned) job -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await createDoc("fieldops_jobs", "job-admin-new-fr1", adminTok, validJobCreateFields()));
+  record("dispatcher can assign a job (technicianId + status) -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await updateDoc("fieldops_jobs", "job-open-fr1", dispTok, { technicianId: str("T1-fr1"), status: str("assigned") }));
+  record("assigned technician can start own job (assigned->in_progress, status only) -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress") }));
   // PR-C (Decision #39 / O-3): direct client completion is DENIED -- the
   // technician capability "complete my job" is preserved exclusively through
   // the trusted completeAssignedJob callable (covered by functions/test/
@@ -225,7 +225,7 @@ async function main() {
   record("technician cannot add completedBy during a transition", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { completedBy: str("T1-fr1") }));
   record("technician cannot set an arbitrary status (assigned->cancelled)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("cancelled") }));
   record("technician cannot overwrite own job as complete (multi-field replace)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { status: str("complete"), description: str("done"), customer: mapv({ name: str("X") }) }));
-  record("assigned technician can read own job", "COMPAT", "ALLOW", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok));
+  record("assigned technician can read own job -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok));
 
   // -- ENFORCED (read scoping: technician reads only jobs assigned to them) --
   record("technician cannot read another technician's job", "ENFORCED", "DENY", await readDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok));
@@ -243,9 +243,9 @@ async function main() {
   // ================= fieldops_technicians =================
   // -- COMPAT --
   record("unauthenticated cannot read a technician record", "COMPAT", "DENY", await readDoc("fieldops_technicians", "T1-fr1", null));
-  record("admin can read a technician record", "COMPAT", "ALLOW", await readDoc("fieldops_technicians", "T1-fr1", adminTok));
-  record("admin can create a technician record", "COMPAT", "ALLOW", await createDoc("fieldops_technicians", "T-new-fr1", adminTok, { name: str("New"), phone: str("555"), status: str("available"), createdAt: int(Date.now()) }));
-  record("technician can read own technician record", "COMPAT", "ALLOW", await readDoc("fieldops_technicians", "T1-fr1", t1Tok));
+  record("admin can read a technician record -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await readDoc("fieldops_technicians", "T1-fr1", adminTok));
+  record("admin can create a technician record -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await createDoc("fieldops_technicians", "T-new-fr1", adminTok, { name: str("New"), phone: str("555"), status: str("available"), createdAt: int(Date.now()) }));
+  record("technician can read own technician record -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await readDoc("fieldops_technicians", "T1-fr1", t1Tok));
 
   // -- ENFORCED (read scoping: technician reads only their own record) --
   record("technician cannot read another technician's record", "ENFORCED", "DENY", await readDoc("fieldops_technicians", "T2-fr1", t1Tok));
@@ -253,7 +253,7 @@ async function main() {
   //    the trusted callable is now the only completion-cascade writer) --
   record("technician cannot update own technician record (no self-write)", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("off_shift") }));
   record("technician cannot set own availability to available (imitate completion)", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("available") }));
-  record("dispatcher can correct a technician's status (previously-approved authority)", "COMPAT", "ALLOW", await updateDoc("fieldops_technicians", "T3-fr1", dispTok, { status: str("off_shift") }));
+  record("dispatcher can correct a technician's status (previously-approved authority) -- NOW DENIED (the legacy jobs/technicians client product is DELETED; fieldops_technicians reads moved to service.technician.read/.self.read)", "COMPAT", "DENY", await updateDoc("fieldops_technicians", "T3-fr1", dispTok, { status: str("off_shift") }));
   record("technician cannot update another technician's record", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T2-fr1", t1Tok, { status: str("off_shift") }));
   record("technician cannot create a technician record", "ENFORCED", "DENY", await createDoc("fieldops_technicians", "T-tech-forge-fr1", t1Tok, { name: str("Forge"), phone: str("5"), status: str("available"), createdAt: int(Date.now()) }));
   record("no client can delete a technician record", "ENFORCED", "DENY", await deleteDoc("fieldops_technicians", "T2-fr1", adminTok));

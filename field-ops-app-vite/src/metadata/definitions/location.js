@@ -90,10 +90,14 @@ export const locationEntity = makeEntityDefinition({
   label: "Location",
   labelPlural: "Locations",
   collection: LOCATIONS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null
-  // rather than invented — see the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataLocations",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "crm.location.read",
   identity: makeIdentity({ nameField: "name" }),
   description: "A physical site belonging to one Account — a customer's office, plant, or delivery address. Reached only through the Account record today; no standalone route exists.",
   fields: [

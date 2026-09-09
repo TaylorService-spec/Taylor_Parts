@@ -148,9 +148,9 @@ async function main() {
   // ============ CREATE ============
 
   report(
-    "admin CREATE with valid governed values (paymentTerms NET_30, taxStatus EXEMPT) accepted",
+    "admin CREATE with valid governed values (paymentTerms NET_30, taxStatus EXEMPT) accepted -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
     (await createAccount("acct-create-admin-valid", adminToken,
-      accountFields({ paymentTerms: str("NET_30"), taxStatus: str("EXEMPT") }))) === 200
+      accountFields({ paymentTerms: str("NET_30"), taxStatus: str("EXEMPT") }))) === 403
   );
   report(
     "admin CREATE with an INVALID paymentTerms enum denied (validity enforced even for admin)",
@@ -163,13 +163,13 @@ async function main() {
       accountFields({ taxStatus: str("NONE") }))) === 403
   );
   report(
-    "dispatcher CREATE at the governed baseline (no paymentTerms, no taxStatus) accepted",
-    (await createAccount("acct-create-disp-baseline", dispatcherToken, accountFields())) === 200
+    "dispatcher CREATE at the governed baseline (no paymentTerms, no taxStatus) accepted -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
+    (await createAccount("acct-create-disp-baseline", dispatcherToken, accountFields())) === 403
   );
   report(
-    "dispatcher CREATE with taxStatus explicitly UNKNOWN (the safe default) accepted -- baseline allows it",
+    "dispatcher CREATE with taxStatus explicitly UNKNOWN (the safe default) accepted -- baseline allows it -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
     (await createAccount("acct-create-disp-unknown", dispatcherToken,
-      accountFields({ taxStatus: str("UNKNOWN") }))) === 200
+      accountFields({ taxStatus: str("UNKNOWN") }))) === 403
   );
   report(
     "dispatcher CREATE that SETS paymentTerms denied (governed field is admin-only)",
@@ -192,14 +192,14 @@ async function main() {
 
   await seedAccount("acct-update-admin-terms", { paymentTerms: "NET_30", taxStatus: "TAXABLE" });
   report(
-    "admin UPDATE changing paymentTerms (NET_30 -> NET_60, valid) accepted",
-    (await updateAccount("acct-update-admin-terms", adminToken, { paymentTerms: str("NET_60") })) === 200
+    "admin UPDATE changing paymentTerms (NET_30 -> NET_60, valid) accepted -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
+    (await updateAccount("acct-update-admin-terms", adminToken, { paymentTerms: str("NET_60") })) === 403
   );
 
   await seedAccount("acct-update-admin-tax", { paymentTerms: "NET_30", taxStatus: "TAXABLE" });
   report(
-    "admin UPDATE changing taxStatus (TAXABLE -> RESELLER, valid) accepted",
-    (await updateAccount("acct-update-admin-tax", adminToken, { taxStatus: str("RESELLER") })) === 200
+    "admin UPDATE changing taxStatus (TAXABLE -> RESELLER, valid) accepted -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
+    (await updateAccount("acct-update-admin-tax", adminToken, { taxStatus: str("RESELLER") })) === 403
   );
 
   await seedAccount("acct-update-admin-bad", { paymentTerms: "NET_30", taxStatus: "TAXABLE" });
@@ -228,23 +228,23 @@ async function main() {
   // document as long as the two governed fields are unchanged.
   await seedAccount("acct-update-disp-other", { paymentTerms: "NET_30", taxStatus: "TAXABLE" });
   report(
-    "dispatcher UPDATE of a NON-governed field (name), governed fields unchanged, accepted -- existing permission not narrowed",
-    (await updateAccount("acct-update-disp-other", dispatcherToken, { name: str("Renamed By Dispatcher") })) === 200
+    "dispatcher UPDATE of a NON-governed field (name), governed fields unchanged, accepted -- existing permission not narrowed -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
+    (await updateAccount("acct-update-disp-other", dispatcherToken, { name: str("Renamed By Dispatcher") })) === 403
   );
 
   // A legacy account with NO governed fields set: a dispatcher renaming it
   // must still succeed (both governed fields absent == unchanged).
   await seedAccount("acct-update-legacy", {});
   report(
-    "dispatcher UPDATE of a legacy account with no governed fields (rename) accepted",
-    (await updateAccount("acct-update-legacy", dispatcherToken, { name: str("Renamed Legacy") })) === 200
+    "dispatcher UPDATE of a legacy account with no governed fields (rename) accepted -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
+    (await updateAccount("acct-update-legacy", dispatcherToken, { name: str("Renamed Legacy") })) === 403
   );
 
   // Admin may set a governed field on a legacy account that never had one.
   await seedAccount("acct-update-legacy-admin", {});
   report(
-    "admin UPDATE adding a valid paymentTerms to a legacy account accepted",
-    (await updateAccount("acct-update-legacy-admin", adminToken, { paymentTerms: str("COD") })) === 200
+    "admin UPDATE adding a valid paymentTerms to a legacy account accepted -- NOW DENIED (accounts moved to the CRM trusted commands; the baseline/unchanged/VALUE-SET contracts are proven in crmWriteCommands)",
+    (await updateAccount("acct-update-legacy-admin", adminToken, { paymentTerms: str("COD") })) === 403
   );
   await seedAccount("acct-update-legacy-disp", {});
   report(

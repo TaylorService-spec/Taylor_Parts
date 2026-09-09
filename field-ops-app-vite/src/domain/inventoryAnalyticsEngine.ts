@@ -12,6 +12,7 @@
 // this dashboard doesn't need (it already has all StockSnapshots in
 // hand from one batch Firestore read).
 
+import { toMillis } from "./timestampMillis.js";
 import { getCatalogItem } from "../data/partsCatalog";
 
 export type LedgerTransaction = {
@@ -209,10 +210,19 @@ export function normalizeLedgerTransaction(doc: {
   partId: string;
   type: LedgerTransaction["type"];
   quantity: number;
-  timestamp: { toMillis?: () => number } | number;
+  timestamp: unknown;
 }): LedgerTransaction {
-  const timestamp =
-    typeof doc.timestamp === "number" ? doc.timestamp : (doc.timestamp?.toMillis?.() ?? 0);
+  // toMillis() reads EVERY shape this field arrives in, and that stopped mattering theoretically
+  // the moment the ledger moved behind a governed callable: a Firestore Timestamp serialized over
+  // a callable is plain JSON with no methods, so the old `doc.timestamp?.toMillis?.()` would have
+  // fallen through to 0 for every transaction -- the epoch -- and the age-windowed metrics above
+  // would have quietly stopped counting anything. Same class of failure as the F0 regression that
+  // reported a 54-year-old work order.
+  //
+  // The `?? 0` fallback for a genuinely unusable value is PRESERVED rather than tightened: this
+  // pass moves the transport, and changing what an unreadable timestamp means to these metrics is
+  // a separate decision with a visible number attached.
+  const timestamp = toMillis(doc.timestamp) ?? 0;
   return {
     id: doc.id,
     workOrderId: doc.workOrderId,

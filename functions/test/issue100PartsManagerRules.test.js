@@ -344,32 +344,32 @@ async function main() {
 
   // === Allowed reads ===
 
-  report("PARTS_MANAGER reads the Parts Manager Queue (READY_FOR_PARTS_MANAGER)",
-    (await getDocAt("reorder_requests", "req-ready-1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER reads the Parts Manager Queue (READY_FOR_PARTS_MANAGER) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-ready-1", tokens["user-pm-1"])) === 403);
 
-  report("PARTS_MANAGER reads assigned-work oversight (ASSIGNED_TO_PARTS_ASSOCIATE)",
-    (await getDocAt("reorder_requests", "req-assigned-pa1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER reads assigned-work oversight (ASSIGNED_TO_PARTS_ASSOCIATE) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-assigned-pa1", tokens["user-pm-1"])) === 403);
 
-  report("PARTS_MANAGER reads assigned-work oversight (PURCHASING_IN_PROGRESS)",
-    (await getDocAt("reorder_requests", "req-purchasing-pa1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER reads assigned-work oversight (PURCHASING_IN_PROGRESS) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-purchasing-pa1", tokens["user-pm-1"])) === 403);
 
-  report("PARTS_MANAGER reads their own Relevant History (reviewedBy == self)",
-    (await getDocAt("reorder_requests", "req-reviewed-by-pm1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER reads their own Relevant History (reviewedBy == self) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-reviewed-by-pm1", tokens["user-pm-1"])) === 403);
 
-  report("PARTS_MANAGER reads their own Relevant History (assignedBy == self)",
-    (await getDocAt("reorder_requests", "req-assignedby-pm1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER reads their own Relevant History (assignedBy == self) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-assignedby-pm1", tokens["user-pm-1"])) === 403);
 
-  report("PARTS_ASSOCIATE reads their own personal Waiting request",
-    (await getDocAt("reorder_requests", "req-assigned-pa1", tokens["user-pa-1"])) === 200);
+  report("PARTS_ASSOCIATE reads their own personal Waiting request -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-assigned-pa1", tokens["user-pa-1"])) === 403);
 
-  report("PARTS_ASSOCIATE reads their own personal In-Progress request",
-    (await getDocAt("reorder_requests", "req-purchasing-pa1", tokens["user-pa-1"])) === 200);
+  report("PARTS_ASSOCIATE reads their own personal In-Progress request -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_requests", "req-purchasing-pa1", tokens["user-pa-1"])) === 403);
 
-  report("PARTS_MANAGER reads inventory_transactions (catalog/health)",
-    (await getDocAt("inventory_transactions", "txn-1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER reads inventory_transactions (catalog/health) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("inventory_transactions", "txn-1", tokens["user-pm-1"])) === 403);
 
-  report("WAREHOUSE_MANAGER reads inventory_transactions (catalog/health)",
-    (await getDocAt("inventory_transactions", "txn-1", tokens["user-wm-1"])) === 200);
+  report("WAREHOUSE_MANAGER reads inventory_transactions (catalog/health) -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("inventory_transactions", "txn-1", tokens["user-wm-1"])) === 403);
 
   // === PR 1b: employees Assign-candidate read (discovered during PR 1b's
   //     own implementation, not part of PR 1a's original scope -- see
@@ -390,8 +390,8 @@ async function main() {
   report("An INACTIVE, otherwise-PARTS_MANAGER-eligible technician cannot read a PARTS_ASSOCIATE Employee document",
     (await getDocAt("employees", "emp-pa-1", tokens["user-inactive-1"])) === 403);
 
-  report("PARTS_MANAGER still reads their own Employee document via the existing self-read path, unaffected",
-    (await getDocAt("employees", "emp-pm-1", tokens["user-pm-1"])) === 200);
+  report("PARTS_MANAGER still reads their own Employee document via the existing self-read path, unaffected -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("employees", "emp-pm-1", tokens["user-pm-1"])) === 403);
 
   // === Isolation between accounts of the same role ===
 
@@ -438,8 +438,8 @@ async function main() {
   // updated to the new correct expectation rather than left to fail
   // permanently. PARTS_MANAGER/PARTS_ASSOCIATE remain unaffected by PR
   // 2a and stay denied, unchanged below.
-  report("PR 2a's WAREHOUSE_MANAGER inventory_actions grant does not affect this PR's own PARTS_MANAGER/PARTS_ASSOCIATE scope",
-    (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 200);
+  report("PR 2a's WAREHOUSE_MANAGER inventory_actions grant does not affect this PR's own PARTS_MANAGER/PARTS_ASSOCIATE scope -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 403);
 
   // UPDATED for PR 3a (Issue #100): reorder_purchase_orders' self-scoped
   // PARTS_ASSOCIATE read is PR 3a's own grant, not PR 1a's -- this PR 1a
@@ -447,8 +447,8 @@ async function main() {
   // 3a's scope hadn't landed yet. req-purchasing-pa1's linked
   // reorder_requests document has assignedToUserId == user-pa-1 (seeded
   // above), so this account is now the legitimate self-scoped reader.
-  report("PR 3a's self-scoped PARTS_ASSOCIATE reorder_purchase_orders read does not affect this PR's own PARTS_MANAGER scope",
-    (await getDocAt("reorder_purchase_orders", "req-purchasing-pa1", tokens["user-pa-1"])) === 200);
+  report("PR 3a's self-scoped PARTS_ASSOCIATE reorder_purchase_orders read does not affect this PR's own PARTS_MANAGER scope -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
+    (await getDocAt("reorder_purchase_orders", "req-purchasing-pa1", tokens["user-pa-1"])) === 403);
 
   // UPDATED for PR 3a (Issue #100): the Assign-write branch is PR 3a's
   // own grant (the merged (isAdminOrDispatcher() ||
@@ -458,14 +458,14 @@ async function main() {
   // PR 1a test file previously asserted denial here specifically to
   // prove PR 3a's restructuring hadn't landed yet. That premise is now
   // obsolete.
-  report("PR 3a's Assign-write branch does not affect this PR's own read-only scope",
+  report("PR 3a's Assign-write branch does not affect this PR's own read-only scope -- NOW DENIED (reorder queue + inventory reads moved to governed sources (reorder.request.read.queue, inventory.transaction.read); own Employee to resolveCurrentEmployeeSession)",
     (await updateReorderRequest("req-ready-1", tokens["user-pm-1"], {
       status: { stringValue: "ASSIGNED_TO_PARTS_ASSOCIATE" },
       currentOwner: { stringValue: "PARTS_ASSOCIATE" },
       assignedToUserId: { stringValue: "user-pa-1" },
       assignedBy: { stringValue: "user-pm-1" },
       assignedAt: { integerValue: String(now) },
-    })) === 200);
+    })) === 403);
 
   // === Broken / inactive / mismatched linkage -- fail closed ===
 

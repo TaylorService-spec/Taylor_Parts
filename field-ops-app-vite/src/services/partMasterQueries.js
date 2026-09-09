@@ -1,7 +1,8 @@
-// INV-1 Phase 1, PR 1.9 -- read-only Part Master client service. One-shot
-// authorized read of `parts` (Rules: admin/dispatcher read-only; ALL
-// client writes denied). Imports ONLY read APIs; performs no writes; reads
-// no inventory quantities (stock truth stays the ledger); never invokes
+// INV-1 Phase 1, PR 1.9 -- read-only Part Master client service. A GOVERNED read of the `parts`
+// catalogue, resolving inventory.catalog.read server-side; the client-direct read it replaced was
+// authorized by firestore.rules' admin/dispatcher grant, and the same population still holds the
+// capability. Client writes to `parts` were denied then and are denied now. Imports ONLY read APIs;
+// performs no writes; reads no inventory quantities (stock truth stays the ledger); never invokes
 // the PR 1.6 resolver, PR 1.7 snapshot module, or PR 1.8 tooling.
 //
 // ============================ PAGING IS OPT-IN, AND LIVES ELSEWHERE ============================
@@ -15,11 +16,8 @@
 //
 // Mounting a filter UI over an unbounded fetch would ship the fetch-all anti-pattern with a nicer
 // front end. Making this shared reader bounded so a list got paging for free would be worse.
-import { collection, getDocs, query } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import { toPartListView } from "../domain/partMasterView";
-
-const PARTS_COLLECTION = "parts";
 
 /**
  * Fetch the WHOLE governed Part Master list view. Unchanged.
@@ -49,12 +47,34 @@ const PARTS_COLLECTION = "parts";
  * (denied by Rules) or "unavailable".
  */
 export async function fetchPartMasterList() {
-  try {
-    const snap = await getDocs(query(collection(db, PARTS_COLLECTION)));
-    return { ok: true, ...toPartListView(snap.docs.map((d) => ({ id: d.id, data: d.data() }))) };
-  } catch (err) {
-    return { ok: false, code: err && err.code === "permission-denied" ? "permission-denied" : "unavailable" };
-  }
+  // GOVERNED READ, resolving the EXISTING inventory.catalog.read server-side. `parts` is denied to
+  // every client in Rules now; the authority is unchanged, only its venue.
+  //
+  // PAGED TO EXHAUSTION, which is not an optimisation choice here but the whole point of the
+  // paragraphs above: this read exists precisely because these callers need the WHOLE catalogue,
+  // and a truncated one produces wrong ANSWERS rather than slow ones -- a part-number lookup
+  // reporting that a part does not exist, a name resolver rendering a raw id -- with nothing on
+  // screen saying so. Paging is opted into by name elsewhere; it is never inherited here.
+  const rows = [];
+  let cursor = null;
+  do {
+    const outcome = await governedCollectionClient.readGovernedList({
+      sourceId: "partMaster",
+      pageSize: 200,
+      cursor,
+    });
+    if (!outcome.ok) {
+      // The same two codes this function has always returned, from the seam's own outcome rather
+      // than re-derived from a Firestore error code.
+      return { ok: false, code: outcome.result === "DENIED" ? "permission-denied" : "unavailable" };
+    }
+    // Back to the { id, data } shape toPartListView expects -- the authoritative document id stays
+    // SEPARATE from the stored fields, so nothing downstream can start trusting a stored id.
+    for (const { id, ...data } of outcome.items) rows.push({ id, data });
+    cursor = outcome.nextCursor;
+  } while (cursor);
+
+  return { ok: true, ...toPartListView(rows) };
 }
 
 /**

@@ -14,6 +14,17 @@ on:
       - "functions/src/workOrderEquipment.ts"
       - "functions/test/workOrderEquipment.test.mjs"
       - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/workOrder/**"
+      - "functions/test/scopedWorkOrderRead.test.mjs"
+      - "functions/test/scopedWorkOrderPaging.test.mjs"
+      - "functions/src/access/employeeSessionProjection.ts"
+      - "functions/src/access/employeeSessionCallable.ts"
+      - "functions/test/employeeSessionProjection.test.mjs"
+      - "functions/test/legacyRoleIsNotAuthority.test.mjs"
+      - "functions/src/access/governedReadRegistry.ts"
+      - "functions/test/technicianCommands.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"
       - "functions/src/workOrderConsumption/**"
       - "functions/test/physicalConsumptionE2E.test.js"
@@ -46,6 +57,16 @@ on:
       - "functions/src/workOrderEquipment.ts"
       - "functions/test/workOrderEquipment.test.mjs"
       - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/workOrder/**"
+      - "functions/test/scopedWorkOrderRead.test.mjs"
+      - "functions/test/scopedWorkOrderPaging.test.mjs"
+      - "functions/src/access/employeeSessionProjection.ts"
+      - "functions/src/access/employeeSessionCallable.ts"
+      - "functions/test/employeeSessionProjection.test.mjs"
+      - "functions/test/legacyRoleIsNotAuthority.test.mjs"
+      - "functions/src/access/governedReadRegistry.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/compatibilityRoles.ts"
       - "functions/src/updateWorkOrderExecutionData.ts"
       - "functions/src/workOrderConsumption/**"
       - "functions/test/physicalConsumptionE2E.test.js"
@@ -136,6 +157,14 @@ jobs:
       # Customer 1 physical consumption, end to end: receive 5, consume 2, on-hand 3, and Sales
       # Order availability sees 3. Runs in THIS lane because it drives the same Work Order execution
       # command the lane already owns, against the emulator this job already starts.
+      # The SCOPED read seam -- the one read in the system whose authority is not global. Every
+      # property here is about what a caller CANNOT do (omit the assignment predicate, substitute
+      # another technician, reach the collection while unauthorized), so it is the last thing that
+      # should be able to merge unexercised.
+      - name: Scoped Work Order read seam (build + run)
+        run: npm run test:scopedWorkOrder
+        working-directory: functions
+
       - name: Physical consumption end to end (Firestore emulator)
         run: node --test test/physicalConsumptionE2E.test.js test/updateWorkOrderExecutionDataIdempotency.test.js
         working-directory: functions

@@ -31,7 +31,8 @@ on:
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
       - "scripts/listIndexCoverage.mjs"
-      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/src/**"
+      - "field-ops-app-vite/test/clientFirestoreCensus.test.jsx"
       - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
@@ -42,7 +43,7 @@ on:
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
-      - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "functions/test/writeCommandTimestampContract.test.mjs"
       - "field-ops-app-vite/test/technicianNameIsNotAnId.test.mjs"
       - "field-ops-app-vite/src/domain/actorDisplayName.js"
       - "field-ops-app-vite/src/firebase/collectionStore.js"
@@ -72,7 +73,8 @@ on:
       - "scripts/environmentArchitecture.test.mjs"
       - "scripts/indexDriftGuard.mjs"
       - "scripts/listIndexCoverage.mjs"
-      - "field-ops-app-vite/src/metadata/**"
+      - "field-ops-app-vite/src/**"
+      - "field-ops-app-vite/test/clientFirestoreCensus.test.jsx"
       - "scripts/listIndexCoverage.test.mjs"
       - "scripts/indexDriftGuard.test.mjs"
       - "firestore.indexes.json"
@@ -83,7 +85,7 @@ on:
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
-      - "field-ops-app-vite/test/createdRecordIsReachable.test.mjs"
+      - "functions/test/writeCommandTimestampContract.test.mjs"
       - "field-ops-app-vite/test/technicianNameIsNotAnId.test.mjs"
       - "field-ops-app-vite/src/domain/actorDisplayName.js"
       - "field-ops-app-vite/src/firebase/collectionStore.js"
@@ -183,9 +185,24 @@ jobs:
       # Firestore's orderBy silently drops documents missing the sorted field, so a list that sorts
       # on a field not set at creation omits newly created records with NO error. That is how a
       # newly created Prospect became invisible while still being findable by search.
-      - name: A created record is reachable from its list
-        run: node --test test/createdRecordIsReachable.test.mjs
-        working-directory: field-ops-app-vite
+      #
+      # THE CHECK MOVED WITH THE WRITES IT GUARDS, AND SO DID ITS JOB. It asserted this against
+      # the client's own Firestore transport; that transport is deleted and every governed write is
+      # now a trusted command, so the contract is asserted where the timestamps are stamped --
+      # functions/test/writeCommandTimestampContract.test.mjs, which needs a TypeScript build.
+      #
+      # THIS JOB INSTALLS NOTHING, deliberately: every step above is plain `node --test` on
+      # dependency-free files, which is what makes it fast and what makes it a *drift* gate rather
+      # than a test suite. So the step runs in contact-provenance-tests.yml, which already installs
+      # functions and runs it as part of `npm run test:contactImport`. Recorded here rather than
+      # silently dropped, because the path trigger above still names the file.
+
+      # THE CENSUS runs in metadata-contracts-tests.yml for the same reason: it is a vitest suite,
+      # and vitest is a dependency. Three numbers reduce the whole Firebase-removal claim to
+      # something runnable -- zero direct governed client reads, zero writes, zero authorization
+      # decisions -- plus every relative import resolving, which catches a module left pointing at
+      # deleted code. That break is invisible to tsc (untyped .js) and to vitest (the importing
+      # module is mocked wherever a test reaches it), and only the production build sees it.
 
       # Ten surfaces each hand-rolled the same technician lookup and nine of them fell back to
       # rendering the raw document id where a person's name belongs.

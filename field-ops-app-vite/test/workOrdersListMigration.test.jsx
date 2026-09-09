@@ -37,10 +37,27 @@ const SERVICE = read("src/services/workOrderService.ts");
 // ═════════════════════════════════════════ realtime dispatch is untouched
 
 describe("the realtime dispatch subscription survives the migration", () => {
-  it("subscribeToWorkOrders is still an unfiltered collection listener", () => {
+  it("subscribeToWorkOrders still reads the COMPLETE population, not a page", () => {
     // Deliberately asserted on the SOURCE. A test that mocked the service would pass while the
     // real one had been quietly bounded, which is the exact substitution this package forbids.
-    expect(SERVICE).toMatch(/onSnapshot\(collection\(db, WORK_ORDERS_COLLECTION\)/);
+    //
+    // The subscription moved off Firestore (governed seam, automatic refresh) but the property
+    // this guards did not change: the operations boards count and bucket what they are handed,
+    // so handing them one page would turn every board total into a number about a page while
+    // still labelling it a total. readAllScopedWorkOrders pages to exhaustion and FAILS rather
+    // than truncating.
+    expect(SERVICE).toMatch(/readAllScopedWorkOrders\(\{\s*mode:\s*"all"\s*\}\)/);
+    // And it must not have become a single bounded read wearing the same name. Sliced to THIS
+    // function's body rather than matched across the whole file: its sibling
+    // subscribeAssignedWorkOrders legitimately issues a bounded page, and a file-wide regex would
+    // have quietly passed on that instead of checking the function it names.
+    const after = SERVICE.slice(SERVICE.indexOf("export function subscribeToWorkOrders("));
+    const body = after.slice(0, after.search(/\r?\n\}/));
+    expect(body).toBeTruthy();
+    expect(body).not.toMatch(/\breadScopedWorkOrders\(/);
+    // Nothing here talks to Firestore any more.
+    expect(SERVICE).not.toMatch(/\bonSnapshot\s*\(/);
+    expect(SERVICE).not.toMatch(/from "firebase\/firestore"/);
   });
 
   it("the five realtime consumers still read useWorkOrders", () => {

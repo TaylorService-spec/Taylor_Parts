@@ -35,7 +35,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { FIELD_OPERATOR, findField } from "./entityDefinition.js";
-import { isKnownReadCallable, readCallableSourceInfo } from "./callableListSource.js";
+import {
+  governedFilterName,
+  governedSortKey,
+  governedSourceSpec,
+  isKnownReadCallable,
+  readCallableSourceInfo,
+} from "./callableSourceRegistry.js";
 
 /** Sort direction. */
 export const SORT_DIRECTION = Object.freeze(["ASC", "DESC"]);
@@ -330,13 +336,51 @@ export function validateListViewDefinition(def, entity, relationships = []) {
       );
     } else {
       const info = readCallableSourceInfo(effectiveReadCallable);
-      if (def.surface === "RELATED" && !info.scoped) {
+      // A GOVERNED source (`scoped: "OPTIONAL"`) serves both surfaces -- the server decides whether
+      // the named filter it was handed is one this source offers -- so the scope pair below does
+      // not apply to it. What DOES apply, and only to it, is that every sort and filter this list
+      // offers must be one the source registered: an unregistered one is refused by the server, so
+      // without this check the column header or filter chip renders normally and fails the moment
+      // a user touches it (X-UNCONSUMED-DECLARATION-PATTERN again, one layer further out).
+      if (info.governed) {
+        const spec = governedSourceSpec(info.sourceId);
+        for (const col of def.columns ?? []) {
+          const field = (entity.fields ?? []).find((f) => f.id === col.fieldId);
+          if (!field?.sortable) continue;
+          for (const direction of ["ASC", "DESC"]) {
+            const key = governedSortKey(field.id, direction);
+            if (!spec.allowedSorts || !Object.prototype.hasOwnProperty.call(spec.allowedSorts, key)) {
+              problems.push(
+                `${at}: column "${col.fieldId}" is sortable but governed source "${info.sourceId}" ` +
+                  `registers no sort "${key}" — register it, or make the column unsortable`
+              );
+            }
+          }
+        }
+        for (const f of def.filters ?? []) {
+          for (const operator of f.operators ?? []) {
+            const name = governedFilterName(f.fieldId, operator);
+            if (!Object.prototype.hasOwnProperty.call(spec.filters, name)) {
+              problems.push(
+                `${at}: filter "${f.fieldId}" offers ${operator} but governed source "${info.sourceId}" ` +
+                  `registers no filter "${name}"`
+              );
+            }
+          }
+        }
+        if (def.pageSize > spec.maxPageSize) {
+          problems.push(
+            `${at}: pageSize ${def.pageSize} exceeds governed source "${info.sourceId}" maxPageSize ${spec.maxPageSize}`
+          );
+        }
+      }
+      if (def.surface === "RELATED" && info.scoped === false) {
         problems.push(
           `${at}: ${source}, is unscoped, but a RELATED list always supplies a parent-scope ` +
             "filter — declare a scoped callable, or leave readCallable undeclared to use the entity's own"
         );
       }
-      if (def.surface === "INDEX" && info.scoped) {
+      if (def.surface === "INDEX" && info.scoped === true) {
         problems.push(
           `${at}: ${source}, requires a parent-scope filter, but an INDEX list never ` +
             "supplies one — declare an unscoped callable" +

@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, documentId } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { ACCOUNTS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 
 // W4 (human-readable IDs). Resolves a SET of account ids -> Map<accountId, name>,
 // for surfaces that render many work orders and must show a human-readable
@@ -79,19 +77,31 @@ export function useAccountNamesWithStatus(accountIds) {
       const map = new Map();
       let status = ACCOUNT_NAMES_STATUS.READY;
       try {
-        for (const idChunk of chunk(ids, 10)) {
-          const snap = await getDocs(
-            query(collection(db, ACCOUNTS_COLLECTION), where(documentId(), "in", idChunk))
-          );
-          snap.forEach((d) => {
-            const name = d.data()?.name;
-            if (typeof name === "string" && name) map.set(d.id, name);
+        // CHUNKED STILL -- 30 now rather than 10, because that is the governed source's own
+        // declared ceiling for an "in" filter and matches Firestore's limit for the query behind
+        // it. The chunking itself is unchanged: this resolves a set of ids to names, and a set
+        // larger than one page is still several reads.
+        for (const idChunk of chunk(ids, 30)) {
+          const outcome = await governedCollectionClient.readGovernedList({
+            sourceId: "accountsByIds",
+            filters: { ids: idChunk },
+            pageSize: idChunk.length,
           });
+          if (!outcome.ok) {
+            // DENIED IS KEPT SEPARATE from every other failure. A refusal is permanent for this
+            // viewer and says nothing about whether the record exists; anything else may succeed
+            // on a retry. The seam already made that distinction, so it is read rather than
+            // re-derived from an error code.
+            status = outcome.result === "DENIED" ? ACCOUNT_NAMES_STATUS.DENIED : ACCOUNT_NAMES_STATUS.ERROR;
+            break;
+          }
+          for (const row of outcome.items) {
+            const name = row?.name;
+            if (typeof name === "string" && name) map.set(row.id, name);
+          }
         }
-      } catch (err) {
-        // DENIED IS KEPT SEPARATE from every other failure. A refusal is permanent for this viewer
-        // and says nothing about whether the record exists; anything else may succeed on a retry.
-        status = err?.code === "permission-denied" ? ACCOUNT_NAMES_STATUS.DENIED : ACCOUNT_NAMES_STATUS.ERROR;
+      } catch {
+        status = ACCOUNT_NAMES_STATUS.ERROR;
       }
       // On failure the partial map is discarded: a half-filled map read as READY would report the
       // ids that happened not to arrive as nonexistent.

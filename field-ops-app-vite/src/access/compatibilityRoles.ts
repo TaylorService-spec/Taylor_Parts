@@ -100,6 +100,52 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "warehouse.record.read",
   "warehouse.stockLocation.read",
   "warehouse.transferOrder.read",
+  // The governed replacements for the firestore.rules gates on contacts, locations and equipment --
+  // three objects that were `rulesOnly` and would otherwise be reachable by nobody once Rules stop
+  // deciding. Shared base for the same reason as the directory below: same population, new venue.
+  "crm.contact.read",
+  "crm.location.read",
+  "service.equipment.read",
+  // Owner ruling 2026-09-07. The three capabilities that unblock the last governed surfaces:
+  // the contacts WRITE half (bulk import), and the two supplier reads.
+  //
+  // IN THE SHARED BASE, AND ONLY HERE. Each replaces an `isAdminOrDispatcher()` rule, so this line
+  // grants dispatcher explicitly; admin and owner acquire them through the existing composition
+  // (ADMIN_ALL_PERMISSIONS spreads the whole catalog, OWNER_PERMISSIONS spreads admin's). The
+  // ruling is explicit that no duplicate admin/owner rows may be added to restate that derivation,
+  // and that no other Role receives these.
+  "crm.contact.create",
+  // The contact UPDATE and the two location writes, ruled 2026-09-07. Each replaces a plain
+  // isAdminOrDispatcher() rule with no narrower field or record condition, so each lands in the
+  // shared base at exactly that population: dispatcher explicit, admin and owner derived.
+  "crm.contact.update",
+  "crm.location.create",
+  "crm.location.update",
+  "supplier.record.read",
+  "supplier.catalog.read",
+  "supplier.purchaseOrder.read",
+  // Owner ruling 2026-09-07, the GLOBAL half of the work-order and technician reads. Both replace
+  // an isAdminOrDispatcher() branch, so both belong in the shared base: same population, new venue.
+  // Their SELF counterparts (workOrder.assigned.read, service.technician.self.read) are granted to
+  // the technician Role only and deliberately do NOT appear here -- a global reader has no use for
+  // a scope that narrows to their own technician identity, and admin/dispatcher principals need not
+  // have one at all.
+  "workOrder.read",
+  "service.technician.read",
+  // The technician CREATE. Same population as the reads above and as the rule it replaces; the
+  // status constraint travels with it into the trusted command, not into a Role.
+  "service.technician.create",
+  // Equipment CRUD, ruled 2026-09-07. Same population as the rule each replaces.
+  "service.equipment.create",
+  "service.equipment.update",
+  // The governed replacement for firestore.rules' `isAdminOrDispatcher()` gate on `employees`.
+  // In the SHARED base deliberately: that predicate admits admin AND dispatcher today, and this
+  // migration moves WHERE the decision is made, never WHO it admits. Narrowing the population in
+  // the same change would hide an access change inside an architectural one.
+  "workforce.directory.read",
+  // The Truck Registry read, replacing the same admin/dispatcher Rules grant on trucks and
+  // mobile_locations. Same population, new venue; truck writes keep their own trusted commands.
+  "inventory.truckRegistry.read",
   // Sales/Fulfillment spine -- OPERATIONAL grant (per-environment-capability-
   // activation-spec Phase 6a, Owner-directed 2026-08-14). Granted directly to
   // ADMIN + DISPATCHER (both spread this base); OWNER inherits by composition
@@ -302,6 +348,12 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
   systemSeed: true,
   compatibility: true,
   permissions: [
+    // Owner ruling 2026-09-07, the SELF half. Each carries a scope the SERVER derives from
+    // request.auth.uid and forces into the query -- holding one confers no unscoped read, and a
+    // holder cannot reach the global read by omitting a filter, because the predicate is not theirs
+    // to omit. Granted to technician ONLY, matching the legacy predicates exactly.
+    "workOrder.assigned.read",
+    "service.technician.self.read",
     "workOrder.transition",
     "reorder.request.read.own",
     "reorder.request.startPurchasing",

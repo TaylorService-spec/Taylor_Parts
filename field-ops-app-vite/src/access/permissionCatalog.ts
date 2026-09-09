@@ -75,6 +75,124 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "account.record",
     action: "read",
   }),
+  // THE THREE CRM READS FIRESTORE RULES USED TO DECIDE (Owner direction 2026-09-07).
+  //
+  // Contacts, Customer Locations and Equipment were `rulesOnly` objects on the Objects grid: no
+  // capability governed them because firestore.rules did, gating each on isAdminOrDispatcher() over
+  // the legacy users/{uid}.role. With Rules deciding nothing they would be governed by NOTHING and
+  // simply denied, and the grid would show three objects nobody can ever reach.
+  //
+  // These are the governed replacements, so each object's access becomes an administrable cell
+  // instead of a blank. Granted to the shared admin+dispatcher base -- exactly the population the
+  // predicate they replace admitted. WHERE the decision is made changes; WHO it admits does not.
+  //
+  // Read only. The write paths for these collections are a separate migration with their own
+  // commands, and giving a read capability a write-shaped name now would pre-empt that design.
+  Object.freeze({
+    id: "crm.contact.read",
+    description: "Read Contact records. Confers no write.",
+    resource: "contact.record",
+    action: "read",
+  }),
+  // The WRITE half of the contacts rule, authorized by Owner ruling 2026-09-07 for the same
+  // population its read half already carries. `create` only, and deliberately so: the surface that
+  // needs it (the CSV import) creates rows and does nothing else, and the retired rule split
+  // contacts by action already (`allow delete: if false`). A `crm.contact.write` covering update
+  // would hand the import an authority it never uses.
+  Object.freeze({
+    id: "crm.contact.create",
+    description:
+      "Create Contact records, including bulk creation through import. Confers no update, no delete and no read.",
+    resource: "contact.record",
+    action: "create",
+  }),
+  // Contact UPDATE, ruled 2026-09-07 conditional on measured parity. The retired rule was
+  // `allow create, update: if isAdminOrDispatcher()` -- create and update shared ONE predicate,
+  // with no field allowlist, no record scope and no narrower condition on either. So this mints the
+  // update half at exactly that population, and `crm.contact.create` is NOT reused as update
+  // authority: a caller authorized to add a contact is not thereby authorized to rewrite one.
+  Object.freeze({
+    id: "crm.contact.update",
+    description:
+      "Update Contact records. Confers no create, no delete and no read.",
+    resource: "contact.record",
+    action: "update",
+  }),
+  // Location CREATE and UPDATE. Measured independently as the ruling required, and the retired rule
+  // is the same shape as contacts: `allow create, update: if isAdminOrDispatcher()`, no record or
+  // field restriction on either, `allow delete: if false`. Two capabilities because they are two
+  // actions, and NO delete capability -- there is no live delete operation to authorize.
+  Object.freeze({
+    id: "crm.location.create",
+    description:
+      "Create Customer Location records. Confers no update, no delete and no read.",
+    resource: "location.record",
+    action: "create",
+  }),
+  Object.freeze({
+    id: "crm.location.update",
+    description:
+      "Update Customer Location records. Confers no create, no delete and no read.",
+    resource: "location.record",
+    action: "update",
+  }),
+  Object.freeze({
+    id: "crm.location.read",
+    description: "Read Customer Location records. Confers no write.",
+    resource: "location.record",
+    action: "read",
+  }),
+  // ══════════ SUPPLIERS — DECISION #78 AS NARROWED (Owner ruling, 2026-09-08) ══════════
+  //
+  //   Supplier MUTATION capabilities remain PROHIBITED unless separately authorized.
+  //   Specifically approved supplier READ capabilities are permitted, and only through governed
+  //   registered read sources.
+  //
+  // Approved reads: supplier.record.read, supplier.catalog.read, supplier.purchaseOrder.read.
+  // NOT authorized: supplier.create / .update / .delete, supplier.catalog.write,
+  // supplier.purchaseOrder.write, or a generic supplier.write. Supplier ADMINISTRATION stays
+  // CATALOG-governed through inventory.catalog.manage/.activate.
+  //
+  // functions/test/permissionCatalog.test.mjs enforces both halves: reads only, and each one named
+  // by a registered governed read source -- a read capability nothing resolves is the symmetry-only
+  // permission #78 refused, wearing .read as a disguise.
+  //
+  // Two capabilities rather than one, authorized 2026-09-07: supplier IDENTITY and
+  // supplier PRICING are separable questions, and merging them would foreclose ever answering them
+  // differently. Neither is `inventory.catalog.read` -- a Supplier is not a Part, and that
+  // capability's measured population is 18 Roles against the retired rule's admitted 2.
+  Object.freeze({
+    id: "supplier.record.read",
+    description: "Read Supplier records. Confers no write.",
+    resource: "supplier.record",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "supplier.catalog.read",
+    description:
+      "Read Supplier catalog items: the parts a supplier offers and the price at which they offer them. Confers no write and no Part Master authority.",
+    resource: "supplier.catalog",
+    action: "read",
+  }),
+  // The Epic-5 `purchase_orders` collection, minted 2026-09-07 under the final read cutover's
+  // conditional authorization. The retired predicate was EXACTLY `isAdminOrDispatcher()`: no self
+  // scope, no warehouse scope, no field restriction, no narrower record predicate -- which is the
+  // only shape that clause admits. It is deliberately NOT `reorder.purchaseOrder.read`: that
+  // capability governs the LIVE reorder purchase orders, and merging a dormant legacy collection
+  // into it would silently widen what that capability grants.
+  Object.freeze({
+    id: "supplier.purchaseOrder.read",
+    description:
+      "Read the legacy Epic-5 Purchase Order records. Confers no write and no authority over reorder purchase orders.",
+    resource: "supplier.purchaseOrder",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "service.equipment.read",
+    description: "Read Equipment / installed-base records. Confers no write.",
+    resource: "equipment.record",
+    action: "read",
+  }),
   Object.freeze({
     id: "customer.record.create",
     description: "Create a Customer record.",
@@ -101,6 +219,80 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Create a Work Order.",
     resource: "workOrder",
     action: "create",
+  }),
+  // ══════════════ WORK ORDER AND TECHNICIAN READS (Owner ruling 2026-09-07) ══════════════
+  //
+  // FOUR capabilities, in two pairs, because the authority they replace is not one authority. Each
+  // legacy rule admitted a GLOBAL population and a SELF population by different predicates, and
+  // collapsing either pair into a single id would make "may read every work order" and "may read
+  // the ones assigned to me" indistinguishable to the resolver -- which is the exact widening this
+  // migration exists to prevent.
+  //
+  // The `.self` / `.assigned` half is not a weaker version of the global one. It carries a SCOPE the
+  // server derives from request.auth.uid and forces into the query; a holder of it can never obtain
+  // the global read by omitting a filter, because the predicate is not theirs to omit.
+  Object.freeze({
+    id: "workOrder.read",
+    description:
+      "Read any Work Order. The unscoped read: replaces firestore.rules' isAdminOrDispatcher() branch on fieldops_wos. Confers no write and no transition.",
+    resource: "workOrder",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "workOrder.assigned.read",
+    description:
+      "Read ONLY the Work Orders assigned to the authenticated principal's own technician identity. Scope is server-derived from request.auth.uid and forced into every query; the caller cannot omit, widen or substitute it. Replaces firestore.rules' isTechnician() && isOwnTechnician(assignedTechId) branch. Confers no unscoped read.",
+    resource: "workOrder",
+    action: "read.assigned",
+  }),
+  Object.freeze({
+    id: "service.technician.read",
+    description:
+      "Read any technician profile record. Replaces firestore.rules' isAdminOrDispatcher() branch on fieldops_technicians. Confers no write.",
+    resource: "technician.record",
+    action: "read",
+  }),
+  // The technician CREATE, ruled 2026-09-07 conditional on measured parity. The retired rule was
+  // `isAdminOrDispatcher() && request.resource.data.status == 'available'` — and that status
+  // constraint is part of the AUTHORITY, not a client convention: the rule REFUSED a create that
+  // started a technician in any other state. The trusted command therefore chooses the status
+  // itself and ignores anything the caller sends, rather than validating a supplied one.
+  // Equipment CRUD, ruled 2026-09-07. TWO capabilities, never one generic equipment.write: the
+  // retired rules gate create and update by materially different contracts -- create proves a
+  // cross-document ownership relationship, update enforces a changed-key allowlist and a status
+  // transition guard -- and one id would make "may add equipment" and "may edit equipment"
+  // indistinguishable to the resolver.
+  //
+  // NO service.equipment.delete. The rule is `allow delete: if false` for everyone including admin:
+  // Service History is derived from Work Orders that reference the record, so a delete would
+  // silently orphan real history. There is no live delete authority to migrate.
+  Object.freeze({
+    id: "service.equipment.create",
+    description:
+      "Create Equipment records. The owning Location must belong to the named Account, proven server-side. Confers no update, no delete, no read and no lifecycle transition.",
+    resource: "equipment.record",
+    action: "create",
+  }),
+  Object.freeze({
+    id: "service.equipment.update",
+    description:
+      "Perform an ordinary Equipment edit: the editable field set, and an ACTIVE<->INACTIVE status change. Confers no create, no delete, no read, and NO authority to retire or reactivate -- those are trusted lifecycle actions.",
+    resource: "equipment.record",
+    action: "update",
+  }),
+  Object.freeze({
+    id: "service.technician.create",
+    description:
+      "Create a technician profile record. The record is always created in the available state, chosen by the server and never by the caller. Confers no update, no delete and no read.",
+    resource: "technician.record",
+    action: "create",
+  }),
+  Object.freeze({
+    id: "service.technician.self.read",
+    description:
+      "Read ONLY the technician profile mapped to the authenticated principal. Scope is server-derived; the caller never names which technician. Replaces firestore.rules' techId == callerTechnicianId() branch. Confers no directory read and no write.",
+    resource: "technician.record",
+    action: "read.self",
   }),
   Object.freeze({
     id: "workOrder.transition",
@@ -525,6 +717,29 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "reorder.request",
     action: "cancel",
   }),
+  // ══════════ THE PARTS MANAGER'S SCOPED QUEUE, MINTED 2026-09-08 ══════════
+  //
+  // A SEPARATE capability from `reorder.request.read.queue`, not a second meaning for it. The
+  // retired Rules admitted two different populations through two different predicates:
+  //
+  //   isAdminOrDispatcher()                     every reorder request
+  //   isActiveOperationalRole("PARTS_MANAGER")  three statuses, plus the records this actor
+  //                                             personally reviewed or personally assigned
+  //
+  // One capability id cannot safely mean both. A resolver that tried would have to guess which
+  // population a holder was entitled to, and the safe guess (narrow) silently strips an
+  // operations manager down to a parts manager's subset, while the convenient guess (broad)
+  // hands every parts manager the whole queue. Two ids make the question answerable.
+  //
+  // Its meaning is ONLY the retired PARTS_MANAGER population. It is resolved AFTER the global
+  // read, so a principal holding both is never narrowed by holding this one.
+  Object.freeze({
+    id: "reorder.request.read.managed",
+    description:
+      "Read the Reorder Requests a Parts Manager is responsible for: the queue statuses, plus requests this actor personally reviewed or personally assigned. Narrower than the global queue read, and never narrows a holder of it.",
+    resource: "reorder.request",
+    action: "read.managed",
+  }),
   Object.freeze({
     id: "reorder.purchaseOrder.read",
     description: "Read reorder Purchase Orders / Purchase Order Voids.",
@@ -609,6 +824,41 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     description: "Read a transfer_orders record (inter-warehouse stock transfer).",
     resource: "warehouse.transferOrder",
     action: "read",
+  }),
+  // ══════════ THE WAREHOUSE MANAGER'S ASSIGNED SITES, MINTED 2026-09-08 ══════════
+  //
+  // SEPARATE ids, not second meanings for the two above. The retired firestore.rules admitted two
+  // different populations through two different predicates:
+  //
+  //   isAdminOrDispatcher()          every warehouse, every transfer order
+  //   isAssignedToWarehouse(...)     the actor's ASSIGNED warehouses, and transfer orders on
+  //                                  either endpoint of one
+  //
+  // Overloading one id would force the resolver to guess which population a holder is entitled to,
+  // and both guesses are wrong in a way that matters: narrow silently strips an Operations Manager
+  // down to one site, broad hands a site manager the whole network.
+  //
+  // IT IS ALSO WHAT KEEPS PRECEDENCE SOUND. Deriving "this reader is scoped" from the PRESENCE of
+  // an assignment would narrow anyone who happens to hold both -- an Operations Manager who is also
+  // an operational warehouse manager -- which is exactly the accidental narrowing the resolution
+  // order exists to prevent. Holding the GLOBAL id is what makes a reader global, and it is checked
+  // first.
+  //
+  // A holder of the scoped id with NO assignment reads NOTHING: that is what the retired rule did,
+  // where isAssignedToWarehouse simply never matched. Not everything, and not an error.
+  Object.freeze({
+    id: "warehouse.record.read.assigned",
+    description:
+      "Read the warehouses records for the sites this actor is assigned to. The assigned-site half of the retired isAssignedToWarehouse read; the scope is derived server-side from the actor and can never be supplied by a caller.",
+    resource: "warehouse.record",
+    action: "read.assigned",
+  }),
+  Object.freeze({
+    id: "warehouse.transferOrder.read.assigned",
+    description:
+      "Read transfer_orders whose origin OR destination is a site this actor is assigned to. The assigned-site half of the retired read; matched on either endpoint and de-duplicated by document id.",
+    resource: "warehouse.transferOrder",
+    action: "read.assigned",
   }),
 
   // --- Report field-level read capabilities (Issue #325 / ADR-007 D-226) ---
@@ -977,6 +1227,50 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Registered ACTIVE, like its Administration siblings: there is no per-environment activation
   // gate to wait on. It still denies for anyone holding no qualifying Role, which is the ordinary
   // fail-closed path and not a property of this entry.
+  // THE TRUCK REGISTRY, read. The governed replacement for firestore.rules' admin/dispatcher grant
+  // on `trucks` and `mobile_locations`.
+  //
+  // ONE CAPABILITY FOR BOTH COLLECTIONS, because they are one object: a truck IS its mobile
+  // location, the registry view reads them together, and Rules gated them identically. Splitting
+  // them would create an authority distinction that has never existed and that nobody has asked
+  // for -- which is inventing an authorization model, not migrating one.
+  //
+  // NOT inventory.location.display.read, which is a different and narrower thing: a bounded
+  // id -> label lookup, registered active:false and granted to no Role. Reusing it would silently
+  // widen that capability from "resolve these ids" to "enumerate the registry".
+  //
+  // Granted to the shared admin+dispatcher base -- exactly the population the Rule admitted. WHERE
+  // the decision is made changes; WHO it admits does not. Read only: truck WRITES already go
+  // through their own trusted callables and are untouched by this.
+  Object.freeze({
+    id: "inventory.truckRegistry.read",
+    description:
+      "Read the Truck Registry: trucks and their mobile locations. Confers no write -- truck mutations have their own trusted commands.",
+    resource: "inventory.truckRegistry",
+    action: "read",
+  }),
+
+  // THE WORKFORCE DIRECTORY, read (Owner direction 2026-09-07: "Firebase should give access to the
+  // system and nothing else -- what can be done on the system is controlled by the admin").
+  //
+  // WHY A CAPABILITY FOR A READ THAT ALREADY WORKS. It already works through `firestore.rules`,
+  // which gates it on `isAdminOrDispatcher()` -- i.e. on the LEGACY `users/{uid}.role` string. That
+  // makes Firestore Rules the rule keeper for who may see the workforce, and the legacy role the
+  // thing it keeps rules about. Both are exactly what the governed access model exists to replace.
+  //
+  // This id is the governed answer to the same question. Once `listWorkforceDirectory` is the only
+  // path to the data, `employees` read becomes `if false` in Rules and the decision moves out of
+  // Firebase entirely: Rules hold a locked door, this capability holds the policy, and the admin
+  // page administers it. Granted to admin + dispatcher, which is precisely the population
+  // `isAdminOrDispatcher()` admits today -- this migration must not change WHO can see the
+  // directory, only WHERE that is decided.
+  Object.freeze({
+    id: "workforce.directory.read",
+    description:
+      "Read the workforce directory: the Employee records the Administration > Users surface lists, and the actor/manager names other surfaces resolve. Confers no write of any kind.",
+    resource: "workforce.directory",
+    action: "read",
+  }),
   Object.freeze({
     id: "admin.principalAccess.read",
     description:

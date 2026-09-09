@@ -40,7 +40,7 @@ test("no capability gates this collection -- Rules admit by ROLE, and validate n
   // locations/{locationId} in firestore.rules is `allow read/create/update: if
   // isAdminOrDispatcher()` with no field-shape guard whatsoever -- unlike equipment's
   // block, there is nothing here for a capability OR a shape assertion to describe.
-  assert.equal(locationEntity.readCapability, null);
+  assert.equal(locationEntity.readCapability, "crm.location.read");
 });
 
 test("address is four scalar STRING fields, not an invented struct type", () => {
@@ -164,7 +164,7 @@ test("account.locations reaches the location entity from the OWNING (account) si
 test("the related list declares no capability — locationEntity.readCapability is null", () => {
   // Same precedent contact.js's account.contacts related list follows: Rules gate this
   // collection by role, not by capability, so no capability is invented here.
-  assert.equal(locationEntity.readCapability, null);
+  assert.equal(locationEntity.readCapability, "crm.location.read");
 });
 
 test("the related list declares no parent-scope filter — the runtime applies it from the relationship", () => {

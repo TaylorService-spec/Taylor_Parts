@@ -163,7 +163,12 @@ test("the band still renders nothing when clean", () => {
 test("technician names resolve through the technician collection, not the employee directory", () => {
   // technicianId is NOT userId. Passing the directory's byUserId map made every row read
   // "Name not resolved" -- the raw-id family of defect arriving as a plausible label.
-  assert.match(DASHBOARD, /useFirestoreCollection\(TECHNICIANS_COLLECTION/);
+  // The hook's SIGNATURE changed with the migration -- it took a collection name when it read
+  // Firestore directly, and takes an `enabled` flag now that it reads the governed technician
+  // directory source. Which collection that source resolves to is the SERVER's to know, and a
+  // client naming one is the thing the migration removed. What this line actually guarded is
+  // unchanged and still asserted below: the TECHNICIAN directory, never the employee one.
+  assert.match(DASHBOARD, /useTechnicianDirectory\(/);
   assert.match(DASHBOARD, /resolveTechnicianIdentity\(\s*technicianId,\s*\{/);
   assert.ok(!/useEmployeeDirectory/.test(DASHBOARD), "the employee directory is back in the name path");
   assert.ok(!/\.displayName/.test(DASHBOARD), "resolveTechnicianIdentity returns .name, not .displayName");

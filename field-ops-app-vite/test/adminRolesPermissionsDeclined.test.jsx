@@ -77,7 +77,7 @@ describe("S-ADM-ROLES decline -- no EntityDefinition exists, and the surface has
       .join("\n");
     expect(importLines).not.toMatch(/useMetadataList/);
     expect(importLines).not.toMatch(/entityDefinition|EntityDefinition/);
-    expect(importLines).not.toMatch(/useFirestoreCollection|onSnapshot|getDocs/);
+    expect(importLines).not.toMatch(/useTechnicianDirectory|onSnapshot|getDocs/);
   });
 
   // RE-EVALUATED, and the decline still holds. This assertion fired when the surface gained a

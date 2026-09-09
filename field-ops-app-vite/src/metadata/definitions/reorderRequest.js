@@ -147,10 +147,14 @@ export const reorderRequestEntity = makeEntityDefinition({
   label: "Reorder Request",
   labelPlural: "Reorder Requests",
   collection: REORDER_REQUESTS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role/relationship (admin/dispatcher, or a scoped PARTS_MANAGER/
-  // PARTS_ASSOCIATE), not by a capability. Recorded as null rather than invented — see the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataReorderRequests",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "reorder.request.read.queue",
   // BUSINESS_REFERENCE, per the Owner's ruling. See the file header.
   identity: makeIdentity({ referenceField: "reorderRequestNumber" }),
   description:
@@ -293,7 +297,7 @@ export const reorderRequestEntity = makeEntityDefinition({
       label: "Requested",
       type: "NUMBER",
       sortable: true,
-      description: "Epoch milliseconds (Date.now(), firebase/collectionStore.js's add()), never a Firestore Timestamp. The Reorder Requested event timestamp; never rewritten.",
+      description: "Epoch milliseconds, stamped by the trusted createReorderRequest command, never a Firestore Timestamp. The Reorder Requested event timestamp; never rewritten.",
     }),
     makeFieldDefinition({
       id: "reviewedBy",

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { EQUIPMENT_COLLECTION, WORK_ORDERS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient, READ_RESULT } from "../access/governedCollectionClient";
+import { WORK_ORDER_READ_RESULT, readScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
+
+// No collection names remain: both reads go through trusted seams that own their own.
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 // Issue #232 unit E2 -- the Equipment read path.
@@ -38,23 +39,30 @@ export function useEquipmentForAccount(accountId) {
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, EQUIPMENT_COLLECTION), where("accountId", "==", accountId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        // Fail closed: surface nothing rather than a stale/partial list.
+    // GOVERNED READ. `equipment` is denied to every client in Rules now; this resolves
+    // service.equipment.read server-side. The accountId filter is REQUIRED by the source, so a
+    // missing id is a refusal rather than a silent read of every equipment record.
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({ sourceId: "accountEquipment", filters: { accountId } })
+      .then((outcome) => {
+        if (!active) return;
+        if (outcome.ok) {
+          setData(outcome.items);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+        // Fail closed: surface nothing rather than a stale/partial list, and never render a
+        // refused read as "this account has no equipment".
         setData([]);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(loadErrorMessage(new Error(outcome.result), { entity: ENTITY }));
         setLoading(false);
-      }
-    );
+      });
 
-    return () => unsub();
+    return () => {
+      active = false;
+    };
   }, [accountId]);
 
   return { data, loading, error };
@@ -76,22 +84,25 @@ export function useEquipmentForLocation(locationId) {
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, EQUIPMENT_COLLECTION), where("locationId", "==", locationId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
+    let active = true;
+    governedCollectionClient
+      .readGovernedList({ sourceId: "locationEquipment", filters: { locationId } })
+      .then((outcome) => {
+        if (!active) return;
+        if (outcome.ok) {
+          setData(outcome.items);
+          setError(null);
+          setLoading(false);
+          return;
+        }
         setData([]);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
+        setError(loadErrorMessage(new Error(outcome.result), { entity: ENTITY }));
         setLoading(false);
-      }
-    );
+      });
 
-    return () => unsub();
+    return () => {
+      active = false;
+    };
   }, [locationId]);
 
   return { data, loading, error };
@@ -123,24 +134,38 @@ export function useWorkOrdersForEquipment(equipmentId) {
 
     setLoading(true);
     setError(null);
-    const q = query(collection(db, WORK_ORDERS_COLLECTION), where("equipmentId", "==", equipmentId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        // Fail closed: an empty history is honest; a partial one is a lie about an
-        // asset's service record.
+    // Through the scoped seam. For a GLOBAL reader this is every work order on the equipment; for a
+    // TECHNICIAN it is intersected server-side with their own assignment -- exactly what the retired
+    // Rules produced. Widening it to "all work orders for equipment X" would show one technician
+    // another's work, which is the specific narrowing this migration must not undo.
+    //
+    // ONE-SHOT: a governed callable cannot stream. This is an asset's service HISTORY on a detail
+    // page; it re-reads when the equipment changes.
+    let active = true;
+    (async () => {
+      const res = await readScopedWorkOrders({ mode: "byEquipment", params: { equipmentId }, pageSize: 200 });
+      if (!active) return;
+      if (!res.ok) {
+        // Fail closed: an empty history is honest; a partial one is a lie about an asset's service
+        // record.
         setData([]);
-        setError(loadErrorMessage(err, { entity: "work orders" }));
+        setError(
+          loadErrorMessage(
+            { code: res.result === WORK_ORDER_READ_RESULT.DENIED ? "permission-denied" : "unavailable" },
+            { entity: "work orders" },
+          ),
+        );
         setLoading(false);
+        return;
       }
-    );
+      setData(res.items);
+      setError(null);
+      setLoading(false);
+    })();
 
-    return () => unsub();
+    return () => {
+      active = false;
+    };
   }, [equipmentId]);
 
   return { data, loading, error };
@@ -162,21 +187,47 @@ export function useEquipmentDoc(equipmentId) {
 
     setLoading(true);
     setError(null);
-    const unsub = onSnapshot(
-      doc(db, EQUIPMENT_COLLECTION, equipmentId),
-      (snap) => {
-        setEquipment(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-        setError(null);
-        setLoading(false);
-      },
-      (err) => {
-        setEquipment(null);
-        setError(loadErrorMessage(err, { entity: ENTITY }));
-        setLoading(false);
-      }
-    );
+    let active = true;
 
-    return () => unsub();
+    // One record, asked as a one-element id set through the governed `equipmentByIds` source --
+    // the same source and capability the batched lookups use, because "may this person read
+    // equipment" does not change with the size of the id set.
+    //
+    // ONE-SHOT, NOT A SUBSCRIPTION: a governed callable cannot stream. The equipment record page
+    // re-reads on navigation; nothing here rendered a live badge that would now be quietly stale.
+    //
+    // A stored `id` can no longer displace the document id. This spread
+    // `{ id: snap.id, ...snap.data() }`, resolving that conflict in favour of the DATA -- the same
+    // defect fixed in the registry projection, the metadata list source and useLocation. The
+    // server's projection puts the document id last.
+    (async () => {
+      const page = await governedCollectionClient.readGovernedList({
+        sourceId: "equipmentByIds",
+        filters: { ids: [equipmentId] },
+        pageSize: 1,
+      });
+      if (!active) return;
+      if (!page.ok) {
+        setEquipment(null);
+        // DENIED and UNAVAILABLE stay distinct, and both stay distinct from a CONFIRMED ABSENCE
+        // below -- a successful read that found no such equipment reports no error at all.
+        setError(
+          loadErrorMessage(
+            { code: page.result === READ_RESULT.DENIED ? "permission-denied" : "unavailable" },
+            { entity: ENTITY },
+          ),
+        );
+        setLoading(false);
+        return;
+      }
+      setEquipment(page.items[0] ?? null);
+      setError(null);
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
   }, [equipmentId]);
 
   return { equipment, loading, error };

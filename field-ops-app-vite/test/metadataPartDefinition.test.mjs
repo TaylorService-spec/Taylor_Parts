@@ -111,8 +111,8 @@ test("no capability gates this collection — Rules admit by role, not by capabi
   // PARTS_MANAGER / WAREHOUSE_MANAGER — a raw role check, not a capability id. Declaring
   // one here would be inventing an authority nothing enforces, the same finding
   // contact.js already made.
-  assert.equal(partEntity.readCapability, null);
-  assert.equal(partEntity.readVia, "CLIENT_DIRECT");
+  assert.equal(partEntity.readCapability, "inventory.catalog.read");
+  assert.equal(partEntity.readVia, "CALLABLE");
 });
 
 test("provenance is declared, unlike Contact — Part's one write path satisfies the invariant", () => {

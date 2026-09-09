@@ -95,11 +95,28 @@ check("production reader bundle wires the existing one-shot readers via readOnce
   assert.ok(/__APP_COMMIT__/.test(src), "adapterCommit sourced from the injected build id __APP_COMMIT__");
   assert.ok(!/adapterCommit:\s*null/.test(src), "no longer the foundation null commit");
 });
-check("the new one-shot readers exist and use the LIVE reorder collections (not dormant purchase_orders)", () => {
+check("the one-shot readers use the LIVE reorder SOURCES, not the dormant legacy purchase orders", () => {
+  // The check is the same and its subject moved up a level twice. operationsQueries no longer
+  // names a COLLECTION -- it names an EOS source id, and the server owns the mapping to storage --
+  // and the reorder read moved again, off the governed source and onto the SCOPED seam, because
+  // the retired rule admitted three different populations there. So the live/dormant distinction
+  // is asserted on what each reader calls: the reorder reader goes through the scoped seam, the
+  // PO readers through the live governed sources, and `legacyPurchaseOrders` is the dormant Epic-5
+  // collection this reader must never use.
   const src = read("src/services/operationsQueries.ts");
-  assert.ok(/reorder_requests/.test(src) && /fetchReorderRequests/.test(src));
-  assert.ok(/reorder_purchase_orders/.test(src) && /fetchReorderPurchaseOrders/.test(src));
+  assert.ok(/readCompleteScopedReorder/.test(src) && /fetchReorderRequests/.test(src));
+  assert.ok(
+    !/reorderRequestsQueue|reorderRequestsHistory/.test(src),
+    "the unscoped reorder sources are gone -- a reader naming one would be reading a wider population than the retired rule allowed",
+  );
+  assert.ok(/purchaseOrderDirectory/.test(src) && /fetchReorderPurchaseOrders/.test(src));
+  // fetchReorderPurchaseOrders must read the LIVE source, never the dormant one.
+  const liveReader = /export const fetchReorderPurchaseOrders =[\s\S]{0,200}/.exec(src);
+  assert.ok(liveReader, "fetchReorderPurchaseOrders not found");
+  assert.ok(!/legacyPurchaseOrders/.test(liveReader[0]), "the live PO reader must not read the dormant Epic-5 source");
   assert.ok(!/onSnapshot\s*\(/.test(src), "operationsQueries stays one-shot (no onSnapshot call)");
+  // And it no longer touches Firestore at all -- the point of the migration.
+  assert.ok(!/from "firebase\/firestore"/.test(src), "operationsQueries must not import the Firestore SDK");
 });
 
 // ---- dedicated gated route; no ordinary Inventory nav exposure -------------

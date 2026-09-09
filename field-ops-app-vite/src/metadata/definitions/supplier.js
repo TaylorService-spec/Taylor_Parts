@@ -73,10 +73,14 @@ export const supplierEntity = makeEntityDefinition({
   // inside services/operationsQueries.ts) — the literal here matches that local const and
   // functions/src/constants/collections.ts's own SUPPLIERS_COLLECTION = "suppliers".
   collection: "suppliers",
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather than
-  // invented — see the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataSuppliers",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "supplier.record.read",
   identity: makeIdentity({ nameField: "name" }),
   description:
     "A governed vendor record (Supplier Master, functions/src/supplierMaster) — or, on a document predating that " +

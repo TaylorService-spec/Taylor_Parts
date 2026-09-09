@@ -53,8 +53,9 @@ async function main() {
 
   for (const [label, coll, seedId] of [["mobile_locations", "mobile_locations", "ML-SEED-1"], ["trucks", "trucks", "TR-SEED-1"]]) {
     // Reads: admin/dispatcher ALLOWED; unauthenticated + technician DENIED.
-    report(`${label}: admin client read allowed`, (await rest("GET", `${coll}/${seedId}`, adminTok)) === 200);
-    report(`${label}: dispatcher client read allowed`, (await rest("GET", `${coll}/${seedId}`, dispTok)) === 200);
+    // Truck and mobile-location reads moved to a governed source (inventory.truckRegistry.read).
+    report(`${label}: admin client read -- NOW DENIED (inventory.truckRegistry.read on a governed source)`, (await rest("GET", `${coll}/${seedId}`, adminTok)) === 403);
+    report(`${label}: dispatcher client read -- NOW DENIED (inventory.truckRegistry.read on a governed source)`, (await rest("GET", `${coll}/${seedId}`, dispTok)) === 403);
     report(`${label}: unauthenticated read denied`, denied(await rest("GET", `${coll}/${seedId}`, null)));
     report(`${label}: technician client read denied`, denied(await rest("GET", `${coll}/${seedId}`, techTok)));
     // Writes: DENIED for every principal, admin included.

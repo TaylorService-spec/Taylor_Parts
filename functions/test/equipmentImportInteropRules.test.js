@@ -217,29 +217,29 @@ async function main() {
 
   // THE LOAD-BEARING ONE. An imported machine must be as editable as one somebody typed in.
   report(
-    "imported Equipment: an ordinary NAME edit through the normal client path ALLOWED",
-    (await updateEquipment(IMPORTED, adminToken, { name: str("Renamed after import"), updatedAt: int(Date.now()) })) === 200
+    "imported Equipment: an ordinary NAME edit through the normal client path ALLOWED -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
+    (await updateEquipment(IMPORTED, adminToken, { name: str("Renamed after import"), updatedAt: int(Date.now()) })) === 403
   );
   report(
-    "imported Equipment: an ordinary descriptive edit (model + notes) ALLOWED",
+    "imported Equipment: an ordinary descriptive edit (model + notes) ALLOWED -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
     (await updateEquipment(IMPORTED, adminToken, {
       model: str("IY-0504A"),
       notes: str("Serviced after import"),
       updatedAt: int(Date.now()),
-    })) === 200
+    })) === 403
   );
   report(
-    "imported Equipment: a dispatcher can edit it too -- the extra field narrows nobody",
-    (await updateEquipment(IMPORTED, dispatcherToken, { assetTag: str("AT-99"), updatedAt: int(Date.now()) })) === 200
+    "imported Equipment: a dispatcher can edit it too -- the extra field narrows nobody -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
+    (await updateEquipment(IMPORTED, dispatcherToken, { assetTag: str("AT-99"), updatedAt: int(Date.now()) })) === 403
   );
   report(
-    "imported Equipment: an ACTIVE -> INACTIVE status edit ALLOWED, exactly as for any machine",
-    (await updateEquipment(IMPORTED, adminToken, { status: str("INACTIVE"), updatedAt: int(Date.now()) })) === 200
+    "imported Equipment: an ACTIVE -> INACTIVE status edit ALLOWED, exactly as for any machine -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
+    (await updateEquipment(IMPORTED, adminToken, { status: str("INACTIVE"), updatedAt: int(Date.now()) })) === 403
   );
   // Put it back, so the remaining assertions run against the normal state.
   await updateEquipment(IMPORTED, adminToken, { status: str("ACTIVE"), updatedAt: int(Date.now()) });
 
-  report("imported Equipment: still readable by admin", (await readEquipment(IMPORTED, adminToken)) === 200);
+  report("imported Equipment: still readable by admin -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))", (await readEquipment(IMPORTED, adminToken)) === 403);
   report("imported Equipment: still denied to the unauthenticated", (await readEquipment(IMPORTED, null)) === 403);
 
   // ---------------------------------------------------------------- CLAIM 2
@@ -254,8 +254,8 @@ async function main() {
     }))) === 403
   );
   report(
-    "create: the SAME record without the forged key is ALLOWED -- the key is the only reason it was denied",
-    (await createEquipment("rules-import-equip-plain", adminToken, clientCreateFields({ serialNumber: str("SN 2002") }))) === 200
+    "create: the SAME record without the forged key is ALLOWED -- the key is the only reason it was denied -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
+    (await createEquipment("rules-import-equip-plain", adminToken, clientCreateFields({ serialNumber: str("SN 2002") }))) === 403
   );
 
   // ---------------------------------------------------------------- CLAIM 3
@@ -293,12 +293,12 @@ async function main() {
 
   // BOTH SHAPES COEXIST. Neither is grandfathered out by the other's existence.
   report(
-    "manually-created Equipment WITHOUT serialNumberKey remains ordinarily editable",
-    (await updateEquipment(MANUAL, adminToken, { name: str("Renamed by hand"), updatedAt: int(Date.now()) })) === 200
+    "manually-created Equipment WITHOUT serialNumberKey remains ordinarily editable -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
+    (await updateEquipment(MANUAL, adminToken, { name: str("Renamed by hand"), updatedAt: int(Date.now()) })) === 403
   );
   report(
-    "manually-created Equipment WITHOUT serialNumberKey remains readable",
-    (await readEquipment(MANUAL, adminToken)) === 200
+    "manually-created Equipment WITHOUT serialNumberKey remains readable -- NOW DENIED (equipment moved to trusted commands; the imported-record-stays-editable invariant is proven in equipmentWriteCommands (serialNumberKey named there))",
+    (await readEquipment(MANUAL, adminToken)) === 403
   );
 
   // And the governed fields are still governed on an imported record -- the extra key did not

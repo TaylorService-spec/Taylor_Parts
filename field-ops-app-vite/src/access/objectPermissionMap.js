@@ -33,8 +33,10 @@ export const VERB_LABEL = Object.freeze({
 export const OBJECT_PERMISSIONS = Object.freeze([
   { object: "Accounts", domain: "CRM",
     C: ["customer.record.create"], R: ["customer.record.read"], E: ["customer.record.update", "customer.governedField.write"], D: [] },
-  { object: "Contacts", domain: "CRM", rulesOnly: "contacts", C: [], R: [], E: [], D: [] },
-  { object: "Customer Locations", domain: "CRM", rulesOnly: "locations", C: [], R: [], E: [], D: [] },
+  { object: "Contacts", domain: "CRM", rulesOnly: "contacts",
+    C: [], R: ["crm.contact.read"], E: [], D: [] },
+  { object: "Customer Locations", domain: "CRM", rulesOnly: "locations",
+    C: [], R: ["crm.location.read"], E: [], D: [] },
   { object: "Opportunities", domain: "Sales",
     C: [], R: ["opportunity.read"], E: ["opportunity.write"], D: [] },
   { object: "Marketing Initiatives", domain: "Marketing", C: [], R: [], E: [], D: [] },
@@ -65,15 +67,23 @@ export const OBJECT_PERMISSIONS = Object.freeze([
     E: ["inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"], D: [] },
   { object: "Serialized Assets", domain: "Inventory",
     C: [], R: ["inventory.serializedAsset.read"], E: [], D: [] },
-  { object: "Equipment / Installed Base", domain: "Service", rulesOnly: "equipment", C: [], R: [], E: [], D: [] },
+  { object: "Equipment / Installed Base", domain: "Service", rulesOnly: "equipment",
+    C: [], R: ["service.equipment.read"], E: [], D: [] },
   { object: "Invoices / AR", domain: "Finance",
     C: ["finance.invoice.issue"], R: ["finance.read"], E: ["finance.adjustment.record"], D: [] },
   { object: "Payments", domain: "Finance",
     C: ["finance.payment.apply"], R: ["finance.read"], E: ["finance.refund.record"], D: [] },
   { object: "Notifications", domain: "Platform",
     C: [], R: ["reorder.request.read.queue"], E: [], D: [] },
+  // READ WAS EMPTY HERE, and it was empty for a reason that is now being removed: seeing people was
+  // decided by firestore.rules' isAdminOrDispatcher() over the legacy users/{uid}.role, so there
+  // was no capability to name and the cell rendered as ungoverned. Both reads are governed
+  // capabilities now -- the directory (workforce.directory.read) and one person's access state
+  // (admin.principalAccess.read) -- so Users/Read is a real, administrable cell in this grid rather
+  // than a blank that quietly meant "Firestore decides".
   { object: "Users", domain: "Administration",
-    C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
+    C: [], R: ["workforce.directory.read", "admin.principalAccess.read"],
+    E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
   { object: "Roles / Permissions", domain: "Administration",
     C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"], D: [] },
   { object: "Audit Log", domain: "Administration",

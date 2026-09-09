@@ -1,4 +1,29 @@
 import { interpretPage } from "./listRuntime.js";
+// The registry is a SEPARATE module so metadata definitions can validate against it without
+// importing this file's transport -- see callableSourceRegistry.js's own header for why that
+// mattered. Re-exported here so every existing importer is unchanged and there is still one name
+// for each of these in the codebase.
+import {
+  CALLABLE_SOURCES,
+  GOVERNED_CALLABLE,
+  GOVERNED_LIST_KEY,
+  GOVERNED_SOURCES,
+  SCOPED_WORK_ORDER_CALLABLE,
+  governedFilterName,
+  governedSortKey,
+  governedSourceSpec,
+  isKnownReadCallable,
+  readCallableSourceInfo,
+} from "./callableSourceRegistry.js";
+
+export {
+  governedFilterName,
+  governedSortKey,
+  governedSourceSpec,
+  isKnownReadCallable,
+  readCallableSourceInfo,
+};
+import { readScopedWorkOrders } from "../access/scopedWorkOrderClient.js";
 
 // Executes a query descriptor against a trusted READ CALLABLE instead of Firestore. The
 // counterpart to firestoreListSource.js's fetchPage, for the entities that declare
@@ -52,103 +77,10 @@ function normalizeCallableError(err) {
   return normalized;
 }
 
-// Which array the callable's own response envelope carries its rows under, and whether
-// that callable takes a parent-scope argument at all. Not a generic "items" key / uniform
-// "always scoped" assumption because the read services' response shapes AND parameter
-// lists are not uniform (each returns its own entity-named list plus its own
-// `skipped`/`truncated` bookkeeping — see AccountOpportunityListResult /
-// AccountSalesOrderListResult in the read services — and only the account-scoped pair
-// requires a scope argument at all). Adding a CALLABLE-read entity, or a new INDEX-capable
-// callable for one that already exists, means adding one line here naming the response key
-// and scope requirement that read service actually has — not inventing either.
-const CALLABLE_SOURCES = Object.freeze({
-  // RELATED (account-scoped) reads. functions/src/opportunity/opportunityReadService.ts
-  // readOpportunitiesForAccount / functions/src/salesOrder/salesOrderReadService.ts
-  // readSalesOrdersForAccount. Both REQUIRE the scope argument the descriptor's own
-  // parent-scope filter supplies (`accountId`) — there is no unscoped way to call either.
-  listOpportunitiesForAccount: { listKey: "opportunities", scoped: true },
-  listSalesOrdersForAccount: { listKey: "salesOrders", scoped: true },
-  // INDEX-capable (unscoped). functions/src/opportunity/opportunityReadService.ts
-  // listOpportunityContext — the one governed Opportunity read that genuinely takes no
-  // parent-scope argument (returns the caller's WHOLE authorized scope, capped, with its
-  // own `truncated` flag). Its response envelope shape is the SAME as the account-scoped
-  // read's ({status, opportunities, skipped, truncated}), so no new unwrap rule is
-  // needed — only the scope requirement differs.
-  //
-  // Listed here so a descriptor CAN be served honestly through this path the moment an
-  // entity/list definition declares this callable. opportunity.js's ENTITY-level
-  // `readCallable` is still the account-scoped "listOpportunitiesForAccount" (an entity
-  // declares exactly one, and that is what the RELATED section under an Account needs) —
-  // but opportunity.index (definitions/opportunity.js) now declares its OWN `readCallable`
-  // of "listOpportunityContext" as a LIST-VIEW-level override (X-ENTITY-SINGLE-READCALLABLE,
-  // listViewDefinition.js's `readCallable`), which both useMetadataList.js and
-  // MetadataRecordPage.jsx's `selectListSource` resolve ahead of the entity's own value.
-  listOpportunityContext: { listKey: "opportunities", scoped: false },
-  // functions/src/salesOrder/salesOrderReadService.ts listSalesOrderIndex -- the unscoped
-  // Sales Order read built for the INDEX surface. Deliberately a SECOND callable rather than
-  // a widened listSalesOrdersForAccount: the account-scoped related list and the unscoped
-  // index are different reads with different authority shapes, and reusing one for the other
-  // was explicitly ruled out.
-  listSalesOrderIndex: { listKey: "salesOrders", scoped: false },
-  // functions/src/partMaster/manufacturerReadService.ts getManufacturerCatalog -- reads the
-  // WHOLE manufacturers collection unbounded/unfiltered (`.get()`, no accountId or any other
-  // scope argument), so `scoped: false` is not a guess but a direct read of the query it
-  // actually runs. Response envelope is { status, manufacturers, excludedCount } (verified in
-  // manufacturerReadService.ts), hence `listKey: "manufacturers"`. NOTE: unlike the account-
-  // scoped pair above, this callable has no `truncated` flag and no `limit` parameter it
-  // honors — it always returns the entire collection in one page. fetchPage's generic
-  // truncation-sentinel logic (`data?.truncated`) will simply never fire for this callable,
-  // which is correct here (there is nothing to truncate) but is a real difference from the
-  // other entries in this table, recorded rather than left to be discovered later.
-  getManufacturerCatalog: { listKey: "manufacturers", scoped: false },
-  // functions/src/finance/financeReadCallables.ts listAccountInvoiceAr -- account-scoped,
-  // REQUIRES accountId (`.where("accountId", "==", accountId)`, HttpsError("invalid-argument")
-  // if missing), so `scoped: true` is a direct read of that requirement, not a guess.
-  // `listKey: "invoices"` matches the real response envelope { status, invoices, summary }
-  // (readAccountInvoiceAr). NOTE: that envelope uses `status: "ready" | "unavailable"`, NOT
-  // the `truncated: boolean` shape the account-scoped opportunity/salesOrder pair above use —
-  // an "unavailable" (the account's rows exceed the requested limit) response carries an EMPTY
-  // `invoices` array, which fetchPage's generic unwrap would silently read as "zero rows"
-  // rather than "read failed / truncated". This callable is currently registered for
-  // correctness (invoice.js's readCallable, and any future RELATED list under account.js, need
-  // a truthful CALLABLE_SOURCES entry to validate against) but has NO CALLABLE-served list view
-  // consuming it today — invoice.index was removed for being INDEX-surface over a
-  // scoped-only callable (X-ENTITY-SINGLE-READCALLABLE would reject any INDEX list that
-  // inherited it, since an INDEX list never supplies the parent scope this callable requires).
-  // Whoever adds the eventual account.js RELATED list should also close the status/truncated
-  // envelope gap noted here before relying on truncation detection.
-  listAccountInvoiceAr: { listKey: "invoices", scoped: true },
-});
-
-/**
- * Whether `name` is a callable this module knows how to unwrap.
- *
- * Exported so `listViewDefinition.js` can validate a list view's declared `readCallable`
- * AT DEFINITION TIME rather than letting an unrecognized name reach `fetchPage` and throw
- * only when a user happens to open that list — the exact "checked nothing until runtime"
- * defect X-UNCONSUMED-DECLARATION-PATTERN names. This module stays the single source of
- * truth for what a callable is named and how it behaves; the validator asks it rather than
- * keeping a second list that could drift.
- */
-export function isKnownReadCallable(name) {
-  return typeof name === "string" && Object.prototype.hasOwnProperty.call(CALLABLE_SOURCES, name);
-}
-
-/**
- * The scope/response-shape record for a known callable, or null. Exported for the same
- * reason as `isKnownReadCallable` — `listViewDefinition.js` needs to know whether a
- * callable a list view declares is `scoped` (requires a parent) so it can reject a RELATED
- * list naming an unscoped callable, or an INDEX list naming a scoped one, before either
- * ever reaches a live request.
- */
-export function readCallableSourceInfo(name) {
-  return isKnownReadCallable(name) ? CALLABLE_SOURCES[name] : null;
-}
-
 /**
  * Fetch one page through a descriptor's declared `readCallable`.
  *
- * Returns the SAME shape firestoreListSource.js's fetchPage returns — `{ rows, hasMore,
+ * Returns the SAME shape the list runtime expects — `{ rows, hasMore,
  * nextCursor, nextCursorDoc }` — so interpretPage's caller and buildListPresentation work
  * unchanged regardless of which source produced the page. `nextCursorDoc` is always null:
  * a callable page has no Firestore document to resume from, and today's only caller
@@ -168,7 +100,132 @@ export function readCallableSourceInfo(name) {
  * A caller choosing to fall back to a direct Firestore read on any of these is the exact
  * defect this module exists to close, so none of them degrade — they throw.
  */
-export async function fetchPage(descriptor) {
+/**
+ * Fetch one page through the governed read callable.
+ *
+ * WHAT THE BROWSER IS ALLOWED TO SAY. A source id, a sort TOKEN, named filters with values, a page
+ * size, and a cursor string it received from a previous page. That is the whole payload. It names
+ * no collection, no Firestore field, no where() clause, no operator and no orderBy -- the server
+ * resolves every one of those from its own copy of the registry, and refuses anything it did not
+ * declare. This is the difference that makes the migration worth doing: the old direct path let the
+ * browser compose the query, and only Rules stood between a composed query and the data.
+ *
+ * THE CURSOR IS A STRING, and that is invisible above this layer. `useMetadataList` stores whatever
+ * a source returns as `nextCursorDoc` and hands it straight back as `cursorDoc` without ever
+ * looking inside it, so a Firestore document snapshot and an opaque server-issued token are
+ * interchangeable there. Nothing above the list source needed to change.
+ */
+async function fetchGovernedPage(descriptor, governed, cursor) {
+  // Named filters, not clauses. Each descriptor filter becomes one NAME the source declared plus a
+  // value; the operator stays the server's. Two descriptor filters that collapse to one name would
+  // silently drop one of them -- a query narrower or broader than the one presented -- so it
+  // throws instead, the same choice buildQueryDescriptor makes for two array filters.
+  const filters = {};
+  for (const f of descriptor.filters ?? []) {
+    const name = governedFilterName(f.fieldId, f.operator);
+    if (Object.prototype.hasOwnProperty.call(filters, name)) {
+      throw new Error(
+        `callableListSource: two filters on this list both resolve to the governed filter "${name}" — ` +
+          "one of them would be silently dropped"
+      );
+    }
+    filters[name] = f.value;
+  }
+
+  // The descriptor's sort always ends in the client-side tiebreaker (`__name__`, appended
+  // unconditionally by buildQueryDescriptor so cursor paging is total). The governed read applies
+  // its OWN document-id tiebreak server-side for the same reason, so the token describes only the
+  // PRIMARY clause; forwarding the tiebreaker would ask for a sort no source registers. A list
+  // sorted by nothing but the tiebreaker sends no token at all and takes the source's default.
+  const primary = (descriptor.sort ?? []).find((s) => s.fieldId !== "__name__") ?? null;
+
+  const payload = { sourceId: governed.sourceId, pageSize: descriptor.pageSize, filters };
+  if (primary) payload.sortKey = governedSortKey(primary.fieldId, primary.direction);
+  if (cursor) payload.cursor = cursor;
+
+  let data;
+  try {
+    data = await invokeCallable(GOVERNED_CALLABLE, payload);
+  } catch (err) {
+    throw normalizeCallableError(err);
+  }
+
+  const rows = Array.isArray(data?.[GOVERNED_LIST_KEY]) ? data[GOVERNED_LIST_KEY] : [];
+  // The server already ran the limit+1 probe and reports the result as `hasMore`, so the sentinel
+  // is re-appended here purely to reuse interpretPage's single truncation rule rather than write a
+  // second one. interpretPage slices it back off; it never reaches a rendered row.
+  const page = interpretPage(descriptor, data?.hasMore ? [...rows, Object.freeze({ __probe: true })] : rows);
+  // `nextCursorDoc` carries the server's opaque cursor STRING. Named for the field the hook
+  // already round-trips, not for what is inside it -- see the note above.
+  return { ...page, nextCursorDoc: data?.nextCursor ?? null };
+}
+
+
+
+/**
+ * Fetch one page of the metadata Work Order list through the scoped seam.
+ *
+ * Maps the descriptor onto the seam's `index` mode. The descriptor's own filters become that mode's
+ * declared parameters by NAME -- `status` / `statusIn` / `customerId` -- exactly as the governed
+ * path does; the field and the operator stay the server's.
+ *
+ * THERE IS NO SCOPE PARAMETER TO SET. Whether this reader sees every work order or only their own
+ * assigned ones is decided server-side from request.auth.uid. The list runtime cannot tell the
+ * difference, and must not: a technician's Work Orders list is their assigned work, which is what
+ * `firestore.rules` produced for them before this seam existed.
+ */
+async function fetchScopedWorkOrderPage(descriptor) {
+  const params = {};
+  for (const f of descriptor.filters ?? []) {
+    const name = governedFilterName(f.fieldId, f.operator);
+    if (Object.prototype.hasOwnProperty.call(params, name)) {
+      throw new Error(
+        `callableListSource: two filters on this list both resolve to the work-order parameter "${name}"`,
+      );
+    }
+    params[name] = f.value;
+  }
+
+  // The client-side tiebreaker is dropped for the same reason as on the governed path: the seam
+  // applies its own document-id tiebreak server-side, and forwarding `__name__` would ask for a
+  // sort no mode registers.
+  const primary = (descriptor.sort ?? []).find((s) => s.fieldId !== "__name__") ?? null;
+
+  const page = await readScopedWorkOrders({
+    mode: "index",
+    params,
+    ...(primary ? { sortKey: governedSortKey(primary.fieldId, primary.direction) } : {}),
+    pageSize: descriptor.pageSize,
+  });
+
+  if (!page.ok) {
+    // Normalized to the SAME code shape a Firestore read produced, so useMetadataList's existing
+    // denied/unavailable split keeps working without learning a third error dialect.
+    const err = new Error("scoped work order read failed");
+    err.code = page.result === "DENIED" ? "permission-denied" : "unavailable";
+    throw err;
+  }
+
+  // `hasMore` is the server's observed probe. Re-appended as a sentinel row only so interpretPage's
+  // single truncation rule is reused rather than a second one written here; it never reaches a
+  // rendered row.
+  const interpreted = interpretPage(descriptor, page.hasMore ? [...page.items, Object.freeze({ __probe: true })] : page.items);
+  // No cursor: the seam pages by bound, and the metadata Work Order list has never requested a
+  // second page through a cursor.
+  return { ...interpreted, nextCursorDoc: null };
+}
+
+export async function fetchPage(descriptor, { cursorDoc = null } = {}) {
+  // WORK ORDERS SPEAK A DIFFERENT VOCABULARY, and that is the point rather than an inconsistency.
+  // Every governed source is a global capability check; the work-order read is not, so its seam
+  // takes a registered MODE and adds a scope predicate the caller neither supplies nor can see.
+  // Routing it here keeps the entity/list dispatch, buildQueryDescriptor and useMetadataList
+  // unchanged -- the list runtime never learns that this one read is scoped.
+  if (descriptor?.readCallable === SCOPED_WORK_ORDER_CALLABLE) return fetchScopedWorkOrderPage(descriptor);
+
+  const governed = descriptor?.readCallable ? GOVERNED_SOURCES[descriptor.readCallable] : null;
+  if (governed) return fetchGovernedPage(descriptor, governed, cursorDoc);
+
   const source = descriptor?.readCallable ? CALLABLE_SOURCES[descriptor.readCallable] : null;
   if (!source) {
     throw new Error(

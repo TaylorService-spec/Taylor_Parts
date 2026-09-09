@@ -5,9 +5,8 @@ import { useWorkOrder } from "../../hooks/useWorkOrder";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocation as useLocationDoc } from "../../hooks/useLocation";
 import { useEquipmentDoc } from "../../hooks/useEquipment";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { useWorkOrderReadinessContext } from "../../hooks/useWorkOrderReadinessContext.js";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { Button } from "../../shared/ui/primitives";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
 import AttentionBand from "../../shared/ui/AttentionBand.jsx";
@@ -99,7 +98,7 @@ export default function WorkOrderDetailPage() {
   const { equipment } = useEquipmentDoc(workOrder?.equipmentId ?? null);
   const { account, error: accountError } = useAccount(workOrder?.customerId ?? null);
   const { location, error: locationError } = useLocationDoc(workOrder?.locationId ?? null);
-  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, error: techniciansError } = useTechnicianDirectory();
 
   // ONE DERIVATION PER FACT (NS-P4). Everything below renders what these return; nothing re-derives.
   const header = useMemo(() => workOrderHeader(workOrder), [workOrder]);

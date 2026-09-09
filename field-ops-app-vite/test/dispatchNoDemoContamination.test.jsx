@@ -25,10 +25,10 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
 vi.mock("../src/hooks/useWorkOrders", () => ({ useWorkOrders: vi.fn() }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({ useFirestoreCollection: vi.fn() }));
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({ useTechnicianDirectory: vi.fn() }));
 
 import { useWorkOrders } from "../src/hooks/useWorkOrders";
-import { useFirestoreCollection } from "../src/hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../src/hooks/useTechnicianDirectory";
 import Dispatch from "../src/modules/dispatch/Dispatch";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,7 +69,7 @@ describe("Dispatch -- no demo/heroConfig contamination in normal runtime", () =>
       description: "Looks like the old hero job by name only",
     };
     useWorkOrders.mockReturnValue({ data: [normalJob, heroNamedJob], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [], loading: false, error: null });
 
     render(<Dispatch />);
 
@@ -91,7 +91,7 @@ describe("Dispatch -- no demo/heroConfig contamination in normal runtime", () =>
     };
     const heroNamedTech = { id: "tech-1", name: "Alex Rivera", status: "available" };
     useWorkOrders.mockReturnValue({ data: [job], loading: false, error: null });
-    useFirestoreCollection.mockReturnValue({ data: [heroNamedTech], loading: false, error: null });
+    useTechnicianDirectory.mockReturnValue({ data: [heroNamedTech], loading: false, error: null });
 
     render(<Dispatch />);
 

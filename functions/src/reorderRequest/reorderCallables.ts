@@ -40,16 +40,21 @@ import {
   type ReorderWarehouseOption,
 } from "./reorderWarehouseAuthority";
 import {
+  buildCancelReorderRequest,
   buildCreateReorderRequest,
   buildRecordReorderPurchaseOrder,
+  buildVoidPurchaseOrder,
   commandFingerprint,
   ReorderCommandError,
+  type CancelReorderRequestInput,
   type CreateReorderRequestInput,
   type RecordReorderPurchaseOrderInput,
+  type VoidPurchaseOrderInput,
 } from "./reorderCommands";
 
 const REORDER_REQUESTS = "reorder_requests";
 const REORDER_PURCHASE_ORDERS = "reorder_purchase_orders";
+const REORDER_PURCHASE_ORDER_VOIDS = "reorder_purchase_order_voids";
 const WAREHOUSES = "warehouses";
 
 // The ALREADY-REGISTERED, already-active capabilities. Ruling: use these, register no replacements.
@@ -90,7 +95,15 @@ function mapCommandError(err: unknown): HttpsError {
       err.code === "REQUEST_NOT_FOUND" ||
       err.code === "WAREHOUSE_NOT_GOVERNED" ||
       err.code === "WAREHOUSE_NO_COMPANY" ||
-      err.code === "REQUEST_NO_COMPANY";
+      err.code === "REQUEST_NO_COMPANY" ||
+      // Void's preconditions. Each is a fact about the CURRENT STATE of the records, not about the
+      // payload -- a caller told "already voided" or "not currently ORDERED" has nothing to fix in
+      // its request, and invalid-argument would invite it to try. The two *_REASON_REQUIRED codes
+      // are deliberately NOT here: a missing reason IS a bad payload, and is fixable by supplying
+      // one.
+      err.code === "PO_NOT_FOUND" ||
+      err.code === "PO_STATE_INVALID" ||
+      err.code === "PO_ALREADY_VOIDED";
     return new HttpsError(precondition ? "failed-precondition" : "invalid-argument", err.message, { code: err.code });
   }
   return new HttpsError("internal", "Reorder command failed.");
@@ -433,4 +446,184 @@ export const listReorderWarehouseOptions = onCall({ region: "us-central1" }, asy
   const reason =
     options.length > 0 ? REORDER_WAREHOUSE_AUTHORITY_REASON.GOVERNED_ASSIGNMENT : authority.reason;
   return { options, reason };
+});
+// ============================ CANCEL REORDER REQUEST ============================
+//
+// Class C in the write census: previously a client-direct `runTransaction`. Nothing about the
+// decision changes -- the same cancellable-status allowlist, the same required reason, the same
+// four fields written. What changes is WHO decides: the browser composed and submitted the write
+// and Rules judged it; now the server resolves the actor from request.auth.uid, resolves the
+// capability fail-closed, reads the request itself, and applies the patch.
+//
+// THE AUDIT EVENT IS NEW, and it is not decoration. The census recorded that the client path wrote
+// none. It appears here because the idempotency mechanism this pattern uses IS the audit document
+// (a deterministic id whose prior existence is the "already applied" check) -- there is no version
+// of this command in this shape that has no audit event. Recorded as a real behavior change rather
+// than presented as a like-for-like migration.
+export const REORDER_CANCEL_CAPABILITY = "reorder.request.cancel";
+export const REORDER_VOID_PO_CAPABILITY = "reorder.purchaseOrder.void";
+
+export async function persistCancelledReorderRequest(
+  db: Firestore,
+  tx: Transaction,
+  input: CancelReorderRequestInput & { idempotencyKey: string },
+  actorUid: string,
+  nowMillis: number,
+): Promise<{ success: true; replayed: boolean; reorderRequestId: string }> {
+  const requestId = String(input.reorderRequestId ?? "").trim();
+  const aid = mkAuditId("cancelReorderRequest", actorUid, input.idempotencyKey);
+  const auditRef = auditEventDocRef(aid);
+
+  // ---- READ PHASE ----
+  const prior = await tx.get(auditRef);
+  const fingerprint = commandFingerprint([
+    requestId || null,
+    typeof input.reason === "string" ? input.reason.trim() : null,
+  ]);
+  if (prior.exists) {
+    assertReplayMatches(prior, fingerprint);
+    return { success: true, replayed: true, reorderRequestId: requestId };
+  }
+  if (!requestId) throw new ReorderCommandError("INVALID", "reorderRequestId is required");
+
+  const requestRef = db.collection(REORDER_REQUESTS).doc(requestId);
+  const requestSnap = await tx.get(requestRef);
+
+  const { requestPatch } = buildCancelReorderRequest(
+    input,
+    requestSnap.exists ? (requestSnap.data() as Record<string, unknown>) : null,
+    { actorUid, nowMillis },
+  );
+
+  // ---- WRITE PHASE ----
+  tx.update(requestRef, { ...requestPatch });
+  stageAuditEventWithId(tx, aid, {
+    actorUid,
+    action: "cancelReorderRequest",
+    targetType: "reorderRequest",
+    targetId: requestId,
+    outcome: "applied",
+    summary: `Reorder request ${requestId} cancelled [${fingerprint}]`,
+  });
+
+  return { success: true, replayed: false, reorderRequestId: requestId };
+}
+
+export const cancelReorderRequest = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+  await requireCapability(request.auth.uid, REORDER_CANCEL_CAPABILITY);
+
+  const data = (request.data ?? {}) as CancelReorderRequestInput & { idempotencyKey?: string };
+  if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "idempotencyKey is required.");
+  }
+
+  const db = getFirestore();
+  const actorUid = request.auth.uid;
+  const nowMillis = Date.now();
+  try {
+    return await db.runTransaction((tx) =>
+      persistCancelledReorderRequest(db, tx, { ...data, idempotencyKey: data.idempotencyKey! }, actorUid, nowMillis),
+    );
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// ============================ VOID PURCHASE ORDER ============================
+//
+// Class C, and the one in this pair with a RECORD SCOPE. The retired Rules branch required a role
+// AND `request.auth.uid == the request's own assignedToUserId`. Both survive: the capability gate
+// below, and the assignee comparison inside the transaction against the value read from the
+// request document. The client never asserts who it is -- it could not, since the comparison is
+// made server-side against a field it does not supply.
+//
+// TWO DOCUMENTS, ONE COMMIT: the append-only void record and the request's transition to VOIDED,
+// sharing one `nowMillis` so the cross-document equality the retired Rules enforced still holds.
+// The purchase order itself is read and never written.
+export async function persistVoidedPurchaseOrder(
+  db: Firestore,
+  tx: Transaction,
+  input: VoidPurchaseOrderInput & { idempotencyKey: string },
+  actorUid: string,
+  nowMillis: number,
+): Promise<{ success: true; replayed: boolean; reorderRequestId: string }> {
+  const requestId = String(input.reorderRequestId ?? "").trim();
+  const aid = mkAuditId("voidPurchaseOrder", actorUid, input.idempotencyKey);
+  const auditRef = auditEventDocRef(aid);
+
+  // ---- READ PHASE (every read before any write) ----
+  const prior = await tx.get(auditRef);
+  const fingerprint = commandFingerprint([
+    requestId || null,
+    typeof input.reason === "string" ? input.reason.trim() : null,
+  ]);
+  if (prior.exists) {
+    assertReplayMatches(prior, fingerprint);
+    return { success: true, replayed: true, reorderRequestId: requestId };
+  }
+  if (!requestId) throw new ReorderCommandError("INVALID", "reorderRequestId is required");
+
+  const requestRef = db.collection(REORDER_REQUESTS).doc(requestId);
+  // IDENTITY UNCHANGED, as with recordReorderPurchaseOrder: the PO and its void record both use the
+  // request id as their document id. No new id is minted, and the void's id is what makes a second
+  // void impossible to write rather than merely unlikely.
+  const poRef = db.collection(REORDER_PURCHASE_ORDERS).doc(requestId);
+  const voidRef = db.collection(REORDER_PURCHASE_ORDER_VOIDS).doc(requestId);
+  const [requestSnap, poSnap, voidSnap] = await Promise.all([tx.get(requestRef), tx.get(poRef), tx.get(voidRef)]);
+
+  // THE RECORD SCOPE, resolved from the record. Checked before the builder so an authorization
+  // failure arrives as permission-denied rather than as a state complaint -- and checked only when
+  // the request exists, so a missing request still reports REQUEST_NOT_FOUND instead of being
+  // reported as someone else's to void.
+  if (requestSnap.exists) {
+    const assignee = (requestSnap.data() as Record<string, unknown>)?.assignedToUserId ?? null;
+    if (assignee !== actorUid) {
+      throw new HttpsError("permission-denied", "Only the assigned Parts Associate can void this Purchase Order.", {
+        code: "NOT_ASSIGNED_TO_ACTOR",
+      });
+    }
+  }
+
+  const { voidRecord, requestPatch } = buildVoidPurchaseOrder(
+    input,
+    requestSnap.exists ? (requestSnap.data() as Record<string, unknown>) : null,
+    poSnap.exists ? (poSnap.data() as Record<string, unknown>) : null,
+    { actorUid, nowMillis, alreadyVoided: voidSnap.exists },
+  );
+
+  // ---- WRITE PHASE: both halves, one commit, or neither ----
+  tx.set(voidRef, voidRecord);
+  tx.update(requestRef, { ...requestPatch });
+  stageAuditEventWithId(tx, aid, {
+    actorUid,
+    action: "voidPurchaseOrder",
+    targetType: "reorderPurchaseOrder",
+    targetId: requestId,
+    outcome: "applied",
+    summary: `Purchase order ${requestId} voided for part ${voidRecord.partId} [${fingerprint}]`,
+  });
+
+  return { success: true, replayed: false, reorderRequestId: requestId };
+}
+
+export const voidPurchaseOrder = onCall({ region: "us-central1" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be signed in.");
+  await requireCapability(request.auth.uid, REORDER_VOID_PO_CAPABILITY);
+
+  const data = (request.data ?? {}) as VoidPurchaseOrderInput & { idempotencyKey?: string };
+  if (typeof data.idempotencyKey !== "string" || data.idempotencyKey.trim().length === 0) {
+    throw new HttpsError("invalid-argument", "idempotencyKey is required.");
+  }
+
+  const db = getFirestore();
+  const actorUid = request.auth.uid;
+  const nowMillis = Date.now();
+  try {
+    return await db.runTransaction((tx) =>
+      persistVoidedPurchaseOrder(db, tx, { ...data, idempotencyKey: data.idempotencyKey! }, actorUid, nowMillis),
+    );
+  } catch (err) {
+    throw mapCommandError(err);
+  }
 });

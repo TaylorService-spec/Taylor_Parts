@@ -26,6 +26,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import * as commands from "./trustedWriterCommands";
+import * as governedReads from "./governedListReadService";
 
 const REGION = "us-central1";
 
@@ -275,6 +276,51 @@ export const decidePrivilegedRoleRequest = onCall({ region: REGION }, async (req
         authTimeSeconds: request.auth?.token?.auth_time ?? null,
         signInProvider: request.auth?.token?.firebase?.sign_in_provider ?? null,
       },
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// ONE PAGE OF ONE REGISTERED SOURCE, under that source's own capability.
+//
+// The client sends a SOURCE ID -- an EOS concept like "accountContacts" -- plus values for that
+// source's declared filter names, a page size and an opaque cursor. It does not send a collection,
+// a Firestore path, a where() clause, a sort field or a raw cursor: every one of those is
+// registry-owned server-side. Firebase authenticates; EOS authorizes.
+export const readGovernedList = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await governedReads.readGovernedList({
+      actorUid,
+      sourceId: data.sourceId as string,
+      filters: asRecord(data.filters),
+      pageSize: typeof data.pageSize === "number" ? data.pageSize : undefined,
+      cursor: typeof data.cursor === "string" ? data.cursor : undefined,
+      // The sort TOKEN. Forwarded, not resolved here -- this adapter maps a wire payload onto the
+      // service's input and decides nothing; the registry decides which field a token means, or
+      // refuses it. Omitting this line (as this call did when sortKey was added to the service)
+      // silently drops every caller's sort choice onto the source's default, which reads as "the
+      // sort control does nothing" rather than as an error.
+      sortKey: typeof data.sortKey === "string" ? data.sortKey : undefined,
+    });
+  } catch (err) {
+    throw mapCommandError(err);
+  }
+});
+
+// The count behind the same registry entry. Separate callable rather than a flag on the read: they
+// return different shapes, and a read that sometimes counted instead would make the response type
+// depend on an input field.
+export const countGovernedList = onCall({ region: REGION }, async (request) => {
+  const actorUid = requireActorUid(request);
+  const data = asRecord(request.data);
+  try {
+    return await governedReads.countGovernedList({
+      actorUid,
+      sourceId: data.sourceId as string,
+      filters: asRecord(data.filters),
     });
   } catch (err) {
     throw mapCommandError(err);

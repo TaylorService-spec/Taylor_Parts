@@ -338,14 +338,14 @@ async function main() {
 
   // === Assign -- merged branch: admin/dispatcher OR eligible PARTS_MANAGER ===
 
-  report("PARTS_MANAGER Assign succeeds (merged branch, Issue #100 PR 3a)",
+  report("PARTS_MANAGER Assign succeeds (merged branch, Issue #100 PR 3a) -- NOW DENIED (reorder lifecycle moved to trusted transition commands; assignee scope proven in reorderTransitionParity)",
     (await updateDoc("reorder_requests", "rr-assign-by-pm", tokens["user-pm-1"], {
       status: str("ASSIGNED_TO_PARTS_ASSOCIATE"),
       currentOwner: str("PARTS_ASSOCIATE"),
       assignedToUserId: str("user-pa-1"),
       assignedBy: str("user-pm-1"),
       assignedAt: int(now),
-    })) === 200);
+    })) === 403);
 
   report("PARTS_ASSOCIATE Assign attempt denied -- PARTS_ASSOCIATE never gains Assign",
     (await updateDoc("reorder_requests", "rr-assign-by-pa", tokens["user-pa-1"], {
@@ -420,12 +420,12 @@ async function main() {
 
   // === Start Purchasing -- assignee-restricted, gains the new OR ===
 
-  report("PARTS_ASSOCIATE assignee: Start Purchasing succeeds",
+  report("PARTS_ASSOCIATE assignee: Start Purchasing succeeds -- NOW DENIED (reorder lifecycle moved to trusted transition commands; assignee scope proven in reorderTransitionParity)",
     (await updateDoc("reorder_requests", "rr-start-purchasing", tokens["user-pa-1"], {
       status: str("PURCHASING_IN_PROGRESS"),
       purchasingStartedBy: str("user-pa-1"),
       purchasingStartedAt: int(now),
-    })) === 200);
+    })) === 403);
 
   report("A DIFFERENT PARTS_ASSOCIATE (not the assignee): Start Purchasing denied",
     (await updateDoc("reorder_requests", "rr-start-purchasing-not-assignee", tokens["user-pa-2"], {
@@ -436,14 +436,14 @@ async function main() {
 
   // === Post Purchasing Update -- assignee-restricted, gains the new OR ===
 
-  report("PARTS_ASSOCIATE assignee: Post Purchasing Update succeeds",
+  report("PARTS_ASSOCIATE assignee: Post Purchasing Update succeeds -- NOW DENIED (reorder lifecycle moved to trusted transition commands; assignee scope proven in reorderTransitionParity)",
     (await updateDoc("reorder_requests", "rr-progress-update", tokens["user-pa-1"], {
       purchasingNotes: str("Vendor contacted, awaiting quote"),
       vendorContacted: str("Acme Parts Co."),
       expectedAvailabilityDate: str("2026-08-01"),
       lastPurchasingUpdateAt: int(now),
       lastPurchasingUpdateBy: str("user-pa-1"),
-    })) === 200);
+    })) === 403);
 
   // === Record PO -- RETIRED in Workstream 2B ===
   //
@@ -482,19 +482,19 @@ async function main() {
 
   // === Mark Received -- assignee-restricted, gains the new OR ===
 
-  report("PARTS_ASSOCIATE assignee: Mark Received succeeds",
+  report("PARTS_ASSOCIATE assignee: Mark Received succeeds -- NOW DENIED (reorder lifecycle moved to trusted transition commands; assignee scope proven in reorderTransitionParity)",
     (await updateDoc("reorder_requests", "rr-mark-received", tokens["user-pa-1"], {
       status: str("RECEIVED"),
       receivedBy: str("user-pa-1"),
       receivedAt: int(now),
-    })) === 200);
+    })) === 403);
 
-  report("admin/dispatcher Mark Received regression -- existing admin capability unaffected",
+  report("admin/dispatcher Mark Received regression -- existing admin capability unaffected -- NOW DENIED (reorder lifecycle moved to trusted transition commands; assignee scope proven in reorderTransitionParity)",
     (await updateDoc("reorder_requests", "rr-admin-mark-received-regression", tokens["user-admin-1"], {
       status: str("RECEIVED"),
       receivedBy: str("user-admin-1"),
       receivedAt: int(now),
-    })) === 200);
+    })) === 403);
 
   // === Cancel -- confirmed still admin/dispatcher-only, PARTS_ASSOCIATE never gains it ===
 
@@ -528,8 +528,8 @@ async function main() {
 
   // === Self-scoped reads: reorder_purchase_orders / reorder_purchase_order_voids ===
 
-  report("PARTS_ASSOCIATE reads their OWN reorder_purchase_orders document",
-    (await getDocAt("reorder_purchase_orders", "rr-self-read-owned", tokens["user-pa-1"])) === 200);
+  report("PARTS_ASSOCIATE reads their OWN reorder_purchase_orders document -- NOW DENIED (reorder lifecycle moved to trusted transition commands; assignee scope proven in reorderTransitionParity)",
+    (await getDocAt("reorder_purchase_orders", "rr-self-read-owned", tokens["user-pa-1"])) === 403);
 
   report("PARTS_ASSOCIATE denied a DIFFERENT Parts Associate's reorder_purchase_orders document",
     (await getDocAt("reorder_purchase_orders", "rr-self-read-other", tokens["user-pa-1"])) === 403);

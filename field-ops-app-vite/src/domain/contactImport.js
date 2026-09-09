@@ -1,57 +1,46 @@
-import { collection, doc, writeBatch } from "firebase/firestore";
-import { auth, db } from "../firebase/firebase";
-import { CONTACTS_COLLECTION } from "./constants";
 import { isWriteBlocked } from "../config/env";
 
-// Contact CSV import -- the WRITE path. All accepted contacts for ONE account are
-// written in a single Firestore `writeBatch` (bounded above by
-// contactCsvImport.js's MAX_IMPORT_ROWS, well under Firestore's 500-write batch
-// cap). The batch is ATOMIC: it either commits every contact or none, so a
-// failure persists ZERO contacts -- an invalid/failed import can never leave a
-// partial set behind.
+// Contact CSV import -- the WRITE path, through the trusted command.
 //
-// This goes through the authenticated client SDK and Firestore Rules exactly like
-// the single Add-Contact path (contacts `allow create: if isAdminOrDispatcher()`,
-// no per-write cross-document invariant, so a batch of creates is Rules-legal for
-// the same session) -- NO Admin SDK, NO Rules bypass, NO Cloud Function, NO
-// production credential. It also respects the platform demo/panic write gate
-// (config/env.js's isWriteBlocked), returning a { blocked } sentinel rather than
-// writing, same convention as lib/firebaseSafe.js.
+// WHAT MOVED. This file used to build a Firestore `writeBatch` in the browser, stamp
+// `createdBy`/`updatedBy` from `auth.currentUser`, and rely on firestore.rules'
+// `isAdminOrDispatcher()` as the only check. The server now resolves the actor from
+// request.auth.uid and resolves `crm.contact.create` fail-closed
+// (functions/src/crm/contactImportCommand.ts). A browser can no longer say who imported a contact.
+//
+// WHAT DID NOT MOVE. The batch is still ONE ATOMIC COMMIT -- every accepted contact or none, so a
+// failure persists zero contacts and can never leave a partial set behind. The row bound, the
+// `isPrimary: false` rule, the client-supplied provenance SHAPE and the `{ ids }` return are all
+// unchanged. Row validation and duplicate detection stay in contactCsvImport.js, where they belong:
+// they decide which rows the person is OFFERED, against contacts the person is looking at. The
+// server validates what it is asked to write, which is a different question and always was.
+//
+// NO FALLBACK to the old writeBatch on failure. Two write authorities for one command is precisely
+// what retiring the direct path removes.
+//
+// Still respects the platform demo/panic write gate before the round trip, returning the same
+// `{ blocked }` sentinel as every other write path rather than calling out and being refused.
 export async function importContacts(accountId, contacts = []) {
   if (isWriteBlocked()) return { blocked: true };
-  const now = Date.now();
-  // Contact provenance convergence -- same client-direct-write posture as
-  // domain/contacts.js: this timestamp/actor are CLIENT-SUPPLIED CLAIMS, not
-  // server-authoritative provenance (metadata/v2/provenance.js's SERVER-
-  // AUTHORITATIVE ideal), since Contact writes are not behind a trusted
-  // command. Converging the SHAPE across every write path is this change's
-  // scope. Actor identity reuses the same auth.currentUser?.uid ?? null
-  // pattern as every other client-direct-write domain module -- an import
-  // is still a human-triggered write, attributed to the signed-in operator
-  // who ran it (PROVENANCE_ORIGIN's "an import did this on a dispatcher's
-  // behalf" distinction belongs to the not-yet-implemented createdVia seam,
-  // not to createdBy itself).
-  const actorUid = auth.currentUser?.uid ?? null;
-  const batch = writeBatch(db);
-  const ids = [];
-  for (const c of contacts) {
-    const ref = doc(collection(db, CONTACTS_COLLECTION));
-    ids.push(ref.id);
-    batch.set(ref, {
-      accountId,
+
+  // Lazy, matching services/reorderCallableClient.js: firebase/firebase.js runs initializeApp on
+  // import, so a static import here would give this module an import-time side effect.
+  const [{ httpsCallable }, { functions }] = await Promise.all([
+    import("firebase/functions"),
+    import("../firebase/firebase.js"),
+  ]);
+
+  // The payload carries the rows and the account, and nothing about the caller. There is no
+  // createdBy/updatedBy field to send -- the server writes the actor it resolved, so a browser that
+  // wanted to attribute an import to someone else has nothing to put it in.
+  const res = await httpsCallable(functions, "importContacts")({
+    accountId,
+    contacts: contacts.map((c) => ({
       name: c.name,
       phone: c.phone || null,
       email: c.email || null,
       role: c.role || null,
-      // Imported contacts are never auto-primary (see contactCsvImport.js) --
-      // primary is chosen per-contact in the UI.
-      isPrimary: false,
-      createdAt: now,
-      createdBy: actorUid,
-      updatedAt: now,
-      updatedBy: actorUid,
-    });
-  }
-  await batch.commit();
-  return { ids };
+    })),
+  });
+  return { ids: Array.isArray(res?.data?.ids) ? res.data.ids : [] };
 }

@@ -1,6 +1,5 @@
 import { useWorkOrders } from "./useWorkOrders";
-import { useFirestoreCollection } from "./useFirestoreCollection";
-import { TECHNICIANS_COLLECTION } from "../domain/constants";
+import { useTechnicianDirectory } from "./useTechnicianDirectory"
 
 // Scheduling workspace data hook -- composes the two GOVERNED reads the weekly board needs, with NO new
 // read model: the canonical Work Order subscription (useWorkOrders -> subscribeToWorkOrders on
@@ -14,7 +13,7 @@ import { TECHNICIANS_COLLECTION } from "../domain/constants";
 // SchedulingWorkspace renders identically to a genuinely empty schedule.
 export function useSchedulingData() {
   const { data: workOrders, loading: woLoading, error: woError } = useWorkOrders();
-  const { data: technicians, loading: techLoading, error: techError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, loading: techLoading, error: techError } = useTechnicianDirectory();
 
   return {
     workOrders,

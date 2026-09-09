@@ -47,10 +47,26 @@ export { createOpportunity, transitionOpportunity, updateOpportunity } from "./o
 export {
   createReorderRequest,
   recordReorderPurchaseOrder,
+  // The two Class C reorder writes, moved off the client-direct Firestore transaction path.
+  // EXPORT != DEPLOY, the same posture as the pair above.
+  cancelReorderRequest,
+  voidPurchaseOrder,
   // R-17. The trusted warehouse projection the reorder picker reads, INSTEAD of a `warehouses`
   // collection LIST. Same capability as the create it serves; no warehouse.list capability exists.
   listReorderWarehouseOptions,
 } from "./reorderRequest/reorderCallables";
+// The five reorder TRANSITIONS. One command per transition, each on the capability the catalog
+// already declares -- no replacement generic write authority. Three of them (startPurchasing,
+// postPurchasingUpdate, markReceived) additionally enforce the ASSIGNEE record scope, which in the
+// retired Rules sat outside the role disjunction and therefore bound an administrator too.
+export {
+  approveReorderRequest,
+  rejectReorderRequest,
+  assignReorderRequest,
+  startReorderPurchasing,
+  postReorderPurchasingUpdate,
+  markReorderRequestReceived,
+} from "./reorderRequest/reorderTransitionCommands";
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext, listOpportunitiesForAccount } from "./opportunity/opportunityReadService";
@@ -164,10 +180,73 @@ export {
   decidePrivilegedRoleRequest,
   listPrivilegedRoleRequests,
   readPrincipalAccessState,
+  // THE governed read path that replaces client-direct Firestore access as rules management comes
+  // out of Firebase. ONE paginated callable over the closed source registry
+  // (governedReadRegistry.ts), one capability per source. The client names an EOS source id, never
+  // a collection, a where() clause, a sort field or a raw cursor.
+  readGovernedList,
+  // The list header's count, behind the same registry entry and the same capability as the read.
+  countGovernedList,
   setUserStatus,
   approveAccessRequest,
   rejectAccessRequest,
 } from "./access/accessCommandCallables";
+
+// WORK ORDERS -- the ONE scoped read seam. Not a governed list source: work-order read authority
+// admits a GLOBAL population and a SELF (assigned-technician) population by different predicates,
+// and a global source would widen or narrow one of them. The technician identity is derived
+// server-side from request.auth.uid and forced into the query; no client sends one.
+export {
+  readScopedWorkOrders,
+  countScopedWorkOrders,
+  readScopedWorkOrderById,
+  readSelfTechnician,
+} from "./workOrder/scopedWorkOrderCallables";
+
+// REORDER REQUESTS -- the second scoped read seam, for the same reason as the first. The retired
+// Rules admitted THREE populations by three predicates (global; a Parts Manager's queue statuses
+// plus what they personally reviewed or assigned; a Parts Associate's own assignments), so no
+// single global source could carry it. Resolution is global -> managed -> own, broadest first, so
+// holding the narrow capability never narrows a broader authority.
+export { readScopedReorderRequests } from "./reorderRequest/scopedReorderCallables";
+
+// WAREHOUSES AND TRANSFER ORDERS have NO callable of their own, deliberately. Their retired rule
+// differed from the governed sources only in WHICH records it returned, never in the shape of the
+// read -- so the narrowing is declared on the four existing sources (governedReadRegistry.ts's
+// `scope`) and applied by readGovernedList, rather than duplicated into a parallel seam that would
+// have had to re-earn filters, sorts, cursors and counts. See access/assignedWarehouseScope.ts.
+
+// SESSION IDENTITY -- "which employee am I". Requires authentication and NO capability: it reads
+// only the caller's own linkage, and requiring workforce.directory.read here would mean a
+// technician could not learn their own name. It replaces the browser's direct read of its own
+// employees/{employeeId} document, which the surviving Rules picker grant does not admit.
+export { resolveCurrentEmployeeSession } from "./access/employeeSessionCallable";
+
+// The technician profile create -- the LAST direct client write, moved to a trusted command. The
+// retired rule required status == "available"; the command chooses it rather than validating it.
+export { createTechnician } from "./workOrder/technicianCommands";
+
+// CRM -- the contact CSV import, moved off the browser's client-direct writeBatch. CRUD, not a
+// workflow: one atomic batch create, gated on crm.contact.create.
+export { importContacts } from "./crm/contactImportCommand";
+
+// CRM writes -- Account, Contact and Location. These replace the last store-mediated client-direct
+// business writes. The Account pair additionally enforces the governed-commercial-field split the
+// retired rule carried (paymentTerms/taxStatus require customer.governedField.write).
+export {
+  createAccountRecord,
+  updateAccountRecord,
+  createContactRecord,
+  updateContactRecord,
+  createLocationRecord,
+  updateLocationRecord,
+} from "./crm/crmWriteCommands";
+
+// EQUIPMENT create and update -- the LAST governed business writes to leave the browser. Create
+// proves a cross-document relationship (the Location must belong to the Account) by reading the
+// location server-side; update restricts the CHANGED KEYS rather than the document key set, so a
+// record carrying trusted audit fields stays ordinarily editable.
+export { createEquipmentRecord, updateEquipmentRecord } from "./equipment/equipmentWriteCommands";
 
 // --- Issue #325 / ADR-007 D-FN surface: trusted report execution ---
 // Same posture as the six commands above: deployed to eos-platform-sandbox under the per-environment

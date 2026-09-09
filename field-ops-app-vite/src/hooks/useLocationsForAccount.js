@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { governedCollectionClient } from "../access/governedCollectionClient";
 import {
   locationSuccessOutcome,
   locationFailureOutcome,
@@ -57,22 +55,31 @@ export function useLocationsForAccount(accountId) {
     let active = true;
     setLoading(true);
     setError(null);
-    const q = query(collection(db, LOCATIONS_COLLECTION), where("accountId", "==", accountId));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    // GOVERNED READ, not a Firestore listener. `locations` is denied to every client in
+    // firestore.rules now, so this resolves `crm.location.read` server-side. The accountId filter
+    // is declared by the collection's registry entry; an undeclared one is refused rather than
+    // dropped, which is what keeps a scoped read from becoming a read of every location.
+    //
+    // The pure outcome helpers are UNCHANGED and still own every fail-closed decision -- this hook
+    // still only wires them to a lifecycle. locationFailureOutcome takes an Error, so a refused or
+    // unreachable read is passed as one: the failure path stays the failure path, and an empty
+    // list is never manufactured from a denial.
+    governedCollectionClient
+      .readGovernedList({
+        sourceId: "accountLocations",
+        filters: { accountId },
+      })
+      .then((outcome) => {
         if (!active) return;
-        apply(locationSuccessOutcome(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-      },
-      (err) => {
-        if (!active) return;
-        apply(locationFailureOutcome(err));
-      }
-    );
+        apply(
+          outcome.ok
+            ? locationSuccessOutcome(outcome.items)
+            : locationFailureOutcome(new Error(outcome.result)),
+        );
+      });
 
     return () => {
       active = false;
-      unsub();
     };
   }, [accountId, attempt, apply]);
 

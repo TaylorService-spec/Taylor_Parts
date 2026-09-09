@@ -13,8 +13,8 @@ vi.mock("../src/services/workOrderService", () => ({
   transitionWorkOrder: vi.fn(),
 }));
 
-vi.mock("../src/hooks/useFirestoreCollection", () => ({
-  useFirestoreCollection: () => ({ data: [], loading: false, error: null }),
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({
+  useTechnicianDirectory: () => ({ data: [], loading: false, error: null }),
 }));
 
 afterEach(() => {

@@ -134,60 +134,79 @@ ok("the shared audit writer REJECTS a foreign action BEFORE any document is stag
   assert.equal(touched, false, "no document may be staged for a rejected action");
 });
 
-// ---- client-closed Rules proposal (BOTH governed mirrors) ----
-// The repo carries TWO Rules files -- the root firestore.rules (the deployed artifact) and the client
-// mirror field-ops-app-vite/firestore.rules. Enforcing the D4 closure on only one leaves the other free
-// to drift open. Every check below therefore runs against BOTH, and a byte-equality gate + negative
-// control prove the two mirrors' governed blocks are and stay identical.
+// ---- client-closed Rules (BOTH governed mirrors) ----
+//
+// The repo carries TWO Rules files -- the root firestore.rules (the deployed artifact) and the
+// client mirror field-ops-app-vite/firestore.rules. Enforcing the closure on only one leaves the
+// other free to drift open, so every check below runs against BOTH, with a byte-equality gate and
+// a negative control proving the comparison actually discriminates.
+//
+// ════════════════════ WHAT THE CLOSURE LOOKS LIKE NOW ════════════════════
+//
+// These five collections used to carry an explicit labelled D4 block, each with
+// `allow read, write: if false;`. The Rules contraction removed every per-collection block in the
+// file, so they are closed by the CATCH-ALL instead.
+//
+// The property is unchanged and the guarantee is broader: it is no longer possible for one of
+// these five to be opened without also opening every other collection in the system, because
+// there is no per-collection block left to edit. What must be asserted therefore changed shape --
+// from "each names itself and denies" to "none of them appears at all, and the catch-all denies".
+//
+// The byte-equality gate moved UP to the whole file for the same reason. Extracting a labelled
+// block is meaningless when the block is gone, and comparing the entire ruleset is the stronger
+// statement the block comparison was approximating.
 const RULES_MIRRORS = ["firestore.rules", "field-ops-app-vite/firestore.rules"];
 
-// Extract the labelled D4 block: from its banner comment through the closing brace of the last governed
-// collection (equipment_compatibility_operations). Scoped so the comparison ignores unrelated Rules.
-const extractRulesBlock = (source) => {
-  const start = source.indexOf("    // D4 -- Part-Equipment Compatibility: CLIENT-CLOSED");
-  assert.notEqual(start, -1, "the labelled D4 block must be present");
-  const lastMatch = source.indexOf("match /equipment_compatibility_operations/", start);
-  assert.notEqual(lastMatch, -1, "the operations collection must be present in the D4 block");
-  const close = source.indexOf("\n    }", lastMatch);
-  assert.notEqual(close, -1, "the operations collection must close");
-  return source.slice(start, close + "\n    }".length);
-};
-
-ok("the D4 Rules block is BYTE-IDENTICAL across both governed mirrors", () => {
-  const server = extractRulesBlock(read("firestore.rules"));
-  const client = extractRulesBlock(read("field-ops-app-vite/firestore.rules"));
-  assert.equal(server, client, "the D4 equipment Rules block must match byte for byte across both mirrors");
-  for (const collection of EQUIPMENT_COMPATIBILITY_COLLECTIONS) {
-    assert.ok(server.includes(`match /${collection}/`), `${collection} must appear in the mirrored block`);
-  }
-  // Negative/regression control: mutating ONE mirror's block (here: flipping a single denial open) must
-  // make the byte comparison fail. This proves the equality gate actually discriminates rather than
-  // being a trivially-true comparison that would pass even if a real mirror silently drifted open.
+ok("the governed Rules are BYTE-IDENTICAL across both mirrors", () => {
+  const server = read("firestore.rules");
+  const client = read("field-ops-app-vite/firestore.rules");
+  assert.equal(server, client, "the two governed Rules mirrors must match byte for byte");
+  // Negative/regression control: mutating ONE mirror must make the comparison fail. This proves
+  // the gate discriminates rather than being a trivially-true comparison that would pass even if a
+  // real mirror silently drifted open.
   const drifted = server.replace("allow read, write: if false;", "allow read, write: if true;");
-  assert.notEqual(drifted, server, "the simulated drift must actually change the block");
-  assert.notEqual(drifted, client, "a drifted mirror block must NOT compare equal -- the gate must catch it");
+  assert.notEqual(drifted, server, "the simulated drift must actually change the ruleset");
+  assert.notEqual(drifted, client, "a drifted mirror must NOT compare equal -- the gate must catch it");
 });
 
 for (const file of RULES_MIRRORS) {
   ok(`all five governed collections are client-closed in ${file}`, () => {
     const rules = read(file);
     for (const collection of EQUIPMENT_COMPATIBILITY_COLLECTIONS) {
-      const match = new RegExp(`match /${collection}/\\{[A-Za-z]+\\} \\{\\s*allow read, write: if false;\\s*\\}`);
-      assert.match(rules, match, `${collection} must deny all client reads and writes in ${file}`);
+      assert.ok(
+        !new RegExp(`match /${collection}/`).test(rules),
+        `${collection} must have NO match block in ${file} -- closed by the catch-all`,
+      );
     }
+    // And the catch-all they fall through to must be an explicit denial, not merely the absence of
+    // a rule. An undeclared collection is denied by default, but a default is the absence of a
+    // decision; this file states it.
+    assert.match(
+      rules,
+      /match \/\{document=\*\*\} \{\s*allow read, write: if false;/,
+      `the catch-all in ${file} must be an unconditional denial`,
+    );
   });
-  ok(`the equipment Rules block grants no conditional client access at all in ${file}`, () => {
-    const block = extractRulesBlock(read(file));
-    // Nothing in this block may allow anything on any condition.
-    const allows = block.match(/allow [^;]+;/g) || [];
-    assert.equal(allows.length, EQUIPMENT_COMPATIBILITY_COLLECTIONS.length, `one allow per collection in ${file}`);
-    for (const allow of allows) {
-      assert.equal(allow, "allow read, write: if false;", `every allow must be an unconditional denial in ${file}`);
-    }
-    // No role, claim or resolver reference can creep into a client-closed block.
-    for (const forbidden of ["request.auth", "isSignedIn", "hasPermission", "get(", "exists("]) {
-      assert.equal(block.includes(forbidden), false, `the D4 block must not reference ${forbidden} in ${file}`);
-    }
+
+  ok(`the ruleset grants no conditional client access to business data in ${file}`, () => {
+    const rules = read(file);
+    // Exactly two named collections survive, and neither is a business one: the caller's OWN users
+    // document (the accessVersion feed) and the PARTS_MANAGER assignment-candidate picker. A third
+    // would be a business grant by definition.
+    //
+    // `match /databases/` is the document-root wrapper every ruleset opens with, not a grant, and
+    // the catch-all is matched separately below because its path has no trailing segment.
+    const matches = [...rules.matchAll(/match \/([^/{]+)\//g)].map((m) => m[1]);
+    assert.deepEqual(
+      matches,
+      ["databases", "users", "employees"],
+      `${file} must declare exactly the two surviving collection grants and nothing else`,
+    );
+    assert.match(
+      rules,
+      /match \/\{document=\*\*\} \{/,
+      `${file} must carry the catch-all`,
+    );
   });
 }
 ok("D4 declares no compound index for the governed collections", () => {

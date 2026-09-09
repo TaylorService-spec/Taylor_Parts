@@ -63,8 +63,8 @@ async function main() {
     report(`${label}: technician client read denied`, denied(await rest("GET", `${coll}/${seedId}`, techTok)));
   }
   // parts: authorized reads ALLOWED (PR 1.9); manufacturers: still denied.
-  report("parts: admin client read allowed", (await rest("GET", "parts/PM-SEED-1", adminTok)) === 200);
-  report("parts: dispatcher client read allowed", (await rest("GET", "parts/PM-SEED-1", dispTok)) === 200);
+  report("parts: admin client read allowed -- NOW DENIED (parts reads moved to governed sources (inventory.catalog.read))", (await rest("GET", "parts/PM-SEED-1", adminTok)) === 403);
+  report("parts: dispatcher client read allowed -- NOW DENIED (parts reads moved to governed sources (inventory.catalog.read))", (await rest("GET", "parts/PM-SEED-1", dispTok)) === 403);
   report("manufacturers: admin client read denied", denied(await rest("GET", "manufacturers/MFR-SEED-1", adminTok)));
   report("manufacturers: dispatcher client read denied", denied(await rest("GET", "manufacturers/MFR-SEED-1", dispTok)));
 

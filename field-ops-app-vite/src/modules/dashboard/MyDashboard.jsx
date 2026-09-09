@@ -66,8 +66,6 @@ import { governedOpportunitySource } from "../../access/opportunitySource.js";
 import { fetchReceivablePurchaseOrders } from "../../services/receivingCallableClient.js";
 import { RECEIVING_OUTCOME } from "../../domain/receivingTransport.js";
 import { privilegedApprovalClient } from "../../services/privilegedApprovalClient.js";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection.js";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants.js";
 import { workOrderStatusLabel } from "../../domain/workOrderStatus.js";
 import { useTechnicianAvailability } from "../../hooks/useTechnicianAvailability.js";
 import { resolveTechnicianIdentity } from "../../domain/actorDisplayName.js";
@@ -427,7 +425,7 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
   //
   // A technician id is NOT a user id. Same collection ControlTower reads, same resolver, same shape.
   const { data: technicians, loading: techniciansLoading, error: techniciansError } =
-    useFirestoreCollection(TECHNICIANS_COLLECTION, wantsTeam);
+    useTechnicianDirectory(wantsTeam);
   // The WHOLE identity, not just its name: the projection needs the STATE to tell a person from a
   // Work Order pointing at a technician record that does not exist.
   const resolveTechIdentity = useMemo(

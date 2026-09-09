@@ -76,9 +76,9 @@ test("partId is a REFERENCE to `part`, but is NOT identity -- it describes what 
   assert.notEqual(transferOrderEntity.identity.referenceField, "partId");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role/relationship, not by capability", () => {
-  assert.equal(transferOrderEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(transferOrderEntity.readCapability, null);
+test("read is GOVERNED and names its capability -- the CLIENT_DIRECT posture and the null were findings, both resolved", () => {
+  assert.equal(transferOrderEntity.readVia, "CALLABLE");
+  assert.equal(transferOrderEntity.readCapability, "warehouse.transferOrder.read");
 });
 
 test("fromWarehouseId/toWarehouseId are REFERENCEs to the now-registered `warehouse` entity, optional, not filtered", () => {

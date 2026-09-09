@@ -143,10 +143,14 @@ export const purchaseOrderEntity = makeEntityDefinition({
   label: "Purchase Order",
   labelPlural: "Purchase Orders",
   collection: PURCHASE_ORDERS_COLLECTION,
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role/relationship (admin/dispatcher, or a self-scoped PARTS_ASSOCIATE),
-  // not by a capability. Recorded as null rather than invented — see the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataPurchaseOrders",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "reorder.purchaseOrder.read",
   identity: makeIdentity({ nameField: "externalPoNumber" }),
   description:
     "The reorder-request execution record recording a purchase was placed with a supplier — reorder_purchase_orders, " +

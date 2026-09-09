@@ -20,7 +20,6 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import {
   resolveTargetFacts,
-  actorAuthorizationDeps,
 } from "../lib/access/adminCredentialCallables.js";
 import {
   evaluateTargetEligibility,
@@ -37,7 +36,15 @@ const freshKey = () => `aprtgtkey.${Date.now().toString(36)}.${(counter += 1)}00
 
 // Seed a real target across Auth + Firestore. `employee` is written verbatim so
 // alias-only fixtures are exact; omit pieces to model missing records.
-async function seed({ uid, role = "technician", employeeId, disabled = false, email, createAuth = true, breakGlass = false, employee }) {
+//
+// ══════════ ADMIN IS A ROLE ASSIGNMENT, NOT A STRING ON THE USER ══════════
+//
+// `role` is still written because the fixtures are realistic user documents, but it decides
+// NOTHING any more: the final-active-admin protection reads the governed roleAssignments. The
+// separate `adminAssignment` flag is what actually makes a seeded target an administrator, and
+// the two are deliberately independent here so a fixture carrying the legacy string WITHOUT the
+// assignment proves the string no longer confers anything.
+async function seed({ uid, role = "technician", employeeId, disabled = false, email, createAuth = true, breakGlass = false, employee, adminAssignment = false }) {
   if (createAuth) await auth.createUser({ uid, disabled, ...(email ? { email } : {}) });
   const doc = { role };
   if (employeeId !== undefined) doc.employeeId = employeeId;
@@ -45,6 +52,13 @@ async function seed({ uid, role = "technician", employeeId, disabled = false, em
   await db.collection("users").doc(uid).set(doc);
   if (employee !== undefined && employeeId !== undefined) {
     await db.collection("employees").doc(employeeId).set(employee);
+  }
+  if (adminAssignment) {
+    await db.collection("roleAssignments").doc(`${uid}-admin`).set({
+      principalUid: uid,
+      roleId: "admin",
+      status: "active",
+    });
   }
 }
 
@@ -154,11 +168,34 @@ async function main() {
   await okAsync("final active recoverable admin -> protected-final-admin", async () => {
     const uid = uniq("finaladmin");
     const emp = `${uid}-e`;
-    // role admin + reciprocal ACTIVE + enabled + email, and NO other active admin
-    // roleAssignment -> isFinalActiveAdmin true (visible protected refusal).
-    await seed({ uid, role: "admin", employeeId: emp, email: `${uid}@example.com`, employee: { userId: uid, employmentStatus: "ACTIVE" } });
+    // An ACTIVE admin roleAssignment and NO OTHER one -> isFinalActiveAdmin, a visible protected
+    // refusal. The authority is the assignment; the legacy string on the user document is not
+    // written at all here, which is the point.
+    await seed({ uid, employeeId: emp, email: `${uid}@example.com`, employee: { userId: uid, employmentStatus: "ACTIVE" }, adminAssignment: true });
     const { verdict } = await categoryFor(uid);
     assert.strictEqual(verdict.category, "protected-final-admin");
+  });
+  await okAsync("a legacy admin STRING with no assignment is NOT protected", async () => {
+    // The regression this closes, stated as a fixture: before the cutover, `role: "admin"` on the
+    // user document was what triggered final-admin protection. A person the governed model does
+    // not consider an administrator was being protected as one -- and, worse in the other
+    // direction, a real administrator whose legacy string had drifted was not.
+    const uid = uniq("legacystring");
+    const emp = `${uid}-e`;
+    await seed({ uid, role: "admin", employeeId: emp, email: `${uid}@example.com`, employee: { userId: uid, employmentStatus: "ACTIVE" } });
+    const { facts, verdict } = await categoryFor(uid);
+    assert.strictEqual(facts.isFinalActiveAdmin, false);
+    assert.strictEqual(verdict.category, "eligible");
+  });
+  await okAsync("an admin with ANOTHER active admin beside them is not the final one", async () => {
+    const uid = uniq("oneofmany");
+    const emp = `${uid}-e`;
+    await seed({ uid, employeeId: emp, email: `${uid}@example.com`, employee: { userId: uid, employmentStatus: "ACTIVE" }, adminAssignment: true });
+    const other = uniq("otheradmin");
+    await seed({ uid: other, adminAssignment: true });
+    const { facts, verdict } = await categoryFor(uid);
+    assert.strictEqual(facts.isFinalActiveAdmin, false);
+    assert.strictEqual(verdict.category, "eligible");
   });
   await okAsync("self-target -> protected (visible)", async () => {
     const uid = uniq("self");
@@ -168,13 +205,30 @@ async function main() {
     assert.strictEqual(evaluateTargetEligibility(facts, uid, uid).category, "self-target");
   });
 
-  // -- initiate uses the deployed target adapter (end-to-end) -----------------
-  // Seed a real authorized admin actor so the actor gate passes; use a CONFIGURED
-  // fake sender (test spy -- not the real native sender, which is PRE-1) to prove
-  // eligible targets reach the send and neutral-ineligible targets do NOT.
+  // -- initiate uses the deployed TARGET adapter (end-to-end) -----------------
+  //
+  // The subject of these two cases is the target adapter: does an eligible target reach the send,
+  // and does a neutral-ineligible one not. The ACTOR gate is a different question, and it is now
+  // closed in every environment because `admin.credentialReset.initiate` is inactive -- so a
+  // seeded admin actor can no longer be used to get past it.
+  //
+  // The actor facts are therefore INJECTED as authorized, which is exactly what
+  // adminCredentialCommands.test.mjs does for the same reason. That is not a weakening of the
+  // actor gate: it is tested directly, against the real adapter, in
+  // adminCredentialActorFacts.test.mjs, where a fully-linked legacy admin is REFUSED.
   const actorUid = uniq("actor-admin");
   const actorEmp = `${actorUid}-e`;
-  await seed({ uid: actorUid, role: "admin", employeeId: actorEmp, email: `${actorUid}@example.com`, employee: { userId: actorUid, employmentStatus: "ACTIVE" } });
+  await seed({ uid: actorUid, employeeId: actorEmp, email: `${actorUid}@example.com`, employee: { userId: actorUid, employmentStatus: "ACTIVE" } });
+  const authorizedActorDeps = {
+    resolveActorFacts: async () => ({
+      authExists: true,
+      disabled: false,
+      holdsCredentialResetCapability: true,
+      hasEmployeeLink: true,
+      employeeLinkReciprocal: true,
+      employmentStatus: "ACTIVE",
+    }),
+  };
   const makeSpy = () => {
     const sends = [];
     return { sends, sender: { isConfigured: () => true, sendReset: async (a) => { sends.push(a); return { outcome: "accepted" }; } } };
@@ -187,7 +241,7 @@ async function main() {
     const { sends, sender } = makeSpy();
     const out = await initiateAdminPasswordReset(
       { actorUid, targetUid: t, idempotencyKey: freshKey() },
-      { ...actorAuthorizationDeps(), resolveTargetFacts, nativeSend: sender },
+      { ...authorizedActorDeps, resolveTargetFacts, nativeSend: sender },
     );
     assert.deepStrictEqual(out, { status: "accepted" });
     assert.strictEqual(sends.length, 1, "eligible target should trigger exactly one send");
@@ -199,7 +253,7 @@ async function main() {
     const { sends, sender } = makeSpy();
     const out = await initiateAdminPasswordReset(
       { actorUid, targetUid: t, idempotencyKey: freshKey() },
-      { ...actorAuthorizationDeps(), resolveTargetFacts, nativeSend: sender },
+      { ...authorizedActorDeps, resolveTargetFacts, nativeSend: sender },
     );
     assert.deepStrictEqual(out, { status: "accepted" });
     assert.strictEqual(sends.length, 0, "inactive-employment target must NOT be sent a reset");

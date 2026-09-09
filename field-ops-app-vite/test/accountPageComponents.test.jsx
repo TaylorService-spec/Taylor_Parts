@@ -49,9 +49,6 @@ import { useContactsForAccount } from "../src/hooks/useContactsForAccount";
 // test/metadataRecordPage.test.jsx already mocks at, so these tests exercise the routing
 // and rendering decisions, not either translator's internals.
 const fetchPageMock = vi.fn();
-vi.mock("../src/metadata/firestoreListSource.js", () => ({
-  fetchPage: (...args) => fetchPageMock(...args),
-}));
 const fetchCallablePageMock = vi.fn();
 vi.mock("../src/metadata/callableListSource.js", () => ({
   fetchPage: (...args) => fetchCallablePageMock(...args),

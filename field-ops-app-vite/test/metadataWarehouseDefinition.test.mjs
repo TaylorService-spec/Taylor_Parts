@@ -25,9 +25,9 @@ test("the entity id is exactly \"warehouse\", collection is the live `warehouses
   assert.equal(warehouseEntity.collection, "warehouses");
 });
 
-test("read is CLIENT_DIRECT with no capability -- Rules gate by role/relationship, not by capability", () => {
-  assert.equal(warehouseEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(warehouseEntity.readCapability, null);
+test("read is GOVERNED and names its capability -- the CLIENT_DIRECT posture and the null were findings, both resolved", () => {
+  assert.equal(warehouseEntity.readVia, "CALLABLE");
+  assert.equal(warehouseEntity.readCapability, "warehouse.record.read");
 });
 
 test("identity is a nameField only -- no reference number exists anywhere in this schema", () => {

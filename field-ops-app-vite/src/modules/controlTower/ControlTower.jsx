@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useTechnicianDirectory } from "../../hooks/useTechnicianDirectory";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
@@ -77,7 +76,7 @@ import ActivityTimelinePanel from "./panels/ActivityTimelinePanel";
 export default function ControlTower() {
   // ── The only reads on this page ────────────────────────────────────────────────────────────────
   const { data: workOrders, loading, error } = useWorkOrders();
-  const { data: technicians, error: techniciansError } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: technicians, error: techniciansError } = useTechnicianDirectory();
   const accountNames = useAccountNames(
     useMemo(
       () => Array.from(new Set(workOrders.map((wo) => wo.customerId).filter(Boolean))),

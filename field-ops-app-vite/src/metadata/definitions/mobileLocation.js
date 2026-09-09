@@ -90,10 +90,14 @@ export const mobileLocationEntity = makeEntityDefinition({
   // MOBILE_LOCATIONS_COLLECTION = "mobile_locations". No client-side collection-name constant
   // exists for this collection anywhere in field-ops-app-vite/src today.
   collection: "mobile_locations",
-  readVia: "CLIENT_DIRECT",
-  // Rules gate this by role (admin/dispatcher), not by a capability. Recorded as null rather
-  // than invented — see the header.
-  readCapability: null,
+  // Read through the governed read callable, not a client-direct query. The browser names this
+  // SOURCE ID; the server owns the collection, the ordering, the filters and the capability.
+  readVia: "CALLABLE",
+  readCallable: "metadataMobileLocations",
+  // THE GOVERNED AUTHORITY. This was null, and the null was an honest FINDING: firestore.rules
+  // gated the collection by role and no capability existed to name instead. The registry now
+  // resolves one server-side before a row is returned, so the definition names it.
+  readCapability: "inventory.truckRegistry.read",
   identity: makeIdentity({ nameField: "displayLabel" }),
   description:
     "The MOBILE Inventory Location record (ADR-010 / Decision #60) 1:1-linked to a Truck business record " +

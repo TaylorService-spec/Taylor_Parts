@@ -25,8 +25,8 @@ vi.mock("../src/hooks/useWorkOrder", () => ({
 vi.mock("../src/hooks/useAccount", () => ({ useAccount: () => ({ account: state.account, error: state.accountError }) }));
 vi.mock("../src/hooks/useLocation", () => ({ useLocation: () => ({ location: state.location, error: state.locationError }) }));
 vi.mock("../src/hooks/useEquipment", () => ({ useEquipmentDoc: () => ({ equipment: state.equipment, loading: false, error: null }) }));
-vi.mock("../src/hooks/useFirestoreCollection", () => ({
-  useFirestoreCollection: () => ({ data: state.technicians, loading: false, error: state.techniciansError }),
+vi.mock("../src/hooks/useTechnicianDirectory", () => ({
+  useTechnicianDirectory: () => ({ data: state.technicians, loading: false, error: state.techniciansError }),
 }));
 vi.mock("../src/access/useWorkOrderPartsPlanCapability.js", () => ({
   useWorkOrderPartsPlanCapability: () => state.capability,
@@ -464,7 +464,7 @@ describe("data ownership did not change", () => {
     const src = readFileSync(join(process.cwd(), "src/modules/workOrders/WorkOrderDetailPage.jsx"), "utf8");
     // Comments discuss these hooks by name, so count CODE only.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    for (const hook of ["useWorkOrder(", "useAccount(", "useLocationDoc(", "useEquipmentDoc(", "useFirestoreCollection("]) {
+    for (const hook of ["useWorkOrder(", "useAccount(", "useLocationDoc(", "useEquipmentDoc(", "useTechnicianDirectory("]) {
       expect(code.split(hook).length - 1, hook + " must have exactly one call site").toBe(1);
     }
     expect(/\.map\([^)]*use[A-Z]/.test(code), "a read inside a map is an N+1").toBe(false);

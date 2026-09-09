@@ -519,7 +519,6 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/equipmentModel.js",
   "field-ops-app-vite/src/metadata/definitions/invoice.js",
   "field-ops-app-vite/src/metadata/definitions/payment.js",
-  "field-ops-app-vite/src/metadata/definitions/stockLocation.js",
   "field-ops-app-vite/src/metadata/definitions/mobileLocation.js",
   "field-ops-app-vite/src/metadata/definitions/salesTerritory.js",
   "field-ops-app-vite/src/metadata/definitions/transferOrder.js",
