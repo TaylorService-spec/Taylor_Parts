@@ -37,6 +37,11 @@ import type {
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
+  PrincipalRecord,
+  PrincipalStatus,
+  TenantAdminBootstrapRecord,
+  TenantMembershipRecord,
+  TenantRecord,
   RoleFieldPermissionOverrideRecord,
   RoleObjectPermissionRecord,
   TenantId,
@@ -50,6 +55,10 @@ import type {
 } from "./types";
 
 interface Tables {
+  tenants: TenantRecord[];
+  principals: PrincipalRecord[];
+  memberships: TenantMembershipRecord[];
+  adminBootstraps: TenantAdminBootstrapRecord[];
   objects: ObjectRecord[];
   fields: ObjectFieldRecord[];
   roles: PolicyRoleRecord[];
@@ -68,6 +77,10 @@ interface Tables {
 }
 
 const emptyTables = (): Tables => ({
+  tenants: [],
+  principals: [],
+  memberships: [],
+  adminBootstraps: [],
   objects: [],
   fields: [],
   roles: [],
@@ -143,6 +156,95 @@ export class InMemoryPolicyRepository implements PolicyRepository {
     };
 
     return {
+      // ── tenant and identity ──
+      createTenant: async (input) => {
+        if (t.tenants.some((x) => x.key === input.key)) {
+          throw new PolicyStoreError(`tenant key "${input.key}" already exists`);
+        }
+        const at = this.now();
+        const row: TenantRecord = {
+          id: tenantId,
+          key: input.key,
+          name: input.name,
+          status: input.status ?? "active",
+          configurationVersion: input.configurationVersion ?? 0,
+          createdAt: at,
+          updatedAt: at,
+        };
+        t.tenants.push(row);
+        return row;
+      },
+
+      setTenantConfigurationVersion: async (id, version) => {
+        const found = t.tenants.find((x) => x.id === id && x.id === tenantId);
+        if (!found) throw new PolicyStoreError("tenant not found");
+        const updated: TenantRecord = { ...found, configurationVersion: version, updatedAt: this.now() };
+        t.tenants[t.tenants.indexOf(found)] = updated;
+        return updated;
+      },
+
+      createPrincipal: async (input) => {
+        const existing = t.principals.find(
+          (x) => x.identityProvider === input.identityProvider && x.externalSubject === input.externalSubject,
+        );
+        // One subject per provider is one principal. Minting a second would split one human's Roles.
+        if (existing) throw new PolicyStoreError("principal already exists for that subject");
+        const at = this.now();
+        const row: PrincipalRecord = {
+          id: this.nextId(),
+          externalSubject: input.externalSubject,
+          identityProvider: input.identityProvider,
+          displayName: input.displayName ?? null,
+          status: input.status ?? "active",
+          createdAt: at,
+          updatedAt: at,
+        };
+        t.principals.push(row);
+        return row;
+      },
+
+      createTenantMembership: async (principalId, status) => {
+        if (t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId)) {
+          throw new PolicyStoreError("membership already exists");
+        }
+        const at = this.now();
+        const row: TenantMembershipRecord = {
+          id: this.nextId(),
+          tenantId,
+          principalId,
+          status: status ?? "active",
+          createdAt: at,
+          updatedAt: at,
+        };
+        t.memberships.push(row);
+        return row;
+      },
+
+      setTenantMembershipStatus: async (membershipId, status) => {
+        const found = t.memberships.find((m) => m.id === membershipId && m.tenantId === tenantId);
+        if (!found) throw new PolicyStoreError("membership not found");
+        const updated: TenantMembershipRecord = { ...found, status, updatedAt: this.now() };
+        t.memberships[t.memberships.indexOf(found)] = updated;
+        return updated;
+      },
+
+      recordAdminBootstrap: async (input) => {
+        // ONE PER TENANT. The real adapter gets this from a primary key; here it is the same rule
+        // stated in the same place, so the two adapters refuse the same second call.
+        if (t.adminBootstraps.some((b) => b.tenantId === tenantId)) {
+          throw new PolicyStoreError("this tenant has already been bootstrapped");
+        }
+        const row: TenantAdminBootstrapRecord = {
+          tenantId,
+          principalId: input.principalId,
+          performedBy: input.performedBy,
+          reason: input.reason ?? null,
+          performedAt: this.now(),
+        };
+        t.adminBootstraps.push(row);
+        return row;
+      },
+
       createObject: async (input) => {
         if (t.objects.some((o) => o.tenantId === tenantId && o.key === input.key)) {
           throw new PolicyStoreError(`object key "${input.key}" already exists`);
@@ -313,6 +415,32 @@ export class InMemoryPolicyRepository implements PolicyRepository {
 
   private mine<T extends { tenantId: TenantId }>(rows: readonly T[], tenantId: TenantId): T[] {
     return rows.filter((r) => r.tenantId === tenantId);
+  }
+
+  // Tenant and identity reads. `getTenantByKey` is the one deliberately unscoped read in the port:
+  // a bootstrap has to ask whether a tenant exists before there is a tenant to scope by. It returns
+  // one tenant found by its own key and nothing owned by it.
+  async getTenantByKey(key: string) { return this.tables.tenants.find((x) => x.key === key) ?? null; }
+  async getTenant(tenantId: TenantId) { return this.tables.tenants.find((x) => x.id === tenantId) ?? null; }
+  async getPrincipalBySubject(identityProvider: string, externalSubject: string) {
+    return this.tables.principals.find(
+      (x) => x.identityProvider === identityProvider && x.externalSubject === externalSubject,
+    ) ?? null;
+  }
+  async getPrincipal(principalId: string) {
+    return this.tables.principals.find((x) => x.id === principalId) ?? null;
+  }
+  async listMembershipsForPrincipal(principalId: string) {
+    return this.tables.memberships.filter((m) => m.principalId === principalId);
+  }
+  async getMembership(tenantId: TenantId, principalId: string) {
+    return this.mine(this.tables.memberships, tenantId).find((m) => m.principalId === principalId) ?? null;
+  }
+  async listTenantPrincipalIds(tenantId: TenantId) {
+    return this.mine(this.tables.memberships, tenantId).map((m) => m.principalId);
+  }
+  async getAdminBootstrap(tenantId: TenantId) {
+    return this.tables.adminBootstraps.find((b) => b.tenantId === tenantId) ?? null;
   }
 
   async listObjects(tenantId: TenantId) { return this.mine(this.tables.objects, tenantId); }

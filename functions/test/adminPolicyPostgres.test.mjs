@@ -59,7 +59,10 @@ async function seedTenants() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
   for (const id of [TENANT_A, TENANT_B]) {
-    await client.query("INSERT INTO eos_policy.tenants (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING", [id, id]);
+    await client.query(
+      "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+      [id, id, id],
+    );
   }
   await client.end();
 }
@@ -92,11 +95,12 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "object_fields", "objects", "principal_access_versions",
-    "role_field_permission_overrides", "role_object_permissions", "roles", "tenants",
+    "audit_events", "object_fields", "objects", "principal_access_versions", "principals",
+    "role_field_permission_overrides", "role_object_permissions", "roles", "tenant_admin_bootstraps",
+    "tenant_memberships", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "sixteen tables, named exactly");
+  ], "nineteen tables, named exactly -- sixteen from migration 001, three from 002 (identity)");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -104,7 +108,7 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
   );
   assert.deepEqual(enums.rows.map((r) => r.typname), [
     "assignment_status", "definition_lifecycle", "definition_origin",
-    "field_data_type", "field_sensitivity", "workflow_version_status",
+    "field_data_type", "field_sensitivity", "principal_status", "workflow_version_status",
   ]);
 
   // The field type vocabulary is the repository's existing one. A drift here means the database and
@@ -139,10 +143,13 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
   assert.deepEqual(appliedAfter.rows, appliedBefore.rows, "and the migration is not recorded twice");
 });
 
-test("the DOWN migration removes the schema, and UP restores it", { skip: SKIP }, async () => {
+test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
+  // BOTH migrations, and the count is the point: `down` reverses ONE by default, so a single call
+  // now leaves migration 001's sixteen tables standing. A test that still expected zero after one
+  // step would have been asserting that 002 undoes 001's work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "2", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -150,7 +157,29 @@ test("the DOWN migration removes the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 16, "and up restores all sixteen");
+  assert.equal(back.rows[0].n, 19, "and up restores all nineteen");
+});
+
+test("migration 002 alone reverses cleanly, leaving 001 intact", { skip: SKIP }, async () => {
+  // The step that matters operationally: rolling back the newest migration must not take the policy
+  // model with it. Proved by reversing exactly one and counting what survives.
+  await reset();
+  execFileSync(process.execPath, [
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations",
+  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  const identity = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'" +
+    " AND table_name IN ('principals', 'tenant_memberships', 'tenant_admin_bootstraps')",
+  );
+  assert.equal(identity.rows[0].n, 0, "the identity model is gone");
+
+  const policy = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(policy.rows[0].n, 16, "and migration 001's sixteen tables are untouched");
+
+  migrateFromClean();
 });
 
 // ============================ constraints ============================

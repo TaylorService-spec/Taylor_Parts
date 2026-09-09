@@ -250,7 +250,7 @@ test("the seed runs over PostgreSQL, and is idempotent there too", { skip: PG_SK
 
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: URL, max: 4 }));
   try {
-    await pool.query("INSERT INTO eos_policy.tenants (id, name) VALUES ($1, $1)", [TENANT]);
+    await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1)", [TENANT]);
     const repo = new PostgresPolicyRepository(pool);
 
     const first = await seedTenantPolicy(repo, TENANT, SEEDER);

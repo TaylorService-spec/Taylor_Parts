@@ -33,7 +33,10 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { PolicyStoreError } from "./policyRepository";
 import type {
+  NewAdminBootstrapInput,
+  NewPrincipalInput,
   NewRecord,
+  NewTenantInput,
   PolicyActor,
   PolicyRepository,
   PolicyTransaction,
@@ -48,6 +51,11 @@ import type {
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
+  PrincipalRecord,
+  PrincipalStatus,
+  TenantAdminBootstrapRecord,
+  TenantMembershipRecord,
+  TenantRecord,
   RoleFieldPermissionOverrideRecord,
   RoleObjectPermissionRecord,
   TenantId,
@@ -93,6 +101,43 @@ const provenance = (r: Record<string, unknown>) => ({
   createdAt: iso(r.created_at),
   updatedBy: String(r.updated_by),
   updatedAt: iso(r.updated_at),
+});
+
+const toTenant = (r: Record<string, unknown>): TenantRecord => ({
+  id: String(r.id),
+  key: String(r.key),
+  name: String(r.name),
+  status: String(r.status) as TenantRecord["status"],
+  configurationVersion: Number(r.configuration_version),
+  createdAt: iso(r.created_at),
+  updatedAt: iso(r.updated_at),
+});
+
+const toPrincipal = (r: Record<string, unknown>): PrincipalRecord => ({
+  id: String(r.id),
+  externalSubject: String(r.external_subject),
+  identityProvider: String(r.identity_provider),
+  displayName: r.display_name === null || r.display_name === undefined ? null : String(r.display_name),
+  status: String(r.status) as PrincipalStatus,
+  createdAt: iso(r.created_at),
+  updatedAt: iso(r.updated_at),
+});
+
+const toMembership = (r: Record<string, unknown>): TenantMembershipRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  principalId: String(r.principal_id),
+  status: String(r.status) as PrincipalStatus,
+  createdAt: iso(r.created_at),
+  updatedAt: iso(r.updated_at),
+});
+
+const toAdminBootstrap = (r: Record<string, unknown>): TenantAdminBootstrapRecord => ({
+  tenantId: String(r.tenant_id),
+  principalId: String(r.principal_id),
+  performedBy: String(r.performed_by),
+  reason: r.reason === null || r.reason === undefined ? null : String(r.reason),
+  performedAt: iso(r.performed_at),
 });
 
 const toObject = (r: Record<string, unknown>): ObjectRecord => ({
@@ -312,6 +357,64 @@ export class PostgresPolicyRepository implements PolicyRepository {
     return rows[0] ?? null;
   }
 
+  // TENANT AND IDENTITY.
+  //
+  // `getTenantByKey` is the one read in this adapter with no tenant predicate, and deliberately so:
+  // a bootstrap must be able to ask whether a tenant exists before there is a tenant to scope by.
+  // It selects ONE tenant by its own natural key and returns nothing owned by it, so it cannot be
+  // turned into a cross-tenant read of policy.
+  getTenantByKey(key: string) {
+    return this.one(`SELECT * FROM ${SCHEMA}.tenants WHERE key = $1`, [key], toTenant);
+  }
+
+  getTenant(tenantId: TenantId) {
+    return this.one(`SELECT * FROM ${SCHEMA}.tenants WHERE id = $1`, [tenantId], toTenant);
+  }
+
+  getPrincipalBySubject(identityProvider: string, externalSubject: string) {
+    return this.one(
+      `SELECT * FROM ${SCHEMA}.principals WHERE identity_provider = $1 AND external_subject = $2`,
+      [identityProvider, externalSubject],
+      toPrincipal,
+    );
+  }
+
+  getPrincipal(principalId: string) {
+    return this.one(`SELECT * FROM ${SCHEMA}.principals WHERE id = $1`, [principalId], toPrincipal);
+  }
+
+  listMembershipsForPrincipal(principalId: string) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.tenant_memberships WHERE principal_id = $1 ORDER BY created_at`,
+      [principalId],
+      toMembership,
+    );
+  }
+
+  getMembership(tenantId: TenantId, principalId: string) {
+    return this.one(
+      `SELECT * FROM ${SCHEMA}.tenant_memberships WHERE tenant_id = $1 AND principal_id = $2`,
+      [tenantId, principalId],
+      toMembership,
+    );
+  }
+
+  async listTenantPrincipalIds(tenantId: TenantId) {
+    const { rows } = await (this.pool as unknown as Queryable).query(
+      `SELECT principal_id FROM ${SCHEMA}.tenant_memberships WHERE tenant_id = $1 ORDER BY created_at`,
+      [tenantId],
+    );
+    return rows.map((r) => String(r.principal_id));
+  }
+
+  getAdminBootstrap(tenantId: TenantId) {
+    return this.one(
+      `SELECT * FROM ${SCHEMA}.tenant_admin_bootstraps WHERE tenant_id = $1`,
+      [tenantId],
+      toAdminBootstrap,
+    );
+  }
+
   listObjects(tenantId: TenantId) {
     return this.many(`SELECT * FROM ${SCHEMA}.objects WHERE tenant_id = $1 ORDER BY key`, [tenantId], toObject);
   }
@@ -473,6 +576,89 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
   };
 
   return {
+    // ════════════════════ tenant and identity ════════════════════
+
+    async createTenant(input: NewTenantInput) {
+      // The tenant's id IS the actor's tenantId. The caller generated it before opening the
+      // transaction, so every row written in the same unit of work already references a tenant that
+      // exists -- which is what lets "create the tenant and seed it" be one atomic thing.
+      try {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.tenants (id, key, name, status, configuration_version, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, now(), now()) RETURNING *`,
+          [tenantId, input.key, input.name, input.status ?? "active", input.configurationVersion ?? 0],
+        );
+        return toTenant(rows[0]);
+      } catch (err) {
+        return asDuplicate(err, `tenant key "${input.key}" already exists`);
+      }
+    },
+
+    async setTenantConfigurationVersion(id: TenantId, version: number) {
+      const { rows } = await q.query(
+        `UPDATE ${SCHEMA}.tenants SET configuration_version = $1, updated_at = now()
+         WHERE id = $2 AND id = $3 RETURNING *`,
+        [version, id, tenantId],
+      );
+      if (rows.length === 0) throw new PolicyStoreError("tenant not found");
+      return toTenant(rows[0]);
+    },
+
+    async createPrincipal(input: NewPrincipalInput) {
+      try {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.principals
+             (id, external_subject, identity_provider, display_name, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, now(), now()) RETURNING *`,
+          [newId(), input.externalSubject, input.identityProvider, input.displayName ?? null, input.status ?? "active"],
+        );
+        return toPrincipal(rows[0]);
+      } catch (err) {
+        // One subject per provider is one principal. A second would split one human's Roles in half.
+        return asDuplicate(err, "principal already exists for that subject");
+      }
+    },
+
+    async createTenantMembership(principalId: string, status?: PrincipalStatus) {
+      try {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.tenant_memberships
+             (id, tenant_id, principal_id, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, now(), now()) RETURNING *`,
+          [newId(), tenantId, principalId, status ?? "active"],
+        );
+        return toMembership(rows[0]);
+      } catch (err) {
+        return asDuplicate(err, "membership already exists");
+      }
+    },
+
+    async setTenantMembershipStatus(membershipId: string, status: PrincipalStatus) {
+      const { rows } = await q.query(
+        `UPDATE ${SCHEMA}.tenant_memberships SET status = $1, updated_at = now()
+         WHERE id = $2 AND tenant_id = $3 RETURNING *`,
+        [status, membershipId, tenantId],
+      );
+      if (rows.length === 0) throw new PolicyStoreError("membership not found");
+      return toMembership(rows[0]);
+    },
+
+    async recordAdminBootstrap(input: NewAdminBootstrapInput) {
+      // ONE PER TENANT, enforced by the PRIMARY KEY rather than by a read-then-write the caller
+      // could race. Two concurrent bootstraps: one commits, the other is refused by the database.
+      try {
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.tenant_admin_bootstraps
+             (tenant_id, principal_id, performed_by, reason, performed_at)
+           VALUES ($1, $2, $3, $4, now()) RETURNING *`,
+          [tenantId, input.principalId, input.performedBy, input.reason ?? null],
+        );
+        return toAdminBootstrap(rows[0]);
+      } catch (err) {
+        return asDuplicate(err, "this tenant has already been bootstrapped");
+      }
+    },
+
     async createObject(input: NewRecord<ObjectRecord>) {
       try {
         const { rows } = await q.query(

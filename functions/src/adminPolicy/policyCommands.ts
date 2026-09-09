@@ -550,16 +550,23 @@ async function principalsHolding(repo: PolicyRepository, tenantId: TenantId, rol
 }
 
 /**
- * Every principal with any assignment in this tenant.
+ * Every principal who could hold a Role in this tenant.
  *
- * ponytail: derived by walking audit events, because the port has no "list all principals" read and
- * adding one for this alone would widen the interface for a bookkeeping need. Correct and bounded
- * for the sizes this runs at; if it ever stops being either, the port grows a proper query rather
- * than this growing a cache.
+ * MEMBERSHIP FIRST, and that is a correctness fix rather than a tidy-up. This used to be derived
+ * ONLY by walking audit events for an `after.principalUid`, which is true of an assignment written
+ * by `assignRole` and NOT true of one written by the tenant bootstrap -- so the initial
+ * administrator was invisible here, and the "you may not revoke the last administering assignment"
+ * guard would have counted zero and let it go.
+ *
+ * The audit-derived set is still unioned in, deliberately: a principal may hold an assignment
+ * without a membership row in the foundation's own resolver proofs, which construct assignments
+ * directly to test staleness and union arithmetic. A superset is the safe direction here -- this
+ * feeds a guard that REFUSES, so including a principal who does not exist costs nothing and
+ * excluding one who does costs the recovery invariant.
  */
 async function allPrincipals(repo: PolicyRepository, tenantId: TenantId): Promise<string[]> {
+  const uids = new Set<string>(await repo.listTenantPrincipalIds(tenantId));
   const events = await repo.listAuditEvents(tenantId, 10_000);
-  const uids = new Set<string>();
   for (const e of events) {
     const after = e.after as { principalUid?: unknown } | null;
     if (after && typeof after.principalUid === "string") uids.add(after.principalUid);

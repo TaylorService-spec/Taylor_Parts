@@ -45,6 +45,81 @@ export interface Provenance {
   readonly updatedAt: string;
 }
 
+
+// ════════════════════ TENANT, PRINCIPAL, MEMBERSHIP ════════════════════
+//
+// Migration 002 added these because non-production activation is the point at which "a tenant" has
+// to be something the platform CREATES rather than something a test inserts by hand.
+//
+// THE IDENTITY MODEL IS PROVIDER-NEUTRAL ON PURPOSE. Authentication is external and temporary:
+// Firebase proves who someone is today, and the platform's direction replaces that provider. If
+// the authorization model's identity were the Firebase UID, replacing the provider would mean
+// rewriting every assignment, every access-version row and every audit event -- which is how a
+// temporary provider quietly becomes permanent. So `PrincipalRecord.id` is EOS-native and
+// (identityProvider, externalSubject) is the mapping to whatever proved the identity.
+
+export type TenantStatus = "active" | "suspended" | "retired";
+
+/**
+ * A tenant.
+ *
+ * `key` is the stable slug a bootstrap resolves on -- `id` is opaque and generated, and `name` is
+ * a display string somebody will edit, so neither is safe to find a tenant by. `configurationVersion`
+ * records which seed produced this tenant's configuration.
+ */
+export interface TenantRecord {
+  readonly id: TenantId;
+  readonly key: string;
+  readonly name: string;
+  readonly status: TenantStatus;
+  readonly configurationVersion: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type PrincipalStatus = "active" | "disabled";
+
+/** A human (or service identity) EOS knows about, independent of who authenticated them. */
+export interface PrincipalRecord {
+  readonly id: string;
+  readonly externalSubject: string;
+  readonly identityProvider: string;
+  readonly displayName: string | null;
+  readonly status: PrincipalStatus;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * Which tenant a principal belongs to.
+ *
+ * NOT a request parameter. A client that sends a tenantId is stating a preference the server checks
+ * against these rows; a principal with no ACTIVE membership resolves to no tenant at all rather
+ * than to a default one.
+ */
+export interface TenantMembershipRecord {
+  readonly id: string;
+  readonly tenantId: TenantId;
+  readonly principalId: string;
+  readonly status: PrincipalStatus;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * The record that the initial administering state was established, once, for one tenant.
+ *
+ * Its existence is the "one-time" guarantee -- the table's primary key is the tenant, so a second
+ * bootstrap is refused by the database rather than by a check the caller could race.
+ */
+export interface TenantAdminBootstrapRecord {
+  readonly tenantId: TenantId;
+  readonly principalId: string;
+  readonly performedBy: string;
+  readonly reason: string | null;
+  readonly performedAt: string;
+}
+
 // ════════════════════ CRED ════════════════════
 //
 // The Owner's four business verbs. CRED == CRUD; "Edit" and "Update" are the same verb and the
