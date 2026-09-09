@@ -41,6 +41,13 @@ export interface PolicyDatabaseOptions {
   readonly max?: number;
   readonly idleTimeoutMillis?: number;
   readonly connectionTimeoutMillis?: number;
+  /**
+   * Upper bound on a single statement, enforced by the SERVER (`statement_timeout`) rather than
+   * only by the client. A client-side timeout abandons the caller and leaves the query running,
+   * still holding its locks; the server-side one actually cancels it. Both are set, because the
+   * client-side one is what turns a wedged connection into a rejected promise.
+   */
+  readonly statementTimeoutMillis?: number;
 }
 
 const DEFAULTS = Object.freeze({
@@ -49,6 +56,9 @@ const DEFAULTS = Object.freeze({
   // A connection that has not been established in ten seconds is not going to be. Failing here
   // surfaces a misconfigured database as an error rather than as a request that never returns.
   connectionTimeoutMillis: 10_000,
+  // Policy reads and Admin mutations are small and indexed. Anything running for thirty seconds is
+  // a defect, and letting it run is how one bad query becomes an exhausted pool.
+  statementTimeoutMillis: 30_000,
 });
 
 /**
@@ -71,13 +81,39 @@ export function resolvePolicyDatabaseConfig(options: PolicyDatabaseOptions = {})
   // certificate chain, which is the provider's posture rather than a choice made here.
   const wantsTls = /[?&]sslmode=(require|verify-ca|verify-full)/i.test(connectionString);
 
+  const statementTimeout = options.statementTimeoutMillis ?? DEFAULTS.statementTimeoutMillis;
+
   return {
     connectionString,
     max: options.max ?? DEFAULTS.max,
     idleTimeoutMillis: options.idleTimeoutMillis ?? DEFAULTS.idleTimeoutMillis,
     connectionTimeoutMillis: options.connectionTimeoutMillis ?? DEFAULTS.connectionTimeoutMillis,
+    statement_timeout: statementTimeout,
+    query_timeout: statementTimeout,
     ...(wantsTls ? { ssl: { rejectUnauthorized: false } } : {}),
   };
+}
+
+/**
+ * A connection string with its credentials removed, for error messages and logs.
+ *
+ * A `DATABASE_URL` carries a password. The moment one appears in a log line it is in a log
+ * aggregator, a crash report and somebody's terminal scrollback, and it outlives every rotation --
+ * the same reason no connection string is written in this repository. Errors below carry this, not
+ * the original.
+ */
+export function redactConnectionString(value: string | undefined): string {
+  if (!value) return "(none)";
+  try {
+    const url = new URL(value);
+    if (url.password) url.password = "***";
+    if (url.username) url.username = "***";
+    return url.toString();
+  } catch {
+    // Not URL-shaped -- a key/value DSN, or something malformed. Say nothing rather than guess
+    // which half was the secret.
+    return "(unparseable connection string)";
+  }
 }
 
 let pool: Pool | null = null;
@@ -98,6 +134,97 @@ export function getPolicyDatabasePool(options: PolicyDatabaseOptions = {}): Pool
     console.error("[policyDatabase] idle client error", err);
   });
   return pool;
+}
+
+/** The database is not answering, or is answering without the schema this service needs. */
+export class PolicyDatabaseUnavailableError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+  }
+}
+
+export interface PolicyDatabaseHealth {
+  readonly reachable: boolean;
+  readonly migrated: boolean;
+  /** Names of the migrations the database has recorded, newest last. Empty when none have run. */
+  readonly appliedMigrations: readonly string[];
+  readonly latencyMs: number;
+  /** Present only when `reachable` is false. Never contains a credential. */
+  readonly error?: string;
+}
+
+/**
+ * Is the policy database reachable, and does it carry the schema?
+ *
+ * REACHABLE AND MIGRATED ARE DIFFERENT ANSWERS, and conflating them is how a service starts,
+ * reports healthy, and then fails every request with "relation does not exist". A database that
+ * answers `SELECT 1` but has no `pgmigrations` table is a database somebody forgot to migrate,
+ * and this says so rather than leaving it to the first user to discover.
+ */
+export async function checkPolicyDatabaseHealth(pool: Pool): Promise<PolicyDatabaseHealth> {
+  const started = Date.now();
+  try {
+    await pool.query("SELECT 1");
+    let applied: string[] = [];
+    try {
+      const res = await pool.query<{ name: string }>(
+        "SELECT name FROM public.pgmigrations ORDER BY run_on, id",
+      );
+      applied = res.rows.map((r) => String(r.name));
+    } catch {
+      // No migrations table: reachable, not migrated. Not an error -- it is the answer.
+      applied = [];
+    }
+    return {
+      reachable: true,
+      migrated: applied.length > 0,
+      appliedMigrations: Object.freeze(applied),
+      latencyMs: Date.now() - started,
+    };
+  } catch (err) {
+    return {
+      reachable: false,
+      migrated: false,
+      appliedMigrations: Object.freeze([]),
+      latencyMs: Date.now() - started,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Wait for the database to answer, then require it to be migrated.
+ *
+ * Called at STARTUP, not per request. A managed database can take a few seconds to accept
+ * connections after the service container starts, and crashing on the first attempt turns an
+ * ordinary cold start into a restart loop. Bounded, so a genuinely absent database still fails --
+ * a service that waits for ever looks identical to one that is working.
+ */
+export async function requirePolicyDatabaseReady(
+  pool: Pool,
+  options: { readonly attempts?: number; readonly delayMs?: number } = {},
+): Promise<PolicyDatabaseHealth> {
+  const attempts = Math.max(1, options.attempts ?? 10);
+  const delayMs = Math.max(0, options.delayMs ?? 1_000);
+
+  let last: PolicyDatabaseHealth | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    last = await checkPolicyDatabaseHealth(pool);
+    if (last.reachable) break;
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  if (!last || !last.reachable) {
+    throw new PolicyDatabaseUnavailableError(
+      `policy database did not answer after ${attempts} attempt(s): ${last?.error ?? "unknown"}`,
+    );
+  }
+  if (!last.migrated) {
+    throw new PolicyDatabaseUnavailableError(
+      "policy database is reachable but has no applied migrations -- run `npm run migrate:up`",
+    );
+  }
+  return last;
 }
 
 /**

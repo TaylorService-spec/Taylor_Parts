@@ -42,6 +42,25 @@ const TENANT = "tenant-a";
 const OTHER_TENANT = "tenant-b";
 const SYS = "uid-system";
 
+/**
+ * Make somebody a MEMBER of the tenant before a Role is assigned to them.
+ *
+ * Owner ruling B: an assignment to a non-member is unrepresentable -- a composite foreign key in
+ * PostgreSQL, mirrored by the in-memory adapter. These proofs are about what a grant CONFERS, so
+ * they take the shortest honest route to a grantable principal.
+ */
+async function member(repo, principalId, tenantId = TENANT) {
+  if (await repo.getMembership(tenantId, principalId)) return principalId;
+  await repo.transact({ tenantId, uid: "setup" }, (tx) => tx.createTenantMembership(principalId));
+  return principalId;
+}
+
+/** Assign through the governed command, with the membership it now requires. */
+async function grantRole(repo, actor, principalId, roleId) {
+  await member(repo, principalId, actor.tenantId);
+  return assignRole(repo, actor, { principalId, roleId });
+}
+
 const adminActor = (uid = "uid-admin") => ({ tenantId: TENANT, uid, heldRoleKeys: ["admin"] });
 const gmActor = (uid = "uid-gm") => ({ tenantId: TENANT, uid, heldRoleKeys: ["generalManager"] });
 const plainActor = (uid = "uid-plain") => ({ tenantId: TENANT, uid, heldRoleKeys: ["technician"] });
@@ -261,8 +280,9 @@ test("WORKFLOW authority does not expose forbidden fields", async () => {
       sortable: false, reportable: true, sensitivity: "CONFIDENTIAL", referenceTo: null,
       origin: "SYSTEM", lifecycle: "ACTIVE",
     });
+    await tx.createTenantMembership("uid-d");
     await tx.createAssignment({
-      principalUid: "uid-d", roleId: roles.dispatcher.id, scopeType: "global", scopeValue: null,
+      principalId: "uid-d", roleId: roles.dispatcher.id, scopeType: "global", scopeValue: null,
       status: "active", grantedBy: SYS, grantedAt: new Date().toISOString(), accessVersionAtGrant: 0,
     });
     return { obj, f };
@@ -388,7 +408,7 @@ test("Owner, General Manager and Admin may each assign ANY Role, including Admin
   const roles = await seedRoles(repo, ["admin", "owner", "generalManager"]);
 
   for (const [i, actor] of [adminActor(), gmActor(), { tenantId: TENANT, uid: "uid-owner", heldRoleKeys: ["owner"] }].entries()) {
-    const assignment = await assignRole(repo, actor, { principalUid: `uid-target-${i}`, roleId: roles.admin.id });
+    const assignment = await grantRole(repo, actor, `uid-target-${i}`, roles.admin.id);
     assert.equal(assignment.roleId, roles.admin.id, "the Admin Role itself was assignable");
     assert.equal(assignment.status, "active");
   }
@@ -398,7 +418,7 @@ test("an unauthorized user cannot assign Roles", async () => {
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin"]);
   await assert.rejects(
-    () => assignRole(repo, plainActor(), { principalUid: "uid-target", roleId: roles.admin.id }),
+    () => grantRole(repo, plainActor(), "uid-target", roles.admin.id),
     /not authorized to perform "assignRole"/,
   );
 });
@@ -407,9 +427,9 @@ test("an EXACT assignment can be revoked, and only that one", async () => {
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin", "salesperson"]);
   // Two administering assignments, so revoking one is not the last-admin case.
-  await assignRole(repo, adminActor(), { principalUid: "uid-keeper", roleId: roles.admin.id });
-  const a = await assignRole(repo, adminActor(), { principalUid: "uid-target", roleId: roles.admin.id });
-  const b = await assignRole(repo, adminActor(), { principalUid: "uid-target", roleId: roles.salesperson.id });
+  await grantRole(repo, adminActor(), "uid-keeper", roles.admin.id);
+  const a = await grantRole(repo, adminActor(), "uid-target", roles.admin.id);
+  const b = await grantRole(repo, adminActor(), "uid-target", roles.salesperson.id);
 
   const revoked = await revokeRole(repo, adminActor(), { assignmentId: a.id });
   assert.equal(revoked.status, "disabled");
@@ -423,7 +443,7 @@ test("the LAST administering assignment cannot be revoked", async () => {
   // unadministrable -- there would be no bug to point at afterwards, only a locked door.
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin"]);
-  const only = await assignRole(repo, adminActor(), { principalUid: "uid-only-admin", roleId: roles.admin.id });
+  const only = await grantRole(repo, adminActor(), "uid-only-admin", roles.admin.id);
 
   await assert.rejects(
     () => revokeRole(repo, adminActor(), { assignmentId: only.id }),
@@ -461,7 +481,7 @@ test("EVERY policy mutation writes exactly one audit event", async () => {
   await setObjectPermission(repo, adminActor(), {
     roleId: roles.admin.id, objectKey: "customer", cred: { C: false, R: true, E: false, D: false },
   });
-  await assignRole(repo, adminActor(), { principalUid: "uid-x", roleId: roles.admin.id });
+  await grantRole(repo, adminActor(), "uid-x", roles.admin.id);
 
   const events = await repo.listAuditEvents(TENANT, 1000);
   assert.equal(events.length - before, 5, "five mutations, five events");
@@ -486,7 +506,7 @@ test("a permission change BUMPS the access version of every holder", async () =>
       origin: "SYSTEM", lifecycle: "ACTIVE", supportsDelete: true,
     }),
   );
-  await assignRole(repo, adminActor(), { principalUid: "uid-holder", roleId: roles.viewer.id });
+  await grantRole(repo, adminActor(), "uid-holder", roles.viewer.id);
   const before = (await repo.getAccessVersion(TENANT, "uid-holder")).accessVersion;
 
   await setObjectPermission(repo, adminActor(), {

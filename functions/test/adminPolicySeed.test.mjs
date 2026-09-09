@@ -192,9 +192,11 @@ test("the seeded policy RESOLVES: a seeded Role reads what its capabilities say"
   const admin = (await repo.listRoles(TENANT)).find((r) => r.key === "admin");
 
   await repo.transact({ tenantId: TENANT, uid: SEEDER }, async (tx) => {
+    // A Role assignment now requires the principal to be a MEMBER of the tenant (Owner ruling B).
+    await tx.createTenantMembership("uid-1");
     const v = await tx.bumpAccessVersion("uid-1");
     await tx.createAssignment({
-      principalUid: "uid-1", roleId: admin.id, scopeType: "global", scopeValue: null,
+      principalId: "uid-1", roleId: admin.id, scopeType: "global", scopeValue: null,
       status: "active", grantedBy: SEEDER, grantedAt: new Date().toISOString(), accessVersionAtGrant: v,
     });
   });
@@ -250,7 +252,7 @@ test("the seed runs over PostgreSQL, and is idempotent there too", { skip: PG_SK
 
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: URL, max: 4 }));
   try {
-    await pool.query("INSERT INTO eos_policy.tenants (id, name) VALUES ($1, $1)", [TENANT]);
+    await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1)", [TENANT]);
     const repo = new PostgresPolicyRepository(pool);
 
     const first = await seedTenantPolicy(repo, TENANT, SEEDER);

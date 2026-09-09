@@ -47,8 +47,14 @@ async function policyStore(rows = []) {
       roleIdByKey.set(key, role.id);
     }
     for (const row of rows) {
+      // MEMBERSHIP FIRST (Owner ruling B). The fixture rows describe LEGACY Firestore assignments,
+      // whose identity is a Firebase UID; the policy model requires the principal to be a member of
+      // the tenant before a Role can be assigned, so the harness makes them one.
+      if (!(await repo.getMembership(TENANT, row.principalUid))) {
+        await tx.createTenantMembership(row.principalUid);
+      }
       await tx.createAssignment({
-        principalUid: row.principalUid,
+        principalId: row.principalUid,
         roleId: roleIdByKey.get(row.roleKey),
         scopeType: row.scopeType ?? "global",
         scopeValue: row.scopeValue ?? null,
@@ -215,6 +221,8 @@ test("the harness returns NO Firestore data as policy", async () => {
   // Every legacy row appears only inside a DIFFERENCE list, described by role KEY -- never as a
   // resolvable grant with an id the resolver could act on.
   const legacy = report.principals[0].onlyInFirestore[0];
-  assert.deepEqual(Object.keys(legacy).sort(), ["principalUid", "roleKey", "scopeType", "scopeValue", "status"]);
+  // `principalId` carries the LEGACY SUBJECT here, not an EOS principal id -- the harness keeps the
+  // two vocabularies apart and reports the subject it actually found in Firestore.
+  assert.deepEqual(Object.keys(legacy).sort(), ["principalId", "roleKey", "scopeType", "scopeValue", "status"]);
   assert.equal("roleId" in legacy, false, "no id a resolver could dereference");
 });

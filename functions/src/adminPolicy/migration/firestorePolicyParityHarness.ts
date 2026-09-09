@@ -36,12 +36,13 @@
 // Until then it is the ONLY module in this subsystem permitted to touch Firestore, and the guard
 // names it explicitly so that permission cannot spread.
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FIREBASE_IDENTITY_PROVIDER } from "../principalContext";
 import type { PolicyReader } from "../policyRepository";
 import type { TenantId } from "../types";
 
 /** One principal's assignment, reduced to the facts both stores can express. */
 export interface ComparableAssignment {
-  readonly principalUid: string;
+  readonly principalId: string;
   readonly roleKey: string;
   readonly scopeType: string;
   readonly scopeValue: string | null;
@@ -49,7 +50,7 @@ export interface ComparableAssignment {
 }
 
 export interface PrincipalParity {
-  readonly principalUid: string;
+  readonly principalId: string;
   readonly inBoth: readonly ComparableAssignment[];
   readonly onlyInFirestore: readonly ComparableAssignment[];
   readonly onlyInPostgres: readonly ComparableAssignment[];
@@ -79,7 +80,7 @@ export interface ParityDeps {
 
 /** A stable identity for one assignment, so two stores' rows can be set-compared. */
 const key = (a: ComparableAssignment) =>
-  `${a.principalUid}|${a.roleKey}|${a.scopeType}|${a.scopeValue ?? ""}|${a.status}`;
+  `${a.principalId}|${a.roleKey}|${a.scopeType}|${a.scopeValue ?? ""}|${a.status}`;
 
 /**
  * Compare the two stores for one tenant.
@@ -100,14 +101,21 @@ export async function buildPolicyParityReport(
   const principals = new Set<string>();
   for (const doc of legacySnapshot.docs) {
     const data = doc.data() as Record<string, unknown>;
-    const principalUid = typeof data.principalUid === "string" ? data.principalUid : null;
+    // TWO VOCABULARIES MEET HERE, and they are not the same thing.
+    //
+    // The legacy Firestore document's field is `principalUid` and holds a FIREBASE UID. The EOS
+    // model's identity is `principals.id`, and `(identity_provider, external_subject)` maps one to
+    // the other. Reading this key as though it were an EOS principal id would compare an empty
+    // legacy set against the new model and report parity -- which is the exact failure this harness
+    // exists to catch.
+    const legacySubject = typeof data.principalUid === "string" ? data.principalUid : null;
     const roleId = typeof data.roleId === "string" ? data.roleId : null;
     // A malformed legacy row is REPORTED BY ABSENCE rather than guessed at. Inventing a shape for
     // it would manufacture parity that does not exist.
-    if (!principalUid || !roleId) continue;
+    if (!legacySubject || !roleId) continue;
     const scope = (data.scope ?? {}) as { type?: unknown; value?: unknown };
     legacy.push({
-      principalUid,
+      principalId: legacySubject,
       // The legacy `roleId` IS the role key -- compatibility Roles are named `admin`, `dispatcher`,
       // `technician`, and the governed ones by their own keys. The new store's key is the same
       // string, which is what makes the two comparable at all.
@@ -116,7 +124,7 @@ export async function buildPolicyParityReport(
       scopeValue: typeof scope.value === "string" ? scope.value : null,
       status: data.status === "disabled" ? "disabled" : "active",
     });
-    principals.add(principalUid);
+    principals.add(legacySubject);
   }
 
   // ── the NEW store, read only ──
@@ -129,10 +137,17 @@ export async function buildPolicyParityReport(
   let onlyNew = 0;
   let versionMismatches = 0;
 
-  for (const principalUid of [...principals].sort()) {
-    const mine = legacy.filter((a) => a.principalUid === principalUid);
-    const theirs: ComparableAssignment[] = (await reader.listAssignmentsForPrincipal(tenantId, principalUid)).map((a) => ({
-      principalUid,
+  for (const subject of [...principals].sort()) {
+    // RESOLVED, not assumed. Before migration 002 a Firebase UID and the policy model's principal
+    // identifier were the same string, and this harness compared them directly. They are now
+    // different values, so the subject is mapped through the identity model first; a subject EOS
+    // has never seen has no principal, and its legacy assignments are reported as unmatched rather
+    // than quietly compared against nothing.
+    const principal = await reader.getPrincipalBySubject(FIREBASE_IDENTITY_PROVIDER, subject);
+    const principalId = principal?.id ?? subject;
+    const mine = legacy.filter((a) => a.principalId === subject);
+    const theirs: ComparableAssignment[] = (await reader.listAssignmentsForPrincipal(tenantId, principalId)).map((a) => ({
+      principalId: subject,
       roleKey: roleKeyById.get(a.roleId) ?? `(unknown role ${a.roleId})`,
       scopeType: a.scopeType,
       scopeValue: a.scopeValue,
@@ -146,10 +161,10 @@ export async function buildPolicyParityReport(
     const onlyInFirestore = [...mineKeys.values()].filter((a) => !theirKeys.has(key(a)));
     const onlyInPostgres = [...theirKeys.values()].filter((a) => !mineKeys.has(key(a)));
 
-    const userDoc = await db.collection("users").doc(principalUid).get();
+    const userDoc = await db.collection("users").doc(subject).get();
     const userData = userDoc.exists ? (userDoc.data() as Record<string, unknown>) : undefined;
     const firestoreAccessVersion = typeof userData?.accessVersion === "number" ? userData.accessVersion : null;
-    const versionRow = await reader.getAccessVersion(tenantId, principalUid);
+    const versionRow = await reader.getAccessVersion(tenantId, principalId);
     const postgresAccessVersion = versionRow ? versionRow.accessVersion : null;
 
     if (onlyInFirestore.length === 0 && onlyInPostgres.length === 0) matched += 1;
@@ -158,7 +173,7 @@ export async function buildPolicyParityReport(
     if (firestoreAccessVersion !== postgresAccessVersion) versionMismatches += 1;
 
     results.push({
-      principalUid, inBoth, onlyInFirestore, onlyInPostgres,
+      principalId, inBoth, onlyInFirestore, onlyInPostgres,
       firestoreAccessVersion, postgresAccessVersion,
     });
   }

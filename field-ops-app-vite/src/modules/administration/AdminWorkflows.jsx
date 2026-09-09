@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { WorkflowsPolicyPanel } from "./PolicyStorePanels.jsx";
 import {
   SEED_WORKFLOW_FAMILIES,
   WORKFLOW_AREAS,
@@ -272,6 +273,8 @@ export default function AdminWorkflows() {
           </section>
         </>
       )}
+
+      <WorkflowsPolicyPanel />
     </WorkspaceShell>
   );
 }

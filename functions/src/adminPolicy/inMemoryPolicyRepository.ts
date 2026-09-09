@@ -37,6 +37,11 @@ import type {
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
+  PrincipalRecord,
+  PrincipalStatus,
+  TenantAdminBootstrapRecord,
+  TenantMembershipRecord,
+  TenantRecord,
   RoleFieldPermissionOverrideRecord,
   RoleObjectPermissionRecord,
   TenantId,
@@ -50,6 +55,10 @@ import type {
 } from "./types";
 
 interface Tables {
+  tenants: TenantRecord[];
+  principals: PrincipalRecord[];
+  memberships: TenantMembershipRecord[];
+  adminBootstraps: TenantAdminBootstrapRecord[];
   objects: ObjectRecord[];
   fields: ObjectFieldRecord[];
   roles: PolicyRoleRecord[];
@@ -68,6 +77,10 @@ interface Tables {
 }
 
 const emptyTables = (): Tables => ({
+  tenants: [],
+  principals: [],
+  memberships: [],
+  adminBootstraps: [],
   objects: [],
   fields: [],
   roles: [],
@@ -143,6 +156,95 @@ export class InMemoryPolicyRepository implements PolicyRepository {
     };
 
     return {
+      // ── tenant and identity ──
+      createTenant: async (input) => {
+        if (t.tenants.some((x) => x.key === input.key)) {
+          throw new PolicyStoreError(`tenant key "${input.key}" already exists`);
+        }
+        const at = this.now();
+        const row: TenantRecord = {
+          id: tenantId,
+          key: input.key,
+          name: input.name,
+          status: input.status ?? "active",
+          configurationVersion: input.configurationVersion ?? 0,
+          createdAt: at,
+          updatedAt: at,
+        };
+        t.tenants.push(row);
+        return row;
+      },
+
+      setTenantConfigurationVersion: async (id, version) => {
+        const found = t.tenants.find((x) => x.id === id && x.id === tenantId);
+        if (!found) throw new PolicyStoreError("tenant not found");
+        const updated: TenantRecord = { ...found, configurationVersion: version, updatedAt: this.now() };
+        t.tenants[t.tenants.indexOf(found)] = updated;
+        return updated;
+      },
+
+      createPrincipal: async (input) => {
+        const existing = t.principals.find(
+          (x) => x.identityProvider === input.identityProvider && x.externalSubject === input.externalSubject,
+        );
+        // One subject per provider is one principal. Minting a second would split one human's Roles.
+        if (existing) throw new PolicyStoreError("principal already exists for that subject");
+        const at = this.now();
+        const row: PrincipalRecord = {
+          id: this.nextId(),
+          externalSubject: input.externalSubject,
+          identityProvider: input.identityProvider,
+          displayName: input.displayName ?? null,
+          status: input.status ?? "active",
+          createdAt: at,
+          updatedAt: at,
+        };
+        t.principals.push(row);
+        return row;
+      },
+
+      createTenantMembership: async (principalId, status) => {
+        if (t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId)) {
+          throw new PolicyStoreError("membership already exists");
+        }
+        const at = this.now();
+        const row: TenantMembershipRecord = {
+          id: this.nextId(),
+          tenantId,
+          principalId,
+          status: status ?? "active",
+          createdAt: at,
+          updatedAt: at,
+        };
+        t.memberships.push(row);
+        return row;
+      },
+
+      setTenantMembershipStatus: async (membershipId, status) => {
+        const found = t.memberships.find((m) => m.id === membershipId && m.tenantId === tenantId);
+        if (!found) throw new PolicyStoreError("membership not found");
+        const updated: TenantMembershipRecord = { ...found, status, updatedAt: this.now() };
+        t.memberships[t.memberships.indexOf(found)] = updated;
+        return updated;
+      },
+
+      recordAdminBootstrap: async (input) => {
+        // ONE PER TENANT. The real adapter gets this from a primary key; here it is the same rule
+        // stated in the same place, so the two adapters refuse the same second call.
+        if (t.adminBootstraps.some((b) => b.tenantId === tenantId)) {
+          throw new PolicyStoreError("this tenant has already been bootstrapped");
+        }
+        const row: TenantAdminBootstrapRecord = {
+          tenantId,
+          principalId: input.principalId,
+          performedBy: input.performedBy,
+          reason: input.reason ?? null,
+          performedAt: this.now(),
+        };
+        t.adminBootstraps.push(row);
+        return row;
+      },
+
       createObject: async (input) => {
         if (t.objects.some((o) => o.tenantId === tenantId && o.key === input.key)) {
           throw new PolicyStoreError(`object key "${input.key}" already exists`);
@@ -215,6 +317,29 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       },
 
       createAssignment: async (input) => {
+        // THE TWO STORE-LEVEL RULES MIGRATION 003 ADDS, mirrored so the adapters cannot disagree
+        // about what is representable. The commands refuse both first; these are the backstop for a
+        // writer that skipped them.
+        //
+        //   1. the principal must be a MEMBER of this tenant (composite foreign key)
+        //   2. one ACTIVE row per (principal, role, normalized scope) (partial unique index)
+        if (!t.memberships.some((m) => m.tenantId === tenantId && m.principalId === input.principalId)) {
+          throw new PolicyStoreError("that principal is not a member of this tenant");
+        }
+        if (
+          input.status === "active" &&
+          t.assignments.some(
+            (a) =>
+              a.tenantId === tenantId &&
+              a.principalId === input.principalId &&
+              a.roleId === input.roleId &&
+              a.status === "active" &&
+              a.scopeType === input.scopeType &&
+              (a.scopeValue ?? "") === (input.scopeValue ?? ""),
+          )
+        ) {
+          throw new PolicyStoreError("an identical active assignment already exists");
+        }
         requireOwned(t.roles, input.roleId, "role");
         const row: PolicyRoleAssignmentRecord = { ...input, id: this.nextId(), tenantId, ...this.stamp(actor) };
         t.assignments.push(row);
@@ -226,10 +351,10 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return replace(t.assignments, { ...current, status, updatedBy: actor.uid, updatedAt: this.now() });
       },
 
-      bumpAccessVersion: async (principalUid) => {
-        const index = t.accessVersions.findIndex((v) => v.tenantId === tenantId && v.principalUid === principalUid);
+      bumpAccessVersion: async (principalId) => {
+        const index = t.accessVersions.findIndex((v) => v.tenantId === tenantId && v.principalId === principalId);
         const next = index >= 0 ? t.accessVersions[index].accessVersion + 1 : 1;
-        const row: PrincipalAccessVersionRecord = { id: index >= 0 ? t.accessVersions[index].id : this.nextId(), tenantId, principalUid, accessVersion: next, updatedAt: this.now() };
+        const row: PrincipalAccessVersionRecord = { id: index >= 0 ? t.accessVersions[index].id : this.nextId(), tenantId, principalId, accessVersion: next, updatedAt: this.now() };
         if (index >= 0) t.accessVersions[index] = row;
         else t.accessVersions.push(row);
         return next;
@@ -315,6 +440,32 @@ export class InMemoryPolicyRepository implements PolicyRepository {
     return rows.filter((r) => r.tenantId === tenantId);
   }
 
+  // Tenant and identity reads. `getTenantByKey` is the one deliberately unscoped read in the port:
+  // a bootstrap has to ask whether a tenant exists before there is a tenant to scope by. It returns
+  // one tenant found by its own key and nothing owned by it.
+  async getTenantByKey(key: string) { return this.tables.tenants.find((x) => x.key === key) ?? null; }
+  async getTenant(tenantId: TenantId) { return this.tables.tenants.find((x) => x.id === tenantId) ?? null; }
+  async getPrincipalBySubject(identityProvider: string, externalSubject: string) {
+    return this.tables.principals.find(
+      (x) => x.identityProvider === identityProvider && x.externalSubject === externalSubject,
+    ) ?? null;
+  }
+  async getPrincipal(principalId: string) {
+    return this.tables.principals.find((x) => x.id === principalId) ?? null;
+  }
+  async listMembershipsForPrincipal(principalId: string) {
+    return this.tables.memberships.filter((m) => m.principalId === principalId);
+  }
+  async getMembership(tenantId: TenantId, principalId: string) {
+    return this.mine(this.tables.memberships, tenantId).find((m) => m.principalId === principalId) ?? null;
+  }
+  async listTenantPrincipalIds(tenantId: TenantId) {
+    return this.mine(this.tables.memberships, tenantId).map((m) => m.principalId);
+  }
+  async getAdminBootstrap(tenantId: TenantId) {
+    return this.tables.adminBootstraps.find((b) => b.tenantId === tenantId) ?? null;
+  }
+
   async listObjects(tenantId: TenantId) { return this.mine(this.tables.objects, tenantId); }
   async getObjectByKey(tenantId: TenantId, key: string) {
     return this.mine(this.tables.objects, tenantId).find((o) => o.key === key) ?? null;
@@ -332,11 +483,11 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   async listFieldOverrides(tenantId: TenantId, roleIds: readonly string[]) {
     return this.mine(this.tables.fieldOverrides, tenantId).filter((p) => roleIds.includes(p.roleId));
   }
-  async listAssignmentsForPrincipal(tenantId: TenantId, principalUid: string) {
-    return this.mine(this.tables.assignments, tenantId).filter((a) => a.principalUid === principalUid);
+  async listAssignmentsForPrincipal(tenantId: TenantId, principalId: string) {
+    return this.mine(this.tables.assignments, tenantId).filter((a) => a.principalId === principalId);
   }
-  async getAccessVersion(tenantId: TenantId, principalUid: string) {
-    return this.mine(this.tables.accessVersions, tenantId).find((v) => v.principalUid === principalUid) ?? null;
+  async getAccessVersion(tenantId: TenantId, principalId: string) {
+    return this.mine(this.tables.accessVersions, tenantId).find((v) => v.principalId === principalId) ?? null;
   }
   async listWorkflows(tenantId: TenantId) { return this.mine(this.tables.workflows, tenantId); }
   async listWorkflowVersions(tenantId: TenantId, workflowId: string) {

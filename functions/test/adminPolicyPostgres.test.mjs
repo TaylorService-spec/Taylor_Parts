@@ -54,12 +54,31 @@ async function reset() {
   await seedTenants();
 }
 
+/**
+ * A real principal, a member of the tenant.
+ *
+ * Migration 003 made an assignment to a non-member -- and an access-version row for a principal who
+ * does not exist -- UNREPRESENTABLE. These proofs therefore create the identity the platform would,
+ * which is also what lets the integrity tests below assert that the constraint actually fires.
+ */
+async function makeMember(tenantId, subject) {
+  const r = repo();
+  return r.transact({ tenantId, uid: ACTOR.uid }, async (tx) => {
+    const principal = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+    await tx.createTenantMembership(principal.id);
+    return principal.id;
+  });
+}
+
 /** Tenants are a foreign-key parent for everything; the seed creates them, so the tests do too. */
 async function seedTenants() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
   for (const id of [TENANT_A, TENANT_B]) {
-    await client.query("INSERT INTO eos_policy.tenants (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING", [id, id]);
+    await client.query(
+      "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+      [id, id, id],
+    );
   }
   await client.end();
 }
@@ -92,11 +111,12 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "object_fields", "objects", "principal_access_versions",
-    "role_field_permission_overrides", "role_object_permissions", "roles", "tenants",
+    "audit_events", "object_fields", "objects", "principal_access_versions", "principals",
+    "role_field_permission_overrides", "role_object_permissions", "roles", "tenant_admin_bootstraps",
+    "tenant_memberships", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "sixteen tables, named exactly");
+  ], "nineteen tables, named exactly -- sixteen from migration 001, three from 002 (identity)");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -104,7 +124,7 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
   );
   assert.deepEqual(enums.rows.map((r) => r.typname), [
     "assignment_status", "definition_lifecycle", "definition_origin",
-    "field_data_type", "field_sensitivity", "workflow_version_status",
+    "field_data_type", "field_sensitivity", "principal_status", "workflow_version_status",
   ]);
 
   // The field type vocabulary is the repository's existing one. A drift here means the database and
@@ -139,10 +159,13 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
   assert.deepEqual(appliedAfter.rows, appliedBefore.rows, "and the migration is not recorded twice");
 });
 
-test("the DOWN migration removes the schema, and UP restores it", { skip: SKIP }, async () => {
+test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
+  // ALL THREE, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // the earlier migrations standing. A test that expected zero after one step would be asserting
+  // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "3", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -150,7 +173,48 @@ test("the DOWN migration removes the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 16, "and up restores all sixteen");
+  assert.equal(back.rows[0].n, 19, "and up restores all nineteen");
+});
+
+test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
+  // The step that matters operationally: rolling back ONE migration must not take the ones under it
+  // with it. Proved by reversing exactly one, then exactly one more, and counting what survives.
+  await reset();
+  const down = (count) => execFileSync(process.execPath, [
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
+  ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 003 off: the integrity constraints go, the tables stay, and the column name reverts.
+  down(1);
+  const afterThree = await query(
+    "SELECT count(*)::int n FROM pg_indexes WHERE schemaname = 'eos_policy'" +
+    " AND indexname = 'user_role_assignments_one_active'",
+  );
+  assert.equal(afterThree.rows[0].n, 0, "the one-active index is gone");
+  const renamed = await query(
+    "SELECT count(*)::int n FROM information_schema.columns WHERE table_schema = 'eos_policy'" +
+    " AND table_name = 'user_role_assignments' AND column_name = 'principal_uid'",
+  );
+  assert.equal(renamed.rows[0].n, 1, "and the column name reverted");
+  const stillNineteen = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(stillNineteen.rows[0].n, 19, "every table survives");
+
+  // 002 off: the identity model goes, migration 001's sixteen tables stay.
+  down(1);
+  const identity = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'" +
+    " AND table_name IN ('principals', 'tenant_memberships', 'tenant_admin_bootstraps')",
+  );
+  assert.equal(identity.rows[0].n, 0, "the identity model is gone");
+
+  const policy = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(policy.rows[0].n, 16, "and migration 001's sixteen tables are untouched");
+
+  migrateFromClean();
 });
 
 // ============================ constraints ============================
@@ -305,10 +369,13 @@ test("the access version bump is atomic under concurrency", { skip: SKIP }, asyn
   // cached as valid. Ten concurrent bumps must produce exactly ten.
   await reset();
   const r = repo();
+  // An access-version row belongs to a principal that exists (migration 003), so the identity comes
+  // first -- which is also what the platform does.
+  const principalId = await makeMember(TENANT_A, "subject-concurrent");
   await Promise.all(
-    Array.from({ length: 10 }, () => r.transact(actorFor(TENANT_A), (tx) => tx.bumpAccessVersion("uid-1"))),
+    Array.from({ length: 10 }, () => r.transact(actorFor(TENANT_A), (tx) => tx.bumpAccessVersion(principalId))),
   );
-  const version = await r.getAccessVersion(TENANT_A, "uid-1");
+  const version = await r.getAccessVersion(TENANT_A, principalId);
   assert.equal(version.accessVersion, 10, "no bump was lost");
 });
 
@@ -321,13 +388,13 @@ test("TENANT ISOLATION: a read cannot cross the boundary", { skip: SKIP }, async
   const b = await makeWorld(r, TENANT_B);
 
   await grant(r, TENANT_A, a.role.id, a.object.id, { C: false, R: true, E: false, D: false });
-  await assign(r, TENANT_A, "uid-1", a.role.id);
+  const { principalId } = await assign(r, TENANT_A, "subject-isolation", a.role.id);
 
-  const policyA = await loadPrincipalPolicy(r, TENANT_A, "uid-1");
+  const policyA = await loadPrincipalPolicy(r, TENANT_A, principalId);
   assert.equal(resolveObjectAccess(policyA, "customer").cred.R, true);
 
-  // The SAME uid, asked about the other tenant.
-  const policyB = await loadPrincipalPolicy(r, TENANT_B, "uid-1");
+  // The SAME principal, asked about the other tenant.
+  const policyB = await loadPrincipalPolicy(r, TENANT_B, principalId);
   assert.equal(policyB.qualifyingRoleIds.length, 0, "tenant A's assignment is invisible in tenant B");
   assert.equal(resolveObjectAccess(policyB, "customer").cred.R, false);
 
@@ -462,9 +529,9 @@ test("the resolver works identically over Postgres", { skip: SKIP }, async () =>
 
   await grant(r, TENANT_A, role.id, object.id, { C: false, R: false, E: false, D: false });
   await r.transact(actorFor(TENANT_A), (tx) => tx.setFieldOverride(role.id, field.id, { R: true }));
-  await assign(r, TENANT_A, "uid-1", role.id);
+  const { principalId } = await assign(r, TENANT_A, "subject-resolver", role.id);
 
-  const policy = await loadPrincipalPolicy(r, TENANT_A, "uid-1");
+  const policy = await loadPrincipalPolicy(r, TENANT_A, principalId);
   const decision = resolveFieldAccess(policy, "customer", field);
   assert.equal(decision.cred.R, false, "the field grant does not open the doorway");
   assert.equal(decision.basis, "doorwayClosed");
@@ -519,14 +586,24 @@ async function makeWorld(r, tenantId) {
 const grant = (r, tenantId, roleId, objectId, cred) =>
   r.transact(actorFor(tenantId), (tx) => tx.setObjectPermission(roleId, objectId, cred));
 
-const assign = (r, tenantId, principalUid, roleId) =>
-  r.transact(actorFor(tenantId), async (tx) => {
-    const accessVersion = await tx.bumpAccessVersion(principalUid);
+/**
+ * Assign a Role, creating the principal and the membership the constraints require.
+ *
+ * Returns the EOS PRINCIPAL ID, which is not the subject string the caller passed. That difference
+ * is the whole point of the identity model: a Firebase UID is a mapping key, not the authorization
+ * model's identity.
+ */
+const assign = async (r, tenantId, subject, roleId) => {
+  const principalId = await makeMember(tenantId, subject);
+  const assignment = await r.transact(actorFor(tenantId), async (tx) => {
+    const accessVersion = await tx.bumpAccessVersion(principalId);
     return tx.createAssignment({
-      principalUid, roleId, scopeType: "global", scopeValue: null, status: "active",
+      principalId, roleId, scopeType: "global", scopeValue: null, status: "active",
       grantedBy: ACTOR.uid, grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion,
     });
   });
+  return { ...assignment, principalId };
+};
 
 // ============================ the registered command is the authority ============================
 
