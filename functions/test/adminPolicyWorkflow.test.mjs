@@ -540,7 +540,7 @@ test("a field's key and dataType are not changeable -- there is no parameter for
   assert.equal(updated.label, "Preferred name", "while the editable field did change");
 });
 
-test("a SYSTEM field's lifecycle is protected", async () => {
+test("a SYSTEM field's DEFINITION is protected -- every part of it", async () => {
   const repo = new InMemoryPolicyRepository();
   await seedRoles(repo, ["admin"]);
   const world = await repo.transact({ tenantId: TENANT, uid: SYS }, async (tx) => {
@@ -556,10 +556,40 @@ test("a SYSTEM field's lifecycle is protected", async () => {
     return { f };
   });
 
-  await assert.rejects(
-    () => updateFieldDefinition(repo, adminActor(), { fieldId: world.f.id, lifecycle: "RETIRED" }),
-    /SYSTEM field's lifecycle is protected/,
-  );
+  // WAS: only `lifecycle` was refused, which left a SYSTEM field's label, description, required,
+  // searchable, sortable, reportable and sensitivity all editable. That is not what "system Field
+  // definitions are protected" means, and `sensitivity` in particular is read by the
+  // field-projection path -- so "just a label change" was never just a label change.
+  //
+  // NOW: the definition is protected as a whole. Its POLICY is still fully configurable through
+  // Role field permissions, which is the thing an administrator actually needs.
+  for (const patch of [
+    { lifecycle: "RETIRED" },
+    { label: "Renamed" },
+    { description: "changed" },
+    { required: false },
+    { searchable: false },
+    { sortable: false },
+    { reportable: false },
+    { sensitivity: "RESTRICTED" },
+  ]) {
+    await assert.rejects(
+      () => updateFieldDefinition(repo, adminActor(), { fieldId: world.f.id, ...patch }),
+      /SYSTEM field's definition is protected/,
+      `${Object.keys(patch)[0]} must be refused on a SYSTEM field`,
+    );
+  }
+
+  // And a CUSTOM field on the same object stays editable -- the rule is about origin, not about
+  // making the screen read-only.
+  const custom = await createCustomField(repo, adminActor(), {
+    objectKey: "customer", key: "loyaltyTier", label: "Loyalty Tier", dataType: "STRING",
+  });
+  const updated = await updateFieldDefinition(repo, adminActor(), {
+    fieldId: custom.id, label: "Loyalty Band", sensitivity: "INTERNAL",
+  });
+  assert.equal(updated.label, "Loyalty Band");
+  assert.equal(updated.sensitivity, "INTERNAL");
 });
 
 test("an ENUM field with no allowed values is refused", async () => {

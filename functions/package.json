@@ -17,7 +17,7 @@
     "migrate": "node-pg-migrate --migrations-dir migrations",
     "migrate:up": "node-pg-migrate up --migrations-dir migrations",
     "migrate:down": "node-pg-migrate down --migrations-dir migrations",
-    "test:adminPolicy": "npm run build && node --test test/adminPolicyAuthorization.test.mjs test/adminPolicyWorkflow.test.mjs test/adminPolicyNoFirebase.test.mjs test/adminPolicySeed.test.mjs test/adminPolicyMigrationParity.test.mjs test/adminPolicySeedCoverage.test.mjs test/adminPolicyReorderSeparation.test.mjs test/adminPolicyIdentity.test.mjs",
+    "test:adminPolicy": "npm run build && node --test test/adminPolicyAuthorization.test.mjs test/adminPolicyWorkflow.test.mjs test/adminPolicyNoFirebase.test.mjs test/adminPolicySeed.test.mjs test/adminPolicyMigrationParity.test.mjs test/adminPolicySeedCoverage.test.mjs test/adminPolicyReorderSeparation.test.mjs test/adminPolicyIdentity.test.mjs test/adminPolicyDefinitionEditing.test.mjs",
     "test:adminPolicyPostgres": "npm run build && node --test --test-concurrency=1 test/adminPolicyPostgres.test.mjs test/adminPolicySeed.test.mjs test/adminPolicyActivation.test.mjs",
     "test:accountPortfolioSummaryEmulator": "npm run build && node test/accountPortfolioSummaryCallableEmulator.test.mjs",
     "test:equipmentCompatibilityParity": "npm run build && node test/equipmentCompatibilityDomainParity.test.mjs",

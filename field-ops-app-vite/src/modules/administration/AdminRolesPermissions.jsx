@@ -8,7 +8,8 @@ import {
 } from "../../access/roleAccessModel.js";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
-import { RolesPolicyPanel } from "./PolicyStorePanels.jsx";
+import { RolesPermissionsSurface, NotConfiguredNotice, SourceReference } from "./AdminPolicySurfaces.jsx";
+import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -187,6 +188,8 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
     </div>
   );
 
+  const configured = isPolicyApiConfigured();
+
   return (
     <WorkspaceShell
       title="Roles & Permissions"
@@ -212,6 +215,19 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
         ) : null
       }
     >
+      {configured ? (
+        <>
+          {/* PRIMARY: the tenant's stored, editable policy. */}
+          <RolesPermissionsSurface />
+          <p className="fo-muted">
+            Below: what the code does today, measured from the live access contracts. It is a
+            reference for comparison, not the configuration — that is above.
+          </p>
+        </>
+      ) : (
+        <NotConfiguredNotice what="Stored role policy" />
+      )}
+
       <p className="fo-muted">
         What each role actually gets, read from the live access contracts — not from a spreadsheet of
         intent. Read-only.
@@ -403,7 +419,6 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
         <ApprovalRequests onPendingCountChange={setPendingApprovals} />
       </section>
 
-      <RolesPolicyPanel />
     </WorkspaceShell>
   );
 }

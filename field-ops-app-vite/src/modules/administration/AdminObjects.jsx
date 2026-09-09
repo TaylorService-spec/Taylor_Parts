@@ -10,7 +10,11 @@ import RolePolicyGrid from "./RolePolicyGrid.jsx";
 // THE STORED CONFIGURATION, alongside the measured model above it. Two different facts: what the
 // code does, and what this tenant has configured. Merging them into one grid would make it
 // impossible to tell them apart, which is the confusion this workstream exists to end.
-import { ObjectsPolicyPanel } from "./PolicyStorePanels.jsx";
+// THE STORED CONFIGURATION IS THE SCREEN when a policy store exists; the measured model becomes a
+// collapsed reference. Two grids competing for the same question is why this page still felt
+// uneditable -- the first one you met was the one you could not change.
+import { ObjectsSurface, NotConfiguredNotice, SourceReference } from "./AdminPolicySurfaces.jsx";
+import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 
 // ADMINISTRATION > OBJECTS -- the Role x Object x CRED grid.
 //
@@ -295,22 +299,50 @@ export default function AdminObjects() {
     </div>
   );
 
+  const configured = isPolicyApiConfigured();
+
   if (view === "object") {
     return (
       <WorkspaceShell title="Objects" context={viewToggle}>
-        <ByObject roles={rosterRoles} />
-        <ObjectDiagnostics roles={rosterRoles} />
-        <ObjectsPolicyPanel />
-        <p className="fo-warning">
-          Read-only. Role definitions live in code today, and the trusted commands grant{" "}
-          <em>roles to people</em>, not permissions to roles.
-        </p>
+        {configured ? (
+          <>
+            <ObjectsSurface />
+            <SourceReference>
+              <ByObject roles={rosterRoles} />
+              <ObjectDiagnostics roles={rosterRoles} />
+            </SourceReference>
+          </>
+        ) : (
+          <>
+            <NotConfiguredNotice what="Stored objects" />
+            <ByObject roles={rosterRoles} />
+            <ObjectDiagnostics roles={rosterRoles} />
+            <p className="fo-warning">
+              Read-only. Role definitions live in code today, and the trusted commands grant{" "}
+              <em>roles to people</em>, not permissions to roles.
+            </p>
+          </>
+        )}
+      </WorkspaceShell>
+    );
+  }
+
+  if (configured) {
+    // BY-ROLE, CONFIGURED: the stored object configuration is the screen. The measured per-role
+    // grid answers a different question and is available underneath, named as reference.
+    return (
+      <WorkspaceShell title="Objects" context={viewToggle}>
+        <ObjectsSurface />
+        <SourceReference>
+          <RolePolicyGrid role={role} label={selected.label} />
+        </SourceReference>
       </WorkspaceShell>
     );
   }
 
   return (
     <WorkspaceShell title="Objects" context={<>{viewToggle}{picker}</>}>
+      <NotConfiguredNotice what="Stored objects" />
       <p className="fo-muted">
         An employee holds a Role; the Role's authority is the grid below. C = Create, R = Read,
         E = Edit, D = Delete. A tick is a granted capability, a blank box is not granted, and a
@@ -336,17 +368,14 @@ export default function AdminObjects() {
           the field expansion landed in ONE place and both screens got it. */}
       <RolePolicyGrid role={role} label={selected.label} />
 
-      {/* The write path is stated, not hidden behind a control that would do nothing. */}
-      <p className="fo-warning">
-        These boxes are read-only. Role definitions live in code today, and the trusted
-        commands grant <em>roles to people</em>, not permissions to roles — so there is no
-        governed path to change a tick from this screen yet. Editing becomes available when
-        Role definitions move to administered data.
-      </p>
-
-      {/* And here is where it becomes available: the tenant's STORED configuration, which is a
-          different thing from the measured grid above and is editable when a policy service exists. */}
-      <ObjectsPolicyPanel />
+      {/* Said once, and only while it is true. When a policy store exists this whole grid is the
+          SOURCE REFERENCE above, and the editable configuration is the screen. */}
+      {!configured && (
+        <p className="fo-warning">
+          These boxes are read-only: no policy service is configured here, so there is nothing
+          stored to change. They show what the code does today.
+        </p>
+      )}
     </WorkspaceShell>
   );
 }

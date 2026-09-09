@@ -36,6 +36,7 @@
 import {
   createCustomField,
   createRole,
+  updateObjectMetadata,
   setFieldPermissionOverride,
   setObjectPermission,
   updateFieldDefinition,
@@ -86,6 +87,10 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
 ] as const);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
+  // Object DISPLAY metadata. The only Object mutation there is: no key edit, no delete, no generic
+  // patch. Added because "Object definition editing is Admin-only" was a contract with no operation
+  // behind it, which made the Objects screen's claim to be editable false.
+  "updateObjectMetadata",
   "createCustomField",
   "updateCustomFieldMetadata",
   "createRole",
@@ -344,7 +349,19 @@ async function dispatch(
     // Each delegates to the governed command, which re-checks authority itself. The check is not
     // done here INSTEAD -- it is done there, next to the transaction, so a future caller that
     // bypasses this dispatcher is still refused.
+    case "updateObjectMetadata":
+      return updateObjectMetadata(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        label: input.label === undefined ? undefined : requireString(input.label, "label"),
+        labelPlural: input.labelPlural === undefined ? undefined : optionalString(input.labelPlural),
+        description: input.description === undefined ? undefined : optionalString(input.description),
+        reason,
+      });
+
     case "createCustomField":
+      // EVERY metadata value the command supports, not the three the first UI happened to send.
+      // A create surface that silently drops `sensitivity` or `referenceTo` produces a field the
+      // administrator has to go and fix immediately, which is worse than refusing it.
       return createCustomField(repo, actor, {
         objectKey: requireString(input.objectKey, "objectKey"),
         key: requireString(input.key, "key"),
@@ -354,15 +371,28 @@ async function dispatch(
         required: input.required === true,
         allowedValues: Array.isArray(input.allowedValues) ? (input.allowedValues as string[]) : undefined,
         defaultValue: (input.defaultValue ?? null) as never,
+        searchable: input.searchable === true,
+        sortable: input.sortable === true,
+        reportable: input.reportable === true,
+        sensitivity: input.sensitivity === undefined ? undefined : (requireString(input.sensitivity, "sensitivity") as never),
+        referenceTo: optionalString(input.referenceTo),
         reason,
       } as never);
 
     case "updateCustomFieldMetadata":
+      // Every value `UpdateFieldInput` accepts. `key` and `dataType` are absent because they are
+      // not in that input at all -- changing either is a data migration wearing an edit's clothes,
+      // and the command has no way to express it.
       return updateFieldDefinition(repo, actor, {
         fieldId: requireString(input.fieldId, "fieldId"),
-        label: optionalString(input.label) ?? undefined,
+        label: input.label === undefined ? undefined : requireString(input.label, "label"),
         description: input.description === undefined ? undefined : optionalString(input.description),
         required: typeof input.required === "boolean" ? input.required : undefined,
+        searchable: typeof input.searchable === "boolean" ? input.searchable : undefined,
+        sortable: typeof input.sortable === "boolean" ? input.sortable : undefined,
+        reportable: typeof input.reportable === "boolean" ? input.reportable : undefined,
+        sensitivity: input.sensitivity === undefined ? undefined : (requireString(input.sensitivity, "sensitivity") as never),
+        lifecycle: input.lifecycle === undefined ? undefined : (requireString(input.lifecycle, "lifecycle") as never),
         reason,
       } as never);
 

@@ -125,6 +125,19 @@ export interface PolicyTransaction {
 
   // ── objects and fields ──
   createObject(input: NewRecord<ObjectRecord>): Promise<ObjectRecord>;
+  /**
+   * Change an Object's DISPLAY metadata.
+   *
+   * The patch type names the writable subset deliberately. `key` is identity and is absent; so are
+   * `origin`, `lifecycle` and `supportsDelete`, which are facts about what the platform can
+   * enforce rather than things a tenant chooses. What is left is what a tenant legitimately renames:
+   * this platform's own canonical Object is "Accounts" while the UI says "Customer", which is
+   * exactly the case this exists for.
+   */
+  updateObject(
+    objectId: string,
+    patch: { label?: string; labelPlural?: string | null; description?: string | null },
+  ): Promise<ObjectRecord>;
   createField(input: NewRecord<ObjectFieldRecord>): Promise<ObjectFieldRecord>;
   updateField(fieldId: string, patch: Partial<NewRecord<ObjectFieldRecord>>): Promise<ObjectFieldRecord>;
 

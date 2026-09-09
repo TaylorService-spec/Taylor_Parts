@@ -23,6 +23,10 @@ const READS = [
   "listPrincipalRoleAssignments", "listWorkflows", "readWorkflowVersion", "readPolicyAuditHistory",
 ];
 const MUTATIONS = [
+  // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the
+  // Administration editing correction, because "Object definition editing is Admin-only" was a
+  // contract with no operation behind it.
+  "updateObjectMetadata",
   "createCustomField", "updateCustomFieldMetadata", "createRole", "updateRole", "setObjectPermission",
   "setFieldPermissionOverride", "removeFieldPermissionOverride", "assignRole", "revokeRole",
   "createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "setWorkflowRoleBinding",
