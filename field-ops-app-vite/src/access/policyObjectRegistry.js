@@ -46,6 +46,9 @@ export const ENTITY_BY_MATRIX_OBJECT = Object.freeze({
   "Inventory Stock": "inventoryTransaction",
   "Inventory Adjustments": "inventoryAction",
   "Purchase Orders": "purchaseOrder",
+  // Its OWN row since the Owner ruling separating it from Purchase Orders. Both are canonical
+  // EOS Objects and each owns its own data authority.
+  "Reorder Requests": "reorderRequest",
   Receiving: "receivingOrder",
   "Transfer Orders": "transferOrder",
   "Equipment / Installed Base": "equipment",

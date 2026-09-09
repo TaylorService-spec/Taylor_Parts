@@ -284,7 +284,7 @@ machine would have invented transitions that no code performs.
 
 ---
 
-## 8. Named decisions — ALL FOUR RULED (Owner, 2026-09-08)
+## 8. Named decisions — ALL FIVE RULED (Owner, 2026-09-08)
 
 **D-1 — PostgreSQL stack. RULED: PostgreSQL + `pg` (node-postgres) + `node-pg-migrate`.**
 No ORM — not Prisma, TypeORM, Sequelize or Drizzle — unless a measured requirement appears that
@@ -315,6 +315,17 @@ transitional Firestore read resolver merely to make that infrastructure work. Th
 `authenticated principal → EOS Authorization Engine → PostgreSQL RoleAssignments → Object/Field
 CRED → DAL → PostgreSQL`. `readGovernedList` + `COMPATIBILITY_ROLES` are **transitional migration
 infrastructure to be retired domain by domain**. **Honoured — nothing was widened.**
+
+**D-5 — Reorder Request capability ownership. RULED: authority follows the record. CLOSED.**
+The Reorder Request object owns the reorder request DATA authority (`reorder.request.create.*`,
+`reorder.request.read.*`); its transitions — approve, reject, assign, start purchasing, post
+progress, record purchase order, mark received, cancel — are **Parts / Purchasing Workflow
+actions**, as are the purchase order lifecycle actions void and receive. The Purchase Order object
+keeps only purchase order data authority. Those capabilities are NOT retained under the *Purchase
+Orders* matrix row merely because the legacy matrix grouped them there, no id was renamed for
+cosmetic consistency, and no workflow action appears as a CRED checkbox. Recorded in full, with
+OLD vs NEW authority, in §10. **Implemented.**
+
 
 ### Open questions
 
@@ -385,18 +396,51 @@ vocabulary exists so that a future exclusion must name one of six reasons —
   an exclusion names a reason outside the vocabulary, or if the committed artifacts drift from the
   generator.
 
-### Capability gaps: three filled, one left open
+### Capability gaps: three filled, and the one the Owner has now ruled on
 
 `warehouse.record.read`, `warehouse.stockLocation.read` and the four `salesAgreement.*` ids exist in
 the catalog and the CRUD matrix claims none of them. Mapping them to their objects is a coverage
 fix, and a test enforces that this table may only ever use ids the matrix does not claim — so no
 capability answers to two objects.
 
-**NEEDS OWNER DECISION.** The twelve `reorder.request.*` capabilities are already attributed to the
-matrix's *Purchase Orders* row — one row covering two records, the reorder request and the purchase
-order. Mapping them to the Reorder Request object as well would give one capability two owners, and
-deciding which object owns them is a business decision about the matrix rather than a coverage fix.
-The object is seeded with every verb ungrantable, so it is visible and nothing is hidden.
+### Reorder Request capability ownership — RULED (Owner, 2026-09-08). **CLOSED.**
+
+**OLD (as measured, and as this document previously recorded it):** all twelve `reorder.request.*`
+ids sat under the CRUD matrix's single *Purchase Orders* row — one row covering two different
+records. The Reorder Request object was therefore seeded with every verb ungrantable, and the
+question of who owns those capabilities was carried as NEEDS OWNER DECISION.
+
+**NEW EOS AUTHORITY.** Authority follows the record, and data authority is separated from workflow
+authority:
+
+| Authority | Owner | Capabilities |
+|---|---|---|
+| Reorder Request **data** (CRED) | Object `reorderRequest` | C: `reorder.request.create.manual`, `reorder.request.create.system` · R: `reorder.request.read.queue`, `reorder.request.read.own` |
+| Reorder Request **transitions** | Parts / Purchasing **Workflow** actions | `approve` · `reject` · `assign` · `startPurchasing` · `postPurchasingUpdate` · `recordPurchaseOrder` · `markReceived` · `cancel` |
+| Purchase Order **data** (CRED) | Object `purchaseOrder` | C: `purchaseOrder.create` · R: `reorder.purchaseOrder.read` |
+| Purchase Order **lifecycle** | Parts / Purchasing **Workflow** actions | `void` (`reorder.purchaseOrder.void`) · receiving (`inventory.stock.receive`, measured on the Receiving object's Edit) |
+
+Consequences, each proved by a test rather than asserted here:
+
+- **No `reorder.request.*` id remains on the Purchase Orders matrix row.** The legacy grouping was
+  where the matrix put them, not where the record lives, and it is not retained for that reason.
+- **A workflow action is never duplicated as a CRED checkbox.** `WORKFLOW_ACTION_CAPABILITIES` and
+  the matrix are disjoint by construction — `workflowActionsAlsoInCred()` must return `[]`.
+  Reorder Request's Edit column is therefore empty, and that emptiness now means "every edit-shaped
+  reorder capability is a workflow action", not "nobody decided".
+- **Neither authority implies the other, in either direction.** Holding a workflow action buys no
+  Reorder Request/Edit; holding Reorder Request/Edit buys no transition; holding Purchase
+  Order/Edit buys no reorder workflow action; and Purchase Order data authority buys no Reorder
+  Request data authority. Proved against the real resolver and the real workflow engine in
+  `functions/test/adminPolicyReorderSeparation.test.mjs`.
+- **Lineage is preserved, not renamed.** No capability id was changed for cosmetic consistency.
+  Each is mapped to its canonical Object or Workflow action, and
+  `field-ops-app-vite/test/reorderAuthoritySeparation.test.mjs` asserts every `reorder.*` id has
+  **exactly one home** — six data, nine workflow, none with two and none with none.
+- **The counts move, the total does not.** The CRUD matrix goes 24 → 25 rows and Reorder Request
+  moves from `REGISTRY_ONLY` to `MATRIX_AND_REGISTRY`; the union stays at 37 objects and 394 fields.
+  Each Parts / Purchasing seed action now carries the `capabilityId` it is measured to require, so
+  the workflow model names its own authority instead of implying it.
 
 ---
 

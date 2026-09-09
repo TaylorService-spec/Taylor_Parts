@@ -131,8 +131,16 @@ test("the thirteen previously-missed entities are now seeded, by name", () => {
   const seeded = new Set(ledger.entities.filter((e) => e.status === "SEEDED").map((e) => e.entityId));
   for (const id of MISSED) assert.ok(seeded.has(id), `${id} must be seeded`);
 
+  // TWELVE registry-only, not thirteen: the Owner ruling gave Reorder Request its own CRUD matrix
+  // row, so it is now MATRIX_AND_REGISTRY like any other first-class object. Its arrival in the
+  // matrix is the ruling landing, not coverage being lost -- it is still seeded, which the loop
+  // above asserts by name.
   const registryOnly = snapshot.objects.filter((o) => o.source === "REGISTRY_ONLY").map((o) => o.key).sort();
-  assert.deepEqual(registryOnly, [...MISSED].sort(), "and they are exactly the registry-only objects");
+  assert.deepEqual(registryOnly, MISSED.filter((id) => id !== "reorderRequest").sort());
+  assert.equal(
+    snapshot.objects.find((o) => o.key === "reorderRequest").source, "MATRIX_AND_REGISTRY",
+    "Reorder Request has a row of its own now",
+  );
 });
 
 // ============================ D-2, at the object level ============================
@@ -162,16 +170,28 @@ test("the capability gaps that WERE fillable are filled", () => {
   assert.deepEqual(agreement.capabilitiesByVerb.E, ["salesAgreement.updateDraft", "salesAgreement.accept"]);
 });
 
-test("REORDER REQUEST is seeded ungoverned, and that is a recorded finding rather than an oversight", () => {
-  // Twelve reorder.request.* capabilities exist and the matrix attributes all of them to its
-  // "Purchase Orders" row -- one row over two records. Mapping them here as well would give one
-  // capability two owners, and choosing the owner is a business decision about the matrix.
+test("REORDER REQUEST owns its own data authority — the Owner decision, CLOSED", () => {
+  // WAS: the twelve reorder.request.* ids all sat under the "Purchase Orders" matrix row, so this
+  // object was seeded with every verb ungrantable and the ownership question was left open.
+  //
+  // NOW (Owner ruling, 2026-09-08): Reorder Request and Purchase Order are separate canonical
+  // Objects. Reorder Request owns the reorder request DATA authority; the transitions are Parts /
+  // Purchasing WORKFLOW actions and appear in no CRED row at all -- which is why Edit is still
+  // empty here, and why that emptiness now means something different from before.
   const reorder = snapshot.objects.find((o) => o.key === "reorderRequest");
-  assert.ok(reorder, "the object is seeded, so it is not hidden");
-  assert.equal(reorder.source, "REGISTRY_ONLY");
-  for (const verb of ["C", "R", "E", "D"]) {
-    assert.deepEqual(reorder.capabilitiesByVerb[verb], [], `${verb} stays ungoverned pending the matrix decision`);
-  }
+  assert.ok(reorder);
+  assert.deepEqual(reorder.capabilitiesByVerb.C, ["reorder.request.create.manual", "reorder.request.create.system"]);
+  assert.deepEqual(reorder.capabilitiesByVerb.R, ["reorder.request.read.queue", "reorder.request.read.own"]);
+  assert.deepEqual(reorder.capabilitiesByVerb.E, [], "every edit-shaped reorder capability is a workflow action");
+  assert.deepEqual(reorder.capabilitiesByVerb.D, []);
+
+  // And the purchase order keeps only its own.
+  const purchaseOrder = snapshot.objects.find((o) => o.key === "purchaseOrder");
+  assert.deepEqual(purchaseOrder.capabilitiesByVerb.R, ["reorder.purchaseOrder.read"]);
+  assert.equal(
+    purchaseOrder.capabilitiesByVerb.R.some((id) => id.startsWith("reorder.request.")), false,
+    "no reorder request authority survives on the purchase order",
+  );
 });
 
 // ============================ drift ============================

@@ -27,7 +27,11 @@ export const SEED_WORKFLOW_FAMILIES = Object.freeze([
     name: "Parts / Purchasing",
     description:
       "The reorder request lifecycle, from a raised request through review, assignment, purchasing and receipt.",
-    objectKey: "purchaseOrder",
+    // THE REORDER REQUEST, not the purchase order. Its states ARE REORDER_REQUEST_STATUS and an
+    // instance moves a reorder request; the purchase order is a record this workflow CREATES along
+    // the way (recordPurchaseOrder) and later voids. Two canonical Objects, one workflow over the
+    // first of them -- naming the second here was the same conflation the CRUD matrix had.
+    objectKey: "reorderRequest",
     version: 1,
     status: "DRAFT",
     steps: Object.freeze([
@@ -42,16 +46,18 @@ export const SEED_WORKFLOW_FAMILIES = Object.freeze([
       { key: "VOIDED", label: "Voided", terminal: true },
     ]),
     actions: Object.freeze([
-      { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", roleKeys: ["admin", "dispatcher", "partsManager"] },
-      { key: "reject", label: "Reject", from: "PENDING_REVIEW", to: "REJECTED", roleKeys: ["admin", "dispatcher", "partsManager"] },
-      { key: "assign", label: "Assign", from: "READY_FOR_PARTS_MANAGER", to: "ASSIGNED_TO_PARTS_ASSOCIATE", roleKeys: ["admin", "partsManager"] },
-      { key: "startPurchasing", label: "Start purchasing", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "PURCHASING_IN_PROGRESS", requiresOwnAssignment: true, roleKeys: ["admin", "partsAssociate"] },
-      { key: "recordPurchaseOrder", label: "Record purchase order", from: "PURCHASING_IN_PROGRESS", to: "ORDERED", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-      { key: "markReceived", label: "Mark received", from: "ORDERED", to: "RECEIVED", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-      { key: "voidPurchaseOrder", label: "Void purchase order", from: "ORDERED", to: "VOIDED", roleKeys: ["admin", "partsManager"] },
-      { key: "cancelFromReady", label: "Cancel", from: "READY_FOR_PARTS_MANAGER", to: "CANCELLED", roleKeys: ["admin", "partsManager"] },
-      { key: "cancelFromAssigned", label: "Cancel", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "CANCELLED", roleKeys: ["admin", "partsManager"] },
-      { key: "cancelFromPurchasing", label: "Cancel", from: "PURCHASING_IN_PROGRESS", to: "CANCELLED", roleKeys: ["admin", "partsManager"] },
+      { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", capabilityId: "reorder.request.approve", roleKeys: ["admin", "dispatcher", "partsManager"] },
+      { key: "reject", label: "Reject", from: "PENDING_REVIEW", to: "REJECTED", capabilityId: "reorder.request.reject", roleKeys: ["admin", "dispatcher", "partsManager"] },
+      { key: "assign", label: "Assign", from: "READY_FOR_PARTS_MANAGER", to: "ASSIGNED_TO_PARTS_ASSOCIATE", capabilityId: "reorder.request.assign", roleKeys: ["admin", "partsManager"] },
+      { key: "startPurchasing", label: "Start purchasing", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "PURCHASING_IN_PROGRESS", requiresOwnAssignment: true, capabilityId: "reorder.request.startPurchasing", roleKeys: ["admin", "partsAssociate"] },
+      // A self-transition: progress is recorded without moving the record. Still an action.
+      { key: "postPurchasingUpdate", label: "Post purchasing progress", from: "PURCHASING_IN_PROGRESS", to: "PURCHASING_IN_PROGRESS", capabilityId: "reorder.request.postPurchasingUpdate", roleKeys: ["admin", "partsAssociate", "partsManager"] },
+      { key: "recordPurchaseOrder", label: "Record purchase order", from: "PURCHASING_IN_PROGRESS", to: "ORDERED", capabilityId: "reorder.request.recordPurchaseOrder", roleKeys: ["admin", "partsAssociate", "partsManager"] },
+      { key: "markReceived", label: "Mark received", from: "ORDERED", to: "RECEIVED", capabilityId: "reorder.request.markReceived", roleKeys: ["admin", "partsAssociate", "partsManager"] },
+      { key: "voidPurchaseOrder", label: "Void purchase order", from: "ORDERED", to: "VOIDED", capabilityId: "reorder.purchaseOrder.void", roleKeys: ["admin", "partsManager"] },
+      { key: "cancelFromReady", label: "Cancel", from: "READY_FOR_PARTS_MANAGER", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
+      { key: "cancelFromAssigned", label: "Cancel", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
+      { key: "cancelFromPurchasing", label: "Cancel", from: "PURCHASING_IN_PROGRESS", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
     ]),
   }),
 
@@ -203,6 +209,9 @@ export function buildWorkflowVersionView(family) {
           from: a.from,
           to: a.to,
           requiresOwnAssignment: a.requiresOwnAssignment === true,
+          // The enforcement id this action IS, for the surface that wants to show lineage. Null
+          // where no capability governs the action yet -- honest rather than invented.
+          capabilityId: a.capabilityId ?? null,
           roleKeys: Object.freeze([...(a.roleKeys ?? [])]),
         }),
       ),

@@ -1960,7 +1960,7 @@
       "status": "SEEDED",
       "exclusionReason": null,
       "objectKey": "reorderRequest",
-      "objectSource": "REGISTRY_ONLY",
+      "objectSource": "MATRIX_AND_REGISTRY",
       "fields": [
         {
           "key": "reorderRequestNumber",

@@ -25,6 +25,29 @@
 // them as one machine would have invented edges no code performs -- there is no transition from
 // `WON` to `DRAFT`; a WON opportunity CREATES an agreement, which is a different thing.
 //
+// ════════════════════ CAPABILITY LINEAGE ════════════════════
+//
+// Owner ruling (2026-09-08). Reorder Request and Purchase Order are SEPARATE canonical Objects, and
+// the `reorder.request.*` family belongs to Reorder Request -- not to Purchase Order, where the
+// legacy CRUD matrix had grouped it. Each id is then classified once:
+//
+//   DATA (Object CRED)                    WORKFLOW ACTION (this file)
+//   reorder.request.create.manual   C     reorder.request.approve
+//   reorder.request.create.system   C     reorder.request.reject
+//   reorder.request.read.queue      R     reorder.request.assign
+//   reorder.request.read.own        R     reorder.request.startPurchasing
+//                                         reorder.request.postPurchasingUpdate
+//   reorder.purchaseOrder.create    C     reorder.request.recordPurchaseOrder
+//   reorder.purchaseOrder.read      R     reorder.request.markReceived
+//                                         reorder.request.cancel
+//                                         reorder.purchaseOrder.void
+//
+// NO ID APPEARS TWICE. `objectPermissionMap.js` bans every workflow id from the CRUD matrix and
+// `reorderAuthoritySeparation.test.mjs` proves the two lists are disjoint and complete.
+//
+// The ids themselves are NOT renamed. They are the enforcement vocabulary the running system uses,
+// and a cosmetic rename in this pass would break every grant while proving nothing.
+//
 // ════════════════════ ROLE BINDINGS ════════════════════
 //
 // The Work Order bindings are the legacy compatibility role strings the measured table uses
@@ -49,6 +72,22 @@ export interface SeedAction {
   readonly requiresOwnAssignment?: boolean;
   /** Role KEYS permitted to perform it. Resolved to role ids when the seed is applied. */
   readonly roleKeys: readonly string[];
+  /**
+   * THE CAPABILITY THIS ACTION IS, in the enforcement vocabulary that exists today.
+   *
+   * Owner ruling (2026-09-08) item 4: existing capability ids stay as enforcement vocabulary during
+   * the migration, and each is MAPPED to its correct canonical Object or Workflow action rather
+   * than renamed for cosmetic consistency. This field is that mapping for the workflow half.
+   *
+   * An id named here is a workflow ACTION and is therefore banned from the CRUD matrix --
+   * `objectPermissionMap.js`'s WORKFLOW_ACTION_CAPABILITIES lists the same ids, and a test pins the
+   * two together so a capability can never have two homes.
+   *
+   * Null where no capability governs the action yet. That is honest rather than a gap to fill with
+   * a guess: the Work Order and Sales transitions have no capability ids of their own today, and
+   * inventing some would be manufacturing authority.
+   */
+  readonly capabilityId?: string | null;
 }
 
 export interface SeedWorkflow {
@@ -71,7 +110,11 @@ export const PARTS_PURCHASING_WORKFLOW: SeedWorkflow = Object.freeze({
   name: "Parts / Purchasing",
   description:
     "The reorder request lifecycle, from a raised request through review, assignment, purchasing and receipt.",
-  objectKey: "purchaseOrder",
+  // THE REORDER REQUEST, not the purchase order. Its states ARE REORDER_REQUEST_STATUS and an
+  // instance moves a reorder request; the purchase order is a record this workflow CREATES along
+  // the way (recordPurchaseOrder) and later voids. Two canonical Objects, one workflow over the
+  // first of them -- naming the second here was the same conflation the CRUD matrix had.
+  objectKey: "reorderRequest",
   steps: Object.freeze([
     { key: "PENDING_REVIEW", label: "Pending review", initial: true },
     { key: "READY_FOR_PARTS_MANAGER", label: "Ready for Parts Manager" },
@@ -84,17 +127,22 @@ export const PARTS_PURCHASING_WORKFLOW: SeedWorkflow = Object.freeze({
     { key: "VOIDED", label: "Voided", terminal: true },
   ]),
   actions: Object.freeze([
-    { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", roleKeys: ["admin", "dispatcher", "partsManager"] },
-    { key: "reject", label: "Reject", from: "PENDING_REVIEW", to: "REJECTED", roleKeys: ["admin", "dispatcher", "partsManager"] },
-    { key: "assign", label: "Assign", from: "READY_FOR_PARTS_MANAGER", to: "ASSIGNED_TO_PARTS_ASSOCIATE", roleKeys: ["admin", "partsManager"] },
+    { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", capabilityId: "reorder.request.approve", roleKeys: ["admin", "dispatcher", "partsManager"] },
+    { key: "reject", label: "Reject", from: "PENDING_REVIEW", to: "REJECTED", capabilityId: "reorder.request.reject", roleKeys: ["admin", "dispatcher", "partsManager"] },
+    { key: "assign", label: "Assign", from: "READY_FOR_PARTS_MANAGER", to: "ASSIGNED_TO_PARTS_ASSOCIATE", capabilityId: "reorder.request.assign", roleKeys: ["admin", "partsManager"] },
     // The measured rule required the ASSIGNED associate specifically, not any associate.
-    { key: "startPurchasing", label: "Start purchasing", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "PURCHASING_IN_PROGRESS", requiresOwnAssignment: true, roleKeys: ["admin", "partsAssociate"] },
-    { key: "recordPurchaseOrder", label: "Record purchase order", from: "PURCHASING_IN_PROGRESS", to: "ORDERED", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-    { key: "markReceived", label: "Mark received", from: "ORDERED", to: "RECEIVED", roleKeys: ["admin", "partsAssociate", "partsManager"] },
-    { key: "voidPurchaseOrder", label: "Void purchase order", from: "ORDERED", to: "VOIDED", roleKeys: ["admin", "partsManager"] },
-    { key: "cancelFromReady", label: "Cancel", from: "READY_FOR_PARTS_MANAGER", to: "CANCELLED", roleKeys: ["admin", "partsManager"] },
-    { key: "cancelFromAssigned", label: "Cancel", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "CANCELLED", roleKeys: ["admin", "partsManager"] },
-    { key: "cancelFromPurchasing", label: "Cancel", from: "PURCHASING_IN_PROGRESS", to: "CANCELLED", roleKeys: ["admin", "partsManager"] },
+    { key: "startPurchasing", label: "Start purchasing", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "PURCHASING_IN_PROGRESS", requiresOwnAssignment: true, capabilityId: "reorder.request.startPurchasing", roleKeys: ["admin", "partsAssociate"] },
+    // A SELF-TRANSITION, and measured as one: postPurchasingUpdate records progress and
+    // deliberately does NOT move the record (domain/inventoryReorderRequests.js says so in as many
+    // words). It is still an ACTION -- somebody must be permitted to perform it -- so it belongs in
+    // the action model rather than being lost because its from and to happen to match.
+    { key: "postPurchasingUpdate", label: "Post purchasing progress", from: "PURCHASING_IN_PROGRESS", to: "PURCHASING_IN_PROGRESS", capabilityId: "reorder.request.postPurchasingUpdate", roleKeys: ["admin", "partsAssociate", "partsManager"] },
+    { key: "recordPurchaseOrder", label: "Record purchase order", from: "PURCHASING_IN_PROGRESS", to: "ORDERED", capabilityId: "reorder.request.recordPurchaseOrder", roleKeys: ["admin", "partsAssociate", "partsManager"] },
+    { key: "markReceived", label: "Mark received", from: "ORDERED", to: "RECEIVED", capabilityId: "reorder.request.markReceived", roleKeys: ["admin", "partsAssociate", "partsManager"] },
+    { key: "voidPurchaseOrder", label: "Void purchase order", from: "ORDERED", to: "VOIDED", capabilityId: "reorder.purchaseOrder.void", roleKeys: ["admin", "partsManager"] },
+    { key: "cancelFromReady", label: "Cancel", from: "READY_FOR_PARTS_MANAGER", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
+    { key: "cancelFromAssigned", label: "Cancel", from: "ASSIGNED_TO_PARTS_ASSOCIATE", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
+    { key: "cancelFromPurchasing", label: "Cancel", from: "PURCHASING_IN_PROGRESS", to: "CANCELLED", capabilityId: "reorder.request.cancel", roleKeys: ["admin", "partsManager"] },
   ]),
 });
 

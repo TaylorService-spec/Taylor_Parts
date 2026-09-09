@@ -35,12 +35,15 @@ test("the union covers every matrix row AND every registry entity", () => {
   }
 });
 
-test("the counts reconcile: 24 matrix rows + 29 entities, overlapping on 16, is 37 objects", () => {
+test("the counts reconcile: 25 matrix rows + 29 entities, overlapping on 17, is 37 objects", () => {
+  // 24 rows and 16 overlaps before the Owner ruling gave Reorder Request its own row. The TOTAL is
+  // unchanged at 37 -- the object simply moved from registry-only to being in both lists, which is
+  // what "it now has data authority of its own" looks like in these counts.
   const counts = governableObjectCounts();
   assert.equal(counts.objects, 37);
-  assert.equal(counts.fromMatrixAndRegistry, 16, "in both lists");
+  assert.equal(counts.fromMatrixAndRegistry, 17, "in both lists");
   assert.equal(counts.matrixOnly, 8, "a matrix row with no EntityDefinition");
-  assert.equal(counts.registryOnly, 13, "an entity the matrix never had a row for");
+  assert.equal(counts.registryOnly, 12, "an entity the matrix never had a row for");
   assert.equal(counts.fromMatrixAndRegistry + counts.matrixOnly, OBJECT_PERMISSIONS.length);
   assert.equal(counts.fromMatrixAndRegistry + counts.registryOnly, ENTITY_REGISTRY.length);
   assert.equal(counts.fields, 394, "every declared field reaches the union");
@@ -99,14 +102,27 @@ test("the three fillable gaps are filled, and they are the only ones", () => {
   assert.deepEqual(governedVerbs(findGovernableObject("salesAgreement")), { C: true, R: true, E: true, D: false });
 });
 
-test("REORDER REQUEST stays ungoverned, deliberately", () => {
-  // Its twelve capabilities are already attributed to the matrix's "Purchase Orders" row -- one row
-  // over two records. Choosing which object owns them is a business decision about the matrix, not
-  // a coverage fix, so the object is present and every verb is ungrantable.
+test("REORDER REQUEST owns its own data authority — the Owner decision, CLOSED", () => {
+  // WAS: every verb ungrantable, because its twelve capabilities were attributed to the matrix's
+  // "Purchase Orders" row and choosing an owner was a business decision.
+  //
+  // NOW: Reorder Request and Purchase Order are separate canonical Objects. Create and Read are its
+  // own; Edit stays empty because every edit-shaped reorder capability is a Parts / Purchasing
+  // WORKFLOW ACTION, and a workflow action is never a CRED checkbox.
   const reorder = findGovernableObject("reorderRequest");
-  assert.ok(reorder, "the object exists, so nothing is hidden");
-  assert.deepEqual(governedVerbs(reorder), { C: false, R: false, E: false, D: false });
+  assert.ok(reorder);
+  assert.deepEqual(governedVerbs(reorder), { C: true, R: true, E: false, D: false });
   assert.equal(reorder.fields.length, 37, "with all its fields");
+  assert.equal(reorder.source, "MATRIX_AND_REGISTRY", "it has a row of its own now");
+
+  // And the purchase order kept only its own authority.
+  const purchaseOrder = findGovernableObject("purchaseOrder");
+  assert.deepEqual(governedVerbs(purchaseOrder), { C: true, R: true, E: false, D: false });
+  const poIds = ["C", "R", "E", "D"].flatMap((v) => purchaseOrder.capabilitiesByVerb[v] ?? []);
+  assert.equal(
+    poIds.some((id) => id.startsWith("reorder.request.")), false,
+    "no reorder request capability survives on the purchase order",
+  );
 });
 
 // ============================ honesty about what is not known ============================

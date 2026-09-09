@@ -45,6 +45,7 @@ on:
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
       - "functions/test/adminPolicySeedCoverage.test.mjs"
+      - "functions/test/adminPolicyReorderSeparation.test.mjs"
       - "functions/migrations/**"
       - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
@@ -61,6 +62,8 @@ on:
       - "field-ops-app-vite/test/adminPolicyView.test.mjs"
       - "field-ops-app-vite/test/adminWorkflowView.test.mjs"
       - "field-ops-app-vite/test/policyObjectRegistry.test.mjs"
+      - "field-ops-app-vite/test/reorderAuthoritySeparation.test.mjs"
+      - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "field-ops-app-vite/test/entityRegistry.test.mjs"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
@@ -178,7 +181,7 @@ jobs:
       # The view model draws what the server decided and must never become a second implementation
       # of the resolution rules -- one of these assertions is exactly that boundary.
       - name: Pure view model and entity registry (node:test)
-        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs test/policyObjectRegistry.test.mjs
+        run: node --test test/adminPolicyView.test.mjs test/entityRegistry.test.mjs test/adminWorkflowView.test.mjs test/administrationPortalNav.test.mjs test/policyObjectRegistry.test.mjs test/reorderAuthoritySeparation.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)
