@@ -41,7 +41,7 @@
 // and it deliberately does not disable the control. The server refuses the impossible grant whether
 // or not a button was greyed out, and a UI that hid the state would leave an administrator unable to
 // see why their override does nothing.
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { usePolicyStore } from "./usePolicyStore.js";
 import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
@@ -603,8 +603,11 @@ function FieldTable({ fields, mutate, onResult }) {
         </thead>
         <tbody>
           {fields.map((field) => (
-            <>
-              <tr key={field.id}>
+            // THE KEY BELONGS ON THE FRAGMENT. With it on the inner <tr> instead, React reconciles
+            // this list positionally and the conditional edit row below never renders -- which is
+            // exactly what the browser found: an Edit button that appeared to do nothing.
+            <Fragment key={field.id}>
+              <tr>
                 <td>{field.label}</td>
                 <td className="fo-muted"><code>{field.key}</code></td>
                 <td className="fo-muted">
@@ -636,7 +639,7 @@ function FieldTable({ fields, mutate, onResult }) {
                 </td>
               </tr>
               {editingId === field.id && (
-                <tr key={`${field.id}:edit`} className="fo-row-nested">
+                <tr className="fo-row-nested">
                   <td colSpan={8}>
                     <EditFieldForm
                       field={field}
@@ -647,7 +650,7 @@ function FieldTable({ fields, mutate, onResult }) {
                   </td>
                 </tr>
               )}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>
