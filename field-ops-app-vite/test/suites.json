@@ -1136,6 +1136,10 @@
     {
       "file": "test/workOrderWorkflowMirrorContract.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/adminPolicyApiClient.test.mjs",
+      "runner": "node --test"
     }
   ]
 }

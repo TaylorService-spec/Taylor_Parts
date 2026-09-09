@@ -174,9 +174,9 @@ test("every operation is either a read or a mutation, and none is both", () => {
   // The Owner's list, pinned. A read that quietly became a mutation, or an operation that appeared
   // without being asked for, fails here.
   assert.deepEqual([...reads].sort(), [
-    "listObjects", "listPrincipalRoleAssignments", "listRoles", "listWorkflows",
+    "listObjects", "listPrincipalRoleAssignments", "listRoles", "listTenantPrincipals", "listWorkflows",
     "readObjectWithFields", "readPolicyAuditHistory", "readRolePolicy", "readWorkflowVersion",
-  ]);
+  ], "the Owner's eight, plus listTenantPrincipals -- without which none of them yields a principal id");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",
     "publishWorkflowVersion", "removeFieldPermissionOverride", "revokeRole", "setFieldPermissionOverride",

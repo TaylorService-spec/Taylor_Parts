@@ -6,6 +6,10 @@ import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import { EOS_ACCESS, EOS_ACCESS_LABEL } from "../../domain/employeeProfile.js";
 import { securityRoleLabel } from "../../domain/employeeVocabulary.js";
+// THE STORED ASSIGNMENTS, beside the employee directory. A PRINCIPAL is the identity EOS
+// authorizes and it is not the same record as an employee -- the panel says so rather than
+// letting the proximity of the two tables imply they are one thing.
+import { UsersPolicyPanel } from "./PolicyStorePanels.jsx";
 
 // ADMINISTRATION → USERS -- the one people-management destination.
 //
@@ -162,6 +166,8 @@ export default function AdminUsers() {
           onRetry={retry}
         />
       </div>
+
+      <UsersPolicyPanel />
     </WorkspaceIdentity>
   );
 }

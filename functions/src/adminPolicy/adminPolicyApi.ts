@@ -70,6 +70,11 @@ import type {
 // ════════════════════ the closed operation list ════════════════════
 
 export const ADMIN_READ_OPERATIONS = Object.freeze([
+  // ONE READ BEYOND THE OWNER'S NAMED LIST, and the reason is that the list could not be used
+  // without it: `listPrincipalRoleAssignments` takes a principal id, and nothing else returns one.
+  // A Users screen could show a person's Roles only if somebody already knew their opaque id.
+  // Recorded here rather than added quietly.
+  "listTenantPrincipals",
   "listObjects",
   "readObjectWithFields",
   "listRoles",
@@ -275,6 +280,26 @@ async function dispatch(
         repo.listFieldOverrides(actor.tenantId, [roleId]),
       ]);
       return { role, objectPermissions, fieldOverrides } satisfies RolePolicyView;
+    }
+
+    case "listTenantPrincipals": {
+      // Membership is the population: who this tenant knows about. It returns identity, never
+      // authority -- no Roles, no permissions -- so a member can see who else is in the tenant
+      // without learning what any of them may do.
+      const ids = await repo.listTenantPrincipalIds(actor.tenantId);
+      const principals = [];
+      for (const id of ids) {
+        const principal = await repo.getPrincipal(id);
+        if (!principal) continue;
+        principals.push({
+          id: principal.id,
+          displayName: principal.displayName,
+          externalSubject: principal.externalSubject,
+          identityProvider: principal.identityProvider,
+          status: principal.status,
+        });
+      }
+      return principals;
     }
 
     case "listPrincipalRoleAssignments": {

@@ -8,6 +8,7 @@ import {
 } from "../../access/roleAccessModel.js";
 import { CAPABILITY_ACTIVATION_OVERRIDE_SET } from "../../config/capabilityActivationOverrides";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
+import { RolesPolicyPanel } from "./PolicyStorePanels.jsx";
 import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -401,6 +402,8 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
         </p>
         <ApprovalRequests onPendingCountChange={setPendingApprovals} />
       </section>
+
+      <RolesPolicyPanel />
     </WorkspaceShell>
   );
 }

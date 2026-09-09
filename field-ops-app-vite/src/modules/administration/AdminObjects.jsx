@@ -7,6 +7,10 @@ import { objectAccessAll, objectDiagnostics } from "../../access/roleAccessModel
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 import RolePolicyGrid from "./RolePolicyGrid.jsx";
+// THE STORED CONFIGURATION, alongside the measured model above it. Two different facts: what the
+// code does, and what this tenant has configured. Merging them into one grid would make it
+// impossible to tell them apart, which is the confusion this workstream exists to end.
+import { ObjectsPolicyPanel } from "./PolicyStorePanels.jsx";
 
 // ADMINISTRATION > OBJECTS -- the Role x Object x CRED grid.
 //
@@ -296,6 +300,7 @@ export default function AdminObjects() {
       <WorkspaceShell title="Objects" context={viewToggle}>
         <ByObject roles={rosterRoles} />
         <ObjectDiagnostics roles={rosterRoles} />
+        <ObjectsPolicyPanel />
         <p className="fo-warning">
           Read-only. Role definitions live in code today, and the trusted commands grant{" "}
           <em>roles to people</em>, not permissions to roles.
