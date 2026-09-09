@@ -54,12 +54,30 @@ export const OBJECT_PERMISSIONS = Object.freeze([
   { object: "Inventory Adjustments", domain: "Inventory",
     C: ["inventory.action.create", "inventory.cycleCount.create"], R: ["inventory.action.read"],
     E: ["inventory.cycleCount.submit", "inventory.cycleCount.reconcile", "inventory.cycleCount.cancel"], D: [] },
+  // REORDER REQUEST AND PURCHASE ORDER ARE SEPARATE OBJECTS (Owner ruling, 2026-09-08).
+  //
+  // This row used to hold BOTH records' authority: `reorder.request.read.queue`, `.read.own` and
+  // six `reorder.request.*` transitions sat under Purchase Orders because that is where the legacy
+  // matrix grouped them. One row over two canonical Objects meant an administrator granting
+  // "Purchase Orders / Read" was silently also granting the reorder queue.
+  //
+  // Data authority now follows the record, and every business ACTION left for the workflow model --
+  // which is why this row's Edit column is empty. Voiding a purchase order is a transition
+  // (ORDERED -> VOIDED), not a field edit, and duplicating it as a CRED checkbox would give one
+  // capability two homes.
   { object: "Purchase Orders", domain: "Procurement",
-    C: ["reorder.purchaseOrder.create"], R: ["reorder.purchaseOrder.read", "reorder.request.read.queue", "reorder.request.read.own"],
-    E: ["reorder.purchaseOrder.void", "reorder.request.startPurchasing", "reorder.request.recordPurchaseOrder",
-        "reorder.request.postPurchasingUpdate", "reorder.request.approve", "reorder.request.reject"], D: [] },
+    C: ["reorder.purchaseOrder.create"], R: ["reorder.purchaseOrder.read"], E: [], D: [] },
+  // The reorder request's own DATA authority. Its transitions -- approve, reject, assign, start
+  // purchasing, post progress, record PO, mark received, cancel -- are Parts / Purchasing workflow
+  // actions and appear in WORKFLOW_ACTION_CAPABILITIES below, never here.
+  { object: "Reorder Requests", domain: "Procurement",
+    C: ["reorder.request.create.manual", "reorder.request.create.system"],
+    R: ["reorder.request.read.queue", "reorder.request.read.own"], E: [], D: [] },
+  // `reorder.request.markReceived` MOVED OUT: it is the ORDERED -> RECEIVED transition, an action in
+  // the Parts / Purchasing workflow. `inventory.stock.receive` stays -- it is the Receiving
+  // command's own authority and is not part of the reorder family this ruling covers.
   { object: "Receiving", domain: "Inventory",
-    C: [], R: [], E: ["inventory.stock.receive", "reorder.request.markReceived"], D: [] },
+    C: [], R: [], E: ["inventory.stock.receive"], D: [] },
   { object: "Transfer Orders", domain: "Inventory",
     C: ["inventory.transfer.create"], R: ["warehouse.transferOrder.read"],
     E: ["inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"], D: [] },
@@ -79,6 +97,58 @@ export const OBJECT_PERMISSIONS = Object.freeze([
   { object: "Audit Log", domain: "Administration",
     C: [], R: ["audit.event.read"], E: [], D: [] },
 ]);
+
+/**
+ * CAPABILITIES THAT ARE WORKFLOW ACTIONS, NOT DATA PERMISSIONS.
+ *
+ * ════════════════════ WHY THIS LIST EXISTS ════════════════════
+ *
+ * Owner ruling (2026-09-08): a `reorder.request.*` capability representing a business action or
+ * state transition is NOT an Object.Edit permission, and workflow actions must not be duplicated as
+ * CRED checkboxes. The two authorities answer different questions:
+ *
+ *   Object / Field CRED   what DATA may I access or change?
+ *   Workflow action       what business ACTION may I perform?
+ *
+ * Neither implies the other. Being allowed to Approve a reorder request does not confer Edit on its
+ * fields, and holding Reorder Request / Edit does not permit Approve.
+ *
+ * So every id below is BANNED from the CRUD matrix above, and workflowActionsAlsoInCred() proves
+ * it. Without the ban the same capability would appear in two places and an administrator would
+ * have two contradictory ways to grant it.
+ *
+ * MEASURED, not assumed: each id is bound to a named action in the Parts / Purchasing workflow
+ * definition (functions/src/adminPolicy/workflowSeeds.ts), and a test pins the two lists together.
+ */
+export const WORKFLOW_ACTION_CAPABILITIES = Object.freeze([
+  "reorder.request.approve",
+  "reorder.request.reject",
+  "reorder.request.assign",
+  "reorder.request.startPurchasing",
+  "reorder.request.postPurchasingUpdate",
+  "reorder.request.recordPurchaseOrder",
+  "reorder.request.markReceived",
+  "reorder.request.cancel",
+  // A purchase order's own lifecycle action. Its measured behaviour is the ORDERED -> VOIDED
+  // transition, which never touches the original purchase-order document -- an append-only void
+  // record is written instead. That is a transition, not an edit.
+  "reorder.purchaseOrder.void",
+]);
+
+/** Every capability id the CRUD matrix claims, across every object and verb. */
+export function credCapabilityIds() {
+  const ids = new Set();
+  for (const entry of OBJECT_PERMISSIONS) {
+    for (const verb of VERBS) for (const id of entry[verb] ?? []) ids.add(id);
+  }
+  return ids;
+}
+
+/** The ids that are in BOTH lists. Must always be empty; the tests assert it. */
+export function workflowActionsAlsoInCred() {
+  const cred = credCapabilityIds();
+  return WORKFLOW_ACTION_CAPABILITIES.filter((id) => cred.has(id));
+}
 
 /**
  * What a role holds for one object/verb.

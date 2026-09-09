@@ -851,6 +851,97 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-table th, .fo-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--color-surface-sunken); font-size: 14px; }
 .fo-table select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--color-border); }
 
+/* Administration > Roles & Permissions / Objects -- the expandable Object x CRED grid
+   (modules/administration/RolePolicyGrid.jsx). An object row expands to show its fields, each
+   inheriting the object's permission unless the role overrides it.
+
+   THE CARET IS A BUTTON, not a decorated span, because it toggles content and a keyboard user has
+   to reach it. Styled back down to look like the glyph it is -- a control that reads as a control
+   but does not sit in a button-shaped box inside a dense table. The placeholder holds the same
+   width for rows with no fields, so the object names stay aligned in one column instead of
+   stair-stepping wherever a caret is missing. */
+.fo-caret {
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 14px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+/* The fill is named alongside the foreground, deliberately. A hover that sets only `color` on a
+   button leaves the global `button:hover` to choose the background underneath it, so the pair is
+   never checked together -- which is the contrast hazard hoverPairing.test.mjs exists to catch.
+   This caret is a bare glyph in a table row and has no fill in either state, so saying so is both
+   the honest value and the compliant one. */
+.fo-caret:hover { color: var(--color-text-primary); background: none; }
+.fo-caret:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: 2px; border-radius: 2px; }
+.fo-caret-placeholder { display: inline-block; width: 14px; }
+
+/* A field row, set back beneath its object. The sunken surface is the same token the table already
+   uses for its own rules and for .fo-table tr.is-observed, so a nested row reads as subordinate
+   without introducing a colour this page does not otherwise have. */
+.fo-table tr.fo-row-nested td { background: var(--color-surface-sunken); }
+.fo-nested-label { padding-left: 28px; }
+
+/* Administration > Workflows (modules/administration/AdminWorkflows.jsx).
+
+   THE DRAFT/PUBLISHED DISTINCTION IS THE LOAD-BEARING ONE on that screen: a draft routes no
+   records, and a reader who mistakes one for a live process would believe the platform is running
+   something it is not. Draft is therefore the QUIET treatment and published the emphatic one --
+   the opposite of the usual instinct to highlight the thing being edited. */
+.fo-wf-status {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.fo-wf-status--draft {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+}
+.fo-wf-status--published {
+  background: var(--color-success-surface);
+  color: var(--color-success);
+}
+
+/* The version summary. A definition list rather than a table: these are labelled facts about one
+   thing, not rows of comparable things, and a table would invite scanning down a column that has
+   only ever one value in it. */
+.fo-wf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 8px 0 0;
+}
+.fo-wf-meta div { display: flex; gap: 6px; align-items: baseline; }
+.fo-wf-meta dt { color: var(--color-text-secondary); font-size: 13px; }
+.fo-wf-meta dd { margin: 0; font-size: 14px; font-weight: 600; }
+
+/* One business area on the Workflows screen. A grouping for reading, so it is set apart by
+   spacing and a rule rather than by a surface -- a filled card would read as a thing with its own
+   state, and an area has none. */
+.fo-wf-area { margin: 12px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--color-surface-sunken); }
+.fo-wf-area h4 { margin: 0 0 2px; font-size: 15px; }
+.fo-wf-area p { margin: 0 0 6px; }
+
+/* THE COUNTS ON A SELECTED FAMILY BUTTON.
+
+   `.fo-muted` is a fixed secondary text colour chosen against the page ground. Inside a FILLED
+   button that ground is the brand fill, and the pair was never checked together -- observed in the
+   browser as dark-on-dark, effectively illegible on the selected button while fine on the others.
+
+   Fixed by inheriting the button's own foreground and carrying the de-emphasis with opacity
+   instead, so the counts stay secondary against whichever ground the button actually has. */
+.fo-pill-row button .fo-muted {
+  color: inherit;
+  opacity: 0.75;
+}
+
 .fo-muted { color: var(--color-text-secondary); font-size: 14px; }
 
 /* Contextual-help slice -- EmptyState's `guidance` line (the "why this collection

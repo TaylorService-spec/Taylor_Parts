@@ -131,7 +131,12 @@ ok("exactly fifteen Administration subnav items now exist", () => {
   // connections, operational mailboxes, routing rules, processing and exceptions. ONE item carrying
   // seven sections as tabs, not seven rail items -- the parts of one configuration subject belong
   // under the subject. Capability-gated like Data Import, for the same reason.
-  assert.equal(adminDomain.subnav.length, 15);
+  // SIXTEEN since Workflows joined (2026-09-08). It is the third axis of the Administration model:
+  // Objects says what data exists, Roles & Permissions says who may touch it, Workflows says what
+  // may be DONE and by whom. Deliberately its own destination rather than a tab under Roles --
+  // a workflow binding grants no data access and a data grant permits no action, and one screen
+  // holding both would invite exactly that conflation.
+  assert.equal(adminDomain.subnav.length, 16);
 });
 
 ok("Financial Policy is a visible Administration tab, and the only one", () => {

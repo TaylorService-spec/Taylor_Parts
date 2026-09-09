@@ -564,6 +564,12 @@ export const NAV_DOMAINS = [
       // Permissions because it answers the other half of the same question: that screen is
       // about which PEOPLE hold a role; this one is what a ROLE can do to each object.
       { key: "objects", label: "Objects", path: "objects" },
+      // Workflows -- the third axis of the Administration model. Objects says what data exists,
+      // Roles & Permissions says who may touch it, and this says what may be DONE and by whom.
+      // Deliberately its own destination rather than a tab under Roles: a workflow binding grants
+      // no data access and a data grant permits no action, and putting them on one screen would
+      // invite exactly that conflation.
+      { key: "workflows", label: "Workflows", path: "workflows" },
       // Net-new per Spec sec16's "permission preview/explanation" MVP surface.
       // Real read-only content (effective-permission preview render) lands in
       // Row 11 (Task 16) -- this row only adds the reachable nav slot.
