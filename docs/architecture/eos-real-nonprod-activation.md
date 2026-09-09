@@ -61,9 +61,9 @@ from here. No credential was guessed and none was requested from a file.
 Declares both resources so the environment is reviewable and reproducible instead of a sequence of
 dashboard clicks somebody has to remember:
 
-- `eos-policy-nonprod` — PostgreSQL 16, smallest tier, `ipAllowList: []` so nothing reaches it from
-  the public internet.
-- `eos-api-nonprod` — web service, `rootDir: functions`, health check `/health`.
+- `eos-policy-nonprod` — PostgreSQL 16, smallest selected paid persistent tier, `ipAllowList: []` so
+  nothing reaches it from the public internet.
+- `eos-api-nonprod` — paid `starter` web service, `rootDir: functions`, health check `/health`.
 
 **No secret is in it, and none can be added by accident.** Every credential value carries
 `sync: false`, so Render prompts for it in the dashboard and never reads it from the repository.
@@ -82,15 +82,29 @@ things to keep in step, and the one that drifts is always the one nobody runs lo
 
 ### Migrations are not run by the build
 
-A build that migrates would migrate on every deploy of every instance, concurrently, which is how a
-schema change races itself. They are a deliberate release step:
+A build that migrates would tie schema mutation to artifact construction. Instead, the Blueprint
+uses Render's `preDeployCommand`, which runs after `buildCommand` and before `startCommand`, from the
+service's `functions` root directory:
 
 ```
-cd functions && DATABASE_URL=<internal url> npm run migrate:up
+preDeployCommand: npm run migrate:up
 ```
 
-The service fails closed if that step is skipped: `requirePolicyDatabaseReady` refuses to open the
-socket when the database is reachable but unmigrated, so an unmigrated deploy reports unhealthy
+`DATABASE_URL` is the same internal Render PostgreSQL connection injected into the service. The
+intended deployment lifecycle is therefore:
+
+```
+build
+  ↓
+preDeployCommand: npm run migrate:up
+  ↓
+start EOS API
+  ↓
+/health verifies reachable + migrated
+```
+
+The service still fails closed if the database is unreachable or unmigrated:
+`requirePolicyDatabaseReady` refuses to open the socket, so an invalid deploy reports unhealthy
 rather than serving requests that all fail.
 
 ## 4. Proved locally against the exact hosted configuration
@@ -126,12 +140,11 @@ Everything below needs a Render account action. None of it can be done from this
 | # | blocked item | what unblocks it |
 |---|---|---|
 | 1 | create `eos-policy-nonprod` PostgreSQL | Render account access, or a `RENDER_API_KEY` |
-| 2 | create `eos-api-nonprod` web service | same |
-| 3 | run migrations 001/002/003 against it | the database existing |
-| 4 | bootstrap the `taylor-nonprod` tenant | the database existing |
-| 5 | bootstrap the first administrator | **the exact non-production Firebase Auth subject/UID.** Not inferred from an email in a document, a git author, a username or a display name — the bootstrap is one-time and principal-bound, and guessing the principal is the one mistake it cannot undo |
-| 6 | set `VITE_EOS_API_BASE_URL` + **redeploy** the preview | the API URL existing |
-| 7 | cloud browser acceptance, restart proof, real tenant-isolation proof | all of the above |
+| 2 | create `eos-api-nonprod` web service | same; its deploy runs migrations through `preDeployCommand` |
+| 3 | bootstrap the `taylor-nonprod` tenant | the database and API deployment existing with migrations applied |
+| 4 | bootstrap the first administrator | **the exact non-production Firebase Auth subject/UID.** Not inferred from an email in a document, a git author, a username or a display name — the bootstrap is one-time and principal-bound, and guessing the principal is the one mistake it cannot undo |
+| 5 | set `VITE_EOS_API_BASE_URL` + **redeploy** the preview | the API URL existing |
+| 6 | cloud browser acceptance, restart proof, real tenant-isolation proof | all of the above |
 
 The identity credential for the API (`GOOGLE_APPLICATION_CREDENTIALS_JSON`,
 `GOOGLE_CLOUD_PROJECT`) must be a **non-production** Firebase service account, stored in Render's
@@ -152,14 +165,15 @@ uses Firestore for business data. Nothing here changes either.
 
 ## 7. Cost posture
 
-Smallest tiers that exist, declared in the Blueprint: `basic-256mb` PostgreSQL and a `starter` web
-service. No replicas, no HA topology, no workers, no cron. This environment holds one
-non-production tenant's configuration — tens of thousands of rows — and is not a load test. Sizing
-up to solve a slow query would be buying capacity to hide a missing index.
+The Blueprint selects the smallest sensible paid tiers for this persistent non-production service:
+`basic-256mb` PostgreSQL and the legacy `starter` web-service plan (`0.5c-512mb` under Render's
+current compute-plan naming). No replicas, no HA topology, no workers, no cron. This environment
+holds one non-production tenant's configuration — tens of thousands of rows — and is not a load
+test. Sizing up to solve a slow query would be buying capacity to hide a missing index.
 
-Note for testing: a `starter` service spins down when idle, so the first request after a quiet
-period pays a cold start. That is a testing inconvenience, not a fault, and it is not a reason to
-buy a larger tier.
+The paid `starter` service must not be described as having the Free web-service idle spin-down
+behaviour. Render's idle spin-down limitation applies to Free web services; this Blueprint does not
+select the Free plan.
 
 ## 8. Parts / Purchasing — readiness assessment ONLY
 
