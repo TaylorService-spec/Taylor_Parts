@@ -108,11 +108,12 @@ function entityCapabilities(entity) {
  *
  * ════════════════════ WHAT IS DELIBERATELY ABSENT ════════════════════
  *
- * REORDER REQUEST. Twelve `reorder.request.*` capabilities exist, and the matrix already attributes
- * every one of them to its "Purchase Orders" row -- one row covering two records. Mapping them here
- * as well would attribute the same capability to two objects, and CHOOSING which object owns them
- * is a business decision about the matrix, not a coverage fix. Recorded as a named finding; the
- * object is still seeded, with its verbs ungoverned, so nothing is hidden.
+ * REORDER REQUEST WAS LISTED HERE, and no longer is. The Owner ruled (D-5, 2026-09-08) that
+ * authority follows the RECORD: Reorder Request has its OWN matrix row carrying its create and
+ * read capabilities, its transitions are Parts / Purchasing workflow ACTIONS rather than CRED
+ * cells, and Purchase Order keeps only purchase order data authority. So it is not a gap this
+ * table fills -- it is an ordinary matrix object, and adding it here would be the two-owners
+ * defect this table exists to avoid.
  *
  * SUPPLIER, TRUCK, MOBILE LOCATION, PART ALIAS, MANUFACTURER, EQUIPMENT MODEL, SALES TERRITORY,
  * PURCHASE ORDER VOID, SUPPLIER CATALOG ITEM. Measured on this branch: no capability in the catalog

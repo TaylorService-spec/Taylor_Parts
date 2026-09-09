@@ -161,7 +161,8 @@ const ledger = {
     fields: excludedFields.length,
     fieldsByReason: byReason,
   },
-  // The capability gaps this registry fills, and the ones deliberately left open. Recorded here so
+  // The capability gaps this registry fills. None is left open: the one that was -- Reorder
+  // Request -- is an ordinary matrix object since Owner ruling D-5, not a gap. Recorded here so
   // the reasoning travels with the numbers rather than living only in a source comment.
   capabilityGapsFilled: Object.keys(MATRIX_GAP_CAPABILITIES).sort(),
   entities: entityLedger,

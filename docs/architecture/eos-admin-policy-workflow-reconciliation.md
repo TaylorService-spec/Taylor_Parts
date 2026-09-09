@@ -147,9 +147,10 @@ The directive's five buckets, applied. **This is the part that decides what move
 | `RoleObjectGrid` cells being permanently inert | the grid exists to render a matrix that code owns; once policy is data, the read-only-ness is a *policy* decision, not a structural one |
 | `ACTION_PERMISSIONS` keyed by legacy role strings (`workOrderWorkflow.js` / `transitionEngine.ts`) | replaced by workflow Role bindings; the dual client/server mirror exists only because policy is code |
 
-### NEEDS OWNER DECISION
+### NEEDS OWNER DECISION — none outstanding
 
-See §8.
+All five are ruled and implemented; see §8. The last one, ownership of the `reorder.request.*`
+capabilities, was closed as D-5 on 2026-09-08 and is recorded in full in §10.
 
 ---
 
