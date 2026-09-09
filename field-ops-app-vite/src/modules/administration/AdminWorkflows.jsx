@@ -251,6 +251,15 @@ export default function AdminWorkflows() {
                                   A Role bound here may perform this action. It grants no access to
                                   the record&rsquo;s data.
                                 </div>
+                                {/* The capability this action is MEASURED to require, shown so an
+                                    administrator can see which authority an action answers to. It
+                                    appears here and in no CRED checkbox -- that is the Owner's
+                                    ruling made visible rather than merely asserted in a test. */}
+                                {action.capabilityId ? (
+                                  <div className="fo-muted">
+                                    Workflow capability: <code>{action.capabilityId}</code>
+                                  </div>
+                                ) : null}
                               </td>
                             </tr>,
                           ]
