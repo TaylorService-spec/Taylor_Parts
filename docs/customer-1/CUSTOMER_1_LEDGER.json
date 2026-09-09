@@ -4,7 +4,7 @@
   "product": "Enterprise Operations OS (EOS)",
   "provider": "Verenward LLC",
   "currentDecision": "CONTINUE_TOWARD_CUSTOMER_1_NOT_AUTHORIZED_FOR_PRODUCTION_DEPENDENCY",
-  "lastReconciled": "2026-09-06",
+  "lastReconciled": "2026-09-08",
   "statusVocabulary": [
     "READY",
     "IN_PROGRESS",
@@ -97,7 +97,8 @@
       "evidence": [
         "PR #1806 / 3294d835 consolidates Administration people management into one Users destination with a governed record page, trusted employee-profile edit command, per-field immutable audit events, and Change History while preserving separate security-role/account authorities.",
         "PR #1807 verified the existing sandbox admin RoleAssignment and effective-access feed, corrected the client request set so granted Administration capabilities are actually asked of the trusted resolver, and created no new grant or production activation.",
-        "PR #1808 / 57a5ad47 live-verified Administration -> Users on platform-sandbox Hosting 8e90b41e. The running sandbox proved responsive directory/record behavior and an authorized reversible preferredName edit through the real UI and updateEmployeeProfile, producing two immutable audit rows. This materially advances ordinary administrator self-service, but it does not designate/train Taylor administrators, prove the complete Day-1 admin action set, activate password reset, or establish production readiness, so C1-ADMIN-01 remains OPEN."
+        "PR #1808 / 57a5ad47 live-verified Administration -> Users on platform-sandbox Hosting 8e90b41e. The running sandbox proved responsive directory/record behavior and an authorized reversible preferredName edit through the real UI and updateEmployeeProfile, producing two immutable audit rows. This materially advances ordinary administrator self-service, but it does not designate/train Taylor administrators, prove the complete Day-1 admin action set, activate password reset, or establish production readiness, so C1-ADMIN-01 remains OPEN.",
+        "PR #1820 / 5ddb9e4a materially extends the User Detail administration path in merged code: a trusted admin.principalAccess.read returns account status and active governed Role assignments with assignment ids; the screen can show one contextual Enable/Disable action, add non-privileged Roles additively, remove a specific assignment, and include those existing access events in Change History. Emulator proof covered authorization, additive multi-role behavior, removal by assignment id, account-status round trips, audit shapes, and preservation of the legacy securityRole mirror. The PR explicitly performed NO deployment, so this is code-level self-service evidence only; C1-ADMIN-01 remains OPEN pending deployed verification, complete Day-1 admin coverage, designated/trained Taylor administrators, and production readiness."
       ]
     },
     {
