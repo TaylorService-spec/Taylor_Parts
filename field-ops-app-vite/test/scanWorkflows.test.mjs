@@ -138,7 +138,7 @@ test("a receiving capability does NOT grant technician scanning, and vice versa"
 
 // ─────────────────────────────────────────── absent, not disabled
 
-test("ONLY the eight workflows that exist can ever appear", () => {
+test("ONLY the nine workflows that exist can ever appear", () => {
   // Listing a workflow that has no command — even disabled — would say it exists and that access is
   // the only obstacle. Each id here earned its place when a real governed authority was found behind
   // it: LOOKUP in Phase F, TRANSFER in J1, CYCLE_COUNT in J2, PUT_AWAY in L, PICK in M, and
@@ -146,15 +146,19 @@ test("ONLY the eight workflows that exist can ever appear", () => {
   //
   // RETURN_INTAKE records an ARRIVAL only. It carries no disposition authority, because disposition
   // does not exist (DECISIONS #118) — so adding it did not add a way to restore sellable stock.
+  //
+  // MOVE_STOCK joined with BIN-P6: relocateStock (Decision #170) is the governed authority behind it,
+  // and it composes the existing Transfer commands for a truck. Like PUT_AWAY it joined while still
+  // inert -- inventory.stock.relocate is active:false and granted to no Role until BIN-P4.
   const everything = deriveScanWorkflows({
     hasCapability: () => true, receivingReady: true, role: "technician", technicianId: "T1", assignedWorkOrderCount: 5,
   });
   assert.deepEqual(
     [...everything.available.map((a) => a.workflow)].sort(),
-    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY, SCAN_WORKFLOW.PICK, SCAN_WORKFLOW.RETURN_INTAKE].sort(),
+    [SCAN_WORKFLOW.LOOKUP, SCAN_WORKFLOW.SUPPLIER_RECEIVING, SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER, SCAN_WORKFLOW.TRANSFER, SCAN_WORKFLOW.CYCLE_COUNT, SCAN_WORKFLOW.PUT_AWAY, SCAN_WORKFLOW.PICK, SCAN_WORKFLOW.RETURN_INTAKE, SCAN_WORKFLOW.MOVE_STOCK].sort(),
   );
   assert.deepEqual(everything.unavailable, []);
-  assert.equal(Object.keys(SCAN_WORKFLOW).length, 8);
+  assert.equal(Object.keys(SCAN_WORKFLOW).length, 9);
 });
 
 test("no stage, disposition or truck-handoff workflow is even nameable", () => {
@@ -180,7 +184,7 @@ test("the least-authorized caller still gets LOOKUP, and every other absence is 
   const r = deriveScanWorkflows({ hasCapability: gate(), receivingReady: false, role: null });
   assert.equal(r.empty, false);
   assert.deepEqual(r.available.map((a) => a.workflow), [SCAN_WORKFLOW.LOOKUP]);
-  assert.equal(r.unavailable.length, 7, "receiving, transfer, counting, put-away, picking, returns and technician scanning each explain themselves");
+  assert.equal(r.unavailable.length, 8, "receiving, transfer, counting, put-away, picking, moving, returns and technician scanning each explain themselves");
   for (const u of r.unavailable) assert.ok(UNAVAILABLE_TEXT[u.reason], `${u.reason} has no text`);
 });
 
