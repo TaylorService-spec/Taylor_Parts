@@ -11,7 +11,7 @@ working":
 | | what it means | where this platform is |
 |---|---|---|
 | **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix, SPA deep links |
-| **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, one commit end to end |
+| **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, live end to end |
 | **ACCEPTED NONPROD** | a person has driven it and it held | ✅ server semantics, isolation, audit (§12) · browser 375 / 1024 / 1440 (§15) · no-code restart (§16) |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
@@ -19,17 +19,18 @@ working":
 
 ## 0. Current authority
 
-What is true **now** — measured 2026-09-10 after the no-code restart. Everything below this section
+What is true **now** — measured 2026-09-10 after the no-code restart, at `main` `0b47c1db`. Everything below this section
 that describes an earlier moment says so.
 
 | | |
 |---|---|
-| canonical frontend | **`https://verenwardeos.vercel.app`** — `/version.json` → `commit 2b7edca` |
+| canonical frontend | **`https://verenwardeos.vercel.app`** — `/version.json` → `commit 0b47c1d`, built 09:48:43Z |
 | old frontend domain | `https://taylor-parts-preview.vercel.app` — **REMOVED** from the Vercel project by the Owner |
 | EOS API | **`https://eos-api-nonprod.onrender.com`** — `srv-dah49f1t0dsc73egpvi0`, `starter`, **1 instance**, Oregon |
 | Render deploy | **`dep-dah7o6u1egvs73cv6ea0`** · trigger `api` (the no-code restart, §16) · commit `2b7edca72dc24284bd6fe62d879714bb93007280` · live |
 | PostgreSQL | `eos-policy-nonprod` · `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · 15 GB · HA false · 0 read replicas · disk autoscaling false · `ipAllowList: []` · migrations `001` `002` `003` |
-| deployed `main` | **`2b7edca72dc24284bd6fe62d879714bb93007280`** — frontend and API on the same commit |
+| `main` | **`0b47c1db576db22000424c432b9198c3fddf7714`** |
+| frontend vs API commit | frontend `0b47c1d`, API `2b7edca7` — **different commits, identical API code.** #1836 changed no file under `functions/`, the Render service's `rootDir`, and Render did not redeploy for it; measured, not assumed: `git diff 2b7edca7..0b47c1db -- functions/` is empty |
 | tenant | `taylor-nonprod` · `tenant-6ce59be1-1979-45cd-9d17-a4969037fb25` |
 | first administrator | EOS principal `639c1970-dbdb-4bc0-af7c-118559151e2f` ← Firebase subject `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
 | workflows | 5 state machines, **all DRAFT** |
@@ -40,10 +41,10 @@ Render values were read through the Render MCP (`get_service`, `list_postgres_in
 
 ### Current-head drift note
 
-`main` moved from `d1ff2486` (#1834) to `2b7edca7` **after** browser acceptance, through two
-unrelated BIN-P6 inventory commits — `e14b4fdc` (#1833, specification) and `2b7edca7` (#1835,
-stock relocation). Measured rather than assumed: `git diff d1ff2486..2b7edca7` changes 44 files and
-**none** under `functions/src/adminPolicy`, `functions/src/eosApi`, `functions/migrations`,
+`main` moved from `d1ff2486` (#1834) past browser acceptance through three unrelated BIN-P6
+inventory commits — `e14b4fdc` (#1833, specification), `2b7edca7` (#1835, stock relocation) and, after
+the no-code restart, `0b47c1db` (#1836, warehouse multi-scan). Measured rather than assumed:
+`git diff d1ff2486..2b7edca7` changes 44 files and #1836 another 18, **none** under `functions/src/adminPolicy`, `functions/src/eosApi`, `functions/migrations`,
 `render.yaml`, `field-ops-app-vite/vercel.json` or the Administration policy UI. A read-only
 current-head smoke then confirmed the accepted state unchanged (§16). Browser acceptance is not
 invalidated by that movement.
@@ -52,7 +53,8 @@ invalidated by that movement.
 
 | | |
 |---|---|
-| **`main` DEPLOYED** | **`2b7edca72dc24284bd6fe62d879714bb93007280`** — includes unrelated BIN-P6 work (§0 drift note) |
+| **`main`** | **`0b47c1db576db22000424c432b9198c3fddf7714`** — frontend deployed at this commit; API at `2b7edca7` (§0) |
+| BIN-P6 warehouse multi-scan (#1836) — unrelated; frontend only | `0b47c1db576db22000424c432b9198c3fddf7714` |
 | BIN-P6 stock relocation (#1835) — unrelated to this platform | `2b7edca72dc24284bd6fe62d879714bb93007280` |
 | BIN-P6 specification (#1833) — unrelated to this platform | `e14b4fdc5169e4f227e232d3d055f6bfa6c0df9f` |
 | SPA deep links on Vercel (#1834) — found by this acceptance run | `d1ff248633fc1dce7faad10cc235786c9f4d795f` |
