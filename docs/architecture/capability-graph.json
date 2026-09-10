@@ -3792,7 +3792,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
-          "functions/src/cycleCount/cycleCountSheetCommand.ts"
+          "functions/src/cycleCount/cycleCountSheetCommand.ts",
+          "functions/src/eosOps/capabilityAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
@@ -3801,7 +3802,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3825,7 +3826,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
-          "functions/src/cycleCount/cycleCountSheetCommand.ts"
+          "functions/src/cycleCount/cycleCountSheetCommand.ts",
+          "functions/src/eosOps/capabilityAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
@@ -3834,7 +3836,7 @@
           "field-ops-app-vite/src/access/scanWorkflows.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3858,14 +3860,15 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
-          "functions/src/cycleCount/cycleCountSheetCommand.ts"
+          "functions/src/cycleCount/cycleCountSheetCommand.ts",
+          "functions/src/eosOps/capabilityAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3889,14 +3892,15 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/cycleCount/cycleCountCallables.ts",
           "functions/src/cycleCount/cycleCountCommand.ts",
-          "functions/src/cycleCount/cycleCountSheetCommand.ts"
+          "functions/src/cycleCount/cycleCountSheetCommand.ts",
+          "functions/src/eosOps/capabilityAuthority.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
