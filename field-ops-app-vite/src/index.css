@@ -7529,6 +7529,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
    to `.fo-cc-lines` via that shared table class; the rules below add the sticky context header,
    sticky session bar, blind-cell/waiting-to-sync treatment and the disabled-reason text (CC-D7)
    that this feature adds on top of it — reusing existing tokens throughout, no new colors. */
+.fo-cc { position: relative; }
+.fo-cc-lines { width: 100%; }
 .fo-cc-sticky-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; background: var(--color-surface-inverse);
   color: var(--verenward-stone); padding: 10px 16px; margin: 0 0 4px; border-radius: 8px; }
