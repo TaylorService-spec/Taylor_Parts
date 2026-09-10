@@ -26,6 +26,7 @@ on:
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
       - "functions/test/cycleCountCommand.test.mjs"
+      - "functions/test/cycleCountSheet.test.mjs"
       # BIN-P7 (Decision #178 B4): the conversion gate and BIN eligibility.
       - "functions/test/binCycleCountEligibility.test.mjs"
       - "functions/src/inventoryLocation/binConversionGate.ts"
@@ -48,6 +49,7 @@ on:
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
       - "functions/test/cycleCountCommand.test.mjs"
+      - "functions/test/cycleCountSheet.test.mjs"
       # BIN-P7 (Decision #178 B4): the conversion gate and BIN eligibility.
       - "functions/test/binCycleCountEligibility.test.mjs"
       - "functions/src/inventoryLocation/binConversionGate.ts"
@@ -120,6 +122,12 @@ jobs:
 
       - name: BIN-P7 Bin cycle count eligibility (conversion gate, exact-Bin expected quantity)
         run: node test/binCycleCountEligibility.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Cycle Count A1 sheets/lines + A4 durable read (schema v2; BIN; blind; SoD; version boundary)
+        run: node test/cycleCountSheet.test.mjs
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080

@@ -1,3 +1,8 @@
+// FROZEN -- CERTIFICATION HISTORY ONLY (Decision #179). This is the v1 single-part Cycle Count family.
+// No deployed function reaches it: index.ts exports only the A1 sheet/line callables
+// (cycleCountSheetCallables.ts). It remains solely because the frozen Certification tooling
+// (functions/scripts/certificationWorld/*) and its tests drive it. Do not extend it and do not wire it
+// to a callable, and do not read a v1 record from the sheet/line authority.
 // Enterprise Inventory -- Cycle Count operating authority: the trusted command family that CREATES,
 // RECORDS, and RECONCILES a `cycle_counts` record. Follows receiveInventoryStockCommand.ts /
 // transferOrderCommand.ts's proven pattern: one Firestore transaction per action, all reads before any

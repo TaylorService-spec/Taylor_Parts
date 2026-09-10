@@ -173,7 +173,11 @@ export type CycleCountCommandFailureCode =
   | "STATUS_INVALID"
   | "IDEMPOTENCY_CONFLICT"
   | "MALFORMED_STORED_RECORD"
-  | "CYCLE_COUNT_INTEGRITY";
+  | "CYCLE_COUNT_INTEGRITY"
+  // A1 sheet/line model (schema v2): a line command naming a sheet that does not exist, and a line or
+  // sheet operation the sheet's lifecycle does not allow. CYCLE_COUNT_NOT_FOUND keeps meaning "no line".
+  | "SHEET_NOT_FOUND"
+  | "SHEET_STATUS_INVALID";
 
 export class CycleCountCommandError extends Error {
   readonly code: CycleCountCommandFailureCode;
@@ -247,5 +251,16 @@ export class CycleCountMalformedStoredRecordError extends CycleCountCommandError
 export class CycleCountIntegrityError extends CycleCountCommandError {
   constructor(m = "the cycle count could not be completed due to a transient integrity error") {
     super("CYCLE_COUNT_INTEGRITY", m);
+  }
+}
+
+export class CycleCountSheetNotFoundError extends CycleCountCommandError {
+  constructor(m = "cycle count sheet not found") {
+    super("SHEET_NOT_FOUND", m);
+  }
+}
+export class CycleCountSheetStatusInvalidError extends CycleCountCommandError {
+  constructor(m: string) {
+    super("SHEET_STATUS_INVALID", m);
   }
 }
