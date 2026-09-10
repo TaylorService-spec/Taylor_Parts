@@ -316,6 +316,7 @@ export {
   closeCycleCountSheetCallable as closeCycleCountSheet,
   listCycleCountSheetsCallable as listCycleCountSheets,
   getCycleCountSheetCallable as getCycleCountSheet,
+  getCycleCountAssignedMobileLocationCallable as getCycleCountAssignedMobileLocation,
 } from "./cycleCount/cycleCountSheetCallables";
 
 // --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---

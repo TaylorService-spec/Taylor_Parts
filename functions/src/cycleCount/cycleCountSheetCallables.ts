@@ -24,6 +24,7 @@ import {
   type SheetCommandDeps, type SheetAuditInput,
 } from "./cycleCountSheetCommand.js";
 import { listCycleCountSheets, getCycleCountSheet, CycleCountReadInvalidError } from "./cycleCountSheetRead.js";
+import { readAssignedMobileLocation } from "../workOrderConsumption/consumptionSourceService.js";
 
 const REGION = { region: "us-central1" } as const;
 
@@ -170,3 +171,69 @@ export const cancelCycleCountSheetCallable = onCall(REGION, (r) => runCancelCycl
 export const closeCycleCountSheetCallable = onCall(REGION, (r) => runCloseCycleCountSheet(r));
 export const listCycleCountSheetsCallable = onCall(REGION, (r) => runListCycleCountSheets(r));
 export const getCycleCountSheetCallable = onCall(REGION, (r) => runGetCycleCountSheet(r));
+
+// -------- getCycleCountAssignedMobileLocation: "which truck is mine?" for a Cycle Count technician --------
+//
+// TECHNICIAN MOBILE FLOW. A technician who holds Cycle Count counter authority (create + submit --
+// the same pairing scanWorkflows.js's client-side gate uses) needs to know which MOBILE truck is
+// theirs before they can start or resume a count there. This reuses the SAME governed
+// truck-assignment resolver Transfer discovery already uses (readAssignedMobileLocation,
+// trucks.assignedDriverEmployeeId -- workOrderConsumption/consumptionSourceService.ts) rather than
+// inventing a second "my truck" authority. It is a narrow projection of the caller's OWN
+// already-governed assignment, not a new permission: it grants no standing access, and the actual
+// Cycle Count commands (createCycleCountSheet, etc.) re-derive and re-authorize location eligibility
+// independently of anything this read returns.
+//
+// TWO INDEPENDENT FACTS, never conflated: (1) may this person count at all (the capability check
+// below), (2) where may they count (the truck assignment). A truck assignment with no counter
+// capability answers PERMISSION_DENIED before the truck is even looked up; counter capability with
+// no assignment, or with an ambiguous one, answers a truthful failure -- never a first-of-many guess.
+export type AssignedMobileFailure =
+  | "PERMISSION_DENIED" | "TECHNICIAN_IDENTITY_UNAVAILABLE" | "NO_TRUCK_ASSIGNMENT" | "TRUCK_ASSIGNMENT_AMBIGUOUS";
+export class AssignedMobileError extends Error {
+  constructor(readonly code: AssignedMobileFailure, message: string) { super(message); this.name = "AssignedMobileError"; }
+}
+const ASSIGNED_MOBILE_MESSAGE: Readonly<Record<AssignedMobileFailure, string>> = {
+  PERMISSION_DENIED: "You are not authorized to count inventory.",
+  TECHNICIAN_IDENTITY_UNAVAILABLE: "This account is not linked to a technician.",
+  NO_TRUCK_ASSIGNMENT: "No active truck is assigned to you.",
+  TRUCK_ASSIGNMENT_AMBIGUOUS: "More than one truck is assigned to you, so none can be used until that is corrected.",
+};
+function mapAssignedMobileError(err: unknown): HttpsError {
+  if (err instanceof HttpsError) return err;
+  if (err instanceof AssignedMobileError) {
+    const code: FunctionsErrorCode = err.code === "PERMISSION_DENIED" ? "permission-denied" : "failed-precondition";
+    return new HttpsError(code, ASSIGNED_MOBILE_MESSAGE[err.code], { code: err.code });
+  }
+  console.error("[cycleCountSheet] assigned-mobile read failure", err);
+  return new HttpsError("internal", "Your truck assignment could not be checked.");
+}
+
+export async function getCycleCountAssignedMobileLocation(uid: string, db: Firestore) {
+  const decisions = await resolveEffectiveAccess({
+    principalUid: uid,
+    permissionIds: [CYCLE_COUNT_CAPABILITY.create, CYCLE_COUNT_CAPABILITY.submit],
+  }).then((r) => r.decisions).catch(() => ({}) as Record<string, boolean>);
+  if (!(decisions[CYCLE_COUNT_CAPABILITY.create] && decisions[CYCLE_COUNT_CAPABILITY.submit])) {
+    throw new AssignedMobileError("PERMISSION_DENIED", "not authorized to count inventory");
+  }
+  const userSnap = await db.collection("users").doc(uid).get();
+  const technicianId = userSnap.exists ? (userSnap.data() ?? {}).technicianId : undefined;
+  if (typeof technicianId !== "string" || technicianId.trim() === "") {
+    throw new AssignedMobileError("TECHNICIAN_IDENTITY_UNAVAILABLE", "this account has no technician mapping");
+  }
+  const { mobile, ambiguous } = await readAssignedMobileLocation(db, technicianId);
+  if (ambiguous) throw new AssignedMobileError("TRUCK_ASSIGNMENT_AMBIGUOUS", "truck assignment is ambiguous");
+  if (mobile === null) throw new AssignedMobileError("NO_TRUCK_ASSIGNMENT", "no active truck is assigned");
+  return { location: { type: "MOBILE" as const, locationId: mobile.locationId }, label: mobile.label };
+}
+
+export async function runGetCycleCountAssignedMobileLocation(request: CallableRequest<unknown>, db: Firestore = getFirestore()) {
+  const uid = requireAuth(request);
+  try {
+    return await getCycleCountAssignedMobileLocation(uid, db);
+  } catch (err) {
+    throw mapAssignedMobileError(err);
+  }
+}
+export const getCycleCountAssignedMobileLocationCallable = onCall(REGION, (r) => runGetCycleCountAssignedMobileLocation(r));
