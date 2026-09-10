@@ -49,6 +49,11 @@ export const OPERATIONAL_MOVEMENT_TYPES = Object.freeze([
   // quantity to the location it left. Deliberately NOT named CONSUMED -- that is the location-less
   // commitment event, and collapsing the two would merge a promise with a stock movement.
   "WORK_ORDER_CONSUMPTION",
+  // MIRROR (BIN-P6 / Decision #170): the internal relocation pair, inside one Warehouse custody
+  // parent. A pair because a relocation has two endpoints; never TRANSFER_OUT/IN, which stay owned
+  // by TRANSFER_ORDER.
+  "RELOCATION_OUT",
+  "RELOCATION_IN",
 ]);
 
 // Direction is metadata carried by the TYPE (never inferred from a quantity sign). IN/OUT
@@ -62,6 +67,8 @@ export const MOVEMENT_DIRECTION = Object.freeze({
   SCRAPPED: "OUT",
   ADJUSTED: "SIGNED",
   WORK_ORDER_CONSUMPTION: "SIGNED",
+  RELOCATION_OUT: "OUT",
+  RELOCATION_IN: "IN",
 });
 
 // Bounded source-object taxonomy, DECLARED AHEAD of persistence. WORK_ORDER and
@@ -75,6 +82,7 @@ export const SOURCE_OBJECT_TYPES = Object.freeze([
   "ADJUSTMENT",
   "RMA",
   "SCRAP",
+  "STOCK_RELOCATION",
 ]);
 
 // Movement/source compatibility matrix: each operational movement type is produced by
@@ -89,7 +97,17 @@ export const MOVEMENT_SOURCE_TYPE = Object.freeze({
   ADJUSTED: "ADJUSTMENT",
   SCRAPPED: "SCRAP",
   WORK_ORDER_CONSUMPTION: "WORK_ORDER",
+  RELOCATION_OUT: "STOCK_RELOCATION",
+  RELOCATION_IN: "STOCK_RELOCATION",
 });
+
+// Movement types that name the other end of a two-endpoint movement (mirror of the backend set).
+export const COUNTERPARTY_MOVEMENT_TYPES = Object.freeze([
+  "TRANSFER_OUT",
+  "TRANSFER_IN",
+  "RELOCATION_OUT",
+  "RELOCATION_IN",
+]);
 
 export const ACTOR_KINDS = Object.freeze(["USER", "SYSTEM"]);
 
@@ -183,7 +201,7 @@ export function validateInventoryMovementEvent(event, part) {
   if (!isPlainObject(event)) return fail("not_object");
   if (!OPERATIONAL_MOVEMENT_TYPES.includes(event.type)) return fail("type_invalid");
   const direction = MOVEMENT_DIRECTION[event.type];
-  const isTransfer = event.type === "TRANSFER_OUT" || event.type === "TRANSFER_IN";
+  const isTransfer = COUNTERPARTY_MOVEMENT_TYPES.includes(event.type); // transfer OR relocation pair
 
   // Part authority: canonical tracking mode + identity (mirrors EI-P1a authority separation).
   if (!isPlainObject(part) || !isNonEmptyString(part.partId)) return fail("part_invalid");

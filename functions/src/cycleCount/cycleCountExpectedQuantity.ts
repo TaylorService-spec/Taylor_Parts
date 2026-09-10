@@ -22,6 +22,7 @@
 // IN_TRANSIT, RESERVED, STAGED, LOADED, DELIVERED, INSTALLED, or RECEIVED-but-not-yet-AVAILABLE is
 // correctly excluded from what a count at this location should expect to find.
 
+import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import { classifyLedgerDoc, deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
@@ -46,13 +47,16 @@ export async function computeExpectedQuantityThroughTxn(
     }
     const v = mv.value;
     if (v.location.type !== location.type || v.location.locationId !== location.locationId) continue;
-    if (v.type === "RECEIVED" || v.type === "RETURNED" || v.type === "TRANSFER_IN") onHand += v.quantity;
-    else if (v.type === "TRANSFER_OUT" || v.type === "SCRAPPED") onHand -= v.quantity;
-    else if (v.type === "ADJUSTED") onHand += v.quantity; // ADJUSTED is already signed (direction SIGNED)
-    // The branches above are an ALLOWLIST, not a filter with exceptions: a type this sum does not
-    // name contributes nothing. That is what let CERT-LEDGER-COUNTED-08 retire the never-written
-    // COUNTED movement type without changing a single number here -- a stored COUNTED row now fails
-    // classifyLedgerDoc and is skipped above, exactly as it previously matched no branch.
+    // The sign comes from inventoryLedger/locationOnHand.ts -- the ONE place it is decided. This line
+    // used to carry its own RECEIVED/TRANSFER/ADJUSTED branches and never learned
+    // WORK_ORDER_CONSUMPTION, so after Decision #171 made consumption live it counted consumed stock
+    // as still present. Here that was worse than an overstatement: a count would "find" the consumed quantity as a
+    // shortage, reconciliation would post an ADJUSTED for it, and the consumption would be subtracted
+    // twice.
+    //
+    // signedQuantity is still an allowlist: a type it does not name (a stored COUNTED row, retired by
+    // CERT-LEDGER-COUNTED-08) contributes nothing, and is skipped by classifyLedgerDoc above anyway.
+    onHand += signedQuantity(v);
   }
   return Math.max(onHand, 0);
 }

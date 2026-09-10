@@ -23,6 +23,8 @@
 // independent truck quantity store. Truck "inventory" is whatever the ledger + Serialized Asset records
 // say is AT that MOBILE location; this command is what makes that true by moving records there.
 
+import { resolveTransferCustodyWarehouseId } from "./transferLocationResolver.js";
+import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION, TRANSFER_ORDERS_COLLECTION } from "../constants/collections.js";
@@ -38,6 +40,7 @@ import {
   TransferPartInvalidError,
   TransferSerialInvalidError,
   InsufficientStockError,
+  SameCustodyParentError,
   TransferStatusInvalidError,
   TransferIdempotencyConflictError,
   TransferMalformedStoredRecordError,
@@ -147,9 +150,11 @@ async function computeNoneOnHandThroughTxn(txn: Transaction, db: Firestore, part
     }
     const v = mv.value;
     if (v.location.type !== location.type || v.location.locationId !== location.locationId) continue;
-    if (v.type === "RECEIVED" || v.type === "RETURNED" || v.type === "TRANSFER_IN") onHand += v.quantity;
-    else if (v.type === "TRANSFER_OUT" || v.type === "SCRAPPED") onHand -= v.quantity;
-    else if (v.type === "ADJUSTED") onHand += v.quantity; // ADJUSTED is already signed (direction SIGNED)
+    // The sign comes from inventoryLedger/locationOnHand.ts -- the ONE place it is decided. This line
+    // used to carry its own RECEIVED/TRANSFER/ADJUSTED branches and never learned
+    // WORK_ORDER_CONSUMPTION, so after Decision #171 made consumption live it counted consumed stock
+    // as still present.
+    onHand += signedQuantity(v);
   }
   return onHand;
 }
@@ -206,6 +211,14 @@ export async function createTransferOrder(request: unknown, deps: TransferComman
     // ---- 4. origin / destination must be ACTIVE governed locations ----
     if (!(await deps.resolveLocationActive(txn, value.origin))) throw new OriginInvalidError("origin is not an active governed location");
     if (!(await deps.resolveLocationActive(txn, value.destination))) throw new DestinationInvalidError("destination is not an active governed location");
+    // BIN-P6 / Decision #170: a movement that never leaves its Warehouse is a RELOCATION. Refused here by
+    // name, so a Bin-to-Bin move cannot be routed through Transfer and appear to cross a custody boundary.
+    // Parentage is read inside this transaction from the governed bin documents.
+    {
+      const originCustody = await resolveTransferCustodyWarehouseId(txn, deps.db, value.origin);
+      const destinationCustody = await resolveTransferCustodyWarehouseId(txn, deps.db, value.destination);
+      if (originCustody !== null && originCustody === destinationCustody) throw new SameCustodyParentError();
+    }
 
     // ---- 5. origin stock sufficiency ----
     if (value.trackingMode === "SERIAL") {

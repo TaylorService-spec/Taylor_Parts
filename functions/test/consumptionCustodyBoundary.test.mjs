@@ -43,7 +43,9 @@ const WH2 = "wh-2";
 const TRUCK = "truck-7";
 const at = (type, locationId) => ({ type, locationId });
 const NONE = "NONE";
-const warehouseOnHand = (rows, eligible = new Set([WH])) => sumLedgerEligibleOnHand(rows, eligible);
+// BIN-P6: the third argument is governed bin parentage (Model A). These rows name no bins, so it is
+// empty; passing it explicitly keeps the call honest about what the reader now requires.
+const warehouseOnHand = (rows, eligible = new Set([WH])) => sumLedgerEligibleOnHand(rows, eligible, new Map());
 
 const received = (qty, locationId = WH) => ({ type: "RECEIVED", quantity: qty, location: at("WAREHOUSE", locationId), trackingMode: NONE });
 const transferOut = (qty, locationId = WH) => ({ type: "TRANSFER_OUT", quantity: qty, location: at("WAREHOUSE", locationId), trackingMode: NONE });
@@ -110,8 +112,22 @@ test("truck stock is invisible to warehouse availability BY TYPE, not by an elig
 });
 
 test("the on-hand derivation is warehouse-scoped in code, so widening it is a deliberate act", () => {
+  // BIN-P6 MOVED this gate, it did not remove it. Under Model A (Decision #160 / ADR-014) a Warehouse
+  // also holds the stock in its Bins, so the reader asks resolveCustodyWarehouseId instead of testing
+  // location.type inline -- and that resolver admits exactly two types: WAREHOUSE (itself) and BIN (its
+  // governed parent). A truck resolves to no Warehouse at all, so putting truck stock into Sales Order
+  // availability is still a deliberate act, and still a much larger one than adding an id to a list.
   const fn = codeOnly("fulfillment/fulfillmentAvailability.ts");
-  assert.match(fn, /loc\.type !== ""/, "the WAREHOUSE type filter must still be the gate");
+  assert.match(fn, /resolveCustodyWarehouseId\(r\.location, binParentage\)/, "availability asks the custody resolver");
+  const resolver = src("inventoryLedger/locationOnHand.ts");
+  const body = resolver.slice(
+    resolver.indexOf("export function resolveCustodyWarehouseId"),
+    resolver.indexOf("/** Distinct BIN location ids referenced"),
+  );
+  assert.match(body, /location\.type === "WAREHOUSE"\) return location\.locationId/);
+  assert.match(body, /location\.type === "BIN"\) return parentage\.get/);
+  assert.doesNotMatch(body, /"MOBILE"/, "no branch admits a truck");
+  assert.match(body, /return null;\s*\}\s*$/, "every other type -- MOBILE included -- has no custody Warehouse");
 });
 
 // ══════════════════════════ MOBILE ON-HAND HAS SOMEWHERE TO LAND ══════════════════════════
