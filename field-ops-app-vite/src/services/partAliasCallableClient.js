@@ -17,6 +17,8 @@
 // failure. domain/partIdentifiers.js turns those into human words — this file performs transport
 // only, and maps no messages of its own.
 import { PART_IDENTIFIER_TRANSPORT_READY } from "../config/partIdentifierReadiness.js";
+import { toPartListView } from "../domain/partMasterView.js";
+import { normalizeScanToken } from "../domain/scannedIdentity.js";
 
 export const CALLABLE_NAMES = Object.freeze({
   create: "createPartAlias",
@@ -29,6 +31,9 @@ export const CALLABLE_NAMES = Object.freeze({
   // audiences. It ships and deploys with them, so it shares this transport and this readiness
   // constant rather than introducing a second seam.
   resolveScanned: "resolveScannedPartIdentifier",
+  // The scanner's ONE governed Part read (Lookup + Move stock). Gated server-side on
+  // inventory.catalog.read; the alias half additionally on inventory.catalog.alias.read.
+  lookupScanned: "lookupScannedPart",
 });
 
 // The status returned when the transport is switched off. Deliberately its OWN status rather than a
@@ -116,3 +121,28 @@ export const partAliasCallableClient = Object.freeze({
   probePartAlias,
   resolveScannedIdentifier,
 });
+
+/**
+ * THE SCANNER'S PART LOOKUP -- one governed server read answering both questions a scan asks: is this a
+ * Part's own code, and is it a registered identifier. Replaces the client-direct `parts` reads that
+ * firestore.rules refused to a Parts Associate.
+ *
+ * Returns { catalogResult, aliasOutcome } in EXACTLY the shapes domain/partLookup.js buildPartLookup
+ * already takes, so Lookup and Move stock keep one identity state machine. The catalogue half holds only
+ * the <=3 Parts the scan names; a refusal stays a refusal (never an empty catalogue).
+ */
+export async function lookupScannedPart(rawValue) {
+  const partCode = normalizeScanToken(rawValue);
+  const out = await invoke(CALLABLE_NAMES.lookupScanned, { rawValue, ...(partCode ? { partCode } : {}) });
+  if (out.errorStatus) {
+    return {
+      catalogResult: { ok: false, code: out.errorStatus === "permission-denied" ? "permission-denied" : "unavailable" },
+      aliasOutcome: null,
+    };
+  }
+  const r = out.result ?? {};
+  return {
+    catalogResult: { ok: true, ...toPartListView((Array.isArray(r.parts) ? r.parts : []).map((p) => ({ id: p?.id, data: p?.data }))) },
+    aliasOutcome: r.aliasDenied ? { errorStatus: "permission-denied", errorDetail: null } : (r.alias ? { result: r.alias } : null),
+  };
+}

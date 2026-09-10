@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
-import { resolveScannedIdentifier } from "../../services/partAliasCallableClient.js";
+import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
 import { fetchPartBalance } from "../../services/inventoryBalanceCallableClient.js";
 import { fetchAvailableEquipment } from "../../services/serializedAssetReadCallableClient.js";
 import { fetchLocationDisplay } from "../../services/locationDisplayReadCallableClient.js";
@@ -23,13 +22,14 @@ import {
 // ============================ IT MOVES NOTHING ============================
 //
 // There is no quantity input, no submit, no command import and no writer anywhere in this file or
-// anything it imports. `fetchPartMasterList` is a one-shot READ. The absence is enforced by a test
+// anything it imports. `lookupScannedPart` is a one-shot governed READ. The absence is enforced by a test
 // that inspects the imports rather than trusting this comment.
 //
 // ============================ ONE READ, REUSED ============================
 //
-// The catalog read is the same governed `parts` read PartsList, PartDetail, Receiving and the Work
-// Order plan editor use. Identity resolution is the existing `resolveScannedIdentity` over the
+// The Part read is the scanner's governed server read (lookupScannedPart, under inventory.catalog.read),
+// shared with Move stock -- NOT the client-direct `parts` read, which firestore.rules refuse to a Parts
+// Associate. Identity resolution is the existing `resolveScannedIdentity` over the
 // existing `buildScanCandidates` CATALOG scope. All of the decision-making lives in the pure
 // domain/partLookup.js; this component owns the read, the input and the states.
 //
@@ -67,8 +67,9 @@ import {
 // attempted and its refusal is displayed AS a refusal. See access/scanWorkflows.js.
 
 export default function LookupScan({ deps }) {
-  const readCatalog = deps?.fetchParts ?? fetchPartMasterList;
-  const resolveIdentifier = deps?.resolveIdentifier ?? resolveScannedIdentifier;
+  // ONE governed server read answers both halves (Part code + registered identifier) -- the same one
+  // Move stock uses. It replaced a whole-`parts`-collection client read a Parts Associate was refused.
+  const lookupPart = deps?.lookupPart ?? lookupScannedPart;
   const readBalance = deps?.fetchBalance ?? fetchPartBalance;
   const readSerialized = deps?.fetchSerialized ?? fetchAvailableEquipment;
   const readLocations = deps?.fetchLocations ?? fetchLocationDisplay;
@@ -90,19 +91,11 @@ export default function LookupScan({ deps }) {
     }
     setLoading(true);
 
-    // Both questions in parallel. The identifier transport never throws by contract, but it is
-    // guarded anyway so one half cannot take down the other: a failed identifier lookup must not
-    // cost the operator a part-code answer that was available.
-    const [catalogResult, aliasOutcome] = await Promise.all([
-      readCatalog().catch(() => (
-        // A THROWN read is a failed read, never an empty catalog. Collapsing it into "no match"
-        // would tell an operator a part does not exist because the network was down.
-        { ok: false, code: "unavailable" }
-      )),
-      Promise.resolve()
-        .then(() => resolveIdentifier({ rawValue: token }))
-        .catch(() => ({ errorStatus: "internal", errorDetail: null })),
-    ]);
+    // A THROWN read is a failed read, never an empty catalogue: collapsing it into "no match" would tell
+    // an operator a part does not exist because the network was down.
+    const { catalogResult, aliasOutcome } = await Promise.resolve()
+      .then(() => lookupPart(token))
+      .catch(() => ({ catalogResult: { ok: false, code: "unavailable" }, aliasOutcome: null }));
 
     if (!alive.current) return;
     const identity = buildPartLookup({ catalogResult, aliasOutcome, token });
@@ -125,7 +118,7 @@ export default function LookupScan({ deps }) {
     if (!alive.current) return;
     // Recompose with the answers. Same pure function, same identity inputs — only the reads changed.
     setResult(buildPartLookup({ catalogResult, aliasOutcome, reads: detail, token }));
-  }, [readCatalog, resolveIdentifier, readBalance, readSerialized, readLocations]);
+  }, [lookupPart, readBalance, readSerialized, readLocations]);
 
   return (
     <div className="fo-lookup">

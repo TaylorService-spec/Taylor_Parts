@@ -3336,7 +3336,7 @@
       "id": "inventory.catalog.read",
       "resource": "inventory.catalog",
       "action": "read",
-      "description": "Read the minimal governed catalog/reference projection (Manufacturer identity/status) via the trusted getManufacturerCatalog read service. Backend-resolved scope; no client-direct manufacturers read.",
+      "description": "Read the minimal governed catalog/reference projection via trusted read services: Manufacturer identity/status (getManufacturerCatalog), Part/Equipment-Model references (searchProductReferences), and the scanner's Part projection for the <=3 Parts a scan names (lookupScannedPart). Read-only; backend-resolved scope; no client-direct catalogue read.",
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
@@ -3344,6 +3344,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/partMaster/manufacturerReadService.ts",
+          "functions/src/partMaster/partAliasCallables.ts",
           "functions/src/salesAgreement/productReferenceSearchService.ts"
         ],
         "clientReferences": [
@@ -3352,7 +3353,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/definitions/manufacturer.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3432,13 +3433,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/inventoryLocation/stockRelocationCallables.ts",
           "functions/src/inventoryLocation/stockRelocationCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/scanWorkflows.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3486,7 +3488,8 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
-          "functions/src/inventoryLocation/binCommands.ts"
+          "functions/src/inventoryLocation/binCommands.ts",
+          "functions/src/inventoryLocation/stockRelocationCallables.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
@@ -3495,7 +3498,7 @@
           "field-ops-app-vite/src/modules/administration/AdminWarehouseRacking.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4842,7 +4845,8 @@
     },
     {
       "names": [
-        "relocateStockCallable as relocateStock"
+        "relocateStockCallable as relocateStock",
+        "listStockMovementLocationsCallable as listStockMovementLocations"
       ],
       "module": "./inventoryLocation/stockRelocationCallables.js",
       "capabilityHints": [],
