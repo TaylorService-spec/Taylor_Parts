@@ -376,3 +376,63 @@ The vocabulary is additive and the readers change only by consolidation, so reve
 relocation row exists leaves no residue. **After rows exist, rollback is not a code revert**: reverting
 the readers would silently drop Bin stock from every aggregate. Once relocation is live, fixes go
 forward.
+
+---
+
+## Implementation evidence — P6 inventory authority (§3–§8)
+
+| Piece | File |
+|---|---|
+| Relocation vocabulary (`RELOCATION_OUT`/`IN`, `STOCK_RELOCATION`, `COUNTERPARTY_MOVEMENT_TYPES`) | `functions/src/inventoryLedger/operationalMovementTypes.ts` (+ validation, repository, client mirror `domain/inventoryLedgerEvent.js`) |
+| One on-hand authority | `functions/src/inventoryLedger/locationOnHand.ts` |
+| Governed bin parentage | `functions/src/inventoryLocation/binParentage.ts` |
+| Relocation command + callable | `functions/src/inventoryLocation/stockRelocationCommand.ts`, `stockRelocationCallables.ts`, exported as `relocateStock` |
+| Readers moved onto the one rule | `fulfillment/fulfillmentAvailability.ts` (+ its callers `allocateSalesOrder`, `inventoryService`, `partBalanceReadService`, `partBalanceBatchReadService`, `inventoryAnalyticsCallables`), `inventoryTransfer/transferOrderCommand.ts`, `cycleCount/cycleCountExpectedQuantity.ts`, `inventoryLedger/mobileLocationPresenceProbe.ts` |
+| Transfer Bin endpoints + same-custody-parent refusal | `inventoryTransfer/transferOrderTypes.ts`, `transferLocationResolver.ts`, `transferOrderCommand.ts`, `transferCallables.ts` |
+| Put-away composition | `putAwayCommand.ts` exports `buildPlacementEntries`, the one definition of a placement record's shape |
+| Audit action | `relocateStock` in `types/access.ts` and `access/auditEventWriter.ts` |
+
+### Decisions the implementation had to reach
+
+**`sumLedgerEligibleOnHand` takes parentage as a REQUIRED argument.** Optional would have let a caller
+that forgot to resolve it silently drop every binned unit from availability. Making it required meant
+the compiler — not a review — found all five call sites.
+
+**Parentage is resolved only for the bins the rows reference.** An availability check reads a handful of
+bin documents in a batched get inside its existing transaction, not the whole racking.
+
+**A non-positive IN/OUT quantity contributes nothing.** The first draft took the absolute value, which
+would have let a corrupt negative receipt manufacture stock; the reader it replaced treated such rows as
+zero, and the shared rule now does too.
+
+**Replay reproduces the stored row.** Ledger fingerprints include `occurredAt`, so a retry stamped with
+a fresh clock would read as a conflict. The command reproduces its prior rows from the stored clock and
+actor, so replay compares intent.
+
+**The Transfer custody check is not an injectable dependency.** It reads the governed bin documents
+through the transaction inside the command, so no caller can supply a stub that skips it.
+
+### A second latent defect, found and fixed
+
+`recordPutAway` looked serials up by `${partId}__${serial}` and then by a bare serial id. Seven other
+call sites — and the registration itself — use the canonical `serializedAssetDocId`, and no writer
+produces either convention put-away tried. **Every serialized put-away of a real registered unit was
+refused as `serial_unknown`.** No test exercised a real serial, which is how it survived. Fixed to the
+canonical id; covered by `stockRelocationCommand.test.mjs`.
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| `functions/test/stockRelocationCommand.test.mjs` (new, emulator) | **27/27** |
+| `functions/test/locationOnHandAuthority.test.mjs` (new, static + pure) | **9/9** — and proven to detect main's old copies (3 and 2 matches) |
+| Inventory-adjacent emulator suites | **74 green** of 83 run; the rest: 4 hard-code port 8080 (CI runs them), 3 fail on `config/environments.json` declaring two sandbox projects — pre-existing and importing nothing P6 touched |
+| `auditEventWriter` (via a temporary 8099 copy) | 59/59 |
+| Client `npm test` manifest | **286 suites** |
+| `inventoryLedgerEvent.test.mjs` (client mirror) | 31/31 |
+| `ciTriggerCoverage` · `ciSuiteCoverage` | green |
+
+**Test pins moved, each with its argument:** the P1 "BIN must not become a movement endpoint" fence
+(lifted by Decision #170 Ruling 5, restated to assert where the fence now is); the consumption custody
+boundary's "WAREHOUSE type filter is the gate" (the gate moved into `resolveCustodyWarehouseId`, which
+still admits no truck); and the client vocabulary pins, which exist so an addition is argued.

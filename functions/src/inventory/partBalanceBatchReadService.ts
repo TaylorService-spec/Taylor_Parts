@@ -37,6 +37,8 @@
 // This comment deliberately spells none of those tokens out. The guard reads SOURCE, so prose
 // describing it would trip it — which is the guard working, not a false positive.
 
+import { readBinParentage } from "../inventoryLocation/binParentage.js";
+import { binIdsReferenced } from "../inventoryLedger/locationOnHand.js";
 import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -153,6 +155,9 @@ export async function readPartBalances(
     ] as const),
   );
 
+  // Model A: one batched read of every bin any requested part's rows name, shared across the batch.
+  const binParentage = await readBinParentage(db, binIdsReferenced([...ledgerByPart.values()].flat()));
+
   // ── compose, per part, through the SAME pure function the single-part read uses ──────────────
   const out: PartBalanceProjection[] = [];
   for (const partId of partIds) {
@@ -164,6 +169,7 @@ export async function readPartBalances(
       partId,
       ledgerRows: ledgerByPart.get(partId) ?? [],
       eligibleWarehouseIds,
+      binParentage,
       openOrderedQuantity: sumOpenOrderedQuantity(openOrders, partId, receiptsByPurchaseOrder),
       serialTracked,
     }));

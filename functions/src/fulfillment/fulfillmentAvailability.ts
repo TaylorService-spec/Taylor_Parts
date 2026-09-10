@@ -16,6 +16,8 @@
 //    by another active Sales Order AND it has no active temporary-placement conflict. Missing/contradictory
 //    evidence ⇒ UNKNOWN, fail closed.
 
+import { isPhysicalMovementType, resolveCustodyWarehouseId, signedQuantity } from "../inventoryLedger/locationOnHand.js";
+import type { BinParentage } from "../inventoryLedger/locationOnHand.js";
 import type { Availability } from "./allocationProjection";
 
 const num0 = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
@@ -83,39 +85,33 @@ export function sumEligibleOnHand(rows: Array<{ warehouseId?: string; quantity?:
 // the previous contract. Floored at 0 so a malformed ledger can never produce negative sellable stock.
 export function sumLedgerEligibleOnHand(
   rows: Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
-  eligibleWarehouseIds: Set<string>
+  eligibleWarehouseIds: Set<string>,
+  // REQUIRED, deliberately. Under Model A (Decision #160 / ADR-014) a Warehouse holds its direct rows
+  // PLUS the rows at every Bin inside it. A caller that forgot to resolve parentage would silently drop
+  // all binned stock from availability -- so the compiler, not a code review, finds every caller.
+  // Resolve it only for the bins these rows reference (binIdsReferenced), from governed bins documents.
+  binParentage: BinParentage,
 ): number | null {
   // Two distinct facts, exactly as the previous stock_locations contract drew them:
   //   sawAnyPhysical    -- the part has physical movement evidence SOMEWHERE (so 0 is a real answer)
-  //   sawEligible       -- some of that movement is at a sellable warehouse
+  //   sawEligible       -- some of that movement is in the custody of a sellable warehouse
   // No evidence at all => UNKNOWN. Evidence, but none of it sellable => a known 0 (a real backorder).
+  //
+  // The sign of each movement comes from inventoryLedger/locationOnHand.ts, the ONE place it is
+  // decided. This function used to carry its own copy of that rule; so did four other readers, and
+  // three of them never learned WORK_ORDER_CONSUMPTION. One rule, one place.
   let sawAnyPhysical = false;
   let sawEligible = false;
   let onHand = 0;
-  // WORK_ORDER_CONSUMPTION joins the physical set (Customer 1 ruling). This is the line that closes
-  // the defect: stock fitted to a machine now leaves on-hand, at the location it actually left.
-  //
-  // It is SIGNED, exactly like ADJUSTED — a consumption is negative, and a correction to recorded
-  // usage is the same fact positive, restoring the quantity to the location it came from. One rule
-  // covers both, so a reversal cannot drift from the movement it reverses.
-  const PHYSICAL = new Set(["RECEIVED", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTED", "RETURNED", "SCRAPPED", "WORK_ORDER_CONSUMPTION"]);
   for (const r of rows) {
+    if (!isPhysicalMovementType(r.type)) continue;
+    sawAnyPhysical = true;
+    const custody = resolveCustodyWarehouseId(r.location, binParentage);
+    if (custody === null || !eligibleWarehouseIds.has(custody)) continue;
+    sawEligible = true;
     const isNoneModeQuantity = r.trackingMode === undefined || r.trackingMode === "NONE";
-    if (PHYSICAL.has(r.type)) sawAnyPhysical = true;
-    const loc = r.location;
-    if (!loc || loc.type !== "WAREHOUSE" || typeof loc.locationId !== "string") continue;
-    if (!eligibleWarehouseIds.has(loc.locationId)) continue;
-    if (!isNoneModeQuantity) { sawEligible = true; continue; } // SERIAL/LOT: evidence counted, quantity excluded (H7)
-    const q = num0(r.quantity);
-    if (r.type === "RECEIVED" || r.type === "TRANSFER_IN" || r.type === "RETURNED") { sawEligible = true; onHand += q; }
-    else if (r.type === "TRANSFER_OUT" || r.type === "SCRAPPED") { sawEligible = true; onHand -= q; }
-    else if (r.type === "ADJUSTED" || r.type === "WORK_ORDER_CONSUMPTION") {
-      // Both carry their own sign, so num0()'s positive-only guard would silently drop exactly the
-      // cases that matter: an ADJUSTED shortage from a reconciled Cycle Count, and a
-      // WORK_ORDER_CONSUMPTION removal. Read the raw value.
-      const signed = typeof r.quantity === "number" && Number.isFinite(r.quantity) ? r.quantity : 0;
-      sawEligible = true; onHand += signed;
-    }
+    if (!isNoneModeQuantity) continue; // SERIAL/LOT: evidence counted, quantity excluded (H7)
+    onHand += signedQuantity(r);
   }
   if (!sawAnyPhysical) return null;
   return sawEligible ? Math.max(0, onHand) : 0;

@@ -27,7 +27,11 @@ export const TRANSFER_INITIAL_VERSION = 1;
 
 // Phase 4 endpoint fence: WAREHOUSE + MOBILE(truck) only. Not the full EI-P1a INVENTORY_LOCATION_TYPES
 // set (BIN/VENDOR/CUSTOMER/VIRTUAL) -- those stay out of scope for this authority.
-export const TRANSFER_ENDPOINT_TYPES = ["WAREHOUSE", "MOBILE"] as const;
+// BIN-P6 / Decision #170 Ruling 5: a Bin is a legitimate endpoint for any movement that CROSSES a custody
+// boundary -- a Bin in Warehouse A to Warehouse B, or a Bin to or from a truck. A move that stays inside
+// one Warehouse is a relocation and is refused here (SameCustodyParentError), so the two authorities
+// never overlap.
+export const TRANSFER_ENDPOINT_TYPES = ["WAREHOUSE", "BIN", "MOBILE"] as const;
 export type TransferEndpointType = (typeof TRANSFER_ENDPOINT_TYPES)[number];
 
 // NONE + SERIAL only (LOT deferred, same posture as Receiving's RECEIVING_SUPPORTED_TRACKING_MODES).
@@ -98,7 +102,8 @@ export type TransferCommandFailureCode =
   | "STATUS_INVALID"
   | "IDEMPOTENCY_CONFLICT"
   | "MALFORMED_STORED_RECORD"
-  | "TRANSFER_INTEGRITY";
+  | "TRANSFER_INTEGRITY"
+  | "SAME_CUSTODY_PARENT";
 
 export class TransferCommandError extends Error {
   readonly code: TransferCommandFailureCode;
@@ -126,6 +131,12 @@ export class OriginInvalidError extends TransferCommandError {
 export class DestinationInvalidError extends TransferCommandError {
   constructor(m: string) {
     super("DESTINATION_INVALID", m);
+  }
+}
+/** Both endpoints share one Warehouse custody parent: that is a relocation, not a transfer. */
+export class SameCustodyParentError extends TransferCommandError {
+  constructor(m = "origin and destination are in the same warehouse; use a relocation") {
+    super("SAME_CUSTODY_PARENT", m);
   }
 }
 export class SameLocationError extends TransferCommandError {

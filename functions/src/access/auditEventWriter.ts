@@ -211,6 +211,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "dispatchTransferOrder",
   "receiveTransferOrder",
   "cancelTransferOrder",
+  // BIN-P6 / Decision #170.
+  "relocateStock",
   // Enterprise Inventory -- Cycle Count operating authority: runtime mirror of the cycle count command
   // family's AuditAction union members.
   "createCycleCount",

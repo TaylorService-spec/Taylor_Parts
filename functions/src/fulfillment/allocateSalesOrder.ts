@@ -17,6 +17,8 @@
 // no active SO allocation + not installed/customer-custody + no active temporary-placement/loaner conflict.
 // That equipment-availability CONTRACT (a confident read over the canonical `equipment` authority + the #12
 // temporary-placement conflict seam) is the next slice; until it exists, equipment ⇒ UNKNOWN, fail closed.
+import { readBinParentage } from "../inventoryLocation/binParentage.js";
+import { binIdsReferenced } from "../inventoryLedger/locationOnHand.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, type Transaction } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
@@ -57,13 +59,14 @@ interface SoLine {
 async function readPartOnHand(tx: Transaction, ref: string, eligibleWarehouseIds: Set<string>): Promise<number | null> {
   const db = getFirestore();
   const snap = await tx.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", ref));
-  return sumLedgerEligibleOnHand(
-    snap.docs.map(
-      (d) =>
-        d.data() as { type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }
-    ),
-    eligibleWarehouseIds
+  const rows = snap.docs.map(
+    (d) =>
+      d.data() as { type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }
   );
+  // Model A: stock put away into a Bin is still this Warehouse's stock. Resolve the parent of only the
+  // bins these rows name, from their governed documents, inside the same transaction.
+  const binParentage = await readBinParentage(db, binIdsReferenced(rows), tx);
+  return sumLedgerEligibleOnHand(rows, eligibleWarehouseIds, binParentage);
 }
 
 async function readOpenWoReserved(tx: Transaction, ref: string, excludeWorkOrderIds: Set<string>): Promise<number> {

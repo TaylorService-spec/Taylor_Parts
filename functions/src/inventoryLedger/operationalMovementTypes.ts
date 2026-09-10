@@ -32,6 +32,13 @@ export const OPERATIONAL_MOVEMENT_TYPES = [
   // commitment/reservation event and stays exactly what it is; naming this the same thing would
   // collapse two facts that must remain separable -- one reconciles a promise, this one moves stock.
   "WORK_ORDER_CONSUMPTION",
+  // BIN-P6 / Decision #170 -- INTERNAL RELOCATION inside one Warehouse custody parent. A PAIR, not
+  // one signed row: a relocation genuinely has two endpoints, it leaves one exact location and
+  // arrives at another, and a single row cannot say both. Deliberately NOT TRANSFER_OUT/IN, which
+  // stay owned by TRANSFER_ORDER: reusing them would make every shelf-to-shelf move read as stock
+  // leaving the building.
+  "RELOCATION_OUT",
+  "RELOCATION_IN",
 ] as const;
 export type OperationalMovementType = (typeof OPERATIONAL_MOVEMENT_TYPES)[number];
 
@@ -49,6 +56,8 @@ export const MOVEMENT_DIRECTION: Readonly<Record<OperationalMovementType, Moveme
   SCRAPPED: "OUT",
   ADJUSTED: "SIGNED",
   WORK_ORDER_CONSUMPTION: "SIGNED",
+  RELOCATION_OUT: "OUT",
+  RELOCATION_IN: "IN",
 };
 
 export const SOURCE_OBJECT_TYPES = [
@@ -58,6 +67,8 @@ export const SOURCE_OBJECT_TYPES = [
   "ADJUSTMENT",
   "RMA",
   "SCRAP",
+  // BIN-P6 / Decision #170: the relocation command is the only producer of the relocation pair.
+  "STOCK_RELOCATION",
 ] as const;
 export type SourceObjectType = (typeof SOURCE_OBJECT_TYPES)[number];
 
@@ -75,7 +86,19 @@ export const MOVEMENT_SOURCE_TYPE: Readonly<Record<OperationalMovementType, Sour
   // The Owner ruling makes physical consumption a governed movement, so the mapping is added on
   // purpose. Nothing else about the reservation ledger changed.
   WORK_ORDER_CONSUMPTION: "WORK_ORDER",
+  RELOCATION_OUT: "STOCK_RELOCATION",
+  RELOCATION_IN: "STOCK_RELOCATION",
 };
+
+// Movement types that name the OTHER end of a two-endpoint movement. Required on these, forbidden on
+// every other type. One list, read by the validator and the stored-record deserializer alike, so the
+// two can never disagree about which movements carry a counterparty.
+export const COUNTERPARTY_MOVEMENT_TYPES: ReadonlySet<OperationalMovementType> = new Set<OperationalMovementType>([
+  "TRANSFER_OUT",
+  "TRANSFER_IN",
+  "RELOCATION_OUT",
+  "RELOCATION_IN",
+]);
 
 export const ACTOR_KINDS = ["USER", "SYSTEM"] as const;
 export type ActorKind = (typeof ACTOR_KINDS)[number];

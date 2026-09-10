@@ -59,13 +59,21 @@ test("the canonical BIN reference exists ONLY on the machine-token path", () => 
   assert.equal("location" in byCode, false, "the human-code path emits no location reference");
 });
 
-test("BIN is still NOT an accepted movement location — the custody fence is untouched", () => {
-  // The reference above must not leak into custody math. The one governed resolver every movement
-  // command pins still refuses BIN outright.
+test("BIN is a Transfer endpoint only across a custody boundary, gated on its governed parent", () => {
+  // This test used to assert the P1 fence: "BIN must not become an accepted movement endpoint in P1".
+  // BIN-P6 / Decision #170 Ruling 5 is the authority that lifts it -- a Bin in Warehouse A may transfer
+  // to Warehouse B or to a truck. The fence did not disappear; it MOVED, and this asserts where to:
+  //   - the resolver accepts a BIN only when the bin AND its governed parent Warehouse are ACTIVE;
+  //   - the parent is read from the bin document's warehouseId, never inferred;
+  //   - the Transfer command refuses any pair that shares one custody parent (that is a relocation).
   const resolver = readFileSync(new URL("../src/inventoryTransfer/transferLocationResolver.ts", import.meta.url), "utf8");
   assert.match(resolver, /location\.type === "WAREHOUSE"/);
   assert.match(resolver, /location\.type === "MOBILE"/);
-  assert.doesNotMatch(resolver, /=== "BIN"/, "BIN must not become an accepted movement endpoint in P1");
+  assert.match(resolver, /location\.type === "BIN"/);
+  assert.match(resolver, /bin\.status !== "ACTIVE"/, "a retired bin is not a transfer endpoint");
+  assert.match(resolver, /db\.collection\(WAREHOUSES_COLLECTION\)\.doc\(bin\.warehouseId\)/, "parent read from the bin document");
+  const command = readFileSync(new URL("../src/inventoryTransfer/transferOrderCommand.ts", import.meta.url), "utf8");
+  assert.match(command, /throw new SameCustodyParentError\(\)/, "a same-warehouse pair must be refused as a relocation");
 });
 
 // ─────────────────────────────────────────── stable identity

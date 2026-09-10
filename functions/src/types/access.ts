@@ -425,6 +425,8 @@ export type AuditAction =
   | "dispatchTransferOrder"
   | "receiveTransferOrder"
   | "cancelTransferOrder"
+  // BIN-P6 / Decision #170: same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN).
+  | "relocateStock"
   // Enterprise Inventory -- Cycle Count operating authority -- the trusted cycle count command family's
   // Audit Event actions. Capabilities inventory.cycleCount.create/submit/reconcile/cancel registered
   // active:false -- see permissionCatalog.ts.

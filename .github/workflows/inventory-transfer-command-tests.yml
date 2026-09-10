@@ -14,6 +14,17 @@ on:
       - "functions/src/truckRegistry/**"
       - "functions/src/warehouseGovernance/**"
       - "functions/test/transferOrderCommand.test.mjs"
+      # BIN-P6 / Decision #170: the relocation authority, the one on-hand module, bin parentage, and
+      # every reader moved onto it. A change to any of them re-runs the conservation proofs.
+      - "functions/src/inventoryLocation/stockRelocationCommand.ts"
+      - "functions/src/inventoryLocation/stockRelocationCallables.ts"
+      - "functions/src/inventoryLocation/binParentage.ts"
+      - "functions/src/inventoryLocation/putAwayCommand.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
+      - "functions/src/cycleCount/cycleCountExpectedQuantity.ts"
+      - "functions/src/inventoryAnalyticsCallables.ts"
+      - "functions/test/stockRelocationCommand.test.mjs"
+      - "functions/test/locationOnHandAuthority.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-transfer-command-tests.yml"
@@ -26,6 +37,17 @@ on:
       - "functions/src/truckRegistry/**"
       - "functions/src/warehouseGovernance/**"
       - "functions/test/transferOrderCommand.test.mjs"
+      # BIN-P6 / Decision #170: the relocation authority, the one on-hand module, bin parentage, and
+      # every reader moved onto it. A change to any of them re-runs the conservation proofs.
+      - "functions/src/inventoryLocation/stockRelocationCommand.ts"
+      - "functions/src/inventoryLocation/stockRelocationCallables.ts"
+      - "functions/src/inventoryLocation/binParentage.ts"
+      - "functions/src/inventoryLocation/putAwayCommand.ts"
+      - "functions/src/fulfillment/fulfillmentAvailability.ts"
+      - "functions/src/cycleCount/cycleCountExpectedQuantity.ts"
+      - "functions/src/inventoryAnalyticsCallables.ts"
+      - "functions/test/stockRelocationCommand.test.mjs"
+      - "functions/test/locationOnHandAuthority.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-transfer-command-tests.yml"
@@ -82,6 +104,17 @@ jobs:
       - name: Transfer command tests (create/dispatch/receive/cancel; NONE + SERIAL; WAREHOUSE + MOBILE)
         run: npm run test:transferOrderCommand
         working-directory: functions
+
+      # BIN-P6. Named explicitly: an unnamed suite does not run in this repository's CI at all.
+      - name: One on-hand authority (static + pure guards, no emulator)
+        run: node --test test/locationOnHandAuthority.test.mjs
+        working-directory: functions
+
+      - name: Stock relocation (conservation, exact source, replay, serialized custody, Transfer bin endpoints)
+        run: node test/stockRelocationCommand.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
 
       - name: Upload emulator debug logs
         if: always()

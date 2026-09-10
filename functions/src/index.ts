@@ -499,6 +499,9 @@ export {
   // record and nothing else: no ledger event, no quantity change, no balance (DECISIONS #116).
   recordPutAwayCallable as recordPutAway,
 } from "./inventoryLocation/binCallables";
+// BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN).
+// Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation.
+export { relocateStockCallable as relocateStock } from "./inventoryLocation/stockRelocationCallables.js";
 
 // --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---
 // Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every

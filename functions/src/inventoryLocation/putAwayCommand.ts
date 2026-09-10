@@ -36,6 +36,7 @@
 // explicit workflow. This command records placement. It does not classify condition, does not hold
 // stock pending inspection, and does not gate availability.
 
+import { serializedAssetDocId } from "../serializedAsset/serializedAssetRegistration.js";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import { BINS_COLLECTION, BIN_CODE_CLAIMS_COLLECTION } from "./binCommands.js";
@@ -101,6 +102,58 @@ const isNonBlank = (v: unknown): v is string => typeof v === "string" && v.trim(
  */
 export function derivePlacementId(idempotencyKey: string, discriminator: string): string {
   return `plc_${idempotencyKey}__${discriminator}`;
+}
+
+export interface PlacementEntryInput {
+  readonly warehouseId: string;
+  readonly binId: string;
+  readonly binCode: string;
+  readonly partId: string;
+  readonly idempotencyKey: string;
+  readonly pickedForWorkOrderId: string | null;
+  readonly note: string | null;
+  readonly serialNumbers: readonly string[];
+  /** Used only when there are no serials. */
+  readonly quantity: number;
+  readonly now: Date;
+  readonly actorId: string;
+}
+
+/**
+ * The placement records one stow produces. PURE, and the ONLY definition of a placement record's
+ * shape: recordPutAway uses it, and so does the BIN-P6 relocation command when a put-away also moves
+ * stock (Decision #170: that operation needs BOTH capabilities and writes BOTH facts atomically).
+ * Exported so the second caller composes this shape rather than re-typing it.
+ *
+ * One record per SERIAL, because a serialized unit has its own place; one record for a quantity stow,
+ * because bulk does not.
+ */
+export function buildPlacementEntries(input: PlacementEntryInput): Array<{ id: string; data: Record<string, unknown> }> {
+  const base = {
+    warehouseId: input.warehouseId,
+    binId: input.binId,
+    binCode: input.binCode,
+    partId: input.partId,
+    placedAt: input.now,
+    placedBy: input.actorId,
+    idempotencyKey: input.idempotencyKey,
+    // Present only on a PICK. Its absence is what makes a record a plain stow, so it is written
+    // as null rather than omitted -- a missing field and a deliberate "not picked for anything"
+    // must not be the same thing to a later reader.
+    pickedForWorkOrderId: input.pickedForWorkOrderId,
+    // Stored as written. Null rather than omitted, so "no note" is a fact rather than an absence.
+    note: input.note,
+    schemaVersion: 1,
+  };
+  return input.serialNumbers.length > 0
+    ? input.serialNumbers.map((serialNo) => ({
+        id: derivePlacementId(input.idempotencyKey, serialNo),
+        data: { ...base, serialNo, quantity: 1 },
+      }))
+    : [{
+        id: derivePlacementId(input.idempotencyKey, input.partId),
+        data: { ...base, serialNo: null, quantity: input.quantity },
+      }];
 }
 
 interface PutAwayRequest {
@@ -275,49 +328,31 @@ export async function recordPutAway(request: unknown, deps: PutAwayDeps): Promis
     // A SERIAL must be a real unit of THIS part. Recording a placement for a serial that belongs to
     // another part would make "where is SN-42" answer with the wrong shelf for the wrong thing.
     for (const serialNo of serials) {
+      // The CANONICAL serialized-asset id -- the same serializedAssetDocId every other reader and the
+      // registration itself use. This used to look up `${partId}__${serial}` and then fall back to a
+      // bare-serial id; NO writer produces either, so every real registered serial was refused as
+      // serial_unknown and serialized put-away could never succeed. Found by BIN-P6, which moves
+      // serialized stock into Bins and therefore has to find the serial it is moving.
       const assetSnap = await txn.get(
-        deps.db.collection(SERIALIZED_ASSETS_COLLECTION).doc(`${req.partId}__${serialNo}`),
+        deps.db.collection(SERIALIZED_ASSETS_COLLECTION).doc(serializedAssetDocId(req.partId, serialNo)),
       );
-      if (!assetSnap.exists) {
-        // Fall back to a query-free second convention before refusing: some registries key by serial
-        // alone. Refusing a real unit because of a doc-id convention would block honest work.
-        const bySerial = await txn.get(deps.db.collection(SERIALIZED_ASSETS_COLLECTION).doc(serialNo));
-        if (!bySerial.exists) throw new PlacementInvalidError("serial_unknown");
-        if (bySerial.data()?.partId !== req.partId) throw new PlacementInvalidError("serial_wrong_part");
-      } else if (assetSnap.data()?.partId !== req.partId) {
-        throw new PlacementInvalidError("serial_wrong_part");
-      }
+      if (!assetSnap.exists) throw new PlacementInvalidError("serial_unknown");
+      if (assetSnap.data()?.partId !== req.partId) throw new PlacementInvalidError("serial_wrong_part");
     }
 
-    const now = deps.now();
-    const base = {
+    const entries = buildPlacementEntries({
       warehouseId: req.warehouseId,
       binId,
       binCode,
       partId: req.partId,
-      placedAt: now,
-      placedBy: deps.actor.id,
       idempotencyKey: req.idempotencyKey,
-      // Present only on a PICK. Its absence is what makes a record a plain stow, so it is written
-      // as null rather than omitted -- a missing field and a deliberate "not picked for anything"
-      // must not be the same thing to a later reader.
       pickedForWorkOrderId: req.pickedForWorkOrderId ?? null,
-      // Stored as written. Null rather than omitted, so "no note" is a fact rather than an absence.
       note: req.note ?? null,
-      schemaVersion: 1,
-    };
-
-    // One record per SERIAL, because a serialized unit has its own place. One record for a quantity
-    // stow, because bulk does not.
-    const entries = serials.length > 0
-      ? serials.map((serialNo) => ({
-          id: derivePlacementId(req.idempotencyKey, serialNo),
-          data: { ...base, serialNo, quantity: 1 },
-        }))
-      : [{
-          id: derivePlacementId(req.idempotencyKey, req.partId),
-          data: { ...base, serialNo: null, quantity: req.quantity ?? 0 },
-        }];
+      serialNumbers: serials,
+      quantity: req.quantity ?? 0,
+      now: deps.now(),
+      actorId: deps.actor.id,
+    });
 
     const existing = await Promise.all(
       entries.map((e) => txn.get(deps.db.collection(BIN_PLACEMENTS_COLLECTION).doc(e.id))),

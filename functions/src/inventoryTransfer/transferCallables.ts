@@ -84,7 +84,10 @@ function mapTransferError(err: unknown): HttpsError {
       : code === "not-found" ? "The transfer order could not be found."
       : code === "failed-precondition" ? "This transfer action is not currently permitted."
       : "The transfer action could not be completed.";
-    return new HttpsError(code, message);
+    // The governed failure class travels as the detail, so a scanner can tell "not enough stock at the
+    // origin" from "those are in the same warehouse -- use a relocation". It is a bounded code, never a
+    // stored value.
+    return new HttpsError(code, message, { code: err.code });
   }
   return new HttpsError("internal", "The transfer action could not be completed.");
 }
@@ -97,6 +100,7 @@ function mapCode(code: TransferCommandFailureCode): FunctionsErrorCode {
     case "ORIGIN_INVALID":
     case "DESTINATION_INVALID":
     case "SAME_LOCATION":
+    case "SAME_CUSTODY_PARENT":
     case "PART_INVALID":
     case "SERIAL_INVALID":
     case "INSUFFICIENT_STOCK":
