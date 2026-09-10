@@ -84,12 +84,18 @@ services:
       # the API answers with one tenant's policy configuration, and a wildcard would let any page a
       # signed-in administrator visits read it. `readServiceConfig` refuses a "*" outright.
       #
-      # Declared here rather than prompted, because an origin is not a credential. Measured from the
-      # running preview rather than assumed: taylor-parts-preview.vercel.app serves /version.json
-      # reporting environmentId `platform-sandbox`. A per-deployment Vercel URL is a DIFFERENT
-      # origin and is deliberately not allowed -- acceptance runs against this stable domain.
+      # Declared here rather than prompted, because an origin is not a credential.
+      #
+      # ONE origin, the stable non-production domain. A per-deployment Vercel URL is a DIFFERENT
+      # origin and is deliberately not allowed: browser acceptance runs against the stable domain,
+      # and widening this to cover every ephemeral preview build would make the allowlist mean
+      # "any deployment of anything in that account".
+      #
+      # RENAMED 2026-09-10 from taylor-parts-preview.vercel.app. This is the value the API compares
+      # a browser's Origin header against, so it and the Vercel project's real hostname have to
+      # agree exactly -- a stale entry here does not degrade, it refuses every call from the app.
       - key: EOS_ALLOWED_ORIGINS
-        value: https://taylor-parts-preview.vercel.app
+        value: https://verenwardeos.vercel.app
       # ════════════════════ IDENTITY: NO SERVICE-ACCOUNT KEY IS NEEDED ════════════════════
       #
       # Firebase answers exactly one question -- which subject authenticated -- and no claim it
