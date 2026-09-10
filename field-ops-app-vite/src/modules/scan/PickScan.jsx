@@ -67,7 +67,10 @@ export default function PickScan({ deps }) {
   const pickKey = useRef(newPickKey());
 
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  // StrictMode note: a phantom cleanup-then-remount at initial mount must restore true here, or
+  // this flag lies "dead" for the component's whole real lifetime and silently discards every
+  // later async result (a live, reproduced bug -- see the Cycle Count North Star P1 PR history).
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const line = lines.find((l) => l.partId === activePartId) ?? null;
   const state = buildPickLine({ line, observations, stagingBin });

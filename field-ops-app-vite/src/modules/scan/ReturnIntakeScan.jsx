@@ -69,7 +69,10 @@ export default function ReturnIntakeScan({ deps }) {
   const [busy, setBusy] = useState(false);
   const keyRef = useRef(newKey());
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  // StrictMode note: a phantom cleanup-then-remount at initial mount must restore true here, or
+  // this flag lies "dead" for the component's whole real lifetime and silently discards every
+  // later async result (a live, reproduced bug -- see the Cycle Count North Star P1 PR history).
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const scanPart = useCallback((raw) => {
     const value = String(raw ?? "").trim();

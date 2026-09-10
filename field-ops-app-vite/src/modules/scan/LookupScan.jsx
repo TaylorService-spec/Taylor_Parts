@@ -81,7 +81,10 @@ export default function LookupScan({ deps }) {
   // The catalog is read once per lookup rather than cached across them, because a cached catalog can
   // go stale in a way the operator cannot see and this screen's whole value is being current.
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  // StrictMode note: a phantom cleanup-then-remount at initial mount must restore true here, or
+  // this flag lies "dead" for the component's whole real lifetime and silently discards every
+  // later async result (a live, reproduced bug -- see the Cycle Count North Star P1 PR history).
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const look = useCallback(async (raw) => {
     const token = typeof raw === "string" ? raw.trim() : "";

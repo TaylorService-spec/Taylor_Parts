@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
+import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ScanInput from "../../shared/ui/ScanInput.jsx";
 import { FEEDBACK } from "../../domain/scanInputPolicy.js";
 import { normalizeScanToken } from "../../domain/scannedIdentity.js";
@@ -12,6 +13,9 @@ import { mapCycleCountActionError, isRetryableCycleCountError } from "../../doma
 import {
   buildCountLines, linesToSubmit, lineDraft, pendingWorkCount, isDuplicateSerial, COUNT_LINE_STATE,
 } from "../../domain/cycleCountScanSession.js";
+import {
+  blindCellText, counterLineWord, lineStatusTone, deriveFinishCounting,
+} from "../../domain/cycleCountNorthStar.js";
 import { cycleCountCommandClient } from "../../services/cycleCountCommandClient.js";
 import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
 import { submitOrQueue, SUBMIT_RESULT } from "../../offline/submitOrQueue.js";
@@ -32,9 +36,38 @@ import { PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit
 // Scans use the SAME observation queue as Receiving and Move stock, the SAME governed Part read as
 // Lookup (lookupScannedPart), and are processed strictly in order so a fast "part, serial" pair from a
 // wedge scanner is never mistaken for two parts.
+//
+// ============================ NORTH STAR P1 (design handoff, 2026-09-10) ============================
+//
+// Frames 1b (desktop) / 1c (handheld). This screen renders one line list -- `.fo-cc-lines` -- laid out
+// as a dense table above the mobile breakpoint and as full-width cards below it (CC-D6: the SAME data,
+// a different CSS shape, never a second derivation). The sticky context header and sticky session bar
+// are CC-D6/CC-D8; "Finish Counting" is CC-B2 -- a command-free, derived session close (there is no
+// stored counter-completion state on the server, and this screen must never claim one). "Hidden until
+// submitted" is the one literal blind-cell string (domain/cycleCountNorthStar.js's `blindCellText`).
+//
+// TECHNICIAN MOBILE FLOW: the handoff describes a "Truck 7" header sourced from a governed
+// technician-to-truck assignment. That assignment DOES already exist -- the same one Transfer
+// discovery uses (trucks.assignedDriverEmployeeId, resolved server-side by
+// readAssignedMobileLocation, functions/src/workOrderConsumption/consumptionSourceService.ts) --
+// it was simply not yet exposed for Cycle Count. `getCycleCountAssignedMobileLocation`
+// (functions/src/cycleCount/cycleCountSheetCallables.ts) reuses that SAME resolver: it is a narrow
+// projection of the caller's own already-governed assignment, not a new authority. See
+// `StartOrResume`/`useAssignedMobileLocation`/`MyTruckCount` below: a technician sees their own
+// truck and nothing else (never a company-wide picker); a warehouse-persona counter keeps the
+// manual Warehouse/Bin form. Counter authority (create+submit) is required either way, checked one
+// level up by scanWorkflows.js before this screen is ever reached.
 
 const CONCURRENCY = 4;
 const LOCATION_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse", MOBILE: "Truck" };
+const DONE_STATES = new Set([COUNT_LINE_STATE.SUBMITTED, COUNT_LINE_STATE.DECIDED, COUNT_LINE_STATE.REMOVED]);
+
+/** A submitted/decided line's own variance, straight off its own response -- never a second derivation. */
+function lineHasVariance(line) {
+  return line.trackingMode === "SERIAL"
+    ? ((line.serialVariance?.missing?.length ?? 0) + (line.serialVariance?.unexpected?.length ?? 0)) > 0
+    : (line.variance ?? 0) !== 0;
+}
 
 export default function CycleCountScan({ deps }) {
   const client = deps?.cycleCountClient ?? cycleCountCommandClient;
@@ -53,9 +86,13 @@ export default function CycleCountScan({ deps }) {
   const [results, setResults] = useState({}); // partId -> { status, message, retryable }
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [recap, setRecap] = useState(null); // set once "Finish Counting" is confirmed -- Card A
 
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  // StrictMode note: a phantom cleanup-then-remount at initial mount must restore true here, or
+  // this flag lies "dead" for the component's whole real lifetime and silently discards every
+  // later async result (a live, reproduced bug -- see PR history).
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   const lines = useMemo(() => buildCountLines({ observations: queue.observations, parts, serverLines, zeroed }), [queue, parts, serverLines, zeroed]);
   const pending = pendingWorkCount(lines);
@@ -64,7 +101,7 @@ export default function CycleCountScan({ deps }) {
 
   const reset = useCallback(() => {
     setSheet(null); setQueue(createQueue()); setParts(new Map()); setServerLines(new Map()); setZeroed(new Set());
-    setUnresolved([]); setAwaitingSerial(null); setResults({}); setNotice(null);
+    setUnresolved([]); setAwaitingSerial(null); setResults({}); setNotice(null); setRecap(null);
   }, []);
 
   // ---------------------------------------------------------------- starting and resuming a sheet
@@ -255,16 +292,49 @@ export default function CycleCountScan({ deps }) {
   const submitAll = () => submitLines(linesToSubmit(lines));
   const toRetry = linesToSubmit(lines).filter((l) => results[l.partId]?.status === "failed" && results[l.partId]?.retryable);
 
+  // CC-B2: command-free, derived from the lines this device already holds -- never a claim about a
+  // server-stored "counting finished" fact, because no such fact exists.
+  const isLineDone = useCallback((l) => DONE_STATES.has(l.state), []);
+  const finish = deriveFinishCounting(lines, isLineDone);
+  const submittedCount = lines.filter((l) => l.state === COUNT_LINE_STATE.SUBMITTED || l.state === COUNT_LINE_STATE.DECIDED).length;
+  const varianceCount = lines.filter((l) => (l.state === COUNT_LINE_STATE.SUBMITTED || l.state === COUNT_LINE_STATE.DECIDED) && lineHasVariance(l)).length;
+
   // ---------------------------------------------------------------- render
   if (!sheet) {
     return <StartOrResume client={client} busy={busy} notice={notice} onScanBin={scanBinToStart} onStart={startSheet} onResume={resume} deps={deps} />;
   }
+
+  if (recap) {
+    return (
+      <div className="fo-receiving-session">
+        <section className="fo-cc-recap" aria-label="Counting complete" role="status">
+          <p className="fo-cc-recap__kicker">Counting complete</p>
+          <p>
+            {recap.total} line{recap.total === 1 ? "" : "s"} counted · {recap.total - recap.variances} match ·{" "}
+            {recap.variances} variance{recap.variances === 1 ? "" : "s"} need review.
+          </p>
+          <p className="fo-muted">
+            Counting records what you saw. <strong>Inventory has not been adjusted</strong> — review is a
+            separate governed step.
+          </p>
+          <Button onClick={reset}>Done</Button>
+        </section>
+      </div>
+    );
+  }
+
   const outstanding = linesToSubmit(lines);
   return (
-    <div className="fo-receiving-session">
+    <div className="fo-receiving-session fo-cc">
+      <header className="fo-cc-sticky-header">
+        <div>
+          <p className="fo-cc-sticky-header__kicker">Counting</p>
+          <p className="fo-cc-sticky-header__place">{sheet.label ?? sheet.location?.locationId}</p>
+        </div>
+        <p className="fo-cc-sticky-header__tally">{submittedCount}/{lines.length}<br /><span>lines counted</span></p>
+      </header>
+
       <section className="fo-receiving-session__section" aria-label="Counting">
-        <p className="fo-receiving-session__kicker">Counting · {LOCATION_LABEL[sheet.location?.type] ?? "Location"}</p>
-        <h3 className="fo-receiving-session__identity">{sheet.label ?? sheet.location?.locationId}</h3>
         <p className="fo-muted">
           Scan everything here. You will not be shown what was expected for a part until you submit its count --
           that is deliberate, so the count reflects the shelf and not the system. Counting moves no stock.
@@ -275,6 +345,8 @@ export default function CycleCountScan({ deps }) {
           placeholder={awaitingSerial ? "Serial number" : "Scan a part"}
           deps={deps?.scanInputDeps}
         />
+        {/* CC-D9: the first accepted scan above IS the hardware proof -- no separate device check. */}
+        <p className="fo-cc-scanner-ready fo-muted" role="status">Scanner ready</p>
         {awaitingSerial && (
           <button type="button" className="fo-link-btn" onClick={() => setExpecting(null)}>Cancel serial scan</button>
         )}
@@ -292,8 +364,11 @@ export default function CycleCountScan({ deps }) {
 
       {lines.length > 0 && (
         <section className="fo-receiving-session__section" aria-label="Lines">
+          {/* CC-D6: ONE table, ONE dataset. `.fo-cc-lines` reflows these same rows into full-width
+              cards below the mobile breakpoint by CSS alone (see index.css) -- there is no second,
+              card-shaped render of this data. */}
           <div className="fo-table-scroll">
-            <table className="fo-table fo-receiving-session__table">
+            <table className="fo-table fo-receiving-session__table fo-cc-lines">
               <thead><tr><th scope="col">Part</th><th scope="col" className="num">Counted</th><th scope="col">Status</th><th scope="col"><span className="fo-sr-only">Correct</span></th></tr></thead>
               <tbody>
                 {lines.map((l) => (
@@ -306,13 +381,21 @@ export default function CycleCountScan({ deps }) {
         </section>
       )}
 
-      <section className="fo-receiving-session__section fo-receiving-session__section--submit" aria-label="Submit">
+      <section className="fo-cc-sticky-bar" aria-label="Submit">
         <Button onClick={submitAll} disabled={busy || outstanding.length === 0}>
           {outstanding.length === 0 ? "Scan items to count" : `Submit ${outstanding.length} count${outstanding.length === 1 ? "" : "s"}`}
         </Button>
         {toRetry.length > 0 && <Button variant="secondary" onClick={() => submitLines(toRetry)} disabled={busy}>Try again ({toRetry.length})</Button>}
+        <Button
+          variant="primary"
+          disabled={busy || !finish.enabled}
+          onClick={() => setRecap({ total: lines.length, variances: varianceCount })}
+        >
+          Finish Counting
+        </Button>
+        {!finish.enabled && <span className="fo-cc-disabled-reason">{finish.reason}</span>}
         <Button variant="tertiary" onClick={reset} disabled={busy || pending > 0}>
-          {pending > 0 ? "Submit or clear your counts before leaving" : "Done with this location"}
+          {pending > 0 ? "Submit or clear your counts before leaving" : "Leave — resume later"}
         </Button>
         {notice && <p className="fo-inline-error" role="alert">{notice}</p>}
       </section>
@@ -320,45 +403,49 @@ export default function CycleCountScan({ deps }) {
   );
 }
 
-const STATE_TEXT = {
-  [COUNT_LINE_STATE.COUNTING]: "Not submitted",
-  [COUNT_LINE_STATE.NOT_COUNTED]: "Not counted yet",
-  [COUNT_LINE_STATE.SUBMITTED]: "Submitted",
-  [COUNT_LINE_STATE.DECIDED]: "Reviewed",
-  [COUNT_LINE_STATE.REMOVED]: "Removed",
-};
-const RESULT_TEXT = { sending: "Sending…", done: "Submitted", already: "Already submitted", queued: null };
-
 function CountLineRow({ line, result, busy, onRemoveLast, onZero, onRemoveLine }) {
   const submitted = line.state === COUNT_LINE_STATE.SUBMITTED || line.state === COUNT_LINE_STATE.DECIDED;
   const editable = line.state === COUNT_LINE_STATE.COUNTING || line.state === COUNT_LINE_STATE.NOT_COUNTED;
-  const statusText = result?.status === "failed" ? result.message
-    : result?.status === "queued" ? result.message
-    : RESULT_TEXT[result?.status] ?? STATE_TEXT[line.state];
+  const word = counterLineWord(line.state, { hasVariance: submitted && lineHasVariance(line), queuedOffline: result?.status === "queued" });
+  const tone = lineStatusTone(word);
+  const statusMessage = result?.status === "failed" ? result.message : result?.status === "queued" ? result.message : null;
+
   return (
-    <tr>
-      <td>
+    <tr className={`fo-cc-line--${tone}`}>
+      <td data-label="Part">
         {line.label}
         {line.trackingMode === "SERIAL" && line.countedSerialNumbers.length > 0 && (
           <><br /><span className="fo-muted">{line.countedSerialNumbers.join(", ")}</span></>
         )}
-        {/* ONLY a submitted line shows what was expected -- its own value, from its own response. */}
-        {submitted && <><br /><span className="fo-muted"><SubmittedFigures line={line} /></span></>}
+        {/* ONLY a submitted line's own response may show what was expected -- everything else says so
+            in words (blindCellText), never a number, never a hint. */}
+        {submitted ? <><br /><span className="fo-muted"><SubmittedFigures line={line} /></span></> : (
+          editable && <><br /><span className="fo-muted fo-cc-line__blind">{blindCellText()}</span></>
+        )}
+        {statusMessage && (
+          <p className={result.status === "failed" ? "fo-warning" : "fo-muted"} role={result.status === "failed" ? "alert" : "status"}>
+            {statusMessage}
+          </p>
+        )}
       </td>
-      <td className="num">{line.countedQuantity}</td>
-      <td>{result?.status === "failed" ? <span className="fo-warning">{statusText}</span> : statusText}</td>
-      <td>
-        {editable && line.entryIds.length > 0 && (
-          <button type="button" className="fo-link-btn" onClick={onRemoveLast} disabled={busy}>
-            {line.trackingMode === "SERIAL" ? "Remove last serial" : "−1"}
-          </button>
-        )}
-        {editable && line.countedQuantity !== 0 && (
-          <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>None here</button></>
-        )}
-        {line.state === COUNT_LINE_STATE.NOT_COUNTED && (
-          <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>Count as zero</button>{" "}
-            <button type="button" className="fo-link-btn" onClick={onRemoveLine} disabled={busy}>Remove line</button></>
+      <td className="num" data-label="Counted">{line.countedQuantity}</td>
+      <td data-label="Status"><StatusPill tone={tone} label={word} /></td>
+      <td data-label="Correct">
+        {editable && (
+          <>
+            {line.entryIds.length > 0 && (
+              <button type="button" className="fo-link-btn" onClick={onRemoveLast} disabled={busy}>
+                {line.trackingMode === "SERIAL" ? "Remove last serial" : "−1"}
+              </button>
+            )}
+            {line.countedQuantity !== 0 && (
+              <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>None here</button></>
+            )}
+            {line.state === COUNT_LINE_STATE.NOT_COUNTED && (
+              <> <button type="button" className="fo-link-btn" onClick={onZero} disabled={busy}>Count as zero</button>{" "}
+                <button type="button" className="fo-link-btn" onClick={onRemoveLine} disabled={busy}>Remove line</button></>
+            )}
+          </>
         )}
       </td>
     </tr>
@@ -368,10 +455,93 @@ function CountLineRow({ line, result, busy, onRemoveLast, onZero, onRemoveLine }
 function SubmittedFigures({ line }) {
   if (line.trackingMode === "SERIAL") {
     const sv = line.serialVariance ?? {};
-    return <>Expected but not found: {sv.missing?.length ? sv.missing.join(", ") : "none"} · Found but not expected: {sv.unexpected?.length ? sv.unexpected.join(", ") : "none"}</>;
+    return (
+      <p className="fo-muted">
+        Expected but not found: {sv.missing?.length ? sv.missing.join(", ") : "none"} · Found but not expected: {sv.unexpected?.length ? sv.unexpected.join(", ") : "none"}
+      </p>
+    );
   }
-  if (typeof line.variance !== "number") return <>Submitted — a reviewer sees the variance.</>;
-  return <>Expected {line.expectedQuantity} · {line.variance === 0 ? "matches" : `variance ${line.variance > 0 ? "+" : ""}${line.variance}`}</>;
+  if (typeof line.variance !== "number") return <p className="fo-muted">Submitted — a reviewer sees the variance.</p>;
+  return (
+    <p className="fo-muted">
+      Expected {line.expectedQuantity} · {line.variance === 0 ? "matches" : `variance ${line.variance > 0 ? "+" : ""}${line.variance}`}
+    </p>
+  );
+}
+
+// TECHNICIAN MOBILE FLOW -- "which truck is mine?" answered by the governed server read
+// (getCycleCountAssignedMobileLocation, reusing the SAME truck-assignment resolver Transfer
+// discovery uses: trucks.assignedDriverEmployeeId). Two independent facts, never conflated:
+// (1) does this account hold Cycle Count counter authority at all -- already gated one level up,
+// by scanWorkflows.js's CYCLE_COUNT availability check, before this screen is ever reached;
+// (2) where may THIS technician count -- their own governed truck, resolved server-side, never a
+// company-wide truck picker. `client.getCycleCountAssignedMobileLocation` is optional-chained
+// (absent in tests that don't implement it, and for the WAREHOUSE-persona manual flow below,
+// which stays exactly as it was) so this is additive, not a breaking change to the manual path.
+const MOBILE_ASSIGNMENT_STATE = Object.freeze({
+  LOADING: "LOADING",
+  ASSIGNED: "ASSIGNED",
+  NOT_A_TECHNICIAN: "NOT_A_TECHNICIAN", // falls back to the manual Warehouse/Truck form below
+  NO_TRUCK: "NO_TRUCK",
+  AMBIGUOUS: "AMBIGUOUS",
+});
+
+function useAssignedMobileLocation(client) {
+  const [state, setState] = useState({ status: MOBILE_ASSIGNMENT_STATE.LOADING });
+  useEffect(() => {
+    let live = true;
+    if (typeof client.getCycleCountAssignedMobileLocation !== "function") {
+      setState({ status: MOBILE_ASSIGNMENT_STATE.NOT_A_TECHNICIAN });
+      return undefined;
+    }
+    client.getCycleCountAssignedMobileLocation()
+      .then((out) => { if (live) setState({ status: MOBILE_ASSIGNMENT_STATE.ASSIGNED, location: out.location, label: out.label }); })
+      .catch((err) => {
+        if (!live) return;
+        const code = err?.details?.code;
+        if (code === "NO_TRUCK_ASSIGNMENT") setState({ status: MOBILE_ASSIGNMENT_STATE.NO_TRUCK });
+        else if (code === "TRUCK_ASSIGNMENT_AMBIGUOUS") setState({ status: MOBILE_ASSIGNMENT_STATE.AMBIGUOUS });
+        // TECHNICIAN_IDENTITY_UNAVAILABLE (this account is not a technician), PERMISSION_DENIED
+        // (should not occur here -- the workflow chooser already required counter authority) and
+        // any transport failure all resolve the same way: this is not the technician MOBILE
+        // persona on this device, so the manual Warehouse/Bin flow is what applies instead.
+        else setState({ status: MOBILE_ASSIGNMENT_STATE.NOT_A_TECHNICIAN });
+      });
+    return () => { live = false; };
+  }, [client]);
+  return state;
+}
+
+function MyTruckCount({ assignment, busy, onStart }) {
+  if (assignment.status === MOBILE_ASSIGNMENT_STATE.NO_TRUCK) {
+    return (
+      <section className="fo-receiving-session__section" aria-label="My truck">
+        <p className="fo-receiving-session__kicker">My truck</p>
+        <p className="fo-muted">No active truck is assigned to you. Ask your dispatcher to correct the assignment.</p>
+      </section>
+    );
+  }
+  if (assignment.status === MOBILE_ASSIGNMENT_STATE.AMBIGUOUS) {
+    return (
+      <section className="fo-receiving-session__section" aria-label="My truck">
+        <p className="fo-receiving-session__kicker">My truck</p>
+        <p className="fo-warning" role="alert">More than one truck is assigned to you, so none can be used here until that is corrected.</p>
+      </section>
+    );
+  }
+  if (assignment.status !== MOBILE_ASSIGNMENT_STATE.ASSIGNED) return null;
+  return (
+    <section className="fo-receiving-session__section" aria-label="My truck">
+      <p className="fo-receiving-session__kicker">{assignment.label ?? assignment.location.locationId} · Cycle Count</p>
+      <Button
+        variant="primary"
+        disabled={busy}
+        onClick={() => onStart("MOBILE", assignment.location.locationId, assignment.label ?? assignment.location.locationId)}
+      >
+        Start Count
+      </Button>
+    </section>
+  );
 }
 
 function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, deps }) {
@@ -379,6 +549,9 @@ function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, dep
   const [listError, setListError] = useState(null);
   const [locationType, setLocationType] = useState("WAREHOUSE");
   const [locationId, setLocationId] = useState("");
+  const mobileAssignment = useAssignedMobileLocation(client);
+  const isTechnicianPersona = mobileAssignment.status !== MOBILE_ASSIGNMENT_STATE.LOADING
+    && mobileAssignment.status !== MOBILE_ASSIGNMENT_STATE.NOT_A_TECHNICIAN;
 
   const loadOpen = async () => {
     setListError(null);
@@ -416,23 +589,31 @@ function StartOrResume({ client, busy, notice, onScanBin, onStart, onResume, dep
         )}
       </section>
 
-      <section className="fo-receiving-session__section" aria-label="Count a warehouse or truck">
-        <p className="fo-receiving-session__kicker">Count a whole warehouse or truck</p>
-        <form onSubmit={(e) => { e.preventDefault(); onStart(locationType, locationId, locationId); }}>
-          <label>
-            Where
-            <select className="fo-input" value={locationType} onChange={(e) => setLocationType(e.target.value)} aria-label="Location type">
-              <option value="WAREHOUSE">Warehouse</option>
-              <option value="MOBILE">Truck</option>
-            </select>
-          </label>
-          <label>
-            Location
-            <input className="fo-input" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Location" />
-          </label>
-          <Button type="submit" variant="secondary" disabled={busy || locationId.trim() === ""}>Start counting</Button>
-        </form>
-      </section>
+      {isTechnicianPersona ? (
+        // Technician MOBILE persona: the governed assigned truck, never a company-wide picker.
+        <MyTruckCount assignment={mobileAssignment} busy={busy} onStart={onStart} />
+      ) : (
+        // Warehouse-persona manual selection -- unchanged. Location eligibility (active Warehouse,
+        // active Bin behind its conversion gate) is the SERVER's decision at sheet creation; this
+        // screen does not pre-judge it and needs no warehouse/bin read of its own.
+        <section className="fo-receiving-session__section" aria-label="Count a warehouse or truck">
+          <p className="fo-receiving-session__kicker">Count a whole warehouse or truck</p>
+          <form onSubmit={(e) => { e.preventDefault(); onStart(locationType, locationId, locationId); }}>
+            <label>
+              Where
+              <select className="fo-input" value={locationType} onChange={(e) => setLocationType(e.target.value)} aria-label="Location type">
+                <option value="WAREHOUSE">Warehouse</option>
+                <option value="MOBILE">Truck</option>
+              </select>
+            </label>
+            <label>
+              Location
+              <input className="fo-input" value={locationId} onChange={(e) => setLocationId(e.target.value)} aria-label="Location" />
+            </label>
+            <Button type="submit" variant="secondary" disabled={busy || locationId.trim() === ""}>Start counting</Button>
+          </form>
+        </section>
+      )}
     </div>
   );
 }

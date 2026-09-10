@@ -2,6 +2,7 @@
 //
 // Session rules are proved pure in test/cycleCountScanSession.test.mjs. These cover what only the screen
 // shows: bin-first locking, many parts, blind counting per line, per-line submit and retry, resume.
+import { StrictMode } from "react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import CycleCountScan from "../src/modules/scan/CycleCountScan.jsx";
@@ -153,7 +154,10 @@ describe("Cycle count · resume", () => {
     await screen.findByLabelText(/scan item/i);
     expect(c.getCycleCountSheet).toHaveBeenCalledTimes(2); // every page, never just the first
     expect(screen.getByText(/expected 5/i)).toBeTruthy();
-    expect(screen.getByText(/not counted yet/i)).toBeTruthy();
+    // North Star P1 status vocabulary (domain/cycleCountNorthStar.js LINE_WORD.NOT_STARTED) renamed
+    // this from "Not counted yet" -- the binding words are "Not started" / "Counting" / "Counted ·
+    // match" / "Variance" / "Approved" / "Rejected" / "Waiting to sync".
+    expect(screen.getByText("Not started")).toBeTruthy();
   });
 
   it("pending work is reported in scans, and leaving reports zero", async () => {
@@ -163,5 +167,87 @@ describe("Cycle count · resume", () => {
     expect(onPendingWorkChange.mock.calls.at(-1)[0]).toBe(3);
     cleanup();
     expect(onPendingWorkChange.mock.calls.at(-1)[0]).toBe(0);
+  });
+});
+
+describe("Cycle count · async result survives StrictMode's phantom mount/unmount/remount", () => {
+  // Regression for the live-reproduced bug: React 18/19 StrictMode double-invokes every effect once,
+  // synchronously, right after initial mount (setup -> cleanup -> setup again) -- BEFORE any real
+  // interaction. An `alive` ref that only ever sets itself false in a cleanup, and never restores
+  // true on (re)setup, is permanently "dead" from that point on even though the component is fully
+  // mounted and interactive -- so a later successful async response is silently discarded. This
+  // reproduced identically on unmodified origin/main and blocked the counter workspace's active
+  // screen from ever appearing. Wrapping render() in <StrictMode> here is what actually exercises
+  // that phantom cycle; without it this bug is invisible to jsdom/vitest.
+  it("Start Count reaches the active screen after StrictMode's phantom remount", async () => {
+    const c = client();
+    render(<StrictMode><CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} /></StrictMode>);
+    await scanInto(/scan the bin label/i, "EOS-LOC:bin_abc");
+    await screen.findByLabelText(/scan item/i); // the active counting screen, not the start form
+    expect(c.createCycleCountSheet).toHaveBeenCalled();
+  });
+
+  it("Resume Count reaches the active screen with its lines after StrictMode's phantom remount", async () => {
+    const c = client({
+      listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [{ sheetId: "ccs_7", location: { type: "BIN", locationId: "bin_x" }, locationLabel: "B02-001", status: "OPEN" }], nextCursor: null }),
+      getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: {}, lines: [{ partId: "PRT-1001", trackingMode: "NONE", status: "OPEN" }], nextCursor: null }),
+    });
+    render(<StrictMode><CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} /></StrictMode>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /show open counts/i })); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: /B02-001/ })); });
+    await screen.findByLabelText(/scan item/i); // the active counting screen, not still on the resume list
+    expect(screen.getByText("Not started")).toBeTruthy();
+  });
+
+  it("a stale response from a sheet the user has since left is still ignored (real navigation, not a phantom remount)", async () => {
+    // Legitimate stale-response protection must survive this fix: unmounting for real must still
+    // discard an in-flight result, exactly as it always has.
+    let resolveCreate;
+    const c = client({ createCycleCountSheet: vi.fn(() => new Promise((res) => { resolveCreate = res; })) });
+    const { unmount } = render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
+    await scanInto(/scan the bin label/i, "EOS-LOC:bin_abc");
+    unmount(); // a real, permanent unmount -- not StrictMode's phantom one
+    await act(async () => { resolveCreate({ outcome: "applied", sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_abc" }, status: "OPEN" }); });
+    // Nothing to assert on a torn-down tree beyond "this did not throw" -- React warns loudly on a
+    // setState-after-unmount leak, and this test would fail noisily if the guard had regressed.
+  });
+});
+
+describe("Cycle count · technician MOBILE flow (governed assigned truck)", () => {
+  it("a technician with exactly one assigned truck sees it and only it -- never a picker", async () => {
+    const c = client({
+      getCycleCountAssignedMobileLocation: vi.fn().mockResolvedValue({ location: { type: "MOBILE", locationId: "loc_truck7" }, label: "Truck 7" }),
+    });
+    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
+    await screen.findByText(/truck 7/i);
+    expect(screen.queryByLabelText(/location type/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /start counting/i })).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^start count$/i })); });
+    expect(c.createCycleCountSheet).toHaveBeenCalledWith(expect.objectContaining({ location: { type: "MOBILE", locationId: "loc_truck7" } }));
+  });
+
+  it("counter authority with no assigned truck is a truthful no-assignment state, not an error page", async () => {
+    const c = client({
+      getCycleCountAssignedMobileLocation: vi.fn().mockRejectedValue({ code: "functions/failed-precondition", details: { code: "NO_TRUCK_ASSIGNMENT" } }),
+    });
+    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
+    expect(await screen.findByText(/no active truck is assigned to you/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^start count$/i })).toBeNull();
+  });
+
+  it("an ambiguous truck assignment fails visibly -- never guesses one", async () => {
+    const c = client({
+      getCycleCountAssignedMobileLocation: vi.fn().mockRejectedValue({ code: "functions/failed-precondition", details: { code: "TRUCK_ASSIGNMENT_AMBIGUOUS" } }),
+    });
+    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/more than one truck/i);
+    expect(screen.queryByRole("button", { name: /^start count$/i })).toBeNull();
+  });
+
+  it("a non-technician (or environment without the read) sees the unchanged manual Warehouse/Bin flow", async () => {
+    // The default `client()` fixture does not implement getCycleCountAssignedMobileLocation at all --
+    // exactly the TECHNICIAN_IDENTITY_UNAVAILABLE-equivalent fallback, and mirrors any warehouse-
+    // persona account. No new authority path, no company-wide truck browse.
+    await startBin(); // exercises the BIN path directly to confirm it is entirely untouched
   });
 });

@@ -7524,6 +7524,54 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
     font-size: 11px; text-transform: uppercase; letter-spacing: .03em; flex: none; text-align: left; }
 }
 
+/* ═══════════════ Cycle Counts North Star P1 — frames 1b/1c (counter workspace) ═══════════════
+   Same `.fo-receiving-session__table` reflow contract (data-label stacked blocks on phone) applies
+   to `.fo-cc-lines` via that shared table class; the rules below add the sticky context header,
+   sticky session bar, blind-cell/waiting-to-sync treatment and the disabled-reason text (CC-D7)
+   that this feature adds on top of it — reusing existing tokens throughout, no new colors. */
+.fo-cc { position: relative; }
+.fo-cc-lines { width: 100%; }
+.fo-cc-sticky-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; background: var(--color-surface-inverse);
+  color: var(--verenward-stone); padding: 10px 16px; margin: 0 0 4px; border-radius: 8px; }
+.fo-cc-sticky-header__kicker { margin: 0; font: 600 10px var(--font-interface); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--verenward-stone); opacity: .75; }
+.fo-cc-sticky-header__place { margin: 0; font-family: var(--font-record-title); font-size: 17px;
+  font-weight: 700; color: #fff; }
+.fo-cc-sticky-header__tally { margin: 0; text-align: right; font-variant-numeric: tabular-nums;
+  font-size: 15px; font-weight: 700; }
+.fo-cc-sticky-header__tally span { font-size: 10.5px; font-weight: 400; opacity: .75; }
+
+.fo-cc-scanner-ready { margin: 4px 0 0; font-size: 12px; }
+
+/* Blind, per line: the "Hidden until submitted" cell is always the muted/quiet treatment — it must
+   never accidentally pick up the variance emphasis (rule #1, section 3). */
+.fo-cc-line__blind { font-style: italic; }
+
+/* Line tone — the same tone vocabulary as StatusPill, applied to the row/card itself so the whole
+   line reads at a glance, not only its pill. "Waiting to sync" is dashed, never success-styled. */
+.fo-cc-line--attention td:first-child { box-shadow: inset 3px 0 0 var(--verenward-gold, var(--color-warning)); }
+.fo-cc-line--critical td:first-child { box-shadow: inset 3px 0 0 var(--color-danger); }
+
+.fo-cc-disabled-reason { display: inline-block; margin-left: 8px; font-size: 12px;
+  color: var(--color-warning); font-weight: 600; }
+
+.fo-cc-sticky-bar { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 10px; background: var(--color-surface-elevated); border-top: 2px solid
+  var(--color-text-primary); padding: 12px 4px; margin-top: 4px; }
+
+.fo-cc-recap { display: grid; gap: 10px; max-width: 60ch; }
+.fo-cc-recap__kicker { margin: 0; font-family: var(--font-record-title); font-size: 22px; font-weight: 700; }
+
+.fo-cc-summary { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
+
+/* Phone: the sticky header/bar stay pinned; the line table already reflows to cards via the shared
+   `.fo-receiving-session__table` rule (fo-cc-lines carries that same class). */
+@media (max-width: 640px) {
+  .fo-cc-sticky-header { margin-left: -20px; margin-right: -20px; border-radius: 0; }
+  .fo-cc-sticky-bar { margin-left: -20px; margin-right: -20px; padding-left: 20px; padding-right: 20px; }
+}
+
 /* ═══════════════ Receiving North Star P1 — frame 1d (reorder linear journey) ═══════════════ */
 /* The step line labels the existing RECEIVE_STEP stage — presentation only, quiet uppercase. */
 .fo-receiving-session__step { margin: 0; font: 600 11px var(--font-interface);

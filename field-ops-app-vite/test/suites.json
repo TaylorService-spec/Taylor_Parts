@@ -154,6 +154,10 @@
       "runner": "node"
     },
     {
+      "file": "test/cycleCountNorthStar.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/cycleCountsBackOrdersNavHidden.test.mjs",
       "runner": "node"
     },
