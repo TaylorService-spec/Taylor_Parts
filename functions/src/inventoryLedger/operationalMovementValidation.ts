@@ -18,8 +18,7 @@ import {
   type PartTrackingMode,
   type LocationRef,
   type OperationalMovementValue,
-  type ValidationResult,
-} from "./operationalMovementTypes.js";
+  type ValidationResult, COUNTERPARTY_MOVEMENT_TYPES } from "./operationalMovementTypes.js";
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -94,7 +93,7 @@ export function validateOperationalMovementEvent(event: unknown, part: unknown):
   if (typeof event.type !== "string" || !(OPERATIONAL_MOVEMENT_TYPES as readonly string[]).includes(event.type)) return fail("type_invalid");
   const type = event.type as OperationalMovementType;
   const direction = MOVEMENT_DIRECTION[type];
-  const isTransfer = type === "TRANSFER_OUT" || type === "TRANSFER_IN";
+  const isTransfer = COUNTERPARTY_MOVEMENT_TYPES.has(type); // transfer OR relocation pair
 
   if (!isPlainObject(part) || !isNonEmptyString(part.partId)) return fail("part_invalid");
   if (!isTrackingMode(part.trackingMode)) return fail("tracking_mode_invalid");

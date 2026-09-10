@@ -19,10 +19,10 @@ function fail(reason: string): ValidationResult<TransferOrderValue> {
   return { valid: false, value: null, reason };
 }
 
-// Phase-4-scoped location reference: {type, locationId}, type restricted to WAREHOUSE|MOBILE. A
-// CUSTOMER/BIN/VENDOR/VIRTUAL endpoint (legal in the broader EI-P1a vocabulary) fails closed HERE --
-// deliberately narrower than the general ledger validator, because this authority does not implement
-// customer delivery.
+// Location reference: {type, locationId}, type restricted to WAREHOUSE|BIN|MOBILE (BIN added by BIN-P6,
+// Decision #170 Ruling 5). A CUSTOMER/VENDOR/VIRTUAL endpoint (legal in the broader EI-P1a vocabulary)
+// fails closed HERE -- deliberately narrower than the general ledger validator, because this authority
+// does not implement customer delivery.
 export function validateTransferLocationRef(ref: unknown): TransferLocationRef | null {
   if (!isPlainObject(ref)) return null;
   const keys = Object.keys(ref);

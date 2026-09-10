@@ -33,6 +33,9 @@
 // confident 0 for a shelf full of units. So a SERIAL-tracked part reports NOT_COUNTED_BY_QUANTITY
 // and points at the serialized registry, which is its actual authority.
 
+import { readBinParentage } from "../inventoryLocation/binParentage.js";
+import { binIdsReferenced } from "../inventoryLedger/locationOnHand.js";
+import type { BinParentage } from "../inventoryLedger/locationOnHand.js";
 import { getFirestore } from "firebase-admin/firestore";
 import { RECEIVING_ORDERS_COLLECTION } from "../inventoryReceiving/receivingTypes";
 import { normalizeCanonicalPurchaseOrder, deriveReceiptState, type CommittedReceipt } from "../purchasing/purchaseOrderNormalization";
@@ -110,10 +113,12 @@ export function composePartBalance(input: {
   readonly partId: string;
   readonly ledgerRows: ReadonlyArray<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string; workOrderId?: string }>;
   readonly eligibleWarehouseIds: ReadonlySet<string>;
+  /** Governed bin -> warehouse parentage for the bins these rows reference (Model A). */
+  readonly binParentage: BinParentage;
   readonly openOrderedQuantity: number | null;
   readonly serialTracked: boolean;
 }): PartBalanceProjection {
-  const { partId, ledgerRows, eligibleWarehouseIds, openOrderedQuantity, serialTracked } = input;
+  const { partId, ledgerRows, eligibleWarehouseIds, binParentage, openOrderedQuantity, serialTracked } = input;
 
   const rows = [...ledgerRows];
 
@@ -139,6 +144,7 @@ export function composePartBalance(input: {
   const onHandValue = sumLedgerEligibleOnHand(
     rows as Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
     new Set(eligibleWarehouseIds),
+    binParentage,
   );
 
   const onHand = onHandValue === null ? UNKNOWN : KNOWN(onHandValue);
@@ -164,6 +170,7 @@ export function composePartBalance(input: {
     const at = sumLedgerEligibleOnHand(
       rows as Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
       new Set([locationId]),
+      binParentage,
     );
     if (at !== null && at > 0) byLocation.push(Object.freeze({ locationId, quantity: at }));
   }
@@ -324,10 +331,13 @@ export async function readPartBalance(
     ] as const),
   );
 
+  // Model A: binned stock is still its Warehouse's stock. Only the bins these rows name are read.
+  const binParentage = await readBinParentage(db, binIdsReferenced(ledgerRows));
   return composePartBalance({
     partId,
     ledgerRows,
     eligibleWarehouseIds,
+    binParentage,
     openOrderedQuantity: sumOpenOrderedQuantity(openOrders, partId, receiptsByPurchaseOrder),
     serialTracked,
   });

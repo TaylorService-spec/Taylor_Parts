@@ -24,8 +24,7 @@ import {
   type LocationRef,
   type MovementOutcome,
   type LedgerDocClassification,
-  type DeserializedOperationalMovement,
-} from "./operationalMovementTypes.js";
+  type DeserializedOperationalMovement, COUNTERPARTY_MOVEMENT_TYPES } from "./operationalMovementTypes.js";
 import {
   validateOperationalMovementEvent,
   validateLocationRef,
@@ -113,7 +112,7 @@ export function deserializeOperationalMovement(data: unknown): DeserializedOpera
   const d = data as Record<string, unknown>;
   const type = d.type as OperationalMovementType;
   const direction = MOVEMENT_DIRECTION[type];
-  const isTransfer = type === "TRANSFER_OUT" || type === "TRANSFER_IN";
+  const isTransfer = COUNTERPARTY_MOVEMENT_TYPES.has(type); // transfer OR relocation pair
 
   const allowed = new Set(STORED_BASE_KEYS);
   if (!isTrackingMode(d.trackingMode)) throw new MalformedStoredRecordError("stored trackingMode invalid");

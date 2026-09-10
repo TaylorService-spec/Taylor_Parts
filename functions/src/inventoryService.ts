@@ -40,6 +40,8 @@
 // already committed (see transitionWorkOrder.ts's post-commit call to
 // triggerInventoryEffects()), and a failure here never rolls back or
 // blocks that already-successful transition.
+import { readBinParentage } from "./inventoryLocation/binParentage.js";
+import { binIdsReferenced } from "./inventoryLedger/locationOnHand.js";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { Transaction } from "firebase-admin/firestore";
 import {
@@ -114,7 +116,9 @@ async function getAvailableQuantity(tx: Transaction, partId: string): Promise<nu
   const snap = await tx.get(db().collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", partId));
   const rows = snap.docs.map((doc) => doc.data() as InventoryTransaction);
 
-  const onHand = sumLedgerEligibleOnHand(rows, eligibleWarehouseIds);
+  // Model A: binned stock is still this Warehouse's stock (Decision #160 / ADR-014).
+  const binParentage = await readBinParentage(db(), binIdsReferenced(rows as never), tx);
+  const onHand = sumLedgerEligibleOnHand(rows, eligibleWarehouseIds, binParentage);
   if (onHand === null) return null; // UNKNOWN — no physical evidence for this part anywhere.
   return Math.max(0, onHand - openCommitment(rows));
 }
