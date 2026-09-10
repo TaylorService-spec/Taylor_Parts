@@ -119,30 +119,36 @@ describe("put-away, through the real form", () => {
 // ═══════════════════════════════════════════ CYCLE COUNT
 
 describe("cycle count, through the real form", () => {
-  const session = {
-    cycleCountId: "CC-9", partId: "PRT-1001", trackingMode: "QUANTITY",
-    location: { type: "WAREHOUSE", locationId: "WH-1" }, status: "OPEN",
-  };
+  const session = { partId: "PRT-1001" };
+  const lookupPart = async (raw) => ({ catalogResult: { ok: true, parts: [{ invalid: false, partId: String(raw).trim(), internalPartNumber: "X", name: "Part", description: "", category: "", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", version: 1 }], invalid: [] }, aliasOutcome: { result: { result: "NOT_FOUND" } } });
 
-  const mount = (submitCycleCount, rt = runtime()) => {
-    const createCycleCount = vi.fn().mockResolvedValue({ cycleCountId: "CC-9", status: "COUNTING", trackingMode: "NONE" });
+  // The bin is scanned and the line opened ONLINE (the server snapshots what it expects); only the
+  // count itself -- one line -- is what may be queued.
+  const mount = (submitCycleCountLine, rt = runtime()) => {
+    const base = ({
+    createCycleCountSheet: vi.fn().mockResolvedValue({ outcome: "applied", sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_abc" }, status: "OPEN" }),
+    getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: { sheetId: "ccs_1", locationLabel: "A01-003" }, lines: [], nextCursor: null }),
+    openCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "OPEN", trackingMode: "NONE" }),
+    submitCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "COUNTED", countedQuantity: 1, variance: 0, expectedQuantity: 1 }),
+  });
     render(<CycleCountScan deps={{
-      cycleCountClient: { createCycleCount, submitCycleCount },
-      scanInputDeps, offline: rt,
+      cycleCountClient: { ...base, submitCycleCountLine },
+      lookupPart, scanInputDeps, offline: rt,
     }} />);
     return rt;
   };
 
-  /** Started, counted and submitted exactly as the existing cycle-count tests drive it. */
+  /** Bin scanned, one part counted, submitted -- exactly as the count screen is driven. */
   const countAndSubmit = async () => {
-    fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: session.partId } });
-    fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /start counting/i })); });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/scan the bin label/i), { target: { value: "EOS-LOC:bin_abc" } });
+      fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    });
     await act(async () => {
       fireEvent.change(screen.getByLabelText(/scan item/i), { target: { value: session.partId } });
       fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
     });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /submit this count/i })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /submit 1 count/i })); });
   };
 
   it("OFFLINE: queues a CYCLE_COUNT_SUBMIT with NO expected quantity or variance", async () => {
@@ -183,7 +189,7 @@ describe("cycle count, through the real form", () => {
     const { resolve } = await import("node:path");
     const src = readFileSync(resolve(process.cwd(), "src/modules/scan/CycleCountScan.jsx"), "utf8");
     expect(src).toMatch(/captureCycleCountSubmit/);
-    expect(src).not.toMatch(/captureReconcile|reconcileCycleCount\s*\(/);
+    expect(src).not.toMatch(/captureReconcile|reconcileCycleCount(Line)?\s*\(/);
   });
 });
 
@@ -257,11 +263,13 @@ describe("one submit policy", () => {
   it("the scanner itself never enqueues — an explicit action is always required", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
-    for (const file of ["src/modules/scan/PutAwayScan.jsx", "src/modules/scan/CycleCountScan.jsx"]) {
+    // Each screen's submit path: put-away's single-flight warehouse.submit, and the count screen's
+    // per-line submitLines (it submits many lines, each through the same submitOrQueue policy).
+    for (const [file, marker] of [["src/modules/scan/PutAwayScan.jsx", "warehouse.submit("], ["src/modules/scan/CycleCountScan.jsx", "const submitLines = useCallback("]]) {
       const src = readFileSync(resolve(process.cwd(), file), "utf8");
       // `capture*` may only appear inside the submit path, never in a scan handler. Asserted by
-      // proximity: the capture call must sit after a `warehouse.submit(` call in the same file.
-      const submitAt = src.indexOf("warehouse.submit(");
+      // proximity: the capture call must sit after the submit path's start in the same file.
+      const submitAt = src.indexOf(marker);
       const captureAt = src.search(/capture(PutAway|CycleCountSubmit)\(/);
       expect(submitAt, `${file} must have a submit path`).toBeGreaterThan(-1);
       expect(captureAt, `${file} must only capture inside the submit path`).toBeGreaterThan(submitAt);

@@ -33,7 +33,7 @@ const RECEIVE = () => captureReceive({ ...base, sourceId: "PO-1", partId: "TS-44
 const PUTAWAY = (dep) => capturePutAway({ ...base, partId: "TS-4410", destinationBinId: "BIN-A1", quantity: 4, dependsOnIntentId: dep, captureKey: "p1" });
 const DISPATCH = () => captureTransferDispatch({ ...base, transferOrderId: "TR-1042", sourceId: "wh-main", destinationId: "truck-12", captureKey: "d1" });
 const RECEIVE_T = (dep) => captureTransferReceive({ ...base, transferOrderId: "TR-1042", destinationId: "truck-12", dependsOnIntentId: dep, captureKey: "tr1" });
-const COUNT = () => captureCycleCountSubmit({ ...base, cycleCountId: "CC-9", countedQuantity: 12, partId: "TS-4410", locationId: "BIN-A1", captureKey: "c1" });
+const COUNT = () => captureCycleCountSubmit({ ...base, sheetId: "ccs_9", partId: "TS-4410", countedQuantity: 12, locationId: "BIN-A1", captureKey: "c1" });
 const RETURN = () => captureReturnIntake({ ...base, sourceId: "CUST-5", partId: "TS-4410", quantity: 1, condition: "DAMAGED", captureKey: "ri1" });
 
 /** A recording command set. Counts calls, so a duplicate business effect cannot hide. */
@@ -501,7 +501,7 @@ describe("FLAGSHIP — cycle count", () => {
     await store.save(UID, { intents: [built.value] }, 1);
     const loaded = await (createIntentStore({ adapter: localStorageAdapter(storage), namespace: WAREHOUSE_STORE_NAMESPACE })).load(UID);
 
-    const cmd = recorder({ ok: true, serverIds: { cycleCountId: "CC-9", status: "COUNTED" } });
+    const cmd = recorder({ ok: true, serverIds: { sheetId: "ccs_9", partId: "TS-4410", status: "COUNTED" } });
     const r = await drainQueue(loaded.record.intents, { principalUid: UID, deps: { session: okSession, commands: allCommands(cmd) } });
     assert.equal(cmd.calls.length, 1);
     assert.equal(r.queue[0].resultingServerIds.status, "COUNTED", "COUNTED -- awaiting reconciliation, not reconciled");

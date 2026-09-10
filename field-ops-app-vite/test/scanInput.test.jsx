@@ -236,3 +236,21 @@ describe("Scan input (the camera degrades honestly)", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
   });
 });
+
+describe("Scan input (an asynchronous verdict)", () => {
+  // A workflow that must ask the server answers with a promise. Announcing "accepted" before it
+  // settles told operators a refused or duplicate scan had gone in (found by the BIN-P8 count screen).
+  it("announces the workflow's REFUSAL when its promise resolves, not an immediate accept", async () => {
+    render(<ScanInput onScan={() => Promise.resolve({ feedback: FEEDBACK.REJECTED, detail: "That serial is already counted." })} deps={deps()} />);
+    wedge("S-1");
+    expect(await screen.findByText(/already counted/i)).toBeTruthy();
+    expect(document.activeElement).toBe(field());
+  });
+
+  it("a promise that rejects is announced as a refusal", async () => {
+    render(<ScanInput onScan={() => Promise.reject(new Error("offline"))} deps={deps()} />);
+    wedge("S-1");
+    await waitFor(() => expect(document.body.textContent).toMatch(/S-1/));
+    expect(document.body.textContent).toMatch(/S-1 was not accepted/);
+  });
+});

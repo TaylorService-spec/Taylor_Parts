@@ -218,7 +218,9 @@ describe("the boundary of the adoption", () => {
       "src/modules/receiving/MultiScanReceiving.jsx",
     ]) {
       const src = readFileSync(resolve(process.cwd(), file), "utf8");
-      expect(src, `${file} must route through the shared policy`).toMatch(/useWarehouseSubmit/);
+      // The shared policy is submitOrQueue; useWarehouseSubmit is its single-flight hook. Cycle count
+      // submits many LINES concurrently, so it calls the same policy directly -- still no private rule.
+      expect(src, `${file} must route through the shared policy`).toMatch(/useWarehouseSubmit|submitOrQueue/);
       expect(src, `${file} must not use the old unscoped queue`).not.toMatch(/useSubmissionQueue/);
     }
   });

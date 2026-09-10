@@ -1,208 +1,167 @@
-// CYCLE COUNT BY SCAN — the mounted surface (vitest + jsdom).
+// SCAN · CYCLE COUNT — the mounted multi-part screen (BIN-P8 / A2), vitest + jsdom.
 //
-// The session rules are proved pure in test/cycleCountScanSession.test.mjs. These cover what only
-// the screen can show: that no expected figure ever appears while counting, that submitting is not
-// adjusting, and that a refusal renders as a refusal.
+// Session rules are proved pure in test/cycleCountScanSession.test.mjs. These cover what only the screen
+// shows: bin-first locking, many parts, blind counting per line, per-line submit and retry, resume.
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import CycleCountScan from "../src/modules/scan/CycleCountScan.jsx";
 
 afterEach(cleanup);
 
-// Tests fire identical scans within the same millisecond, which no real scanner can do. The shared
-// input suppresses that as a wedge stutter, so every test drives an advancing clock through the
-// documented seam — otherwise these would be measuring the anti-stutter guard, not the workflow.
+// Identical scans in one millisecond are suppressed as wedge stutter; drive an advancing clock.
 let clock = 0;
-const advancingClock = () => { clock += 1000; return clock; };
-const scanInputDeps = { now: advancingClock };
+const scanInputDeps = { now: () => { clock += 1000; return clock; } };
 
-
-const client = (over = {}) => ({
-  createCycleCount: vi.fn().mockResolvedValue({ cycleCountId: "CC-1", status: "COUNTING", trackingMode: "NONE" }),
-  submitCycleCount: vi.fn().mockResolvedValue({ outcome: "submitted", cycleCountId: "CC-1", status: "SUBMITTED", countedQuantity: 2, variance: -1 }),
-  reconcileCycleCount: vi.fn(),
-  cancelCycleCount: vi.fn(),
-  ...over,
+const PARTS = {
+  "PRT-1001": { invalid: false, partId: "PRT-1001", internalPartNumber: "TS-1001", name: "Relay", description: "", category: "", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", version: 1 },
+  "PRT-1002": { invalid: false, partId: "PRT-1002", internalPartNumber: "TS-1002", name: "Fuse", description: "", category: "", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", version: 1 },
+  "PRT-2001": { invalid: false, partId: "PRT-2001", internalPartNumber: "TS-2001", name: "Compressor", description: "", category: "", status: "ACTIVE", stockingUnit: "EACH", controlType: "SERIALIZED", stockingClass: "STOCKED", version: 1 },
+};
+const lookupPart = vi.fn(async (raw) => {
+  const p = PARTS[String(raw).trim().toUpperCase()];
+  return { catalogResult: { ok: true, parts: p ? [p] : [], invalid: [] }, aliasOutcome: { result: { result: "NOT_FOUND" } } };
 });
 
-async function startCount(c = client(), { trackingMode = "NONE" } = {}) {
-  render(<CycleCountScan deps={{ cycleCountClient: c, scanInputDeps }} />);
-  fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: "PRT-1001" } });
-  fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
-  if (trackingMode !== "NONE") {
-    fireEvent.change(screen.getByLabelText(/tracking mode/i), { target: { value: trackingMode } });
-  }
-  fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
+function client(over = {}) {
+  const tracking = (id) => (PARTS[id]?.controlType === "SERIALIZED" ? "SERIAL" : "NONE");
+  return {
+    createCycleCountSheet: vi.fn().mockResolvedValue({ outcome: "applied", sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_abc" }, status: "OPEN" }),
+    getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: { sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_abc" }, locationLabel: "A01-003", status: "OPEN" }, lines: [], nextCursor: null }),
+    // The open response deliberately carries NO expected value -- even if a server bug added one, the screen must not show it.
+    openCycleCountLine: vi.fn(async ({ partId }) => ({ outcome: "applied", sheetId: "ccs_1", partId, trackingMode: tracking(partId), status: "OPEN", expectedQuantity: 77 })),
+    submitCycleCountLine: vi.fn(async (req) => ({
+      outcome: "applied", status: "COUNTED", partId: req.partId,
+      ...(req.countedSerialNumbers ? { countedSerialNumbers: req.countedSerialNumbers, serialVariance: { missing: [], unexpected: [] }, expectedQuantity: req.countedSerialNumbers.length }
+        : { countedQuantity: req.countedQuantity, variance: req.countedQuantity - 5, expectedQuantity: 5 }),
+    })),
+    cancelCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "CANCELLED" }),
+    listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [], nextCursor: null }),
+    ...over,
+  };
+}
+
+async function scanInto(label, value) {
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+  });
+}
+async function startBin(c = client(), deps = {}) {
+  render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps, ...deps }} />);
+  await scanInto(/scan the bin label/i, "EOS-LOC:bin_abc");
   await screen.findByLabelText(/scan item/i);
   return c;
 }
+const item = (v) => scanInto(/scan item|scan the serial number/i, v);
 
-const scan = (value) => {
-  fireEvent.change(screen.getByLabelText(/scan item/i), { target: { value } });
-  fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
-};
-
-// ────────────────────────────────────────────── the count is blind
-
-describe("Cycle count scan (blind, by design)", () => {
-  it("shows NO expected figure anywhere while counting", async () => {
-    // DECISIONS #111. A helpful "expected: 12" would tell a counter when to stop looking.
-    await startCount(client({
-      // Even if the create response carried one, the screen must not render it.
-      createCycleCount: vi.fn().mockResolvedValue({ cycleCountId: "CC-1", status: "COUNTING", trackingMode: "NONE", expectedQuantity: 12 }),
-    }));
-    scan("PRT-1001");
-    // The VALUE must not appear. The word "expected" does appear — in the sentence explaining why
-    // the count is blind — and banning the word would ban the explanation, so this checks the
-    // rendered text for the figure and for any variance wording instead.
-    const body = document.body.textContent;
-    expect(body).not.toMatch(/\b12\b/);
-    expect(body).not.toMatch(/expected[:\s]+\d/i);
-    expect(body).not.toMatch(/variance/i);
-    expect(body).not.toMatch(/\b(over|short) by\b/i);
+describe("Cycle count · bin first, many parts", () => {
+  it("scanning a bin label locks the sheet to that Bin, shown by its code", async () => {
+    const c = await startBin();
+    expect(c.createCycleCountSheet).toHaveBeenCalledWith(expect.objectContaining({ location: { type: "BIN", locationId: "bin_abc" } }));
+    expect(screen.getByText("A01-003")).toBeTruthy();
   });
 
-  it("says WHY it is blind, rather than looking like missing information", async () => {
-    await startCount();
-    expect(screen.getByText(/will not be shown what was expected until after you submit/i)).toBeTruthy();
+  it("a bin the server refuses (not converted) says why and starts nothing", async () => {
+    const c = client({ createCycleCountSheet: vi.fn().mockRejectedValue({ code: "functions/failed-precondition", details: { code: "LOCATION_INVALID" } }) });
+    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
+    await scanInto(/scan the bin label/i, "EOS-LOC:bin_abc");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/bin conversion/i);
+    expect(screen.queryByLabelText(/scan item/i)).toBeNull();
   });
 
-  it("the only number while counting is what has been scanned", async () => {
-    await startCount();
-    scan("PRT-1001");
-    scan("PRT-1001");
-    expect(screen.getByText(/2 scanned/)).toBeTruthy();
-  });
-});
-
-// ────────────────────────────────────────────── counting is not adjusting
-
-describe("Cycle count scan (observation is not adjustment)", () => {
-  it("offers NO reconcile or approve control", async () => {
-    const c = await startCount();
-    scan("PRT-1001");
-    for (const forbidden of [/reconcile/i, /approve/i, /adjust/i, /accept/i]) {
-      expect(screen.queryByRole("button", { name: forbidden })).toBeNull();
-    }
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    await waitFor(() => expect(c.submitCycleCount).toHaveBeenCalled());
-    expect(c.reconcileCycleCount).not.toHaveBeenCalled();
+  it("repeat scans aggregate; each new part opens its own line; nothing expected is shown", async () => {
+    const c = await startBin();
+    await item("PRT-1001"); await item("PRT-1001"); await item("PRT-1002");
+    expect(c.openCycleCountLine).toHaveBeenCalledTimes(2);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(document.body.textContent).not.toMatch(/\b77\b/);
+    expect(document.body.textContent).not.toMatch(/expected \d/i);
+    expect(screen.getByRole("button", { name: /submit 2 counts/i })).toBeTruthy();
   });
 
-  it("says on success that nothing was adjusted and a manager reviews separately", async () => {
-    await startCount();
-    scan("PRT-1001");
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    const ok = await screen.findByText(/nothing has been adjusted/i);
-    expect(ok.textContent).toMatch(/manager reviews/i);
+  it("serials stay individual and a duplicate is refused", async () => {
+    await startBin();
+    await item("PRT-2001"); await item("S-1");
+    await item("PRT-2001"); await item("S-1");
+    expect(screen.getByText(/already counted/i)).toBeTruthy();
+    expect(screen.getByText("S-1")).toBeTruthy();
   });
 
-  it("submits ONLY the counted figure — no decision, no reason", async () => {
-    const c = await startCount();
-    scan("PRT-1001");
-    scan("PRT-1001");
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    await waitFor(() => expect(c.submitCycleCount).toHaveBeenCalled());
-    expect(c.submitCycleCount).toHaveBeenCalledWith({ cycleCountId: "CC-1", countedQuantity: 2 });
+  it("an unknown code is listed, never dropped, and opens nothing", async () => {
+    const c = await startBin();
+    await item("NOPE-1");
+    expect(screen.getByLabelText(/scans that did not match/i).textContent).toMatch(/NOPE-1/);
+    expect(c.openCycleCountLine).not.toHaveBeenCalled();
+  });
+
+  it("correction before submit: −1 and 'None here' (a real zero)", async () => {
+    const c = await startBin();
+    await item("PRT-1001"); await item("PRT-1001");
+    fireEvent.click(screen.getByRole("button", { name: "−1" }));
+    fireEvent.click(screen.getByRole("button", { name: /none here/i }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /submit 1 count/i })); });
+    expect(c.submitCycleCountLine).toHaveBeenCalledWith({ sheetId: "ccs_1", partId: "PRT-1001", countedQuantity: 0 });
   });
 });
 
-// ────────────────────────────────────────────── counting
-
-describe("Cycle count scan (what is on the shelf)", () => {
-  it("creates the count with the part and location, and nothing else", async () => {
-    const c = await startCount();
-    expect(c.createCycleCount).toHaveBeenCalledTimes(1);
-    const payload = c.createCycleCount.mock.calls[0][0];
-    expect(payload.partId).toBe("PRT-1001");
-    expect(payload.location).toEqual({ type: "WAREHOUSE", locationId: "WH-1" });
-    expect(payload.idempotencyKey).toBeTruthy();
-    expect(payload.expectedQuantity).toBeUndefined();
+describe("Cycle count · submit per line", () => {
+  it("each line submits on its own and ONLY then shows its own expected value", async () => {
+    const c = await startBin();
+    await item("PRT-1001"); await item("PRT-1002");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /submit 2 counts/i })); });
+    await waitFor(() => expect(c.submitCycleCountLine).toHaveBeenCalledTimes(2));
+    expect(await screen.findAllByText(/expected 5/i)).toHaveLength(2);
   });
 
-  it("an EMPTY shelf is submittable — that is the finding", async () => {
-    const c = await startCount();
-    expect(screen.getByRole("button", { name: /submit this count/i }).disabled).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    await waitFor(() => expect(c.submitCycleCount).toHaveBeenCalledWith({ cycleCountId: "CC-1", countedQuantity: 0 }));
-  });
-
-  it("a DIFFERENT part is refused and blocks submission", async () => {
-    await startCount();
-    scan("PRT-1001");
-    scan("PRT-9999");
-    expect(screen.getAllByText(/different part.*count it separately/i).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /submit this count/i }).disabled).toBe(true);
-  });
-
-  it("a mis-scan can be undone", async () => {
-    await startCount();
-    scan("PRT-9999");
-    expect(screen.getByRole("button", { name: /submit this count/i }).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: /undo last scan/i }));
-    expect(screen.getByRole("button", { name: /submit this count/i }).disabled).toBe(false);
-  });
-
-  it("a serialized count submits the LIST of serials, not a number", async () => {
-    const c = await startCount(
-      client({ createCycleCount: vi.fn().mockResolvedValue({ cycleCountId: "CC-1", status: "COUNTING", trackingMode: "SERIAL" }) }),
-      { trackingMode: "SERIAL" },
-    );
-    scan("SN-1");
-    scan("SN-2");
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    await waitFor(() => expect(c.submitCycleCount).toHaveBeenCalled());
-    expect(c.submitCycleCount).toHaveBeenCalledWith({ cycleCountId: "CC-1", countedSerialNumbers: ["SN-1", "SN-2"] });
-  });
-
-  it("a serialized result keeps MISSING and UNEXPECTED separate", async () => {
-    // Netting them to one number would hide that two different units are involved.
-    await startCount(
-      client({
-        createCycleCount: vi.fn().mockResolvedValue({ cycleCountId: "CC-1", status: "COUNTING", trackingMode: "SERIAL" }),
-        submitCycleCount: vi.fn().mockResolvedValue({
-          status: "SUBMITTED", serialVariance: { missing: ["SN-9"], unexpected: ["SN-5"] },
-        }),
+  it("a technical failure is retried alone; a business refusal is not offered a retry", async () => {
+    let first = true;
+    const c = await startBin(client({
+      submitCycleCountLine: vi.fn(async (req) => {
+        if (req.partId === "PRT-1001" && first) { first = false; throw { code: "functions/unavailable" }; }
+        if (req.partId === "PRT-1002") throw { code: "functions/failed-precondition", details: { code: "STATUS_INVALID" } };
+        return { outcome: "applied", status: "COUNTED", countedQuantity: req.countedQuantity, variance: 0, expectedQuantity: req.countedQuantity };
       }),
-      { trackingMode: "SERIAL" },
-    );
-    scan("SN-5");
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    const ok = (await screen.findByText(/expected but not found/i)).closest("section");
-    expect(ok.textContent).toMatch(/expected but not found.*SN-9/i);
-    expect(ok.textContent).toMatch(/found but not expected.*SN-5/i);
+    }));
+    await item("PRT-1001"); await item("PRT-1002");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /submit 2 counts/i })); });
+    const retry = await screen.findByRole("button", { name: /try again \(1\)/i });
+    await act(async () => { fireEvent.click(retry); });
+    await waitFor(() => expect(c.submitCycleCountLine.mock.calls.filter(([r]) => r.partId === "PRT-1001")).toHaveLength(2));
+    expect(c.submitCycleCountLine.mock.calls.filter(([r]) => r.partId === "PRT-1002")).toHaveLength(1);
+    expect(screen.getByText(/no longer allows/i)).toBeTruthy();
+  });
+
+  it("submitting moves no stock -- the screen has no reconcile path", async () => {
+    const c = await startBin();
+    expect(c.reconcileCycleCountLine).toBeUndefined();
+    expect(screen.queryByRole("button", { name: /approve|reconcile/i })).toBeNull();
   });
 });
 
-// ────────────────────────────────────────────── refusals
-
-describe("Cycle count scan (refusals are told truthfully)", () => {
-  it("a DENIED create says so, and does not look like a failed count", async () => {
-    // Every inventory.cycleCount.* capability is inert today.
-    const err = Object.assign(new Error("denied"), { code: "functions/permission-denied" });
-    render(<CycleCountScan deps={{ cycleCountClient: client({ createCycleCount: vi.fn().mockRejectedValue(err) }), scanInputDeps }} />);
-    fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: "PRT-1001" } });
-    fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
-    fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/not authorized to count stock/i);
-    expect(alert.textContent).toMatch(/not been granted or switched on/i);
+describe("Cycle count · resume", () => {
+  it("an open sheet resumes with its lines; counted lines keep their own figures", async () => {
+    const c = client({
+      listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [{ sheetId: "ccs_7", location: { type: "BIN", locationId: "bin_x" }, locationLabel: "B02-001", status: "OPEN" }], nextCursor: null }),
+      getCycleCountSheet: vi.fn()
+        .mockResolvedValueOnce({ sheet: {}, lines: [{ partId: "PRT-1001", trackingMode: "NONE", status: "COUNTED", countedQuantity: 4, variance: -1, expectedQuantity: 5 }], nextCursor: "c1" })
+        .mockResolvedValueOnce({ sheet: {}, lines: [{ partId: "PRT-1002", trackingMode: "NONE", status: "OPEN" }], nextCursor: null }),
+    });
+    render(<CycleCountScan deps={{ cycleCountClient: c, lookupPart, scanInputDeps }} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /show open counts/i })); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: /B02-001/ })); });
+    await screen.findByLabelText(/scan item/i);
+    expect(c.getCycleCountSheet).toHaveBeenCalledTimes(2); // every page, never just the first
+    expect(screen.getByText(/expected 5/i)).toBeTruthy();
+    expect(screen.getByText(/not counted yet/i)).toBeTruthy();
   });
 
-  it("a DENIED submit leaves the count unrecorded and says nothing was recorded", async () => {
-    const err = Object.assign(new Error("boom"), { code: "functions/internal" });
-    await startCount(client({ submitCycleCount: vi.fn().mockRejectedValue(err) }));
-    scan("PRT-1001");
-    fireEvent.click(screen.getByRole("button", { name: /submit this count/i }));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/nothing was recorded/i);
-  });
-
-  it("a missing part or location is caught before any call is made", async () => {
-    const c = client();
-    render(<CycleCountScan deps={{ cycleCountClient: c, scanInputDeps }} />);
-    fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
-    expect(await screen.findByRole("alert")).toBeTruthy();
-    expect(c.createCycleCount).not.toHaveBeenCalled();
+  it("pending work is reported in scans, and leaving reports zero", async () => {
+    const onPendingWorkChange = vi.fn();
+    await startBin(client(), { onPendingWorkChange });
+    await item("PRT-1001"); await item("PRT-1001"); await item("PRT-1001");
+    expect(onPendingWorkChange.mock.calls.at(-1)[0]).toBe(3);
+    cleanup();
+    expect(onPendingWorkChange.mock.calls.at(-1)[0]).toBe(0);
   });
 });

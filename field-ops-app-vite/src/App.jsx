@@ -738,8 +738,8 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // (functions/src/cycleCount/*), replacing the prior route stub (navConfig.js's `cycleCounts` entry
   // stays `navHidden: true` -- that flag is owned by the nav orchestrator, not changed here). There is
   // NO live Firestore read for cycle_counts (Rules-denied, Admin-SDK-only like receiving_orders), so
-  // this workspace has no accessVersion-driven read to thread; its state is session-scoped, built
-  // entirely from the four governed callables' own responses (see useCycleCountActions.js).
+  // this workspace has no accessVersion-driven read to thread; its state is server-backed, read
+  // through the A4 durable read (listCycleCountSheets / getCycleCountSheet); see CycleCounts.jsx.
   if (domain.key === "inventory" && item.key === "cycleCounts") {
     return <CycleCounts />;
   }

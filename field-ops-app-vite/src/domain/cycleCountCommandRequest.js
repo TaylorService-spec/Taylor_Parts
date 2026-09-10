@@ -1,84 +1,66 @@
-// Enterprise Inventory -- Cycle Count operating authority: PURE request builders for the cycle count
-// command family (functions/src/cycleCount/cycleCountCallables.ts). No Firebase, no I/O;
-// Node-importable and unit-testable. Mirrors domain/transferCommandRequest.js's validate-then-build
-// shape and idempotency-key factory convention.
+// Cycle Count -- PURE request builders for the A1 sheet/line callables. No Firebase, no I/O.
 //
-// Endpoint fence: WAREHOUSE + MOBILE(truck) only, matching the backend's scope.
+// Validation here is for the operator's benefit (say what is wrong before a round trip); the server
+// re-validates everything and is the authority. Nothing here ever carries an expected quantity, a
+// variance or a materiality decision -- those are server-derived.
 
-const ENDPOINT_TYPES = new Set(["WAREHOUSE", "MOBILE"]);
+// BIN since BIN-P7: a Bin is an admissible SHAPE; whether it may be counted is the server's
+// conversion-gated eligibility policy.
+const LOCATION_TYPES = new Set(["WAREHOUSE", "MOBILE", "BIN"]);
+const REVIEW_DECISIONS = new Set(["APPROVE", "REJECT"]);
 
-function isNonEmptyString(v) {
-  return typeof v === "string" && v.trim() !== "";
-}
-function isNonNegativeInteger(v) {
-  return typeof v === "number" && Number.isInteger(v) && v >= 0;
-}
+const isNonEmptyString = (v) => typeof v === "string" && v.trim() !== "";
+const isNonNegativeInteger = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
 
 export function makeIdempotencyKey() {
   const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
-  if (c && typeof c.randomUUID === "function") return `cyc_${c.randomUUID()}`;
-  return `cyc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+  if (c && typeof c.randomUUID === "function") return `ccs_${c.randomUUID()}`;
+  return `ccs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
 }
 
-// Validate + normalize a New Cycle Count form draft into the EXACT createCycleCount request shape.
-// `draft`: { partId, locationType, locationId }. Returns { ok, errors, value }.
-export function buildCreateCycleCountRequest(draft, { idempotencyKey } = {}) {
-  const errors = {};
+/** A sheet is one governed location. It names no Part: Parts become lines as they are counted. */
+export function buildCreateSheetRequest(draft, { idempotencyKey } = {}) {
   const src = draft && typeof draft === "object" ? draft : {};
-
-  if (!isNonEmptyString(src.partId)) errors.partId = "Part is required.";
-  if (!ENDPOINT_TYPES.has(src.locationType)) errors.locationType = "Location type must be a warehouse or a truck.";
+  const errors = {};
+  if (!LOCATION_TYPES.has(src.locationType)) errors.locationType = "Choose a warehouse, a bin or a truck.";
   if (!isNonEmptyString(src.locationId)) errors.locationId = "Location is required.";
-
-  const key = isNonEmptyString(idempotencyKey) ? idempotencyKey : makeIdempotencyKey();
   if (Object.keys(errors).length > 0) return { ok: false, errors, value: null };
-
   return {
     ok: true,
     errors: {},
     value: {
-      partId: src.partId.trim(),
-      location: { type: src.locationType, locationId: src.locationId },
-      idempotencyKey: key,
+      location: { type: src.locationType, locationId: src.locationId.trim() },
+      idempotencyKey: isNonEmptyString(idempotencyKey) ? idempotencyKey : makeIdempotencyKey(),
     },
   };
 }
 
-// Validate + normalize a submit-count draft. `trackingMode` decides which shape is required.
-// NONE: { cycleCountId, countedQuantity }. SERIAL: { cycleCountId, countedSerialNumbers: string[] }.
-export function buildSubmitCycleCountRequest(cycleCountId, trackingMode, draft) {
-  if (!isNonEmptyString(cycleCountId)) return { ok: false, errors: { cycleCountId: "Missing cycle count." }, value: null };
-  const errors = {};
+export function buildLineRequest(sheetId, partId) {
+  if (!isNonEmptyString(sheetId) || !isNonEmptyString(partId)) return { ok: false, value: null };
+  return { ok: true, value: { sheetId, partId } };
+}
+
+export function buildSheetRequest(sheetId) {
+  if (!isNonEmptyString(sheetId)) return { ok: false, value: null };
+  return { ok: true, value: { sheetId } };
+}
+
+/** The observed count for ONE line: a quantity (zero is a real count), or the list of serials seen. */
+export function buildSubmitLineRequest(sheetId, partId, trackingMode, draft) {
+  if (!isNonEmptyString(sheetId) || !isNonEmptyString(partId)) return { ok: false, errors: { line: "Missing line." }, value: null };
   const src = draft && typeof draft === "object" ? draft : {};
-
   if (trackingMode === "SERIAL") {
-    const serials = Array.isArray(src.countedSerialNumbers) ? src.countedSerialNumbers.filter((s) => isNonEmptyString(s)) : [];
-    if (new Set(serials).size !== serials.length) errors.countedSerialNumbers = "Counted serial numbers must be unique.";
-    if (Object.keys(errors).length > 0) return { ok: false, errors, value: null };
-    return { ok: true, errors: {}, value: { cycleCountId, countedSerialNumbers: serials } };
+    const serials = Array.isArray(src.countedSerialNumbers) ? src.countedSerialNumbers.filter(isNonEmptyString).map((s) => s.trim()) : [];
+    if (new Set(serials).size !== serials.length) return { ok: false, errors: { countedSerialNumbers: "Counted serial numbers must be unique." }, value: null };
+    return { ok: true, errors: {}, value: { sheetId, partId, countedSerialNumbers: serials } };
   }
-
-  const countedQuantity = typeof src.countedQuantity === "string" ? Number(src.countedQuantity) : src.countedQuantity;
-  if (!isNonNegativeInteger(countedQuantity)) errors.countedQuantity = "Counted quantity must be a whole number, zero or greater.";
-  if (Object.keys(errors).length > 0) return { ok: false, errors, value: null };
-  return { ok: true, errors: {}, value: { cycleCountId, countedQuantity } };
+  const q = typeof src.countedQuantity === "string" ? Number(src.countedQuantity) : src.countedQuantity;
+  if (!isNonNegativeInteger(q)) return { ok: false, errors: { countedQuantity: "Counted quantity must be a whole number, zero or greater." }, value: null };
+  return { ok: true, errors: {}, value: { sheetId, partId, countedQuantity: q } };
 }
 
-const REVIEW_DECISIONS = new Set(["APPROVE", "REJECT"]);
-
-// Reconcile: { cycleCountId, reason?, decision }. `decision` is the M23 manager-review step -- APPROVE
-// (the pre-M23 default meaning of "reconcile": stage the ADJUSTED ledger correction) or REJECT (record
-// the count as disputed, no ledger effect). A reason is required by the SERVER only when there is a
-// non-zero variance -- this builder does not pre-empt that decision, it just shapes what was typed.
-export function buildReconcileCycleCountRequest(cycleCountId, reasonText, decision = "APPROVE") {
-  if (!isNonEmptyString(cycleCountId)) return { ok: false, value: null };
-  if (!REVIEW_DECISIONS.has(decision)) return { ok: false, value: null };
-  const reason = typeof reasonText === "string" && reasonText.trim() !== "" ? reasonText.trim() : undefined;
-  return { ok: true, value: { cycleCountId, decision, ...(reason ? { reason } : {}) } };
-}
-
-// The cycleCountId-only request (cancel) shares one exact shape.
-export function buildCycleCountIdOnlyRequest(cycleCountId) {
-  if (!isNonEmptyString(cycleCountId)) return { ok: false, value: null };
-  return { ok: true, value: { cycleCountId } };
+export function buildReconcileLineRequest(sheetId, partId, reasonText, decision = "APPROVE") {
+  if (!isNonEmptyString(sheetId) || !isNonEmptyString(partId) || !REVIEW_DECISIONS.has(decision)) return { ok: false, value: null };
+  const reason = isNonEmptyString(reasonText) ? reasonText.trim() : undefined;
+  return { ok: true, value: { sheetId, partId, decision, ...(reason ? { reason } : {}) } };
 }

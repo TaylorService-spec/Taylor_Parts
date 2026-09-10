@@ -268,7 +268,7 @@ export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
   [SCAN_WORKFLOW.TRANSFER]:
     "Check a transfer against what you are physically holding, then send it or receive it.",
   [SCAN_WORKFLOW.CYCLE_COUNT]:
-    "Scan everything you can find of one part at one location, and record what you saw. Counting changes nothing on its own.",
+    "Scan a bin, then everything on it -- many parts, serials included -- and record what you saw. Counting changes nothing on its own.",
   [SCAN_WORKFLOW.PUT_AWAY]:
     "Record which bin you stowed stock in. It notes where the stock is, not what there is — counts do not change.",
   [SCAN_WORKFLOW.PICK]:

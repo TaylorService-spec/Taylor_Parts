@@ -18,7 +18,7 @@
 // What this CANNOT prove is stated plainly rather than implied: no rendered pixel is measured, so
 // genuine overflow at 360px and true tap accuracy remain a device check. These assertions catch the
 // removal of the properties that make those pass, which is the regression that actually happens.
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -208,15 +208,19 @@ describe("persistent context while scanning", () => {
 
 describe("navigating away from work in progress", () => {
   const client = () => ({
-    createCycleCount: vi.fn().mockResolvedValue({ outcome: "applied", cycleCountId: "cc_1", trackingMode: "NONE", status: "COUNTING" }),
-    submitCycleCount: vi.fn().mockResolvedValue({ outcome: "applied", status: "SUBMITTED" }),
+    createCycleCountSheet: vi.fn().mockResolvedValue({ outcome: "applied", sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_abc" }, status: "OPEN" }),
+    getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: { sheetId: "ccs_1", locationLabel: "A01-003" }, lines: [], nextCursor: null }),
+    openCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "OPEN", trackingMode: "NONE" }),
+    submitCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "COUNTED", countedQuantity: 1, variance: 0, expectedQuantity: 1 }),
   });
+  const lookupPart = async (raw) => ({ catalogResult: { ok: true, parts: [{ invalid: false, partId: String(raw).trim(), internalPartNumber: "X", name: "Part", description: "", category: "", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", version: 1 }], invalid: [] }, aliasOutcome: { result: { result: "NOT_FOUND" } } });
 
   async function startCount(onPendingWorkChange) {
-    render(<CycleCountScan deps={{ cycleCountClient: client(), scanInputDeps, onPendingWorkChange }} />);
-    fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: "PRT-1001" } });
-    fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
-    fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
+    render(<CycleCountScan deps={{ cycleCountClient: client(), lookupPart, scanInputDeps, onPendingWorkChange }} />);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/scan the bin label/i), { target: { value: "EOS-LOC:bin_abc" } });
+      fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    });
     await waitFor(() => expect(screen.queryByLabelText(/scan item/i)).toBeTruthy());
   }
 
@@ -251,15 +255,20 @@ describe("navigating away from work in progress", () => {
 });
 
 describe("the back control", () => {
+  // The workspace remembers the open workflow for the session; each test starts from the list.
+  beforeEach(() => window.sessionStorage.clear());
   const workspace = () => render(
     <ScanWorkspace deps={{
       hasCapability: (id) => ["inventory.cycleCount.create", "inventory.cycleCount.submit"].includes(id),
       role: null, technicianId: null, assignedWorkOrderCount: 0, receivingReady: false,
       cycleCountDeps: {
         cycleCountClient: {
-          createCycleCount: vi.fn().mockResolvedValue({ outcome: "applied", cycleCountId: "cc_1", trackingMode: "NONE", status: "COUNTING" }),
-          submitCycleCount: vi.fn().mockResolvedValue({ outcome: "applied", status: "SUBMITTED" }),
-        },
+            createCycleCountSheet: vi.fn().mockResolvedValue({ outcome: "applied", sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_abc" }, status: "OPEN" }),
+            getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: { sheetId: "ccs_1", locationLabel: "A01-003" }, lines: [], nextCursor: null }),
+            openCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "OPEN", trackingMode: "NONE" }),
+            submitCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "COUNTED", countedQuantity: 1, variance: 0, expectedQuantity: 1 }),
+          },
+        lookupPart: async (raw) => ({ catalogResult: { ok: true, parts: [{ invalid: false, partId: String(raw).trim(), internalPartNumber: "X", name: "Part", description: "", category: "", status: "ACTIVE", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED", version: 1 }], invalid: [] }, aliasOutcome: { result: { result: "NOT_FOUND" } } }),
         scanInputDeps,
       },
     }} />,
@@ -269,11 +278,12 @@ describe("the back control", () => {
 
   async function openCountWithOneScan() {
     workspace();
-    fireEvent.click(screen.getByRole("button", { name: /count/i }));
-    await waitFor(() => expect(screen.queryByLabelText(/part to count/i)).toBeTruthy());
-    fireEvent.change(screen.getByLabelText(/part to count/i), { target: { value: "PRT-1001" } });
-    fireEvent.change(screen.getByLabelText(/^location$/i), { target: { value: "WH-1" } });
-    fireEvent.click(screen.getByRole("button", { name: /start counting/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^count/i }));
+    await waitFor(() => expect(screen.queryByLabelText(/scan the bin label/i)).toBeTruthy());
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/scan the bin label/i), { target: { value: "EOS-LOC:bin_abc" } });
+      fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    });
     await waitFor(() => expect(screen.queryByLabelText(/scan item/i)).toBeTruthy());
     await act(async () => {
       fireEvent.change(screen.getByLabelText(/scan item/i), { target: { value: "PRT-1001" } });
@@ -283,11 +293,11 @@ describe("the back control", () => {
 
   it("leaves immediately when there is nothing to lose", async () => {
     workspace();
-    fireEvent.click(screen.getByRole("button", { name: /count/i }));
-    await waitFor(() => expect(screen.queryByLabelText(/part to count/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /^count/i }));
+    await waitFor(() => expect(screen.queryByLabelText(/scan the bin label/i)).toBeTruthy());
     // An unguarded exit must not cost a second press.
     fireEvent.click(back());
-    await waitFor(() => expect(screen.queryByLabelText(/part to count/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText(/scan the bin label/i)).toBeNull());
   });
 
   it("with scans pending, the FIRST press states the cost and does not leave", async () => {
