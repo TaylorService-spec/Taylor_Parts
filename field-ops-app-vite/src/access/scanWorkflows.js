@@ -32,6 +32,8 @@ export const SCAN_WORKFLOW = Object.freeze({
   PUT_AWAY: "PUT_AWAY",
   PICK: "PICK",
   RETURN_INTAKE: "RETURN_INTAKE",
+  // BIN-P6 / Decision #170: move stock into, between and out of bins, or send it to a truck.
+  MOVE_STOCK: "MOVE_STOCK",
 });
 
 /** Why a workflow the caller might expect is not offered. Shown only where it helps them act. */
@@ -78,6 +80,15 @@ export const BIN_READ_CAPABILITY = "inventory.location.bin.read";
 // Taking a return in. Its own capability and its own audience: the returns desk is not the shelf.
 // Carries NO disposition authority, because disposition does not exist (DECISIONS #118).
 export const RETURNS_INTAKE_CAPABILITY = "inventory.returns.intake";
+
+/**
+ * Moving stock inside a warehouse is its own authority (Decision #170), distinct from placement: a
+ * worker who may record where something was stowed may NOT, by that alone, move it. Bin read is also
+ * required, because every bin in a move is resolved through the trusted bin read.
+ *
+ * Registered active:false and granted to no Role, so this is offered to nobody until BIN-P4.
+ */
+export const STOCK_RELOCATE_CAPABILITY = "inventory.stock.relocate";
 
 /**
  * Derive the available workflows.
@@ -197,6 +208,12 @@ export function deriveScanWorkflows(ctx = {}) {
   // Offered only to a holder of inventory.returns.intake. It confers nothing about DISPOSITION,
   // which is a different authority that does not exist yet (DECISIONS #118) — so this workflow can
   // record an arrival and can never put anything back into sellable stock.
+  if (holds(STOCK_RELOCATE_CAPABILITY) && holds(BIN_READ_CAPABILITY)) {
+    available.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK });
+  } else {
+    unavailable.push({ workflow: SCAN_WORKFLOW.MOVE_STOCK, reason: UNAVAILABLE_REASON.NO_CAPABILITY });
+  }
+
   if (holds(RETURNS_INTAKE_CAPABILITY)) {
     available.push({ workflow: SCAN_WORKFLOW.RETURN_INTAKE });
   } else {
@@ -240,9 +257,12 @@ export const SCAN_WORKFLOW_LABEL = Object.freeze({
   [SCAN_WORKFLOW.SUPPLIER_RECEIVING]: "Receive a supplier purchase order",
   [SCAN_WORKFLOW.TECHNICIAN_WORK_ORDER]: "Scan parts for my work order",
   [SCAN_WORKFLOW.RETURN_INTAKE]: "Take a return in",
+  [SCAN_WORKFLOW.MOVE_STOCK]: "Move stock",
 });
 
 export const SCAN_WORKFLOW_DESCRIPTION = Object.freeze({
+  [SCAN_WORKFLOW.MOVE_STOCK]:
+    "Put stock away, move it between bins, take it out of a bin, or send it to a truck. Scan everything that is going, then confirm once.",
   [SCAN_WORKFLOW.LOOKUP]:
     "Scan or type a part code to see what it is. Reads only — nothing is moved, counted or changed.",
   [SCAN_WORKFLOW.TRANSFER]:

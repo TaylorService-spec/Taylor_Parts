@@ -14,6 +14,8 @@
 // Four is empirical breathing room, not a tuned number.
 // ponytail: fixed width; make it adaptive only if a real layout measurably drags.
 
+import { runBounded } from "../domain/boundedRun.js";
+
 export const APPLY_CONCURRENCY = 4;
 
 /**
@@ -23,45 +25,32 @@ export const APPLY_CONCURRENCY = 4;
  * governed client it uses everywhere else.
  */
 export async function applyProposals({ rows, createBin, concurrency = APPLY_CONCURRENCY }) {
-  const results = new Array(rows.length);
-  let next = 0;
-
-  async function worker() {
-    for (;;) {
-      const i = next;
-      next += 1;
-      if (i >= rows.length) return;
-      const row = rows[i];
-      try {
-        const response = await createBin(row.request);
-        results[i] = {
-          idempotencyKey: row.request.idempotencyKey,
-          // `unchanged` is a SUCCESS: the bin the operator asked for exists and is the one they
-          // meant. Reporting a replay as a failure would push people into re-running work that is
-          // already done.
-          outcome: response?.outcome === "unchanged" ? "unchanged" : "created",
-          code: response?.code ?? null,
-          binId: response?.binId ?? null,
-          error: null,
-        };
-      } catch (err) {
-        results[i] = {
-          idempotencyKey: row.request.idempotencyKey,
-          outcome: "failed",
-          code: null,
-          binId: null,
-          // The server's sanitized message. Nothing is invented here, and a failure is never
-          // rendered as a success.
-          error: err?.message || "That bin could not be created.",
-        };
-      }
+  // The bounded runner is shared with the BIN-P6 movement session (domain/boundedRun.js).
+  return runBounded(rows, async (row) => {
+    try {
+      const response = await createBin(row.request);
+      return {
+        idempotencyKey: row.request.idempotencyKey,
+        // `unchanged` is a SUCCESS: the bin the operator asked for exists and is the one they
+        // meant. Reporting a replay as a failure would push people into re-running work that is
+        // already done.
+        outcome: response?.outcome === "unchanged" ? "unchanged" : "created",
+        code: response?.code ?? null,
+        binId: response?.binId ?? null,
+        error: null,
+      };
+    } catch (err) {
+      return {
+        idempotencyKey: row.request.idempotencyKey,
+        outcome: "failed",
+        code: null,
+        binId: null,
+        // The server's sanitized message. Nothing is invented here, and a failure is never
+        // rendered as a success.
+        error: err?.message || "That bin could not be created.",
+      };
     }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.max(1, Math.min(concurrency, rows.length)) }, worker),
-  );
-  return results;
+  }, concurrency);
 }
 
 /** A count per outcome, for a summary line that is derived rather than asserted. */

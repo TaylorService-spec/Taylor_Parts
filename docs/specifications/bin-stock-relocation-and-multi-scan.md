@@ -436,3 +436,50 @@ canonical id; covered by `stockRelocationCommand.test.mjs`.
 (lifted by Decision #170 Ruling 5, restated to assert where the fence now is); the consumption custody
 boundary's "WAREHOUSE type filter is the gate" (the gate moved into `resolveCustodyWarehouseId`, which
 still admits no truck); and the client vocabulary pins, which exist so an addition is argued.
+
+---
+
+## Implementation evidence — warehouse multi-scan (§9)
+
+| Piece | File |
+|---|---|
+| The ONE observation queue, extracted | `field-ops-app-vite/src/domain/scanObservationQueue.js` — Receiving re-exports it unchanged (`receivingScanQueue.js`) |
+| Session domain (routing, lines, frozen batches, failure vocabulary) | `field-ops-app-vite/src/domain/stockMovementSession.js` |
+| Shared bounded runner | `field-ops-app-vite/src/domain/boundedRun.js` — BIN-P3 racking apply now uses it too |
+| Relocation transport | `field-ops-app-vite/src/services/stockMovementClient.js` |
+| Targeted Part read | `fetchPartMasterByIds` in `services/partMasterQueries.js` — the screen is **not** an eighth whole-catalogue reader |
+| Screen | `field-ops-app-vite/src/modules/scan/MoveStockScan.jsx`, registered as `SCAN_WORKFLOW.MOVE_STOCK` |
+
+### Decisions the implementation had to reach
+
+**A confirmed batch is frozen, and its keys include the batch number.** A key of only "session + part"
+would let a second batch of the same part replay the first batch's quantity, so the new units would
+silently never move. Retries re-run the frozen line under its original key; later scans form a new batch.
+
+**A new batch cannot silently replace one with failures.** Confirm is blocked until the failed lines are
+retried or the operator explicitly records that they have dealt with them — "no failed line silently
+disappears" is enforced by the screen, not left to attention.
+
+**Item scans are processed strictly in order.** A wedge scanner delivers "part, serial" faster than the
+part lookup returns; handled concurrently, the serial was resolved as an unknown part and the next scan
+mistaken for the serial. Found by the test harness racing exactly this, then reproduced as its own test.
+
+**Lot-tracked and unmapped parts are refused before sending**, with their own line state, rather than
+falling through to the quantity path and appearing "Ready".
+
+**Scope of a session.** Bin resolution is warehouse-scoped, so a session is anchored to one warehouse.
+Its cross-custody destination is a truck (create + dispatch Transfer, dispatch being replay-safe from
+IN_TRANSIT). A bin-to-another-warehouse transfer stays in the existing Transfer form; the server accepts
+it (§7), and the scanner does not yet offer it.
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| `test/stockMovementSession.test.mjs` (new) | **21/21** |
+| `test/moveStockScan.test.jsx` (new) | **14/14** — including the wedge-scanner race |
+| Receiving regression: `receivingScanQueue` 28/28, `multiScanReceiving` 36/36 | green after the queue extraction |
+| Scanner + receiving vitest (8 suites) | **198/198** |
+| `scanWorkflows` (pins moved, argued) | 37/37 |
+| `adminWarehouseRacking` (shared runner) | 27/27 |
+| CSS coverage · `ciSuiteCoverage` · lint · Vite build | green |
