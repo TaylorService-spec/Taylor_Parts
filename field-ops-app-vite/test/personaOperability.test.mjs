@@ -111,6 +111,11 @@ const COMPATIBILITY_CAPABILITIES = Object.freeze({
     // authority. Admin holds inventory.returns.intake in the governed catalog, so the compatibility
     // transcription must say so too -- otherwise this file describes a narrower admin than exists.
     "inventory.returns.intake",
+    // MOVE_STOCK joined SCAN_WORKFLOW with BIN-P6 (Decision #170). Admin holds inventory.stock.relocate
+    // by derivation from the governed catalog, so the transcription says so. HELD IS NOT ACTIVE: the
+    // capability is registered active:false and no functional Role carries it, so no non-admin persona
+    // below reaches MOVE_STOCK until BIN-P4's Owner-ruled grant exists.
+    "inventory.stock.relocate",
   ],
   __dispatcherCompatibility: ["inventory.stock.receive"],
 });
