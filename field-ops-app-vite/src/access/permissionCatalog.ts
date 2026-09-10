@@ -1327,7 +1327,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   Object.freeze({
     id: "inventory.transfer.receive",
-    description: "Receive an IN_TRANSIT Transfer Order at its destination (stage TRANSFER_IN ledger effect(s), IN_TRANSIT -> COMPLETED).",
+    description: "Receive an IN_TRANSIT Transfer Order at its destination (stage TRANSFER_IN ledger effect(s), IN_TRANSIT -> COMPLETED). Also authorizes the command-scoped listMyReceivableTransfers read: the IN_TRANSIT Transfers bound for the caller's own assigned truck, and nothing else -- no general Transfer browse, no balances.",
     resource: "inventory.transfer",
     action: "receive",
     active: false,

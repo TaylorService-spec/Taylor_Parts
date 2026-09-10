@@ -6,6 +6,8 @@ import { transferCommandClient } from "../../services/transferCommandClient.js";
 import { useWarehouseSubmit, WAREHOUSE_SUBMIT, PENDING_TEXT, NOT_DURABLE_TEXT } from "../../offline/useWarehouseSubmit.js";
 import { captureTransferDispatch, captureTransferReceive } from "../../offline/warehouseIntent.js";
 import { useTransferOrders } from "../../hooks/useTransferOrders";
+import { useMyReceivableTransfers } from "../../hooks/useMyReceivableTransfers.js";
+import { TRANSFER_DISPATCH_CAPABILITY } from "../../access/scanWorkflows.js";
 import {
   buildTransferVerification,
   classifyObservation,
@@ -32,10 +34,16 @@ import {
 // matches the order before the operator commits; it never authors what moves. All of that reasoning
 // is pure, in domain/transferScanVerification.js.
 //
-// ============================ THE ORDERS COME FROM THE EXISTING READ ============================
+// ============================ WHICH READ LISTS THE ORDERS ============================
 //
-// useTransferOrders is the same authorized `transfer_orders` read the Operations surface uses. No new
-// query, no scanner-only projection.
+// Two reads, chosen by who is holding the device -- never widening either audience:
+//
+//   - A TECHNICIAN WHO ONLY RECEIVES (a linked technician without dispatch authority) gets the trusted
+//     listMyReceivableTransfers read: IN_TRANSIT transfers bound for THEIR OWN truck, resolved by the
+//     server from auth. The client `transfer_orders` read is never issued for them -- Rules deny it,
+//     which is exactly the gap that left a receive grant with nothing to receive.
+//   - EVERYONE ELSE keeps useTransferOrders, the same authorized `transfer_orders` read the
+//     Operations surface uses, unchanged.
 //
 // ============================ INERT TODAY ============================
 //
@@ -74,50 +82,130 @@ const ACTION_LABEL = Object.freeze({
   [TRANSFER_ACTION.RECEIVE]: "Receive this transfer",
 });
 
+const TRANSFER_LIST_SOURCE = Object.freeze({
+  INJECTED: "INJECTED",
+  PENDING: "PENDING",
+  MY_TRUCK: "MY_TRUCK",
+  SHARED: "SHARED",
+});
+
+/**
+ * Which read lists the transfers, from facts the shell already resolved: the capability gate and the
+ * technician mapping (the same users/{uid}.technicianId the server resolves). A holder of dispatch
+ * authority keeps the shared read -- they send transfers, and the truck read would hide those.
+ */
+function transferListSource(deps) {
+  if (deps?.orders) return TRANSFER_LIST_SOURCE.INJECTED;
+  if (deps?.technicianLoading) return TRANSFER_LIST_SOURCE.PENDING;
+  let dispatches = false;
+  try { dispatches = typeof deps?.hasCapability === "function" && deps.hasCapability(TRANSFER_DISPATCH_CAPABILITY) === true; } catch { dispatches = false; }
+  return deps?.technicianId && !dispatches ? TRANSFER_LIST_SOURCE.MY_TRUCK : TRANSFER_LIST_SOURCE.SHARED;
+}
+
 export default function TransferScan({ deps }) {
-  const [selectedId, setSelectedId] = useState(null);
+  const source = transferListSource(deps);
+  if (source === TRANSFER_LIST_SOURCE.PENDING) return <p className="fo-muted" role="status">Loading transfers…</p>;
+  if (source === TRANSFER_LIST_SOURCE.MY_TRUCK) return <MyTruckTransfers deps={deps} />;
+  if (source === TRANSFER_LIST_SOURCE.INJECTED) return <TransferFlow deps={deps} orders={deps.orders} />;
+  return <SharedTransfers deps={deps} />;
+}
 
+function SharedTransfers({ deps }) {
   const live = useTransferOrders(deps?.accessVersion ?? null, 0);
-  const orders = deps?.orders ?? live.transferOrderDocs;
-  const loading = deps?.orders ? false : live.loading;
-  const error = deps?.orders ? null : live.error;
+  // A read failure is not an empty warehouse. Saying "no transfers" here would send an operator away
+  // from work that exists.
+  const failureText = !live.error ? null
+    : live.error === "permission-denied"
+      ? "You are not authorized to see transfer orders."
+      : "Transfer orders could not be loaded, so none can be scanned right now.";
+  return <TransferFlow deps={deps} orders={live.transferOrderDocs} loading={live.loading} failureText={failureText} />;
+}
 
+/** Why the truck list could not be shown -- each its own sentence, never "nothing incoming". */
+function myTruckFailureText({ code, detail }) {
+  if (code === "permission-denied") return "You are not authorized to receive transfers.";
+  if (detail === "NO_TRUCK_ASSIGNMENT") return "No active truck is assigned to you, so there is nothing to receive onto. A dispatcher can assign your truck.";
+  if (detail === "TRUCK_ASSIGNMENT_AMBIGUOUS") return "More than one truck is assigned to you. Nothing can be received until a dispatcher corrects that.";
+  if (detail === "TECHNICIAN_IDENTITY_UNAVAILABLE") return "This account is not linked to a technician, so it has no truck to receive onto.";
+  if (detail === "MALFORMED_STORED_RECORD") return "A transfer bound for your truck could not be read, so the list cannot be shown. Report it to a dispatcher.";
+  if (code === "unavailable" || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+    return "You are offline. Incoming transfers need a connection to load.";
+  }
+  return "Incoming transfers could not be loaded right now. Nothing has been lost.";
+}
+
+function MyTruckTransfers({ deps }) {
+  const mine = useMyReceivableTransfers(deps?.transferClient ?? transferCommandClient);
+  return (
+    <TransferFlow
+      deps={deps}
+      orders={mine.orders}
+      loading={mine.loading}
+      failureText={mine.failure ? myTruckFailureText(mine.failure) : null}
+      onRetry={mine.retry}
+      heading={`Incoming to ${mine.truck?.label ?? "your truck"}`}
+      emptyText="Nothing is on its way to your truck right now."
+      more={mine.more}
+      // Back from a transfer re-reads: a receipt just made, or one made elsewhere, leaves the list.
+      onReturn={mine.retry}
+    />
+  );
+}
+
+function TransferFlow({ deps, orders, loading = false, failureText = null, onRetry, heading, emptyText, more = false, onReturn }) {
+  const [selectedId, setSelectedId] = useState(null);
   const order = useMemo(
     () => (orders ?? []).find((o) => (o.transferOrderId ?? o.id) === selectedId) ?? null,
     [orders, selectedId],
   );
-
   if (!selectedId || !order) {
-    return <TransferPicker orders={orders} loading={loading} error={error} onPick={setSelectedId} />;
+    return (
+      <TransferPicker
+        orders={orders} loading={loading} failureText={failureText} onRetry={onRetry}
+        heading={heading} emptyText={emptyText} more={more} onPick={setSelectedId}
+      />
+    );
   }
-  return <TransferVerify order={order} deps={deps} onBack={() => setSelectedId(null)} />;
+  return <TransferVerify order={order} deps={deps} onBack={() => { setSelectedId(null); onReturn?.(); }} />;
 }
 
 /** Which transfer are you standing in front of? */
-function TransferPicker({ orders, loading, error, onPick }) {
+function TransferPicker({ orders, loading, failureText, onRetry, heading, emptyText, more, onPick }) {
   if (loading) return <p className="fo-muted" role="status">Loading transfers…</p>;
-  if (error) {
-    // A read failure is not an empty warehouse. Saying "no transfers" here would send an operator
-    // away from work that exists.
+  if (failureText) {
     return (
-      <p className="fo-scan__state fo-scan__state--denied" role="alert">
-        {error === "permission-denied"
-          ? "You are not authorized to see transfer orders."
-          : "Transfer orders could not be loaded, so none can be scanned right now."}
-      </p>
+      <>
+        <p className="fo-scan__state fo-scan__state--denied" role="alert">{failureText}</p>
+        {onRetry && <Button type="button" variant="secondary" onClick={onRetry}>Try again</Button>}
+      </>
     );
   }
   const open = (orders ?? []).filter((o) => o.status === "REQUESTED" || o.status === "IN_TRANSIT");
-  if (open.length === 0) {
-    return <p className="fo-muted">No transfers are waiting to be sent or received.</p>;
-  }
+  return (
+    <>
+      {heading && <p className="fo-scan__kind">{heading}</p>}
+      {open.length === 0 ? (
+        <p className="fo-muted">{emptyText ?? "No transfers are waiting to be sent or received."}</p>
+      ) : (
+        <TransferList orders={open} onPick={onPick} />
+      )}
+      {more && (
+        <p className="fo-scan__notice fo-scan__notice--warn" role="status">
+          More incoming transfers exist than this screen lists. Receive these, then come back for the rest.
+        </p>
+      )}
+    </>
+  );
+}
+
+function TransferList({ orders, onPick }) {
   return (
     <ul className="fo-scan-workflows">
-      {open.map((o) => {
+      {orders.map((o) => {
         const id = o.transferOrderId ?? o.id;
         return (
           <li key={id}>
-            <Button type="button" variant="primary" onClick={() => onPick(id)}>{id}</Button>
+            <Button type="button" variant="primary" onClick={() => onPick(id)}>{o.transferOrderNumber ?? id}</Button>
             <p className="fo-muted">
               {o.partId} · {endpointLabel(o.origin)} → {endpointLabel(o.destination)} ·{" "}
               {o.status === "REQUESTED" ? "waiting to be sent" : "in transit"}
@@ -241,7 +329,7 @@ function TransferVerify({ order, deps, onBack }) {
 
       <section className="fo-scan__result" aria-label={`Transfer ${transferOrderId}`}>
         <p className="fo-scan__kind">{state.action === TRANSFER_ACTION.RECEIVE ? "Receive" : "Send"}</p>
-        <h3 className="fo-scan__id">{transferOrderId}</h3>
+        <h3 className="fo-scan__id">{order.transferOrderNumber ?? transferOrderId}</h3>
         <p className="fo-scan__job">
           {order.partId} · {endpointLabel(order.origin)} → {endpointLabel(order.destination)}
         </p>

@@ -14,6 +14,9 @@ on:
       - "functions/src/truckRegistry/**"
       - "functions/src/warehouseGovernance/**"
       - "functions/test/transferOrderCommand.test.mjs"
+      # The technician receive read composes the Work Order consumption truck resolver.
+      - "functions/test/transferReceivableRead.test.mjs"
+      - "functions/src/workOrderConsumption/consumptionSourceService.ts"
       # BIN-P6 / Decision #170: the relocation authority, the one on-hand module, bin parentage, and
       # every reader moved onto it. A change to any of them re-runs the conservation proofs.
       - "functions/src/inventoryLocation/stockRelocationCommand.ts"
@@ -46,6 +49,9 @@ on:
       - "functions/src/truckRegistry/**"
       - "functions/src/warehouseGovernance/**"
       - "functions/test/transferOrderCommand.test.mjs"
+      # The technician receive read composes the Work Order consumption truck resolver.
+      - "functions/test/transferReceivableRead.test.mjs"
+      - "functions/src/workOrderConsumption/consumptionSourceService.ts"
       # BIN-P6 / Decision #170: the relocation authority, the one on-hand module, bin parentage, and
       # every reader moved onto it. A change to any of them re-runs the conservation proofs.
       - "functions/src/inventoryLocation/stockRelocationCommand.ts"
@@ -122,6 +128,12 @@ jobs:
       - name: Transfer command tests (create/dispatch/receive/cancel; NONE + SERIAL; WAREHOUSE + MOBILE)
         run: npm run test:transferOrderCommand
         working-directory: functions
+
+      - name: Technician receivable-transfer read (own truck only, IN_TRANSIT only, allow-listed projection)
+        run: node test/transferReceivableRead.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
 
       # BIN-P6. Named explicitly: an unnamed suite does not run in this repository's CI at all.
       - name: One on-hand authority (static + pure guards, no emulator)

@@ -12,6 +12,9 @@ export const TRANSFER_CALLABLES = Object.freeze({
   dispatch: "dispatchTransferOrder",
   receive: "receiveTransferOrder",
   cancel: "cancelTransferOrder",
+  // The technician's command-scoped read: IN_TRANSIT transfers bound for their OWN truck. The server
+  // derives the technician and the truck; the request carries at most a page cursor.
+  myReceivable: "listMyReceivableTransfers",
 });
 
 const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
@@ -21,4 +24,5 @@ export const transferCommandClient = Object.freeze({
   dispatchTransferOrder: (request) => call(TRANSFER_CALLABLES.dispatch, request),
   receiveTransferOrder: (request) => call(TRANSFER_CALLABLES.receive, request),
   cancelTransferOrder: (request) => call(TRANSFER_CALLABLES.cancel, request),
+  listMyReceivableTransfers: (cursor = null) => call(TRANSFER_CALLABLES.myReceivable, cursor ? { cursor } : {}),
 });

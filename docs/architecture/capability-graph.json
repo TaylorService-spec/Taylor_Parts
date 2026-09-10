@@ -3724,7 +3724,7 @@
       "id": "inventory.transfer.receive",
       "resource": "inventory.transfer",
       "action": "receive",
-      "description": "Receive an IN_TRANSIT Transfer Order at its destination (stage TRANSFER_IN ledger effect(s), IN_TRANSIT -> COMPLETED).",
+      "description": "Receive an IN_TRANSIT Transfer Order at its destination (stage TRANSFER_IN ledger effect(s), IN_TRANSIT -> COMPLETED). Also authorizes the command-scoped listMyReceivableTransfers read: the IN_TRANSIT Transfers bound for the caller's own assigned truck, and nothing else -- no general Transfer browse, no balances.",
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
