@@ -153,7 +153,10 @@ describe("Cycle count · resume", () => {
     await screen.findByLabelText(/scan item/i);
     expect(c.getCycleCountSheet).toHaveBeenCalledTimes(2); // every page, never just the first
     expect(screen.getByText(/expected 5/i)).toBeTruthy();
-    expect(screen.getByText(/not counted yet/i)).toBeTruthy();
+    // North Star P1 status vocabulary (domain/cycleCountNorthStar.js LINE_WORD.NOT_STARTED) renamed
+    // this from "Not counted yet" -- the binding words are "Not started" / "Counting" / "Counted ·
+    // match" / "Variance" / "Approved" / "Rejected" / "Waiting to sync".
+    expect(screen.getByText("Not started")).toBeTruthy();
   });
 
   it("pending work is reported in scans, and leaving reports zero", async () => {

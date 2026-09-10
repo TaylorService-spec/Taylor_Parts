@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { fetchMobileLocationDocs } from "../../services/truckRegistryQueries";
 import { cycleCountCommandClient } from "../../services/cycleCountCommandClient";
+import { useAuth } from "../../auth/AuthContext";
 import {
   buildCreateSheetRequest, buildSubmitLineRequest, buildReconcileLineRequest,
 } from "../../domain/cycleCountCommandRequest";
 import { mapCycleCountActionError, describeCycleCountOutcome } from "../../domain/cycleCountActionResult";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
+import {
+  deriveCloseEligibility, deriveCancelEligibility, needsAnotherReviewer,
+} from "../../domain/cycleCountNorthStar.js";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
-import EmptyState from "../../shared/ui/EmptyState";
+import HonestState, { HONEST_STATE } from "../../shared/ui/HonestState.jsx";
+import DictatableNote from "../../shared/ui/DictatableNote.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
 
 // CYCLE COUNTS -- the durable workspace over count SHEETS (Cycle Count A1 + A4, Decision #179).
@@ -27,6 +32,15 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // and moves nothing. A reason is required either way when the count differs. A reviewer cannot approve
 // or reject a MATERIAL variance on a line they counted themselves; the server refuses it and the reason
 // is shown on that line.
+//
+// ============================ NORTH STAR P1 (design handoff, 2026-09-10) ============================
+//
+// Frame 1a (landing/queue) and 1d/1e (manager review). Variances-first ordering, `HonestState` for
+// the truth-state family, and `DictatableNote` (already built, first real integration here) for the
+// review reason are new; the read/command wiring below is unchanged. "Needs another reviewer" is a
+// client-side COURTESY pre-disable computed from `submittedBy` on the line the server already sent --
+// the server remains the actual separation-of-duties enforcement (see the SoD test in
+// cycleCountsBlindReview.test.jsx, which asserts the SERVER's own refusal surfaces on the line).
 
 const FILTERS = [
   { value: "OPEN", label: "Open" },
@@ -56,15 +70,30 @@ export default function CycleCounts({ deps }) {
   }, [client, filter]);
   useEffect(() => { load(); }, [load]);
 
+  // The compact landing summary (1a) -- derived entirely from the rows already fetched, never a
+  // second read and never an invented figure (CC-D3/rule #5: no vanity KPIs).
+  const summary = useMemo(() => {
+    const active = sheets.rows.filter((s) => s.status === "OPEN");
+    const locations = new Set(active.map((s) => `${s.location?.type}:${s.location?.locationId}`)).size;
+    return { activeCount: active.length, locationCount: locations };
+  }, [sheets.rows]);
+
   return (
     <div className="fo-panel">
       <WorkspaceHeader title="Cycle Counts">
         {!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>New count</Button>}
       </WorkspaceHeader>
       <p className="fo-muted">
-        Counts are kept on the server: open one to continue counting or to review it. Bins are counted from
-        Scan → Cycle count. An expected quantity appears only after that part has been counted.
+        Verify what is physically present without showing the expected answer first. Counts are kept on
+        the server: open one to continue counting or to review it. Bins are counted from Scan → Cycle
+        count. An expected quantity appears only after that part has been counted.
       </p>
+      {sheets.rows.length > 0 && !selected && (
+        <p className="fo-cc-summary">
+          {summary.activeCount} active count{summary.activeCount === 1 ? "" : "s"}
+          {summary.locationCount > 0 ? ` · ${summary.locationCount} location${summary.locationCount === 1 ? "" : "s"} in progress` : ""}
+        </p>
+      )}
       {status && (
         <p className={status.kind === "error" ? "fo-warning" : "fo-muted"} role={status.kind === "error" ? "alert" : "status"}>
           {status.message} <button type="button" className="fo-transfer-dismiss" onClick={() => setStatus(null)}>Dismiss</button>
@@ -88,10 +117,14 @@ export default function CycleCounts({ deps }) {
               {FILTERS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
             </select>
           </label>
-          {sheets.error && <p className="fo-warning" role="alert">{sheets.error}</p>}
+          {sheets.error && <HonestState state={HONEST_STATE.UNAVAILABLE} subject="Cycle counts" detail={sheets.error} />}
           {sheets.loading && sheets.rows.length === 0 ? <LoadingState>Loading counts…</LoadingState> : null}
           {!sheets.loading && !sheets.error && sheets.rows.length === 0 && (
-            <EmptyState variant="database" title="No counts here" message="Start a count, or scan a bin from Scan → Cycle count." />
+            <HonestState
+              state={HONEST_STATE.EMPTY}
+              subject="cycle counts"
+              detail="No cycle counts are open. Start a count, or scan a bin from Scan → Cycle count."
+            />
           )}
           {sheets.rows.length > 0 && (
             <ul className="fo-list" aria-label="Count sheets">
@@ -174,6 +207,7 @@ function CreateSheetForm({ client, onCancel, onCreated }) {
 }
 
 function SheetDetail({ client, sheetId, onBack, onStatus }) {
+  const currentUserId = useAuth()?.user?.uid ?? null;
   const [state, setState] = useState({ loading: true, sheet: null, lines: [], error: null });
   const [busy, setBusy] = useState(null); // partId | "sheet"
   const [lineErrors, setLineErrors] = useState({});
@@ -207,9 +241,39 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
   if (state.error) return <><p className="fo-warning" role="alert">{state.error}</p><Button variant="secondary" onClick={onBack}>Back to counts</Button></>;
   const { sheet, lines } = state;
   const open = sheet.status === "OPEN";
-  const live = lines.filter((l) => l.status !== "CANCELLED");
-  const canClose = open && live.length > 0 && live.every((l) => l.status === "RECONCILED" || l.status === "REJECTED");
-  const canCancel = open && !lines.some((l) => ["COUNTED", "RECONCILED", "REJECTED"].includes(l.status));
+  const { canClose, reason: closeReason } = deriveCloseEligibility(sheet, lines);
+  const { canCancel } = deriveCancelEligibility(sheet, lines);
+  // CC-D6/design 1d: variances first, never buried among matches -- a COUNTED line is awaiting
+  // disposition and is the reason a reviewer opened this sheet.
+  const needsReview = lines.filter((l) => l.status === "COUNTED");
+  const other = lines.filter((l) => l.status !== "COUNTED");
+
+  const renderLine = (l) => (
+    <li key={l.partId}>
+      <strong>{l.partId}</strong> <span className="fo-muted">· {STATUS_TEXT[l.status] ?? l.status}</span>
+      <LineFigures line={l} />
+      {l.reconciliationReason && <p className="fo-muted">Reason: {l.reconciliationReason}</p>}
+      {open && l.status === "OPEN" && (
+        <CountEntry line={l} busy={busy === l.partId} onSubmit={(draft) => {
+          const built = buildSubmitLineRequest(sheetId, l.partId, l.trackingMode, draft);
+          if (!built.ok) { setLineErrors((e) => ({ ...e, [l.partId]: Object.values(built.errors)[0] })); return; }
+          act(l.partId, () => client.submitCycleCountLine(built.value), "submit");
+        }} onRemove={() => act(l.partId, () => client.cancelCycleCountLine({ sheetId, partId: l.partId }), "cancelLine")} />
+      )}
+      {open && l.status === "COUNTED" && (
+        <ReviewLine
+          line={l}
+          busy={busy === l.partId}
+          selfSubmitted={needsAnotherReviewer(l, currentUserId)}
+          onDecide={(reason, decision) => {
+            const built = buildReconcileLineRequest(sheetId, l.partId, reason, decision);
+            if (built.ok) act(l.partId, () => client.reconcileCycleCountLine(built.value), "reconcile", decision);
+          }}
+        />
+      )}
+      {lineErrors[l.partId] && <p className="fo-warning" role="alert">{lineErrors[l.partId]}</p>}
+    </li>
+  );
 
   return (
     <section aria-label="Count sheet">
@@ -220,33 +284,25 @@ function SheetDetail({ client, sheetId, onBack, onStatus }) {
       {lineErrors.add && <p className="fo-warning" role="alert">{lineErrors.add}</p>}
 
       {lines.length === 0 ? <p className="fo-muted">No parts counted yet.</p> : (
-        <ul className="fo-list" aria-label="Lines">
-          {lines.map((l) => (
-            <li key={l.partId}>
-              <strong>{l.partId}</strong> <span className="fo-muted">· {STATUS_TEXT[l.status] ?? l.status}</span>
-              <LineFigures line={l} />
-              {l.reconciliationReason && <p className="fo-muted">Reason: {l.reconciliationReason}</p>}
-              {open && l.status === "OPEN" && (
-                <CountEntry line={l} busy={busy === l.partId} onSubmit={(draft) => {
-                  const built = buildSubmitLineRequest(sheetId, l.partId, l.trackingMode, draft);
-                  if (!built.ok) { setLineErrors((e) => ({ ...e, [l.partId]: Object.values(built.errors)[0] })); return; }
-                  act(l.partId, () => client.submitCycleCountLine(built.value), "submit");
-                }} onRemove={() => act(l.partId, () => client.cancelCycleCountLine({ sheetId, partId: l.partId }), "cancelLine")} />
-              )}
-              {open && l.status === "COUNTED" && (
-                <ReviewLine line={l} busy={busy === l.partId} onDecide={(reason, decision) => {
-                  const built = buildReconcileLineRequest(sheetId, l.partId, reason, decision);
-                  if (built.ok) act(l.partId, () => client.reconcileCycleCountLine(built.value), "reconcile", decision);
-                }} />
-              )}
-              {lineErrors[l.partId] && <p className="fo-warning" role="alert">{lineErrors[l.partId]}</p>}
-            </li>
-          ))}
-        </ul>
+        <>
+          {needsReview.length > 0 && (
+            <>
+              <h4>Needs review · {needsReview.length}</h4>
+              <ul className="fo-list" aria-label="Lines needing review">{needsReview.map(renderLine)}</ul>
+            </>
+          )}
+          {other.length > 0 && (
+            <>
+              {needsReview.length > 0 && <h4>Other lines</h4>}
+              <ul className="fo-list" aria-label={needsReview.length > 0 ? "Other lines" : "Lines"}>{other.map(renderLine)}</ul>
+            </>
+          )}
+        </>
       )}
 
       <div className="fo-form-actions">
         {canClose && <Button variant="primary" disabled={busy !== null} onClick={() => act("sheet", () => client.closeCycleCountSheet({ sheetId }), "closeSheet")}>Close this count</Button>}
+        {!canClose && open && lines.length > 0 && <span className="fo-cc-disabled-reason">{closeReason}</span>}
         {canCancel && <button type="button" className="fo-btn-secondary" disabled={busy !== null} onClick={() => act("sheet", () => client.cancelCycleCountSheet({ sheetId }), "cancelSheet")}>Cancel this count</button>}
       </div>
       {lineErrors.sheet && <p className="fo-warning" role="alert">{lineErrors.sheet}</p>}
@@ -303,19 +359,25 @@ function CountEntry({ line, busy, onSubmit, onRemove }) {
   );
 }
 
-function ReviewLine({ line, busy, onDecide }) {
+function ReviewLine({ line, busy, selfSubmitted, onDecide }) {
   const [reason, setReason] = useState("");
   const differs = line.trackingMode === "SERIAL"
     ? ((line.serialVariance?.missing?.length ?? 0) + (line.serialVariance?.unexpected?.length ?? 0)) > 0
     : line.variance !== 0;
   const needsReason = differs && reason.trim() === "";
+  // Client-side courtesy only (CC-D7: a disabled control states its reason) -- the server is the
+  // actual separation-of-duties enforcement and refuses this regardless of what renders here.
+  const locked = selfSubmitted;
   return (
-    <form className="fo-inline-form" onSubmit={(e) => e.preventDefault()}>
-      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={differs ? "Reason (required)" : "Reason (optional)"} aria-label="Review reason" />
-      <button type="button" className="fo-transfer-action-btn" disabled={busy || needsReason} onClick={() => onDecide(reason, "APPROVE")}>
-        {differs ? "Approve and adjust" : "Approve"}
-      </button>
-      <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy || needsReason} onClick={() => onDecide(reason, "REJECT")}>Reject</button>
+    <form className="fo-inline-form fo-inline-form--stacked" onSubmit={(e) => e.preventDefault()}>
+      <DictatableNote value={reason} onChange={setReason} label="Review reason" placeholder={differs ? "Reason (required)" : "Reason (optional)"} />
+      <div className="fo-form-actions">
+        <button type="button" className="fo-transfer-action-btn" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "APPROVE")}>
+          {differs ? "Approve and adjust" : "Approve"}
+        </button>
+        <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy || needsReason || locked} onClick={() => onDecide(reason, "REJECT")}>Reject</button>
+        {locked && <span className="fo-cc-disabled-reason">Needs another reviewer — you submitted this count.</span>}
+      </div>
     </form>
   );
 }
