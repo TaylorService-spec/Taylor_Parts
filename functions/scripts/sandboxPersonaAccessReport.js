@@ -54,6 +54,7 @@ const SCANNER_CAPABILITIES = [
   "inventory.serializedAsset.read",
   "inventory.location.display.read",
   "inventory.returns.intake",
+  "inventory.stock.relocate",
 ];
 
 /**
@@ -75,6 +76,9 @@ function deriveWorkflows(holds, { receivingReady, isTechnician, technicianId, as
   const canPlace = holds("inventory.placement.record") && holds("inventory.location.bin.read");
   out.PUT_AWAY = canPlace ? "AVAILABLE" : "DENIED_NO_CAPABILITY";
   out.PICK = canPlace ? "AVAILABLE" : "DENIED_NO_CAPABILITY";
+  // BIN-P6/P4: Scan -> Move stock. Mirrors scanWorkflows.js MOVE_STOCK (relocate + bin.read).
+  out.MOVE_STOCK = (holds("inventory.stock.relocate") && holds("inventory.location.bin.read"))
+    ? "AVAILABLE" : "DENIED_NO_CAPABILITY";
   if (!isTechnician || !technicianId) out.TECHNICIAN_WORK_ORDER = "NOT_APPLICABLE";
   else if (assignedWorkOrderCount <= 0) out.TECHNICIAN_WORK_ORDER = "DENIED_NO_ASSIGNED_WORK";
   else out.TECHNICIAN_WORK_ORDER = "AVAILABLE";
