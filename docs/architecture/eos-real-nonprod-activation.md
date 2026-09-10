@@ -1,9 +1,17 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
-**Status: TECHNICAL ACCEPTANCE COMPLETE (non-production).** Browser acceptance passed at 375, 1024 and
-1440; every server-side, tenant, audit and persistence proof passed against the live deployment; the
-accepted state survived a no-code process replacement byte for byte. Outstanding: ZZ NONPROD fixture
-clean-up, the second tenant on Render, and Owner review (§14).
+**TECHNICAL ACCEPTANCE: COMPLETE** (non-production)
+
+| | |
+|---|---|
+| **BROWSER** | **PASS** — 375 / 1024 / 1440 (§15) |
+| **NO-CODE RESTART** | **PASS** (§16) |
+| **PERSISTENCE** | **PASS** — byte-identical across the restart (§16) |
+| **CLEANUP** | **PASS** — ZZ authority removed, altered configuration restored, through governed operations only (§17) |
+
+Residual evidence limitations, recorded and **non-blocking** by Owner ruling: the second tenant was not
+instantiated on Render; role bindings are not exposed through a deployed read surface; direct Render
+MCP SQL fails on TLS (§14).
 
 Four states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
@@ -12,25 +20,25 @@ working":
 |---|---|---|
 | **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix, SPA deep links |
 | **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, live end to end |
-| **ACCEPTED NONPROD** | a person has driven it and it held | ✅ server semantics, isolation, audit (§12) · browser 375 / 1024 / 1440 (§15) · no-code restart (§16) |
+| **ACCEPTED NONPROD** | a person has driven it and it held | ✅ server semantics, isolation, audit (§12) · browser 375 / 1024 / 1440 (§15) · no-code restart + persistence (§16) · cleanup (§17) |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
 ---
 
 ## 0. Current authority
 
-What is true **now** — measured 2026-09-10 after the no-code restart, at `main` `0b47c1db`. Everything below this section
+What is true **now** — measured 2026-09-10 after cleanup, at `main` `44f423c9`. Everything below this section
 that describes an earlier moment says so.
 
 | | |
 |---|---|
-| canonical frontend | **`https://verenwardeos.vercel.app`** — `/version.json` → `commit 0b47c1d`, built 09:48:43Z |
+| canonical frontend | **`https://verenwardeos.vercel.app`** — `/version.json` → `commit 44f423c`, built 10:01:41Z |
 | old frontend domain | `https://taylor-parts-preview.vercel.app` — **REMOVED** from the Vercel project by the Owner |
 | EOS API | **`https://eos-api-nonprod.onrender.com`** — `srv-dah49f1t0dsc73egpvi0`, `starter`, **1 instance**, Oregon |
-| Render deploy | **`dep-dah7o6u1egvs73cv6ea0`** · trigger `api` (the no-code restart, §16) · commit `2b7edca72dc24284bd6fe62d879714bb93007280` · live |
+| Render deploy | **`dep-dah7vr3bc2fs73fivgqg`** · trigger `new_commit` · commit `44f423c9df6417646c74a21844dfe8e84538494e` · live since 10:02:39Z. (The no-code restart deploy `dep-dah7o6u1egvs73cv6ea0` is recorded in §16.) |
 | PostgreSQL | `eos-policy-nonprod` · `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · 15 GB · HA false · 0 read replicas · disk autoscaling false · `ipAllowList: []` · migrations `001` `002` `003` |
-| `main` | **`0b47c1db576db22000424c432b9198c3fddf7714`** |
-| frontend vs API commit | frontend `0b47c1d`, API `2b7edca7` — **different commits, identical API code.** #1836 changed no file under `functions/`, the Render service's `rootDir`, and Render did not redeploy for it; measured, not assumed: `git diff 2b7edca7..0b47c1db -- functions/` is empty |
+| `main` | **`44f423c9df6417646c74a21844dfe8e84538494e`** |
+| frontend vs API revision | **the rule:** the frontend follows `main`; the API sits at the latest deployed commit that changed `functions/`, the Render service's `rootDir` — Render does not redeploy for a commit that changes nothing under it. **Now:** both at `44f423c9`, because #1837 changed `functions/`. **Earlier the same day:** frontend `0b47c1d` vs API `2b7edca7`, because #1836 changed nothing under `functions/` (`git diff 2b7edca7..0b47c1db -- functions/` was empty). The SHAs are not forced to match; they match when the deployable content requires it |
 | tenant | `taylor-nonprod` · `tenant-6ce59be1-1979-45cd-9d17-a4969037fb25` |
 | first administrator | EOS principal `639c1970-dbdb-4bc0-af7c-118559151e2f` ← Firebase subject `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
 | workflows | 5 state machines, **all DRAFT** |
@@ -41,19 +49,23 @@ Render values were read through the Render MCP (`get_service`, `list_postgres_in
 
 ### Current-head drift note
 
-`main` moved from `d1ff2486` (#1834) past browser acceptance through three unrelated BIN-P6
-inventory commits — `e14b4fdc` (#1833, specification), `2b7edca7` (#1835, stock relocation) and, after
-the no-code restart, `0b47c1db` (#1836, warehouse multi-scan). Measured rather than assumed:
-`git diff d1ff2486..2b7edca7` changes 44 files and #1836 another 18, **none** under `functions/src/adminPolicy`, `functions/src/eosApi`, `functions/migrations`,
-`render.yaml`, `field-ops-app-vite/vercel.json` or the Administration policy UI. A read-only
-current-head smoke then confirmed the accepted state unchanged (§16). Browser acceptance is not
-invalidated by that movement.
+`main` moved from `d1ff2486` (#1834) past browser acceptance through four unrelated BIN-P6
+inventory commits — `e14b4fdc` (#1833, specification), `2b7edca7` (#1835, stock relocation), then after
+the no-code restart `0b47c1db` (#1836, warehouse multi-scan) and, after cleanup, `44f423c9` (#1837, bin
+conversion reconciliation). Measured rather than assumed: across all four, **no file** under
+`functions/src/adminPolicy`, `functions/src/eosApi`, `functions/migrations`, `render.yaml`,
+`field-ops-app-vite/vercel.json` or the Administration policy UI changed. #1837 did change three
+`functions/` files — inventory-ledger reconciliation code — so Render redeployed the API
+(`dep-dah7vr3bc2fs73fivgqg`); a full census afterwards was **byte-identical** to the post-cleanup
+census (§17). A read-only current-head smoke before the restart also confirmed the accepted state
+unchanged (§16). Browser acceptance is not invalidated by any of that movement.
 
 ## 1. Source
 
 | | |
 |---|---|
-| **`main`** | **`0b47c1db576db22000424c432b9198c3fddf7714`** — frontend deployed at this commit; API at `2b7edca7` (§0) |
+| **`main`** | **`44f423c9df6417646c74a21844dfe8e84538494e`** — frontend and API both at this commit (§0 revision rule) |
+| BIN conversion reconciliation (#1837) — unrelated; changes `functions/`, so the API redeployed | `44f423c9df6417646c74a21844dfe8e84538494e` |
 | BIN-P6 warehouse multi-scan (#1836) — unrelated; frontend only | `0b47c1db576db22000424c432b9198c3fddf7714` |
 | BIN-P6 stock relocation (#1835) — unrelated to this platform | `2b7edca72dc24284bd6fe62d879714bb93007280` |
 | BIN-P6 specification (#1833) — unrelated to this platform | `e14b4fdc5169e4f227e232d3d055f6bfa6c0df9f` |
@@ -452,7 +464,7 @@ on every value:
 |---|---|
 | PostgreSQL `eos-policy-nonprod` | `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · **15 GB** · HA **false** · read replicas **none** · disk autoscaling **false** · connection pool none · `ipAllowList: []` · Oregon · `available` |
 | API `eos-api-nonprod` | `srv-dah49f1t0dsc73egpvi0` · `starter` · **1 instance** · Oregon · auto-deploy on commit to `main` · build / pre-deploy / start commands exactly as the Blueprint declares |
-| current deploy | `dep-dah7o6u1egvs73cv6ea0` · trigger `api` · commit `2b7edca7` |
+| current deploy | `dep-dah7vr3bc2fs73fivgqg` · trigger `new_commit` · commit `44f423c9` (the no-code restart was `dep-dah7o6u1egvs73cv6ea0`, §16) |
 | services in the workspace | **1** (the web service) → **workers 0 · cron jobs 0** |
 
 These match the Blueprint's declarations exactly; the 15 GB disk is the one value the Blueprint does
@@ -708,9 +720,9 @@ Gates: `test:adminPolicy` 161/161 with a database (0 skipped) · `test:adminPoli
 isolated PostgreSQL 16 · `test:governance` 667/667. Of the 9 new tests, **7 fail on `8740bf11`**; the
 other 2 are over-reach guards that pass both before and after by design.
 
-## 14. What is not done, and exactly why
+## 14. Status of everything this record set out to prove
 
-### Resolved since this list was first written
+### Resolved
 
 | # | item | resolution |
 |---|---|---|
@@ -718,16 +730,25 @@ other 2 are over-reach guards that pass both before and after by design.
 | 4 | a **no-code** Render restart | ✅ **PASS** — `dep-dah7o6u1egvs73cv6ea0`, trigger `api`, same commit; state byte-identical (§16) |
 | 6 | actual Render tiers, disk, HA, instances | ✅ **measured** through the Render MCP (§9) |
 | 7 | deep links 404 on the Vercel frontend | ✅ **fixed** by #1834 and proven live (§15.4) |
+| 8 | ZZ NONPROD fixture clean-up | ✅ **PASS** — authority removed and configuration restored through governed operations only (§17) |
 
-### Still open
+### Residual evidence limitations — NON-BLOCKING by Owner ruling
 
-| # | item | status | what unblocks it |
-|---|---|---|---|
-| 2 | second tenant `eos-isolation-proof` **on Render** | not created | a working SQL/shell path to the Render database — tenant bootstrap is not an API operation, and direct Render MCP SQL inspection fails because the query connector does not negotiate the TLS the database requires. (The EOS API itself reaches PostgreSQL normally.) |
-| 3 | composite-FK SQLSTATE **on the Render database** | proved on isolated PG 16 with the same migrations instead (§12.5) | same |
-| 5 | role bindings = 112 | not measurable | no read operation returns bindings — a read-surface gap, not a data finding |
-| 8 | **ZZ NONPROD fixture clean-up** | **deliberately kept** — the restart proof needed the exact accepted state to survive | Owner authorization. Fixtures: the custom Role `zz_nonprod_acceptance` (3 assignment rows, 1 active, held by the sandbox admin); its object permissions on `salesTerritory` and `marketingInitiatives`; the `createdAt {R:true}` override; the custom Field `zzNonprodAcceptanceNote`; and `salesTerritory`'s edited `labelPlural` and `description` |
-| 9 | Owner review of this record | #1829 is DRAFT | Owner |
+Recorded so nobody later reads them as proven. The Owner ruled they do not block closure, and that no
+new API, SQL, shell or product capability is to be built merely to close them.
+
+| # | limitation | what stands in its place |
+|---|---|---|
+| 2 | the second tenant `eos-isolation-proof` was **not instantiated on the Render database** — tenant bootstrap is not an API operation | isolation proved through the live API (a stated tenant the caller is not a member of is refused, with no fallback, whether or not it exists) and with two real tenants on an isolated PostgreSQL 16 carrying the same three migrations, including SQLSTATE `23503` with a same-tenant control (§12.5) |
+| 3 | the composite-FK SQLSTATE was not captured **on the Render database** | the same constraint, from the same migration file, proved on the isolated PostgreSQL 16 (§12.5) |
+| 5 | role bindings (112 reported by the Owner at seed time) are **not exposed through a deployed read surface** | none — no read operation returns workflow role bindings. A read-surface gap, not a data finding |
+| 10 | **direct Render MCP SQL inspection fails**: the query connector does not negotiate the TLS the database requires | every database fact in this record was read through the EOS API, which reaches PostgreSQL normally, or through Render's resource API (§9) |
+
+### Open
+
+| # | item | status |
+|---|---|---|
+| 9 | Owner review of this record | #1829 is DRAFT |
 
 ## 15. Rendered browser acceptance — 2026-09-10 — **PASS at 375 / 1024 / 1440**
 
@@ -919,3 +940,100 @@ proving the snapshot deterministic and read-only — and once after.
 
 This is the proof that PostgreSQL, not process memory, is authoritative — and it is the second such
 proof: §12.7 records the first, a code-change replacement.
+
+## 17. Cleanup of the ZZ NONPROD acceptance state — 2026-09-10
+
+**PASS.** Temporary authority removed and altered configuration restored, through **already-governed EOS
+operations only**. No SQL, no new capability, no deletion invented.
+
+### What the governed product can and cannot do — determined from the code first
+
+| definition | governed retirement / deletion? | decision |
+|---|---|---|
+| custom **Field** | **retirement exists**: `updateCustomFieldMetadata` accepts `lifecycle: RETIRED` for CUSTOM fields (only SYSTEM fields refuse lifecycle changes). No delete operation | retired through it |
+| custom **Role** | **none**: `PolicyRoleRecord` has no lifecycle or status, `updateRole` edits only name and description, and the closed operation list has no delete | **retained, inert** |
+| a Role's **object-permission row** | **no removal operation**: `setObjectPermission` requires a complete CRED set | set to all-false — the row remains and grants nothing |
+| a Role's **field override** | `removeFieldPermissionOverride` deletes the row | removed |
+
+A harmless, inert, clearly ZZ-prefixed test definition is preferable to inventing architecture or
+bypassing governance. Role retirement and definition deletion are **not currently product
+capabilities**; this record says so rather than working around it.
+
+### The exact census first
+
+Before any change, a complete read-only census of the tenant — every Role and its object permissions
+and overrides, every Object, every Field, the workflows, the admin's assignments. The ZZ footprint:
+
+- object permissions: `marketingInitiatives` `{R, E}` · `salesTerritory` `{R, E}`
+- field overrides: `createdAt` `{R:true}`
+- assignments: one active (`0971af72…`), two historical (`disabled`)
+- no override on any other Role; the only CUSTOM Field and CUSTOM Role in the tenant are the ZZ ones
+
+### The pre-acceptance baseline — from the audit trail, not memory
+
+The earliest `updateObjectMetadata` event on `salesTerritory` (07:17:58Z) records its `before`: label
+`Sales Territory`, labelPlural `Sales Territories`, and the seeded description. No event touched the
+object before it. The committed seed (`functions/src/adminPolicy/seed/policySeedSnapshot.json`)
+independently carries the same values.
+
+### The cleanup mutations
+
+| # | governed operation | response | audit Δ | access version |
+|---|---|---|---|---|
+| 1 | `revokeRole` — the one active ZZ assignment `0971af72…` | 200 · ok | +1 | 20 → **21** |
+| 2a | `setObjectPermission` — ZZ on `salesTerritory` → all-false | 200 · ok | +1 | 21 → 21 |
+| 2b | `setObjectPermission` — ZZ on `marketingInitiatives` → all-false | 200 · ok | +1 | 21 → 21 |
+| 2c | `removeFieldPermissionOverride` — ZZ `createdAt` | 200 · ok | +1 | 21 → 21 |
+| 3 | `updateObjectMetadata` — `salesTerritory` → the seeded label / labelPlural / description | 200 · ok | +1 | 21 → 21 |
+| 4 | `updateCustomFieldMetadata` — `zzNonprodAcceptanceNote` → `lifecycle: RETIRED` | 200 · ok | +1 | 21 → 21 |
+| 5 | custom Role `zz_nonprod_acceptance` | — no governed operation — | 0 | — |
+
+The access version moved once, on the revoke. After that the admin no longer held the ZZ Role, so the
+ZZ permission changes correctly bumped nobody.
+
+### Proof — a complete census before and after, diffed
+
+**Exactly six differences across the whole tenant, all intended; only one Role's policy changed:**
+
+| | before | after |
+|---|---|---|
+| `salesTerritory` labelPlural | `Sales Territories (ZZ NONPROD)` | `Sales Territories` |
+| `salesTerritory` description | `Object edited in the browser at 1440` | the seeded description |
+| `zzNonprodAcceptanceNote` lifecycle | `DRAFT` | `RETIRED` |
+| ZZ assignment `0971af72…` | `active` | `disabled` — history kept |
+| ZZ on `marketingInitiatives` | `{C:false, R:true, E:true, D:false}` | all false |
+| ZZ on `salesTerritory` | `{C:false, R:true, E:true, D:false}` | all false |
+| ZZ `createdAt` override | `{R:true}` | **removed** |
+
+The other 46 Roles' policies, the other 36 Objects, 394 of 395 Fields and all workflows: **identical**.
+
+| check | result |
+|---|---|
+| admin principal still holds its real Admin assignment `a835defa…` | ✅ |
+| **zero** active `zz_nonprod_acceptance` assignments | ✅ — all 3 rows `disabled`, history preserved |
+| the ZZ Role grants no effective authority | ✅ — every CRED false, no field override, no holder |
+| Sales Territory metadata equals the seeded baseline | ✅ — exact string equality on all three |
+| Sales Territory protected properties | ✅ — SYSTEM · ACTIVE · supportsDelete false, unchanged |
+| all 5 workflows DRAFT | ✅ |
+| `/health` | ✅ reachable · migrated · 3 |
+
+| | before cleanup | after cleanup |
+|---|---|---|
+| audit events | 49 | **55** — one per governed mutation |
+| access version | 20 | **21** |
+| roles / objects / fields | 47 / 37 / 395 | 47 / 37 / 395 — nothing deleted |
+
+### Retained on purpose
+
+- **`zz_nonprod_acceptance`** — a CUSTOM, unprotected Role named "ZZ NONPROD Acceptance Role (post-fix)",
+  with no active assignment, no field override and all-false object permissions. Kept because the
+  product has no governed Role retirement or deletion.
+- **`zzNonprodAcceptanceNote`** — **RETIRED** through the governed lifecycle, not deleted, because the
+  product has no field deletion. Its label and description are the test values.
+- Two all-false object-permission rows on the ZZ Role — the only governed way to withdraw that authority.
+
+### The cleaned state survived another process replacement
+
+After cleanup, `main` advanced to `44f423c9` (#1837), which changes `functions/`, and Render
+redeployed the API (`dep-dah7vr3bc2fs73fivgqg`, trigger `new_commit`, live 10:02:39Z). A full census
+afterwards was **byte-identical** to the post-cleanup census.
