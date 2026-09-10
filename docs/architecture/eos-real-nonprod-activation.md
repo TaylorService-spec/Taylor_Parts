@@ -1,16 +1,17 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
-**Status: BLOCKED ON RENDER ACCOUNT ACCESS — and on nothing else.** The frontend is deployed, the
-Blueprint is self-contained, and the first administrator is identified. The EOS API and its
-database still do not exist.
+**Status: THE EOS POLICY PLATFORM IS RUNNING IN NON-PRODUCTION.** PostgreSQL, the trusted API,
+three migrations, the `taylor-nonprod` tenant and its first administrator all exist. The frontend is
+not yet pointed at the API, so nobody can use it from a browser yet.
 
 Three states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
 
 | | what it means | where this platform is |
 |---|---|---|
-| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche |
-| **DEPLOYED NONPROD** | a real environment runs it | ⚠️ frontend only — no API, no database |
+| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint |
+| **DEPLOYED NONPROD** | a real environment runs it | ✅ API + database + tenant + administrator · ⚠️ frontend not yet wired |
+| **ACCEPTED NONPROD** | a person has driven it and it held | ❌ not yet — browser acceptance, isolation, audit and restart proofs all outstanding |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
 ---
@@ -19,17 +20,18 @@ working":
 
 | | |
 |---|---|
-| `main` at this deployment attempt | `64a7f8c11efebb1815a25083c54262be7a7d7dab` |
+| **`main` DEPLOYED to Render** | **`1433347a840c7c6392ecde93002886bf296be190`** |
+| identity correction (#1828) | `1433347a840c7c6392ecde93002886bf296be190` |
 | policy foundation (#1822) | `51819f4763602220cb8feaa311acde3b46a4cbb5` |
 | non-production activation (#1823) | `d84389f4570c8f55ef376024f60de44ede01e1f7` |
 | merge record (#1824) | `73baf382bee72458c192c86470982c1eec3e56b1` |
 | Administration editing completion (#1827) | `4396844e7452643f9c1079702c71591940e89305` |
 | real-nonprod activation tranche (#1825) | `056743d4aea134d1f39afd1686aaf3c9e7e113e9` |
 
-`main` is two commits above `056743d4`, and the advance was **measured, not assumed**: `226a3214`
-and `64a7f8c1` change `docs/customer-1/CUSTOMER_1_LEDGER.json` and
-`docs/customer-1/CUSTOMER_1_READINESS.md` and nothing else — 2 files, 18 insertions, 11 deletions.
-No deployable content differs from `056743d4`.
+The deployed commit is `056743d4` (#1825) plus two docs-only commits and the #1828 identity
+correction. The docs-only advance was **measured, not assumed**: `226a3214` and `64a7f8c1` change
+`docs/customer-1/CUSTOMER_1_LEDGER.json` and `docs/customer-1/CUSTOMER_1_READINESS.md` and nothing
+else — 2 files, 18 insertions, 11 deletions.
 
 ## 2. What exists, measured
 
@@ -46,21 +48,25 @@ nobody triggered it, and it is already carrying the docs-only advance described 
 for the remaining work — a redeploy is not a thing anybody has to arrange, only a thing that has to
 happen *after* the environment variable is set, because Vite inlines `VITE_*` at BUILD time.
 
-**`VITE_EOS_API_BASE_URL` is still not set in this build.** Every Administration policy surface
-therefore reports NOT CONFIGURED, which is the honest state while no API exists.
+**`VITE_EOS_API_BASE_URL` is still not set in this build**, so every Administration policy surface
+reports NOT CONFIGURED. That was the honest state while no API existed; now that one does, it is
+simply the last wire that has not been connected — §7 step 1.
 
-### Render — DOES NOT EXIST, and could not be created from here
+### Render — EXISTS. Deployed 2026-09-10 by the Owner from the Blueprint on `main`.
 
-Checked rather than assumed, and all four ways came back empty:
-
-| checked | result |
+| | |
 |---|---|
-| `render` CLI on PATH | absent |
-| `RENDER_*` environment variables | none set |
-| `~/.render`, `~/.config/render` | do not exist |
-| a signed-in browser session to drive the dashboard | no Chrome extension is connected (`list_connected_browsers` → `[]`) |
+| deployed `main` | `1433347a840c7c6392ecde93002886bf296be190` |
+| PostgreSQL | `eos-policy-nonprod` — AVAILABLE |
+| web service | `eos-api-nonprod` — LIVE |
+| API URL | `https://eos-api-nonprod.onrender.com` |
+| migrations | `001`, `002`, `003` applied in `preDeployCommand`, not in the build |
 
-No credential was guessed, and none was searched for in a file.
+Created by the Owner in the Render dashboard. This environment still has no Render credential of any
+kind — no CLI, no `RENDER_*` variable, no `~/.render`, no browser session — so everything recorded
+below about the *running* service was measured over HTTPS against the public URL, and everything
+about resource creation, seeding and bootstrap is the Owner's report, marked as such. The two are
+kept apart on purpose.
 
 ### Firebase — the non-production project is now determined, not assumed
 
@@ -162,10 +168,61 @@ assumed: `npm ls typescript --omit=dev` resolves to `(empty)` in this package, w
 `node-pg-migrate` and `pg` are runtime **dependencies**, so `preDeployCommand` and the service keep
 working whatever the install flags are.
 
-## 5. Proved locally against the exact hosted configuration
+## 5. Proved against the DEPLOYED service, 2026-09-10
 
-Not a substitute for the deployed proof — a demonstration that the configuration is correct before
-anybody pays for a service to find out.
+Measured here, over HTTPS, against `https://eos-api-nonprod.onrender.com`. Nothing in this section
+is a report; every line is a response.
+
+### Health separates three questions, and answers all three
+
+```
+$ curl https://eos-api-nonprod.onrender.com/health
+{"ok":true,"environment":"nonprod","reachable":true,"migrated":true,"latencyMs":2,"migrations":3}
+HTTP 200
+```
+
+An HTTP 200 alone would say only that a process is alive. This says three things: the process is
+serving, the database **answered** (`reachable`, 2 ms), and the schema is **current**
+(`migrated`, `migrations: 3` — 001, 002 and 003). A deploy where the process is up and either of
+the other two is false is not accepted, and would not have reached this state anyway:
+`requirePolicyDatabaseReady` refuses to open the socket.
+
+### CORS, against the real deployment
+
+| request | result |
+|---|---|
+| `Origin: https://taylor-parts-preview.vercel.app` | `access-control-allow-origin` echoes it · `vary: Origin` · `Cache-Control: no-store` |
+| `Origin: https://evil.example` | **no** `access-control-allow-origin` header at all — the browser refuses it |
+| wildcard | never emitted |
+| `OPTIONS` preflight from the allowed origin | `204` · methods `POST, GET, OPTIONS` · headers `authorization, content-type, x-eos-tenant` · `max-age 600` |
+
+`/health` answers `200` to any caller, including the unlisted origin — it is a public liveness
+endpoint and carries no tenant data. What the unlisted origin does not get is authorization for the
+browser to read the response.
+
+### The authorization boundary
+
+```
+POST /admin/policy                                    → 401
+{"ok":false,"code":"UNAUTHENTICATED","message":"a bearer token is required"}
+```
+
+Refused before any policy read. And the identity fix from #1828 is proved in the deployed service,
+not merely locally:
+
+```
+POST /admin/policy   Authorization: Bearer <structurally valid, unsigned JWT>   → 401
+{"ok":false,"code":"UNAUTHENTICATED","message":"the token could not be verified"}
+```
+
+"Could not be verified" — not a 500, not a missing-credential error. **The deployed service ran real
+Firebase token verification with no service-account key present**, which is exactly what §3
+predicted and the reason no such key was ever pasted into Render.
+
+## 5.1 Proved locally beforehand, against the same configuration
+
+A demonstration that the configuration was correct before anybody paid for a service to find out.
+Superseded by §5, and kept because it is what made §5 uneventful.
 
 Run with `EOS_ENVIRONMENT=nonprod`, a Render-shaped `PORT`, the real Vercel origin, and a real
 PostgreSQL carrying all three migrations:
@@ -189,52 +246,109 @@ $ curl /health
 | unauthenticated `POST /admin/policy` | `401 UNAUTHENTICATED` before any policy read |
 | token verification with no service-account credential | reaches public-key checking (§3) |
 
-## 6. The remaining work, in order, with every value already decided
+## 6. What the Owner ran, and what it produced
 
-Everything below needs a Render account action. None of it can be done from this environment.
+Reported by the Owner from the Render environment, recorded here as their report rather than as
+something measured from this session. What *was* measured from here is §5.
 
-**1 — Create the Blueprint.** Render → New → Blueprint → repository
-`TaylorService-spec/Taylor_Parts`, branch `main`, file `render.yaml`. It creates both resources and
-asks for nothing: there is no `sync: false` value left to fill in. Do not create either resource by
-hand as well.
+### The tenant
 
-**2 — Watch the first deploy do three things in order.** `npm ci --include=dev … && npm run build`,
-then `npm run migrate:up`, then `npm start`. The migration phase must report migrations `001`
-(`1757462400000_admin-policy.sql`), `002` (`1757548800000_tenant-and-identity.sql`) and `003`
-(`1757635200000_assignment-integrity.sql`) applied. If a table is missing afterwards, the answer is
-never to create it by hand.
+| | |
+|---|---|
+| key | `taylor-nonprod` |
+| bootstrap | canonical command, no manual SQL |
 
-**3 — Read `/health`, and do not accept an HTTP 200 as the answer.** It reports three separate
-facts, and only all three green is a deploy: `reachable: true` (the database answered),
-`migrated: true` with `migrations: 3` (the schema is current), and the process being up at all.
+Seed v1:
 
-**4 — Bootstrap the tenant** with the canonical command, never manual SQL: key `taylor-nonprod`,
-display "Taylor Freezer of Arizona — Non-Production". Expect 37 Objects, 394 Fields, 46 Roles, 3
-workflow business areas, 5 workflow state machines, **all five DRAFT**. Run it a second time and
-confirm the same tenant id, no duplicate rows and no reset configuration.
+| | |
+|---|---|
+| objects | 37 |
+| fields | 394 |
+| roles | 46 |
+| object permissions | 253 |
+| workflows | 5 |
+| workflow versions | 5 |
+| steps | 36 |
+| actions | 48 |
+| role bindings | 112 |
 
-**5 — Bootstrap the first administrator** with the canonical one-time command, for principal
-`ZVu3lHTP1NQhj0Am04zTAGou0dx1` (`admin@sandbox.invalid`, project `eos-platform-sandbox` — §7.1).
-Run it a second time and confirm it neither duplicates the administrator nor overwrites the first.
+**All five workflow state machines remain DRAFT.** Publishing one is currently inert, and nothing
+routes business execution through the engine.
 
-**6 — Set `VITE_EOS_API_BASE_URL`** on the Vercel project's **Preview** environment only, to the
-`eos-api-nonprod` HTTPS URL, then **redeploy**. Setting the variable alone changes nothing: Vite
-inlines `VITE_*` at build time, so the old bundle keeps saying NOT CONFIGURED while the dashboard
-says otherwise. Do not touch the Production environment.
+Re-running the tenant bootstrap produced **zero new seed rows** — the same tenant, no duplicated
+objects, fields, roles or workflows, and no configuration reset. That is the idempotence the tenant
+bootstrap is supposed to have.
 
-**7 — Then, and only then,** the cloud browser acceptance at 1440/1024/375, the tenant-isolation
-proof against a second minimal tenant, the audit assertions, and the hard restart proof.
+### The first administrator
 
-## 7. Blocked, and exactly why
+| | |
+|---|---|
+| external subject | `ZVu3lHTP1NQhj0Am04zTAGou0dx1` (`admin@sandbox.invalid`, `eos-platform-sandbox` — §7.1) |
+| EOS principal | `639c1970-dbdb-4bc0-af7c-118559151e2f` |
+| Admin Role assignment | `a835defa-239b-43c9-8ee4-f1376a8c1c23` |
+| access version | 1 |
 
-| # | blocked item | what unblocks it |
-|---|---|---|
-| 1 | create `eos-policy-nonprod` PostgreSQL | Render account access, or a `RENDER_API_KEY` |
-| 2 | create `eos-api-nonprod` web service | same; its deploy runs migrations through `preDeployCommand` |
-| 3 | bootstrap the `taylor-nonprod` tenant | the database and API existing with migrations applied |
-| 4 | bootstrap the first administrator | ~~the exact UID~~ **RESOLVED — see §7.1.** Only the Render environment now stands in the way |
-| 5 | set `VITE_EOS_API_BASE_URL` + **redeploy** the preview | the API URL existing, and Vercel access |
-| 6 | cloud browser acceptance, restart proof, tenant-isolation proof | all of the above |
+Note the shape: the Firebase subject and the EOS principal are **different identifiers**. Firebase
+said who authenticated; EOS minted its own principal and hung the authority off that. Nothing in the
+token became authority.
+
+### The administrator bootstrap is ONE-TIME, and that is not the same as idempotent
+
+An earlier draft of this document said to run it twice and confirm it "neither duplicates nor
+overwrites". That framing was wrong, and it mattered enough to correct rather than quietly reword:
+it invites the reader to expect a second run to *succeed harmlessly*. It does not. It is **refused**:
+
+```
+this tenant has already been bootstrapped; assign Roles through the trusted Admin API
+```
+
+The two bootstraps are deliberately different, and the difference is the point:
+
+- **Tenant bootstrap is idempotent** — it describes a desired configuration, so running it again
+  converging on the same rows is correct.
+- **Administrator bootstrap is one-time** — it is the act of granting the first authority in a
+  tenant, in the one moment before any authority exists to check it against. A second run cannot be
+  "harmless": either it would re-grant (a privileged mutation with no authorized actor behind it) or
+  it would silently do nothing (indistinguishable, to whoever ran it, from having succeeded). A
+  refusal is the only answer that is honest about which of those happened.
+
+After that moment the tenant has an administrator, so every further grant goes through the trusted
+Admin API with a real authenticated actor — which is exactly what the refusal message says to do.
+
+## 7. What remains
+
+**1 — Wire Vercel.** `VITE_EOS_API_BASE_URL=https://eos-api-nonprod.onrender.com`, on the
+`taylor-parts-preview` project's **Production** environment — then **redeploy**.
+
+> **"Production" here is the environment of the `taylor-parts-preview` project, which builds the
+> stable `taylor-parts-preview.vercel.app` domain. It is NOT Taylor's production frontend, which is
+> a different Vercel project and is not touched.** The stable domain is the target precisely because
+> it is the origin `EOS_ALLOWED_ORIGINS` allows: a per-deployment preview URL is a different origin
+> and the API would refuse it.
+>
+> **Setting the variable alone changes nothing.** Vite inlines `VITE_*` at BUILD time, so the
+> existing bundle keeps reporting NOT CONFIGURED while the dashboard says otherwise. The variable
+> must be set and then a new deployment built.
+
+**2 — Cloud browser acceptance** at 1440 / 1024 / 375, against Vercel → Render → PostgreSQL, with no
+localhost, no emulator and no in-memory adapter anywhere in the path: the completed #1827
+Administration experience, object CRED persistence across a full reload, field Inherit → Deny → back
+to Inherit with the override row *gone*, the doorway rendering as "Allow · blocked by object",
+Delete unavailable where the server refuses it, custom Role and custom Field create and edit.
+
+**3 — Users and assignments**: the principal projection carrying exactly `id`, `displayName`,
+`status`, `identityProvider`, `externalSubject` and nothing else; an identical repeat assignment
+returning the same canonical row with no second active row, no access-version bump and no false
+audit event; revoke and re-grant leaving the revoked row in history.
+
+**4 — Tenant isolation** against a second minimal tenant, including the database proof that the
+composite foreign key refuses a cross-tenant assignment, captured as a SQLSTATE.
+
+**5 — Audit**: one event for a successful mutation, none for a refusal, none for an idempotent
+no-op, none for a rollback.
+
+**6 — Hard restart.** Replace the running process and prove every record above survived it. This is
+what separates "PostgreSQL is authoritative" from "the process remembered".
 
 ### 7.1 The first administrator — resolved 2026-09-10
 
@@ -271,6 +385,13 @@ rest of the token deliberately.
 Firestore policy reads and writes introduced by this work: **0** and **0**, enforced by a static
 guard whose allowlist contains one read-only, uncalled migration parity harness.
 
+The deployment bears this out in a way a static guard cannot. The running service holds no Firebase
+credential — only `GOOGLE_CLOUD_PROJECT` — so it *could not* read or write Firestore if something
+asked it to. The only Google call it can make is fetching public signing certificates, and the only
+thing it does with a verified token is take `decoded.uid`. Every authority answer after that comes
+from PostgreSQL: subject → principal (`639c1970-…`) → membership → Role assignment
+(`a835defa-…`) → capability.
+
 **Firebase is not removed.** It still provides authentication, and the rest of the application still
 uses Firestore for business data. Nothing here changes either. What §3 removed is not Firebase — it
 is a service-account key that was never being read.
@@ -286,8 +407,11 @@ The paid `starter` service must not be described as having the Free web-service 
 behaviour. Render's idle spin-down limitation applies to Free web services; this Blueprint does not
 select the Free plan.
 
-Actual billed amounts are not recorded here, because nothing has been created and quoting a price
-nobody has been charged would be a guess.
+Both resources now exist on those plans. **Actual billed amounts are not recorded here**, because
+this session cannot read the Render account and quoting a price nobody has shown me would be a
+guess. What is recorded is the shape, which is what the Blueprint controls and what a later bill
+has to be explained by: one database, one web service, **zero** workers, **zero** cron jobs,
+**zero** replicas, no HA.
 
 ## 10. Parts / Purchasing — readiness assessment ONLY
 
