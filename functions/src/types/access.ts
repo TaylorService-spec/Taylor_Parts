@@ -439,6 +439,15 @@ export type AuditAction =
   // above) or REJECT (this action) -- reject stages no ledger evidence, it only records the
   // decision, so it needed its own action rather than overloading reconcileCycleCount's meaning.
   | "rejectCycleCount"
+  // Cycle Count A1 sheet and line model (schema v2, Decision #179) -- one action per sheet and line command
+  | "createCycleCountSheet"
+  | "openCycleCountLine"
+  | "submitCycleCountLine"
+  | "reconcileCycleCountLine"
+  | "rejectCycleCountLine"
+  | "cancelCycleCountLine"
+  | "cancelCycleCountSheet"
+  | "closeCycleCountSheet"
   // Work Order transition audit trail (M9/H19 remediation) -- the trusted transitionWorkOrder callable's
   // OWN Audit Event for every applied action (Schedule/Dispatch/Accept/Travel/Arrive/WorkStart/Complete/
   // Close/Cancel/MarkReady), not only the Complete-with-linked-Sales-Order write-back which already had

@@ -298,16 +298,22 @@ export {
   cancelTransferOrderCallable as cancelTransferOrder,
 } from "./inventoryTransfer/transferCallables";
 
-// --- Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*) ---
-// Every inventory.cycleCount.* capability is registered `active: false` and granted to NO Role, so every
-// principal is denied `noQualifyingGrant` until a later, separately-authorized grant + activation gate.
-// Exporting a callable is not deployment authorization by itself -- see receiveInventoryStock above.
+// --- Enterprise Inventory -- Cycle Count: the A1 SHEET / LINE model (schema v2) + A4 durable reads ---
+// Decision #179. These are the ONLY callables that create or read cycle counts. The v1 single-part
+// callables (createCycleCount / submitCycleCount / reconcileCycleCount / cancelCycleCount) are NO LONGER
+// exported: v1 records are retired in place (M-1) and the v1 modules survive only as frozen Certification
+// tooling. A release that drops them must also delete the four deployed v1 functions (operator action).
 export {
-  createCycleCountCallable as createCycleCount,
-  submitCycleCountCallable as submitCycleCount,
-  reconcileCycleCountCallable as reconcileCycleCount,
-  cancelCycleCountCallable as cancelCycleCount,
-} from "./cycleCount/cycleCountCallables";
+  createCycleCountSheetCallable as createCycleCountSheet,
+  openCycleCountLineCallable as openCycleCountLine,
+  submitCycleCountLineCallable as submitCycleCountLine,
+  reconcileCycleCountLineCallable as reconcileCycleCountLine,
+  cancelCycleCountLineCallable as cancelCycleCountLine,
+  cancelCycleCountSheetCallable as cancelCycleCountSheet,
+  closeCycleCountSheetCallable as closeCycleCountSheet,
+  listCycleCountSheetsCallable as listCycleCountSheets,
+  getCycleCountSheetCallable as getCycleCountSheet,
+} from "./cycleCount/cycleCountSheetCallables";
 
 // --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the

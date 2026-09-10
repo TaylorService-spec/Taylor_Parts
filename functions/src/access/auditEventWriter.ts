@@ -222,6 +222,15 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // M23 blind-count remediation -- reconcileCycleCount's sibling terminal decision (reject, no
   // ledger evidence). Runtime mirror of the rejectCycleCount AuditAction union member.
   "rejectCycleCount",
+  // Cycle Count A1 sheet and line model (schema v2, Decision #179).
+  "createCycleCountSheet",
+  "openCycleCountLine",
+  "submitCycleCountLine",
+  "reconcileCycleCountLine",
+  "rejectCycleCountLine",
+  "cancelCycleCountLine",
+  "cancelCycleCountSheet",
+  "closeCycleCountSheet",
   // Work Order transition audit trail (M9/H19 remediation): runtime mirror of the transitionWorkOrder
   // AuditAction union member (types/access.ts) -- one Audit Event per applied Work Order transition.
   "transitionWorkOrder",

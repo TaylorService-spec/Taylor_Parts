@@ -503,3 +503,11 @@ Evidence that no persisted records require preservation:
 **Revision 2: APPROVED by the Owner, 2026-09-10, as the A1 implementation authority.** M-1 ruled Option A the same day (preserve, export, retire v1 in place; no migration, no dual reader) -- evidence: [cycle-count-m1-v1-export-manifest-2026-09-10.md](../assessments/cycle-count-m1-v1-export-manifest-2026-09-10.md). Revision 1 is preserved unchanged at tag `archive/cycle-count-a1-spec-f585125d`. The strict version boundary: the v2 operational population is `schemaVersion == 2`; no v1 record is ever deserialized as v2.
 
 Pending. Architectural review of the parent implementation plan completed 2026-09-01 with all A1 decisions ruled and the A1 specification gate marked READY. This specification requires its own approval before implementation begins.
+
+## Implementation evidence (A1 + A4, 2026-09-10)
+
+- **Modules:** `cycleCountSheetRepository.ts` (strict v2 sheet / v1 line shapes), `cycleCountSheetCommand.ts` (create sheet, open / submit / reconcile / cancel line, cancel / close sheet), `cycleCountSheetRead.ts` (A4 list + get with per-line redaction and explicit cursors), `cycleCountSheetCallables.ts` (the only deployed Cycle Count callables).
+- **Deviation, deliberate:** the sheet id is `"ccs_" + sha256(idempotencyKey)`, not v1's `cycleCountDocId` derivation. With 24 v1 records retired in place in the same collection (M-1), sharing the derivation would let a reused key land on a v1 document; a distinct prefix makes that impossible by construction.
+- **Deviation, deliberate:** `reconcileCycleCountSheet` is not a server loop. Reconciliation is per line (each its own transaction, replay-safe); a sheet is reconciled by calling the line command per line, which is exactly "resumable, never restartable" without a long-running server transaction or loop.
+- **Ownership:** the sheet carries `operatingCompanyId` from the counted location's governed Warehouse (a Bin's parent), per the Ownership Model — the field whose absence from v1 made every backfilled v1 record unreadable.
+- **Tests:** `functions/test/cycleCountSheet.test.mjs` 32/32 on the emulator, covering spec tests 1–31 and 33–36, the Rules posture (32) statically, the strict version boundary (a v1 record is refused by commands, the reader and the list), A4 pagination and callable authority.

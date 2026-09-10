@@ -251,10 +251,15 @@ test("every scanner callable is EXPORTED — export is not deployment, but a mis
     "receiveInventoryStock", "getPurchaseOrderReceivingProgress", "listReceivablePurchaseOrders",
     "resolveScannedPartIdentifier", "getPartBalance", "getAvailableEquipment", "getLocationDisplay",
     "createBin", "resolveBin", "listBins", "recordPutAway", "recordReturnIntake",
-    "dispatchTransferOrder", "receiveTransferOrder", "createCycleCount", "submitCycleCount",
+    "dispatchTransferOrder", "receiveTransferOrder",
+    // Cycle Count A1 (Decision #179): the sheet/line callables replaced the v1 single-part pair.
+    "createCycleCountSheet", "openCycleCountLine", "submitCycleCountLine", "getCycleCountSheet",
+    // The scanner's governed reads (Decision #179).
+    "relocateStock",
   ];
   for (const name of required) {
-    assert.match(index, new RegExp(`\\b${name}\\b`), `${name} must be exported from functions/src/index.ts`);
+    // Matched as an EXPORT binding (`as name` or `export { name`), never a word in a comment.
+    assert.match(index, new RegExp(`(\\bas ${name}\\b|export \\{[^}]*\\b${name}\\b)`), `${name} must be exported from functions/src/index.ts`);
   }
 });
 
