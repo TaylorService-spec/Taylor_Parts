@@ -48,6 +48,10 @@ async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
   await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
+  // eos_ops (migration 005) is a sibling schema in the same database. Migration 003 was still the
+  // most recent when this reset was written; it must also drop eos_ops now, or a second migrateFromClean()
+  // in the same job fails with "already exists" the moment eos_ops has any migration to re-run.
+  await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();
@@ -111,12 +115,13 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "object_fields", "objects", "principal_access_versions", "principals",
-    "role_field_permission_overrides", "role_object_permissions", "roles", "tenant_admin_bootstraps",
-    "tenant_memberships", "tenants",
+    "audit_events", "capabilities", "object_fields", "objects", "principal_access_versions", "principals",
+    "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
+    "tenant_admin_bootstraps", "tenant_memberships", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "nineteen tables, named exactly -- sixteen from migration 001, three from 002 (identity)");
+  ], "twenty-one tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+     "(operational capabilities). Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -161,19 +166,21 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL THREE, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL FIVE, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "3", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "5", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
   assert.equal(gone.rows[0].n, 0, "down leaves nothing behind");
+  const opsGone = await query("SELECT count(*)::int n FROM information_schema.schemata WHERE schema_name = 'eos_ops'");
+  assert.equal(opsGone.rows[0].n, 0, "eos_ops is gone too");
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 19, "and up restores all nineteen");
+  assert.equal(back.rows[0].n, 21, "and up restores all twenty-one");
 });
 
 test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
@@ -183,6 +190,29 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 005 off: eos_ops (a SEPARATE schema) disappears entirely; eos_policy is untouched.
+  down(1);
+  const opsGoneAlone = await query(
+    "SELECT count(*)::int n FROM information_schema.schemata WHERE schema_name = 'eos_ops'",
+  );
+  assert.equal(opsGoneAlone.rows[0].n, 0, "eos_ops is gone");
+  const stillTwentyOne = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(stillTwentyOne.rows[0].n, 21, "eos_policy is untouched by reversing the sibling schema");
+
+  // 004 off: the operational capability tables go, migration 001-003's nineteen stay.
+  down(1);
+  const capsGone = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'" +
+    " AND table_name IN ('capabilities', 'role_capabilities')",
+  );
+  assert.equal(capsGone.rows[0].n, 0, "the capability tables are gone");
+  const back19 = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(back19.rows[0].n, 19, "and the pre-existing nineteen survive");
 
   // 003 off: the integrity constraints go, the tables stay, and the column name reverts.
   down(1);
