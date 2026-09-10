@@ -164,7 +164,7 @@ check("A3: every Permission id is granted by at least one compatibility Role, or
 // the SAME accounting A3 uses (broadening the shared exception to inventory.stock.* would make this fail) ---
 check("A3-inv: a synthetic future inventory.stock.* capability is reported UNACCOUNTED by the real A3 accounting", () => {
   // Sanity: today exactly one inventory.stock.* exists (the reviewed one).
-  // BIN-P6 / DECISIONS #169 added inventory.stock.relocate (active:false). The list stays EXACT on
+  // BIN-P6 / DECISIONS #170 added inventory.stock.relocate (active:false). The list stays EXACT on
   // purpose: it must fail when a new inventory.stock.* lands, which is what keeps the
   // synthetic-future guard below meaningful instead of a prefix that waves everything through.
   assert.deepEqual(PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id).sort(), ["inventory.stock.receive", "inventory.stock.relocate"]);

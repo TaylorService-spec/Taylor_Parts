@@ -1138,7 +1138,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "record",
     active: false,
   }),
-  // BIN-P6 / DECISIONS #169 -- INTERNAL PHYSICAL RELOCATION.
+  // BIN-P6 / DECISIONS #170 -- INTERNAL PHYSICAL RELOCATION.
   //
   // Move already-owned stock between exact governed locations INSIDE one Warehouse custody parent:
   // WAREHOUSE direct -> BIN, BIN -> WAREHOUSE direct, BIN -> BIN in the same Warehouse. The
@@ -1160,7 +1160,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   Object.freeze({
     id: "inventory.stock.relocate",
     description:
-      "Move already-owned physical inventory between exact governed locations inside the same Warehouse custody parent (warehouse-direct to bin, bin to warehouse-direct, bin to bin). Authors internal relocation movement only: the Warehouse aggregate is unchanged, no custody boundary is crossed, and this grants nothing about transferring stock between warehouses or to a truck (DECISIONS #169).",
+      "Move already-owned physical inventory between exact governed locations inside the same Warehouse custody parent (warehouse-direct to bin, bin to warehouse-direct, bin to bin). Authors internal relocation movement only: the Warehouse aggregate is unchanged, no custody boundary is crossed, and this grants nothing about transferring stock between warehouses or to a truck (DECISIONS #170).",
     resource: "inventory.stock",
     action: "relocate",
     active: false,
