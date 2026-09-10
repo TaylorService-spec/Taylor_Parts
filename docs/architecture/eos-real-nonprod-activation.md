@@ -1,7 +1,8 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
 **Status: ACCEPTANCE INCOMPLETE — every server-side, tenant, audit and persistence proof passed
-against the live deployment; the browser UI proofs are waiting on one human sign-in.**
+against the live deployment, and the stored policy renders correctly at 1440; the interactive UI
+proofs and the 1024/375 passes did not complete because the browser input channel failed (§15).**
 
 Four states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
@@ -10,7 +11,7 @@ working":
 |---|---|---|
 | **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix |
 | **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, one commit end to end |
-| **ACCEPTED NONPROD** | a person has driven it and it held | ⚠️ server semantics, isolation, audit and restart ACCEPTED (§12) · rendered UI at 1440/1024/375 NOT YET (§14) |
+| **ACCEPTED NONPROD** | a person has driven it and it held | ⚠️ server semantics, isolation, audit and restart ACCEPTED (§12) · rendering at 1440 ACCEPTED (§15) · UI mutations and 1024/375 NOT YET |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
 ---
