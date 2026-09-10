@@ -50,6 +50,14 @@
       "runner": "node"
     },
     {
+      "file": "test/adminPolicyApiClient.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/adminPolicySurfaces.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/adminUsersReset.test.mjs",
       "runner": "node"
     },
@@ -962,6 +970,10 @@
       "runner": "node"
     },
     {
+      "file": "test/stockMovementSession.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/subnavRouteDispatch.test.mjs",
       "runner": "node"
     },
@@ -1140,14 +1152,6 @@
     {
       "file": "test/workOrderWorkflowMirrorContract.test.mjs",
       "runner": "node"
-    },
-    {
-      "file": "test/adminPolicyApiClient.test.mjs",
-      "runner": "node --test"
-    },
-    {
-      "file": "test/adminPolicySurfaces.test.mjs",
-      "runner": "node --test"
     }
   ]
 }

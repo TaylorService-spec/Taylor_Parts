@@ -3408,10 +3408,11 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
+          "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 4,
+        "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3432,9 +3433,11 @@
         "serverReferences": [
           "functions/src/inventoryLocation/stockRelocationCommand.ts"
         ],
-        "clientReferences": [],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/scanWorkflows.js"
+        ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3664,10 +3667,11 @@
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/objectPermissionMap.js"
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
+          "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3695,10 +3699,11 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
+          "field-ops-app-vite/src/modules/scan/MoveStockScan.jsx",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
