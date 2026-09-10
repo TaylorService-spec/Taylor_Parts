@@ -36,14 +36,14 @@ export function openBinConversionContext(argv) {
   if (emulator) {
     admin.initializeApp({ projectId: projectId ?? "taylor-parts-emulator" });
   } else {
-    let token;
     try {
-      token = gcloud(["auth", "print-access-token"]);
       operator = gcloud(["config", "get-value", "account"]) || "unknown-operator";
     } catch (err) {
-      refuse(`No gcloud access token (${err?.message ?? err}). Run \`gcloud auth login\`; this script creates no credentials.`);
+      refuse(`No gcloud account (${err?.message ?? err}). Run \`gcloud auth login\`; this script creates no credentials.`);
     }
-    admin.initializeApp({ projectId, credential: { getAccessToken: async () => ({ access_token: token, expires_in: 3000 }) } });
+    // The operator's Application Default Credentials -- the login every governed sandbox script uses.
+    // (A bare {getAccessToken} object is refused by the Firestore client; this was emulator-only proven.)
+    admin.initializeApp({ projectId, credential: admin.credential.applicationDefault() });
   }
   return { db: admin.firestore(), admin, warehouseId, start, end, operator, flag };
 }

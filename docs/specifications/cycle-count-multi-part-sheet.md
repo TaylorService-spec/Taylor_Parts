@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft — Revision 2, reconciled to current main 2026-09-10 (implementation BLOCKED on migration ruling M-1)
+status: APPROVED — Revision 2, Owner approval 2026-09-10 (implementation authority; M-1 ruled Option A)
 date: 2026-09-01 (rev 2: 2026-09-10)
 owner: Claude Code
 related_adrs: []
@@ -500,6 +500,6 @@ Evidence that no persisted records require preservation:
 
 ## Approval
 
-**Rev 2: pending, and implementation is blocked on M-1.**
+**Revision 2: APPROVED by the Owner, 2026-09-10, as the A1 implementation authority.** M-1 ruled Option A the same day (preserve, export, retire v1 in place; no migration, no dual reader) -- evidence: [cycle-count-m1-v1-export-manifest-2026-09-10.md](../assessments/cycle-count-m1-v1-export-manifest-2026-09-10.md). Revision 1 is preserved unchanged at tag `archive/cycle-count-a1-spec-f585125d`. The strict version boundary: the v2 operational population is `schemaVersion == 2`; no v1 record is ever deserialized as v2.
 
 Pending. Architectural review of the parent implementation plan completed 2026-09-01 with all A1 decisions ruled and the A1 specification gate marked READY. This specification requires its own approval before implementation begins.
