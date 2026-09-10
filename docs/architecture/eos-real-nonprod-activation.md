@@ -1,7 +1,8 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
-**Status: BLOCKED ON RENDER ACCOUNT ACCESS. The frontend is deployed and the Blueprint is now
-self-contained; the EOS API and its database still do not exist.**
+**Status: BLOCKED ON RENDER ACCOUNT ACCESS — and on nothing else.** The frontend is deployed, the
+Blueprint is self-contained, and the first administrator is identified. The EOS API and its
+database still do not exist.
 
 Three states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
@@ -212,7 +213,9 @@ display "Taylor Freezer of Arizona — Non-Production". Expect 37 Objects, 394 F
 workflow business areas, 5 workflow state machines, **all five DRAFT**. Run it a second time and
 confirm the same tenant id, no duplicate rows and no reset configuration.
 
-**5 — Bootstrap the first administrator** — *blocked, see §7*.
+**5 — Bootstrap the first administrator** with the canonical one-time command, for principal
+`ZVu3lHTP1NQhj0Am04zTAGou0dx1` (`admin@sandbox.invalid`, project `eos-platform-sandbox` — §7.1).
+Run it a second time and confirm it neither duplicates the administrator nor overwrites the first.
 
 **6 — Set `VITE_EOS_API_BASE_URL`** on the Vercel project's **Preview** environment only, to the
 `eos-api-nonprod` HTTPS URL, then **redeploy**. Setting the variable alone changes nothing: Vite
@@ -229,14 +232,34 @@ proof against a second minimal tenant, the audit assertions, and the hard restar
 | 1 | create `eos-policy-nonprod` PostgreSQL | Render account access, or a `RENDER_API_KEY` |
 | 2 | create `eos-api-nonprod` web service | same; its deploy runs migrations through `preDeployCommand` |
 | 3 | bootstrap the `taylor-nonprod` tenant | the database and API existing with migrations applied |
-| 4 | bootstrap the first administrator | **the exact `eos-platform-sandbox` Firebase Auth UID.** Not inferred from an email in a document, a git author, a username or a display name — the bootstrap is one-time and principal-bound, and guessing the principal is the one mistake it cannot undo |
+| 4 | bootstrap the first administrator | ~~the exact UID~~ **RESOLVED — see §7.1.** Only the Render environment now stands in the way |
 | 5 | set `VITE_EOS_API_BASE_URL` + **redeploy** the preview | the API URL existing, and Vercel access |
 | 6 | cloud browser acceptance, restart proof, tenant-isolation proof | all of the above |
 
-Blocker 4 is now narrower than it was: the *project* is determined (`eos-platform-sandbox`), so
-what remains is one value, readable at
-`https://console.firebase.google.com/project/eos-platform-sandbox/authentication/users` — the User
-UID column, for whichever account is to be the first administrator.
+### 7.1 The first administrator — resolved 2026-09-10
+
+| | |
+|---|---|
+| Firebase project | `eos-platform-sandbox` |
+| account | `admin@sandbox.invalid` — **named by the Owner**, not chosen here |
+| Auth UID | `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
+| how it was established | **read by the Owner from the Firebase console** and confirmed back |
+
+The repository already carried that UID in three independent places — the 2026-08-06 provisioning
+log recording the `createUser` result, a 2026-08-14 sandbox bootstrap keyed
+`bootstrap-admin-ZVu3lHTP1NQhj0Am04zTAGou0dx1`, and a 2026-08-18 read of the live
+`employees`/`users` link — and all three agreed. **None of them was treated as the answer.** A
+document records what was true when it was written; an account deleted and recreated carries a new
+UID, and the EOS bootstrap is one-time and principal-bound, so a stale value is the one mistake it
+cannot undo. The console reading is the fact; the documents are corroboration that turned out to be
+correct.
+
+The project itself was determined the same way — from the running bundle rather than from a name:
+`assets/firebase-*.js` on the deployed preview carries `eos-platform-sandbox.firebaseapp.com`.
+
+`admin@sandbox.invalid` is a shared sandbox persona rather than a personal identity, which is
+appropriate here and is not a trap: the first administrator can assign the Administrator Role to any
+other principal afterwards, so this decides who bootstraps, not who governs.
 
 ## 8. The Firebase boundary, restated because deployment is when it gets blurred
 
