@@ -1,56 +1,81 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
-**Status: THE EOS POLICY PLATFORM IS RUNNING IN NON-PRODUCTION.** PostgreSQL, the trusted API,
-three migrations, the `taylor-nonprod` tenant and its first administrator all exist. The frontend is
-not yet pointed at the API, so nobody can use it from a browser yet.
+**Status: ACCEPTANCE INCOMPLETE — every server-side, tenant, audit and persistence proof passed
+against the live deployment; the browser UI proofs are waiting on one human sign-in.**
 
-Three states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
+Four states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
 
 | | what it means | where this platform is |
 |---|---|---|
-| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint |
-| **DEPLOYED NONPROD** | a real environment runs it | ✅ API + database + tenant + administrator · ⚠️ frontend not yet wired |
-| **ACCEPTED NONPROD** | a person has driven it and it held | ❌ not yet — browser acceptance, isolation, audit and restart proofs all outstanding |
+| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix |
+| **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, one commit end to end |
+| **ACCEPTED NONPROD** | a person has driven it and it held | ⚠️ server semantics, isolation, audit and restart ACCEPTED (§12) · rendered UI at 1440/1024/375 NOT YET (§14) |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
 ---
+
+## 0. Current authority
+
+What is true **now**. Everything below this section that describes an earlier moment says so.
+
+| | |
+|---|---|
+| canonical frontend | **`https://verenwardeos.vercel.app`** |
+| old frontend domain | `https://taylor-parts-preview.vercel.app` — **REMOVED** from the Vercel project by the Owner |
+| EOS API | **`https://eos-api-nonprod.onrender.com`** |
+| PostgreSQL | `eos-policy-nonprod` — PostgreSQL 16, migrations `001` `002` `003` |
+| deployed `main` | **`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** — frontend and API on the same commit |
+| tenant | `taylor-nonprod` · `tenant-6ce59be1-1979-45cd-9d17-a4969037fb25` |
+| first administrator | EOS principal `639c1970-dbdb-4bc0-af7c-118559151e2f` ← Firebase subject `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
+| workflows | 5 state machines, **all DRAFT** |
+
+`main` advanced from `8740bf11` to `c1d69133` **during this acceptance run**, legitimately: #1831
+fixed a defect the run found (§13). No other commit is in between.
 
 ## 1. Source
 
 | | |
 |---|---|
-| **`main` DEPLOYED to Render** | **`1433347a840c7c6392ecde93002886bf296be190`** |
+| **`main` DEPLOYED** | **`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** |
+| no-op audit fix (#1831) — found by this acceptance run | `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
+| origin rename (#1830) | `8740bf1110512488b7044c992796beab45319333` |
 | identity correction (#1828) | `1433347a840c7c6392ecde93002886bf296be190` |
-| policy foundation (#1822) | `51819f4763602220cb8feaa311acde3b46a4cbb5` |
-| non-production activation (#1823) | `d84389f4570c8f55ef376024f60de44ede01e1f7` |
-| merge record (#1824) | `73baf382bee72458c192c86470982c1eec3e56b1` |
-| Administration editing completion (#1827) | `4396844e7452643f9c1079702c71591940e89305` |
 | real-nonprod activation tranche (#1825) | `056743d4aea134d1f39afd1686aaf3c9e7e113e9` |
-
-The deployed commit is `056743d4` (#1825) plus two docs-only commits and the #1828 identity
-correction. The docs-only advance was **measured, not assumed**: `226a3214` and `64a7f8c1` change
-`docs/customer-1/CUSTOMER_1_LEDGER.json` and `docs/customer-1/CUSTOMER_1_READINESS.md` and nothing
-else — 2 files, 18 insertions, 11 deletions.
+| Administration editing completion (#1827) | `4396844e7452643f9c1079702c71591940e89305` |
+| merge record (#1824) | `73baf382bee72458c192c86470982c1eec3e56b1` |
+| non-production activation (#1823) | `d84389f4570c8f55ef376024f60de44ede01e1f7` |
+| policy foundation (#1822) | `51819f4763602220cb8feaa311acde3b46a4cbb5` |
 
 ## 2. What exists, measured
 
-### Vercel — EXISTS, and redeploys itself from `main`
+### Vercel
 
 | | |
 |---|---|
-| project | `taylor-parts-preview` (team `verenward`) |
-| domain | `https://taylor-parts-preview.vercel.app` |
-| deployed identity | `/version.json` → `commit 226a321`, `environmentId platform-sandbox`, `environmentRole sandbox`, built `2026-09-10T02:09:52Z` |
+| canonical domain | `https://verenwardeos.vercel.app` |
+| deployed identity | `/version.json` → `commit c1d6913`, `environmentId platform-sandbox`, `environmentRole sandbox`, built `2026-09-10T07:36:25.570Z` |
+| API base URL | **compiled into the deployed bundle** — `assets/usePolicyStore-Dzqwa4VK.js` contains `function c(){let e=\`https://eos-api-nonprod.onrender.com\`…`: `policyApiBaseUrl()` with the value constant-folded in |
 
-Read from the running site, not from a dashboard screenshot. The build tracked `main` on its own:
-nobody triggered it, and it is already carrying the docs-only advance described above. That matters
-for the remaining work — a redeploy is not a thing anybody has to arrange, only a thing that has to
-happen *after* the environment variable is set, because Vite inlines `VITE_*` at BUILD time.
+Read from the running site, not from a dashboard. Two cautions from measuring it, kept because each
+would have produced a wrong answer:
 
-**`VITE_EOS_API_BASE_URL` is still not set in this build**, so every Administration policy surface
-reports NOT CONFIGURED. That was the honest state while no API existed; now that one does, it is
-simply the last wire that has not been connected — §7 step 1.
+- **The API URL is not in the entry chunk.** Scanning only the 25 chunks `index.html` references finds
+  nothing; the policy client is lazily imported. Finding it took walking all 159 chunk names the entry
+  bundle can import. A shallow scan would have reported "Vercel redeploy required" — falsely.
+- **Setting a `VITE_*` variable is not the same as shipping it.** Vite inlines it at build time; the
+  proof is the literal in the served file, not the dashboard.
+
+### Old domain — removal measured
+
+```
+https://taylor-parts-preview.vercel.app/              404  X-Vercel-Error: DEPLOYMENT_NOT_FOUND
+https://taylor-parts-preview.vercel.app/version.json  404  DEPLOYMENT_NOT_FOUND
+```
+
+Vercel answers for the hostname but serves no deployment: it is no longer an EOS application
+hostname. Separately, the API refuses it: `Origin: https://taylor-parts-preview.vercel.app` receives
+no `Access-Control-Allow-Origin` (§11).
 
 ### Render — EXISTS. Deployed 2026-09-10 by the Owner from the Blueprint on `main`.
 
@@ -111,8 +136,8 @@ the **project id**. So:
 - `GOOGLE_CLOUD_PROJECT` — **declared with its value**, `eos-platform-sandbox`, rather than
   prompted. A Firebase project id is public, and this is the one value identity cannot run without;
   leaving it to be typed into a dashboard invites a typo in exactly the wrong place.
-- `EOS_ALLOWED_ORIGINS` — **declared with its value**, `https://taylor-parts-preview.vercel.app`,
-  for the same reason. An origin is not a credential.
+- `EOS_ALLOWED_ORIGINS` — **declared with its value**, `https://verenwardeos.vercel.app`, for the
+  same reason. An origin is not a credential.
 
 The Blueprint now declares **no `sync: false` value at all**. The environment stands up from the
 file alone: nothing to paste, nothing to remember to rotate. The one genuinely secret value — the
@@ -168,7 +193,11 @@ assumed: `npm ls typescript --omit=dev` resolves to `(empty)` in this package, w
 `node-pg-migrate` and `pg` are runtime **dependencies**, so `preDeployCommand` and the service keep
 working whatever the install flags are.
 
-## 5. Proved against the DEPLOYED service, 2026-09-10
+## 5. Proved against the DEPLOYED service, 2026-09-10 — BEFORE the rename
+
+> **Historical.** Measured while `https://taylor-parts-preview.vercel.app` was the only frontend
+> origin. The current, post-rename measurements are in §11. Nothing here was re-run or relabelled to
+> look as though it was tested against `verenwardeos`.
 
 Measured here, over HTTPS, against `https://eos-api-nonprod.onrender.com`. Nothing in this section
 is a report; every line is a response.
@@ -240,7 +269,7 @@ $ curl /health
 |---|---|
 | `npm start` — the Blueprint's `startCommand` | starts, binds `PORT` |
 | health separates PROCESS / REACHABLE / MIGRATED | `reachable: true`, `migrated: true`, `migrations: 3` |
-| CORS, real Vercel origin `https://taylor-parts-preview.vercel.app` | echoed, with `Vary: Origin` and `Cache-Control: no-store` |
+| CORS, the then-current Vercel origin `https://taylor-parts-preview.vercel.app` | echoed, with `Vary: Origin` and `Cache-Control: no-store` |
 | CORS, unlisted origin `https://evil.example` | **no** `Access-Control-Allow-Origin` — refused |
 | wildcard | never emitted; `readServiceConfig` refuses a `*` outright |
 | unauthenticated `POST /admin/policy` | `401 UNAUTHENTICATED` before any policy read |
@@ -315,42 +344,7 @@ The two bootstraps are deliberately different, and the difference is the point:
 After that moment the tenant has an administrator, so every further grant goes through the trusted
 Admin API with a real authenticated actor — which is exactly what the refusal message says to do.
 
-## 7. What remains
-
-**1 — Wire Vercel.** `VITE_EOS_API_BASE_URL=https://eos-api-nonprod.onrender.com`, on the
-`taylor-parts-preview` project's **Production** environment — then **redeploy**.
-
-> **"Production" here is the environment of the `taylor-parts-preview` project, which builds the
-> stable `taylor-parts-preview.vercel.app` domain. It is NOT Taylor's production frontend, which is
-> a different Vercel project and is not touched.** The stable domain is the target precisely because
-> it is the origin `EOS_ALLOWED_ORIGINS` allows: a per-deployment preview URL is a different origin
-> and the API would refuse it.
->
-> **Setting the variable alone changes nothing.** Vite inlines `VITE_*` at BUILD time, so the
-> existing bundle keeps reporting NOT CONFIGURED while the dashboard says otherwise. The variable
-> must be set and then a new deployment built.
-
-**2 — Cloud browser acceptance** at 1440 / 1024 / 375, against Vercel → Render → PostgreSQL, with no
-localhost, no emulator and no in-memory adapter anywhere in the path: the completed #1827
-Administration experience, object CRED persistence across a full reload, field Inherit → Deny → back
-to Inherit with the override row *gone*, the doorway rendering as "Allow · blocked by object",
-Delete unavailable where the server refuses it, custom Role and custom Field create and edit.
-
-**3 — Users and assignments**: the principal projection carrying exactly `id`, `displayName`,
-`status`, `identityProvider`, `externalSubject` and nothing else; an identical repeat assignment
-returning the same canonical row with no second active row, no access-version bump and no false
-audit event; revoke and re-grant leaving the revoked row in history.
-
-**4 — Tenant isolation** against a second minimal tenant, including the database proof that the
-composite foreign key refuses a cross-tenant assignment, captured as a SQLSTATE.
-
-**5 — Audit**: one event for a successful mutation, none for a refusal, none for an idempotent
-no-op, none for a rollback.
-
-**6 — Hard restart.** Replace the running process and prove every record above survived it. This is
-what separates "PostgreSQL is authoritative" from "the process remembered".
-
-### 7.1 The first administrator — resolved 2026-09-10
+## 7. The first administrator — resolved 2026-09-10
 
 | | |
 |---|---|
@@ -385,12 +379,32 @@ rest of the token deliberately.
 Firestore policy reads and writes introduced by this work: **0** and **0**, enforced by a static
 guard whose allowlist contains one read-only, uncalled migration parity harness.
 
-The deployment bears this out in a way a static guard cannot. The running service holds no Firebase
-credential — only `GOOGLE_CLOUD_PROJECT` — so it *could not* read or write Firestore if something
-asked it to. The only Google call it can make is fetching public signing certificates, and the only
+The deployment bears this out in a way a static guard cannot — with one distinction kept honest.
+**Declared, not measured:** `render.yaml` on `main` gives the service no Firebase credential, only
+`GOOGLE_CLOUD_PROJECT`; this session cannot read the live Render environment to confirm nobody added
+one by hand. **Measured:** a structurally valid, unsigned token is answered `401 "the token could not
+be verified"` — real Firebase verification, running, with no key needed. Given the declared
+configuration, the service *could not* read or write Firestore if something asked it to. The only Google call it can make is fetching public signing certificates, and the only
 thing it does with a verified token is take `decoded.uid`. Every authority answer after that comes
 from PostgreSQL: subject → principal (`639c1970-…`) → membership → Role assignment
 (`a835defa-…`) → capability.
+
+### Where Firebase stands at the end of acceptance
+
+| | Firebase used? | evidence |
+|---|---|---|
+| authentication — who signed in | **YES** | measured: token verification running (401 on an unsigned token); the session token came from Firebase Identity Toolkit |
+| tenant authority | no | measured: stated tenants refused against PostgreSQL membership (§12.5) |
+| Role authority | no | measured: assignments, revoke, re-grant, access versions all in PostgreSQL (§12.4) |
+| Object permissions | no | measured (§12.2) |
+| Field permissions | no | measured — including a deleted override row (§12.2 R5) |
+| workflow authority | no | measured: 5 versions read from PostgreSQL, all DRAFT; static: no Firebase import under `src/adminPolicy` |
+| policy persistence | no | measured: survived process replacement, which a Firestore-backed path would not have had to (§12.7) |
+
+Static, re-checked at the end of acceptance: the only Firestore reference under `src/adminPolicy`
+is the allowlisted read-only parity harness, and **nothing references it** — it is unreachable from
+the served entry. `adminPolicyHttp.ts` mentions Firebase only in a comment; it takes `verifyToken`
+as a parameter.
 
 **Firebase is not removed.** It still provides authentication, and the rest of the application still
 uses Firestore for business data. Nothing here changes either. What §3 removed is not Firebase — it
@@ -407,7 +421,11 @@ The paid `starter` service must not be described as having the Free web-service 
 behaviour. Render's idle spin-down limitation applies to Free web services; this Blueprint does not
 select the Free plan.
 
-Both resources now exist on those plans. **Actual billed amounts are not recorded here**, because
+Both resources exist. **Their tier, disk, HA status and instance count are DECLARED here, not
+measured** — the Blueprint on `main` declares `basic-256mb`, PostgreSQL 16, `starter`, no
+`numInstances` (one), no workers, no cron; a Blueprint deploy creates exactly what it declares, but
+this session cannot open the Render dashboard to confirm nobody changed a plan by hand, and the
+database disk size is not stated in the Blueprint at all. **Actual billed amounts are not recorded here**, because
 this session cannot read the Render account and quoting a price nobody has shown me would be a
 guess. What is recorded is the shape, which is what the Blueprint controls and what a later bill
 has to be explained by: one database, one web service, **zero** workers, **zero** cron jobs,
@@ -437,3 +455,231 @@ What must be resolved BEFORE any cutover begins, named rather than waved at:
   execution routes through it, "roll back" means something and nobody has said what.
 - **Ordering.** Nothing should route through the engine before this environment has run the
   Administration surfaces against a real database for long enough to trust them.
+
+## 11. The rename, in the order it happened
+
+History, not current state — kept because the evidence in §5 was measured against the old domain
+and must stay legible as such. Nothing above or below has been rewritten to look as though it was
+tested against `verenwardeos` before the rename.
+
+| when (2026-09-10) | measured |
+|---|---|
+| before the rename | §5's CORS proofs run against `https://taylor-parts-preview.vercel.app`, then the only frontend origin |
+| #1830 opened | `verenwardeos.vercel.app` → `404 DEPLOYMENT_NOT_FOUND`; old domain → `200`. The configuration moved; the hostname had not |
+| first cutover attempt | still `404` on the new hostname — **stopped, not merged**, per the cutover gate |
+| second attempt | both domains `200`, **one deployment behind two aliases** (identical commit and `buildTime`) → #1830 squash-merged `8740bf11` |
+| Render Blueprint sync | API allowlist flips: new origin echoed, old origin refused |
+| Owner removes the old domain | `taylor-parts-preview.vercel.app` → `404 DEPLOYMENT_NOT_FOUND` |
+
+### Final health and CORS — measured on the deployment serving `c1d69133`
+
+```
+GET /health
+{"ok":true,"environment":"nonprod","reachable":true,"migrated":true,"latencyMs":3,"migrations":3}   200
+```
+
+| request | result |
+|---|---|
+| `Origin: https://verenwardeos.vercel.app` | `access-control-allow-origin: https://verenwardeos.vercel.app` · `vary: Origin` · `Cache-Control: no-store` |
+| `Origin: https://taylor-parts-preview.vercel.app` | **no** `access-control-allow-origin` · `Cache-Control: no-store` |
+| `Origin: https://evil.example` | **no** `access-control-allow-origin` · `Cache-Control: no-store` |
+| wildcard | never emitted on any request |
+| `OPTIONS` from the canonical origin | `204` · `POST, GET, OPTIONS` · `authorization, content-type, x-eos-tenant` · `max-age 600` · `vary: Origin` |
+
+## 12. Acceptance — what was proved, and how
+
+**Every result in this section was measured against the deployed API** at
+`https://eos-api-nonprod.onrender.com`, through the governed `POST /admin/policy` path, authenticated
+as the sandbox administrator. No SQL touched the Render database — it is unreachable from outside
+Render by design (`ipAllowList: []`). Where a proof needed a database directly, it was run on an
+isolated PostgreSQL 16 carrying the **same three migration files**, and says so.
+
+**How the session was obtained.** A real Firebase ID token for `admin@sandbox.invalid` was minted
+server-side through the repository's governed persona loader (`scripts/sandboxCredentials.mjs`) and
+the real Identity Toolkit endpoint. The password was never printed. The token's subject came back as
+`ZVu3lHTP1NQhj0Am04zTAGou0dx1` — independently re-confirming §7's console reading. That token is
+the same credential a browser sign-in produces; the EOS API authorized it the ordinary way. An
+attempt to restore that session *inside the browser* by writing it into IndexedDB was refused by the
+tooling's safety layer, correctly — it is session forgery even with a legitimate credential — and it
+was not worked around. That is why §14 needs a human sign-in.
+
+### 12.1 Authority census
+
+| | expected | measured through the API |
+|---|---|---|
+| tenant id | `tenant-6ce59be1-…` | echoed by the server on every response |
+| objects | 37 | **37** |
+| fields | 394 | **394** (sum of `readObjectWithFields` over all 37) |
+| roles | 46 | **46** |
+| object permissions | 253 | **253** (sum of `readRolePolicy` over all 46) |
+| workflows / versions | 5 / 5 | **5 / 5** |
+| steps / actions | 36 / 48 | **36 / 48** |
+| role bindings | 112 | **not measurable through the API** — no read operation returns them (§14) |
+| workflow state | all DRAFT | **all 5 DRAFT** — `partsPurchasing`, `salesAgreement`, `salesOpportunity`, `salesOrder`, `workOrder`, each `v1` |
+| first admin assignment | `a835defa-…` | `a835defa-239b-43c9-8ee4-f1376a8c1c23`, `admin`, `global`, `active`, `accessVersionAtGrant 1` |
+
+After acceptance the tenant holds 47 roles and 395 fields: the one custom Role and one custom Field
+this run created, both prefixed `ZZ NONPROD`.
+
+### 12.2 Roles & permissions — server semantics
+
+| # | proof | result |
+|---|---|---|
+| R1 | create custom Role `zz_nonprod_acceptance` | ✅ one audit event · actor = EOS principal · `x-request-id` carried into the audit reason |
+| R2 | edit Role name/description | ✅ persists |
+| R2b | attempt to change the Role **key** | ✅ refused `400` · key unchanged |
+| R3 | Object CRED on `salesTerritory` → `C✗ R✓ E✓ D✗` | ✅ persists |
+| R4 | Field Inherit → **Deny** | ✅ an override row exists, `{R:false}` |
+| R5 | Field Deny → **Inherit** | ✅ **the row is gone** — 0 rows for the field, not a stored `false` |
+| R6 | explicit Field **Allow** under an open doorway | ✅ stored |
+| R7 | close the Object doorway while the Field says Allow | ✅ accepted; the Allow override **stays stored** |
+| R7b | write a *new* Field Allow under a closed doorway | accepted (`200`) — see note |
+| R8 | Delete on a non-deletable Object | ✅ refused `400 "salesTerritory" does not support Delete` · **0** audit events |
+
+**R7 / R7b, stated exactly.** The server stores a Field Allow whether or not the Object doorway is
+open; the doorway invariant is enforced where access is *resolved*, not where overrides are
+*stored*. That is consistent with the Administration UI's design — it renders exactly this state as
+"Allow · blocked by object", which could not exist if the server refused it. The header of
+`AdminPolicySurfaces.jsx` says "the server refuses the impossible grant"; measured, it does not
+refuse the grant, it refuses to let the grant open the object. The wording is imprecise; the
+behaviour is the designed one. The effective-access consequence is not exposed by any read operation
+and is covered by the resolver's registered tests rather than measured here.
+
+**Every one of the 37 objects has `supportsDelete: false`** in this seed, so Delete is the
+unavailable verb on every object and every field.
+
+### 12.3 Objects & fields
+
+| # | proof | result |
+|---|---|---|
+| O1 | create custom Field `zzNonprodAcceptanceNote` (STRING, INTERNAL, searchable, reportable) | ✅ `origin: CUSTOM` |
+| O2 | edit its label, description, sensitivity → CONFIDENTIAL | ✅ persists |
+| O3 | attempt to change its **key** and **dataType** | key and dataType unchanged — but see §13: before the fix this answered `200` and audited an "update" |
+| O4 | edit a **SYSTEM** field definition directly through the API | ✅ refused `400 "a SYSTEM field's definition is protected…"` · label unchanged · **0** audit events |
+| O5 | Object metadata: label / labelPlural / description | ✅ persists — `labelPlural` is now "Sales Territories (ZZ NONPROD)" |
+| O6 | attempt to change Object `key`, `supportsDelete`, `origin` | ✅ refused `400` · all three unchanged |
+
+### 12.4 Users and assignments
+
+| # | proof | result |
+|---|---|---|
+| U1 | principal projection | ✅ exactly `displayName, externalSubject, id, identityProvider, status` — nothing else, no token claims |
+| U2 | assign the custom Role | ✅ one active row · access version `1 → 2` · one audit event |
+| U3 | **identical** repeat | ✅ **same canonical id** · still one active row · access version unchanged · **0** audit events |
+| U4 | revoke | ✅ row kept, status `disabled` · access version `2 → 3` · one audit event |
+| U5 | re-grant | ✅ a **new** row · exactly one active · the revoked row still present |
+
+The administrator's access version is **6**, not 4. The extra two are the defect in §13, measured
+in the deployed data: two no-op permission probes each bumped every holder.
+
+### 12.5 Tenant isolation
+
+| # | proof | result | evidence |
+|---|---|---|---|
+| I1 | state the caller's own tenant | ✅ `200`, tenant echoed | live API |
+| I2 | state a foreign tenant id | ✅ `403 FORBIDDEN` · **no fallback** to the caller's tenant | live API |
+| I3 | state the second tenant's key `eos-isolation-proof` | ✅ `403 FORBIDDEN` · no fallback | live API |
+| I4 | a **mutation** with a spoofed tenant | ✅ `403` · **0** audit events · nothing created in the caller's own tenant | live API |
+| I5 | cross-tenant assignment straight at the database | ✅ refused **SQLSTATE `23503`** on `user_role_assignments_member_fk` | isolated PG 16, same migrations |
+| I5c | the **identical row** for the principal's own tenant | ✅ accepted (then rolled back) — the FK is the only variable | isolated PG 16 |
+
+Both tenants in I5 were created by the canonical `bootstrapTenant`; raw SQL was used for the one
+negative-path insert only. A first attempt was refused with `23502` (a missing `id`), which proves
+nothing about the foreign key and was **not counted**. The constraint on the deployed schema's
+migration: `FOREIGN KEY (tenant_id, principal_id) REFERENCES eos_policy.tenant_memberships(tenant_id,
+principal_id)`; the one-active index: `(tenant_id, principal_id, role_id, scope_type,
+COALESCE(scope_value, ''))` `WHERE status = 'active'`.
+
+**The second tenant was not created on Render**: tenant bootstrap is a database-side command, not an
+API operation, and this session has no access to the Render database or shell (§14). I2–I4 prove the
+isolation property that matters through the live API — a stated tenant the caller is not a member of
+is refused, whether or not it exists — and the registered PostgreSQL suite proves it again with two
+real tenants.
+
+### 12.6 Audit
+
+| case | proof | result |
+|---|---|---|
+| A — success | R1, U2, U4 | ✅ exactly one event each |
+| B — refusal | R8, O4, I4 | ✅ **0** events each |
+| C — idempotent no-op | U3 | ✅ **0** events — and **every other command after #1831** (§13) |
+| D — rollback | duplicate custom-field key, live | ✅ `409 CONFLICT` · **0** events · still one field with that key |
+| actor | latest event | ✅ `actorUid` = the EOS principal `639c1970-…`, never the Firebase subject |
+| correlation | R1 | ✅ `x-request-id` folded into the event's `reason` |
+
+`readPolicyAuditHistory` caps at 500; the tenant holds 32 events, so every delta above is exact.
+
+D is stated precisely: the duplicate fails at the database's unique index inside the transaction,
+before the audit append, and the transaction rolls back. It proves "a rolled-back transaction records
+no success event", which is Step 7D. The registered PostgreSQL suite holds the same proof.
+
+### 12.7 Hard restart — process replaced, data survived
+
+Render replaced the API process when #1831 deployed. **This was a code-change deploy, not the
+no-code restart the acceptance plan asked for**, and it is recorded as what it was — a
+no-code restart needs Render access this session does not have (§14). As a persistence proof it is
+not weaker: the new process was built and started from scratch and holds no memory of the old.
+
+The new process was identified by behaviour, not by dashboard: a probe the old code answered `200`
+began answering `400 nothing to update` about 91 seconds after the merge. The old process wrote **2**
+false events while being polled — counted, not hidden.
+
+A snapshot of every persistence target was taken **before** the merge and compared **after**:
+
+| target | result |
+|---|---|
+| tenant id | survived |
+| principals | survived |
+| first admin assignment | survived |
+| access version | survived (6) |
+| custom Role | survived |
+| Object CRED change | survived |
+| Field override | survived |
+| Object metadata change | survived |
+| custom Field | survived |
+| counts — 37 / 47 / 395 / 5 | survived |
+| workflow states — all DRAFT | survived |
+| assignment history (revoked + active) | survived |
+| audit | **0 lost** · 2 added = exactly the 2 marker probes |
+
+`/health` on the replacement process: `reachable true · migrated true · migrations 3`.
+
+## 13. Defect found and fixed during acceptance
+
+**#1831 — "A change that changes nothing is not a mutation"** · head `8e2d88b0` · squash
+**`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** · 102/102 checks.
+
+Measured on the deployed API at `8740bf11`: an **identical** `updateRole`, `updateObjectMetadata`,
+`updateCustomFieldMetadata`, `setObjectPermission` and `setFieldPermissionOverride` each wrote an
+audit event whose only change was `updatedAt`, and the two permission commands also bumped the
+access version of every holder of the Role. Worse: `updateCustomFieldMetadata` naming only `key` and
+`dataType` answered `200` and audited an "update" — the caller was told an identity change had
+succeeded.
+
+**Why it was allowed under the acceptance charter:** a defect against already-decided authority —
+Ruling C made an identical assignment idempotent, and Step 7C requires that an identical no-op write
+no mutation event. It narrows what the platform writes; it grants nothing, broadens no permission,
+changes no governance, and touches no production, Certification, Rules or business data.
+
+**Re-measured live on the replacement process:** all five identical probes → `200`, **0** audit
+events, access version unchanged; the `key`/`dataType`-only request → `400 nothing to update`; a
+real change still writes exactly one event.
+
+Gates: `test:adminPolicy` 161/161 with a database (0 skipped) · `test:adminPolicyPostgres` 78/78 on
+isolated PostgreSQL 16 · `test:governance` 667/667. Of the 9 new tests, **7 fail on `8740bf11`**; the
+other 2 are over-reach guards that pass both before and after by design.
+
+## 14. What is not done, and exactly why
+
+| # | item | status | what unblocks it |
+|---|---|---|---|
+| 1 | **rendered UI acceptance** at 1440 / 1024 / 375 — the doorway label, the Delete dash, Inherit/Allow/Deny controls, forms, responsive layout | **NOT RUN** | **one human sign-in** as `admin@sandbox.invalid` in the Browser pane on `verenwardeos.vercel.app`; the rest can be driven from there |
+| 2 | second tenant `eos-isolation-proof` **on Render** | not created | Render shell or database access — tenant bootstrap is not an API operation |
+| 3 | composite-FK SQLSTATE **on the Render database** | proved on isolated PG 16 with the same migrations instead | same |
+| 4 | a **no-code** Render restart | not performed — a code-change deploy replaced the process instead (§12.7) | Render dashboard access, if that exact form is still wanted |
+| 5 | role bindings = 112 | not measurable | no read operation returns bindings — a read-surface gap, not a data finding |
+| 6 | actual Render tiers, disk, HA, instance count | declared, not measured (§9) | Render dashboard |
+
+Everything the server does has been accepted. What remains is the part only a rendered screen can
+show, and the parts only the Render account can reach.
+
