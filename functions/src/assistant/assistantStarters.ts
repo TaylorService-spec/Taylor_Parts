@@ -74,7 +74,59 @@ export const STARTER_QUESTIONS: readonly StarterQuestion[] = Object.freeze([
     requiresToolIds: ["dispatch.board", "workOrder.partsPlan"], requiresCapabilities: ["workOrder.transition"] },
   { id: "disp.technician", surface: "DISPATCH", text: "What work is assigned to this technician?",
     requiresToolIds: ["dispatch.technicianSchedule"], requiresCapabilities: ["workOrder.transition"] },
+
+  // ── Dashboard. Not record-scoped -- every dashboard tool answers over the actor's own governed
+  // reach, the same reach `composeDashboard` uses to decide which dashboard modules a role sees at
+  // all. A starter here is offered only when the actor's effective authority already includes the
+  // capability the module needs, which is what makes the offered set differ by role without any
+  // starter here naming a role.
+  { id: "dash.attention", surface: "DASHBOARD", text: "What needs attention right now?",
+    requiresToolIds: ["dashboard.serviceAttention"], requiresCapabilities: ["workOrder.transition"] },
+  { id: "dash.pastDue", surface: "DASHBOARD", text: "Is anything past due?",
+    requiresToolIds: ["dashboard.serviceAttention"], requiresCapabilities: ["workOrder.transition"] },
+  { id: "dash.conflicts", surface: "DASHBOARD", text: "Are there any scheduling conflicts to resolve?",
+    requiresToolIds: ["dashboard.serviceAttention"], requiresCapabilities: ["workOrder.transition"] },
+  { id: "dash.reorderQueue", surface: "DASHBOARD", text: "What is waiting in the reorder queue?",
+    requiresToolIds: ["dashboard.reorderQueue"], requiresCapabilities: ["reorder.request.read.queue"] },
+  { id: "dash.reorderOldest", surface: "DASHBOARD", text: "What is the oldest pending reorder request?",
+    requiresToolIds: ["dashboard.reorderQueue"], requiresCapabilities: ["reorder.request.read.queue"] },
+  { id: "dash.statusBreakdown", surface: "DASHBOARD", text: "How are my work orders distributed by status?",
+    requiresToolIds: ["dashboard.workOrdersByStatus"], requiresCapabilities: ["workOrder.transition"] },
+  { id: "dash.openWork", surface: "DASHBOARD", text: "How much work is still open?",
+    requiresToolIds: ["dashboard.workOrdersByStatus"], requiresCapabilities: ["workOrder.transition"] },
+  { id: "dash.myGoals", surface: "DASHBOARD", text: "How am I tracking against my goals?",
+    requiresToolIds: ["dashboard.myGoals"], requiresCapabilities: ["performance.goal.read"] },
+  { id: "dash.goalsAtRisk", surface: "DASHBOARD", text: "Which of my goals need attention?",
+    requiresToolIds: ["dashboard.myGoals"], requiresCapabilities: ["performance.goal.read"] },
+  { id: "dash.accountPortfolio", surface: "DASHBOARD", text: "How many accounts do I have in my portfolio?",
+    requiresToolIds: ["dashboard.accountPortfolio"], requiresCapabilities: ["customer.record.read"] },
+  { id: "dash.accountStatusMix", surface: "DASHBOARD", text: "How many of my accounts are active versus prospects?",
+    requiresToolIds: ["dashboard.accountPortfolio"], requiresCapabilities: ["customer.record.read"] },
 ]);
+
+/**
+ * Dashboard questions with no registered tool yet -- recorded here rather than invented as a starter,
+ * so the gap is visible instead of silent. Register each with `AssistantToolRegistry.recordGap` at
+ * composition time. A starter is a promise; these are explicitly NOT starters until a trusted read
+ * backs them.
+ */
+export const DASHBOARD_STARTER_GAPS: readonly { readonly intendedToolId: string; readonly whatUsersWouldAsk: string; readonly blockedBy: string }[] =
+  Object.freeze([
+    { intendedToolId: "dashboard.technicianComparison", whatUsersWouldAsk: "How is my team doing, by technician?",
+      blockedBy: "No AssistantBusinessDataReader method for per-technician comparison yet." },
+    { intendedToolId: "dashboard.technicianAvailability", whatUsersWouldAsk: "Who's available today?",
+      blockedBy: "No AssistantBusinessDataReader method for recorded working hours yet." },
+    { intendedToolId: "dashboard.receivingQueue", whatUsersWouldAsk: "What purchase orders are waiting to be received?",
+      blockedBy: "No AssistantBusinessDataReader method for the receiving queue yet." },
+    { intendedToolId: "dashboard.adminDecisions", whatUsersWouldAsk: "What role requests are waiting on me?",
+      blockedBy: "No AssistantBusinessDataReader method for pending admin decisions yet." },
+    { intendedToolId: "dashboard.finance", whatUsersWouldAsk: "What have we billed and collected this month?",
+      blockedBy: "No AssistantBusinessDataReader method for governed financial facts yet." },
+    { intendedToolId: "dashboard.myOpportunities", whatUsersWouldAsk: "What opportunities are open in my pipeline?",
+      blockedBy: "No AssistantBusinessDataReader method for opportunities yet." },
+    { intendedToolId: "dashboard.ordersRequiringAction", whatUsersWouldAsk: "Which coordinated orders need action?",
+      blockedBy: "No AssistantBusinessDataReader method for coordinated fulfillment visits yet." },
+  ]);
 
 /**
  * Starters this actor can actually have answered, on this surface.

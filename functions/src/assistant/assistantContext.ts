@@ -24,6 +24,7 @@ export type AssistantSurface =
   | "DISPATCH"
   | "SALES_ORDER"
   | "OPPORTUNITY"
+  | "DASHBOARD"
   | "UNKNOWN";
 
 export interface AssistantRecordRef {

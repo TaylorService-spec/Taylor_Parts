@@ -31,6 +31,15 @@ import {
 } from "../adminPolicy/policyDatabase";
 import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
+import { createAssistantHttpHandler } from "../assistant/assistantRoute";
+import { AssistantToolRegistry } from "../assistant/assistantToolRegistry";
+import { buildDashboardTools } from "../assistant/dashboardTools";
+import { resolveAssistantFirestoreClient } from "../assistant/firestoreAssistantAdapters";
+import { FirestoreAssistantAdapter } from "../assistant/firestoreAssistantAdapters";
+import { resolveAssistantOperationalAuthoritySource } from "../assistant/assistantOperationalAuthoritySource";
+import { buildAiProvider, resolveProviderPolicyConfig } from "../assistant/aiProviderConfig";
+import { selectAiProvider } from "../assistant/aiProviderPolicy";
+import type { AiProvider } from "../assistant/aiProvider";
 
 /**
  * The environment this service reads. Every one is injected; none is committed.
@@ -135,9 +144,10 @@ export async function startEosApi(
   await requirePolicyDatabaseReady(pool);
 
   const repo = new PostgresPolicyRepository(pool);
+  const verifyToken = options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider);
   const handler = createAdminPolicyHttpHandler({
     repo,
-    verifyToken: options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
+    verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {
       const health = await checkPolicyDatabaseHealth(pool);
@@ -151,7 +161,55 @@ export async function startEosApi(
     },
   });
 
+  // ════════════════════ ASSISTANT: SECOND ROUTE, SAME PROCESS ════════════════════
+  //
+  // ADR-015 boundary, made concrete here. `resolveAssistantFirestoreClient` returns null until a
+  // credential is deliberately bound (see firestoreAssistantAdapters.ts) -- that binding is NOT made
+  // in this task. So today the registry carries zero DASHBOARD tools and the route refuses every
+  // DASHBOARD request with an explicit ASSISTANT_DATA_SOURCE_NOT_CONFIGURED, rather than silently
+  // answering from nowhere or reaching around this file for a Firestore/Firebase shortcut.
+  // The Postgres policy store governs Administration today, not Work Orders/Inventory/Purchasing/
+  // Sales -- so it must never become the assistant's source of BUSINESS authority. This resolver is
+  // the only permitted source, and it too is not yet bound; see assistantOperationalAuthoritySource.ts.
+  const operationalAuthoritySource = resolveAssistantOperationalAuthoritySource(process.env);
+
+  const assistantRegistry = new AssistantToolRegistry();
+  const firestoreClient = resolveAssistantFirestoreClient(process.env);
+  const businessDataReaderConfigured = firestoreClient !== null;
+  if (firestoreClient) {
+    for (const tool of buildDashboardTools(new FirestoreAssistantAdapter(firestoreClient))) {
+      assistantRegistry.register(tool);
+    }
+  }
+
+  const providerPolicyConfig = resolveProviderPolicyConfig(process.env);
+  const providerSelection = selectAiProvider(providerPolicyConfig, { dataClass: "EOS_BUSINESS_DATA" });
+  const assistantProvider: AiProvider | null =
+    providerSelection.outcome === "SELECTED"
+      ? buildAiProvider(providerSelection.providerId, process.env, {
+          gatewayFetch: fetch as never,
+          openAiFetch: fetch as never,
+          anthropicFetch: fetch as never,
+        })
+      : null;
+
+  const assistantHandler = createAssistantHttpHandler(
+    {
+      policyReader: repo,
+      verifyToken,
+      registry: assistantRegistry,
+      provider: assistantProvider,
+      businessDataReaderConfigured,
+      operationalAuthoritySource,
+    },
+    config.allowedOrigins,
+  );
+
   const server = createServer((req, res) => {
+    if ((req.url ?? "").split("?")[0].startsWith("/assistant/")) {
+      void assistantHandler(req as never, res as never);
+      return;
+    }
     void handler(req as never, res as never);
   });
 
