@@ -1,45 +1,61 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
-**Status: ACCEPTANCE INCOMPLETE — every server-side, tenant, audit and persistence proof passed
-against the live deployment, and the stored policy renders correctly at 1440; the interactive UI
-proofs and the 1024/375 passes did not complete because the browser input channel failed (§15).**
+**Status: TECHNICAL ACCEPTANCE COMPLETE (non-production).** Browser acceptance passed at 375, 1024 and
+1440; every server-side, tenant, audit and persistence proof passed against the live deployment; the
+accepted state survived a no-code process replacement byte for byte. Outstanding: ZZ NONPROD fixture
+clean-up, the second tenant on Render, and Owner review (§14).
 
 Four states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
 
 | | what it means | where this platform is |
 |---|---|---|
-| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix |
+| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix, SPA deep links |
 | **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, one commit end to end |
-| **ACCEPTED NONPROD** | a person has driven it and it held | ⚠️ server semantics, isolation, audit and restart ACCEPTED (§12) · rendering at 1440 ACCEPTED (§15) · UI mutations and 1024/375 NOT YET |
+| **ACCEPTED NONPROD** | a person has driven it and it held | ✅ server semantics, isolation, audit (§12) · browser 375 / 1024 / 1440 (§15) · no-code restart (§16) |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
 ---
 
 ## 0. Current authority
 
-What is true **now**. Everything below this section that describes an earlier moment says so.
+What is true **now** — measured 2026-09-10 after the no-code restart. Everything below this section
+that describes an earlier moment says so.
 
 | | |
 |---|---|
-| canonical frontend | **`https://verenwardeos.vercel.app`** |
+| canonical frontend | **`https://verenwardeos.vercel.app`** — `/version.json` → `commit 2b7edca` |
 | old frontend domain | `https://taylor-parts-preview.vercel.app` — **REMOVED** from the Vercel project by the Owner |
-| EOS API | **`https://eos-api-nonprod.onrender.com`** |
-| PostgreSQL | `eos-policy-nonprod` — PostgreSQL 16, `basic_256mb`, 15 GB, HA false, 0 read replicas, disk autoscaling false · migrations `001` `002` `003` |
-| Render API | `eos-api-nonprod` — `starter`, 1 instance · deploy `dep-dah5rnhsrm7s7395kgn0` at `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
-| deployed `main` | **`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** — frontend and API on the same commit |
+| EOS API | **`https://eos-api-nonprod.onrender.com`** — `srv-dah49f1t0dsc73egpvi0`, `starter`, **1 instance**, Oregon |
+| Render deploy | **`dep-dah7o6u1egvs73cv6ea0`** · trigger `api` (the no-code restart, §16) · commit `2b7edca72dc24284bd6fe62d879714bb93007280` · live |
+| PostgreSQL | `eos-policy-nonprod` · `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · 15 GB · HA false · 0 read replicas · disk autoscaling false · `ipAllowList: []` · migrations `001` `002` `003` |
+| deployed `main` | **`2b7edca72dc24284bd6fe62d879714bb93007280`** — frontend and API on the same commit |
 | tenant | `taylor-nonprod` · `tenant-6ce59be1-1979-45cd-9d17-a4969037fb25` |
 | first administrator | EOS principal `639c1970-dbdb-4bc0-af7c-118559151e2f` ← Firebase subject `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
 | workflows | 5 state machines, **all DRAFT** |
 
-`main` advanced from `8740bf11` to `c1d69133` **during this acceptance run**, legitimately: #1831
-fixed a defect the run found (§13). No other commit is in between.
+Render values were read through the Render MCP (`get_service`, `list_postgres_instances`,
+`list_deploys`) — measured, not reported. The workspace holds exactly one service and one database:
+**workers 0, cron jobs 0**.
+
+### Current-head drift note
+
+`main` moved from `d1ff2486` (#1834) to `2b7edca7` **after** browser acceptance, through two
+unrelated BIN-P6 inventory commits — `e14b4fdc` (#1833, specification) and `2b7edca7` (#1835,
+stock relocation). Measured rather than assumed: `git diff d1ff2486..2b7edca7` changes 44 files and
+**none** under `functions/src/adminPolicy`, `functions/src/eosApi`, `functions/migrations`,
+`render.yaml`, `field-ops-app-vite/vercel.json` or the Administration policy UI. A read-only
+current-head smoke then confirmed the accepted state unchanged (§16). Browser acceptance is not
+invalidated by that movement.
 
 ## 1. Source
 
 | | |
 |---|---|
-| **`main` DEPLOYED** | **`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** |
+| **`main` DEPLOYED** | **`2b7edca72dc24284bd6fe62d879714bb93007280`** — includes unrelated BIN-P6 work (§0 drift note) |
+| BIN-P6 stock relocation (#1835) — unrelated to this platform | `2b7edca72dc24284bd6fe62d879714bb93007280` |
+| BIN-P6 specification (#1833) — unrelated to this platform | `e14b4fdc5169e4f227e232d3d055f6bfa6c0df9f` |
+| SPA deep links on Vercel (#1834) — found by this acceptance run | `d1ff248633fc1dce7faad10cc235786c9f4d795f` |
 | no-op audit fix (#1831) — found by this acceptance run | `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
 | origin rename (#1830) | `8740bf1110512488b7044c992796beab45319333` |
 | identity correction (#1828) | `1433347a840c7c6392ecde93002886bf296be190` |
@@ -89,11 +105,12 @@ no `Access-Control-Allow-Origin` (§11).
 | API URL | `https://eos-api-nonprod.onrender.com` |
 | migrations | `001`, `002`, `003` applied in `preDeployCommand`, not in the build |
 
-Created by the Owner in the Render dashboard. This environment still has no Render credential of any
-kind — no CLI, no `RENDER_*` variable, no `~/.render`, no browser session — so everything recorded
-below about the *running* service was measured over HTTPS against the public URL, and everything
-about resource creation, seeding and bootstrap is the Owner's report, marked as such. The two are
-kept apart on purpose.
+Created by the Owner in the Render dashboard. **At the time**, this session had no Render credential
+of any kind — no CLI, no `RENDER_*` variable, no `~/.render`, no browser session — so what was
+recorded then about the *running* service was measured over HTTPS against the public URL, and
+resource creation, seeding and bootstrap were the Owner's report, marked as such. The two are kept
+apart on purpose. **Later the same day** the Render MCP became available; the resource shape (§9), the
+deploy history and the no-code restart (§16) were then read and performed through it.
 
 ### Firebase — the non-production project is now determined, not assumed
 
@@ -423,20 +440,22 @@ The paid `starter` service must not be described as having the Free web-service 
 behaviour. Render's idle spin-down limitation applies to Free web services; this Blueprint does not
 select the Free plan.
 
-Both resources exist, and their live configuration was **reported by the Owner from Render** on
-2026-09-10 (this session's Render MCP could not be used without a confirmed workspace, so these are
-recorded as reported, not independently read):
+Both resources exist. Their shape was first **reported by the Owner** from Render (this session's
+Render MCP then needed a confirmed workspace). It has since been **measured** through the Render MCP,
+with the workspace determined by the service the Owner named — `srv-dah49f1t0dsc73egpvi0` is owned by
+`tea-dag6g8dg1s2s73b9aso0`, the account's only workspace — and the measurement agrees with the report
+on every value:
 
-| | live |
+| | measured 2026-09-10 |
 |---|---|
-| PostgreSQL `eos-policy-nonprod` | PostgreSQL 16 · `basic_256mb` · **15 GB** · HA **false** · read replicas **0** · disk autoscaling **false** |
-| API `eos-api-nonprod` | `starter` · **1 instance** |
-| current deploy | `dep-dah5rnhsrm7s7395kgn0` at `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
-| workers / cron | **0** / **0** |
+| PostgreSQL `eos-policy-nonprod` | `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · **15 GB** · HA **false** · read replicas **none** · disk autoscaling **false** · connection pool none · `ipAllowList: []` · Oregon · `available` |
+| API `eos-api-nonprod` | `srv-dah49f1t0dsc73egpvi0` · `starter` · **1 instance** · Oregon · auto-deploy on commit to `main` · build / pre-deploy / start commands exactly as the Blueprint declares |
+| current deploy | `dep-dah7o6u1egvs73cv6ea0` · trigger `api` · commit `2b7edca7` |
+| services in the workspace | **1** (the web service) → **workers 0 · cron jobs 0** |
 
 These match the Blueprint's declarations exactly; the 15 GB disk is the one value the Blueprint does
-not state. **Actual billed amounts are not recorded here**, because
-this session cannot read the Render account and quoting a price nobody has shown me would be a
+not state. **Actual billed amounts are not recorded here**: the
+Render MCP exposes configuration, not billing, and quoting a price nobody has shown me would be a
 guess. What is recorded is the shape, which is what the Blueprint controls and what a later bill
 has to be explained by: one database, one web service, **zero** workers, **zero** cron jobs,
 **zero** replicas, no HA.
@@ -629,6 +648,10 @@ no success event", which is Step 7D. The registered PostgreSQL suite holds the s
 
 ### 12.7 Hard restart — process replaced, data survived
 
+> **Historical, and superseded by §16.** Measured at the time it describes. The no-code restart
+> this section says could not yet be done was performed later the same day, with Render access,
+> and is recorded in §16. Nothing below is rewritten.
+
 Render replaced the API process when #1831 deployed. **This was a code-change deploy, not the
 no-code restart the acceptance plan asked for**, and it is recorded as what it was — a
 no-code restart needs Render access this session does not have (§14). As a persistence proof it is
@@ -685,21 +708,34 @@ other 2 are over-reach guards that pass both before and after by design.
 
 ## 14. What is not done, and exactly why
 
+### Resolved since this list was first written
+
+| # | item | resolution |
+|---|---|---|
+| 1 | rendered UI acceptance at 375 / 1024 / 1440 | ✅ **PASS** — Owner-driven UI input, Claude-measured (§15) |
+| 4 | a **no-code** Render restart | ✅ **PASS** — `dep-dah7o6u1egvs73cv6ea0`, trigger `api`, same commit; state byte-identical (§16) |
+| 6 | actual Render tiers, disk, HA, instances | ✅ **measured** through the Render MCP (§9) |
+| 7 | deep links 404 on the Vercel frontend | ✅ **fixed** by #1834 and proven live (§15.4) |
+
+### Still open
+
 | # | item | status | what unblocks it |
 |---|---|---|---|
-| 1 | **rendered UI acceptance** — the interactive half (mutations through the UI, reload persistence, 1024 and 375) | **PARTIAL — see §15** | the Claude window brought to the front: the Browser pane's clicks time out while it is covered |
-| 2 | second tenant `eos-isolation-proof` **on Render** | not created | a working SQL/shell path to the Render database — tenant bootstrap is not an API operation, and the Render MCP query connector does not negotiate the required TLS |
-| 3 | composite-FK SQLSTATE **on the Render database** | proved on isolated PG 16 with the same migrations instead | same |
-| 4 | a **no-code** Render restart | **deferred by the Owner** — a code-change deploy replaced the process instead (§12.7) | Owner authorization |
+| 2 | second tenant `eos-isolation-proof` **on Render** | not created | a working SQL/shell path to the Render database — tenant bootstrap is not an API operation, and direct Render MCP SQL inspection fails because the query connector does not negotiate the TLS the database requires. (The EOS API itself reaches PostgreSQL normally.) |
+| 3 | composite-FK SQLSTATE **on the Render database** | proved on isolated PG 16 with the same migrations instead (§12.5) | same |
 | 5 | role bindings = 112 | not measurable | no read operation returns bindings — a read-surface gap, not a data finding |
-| 6 | actual Render tiers, disk, HA, instance count | **recorded** from the Owner's Render report (§9) | — |
-| 7 | deep links on the Vercel frontend | **FINDING** — `/administration/roles-permissions` returns HTTP 404; no `vercel.json` SPA rewrite exists (Firebase Hosting has `** → /index.html`). Any full reload on a route other than `/` 404s | a one-file `vercel.json` rewrite — not made, out of this run's scope |
+| 8 | **ZZ NONPROD fixture clean-up** | **deliberately kept** — the restart proof needed the exact accepted state to survive | Owner authorization. Fixtures: the custom Role `zz_nonprod_acceptance` (3 assignment rows, 1 active, held by the sandbox admin); its object permissions on `salesTerritory` and `marketingInitiatives`; the `createdAt {R:true}` override; the custom Field `zzNonprodAcceptanceNote`; and `salesTerritory`'s edited `labelPlural` and `description` |
+| 9 | Owner review of this record | #1829 is DRAFT | Owner |
 
-Everything the server does has been accepted. What remains is the part only a rendered screen can
-show, and the parts only the Render account can reach.
+## 15. Rendered browser acceptance — 2026-09-10 — **PASS at 375 / 1024 / 1440**
 
+| | |
+|---|---|
+| **Interaction source** | **OWNER-DRIVEN UI INPUT** — every input recorded by the browser with `isTrusted: true`, the browser's own mark of genuine user input |
+| **Verification source** | **CLAUDE BROWSER / NETWORK / API OBSERVATION** — a pass-through fetch recorder (operation, input, response per policy request), reload proof by navigation type `reload` + status 200, and independent API reads as a second witness |
+| Claude-driven input | **none** in the accepted result (see §15.1 for why) |
 
-## 15. Rendered browser acceptance — 2026-09-10
+The first attempt (§15.1) is kept as history. The accepted result is §15.2–§15.4.
 
 Against `https://verenwardeos.vercel.app` → `https://eos-api-nonprod.onrender.com` → Render
 PostgreSQL, signed in by the Owner. Read from the live page, not from source.
@@ -712,7 +748,7 @@ PostgreSQL, signed in by the Owner. Read from the live page, not from source.
 | hosts the page talked to | `verenwardeos.vercel.app`, `identitytoolkit.googleapis.com`, `eos-api-nonprod.onrender.com`, plus `firestore.googleapis.com` and `us-central1-eos-platform-sandbox.cloudfunctions.net` for the rest of the app shell (dashboard and business surfaces, not the policy panel) |
 | localhost / emulator | **none** — no such request, no `?emulator` flag |
 
-### What rendered correctly at 1440
+### 15.1 First attempt — what rendered at 1440 (historical)
 
 | proof | observed |
 |---|---|
@@ -725,7 +761,7 @@ PostgreSQL, signed in by the Owner. Read from the live page, not from source.
 | the four field facts | Created · Create → **Inherited · Deny** (object C ✗) · Created · Read → **Allow** (the stored explicit override) · Created · Edit → **Inherited · Allow** (object E ✓) · every field · Delete → **—** |
 | three-state control | every governable field cell is an Inherit / Allow / Deny select, not a checkbox |
 
-### What did NOT run, and exactly why
+### 15.1a First attempt — what did not run then, and why (historical, superseded by §15.2)
 
 **The interactive half — changing a value through the UI, reloading, and re-reading it — and the
 1024 and 375 passes did not complete.** Two separate things stopped it, and neither is an EOS
@@ -745,10 +781,139 @@ The server-side semantics behind every one of those interactive proofs were acce
 live API in §12. What remains unproven is specifically that the **rendered controls** issue those
 calls — and that the layout holds at 1024 and 375.
 
-### A finding from the attempt
+### 15.1b A finding from the first attempt (historical — fixed, see §15.4)
 
 **Deep links 404 on the Vercel frontend.** `GET /administration/roles-permissions` → HTTP **404**.
 There is no `vercel.json`; Firebase Hosting carries an SPA rewrite (`** → /index.html`) and the
 Vercel project has no equivalent, so a full browser reload on any route other than `/` fails, and
 bookmarked or shared links do not open. In-app navigation is unaffected. Not fixed here: it is a
 frontend deployment-config change outside this run's scope.
+
+### 15.2 The accepted run — Owner-driven, Claude-measured
+
+After a second input-channel failure, the Owner directed that the Owner perform every click and
+Claude measure the result. Each mutation below was recorded as: rendered BEFORE → the Owner's trusted
+input → the request the UI actually sent → its response → a real reload (navigation type `reload`,
+document 200, fresh policy reads) → the persisted AFTER. A visual change with no request would have
+been a failure; there were none in the accepted result.
+
+**1440 — the full mutation suite**
+
+| # | proof | request observed | response | after reload |
+|---|---|---|---|---|
+| 1 | Object CRED: Sales Territory Create ☐ → ☑ | `setObjectPermission {C:true,R:true,E:true,D:false}` | 200 · ok | ☑ persisted |
+| 2 | Field Inherit → **Deny** (Name · Read) | `setFieldPermissionOverride {R:false}` | 200 · ok | Deny persisted |
+| 2 | Field Deny → **Inherit** (Name · Read) | `removeFieldPermissionOverride` | 200 · ok | inherited; API witness: **0** override rows for the field |
+| 3 | explicit Field **Allow** (Kind · Edit) | `setFieldPermissionOverride {E:true}` | 200 · ok | Allow persisted |
+| 4 | **doorway**: close Sales Territory Read with `createdAt` Read explicitly Allowed | `setObjectPermission {R:false}` | 200 · ok | `createdAt` Read renders **"Allow · blocked by object"**; the stored Allow is kept — storage semantics unchanged |
+| 5 | Delete unavailable | — | — | all 37 objects render **"—"**, no control in the Delete column |
+| 6 | custom Role metadata (description) | `updateRole` | 200 · ok | persisted; **no key input** — the form states "The key zz_nonprod_acceptance is identity and cannot change." |
+| 7 | custom Field metadata (description) | `updateCustomFieldMetadata` — payload carries **no key and no dataType** | 200 · ok | persisted; audit: only `description` changed; the form has **no key or dataType input** and says why |
+| 8 | SYSTEM field | — | — | rows read "protected"; **no Edit control exists**; nothing to send |
+| 9 | Object metadata (description) | `updateObjectMetadata {label, labelPlural, description}` — nothing else | 200 · ok | persisted; audit: only `description` changed; key / origin / lifecycle / supportsDelete have **no control** and were unchanged |
+| 10 | assignment lifecycle | `revokeRole` → `assignRole` | 200 · ok each | revoke: row kept as `disabled` → reload → persisted; re-grant: a **new** row `0971af72…` `active` → reload → persisted; history intact; exactly one active |
+
+The Add-role menu applies Ruling C in the UI: with ZZ held it offered 45 of 47 Roles, neither held Role
+among them; after the revoke it offered ZZ (46); after the re-grant, 45 again.
+
+The first attempt at #1 sent no request — at 1440 in this pane the checkbox is drawn 3–4 screen pixels
+wide — and is not counted. Every counted input carries `isTrusted: true`.
+
+**1024 — responsive proof + one real mutation**
+
+| | |
+|---|---|
+| layout | grid 687 px, fits the 1024 viewport · **169 / 169** controls reachable · 21 field selects, each Inherit / Allow / Deny, min 81 × 31 px · 0 clipped cells · no page overflow · rail usable |
+| mutation | Name · Read Inherit → Deny → `setFieldPermissionOverride {R:false}` → 200 ok → reload → **Deny persisted** → restored → `removeFieldPermissionOverride` → 200 ok |
+
+**375 — responsive proof + one real mutation**
+
+| | |
+|---|---|
+| layout | the grid is its own horizontal scroller — 285 px of view over 547 px of content · **169 / 169** controls reachable (81 on screen, 88 by scrolling the grid) · no page overflow · role pills ≥ 44 px tall · field selects ≥ 76 × 44 px |
+| mutation | deliberately on a control reachable **only** by scrolling the grid: Kind · Edit Inherit → Allow → `setFieldPermissionOverride {E:true}` → 200 ok → reload → **Allow persisted** → restored → `removeFieldPermissionOverride` → 200 ok |
+
+**Totals for the run:** 17 mutation requests, all 200 · ok. Audit **32 → 49** — exactly one event per
+mutation, every actor the EOS principal `639c1970-…`, and **none** for Cancel, form opens, selection or
+reloads. Access version **6 → 20**, every bump a real change to a Role this principal holds.
+
+**Findings, none of them an EOS defect:** at 375 the grid's horizontal scroll returns to the left edge
+after a save (the re-read remounts the table); saving role details collapses an expanded object row; a
+Role's description is shown only in its edit form. **Missing UI controls: none.**
+
+### 15.3 Measurement mistakes caught and not counted
+
+Three of Claude's own measurements were wrong on first reading and were corrected before being
+reported, so none reached the results above: a row lookup keyed by the first word of a label (three
+fields begin with "Created"); a reach test that started above the element that is actually the grid's
+scroll container; and a first composite-FK attempt refused with `23502` rather than `23503` (§12.5).
+
+### 15.4 SPA deep links — the defect, the fix, and its live proof
+
+The first attempt found that a full reload of any client route on Vercel returned **404** (§15.1b):
+Vercel fell back to `public/404.html`, the GitHub Pages SPA shim, which redirects into a mangled path on
+a domain-root deploy.
+
+**#1834** — `field-ops-app-vite/vercel.json`, one `rewrites` entry `/(.*) → /index.html`, plus a
+regression test that forbids `routes`, `redirects`, `headers`, `cleanUrls` and `trailingSlash`.
+`rewrites` apply only after the filesystem check, so real files are still served as themselves. Head
+`ade2fd95`, squash **`d1ff248633fc1dce7faad10cc235786c9f4d795f`**, Vercel production deployment
+`67P2fTGyT7NyorAHkgC3RAkTgc4A`.
+
+Measured live after the merge:
+
+| path | result |
+|---|---|
+| `/` | 200 · app |
+| `/version.json` | 200 · `application/json` — the real manifest, not index.html |
+| `/administration/roles-permissions` | 200 · app (was 404) |
+| `/dashboard` | 200 · app |
+| `/assets/index-*.js` | 200 · `application/javascript` |
+| full reload of `/administration/roles-permissions` in a real browser | navigation type `reload` · 200 · stored policy re-read (47 roles) |
+
+Known trade-off, inherent to the specified catch-all: a path that is neither a route nor a file now
+answers 200 with index.html rather than 404.
+
+## 16. No-code restart and persistence — 2026-09-10
+
+**PASS. The accepted state survived a process replacement byte for byte.**
+
+### Current-head smoke first (read-only)
+
+Before the restart, against the deployment serving `2b7edca7`: `/version.json` → `2b7edca`; the deep
+route → 200; `/health` → reachable, migrated, 3; an authenticated policy read → 47 Roles, 37 Objects,
+the ZZ Role present, Sales Territory `C✗ R✓ E✓` with Delete unavailable, exactly one override
+(`createdAt {R:true}`), exactly one active ZZ assignment, all 5 workflows DRAFT. No drift.
+
+### The restart
+
+| | |
+|---|---|
+| service | `eos-api-nonprod` · `srv-dah49f1t0dsc73egpvi0` |
+| before | `dep-dah7kipsrm7s73979sdg` · trigger `new_commit` · commit `2b7edca7` · live → **deactivated** 09:46:26 |
+| after | **`dep-dah7o6u1egvs73cv6ea0`** · trigger **`api`** · commit `2b7edca7` · **live** 09:46:26 |
+| how | exactly one `trigger_deploy` through the Render MCP, `clearCache: false`. `main` was re-read immediately before triggering (locally and from GitHub) and was still `2b7edca7`, because a manual deploy builds the branch head |
+| distinguishable from a source deploy | trigger `api`, not `new_commit` or `blueprint_sync`; the commit is identical before and after |
+| not touched | code, configuration, environment variables, Blueprint, PostgreSQL, any other service |
+
+### Persistence — before vs after
+
+A read-only snapshot of every persisted value was taken before the restart — **twice, byte-identical**,
+proving the snapshot deterministic and read-only — and once after.
+
+| | before | after |
+|---|---|---|
+| comparison | — | **byte-identical: zero differences** |
+| tenant · principals · first Admin assignment | — | survived |
+| roles / objects / fields / object permissions | 47 / 37 / 395 / 255 | 47 / 37 / 395 / 255 |
+| every role, object and field id | — | survived |
+| workflows / versions — all DRAFT | 5 / 5 | 5 / 5 |
+| ZZ Role · Sales Territory permission · override · Object metadata · custom Field | — | survived |
+| ZZ assignment history / active | 3 / 1 | 3 / 1 |
+| access version | 20 | 20 |
+| audit events | 49 | 49 — **0 lost, 0 added**; the restart manufactured no policy events |
+
+`/health` on the replacement process: `reachable true · migrated true · migrations 3`.
+
+This is the proof that PostgreSQL, not process memory, is authoritative — and it is the second such
+proof: §12.7 records the first, a code-change replacement.
