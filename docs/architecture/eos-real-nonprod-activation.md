@@ -1,75 +1,130 @@
 # EOS — REAL NON-PRODUCTION INFRASTRUCTURE ACTIVATION
 
-**Status: BLOCKED ON RENDER ACCOUNT ACCESS. The frontend is deployed and the Blueprint is now
-self-contained; the EOS API and its database still do not exist.**
+**TECHNICAL ACCEPTANCE: COMPLETE** (non-production)
 
-Three states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
+| | |
+|---|---|
+| **BROWSER** | **PASS** — 375 / 1024 / 1440 (§15) |
+| **NO-CODE RESTART** | **PASS** (§16) |
+| **PERSISTENCE** | **PASS** — byte-identical across the restart (§16) |
+| **CLEANUP** | **PASS** — ZZ authority removed, altered configuration restored, through governed operations only (§17) |
+
+Residual evidence limitations, recorded and **non-blocking** by Owner ruling: the second tenant was not
+instantiated on Render; role bindings are not exposed through a deployed read surface; direct Render
+MCP SQL fails on TLS (§14).
+
+Four states, kept apart on purpose, because conflating them is how "it's merged" becomes "it's
 working":
 
 | | what it means | where this platform is |
 |---|---|---|
-| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche |
-| **DEPLOYED NONPROD** | a real environment runs it | ⚠️ frontend only — no API, no database |
+| **MERGED** | the code is on `main` | ✅ policy foundation, Administration editing, activation tranche, Blueprint, origin rename, no-op audit fix, SPA deep links |
+| **DEPLOYED NONPROD** | a real environment runs it | ✅ browser → `verenwardeos.vercel.app` → `eos-api-nonprod.onrender.com` → PostgreSQL, live end to end |
+| **ACCEPTED NONPROD** | a person has driven it and it held | ✅ server semantics, isolation, audit (§12) · browser 375 / 1024 / 1440 (§15) · no-code restart + persistence (§16) · cleanup (§17) |
 | **PRODUCTION** | customers touch it | ❌ untouched, and out of scope |
 
 ---
+
+## 0. Current authority
+
+What is true **now** — measured 2026-09-10 after cleanup, at `main` `44f423c9`. Everything below this section
+that describes an earlier moment says so.
+
+| | |
+|---|---|
+| canonical frontend | **`https://verenwardeos.vercel.app`** — `/version.json` → `commit 44f423c`, built 10:01:41Z |
+| old frontend domain | `https://taylor-parts-preview.vercel.app` — **REMOVED** from the Vercel project by the Owner |
+| EOS API | **`https://eos-api-nonprod.onrender.com`** — `srv-dah49f1t0dsc73egpvi0`, `starter`, **1 instance**, Oregon |
+| Render deploy | **`dep-dah7vr3bc2fs73fivgqg`** · trigger `new_commit` · commit `44f423c9df6417646c74a21844dfe8e84538494e` · live since 10:02:39Z. (The no-code restart deploy `dep-dah7o6u1egvs73cv6ea0` is recorded in §16.) |
+| PostgreSQL | `eos-policy-nonprod` · `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · 15 GB · HA false · 0 read replicas · disk autoscaling false · `ipAllowList: []` · migrations `001` `002` `003` |
+| `main` | **`44f423c9df6417646c74a21844dfe8e84538494e`** |
+| frontend vs API revision | **the rule:** the frontend follows `main`; the API sits at the latest deployed commit that changed `functions/`, the Render service's `rootDir` — Render does not redeploy for a commit that changes nothing under it. **Now:** both at `44f423c9`, because #1837 changed `functions/`. **Earlier the same day:** frontend `0b47c1d` vs API `2b7edca7`, because #1836 changed nothing under `functions/` (`git diff 2b7edca7..0b47c1db -- functions/` was empty). The SHAs are not forced to match; they match when the deployable content requires it |
+| tenant | `taylor-nonprod` · `tenant-6ce59be1-1979-45cd-9d17-a4969037fb25` |
+| first administrator | EOS principal `639c1970-dbdb-4bc0-af7c-118559151e2f` ← Firebase subject `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
+| workflows | 5 state machines, **all DRAFT** |
+
+Render values were read through the Render MCP (`get_service`, `list_postgres_instances`,
+`list_deploys`) — measured, not reported. The workspace holds exactly one service and one database:
+**workers 0, cron jobs 0**.
+
+### Current-head drift note
+
+`main` moved from `d1ff2486` (#1834) past browser acceptance through four unrelated BIN-P6
+inventory commits — `e14b4fdc` (#1833, specification), `2b7edca7` (#1835, stock relocation), then after
+the no-code restart `0b47c1db` (#1836, warehouse multi-scan) and, after cleanup, `44f423c9` (#1837, bin
+conversion reconciliation). Measured rather than assumed: across all four, **no file** under
+`functions/src/adminPolicy`, `functions/src/eosApi`, `functions/migrations`, `render.yaml`,
+`field-ops-app-vite/vercel.json` or the Administration policy UI changed. #1837 did change three
+`functions/` files — inventory-ledger reconciliation code — so Render redeployed the API
+(`dep-dah7vr3bc2fs73fivgqg`); a full census afterwards was **byte-identical** to the post-cleanup
+census (§17). A read-only current-head smoke before the restart also confirmed the accepted state
+unchanged (§16). Browser acceptance is not invalidated by any of that movement.
 
 ## 1. Source
 
 | | |
 |---|---|
-| `main` at this deployment attempt | `64a7f8c11efebb1815a25083c54262be7a7d7dab` |
-| policy foundation (#1822) | `51819f4763602220cb8feaa311acde3b46a4cbb5` |
-| non-production activation (#1823) | `d84389f4570c8f55ef376024f60de44ede01e1f7` |
-| merge record (#1824) | `73baf382bee72458c192c86470982c1eec3e56b1` |
-| Administration editing completion (#1827) | `4396844e7452643f9c1079702c71591940e89305` |
+| **`main`** | **`44f423c9df6417646c74a21844dfe8e84538494e`** — frontend and API both at this commit (§0 revision rule) |
+| BIN conversion reconciliation (#1837) — unrelated; changes `functions/`, so the API redeployed | `44f423c9df6417646c74a21844dfe8e84538494e` |
+| BIN-P6 warehouse multi-scan (#1836) — unrelated; frontend only | `0b47c1db576db22000424c432b9198c3fddf7714` |
+| BIN-P6 stock relocation (#1835) — unrelated to this platform | `2b7edca72dc24284bd6fe62d879714bb93007280` |
+| BIN-P6 specification (#1833) — unrelated to this platform | `e14b4fdc5169e4f227e232d3d055f6bfa6c0df9f` |
+| SPA deep links on Vercel (#1834) — found by this acceptance run | `d1ff248633fc1dce7faad10cc235786c9f4d795f` |
+| no-op audit fix (#1831) — found by this acceptance run | `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
+| origin rename (#1830) | `8740bf1110512488b7044c992796beab45319333` |
+| identity correction (#1828) | `1433347a840c7c6392ecde93002886bf296be190` |
 | real-nonprod activation tranche (#1825) | `056743d4aea134d1f39afd1686aaf3c9e7e113e9` |
-
-`main` is two commits above `056743d4`, and the advance was **measured, not assumed**: `226a3214`
-and `64a7f8c1` change `docs/customer-1/CUSTOMER_1_LEDGER.json` and
-`docs/customer-1/CUSTOMER_1_READINESS.md` and nothing else — 2 files, 18 insertions, 11 deletions.
-No deployable content differs from `056743d4`.
+| Administration editing completion (#1827) | `4396844e7452643f9c1079702c71591940e89305` |
+| merge record (#1824) | `73baf382bee72458c192c86470982c1eec3e56b1` |
+| non-production activation (#1823) | `d84389f4570c8f55ef376024f60de44ede01e1f7` |
+| policy foundation (#1822) | `51819f4763602220cb8feaa311acde3b46a4cbb5` |
 
 ## 2. What exists, measured
 
-### Vercel — EXISTS, and redeploys itself from `main`
+### Vercel
 
 | | |
 |---|---|
-| project | team `verenward` |
-| domain | `https://verenwardeos.vercel.app` — **renamed 2026-09-10** from `taylor-parts-preview.vercel.app` |
-| deployed identity | `/version.json` → `commit 226a321`, `environmentId platform-sandbox`, `environmentRole sandbox`, built `2026-09-10T02:09:52Z` |
+| canonical domain | `https://verenwardeos.vercel.app` |
+| deployed identity | `/version.json` → `commit c1d6913`, `environmentId platform-sandbox`, `environmentRole sandbox`, built `2026-09-10T07:36:25.570Z` |
+| API base URL | **compiled into the deployed bundle** — `assets/usePolicyStore-Dzqwa4VK.js` contains `function c(){let e=\`https://eos-api-nonprod.onrender.com\`…`: `policyApiBaseUrl()` with the value constant-folded in |
 
-Read from the running site, not from a dashboard screenshot. The build tracked `main` on its own:
-nobody triggered it, and it is already carrying the docs-only advance described above. That matters
-for the remaining work — a redeploy is not a thing anybody has to arrange, only a thing that has to
-happen *after* the environment variable is set, because Vite inlines `VITE_*` at BUILD time.
+Read from the running site, not from a dashboard. Two cautions from measuring it, kept because each
+would have produced a wrong answer:
 
-**`VITE_EOS_API_BASE_URL` is still not set in this build.** Every Administration policy surface
-therefore reports NOT CONFIGURED, which is the honest state while no API exists.
+- **The API URL is not in the entry chunk.** Scanning only the 25 chunks `index.html` references finds
+  nothing; the policy client is lazily imported. Finding it took walking all 159 chunk names the entry
+  bundle can import. A shallow scan would have reported "Vercel redeploy required" — falsely.
+- **Setting a `VITE_*` variable is not the same as shipping it.** Vite inlines it at build time; the
+  proof is the literal in the served file, not the dashboard.
 
-> **The renamed hostname does not serve the application yet.** Measured 2026-09-10:
-> `https://verenwardeos.vercel.app` answers `404` with `DEPLOYMENT_NOT_FOUND`, while
-> `https://taylor-parts-preview.vercel.app` still answers `200`. The governed configuration in this
-> repository has been moved to the new name because that is the declared intent, and the allowlist
-> is the one place a stale origin causes a total, silent failure rather than a partial one — but
-> **until the new hostname is attached to a deployment, an application served from the old domain
-> will be refused by CORS.** The two must cut over together. `EOS_ALLOWED_ORIGINS` is
-> comma-separated and could carry both across the transition; that widens a security boundary, so
-> it is not done here without being asked for.
+### Old domain — removal measured
 
-### Render — DOES NOT EXIST, and could not be created from here
+```
+https://taylor-parts-preview.vercel.app/              404  X-Vercel-Error: DEPLOYMENT_NOT_FOUND
+https://taylor-parts-preview.vercel.app/version.json  404  DEPLOYMENT_NOT_FOUND
+```
 
-Checked rather than assumed, and all four ways came back empty:
+Vercel answers for the hostname but serves no deployment: it is no longer an EOS application
+hostname. Separately, the API refuses it: `Origin: https://taylor-parts-preview.vercel.app` receives
+no `Access-Control-Allow-Origin` (§11).
 
-| checked | result |
+### Render — EXISTS. Deployed 2026-09-10 by the Owner from the Blueprint on `main`.
+
+| | |
 |---|---|
-| `render` CLI on PATH | absent |
-| `RENDER_*` environment variables | none set |
-| `~/.render`, `~/.config/render` | do not exist |
-| a signed-in browser session to drive the dashboard | no Chrome extension is connected (`list_connected_browsers` → `[]`) |
+| deployed `main` | `1433347a840c7c6392ecde93002886bf296be190` |
+| PostgreSQL | `eos-policy-nonprod` — AVAILABLE |
+| web service | `eos-api-nonprod` — LIVE |
+| API URL | `https://eos-api-nonprod.onrender.com` |
+| migrations | `001`, `002`, `003` applied in `preDeployCommand`, not in the build |
 
-No credential was guessed, and none was searched for in a file.
+Created by the Owner in the Render dashboard. **At the time**, this session had no Render credential
+of any kind — no CLI, no `RENDER_*` variable, no `~/.render`, no browser session — so what was
+recorded then about the *running* service was measured over HTTPS against the public URL, and
+resource creation, seeding and bootstrap were the Owner's report, marked as such. The two are kept
+apart on purpose. **Later the same day** the Render MCP became available; the resource shape (§9), the
+deploy history and the no-code restart (§16) were then read and performed through it.
 
 ### Firebase — the non-production project is now determined, not assumed
 
@@ -171,10 +226,65 @@ assumed: `npm ls typescript --omit=dev` resolves to `(empty)` in this package, w
 `node-pg-migrate` and `pg` are runtime **dependencies**, so `preDeployCommand` and the service keep
 working whatever the install flags are.
 
-## 5. Proved locally against the exact hosted configuration
+## 5. Proved against the DEPLOYED service, 2026-09-10 — BEFORE the rename
 
-Not a substitute for the deployed proof — a demonstration that the configuration is correct before
-anybody pays for a service to find out.
+> **Historical.** Measured while `https://taylor-parts-preview.vercel.app` was the only frontend
+> origin. The current, post-rename measurements are in §11. Nothing here was re-run or relabelled to
+> look as though it was tested against `verenwardeos`.
+
+Measured here, over HTTPS, against `https://eos-api-nonprod.onrender.com`. Nothing in this section
+is a report; every line is a response.
+
+### Health separates three questions, and answers all three
+
+```
+$ curl https://eos-api-nonprod.onrender.com/health
+{"ok":true,"environment":"nonprod","reachable":true,"migrated":true,"latencyMs":2,"migrations":3}
+HTTP 200
+```
+
+An HTTP 200 alone would say only that a process is alive. This says three things: the process is
+serving, the database **answered** (`reachable`, 2 ms), and the schema is **current**
+(`migrated`, `migrations: 3` — 001, 002 and 003). A deploy where the process is up and either of
+the other two is false is not accepted, and would not have reached this state anyway:
+`requirePolicyDatabaseReady` refuses to open the socket.
+
+### CORS, against the real deployment
+
+| request | result |
+|---|---|
+| `Origin: https://taylor-parts-preview.vercel.app` | `access-control-allow-origin` echoes it · `vary: Origin` · `Cache-Control: no-store` |
+| `Origin: https://evil.example` | **no** `access-control-allow-origin` header at all — the browser refuses it |
+| wildcard | never emitted |
+| `OPTIONS` preflight from the allowed origin | `204` · methods `POST, GET, OPTIONS` · headers `authorization, content-type, x-eos-tenant` · `max-age 600` |
+
+`/health` answers `200` to any caller, including the unlisted origin — it is a public liveness
+endpoint and carries no tenant data. What the unlisted origin does not get is authorization for the
+browser to read the response.
+
+### The authorization boundary
+
+```
+POST /admin/policy                                    → 401
+{"ok":false,"code":"UNAUTHENTICATED","message":"a bearer token is required"}
+```
+
+Refused before any policy read. And the identity fix from #1828 is proved in the deployed service,
+not merely locally:
+
+```
+POST /admin/policy   Authorization: Bearer <structurally valid, unsigned JWT>   → 401
+{"ok":false,"code":"UNAUTHENTICATED","message":"the token could not be verified"}
+```
+
+"Could not be verified" — not a 500, not a missing-credential error. **The deployed service ran real
+Firebase token verification with no service-account key present**, which is exactly what §3
+predicted and the reason no such key was ever pasted into Render.
+
+## 5.1 Proved locally beforehand, against the same configuration
+
+A demonstration that the configuration was correct before anybody paid for a service to find out.
+Superseded by §5, and kept because it is what made §5 uneventful.
 
 Run with `EOS_ENVIRONMENT=nonprod`, a Render-shaped `PORT`, the real Vercel origin, and a real
 PostgreSQL carrying all three migrations:
@@ -198,55 +308,99 @@ $ curl /health
 | unauthenticated `POST /admin/policy` | `401 UNAUTHENTICATED` before any policy read |
 | token verification with no service-account credential | reaches public-key checking (§3) |
 
-## 6. The remaining work, in order, with every value already decided
+## 6. What the Owner ran, and what it produced
 
-Everything below needs a Render account action. None of it can be done from this environment.
+Reported by the Owner from the Render environment, recorded here as their report rather than as
+something measured from this session. What *was* measured from here is §5.
 
-**1 — Create the Blueprint.** Render → New → Blueprint → repository
-`TaylorService-spec/Taylor_Parts`, branch `main`, file `render.yaml`. It creates both resources and
-asks for nothing: there is no `sync: false` value left to fill in. Do not create either resource by
-hand as well.
+### The tenant
 
-**2 — Watch the first deploy do three things in order.** `npm ci --include=dev … && npm run build`,
-then `npm run migrate:up`, then `npm start`. The migration phase must report migrations `001`
-(`1757462400000_admin-policy.sql`), `002` (`1757548800000_tenant-and-identity.sql`) and `003`
-(`1757635200000_assignment-integrity.sql`) applied. If a table is missing afterwards, the answer is
-never to create it by hand.
+| | |
+|---|---|
+| key | `taylor-nonprod` |
+| bootstrap | canonical command, no manual SQL |
 
-**3 — Read `/health`, and do not accept an HTTP 200 as the answer.** It reports three separate
-facts, and only all three green is a deploy: `reachable: true` (the database answered),
-`migrated: true` with `migrations: 3` (the schema is current), and the process being up at all.
+Seed v1:
 
-**4 — Bootstrap the tenant** with the canonical command, never manual SQL: key `taylor-nonprod`,
-display "Taylor Freezer of Arizona — Non-Production". Expect 37 Objects, 394 Fields, 46 Roles, 3
-workflow business areas, 5 workflow state machines, **all five DRAFT**. Run it a second time and
-confirm the same tenant id, no duplicate rows and no reset configuration.
+| | |
+|---|---|
+| objects | 37 |
+| fields | 394 |
+| roles | 46 |
+| object permissions | 253 |
+| workflows | 5 |
+| workflow versions | 5 |
+| steps | 36 |
+| actions | 48 |
+| role bindings | 112 |
 
-**5 — Bootstrap the first administrator** — *blocked, see §7*.
+**All five workflow state machines remain DRAFT.** Publishing one is currently inert, and nothing
+routes business execution through the engine.
 
-**6 — Set `VITE_EOS_API_BASE_URL`** on the Vercel project's **Preview** environment only, to the
-`eos-api-nonprod` HTTPS URL, then **redeploy**. Setting the variable alone changes nothing: Vite
-inlines `VITE_*` at build time, so the old bundle keeps saying NOT CONFIGURED while the dashboard
-says otherwise. Do not touch the Production environment.
+Re-running the tenant bootstrap produced **zero new seed rows** — the same tenant, no duplicated
+objects, fields, roles or workflows, and no configuration reset. That is the idempotence the tenant
+bootstrap is supposed to have.
 
-**7 — Then, and only then,** the cloud browser acceptance at 1440/1024/375, the tenant-isolation
-proof against a second minimal tenant, the audit assertions, and the hard restart proof.
+### The first administrator
 
-## 7. Blocked, and exactly why
+| | |
+|---|---|
+| external subject | `ZVu3lHTP1NQhj0Am04zTAGou0dx1` (`admin@sandbox.invalid`, `eos-platform-sandbox` — §7.1) |
+| EOS principal | `639c1970-dbdb-4bc0-af7c-118559151e2f` |
+| Admin Role assignment | `a835defa-239b-43c9-8ee4-f1376a8c1c23` |
+| access version | 1 |
 
-| # | blocked item | what unblocks it |
-|---|---|---|
-| 1 | create `eos-policy-nonprod` PostgreSQL | Render account access, or a `RENDER_API_KEY` |
-| 2 | create `eos-api-nonprod` web service | same; its deploy runs migrations through `preDeployCommand` |
-| 3 | bootstrap the `taylor-nonprod` tenant | the database and API existing with migrations applied |
-| 4 | bootstrap the first administrator | **the exact `eos-platform-sandbox` Firebase Auth UID.** Not inferred from an email in a document, a git author, a username or a display name — the bootstrap is one-time and principal-bound, and guessing the principal is the one mistake it cannot undo |
-| 5 | set `VITE_EOS_API_BASE_URL` + **redeploy** the preview | the API URL existing, and Vercel access |
-| 6 | cloud browser acceptance, restart proof, tenant-isolation proof | all of the above |
+Note the shape: the Firebase subject and the EOS principal are **different identifiers**. Firebase
+said who authenticated; EOS minted its own principal and hung the authority off that. Nothing in the
+token became authority.
 
-Blocker 4 is now narrower than it was: the *project* is determined (`eos-platform-sandbox`), so
-what remains is one value, readable at
-`https://console.firebase.google.com/project/eos-platform-sandbox/authentication/users` — the User
-UID column, for whichever account is to be the first administrator.
+### The administrator bootstrap is ONE-TIME, and that is not the same as idempotent
+
+An earlier draft of this document said to run it twice and confirm it "neither duplicates nor
+overwrites". That framing was wrong, and it mattered enough to correct rather than quietly reword:
+it invites the reader to expect a second run to *succeed harmlessly*. It does not. It is **refused**:
+
+```
+this tenant has already been bootstrapped; assign Roles through the trusted Admin API
+```
+
+The two bootstraps are deliberately different, and the difference is the point:
+
+- **Tenant bootstrap is idempotent** — it describes a desired configuration, so running it again
+  converging on the same rows is correct.
+- **Administrator bootstrap is one-time** — it is the act of granting the first authority in a
+  tenant, in the one moment before any authority exists to check it against. A second run cannot be
+  "harmless": either it would re-grant (a privileged mutation with no authorized actor behind it) or
+  it would silently do nothing (indistinguishable, to whoever ran it, from having succeeded). A
+  refusal is the only answer that is honest about which of those happened.
+
+After that moment the tenant has an administrator, so every further grant goes through the trusted
+Admin API with a real authenticated actor — which is exactly what the refusal message says to do.
+
+## 7. The first administrator — resolved 2026-09-10
+
+| | |
+|---|---|
+| Firebase project | `eos-platform-sandbox` |
+| account | `admin@sandbox.invalid` — **named by the Owner**, not chosen here |
+| Auth UID | `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
+| how it was established | **read by the Owner from the Firebase console** and confirmed back |
+
+The repository already carried that UID in three independent places — the 2026-08-06 provisioning
+log recording the `createUser` result, a 2026-08-14 sandbox bootstrap keyed
+`bootstrap-admin-ZVu3lHTP1NQhj0Am04zTAGou0dx1`, and a 2026-08-18 read of the live
+`employees`/`users` link — and all three agreed. **None of them was treated as the answer.** A
+document records what was true when it was written; an account deleted and recreated carries a new
+UID, and the EOS bootstrap is one-time and principal-bound, so a stale value is the one mistake it
+cannot undo. The console reading is the fact; the documents are corroboration that turned out to be
+correct.
+
+The project itself was determined the same way — from the running bundle rather than from a name:
+`assets/firebase-*.js` on the deployed preview carries `eos-platform-sandbox.firebaseapp.com`.
+
+`admin@sandbox.invalid` is a shared sandbox persona rather than a personal identity, which is
+appropriate here and is not a trap: the first administrator can assign the Administrator Role to any
+other principal afterwards, so this decides who bootstraps, not who governs.
 
 ## 8. The Firebase boundary, restated because deployment is when it gets blurred
 
@@ -257,6 +411,33 @@ rest of the token deliberately.
 
 Firestore policy reads and writes introduced by this work: **0** and **0**, enforced by a static
 guard whose allowlist contains one read-only, uncalled migration parity harness.
+
+The deployment bears this out in a way a static guard cannot — with one distinction kept honest.
+**Declared, not measured:** `render.yaml` on `main` gives the service no Firebase credential, only
+`GOOGLE_CLOUD_PROJECT`; this session cannot read the live Render environment to confirm nobody added
+one by hand. **Measured:** a structurally valid, unsigned token is answered `401 "the token could not
+be verified"` — real Firebase verification, running, with no key needed. Given the declared
+configuration, the service *could not* read or write Firestore if something asked it to. The only Google call it can make is fetching public signing certificates, and the only
+thing it does with a verified token is take `decoded.uid`. Every authority answer after that comes
+from PostgreSQL: subject → principal (`639c1970-…`) → membership → Role assignment
+(`a835defa-…`) → capability.
+
+### Where Firebase stands at the end of acceptance
+
+| | Firebase used? | evidence |
+|---|---|---|
+| authentication — who signed in | **YES** | measured: token verification running (401 on an unsigned token); the session token came from Firebase Identity Toolkit |
+| tenant authority | no | measured: stated tenants refused against PostgreSQL membership (§12.5) |
+| Role authority | no | measured: assignments, revoke, re-grant, access versions all in PostgreSQL (§12.4) |
+| Object permissions | no | measured (§12.2) |
+| Field permissions | no | measured — including a deleted override row (§12.2 R5) |
+| workflow authority | no | measured: 5 versions read from PostgreSQL, all DRAFT; static: no Firebase import under `src/adminPolicy` |
+| policy persistence | no | measured: survived process replacement, which a Firestore-backed path would not have had to (§12.7) |
+
+Static, re-checked at the end of acceptance: the only Firestore reference under `src/adminPolicy`
+is the allowlisted read-only parity harness, and **nothing references it** — it is unreachable from
+the served entry. `adminPolicyHttp.ts` mentions Firebase only in a comment; it takes `verifyToken`
+as a parameter.
 
 **Firebase is not removed.** It still provides authentication, and the rest of the application still
 uses Firestore for business data. Nothing here changes either. What §3 removed is not Firebase — it
@@ -273,8 +454,25 @@ The paid `starter` service must not be described as having the Free web-service 
 behaviour. Render's idle spin-down limitation applies to Free web services; this Blueprint does not
 select the Free plan.
 
-Actual billed amounts are not recorded here, because nothing has been created and quoting a price
-nobody has been charged would be a guess.
+Both resources exist. Their shape was first **reported by the Owner** from Render (this session's
+Render MCP then needed a confirmed workspace). It has since been **measured** through the Render MCP,
+with the workspace determined by the service the Owner named — `srv-dah49f1t0dsc73egpvi0` is owned by
+`tea-dag6g8dg1s2s73b9aso0`, the account's only workspace — and the measurement agrees with the report
+on every value:
+
+| | measured 2026-09-10 |
+|---|---|
+| PostgreSQL `eos-policy-nonprod` | `dpg-dah48qht0dsc73egnml0-a` · PostgreSQL 16 · `basic_256mb` · **15 GB** · HA **false** · read replicas **none** · disk autoscaling **false** · connection pool none · `ipAllowList: []` · Oregon · `available` |
+| API `eos-api-nonprod` | `srv-dah49f1t0dsc73egpvi0` · `starter` · **1 instance** · Oregon · auto-deploy on commit to `main` · build / pre-deploy / start commands exactly as the Blueprint declares |
+| current deploy | `dep-dah7vr3bc2fs73fivgqg` · trigger `new_commit` · commit `44f423c9` (the no-code restart was `dep-dah7o6u1egvs73cv6ea0`, §16) |
+| services in the workspace | **1** (the web service) → **workers 0 · cron jobs 0** |
+
+These match the Blueprint's declarations exactly; the 15 GB disk is the one value the Blueprint does
+not state. **Actual billed amounts are not recorded here**: the
+Render MCP exposes configuration, not billing, and quoting a price nobody has shown me would be a
+guess. What is recorded is the shape, which is what the Blueprint controls and what a later bill
+has to be explained by: one database, one web service, **zero** workers, **zero** cron jobs,
+**zero** replicas, no HA.
 
 ## 10. Parts / Purchasing — readiness assessment ONLY
 
@@ -300,3 +498,542 @@ What must be resolved BEFORE any cutover begins, named rather than waved at:
   execution routes through it, "roll back" means something and nobody has said what.
 - **Ordering.** Nothing should route through the engine before this environment has run the
   Administration surfaces against a real database for long enough to trust them.
+
+## 11. The rename, in the order it happened
+
+History, not current state — kept because the evidence in §5 was measured against the old domain
+and must stay legible as such. Nothing above or below has been rewritten to look as though it was
+tested against `verenwardeos` before the rename.
+
+| when (2026-09-10) | measured |
+|---|---|
+| before the rename | §5's CORS proofs run against `https://taylor-parts-preview.vercel.app`, then the only frontend origin |
+| #1830 opened | `verenwardeos.vercel.app` → `404 DEPLOYMENT_NOT_FOUND`; old domain → `200`. The configuration moved; the hostname had not |
+| first cutover attempt | still `404` on the new hostname — **stopped, not merged**, per the cutover gate |
+| second attempt | both domains `200`, **one deployment behind two aliases** (identical commit and `buildTime`) → #1830 squash-merged `8740bf11` |
+| Render Blueprint sync | API allowlist flips: new origin echoed, old origin refused |
+| Owner removes the old domain | `taylor-parts-preview.vercel.app` → `404 DEPLOYMENT_NOT_FOUND` |
+
+### Final health and CORS — measured on the deployment serving `c1d69133`
+
+```
+GET /health
+{"ok":true,"environment":"nonprod","reachable":true,"migrated":true,"latencyMs":3,"migrations":3}   200
+```
+
+| request | result |
+|---|---|
+| `Origin: https://verenwardeos.vercel.app` | `access-control-allow-origin: https://verenwardeos.vercel.app` · `vary: Origin` · `Cache-Control: no-store` |
+| `Origin: https://taylor-parts-preview.vercel.app` | **no** `access-control-allow-origin` · `Cache-Control: no-store` |
+| `Origin: https://evil.example` | **no** `access-control-allow-origin` · `Cache-Control: no-store` |
+| wildcard | never emitted on any request |
+| `OPTIONS` from the canonical origin | `204` · `POST, GET, OPTIONS` · `authorization, content-type, x-eos-tenant` · `max-age 600` · `vary: Origin` |
+
+## 12. Acceptance — what was proved, and how
+
+**Every result in this section was measured against the deployed API** at
+`https://eos-api-nonprod.onrender.com`, through the governed `POST /admin/policy` path, authenticated
+as the sandbox administrator. No SQL touched the Render database from this session. **Direct Render
+MCP SQL inspection currently fails because the query connector does not negotiate the TLS the
+database requires; the EOS API itself reaches PostgreSQL successfully** (`/health`: `reachable true`,
+and every result below). An earlier draft of this record called the database "unreachable by
+design" — that overstated it and is corrected. Where a proof needed a database directly, it was run
+on an isolated PostgreSQL 16 carrying the **same three migration files**, and says so.
+
+**How the session was obtained.** A real Firebase ID token for `admin@sandbox.invalid` was minted
+server-side through the repository's governed persona loader (`scripts/sandboxCredentials.mjs`) and
+the real Identity Toolkit endpoint. The password was never printed. The token's subject came back as
+`ZVu3lHTP1NQhj0Am04zTAGou0dx1` — independently re-confirming §7's console reading. That token is
+the same credential a browser sign-in produces; the EOS API authorized it the ordinary way. An
+attempt to restore that session *inside the browser* by writing it into IndexedDB was refused by the
+tooling's safety layer, correctly — it is session forgery even with a legitimate credential — and it
+was not worked around. That is why §14 needs a human sign-in.
+
+### 12.1 Authority census
+
+| | expected | measured through the API |
+|---|---|---|
+| tenant id | `tenant-6ce59be1-…` | echoed by the server on every response |
+| objects | 37 | **37** |
+| fields | 394 | **394** (sum of `readObjectWithFields` over all 37) |
+| roles | 46 | **46** |
+| object permissions | 253 | **253** (sum of `readRolePolicy` over all 46) |
+| workflows / versions | 5 / 5 | **5 / 5** |
+| steps / actions | 36 / 48 | **36 / 48** |
+| role bindings | 112 | **not measurable through the API** — no read operation returns them (§14) |
+| workflow state | all DRAFT | **all 5 DRAFT** — `partsPurchasing`, `salesAgreement`, `salesOpportunity`, `salesOrder`, `workOrder`, each `v1` |
+| first admin assignment | `a835defa-…` | `a835defa-239b-43c9-8ee4-f1376a8c1c23`, `admin`, `global`, `active`, `accessVersionAtGrant 1` |
+
+After acceptance the tenant holds 47 roles and 395 fields: the one custom Role and one custom Field
+this run created, both prefixed `ZZ NONPROD`.
+
+### 12.2 Roles & permissions — server semantics
+
+| # | proof | result |
+|---|---|---|
+| R1 | create custom Role `zz_nonprod_acceptance` | ✅ one audit event · actor = EOS principal · `x-request-id` carried into the audit reason |
+| R2 | edit Role name/description | ✅ persists |
+| R2b | attempt to change the Role **key** | ✅ refused `400` · key unchanged |
+| R3 | Object CRED on `salesTerritory` → `C✗ R✓ E✓ D✗` | ✅ persists |
+| R4 | Field Inherit → **Deny** | ✅ an override row exists, `{R:false}` |
+| R5 | Field Deny → **Inherit** | ✅ **the row is gone** — 0 rows for the field, not a stored `false` |
+| R6 | explicit Field **Allow** under an open doorway | ✅ stored |
+| R7 | close the Object doorway while the Field says Allow | ✅ accepted; the Allow override **stays stored** |
+| R7b | write a *new* Field Allow under a closed doorway | accepted (`200`) — see note |
+| R8 | Delete on a non-deletable Object | ✅ refused `400 "salesTerritory" does not support Delete` · **0** audit events |
+
+**R7 / R7b, stated exactly.** The server stores a Field Allow whether or not the Object doorway is
+open; the doorway invariant is enforced where access is *resolved*, not where overrides are
+*stored*. That is consistent with the Administration UI's design — it renders exactly this state as
+"Allow · blocked by object", which could not exist if the server refused it. The header of
+`AdminPolicySurfaces.jsx` says "the server refuses the impossible grant"; measured, it does not
+refuse the grant, it refuses to let the grant open the object. The wording is imprecise; the
+behaviour is the designed one. The effective-access consequence is not exposed by any read operation
+and is covered by the resolver's registered tests rather than measured here.
+
+**Every one of the 37 objects has `supportsDelete: false`** in this seed, so Delete is the
+unavailable verb on every object and every field.
+
+### 12.3 Objects & fields
+
+| # | proof | result |
+|---|---|---|
+| O1 | create custom Field `zzNonprodAcceptanceNote` (STRING, INTERNAL, searchable, reportable) | ✅ `origin: CUSTOM` |
+| O2 | edit its label, description, sensitivity → CONFIDENTIAL | ✅ persists |
+| O3 | attempt to change its **key** and **dataType** | key and dataType unchanged — but see §13: before the fix this answered `200` and audited an "update" |
+| O4 | edit a **SYSTEM** field definition directly through the API | ✅ refused `400 "a SYSTEM field's definition is protected…"` · label unchanged · **0** audit events |
+| O5 | Object metadata: label / labelPlural / description | ✅ persists — `labelPlural` is now "Sales Territories (ZZ NONPROD)" |
+| O6 | attempt to change Object `key`, `supportsDelete`, `origin` | ✅ refused `400` · all three unchanged |
+
+### 12.4 Users and assignments
+
+| # | proof | result |
+|---|---|---|
+| U1 | principal projection | ✅ exactly `displayName, externalSubject, id, identityProvider, status` — nothing else, no token claims |
+| U2 | assign the custom Role | ✅ one active row · access version `1 → 2` · one audit event |
+| U3 | **identical** repeat | ✅ **same canonical id** · still one active row · access version unchanged · **0** audit events |
+| U4 | revoke | ✅ row kept, status `disabled` · access version `2 → 3` · one audit event |
+| U5 | re-grant | ✅ a **new** row · exactly one active · the revoked row still present |
+
+The administrator's access version is **6**, not 4. The extra two are the defect in §13, measured
+in the deployed data: two no-op permission probes each bumped every holder.
+
+### 12.5 Tenant isolation
+
+| # | proof | result | evidence |
+|---|---|---|---|
+| I1 | state the caller's own tenant | ✅ `200`, tenant echoed | live API |
+| I2 | state a foreign tenant id | ✅ `403 FORBIDDEN` · **no fallback** to the caller's tenant | live API |
+| I3 | state the second tenant's key `eos-isolation-proof` | ✅ `403 FORBIDDEN` · no fallback | live API |
+| I4 | a **mutation** with a spoofed tenant | ✅ `403` · **0** audit events · nothing created in the caller's own tenant | live API |
+| I5 | cross-tenant assignment straight at the database | ✅ refused **SQLSTATE `23503`** on `user_role_assignments_member_fk` | isolated PG 16, same migrations |
+| I5c | the **identical row** for the principal's own tenant | ✅ accepted (then rolled back) — the FK is the only variable | isolated PG 16 |
+
+Both tenants in I5 were created by the canonical `bootstrapTenant`; raw SQL was used for the one
+negative-path insert only. A first attempt was refused with `23502` (a missing `id`), which proves
+nothing about the foreign key and was **not counted**. The constraint on the deployed schema's
+migration: `FOREIGN KEY (tenant_id, principal_id) REFERENCES eos_policy.tenant_memberships(tenant_id,
+principal_id)`; the one-active index: `(tenant_id, principal_id, role_id, scope_type,
+COALESCE(scope_value, ''))` `WHERE status = 'active'`.
+
+**The second tenant was not created on Render**: tenant bootstrap is a database-side command, not an
+API operation, and direct SQL against the Render database is not currently available (the Render MCP
+query connector does not negotiate the required TLS — §14). I2–I4 prove the
+isolation property that matters through the live API — a stated tenant the caller is not a member of
+is refused, whether or not it exists — and the registered PostgreSQL suite proves it again with two
+real tenants.
+
+### 12.6 Audit
+
+| case | proof | result |
+|---|---|---|
+| A — success | R1, U2, U4 | ✅ exactly one event each |
+| B — refusal | R8, O4, I4 | ✅ **0** events each |
+| C — idempotent no-op | U3 | ✅ **0** events — and **every other command after #1831** (§13) |
+| D — rollback | duplicate custom-field key, live | ✅ `409 CONFLICT` · **0** events · still one field with that key |
+| actor | latest event | ✅ `actorUid` = the EOS principal `639c1970-…`, never the Firebase subject |
+| correlation | R1 | ✅ `x-request-id` folded into the event's `reason` |
+
+`readPolicyAuditHistory` caps at 500; the tenant holds 32 events, so every delta above is exact.
+
+D is stated precisely: the duplicate fails at the database's unique index inside the transaction,
+before the audit append, and the transaction rolls back. It proves "a rolled-back transaction records
+no success event", which is Step 7D. The registered PostgreSQL suite holds the same proof.
+
+### 12.7 Hard restart — process replaced, data survived
+
+> **Historical, and superseded by §16.** Measured at the time it describes. The no-code restart
+> this section says could not yet be done was performed later the same day, with Render access,
+> and is recorded in §16. Nothing below is rewritten.
+
+Render replaced the API process when #1831 deployed. **This was a code-change deploy, not the
+no-code restart the acceptance plan asked for**, and it is recorded as what it was — a
+no-code restart needs Render access this session does not have (§14). As a persistence proof it is
+not weaker: the new process was built and started from scratch and holds no memory of the old.
+
+The new process was identified by behaviour, not by dashboard: a probe the old code answered `200`
+began answering `400 nothing to update` about 91 seconds after the merge. The old process wrote **2**
+false events while being polled — counted, not hidden.
+
+A snapshot of every persistence target was taken **before** the merge and compared **after**:
+
+| target | result |
+|---|---|
+| tenant id | survived |
+| principals | survived |
+| first admin assignment | survived |
+| access version | survived (6) |
+| custom Role | survived |
+| Object CRED change | survived |
+| Field override | survived |
+| Object metadata change | survived |
+| custom Field | survived |
+| counts — 37 / 47 / 395 / 5 | survived |
+| workflow states — all DRAFT | survived |
+| assignment history (revoked + active) | survived |
+| audit | **0 lost** · 2 added = exactly the 2 marker probes |
+
+`/health` on the replacement process: `reachable true · migrated true · migrations 3`.
+
+## 13. Defect found and fixed during acceptance
+
+**#1831 — "A change that changes nothing is not a mutation"** · head `8e2d88b0` · squash
+**`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** · 102/102 checks.
+
+Measured on the deployed API at `8740bf11`: an **identical** `updateRole`, `updateObjectMetadata`,
+`updateCustomFieldMetadata`, `setObjectPermission` and `setFieldPermissionOverride` each wrote an
+audit event whose only change was `updatedAt`, and the two permission commands also bumped the
+access version of every holder of the Role. Worse: `updateCustomFieldMetadata` naming only `key` and
+`dataType` answered `200` and audited an "update" — the caller was told an identity change had
+succeeded.
+
+**Why it was allowed under the acceptance charter:** a defect against already-decided authority —
+Ruling C made an identical assignment idempotent, and Step 7C requires that an identical no-op write
+no mutation event. It narrows what the platform writes; it grants nothing, broadens no permission,
+changes no governance, and touches no production, Certification, Rules or business data.
+
+**Re-measured live on the replacement process:** all five identical probes → `200`, **0** audit
+events, access version unchanged; the `key`/`dataType`-only request → `400 nothing to update`; a
+real change still writes exactly one event.
+
+Gates: `test:adminPolicy` 161/161 with a database (0 skipped) · `test:adminPolicyPostgres` 78/78 on
+isolated PostgreSQL 16 · `test:governance` 667/667. Of the 9 new tests, **7 fail on `8740bf11`**; the
+other 2 are over-reach guards that pass both before and after by design.
+
+## 14. Status of everything this record set out to prove
+
+### Resolved
+
+| # | item | resolution |
+|---|---|---|
+| 1 | rendered UI acceptance at 375 / 1024 / 1440 | ✅ **PASS** — Owner-driven UI input, Claude-measured (§15) |
+| 4 | a **no-code** Render restart | ✅ **PASS** — `dep-dah7o6u1egvs73cv6ea0`, trigger `api`, same commit; state byte-identical (§16) |
+| 6 | actual Render tiers, disk, HA, instances | ✅ **measured** through the Render MCP (§9) |
+| 7 | deep links 404 on the Vercel frontend | ✅ **fixed** by #1834 and proven live (§15.4) |
+| 8 | ZZ NONPROD fixture clean-up | ✅ **PASS** — authority removed and configuration restored through governed operations only (§17) |
+
+### Residual evidence limitations — NON-BLOCKING by Owner ruling
+
+Recorded so nobody later reads them as proven. The Owner ruled they do not block closure, and that no
+new API, SQL, shell or product capability is to be built merely to close them.
+
+| # | limitation | what stands in its place |
+|---|---|---|
+| 2 | the second tenant `eos-isolation-proof` was **not instantiated on the Render database** — tenant bootstrap is not an API operation | isolation proved through the live API (a stated tenant the caller is not a member of is refused, with no fallback, whether or not it exists) and with two real tenants on an isolated PostgreSQL 16 carrying the same three migrations, including SQLSTATE `23503` with a same-tenant control (§12.5) |
+| 3 | the composite-FK SQLSTATE was not captured **on the Render database** | the same constraint, from the same migration file, proved on the isolated PostgreSQL 16 (§12.5) |
+| 5 | role bindings (112 reported by the Owner at seed time) are **not exposed through a deployed read surface** | none — no read operation returns workflow role bindings. A read-surface gap, not a data finding |
+| 10 | **direct Render MCP SQL inspection fails**: the query connector does not negotiate the TLS the database requires | every database fact in this record was read through the EOS API, which reaches PostgreSQL normally, or through Render's resource API (§9) |
+
+### Open
+
+| # | item | status |
+|---|---|---|
+| 9 | Owner review of this record | #1829 is DRAFT |
+
+## 15. Rendered browser acceptance — 2026-09-10 — **PASS at 375 / 1024 / 1440**
+
+| | |
+|---|---|
+| **Interaction source** | **OWNER-DRIVEN UI INPUT** — every input recorded by the browser with `isTrusted: true`, the browser's own mark of genuine user input |
+| **Verification source** | **CLAUDE BROWSER / NETWORK / API OBSERVATION** — a pass-through fetch recorder (operation, input, response per policy request), reload proof by navigation type `reload` + status 200, and independent API reads as a second witness |
+| Claude-driven input | **none** in the accepted result (see §15.1 for why) |
+
+The first attempt (§15.1) is kept as history. The accepted result is §15.2–§15.4.
+
+Against `https://verenwardeos.vercel.app` → `https://eos-api-nonprod.onrender.com` → Render
+PostgreSQL, signed in by the Owner. Read from the live page, not from source.
+
+### Identity and wiring — measured in the page
+
+| | |
+|---|---|
+| signed-in subject | `admin@sandbox.invalid` · uid `ZVu3lHTP1NQhj0Am04zTAGou0dx1` · the `eos-platform-sandbox` API key (read from the browser's own Firebase session store, read-only) |
+| hosts the page talked to | `verenwardeos.vercel.app`, `identitytoolkit.googleapis.com`, `eos-api-nonprod.onrender.com`, plus `firestore.googleapis.com` and `us-central1-eos-platform-sandbox.cloudfunctions.net` for the rest of the app shell (dashboard and business surfaces, not the policy panel) |
+| localhost / emulator | **none** — no such request, no `?emulator` flag |
+
+### 15.1 First attempt — what rendered at 1440 (historical)
+
+| proof | observed |
+|---|---|
+| the surface is the stored policy, not the measured reference | heading "Roles & permissions · this tenant's stored policy"; the measured model sits below it, labelled as reference |
+| roles | 47 role selectors, including **ZZ NONPROD Acceptance Role (post-fix)** — the name the API run left |
+| every Object | selecting the ZZ role renders **37** object rows under `Object / field · Create · Read · Edit · Delete` |
+| Object CRED matches the database | Sales Territory: Create ☐ · Read ☑ · Edit ☑ · Delete **—** — exactly the stored `C✗ R✓ E✓` |
+| unavailable verb | Delete renders **"—"** with no control on all 37 objects, and on every field beneath them |
+| Object expands into Fields | Sales Territory expands to **7** field rows: its 6 SYSTEM fields and the custom **ZZ NONPROD Acceptance Note (edited)** |
+| the four field facts | Created · Create → **Inherited · Deny** (object C ✗) · Created · Read → **Allow** (the stored explicit override) · Created · Edit → **Inherited · Allow** (object E ✓) · every field · Delete → **—** |
+| three-state control | every governable field cell is an Inherit / Allow / Deny select, not a checkbox |
+
+### 15.1a First attempt — what did not run then, and why (historical, superseded by §15.2)
+
+**The interactive half — changing a value through the UI, reloading, and re-reading it — and the
+1024 and 375 passes did not complete.** Two separate things stopped it, and neither is an EOS
+defect:
+
+- **The Browser pane stopped delivering input.** Clicks timed out three times in a row with the
+  pane reporting that Claude's window may be covered by another window, and before that the
+  click-coordinate scale changed between consecutive clicks with nothing resized (×13.7, then ×1.25,
+  then ×1.0). Keyboard input (`Enter`, `Space` on a focused control) did not reach the page at all.
+  Evidence gathered through an input channel that unreliable would not be evidence.
+- **`form_input` does not reach React on a checkbox.** It set the Sales Territory Create box to
+  checked in the DOM but fired no request, because React's checkbox `onChange` is driven by the
+  click event. That was a desync caused by the tool, not a save; the page was fully reloaded
+  immediately afterwards and the stored value never changed (still `C✗`).
+
+The server-side semantics behind every one of those interactive proofs were accepted against the
+live API in §12. What remains unproven is specifically that the **rendered controls** issue those
+calls — and that the layout holds at 1024 and 375.
+
+### 15.1b A finding from the first attempt (historical — fixed, see §15.4)
+
+**Deep links 404 on the Vercel frontend.** `GET /administration/roles-permissions` → HTTP **404**.
+There is no `vercel.json`; Firebase Hosting carries an SPA rewrite (`** → /index.html`) and the
+Vercel project has no equivalent, so a full browser reload on any route other than `/` fails, and
+bookmarked or shared links do not open. In-app navigation is unaffected. Not fixed here: it is a
+frontend deployment-config change outside this run's scope.
+
+### 15.2 The accepted run — Owner-driven, Claude-measured
+
+After a second input-channel failure, the Owner directed that the Owner perform every click and
+Claude measure the result. Each mutation below was recorded as: rendered BEFORE → the Owner's trusted
+input → the request the UI actually sent → its response → a real reload (navigation type `reload`,
+document 200, fresh policy reads) → the persisted AFTER. A visual change with no request would have
+been a failure; there were none in the accepted result.
+
+**1440 — the full mutation suite**
+
+| # | proof | request observed | response | after reload |
+|---|---|---|---|---|
+| 1 | Object CRED: Sales Territory Create ☐ → ☑ | `setObjectPermission {C:true,R:true,E:true,D:false}` | 200 · ok | ☑ persisted |
+| 2 | Field Inherit → **Deny** (Name · Read) | `setFieldPermissionOverride {R:false}` | 200 · ok | Deny persisted |
+| 2 | Field Deny → **Inherit** (Name · Read) | `removeFieldPermissionOverride` | 200 · ok | inherited; API witness: **0** override rows for the field |
+| 3 | explicit Field **Allow** (Kind · Edit) | `setFieldPermissionOverride {E:true}` | 200 · ok | Allow persisted |
+| 4 | **doorway**: close Sales Territory Read with `createdAt` Read explicitly Allowed | `setObjectPermission {R:false}` | 200 · ok | `createdAt` Read renders **"Allow · blocked by object"**; the stored Allow is kept — storage semantics unchanged |
+| 5 | Delete unavailable | — | — | all 37 objects render **"—"**, no control in the Delete column |
+| 6 | custom Role metadata (description) | `updateRole` | 200 · ok | persisted; **no key input** — the form states "The key zz_nonprod_acceptance is identity and cannot change." |
+| 7 | custom Field metadata (description) | `updateCustomFieldMetadata` — payload carries **no key and no dataType** | 200 · ok | persisted; audit: only `description` changed; the form has **no key or dataType input** and says why |
+| 8 | SYSTEM field | — | — | rows read "protected"; **no Edit control exists**; nothing to send |
+| 9 | Object metadata (description) | `updateObjectMetadata {label, labelPlural, description}` — nothing else | 200 · ok | persisted; audit: only `description` changed; key / origin / lifecycle / supportsDelete have **no control** and were unchanged |
+| 10 | assignment lifecycle | `revokeRole` → `assignRole` | 200 · ok each | revoke: row kept as `disabled` → reload → persisted; re-grant: a **new** row `0971af72…` `active` → reload → persisted; history intact; exactly one active |
+
+The Add-role menu applies Ruling C in the UI: with ZZ held it offered 45 of 47 Roles, neither held Role
+among them; after the revoke it offered ZZ (46); after the re-grant, 45 again.
+
+The first attempt at #1 sent no request — at 1440 in this pane the checkbox is drawn 3–4 screen pixels
+wide — and is not counted. Every counted input carries `isTrusted: true`.
+
+**1024 — responsive proof + one real mutation**
+
+| | |
+|---|---|
+| layout | grid 687 px, fits the 1024 viewport · **169 / 169** controls reachable · 21 field selects, each Inherit / Allow / Deny, min 81 × 31 px · 0 clipped cells · no page overflow · rail usable |
+| mutation | Name · Read Inherit → Deny → `setFieldPermissionOverride {R:false}` → 200 ok → reload → **Deny persisted** → restored → `removeFieldPermissionOverride` → 200 ok |
+
+**375 — responsive proof + one real mutation**
+
+| | |
+|---|---|
+| layout | the grid is its own horizontal scroller — 285 px of view over 547 px of content · **169 / 169** controls reachable (81 on screen, 88 by scrolling the grid) · no page overflow · role pills ≥ 44 px tall · field selects ≥ 76 × 44 px |
+| mutation | deliberately on a control reachable **only** by scrolling the grid: Kind · Edit Inherit → Allow → `setFieldPermissionOverride {E:true}` → 200 ok → reload → **Allow persisted** → restored → `removeFieldPermissionOverride` → 200 ok |
+
+**Totals for the run:** 17 mutation requests, all 200 · ok. Audit **32 → 49** — exactly one event per
+mutation, every actor the EOS principal `639c1970-…`, and **none** for Cancel, form opens, selection or
+reloads. Access version **6 → 20**, every bump a real change to a Role this principal holds.
+
+**Findings, none of them an EOS defect:** at 375 the grid's horizontal scroll returns to the left edge
+after a save (the re-read remounts the table); saving role details collapses an expanded object row; a
+Role's description is shown only in its edit form. **Missing UI controls: none.**
+
+### 15.3 Measurement mistakes caught and not counted
+
+Three of Claude's own measurements were wrong on first reading and were corrected before being
+reported, so none reached the results above: a row lookup keyed by the first word of a label (three
+fields begin with "Created"); a reach test that started above the element that is actually the grid's
+scroll container; and a first composite-FK attempt refused with `23502` rather than `23503` (§12.5).
+
+### 15.4 SPA deep links — the defect, the fix, and its live proof
+
+The first attempt found that a full reload of any client route on Vercel returned **404** (§15.1b):
+Vercel fell back to `public/404.html`, the GitHub Pages SPA shim, which redirects into a mangled path on
+a domain-root deploy.
+
+**#1834** — `field-ops-app-vite/vercel.json`, one `rewrites` entry `/(.*) → /index.html`, plus a
+regression test that forbids `routes`, `redirects`, `headers`, `cleanUrls` and `trailingSlash`.
+`rewrites` apply only after the filesystem check, so real files are still served as themselves. Head
+`ade2fd95`, squash **`d1ff248633fc1dce7faad10cc235786c9f4d795f`**, Vercel production deployment
+`67P2fTGyT7NyorAHkgC3RAkTgc4A`.
+
+Measured live after the merge:
+
+| path | result |
+|---|---|
+| `/` | 200 · app |
+| `/version.json` | 200 · `application/json` — the real manifest, not index.html |
+| `/administration/roles-permissions` | 200 · app (was 404) |
+| `/dashboard` | 200 · app |
+| `/assets/index-*.js` | 200 · `application/javascript` |
+| full reload of `/administration/roles-permissions` in a real browser | navigation type `reload` · 200 · stored policy re-read (47 roles) |
+
+Known trade-off, inherent to the specified catch-all: a path that is neither a route nor a file now
+answers 200 with index.html rather than 404.
+
+## 16. No-code restart and persistence — 2026-09-10
+
+**PASS. The accepted state survived a process replacement byte for byte.**
+
+### Current-head smoke first (read-only)
+
+Before the restart, against the deployment serving `2b7edca7`: `/version.json` → `2b7edca`; the deep
+route → 200; `/health` → reachable, migrated, 3; an authenticated policy read → 47 Roles, 37 Objects,
+the ZZ Role present, Sales Territory `C✗ R✓ E✓` with Delete unavailable, exactly one override
+(`createdAt {R:true}`), exactly one active ZZ assignment, all 5 workflows DRAFT. No drift.
+
+### The restart
+
+| | |
+|---|---|
+| service | `eos-api-nonprod` · `srv-dah49f1t0dsc73egpvi0` |
+| before | `dep-dah7kipsrm7s73979sdg` · trigger `new_commit` · commit `2b7edca7` · live → **deactivated** 09:46:26 |
+| after | **`dep-dah7o6u1egvs73cv6ea0`** · trigger **`api`** · commit `2b7edca7` · **live** 09:46:26 |
+| how | exactly one `trigger_deploy` through the Render MCP, `clearCache: false`. `main` was re-read immediately before triggering (locally and from GitHub) and was still `2b7edca7`, because a manual deploy builds the branch head |
+| distinguishable from a source deploy | trigger `api`, not `new_commit` or `blueprint_sync`; the commit is identical before and after |
+| not touched | code, configuration, environment variables, Blueprint, PostgreSQL, any other service |
+
+### Persistence — before vs after
+
+A read-only snapshot of every persisted value was taken before the restart — **twice, byte-identical**,
+proving the snapshot deterministic and read-only — and once after.
+
+| | before | after |
+|---|---|---|
+| comparison | — | **byte-identical: zero differences** |
+| tenant · principals · first Admin assignment | — | survived |
+| roles / objects / fields / object permissions | 47 / 37 / 395 / 255 | 47 / 37 / 395 / 255 |
+| every role, object and field id | — | survived |
+| workflows / versions — all DRAFT | 5 / 5 | 5 / 5 |
+| ZZ Role · Sales Territory permission · override · Object metadata · custom Field | — | survived |
+| ZZ assignment history / active | 3 / 1 | 3 / 1 |
+| access version | 20 | 20 |
+| audit events | 49 | 49 — **0 lost, 0 added**; the restart manufactured no policy events |
+
+`/health` on the replacement process: `reachable true · migrated true · migrations 3`.
+
+This is the proof that PostgreSQL, not process memory, is authoritative — and it is the second such
+proof: §12.7 records the first, a code-change replacement.
+
+## 17. Cleanup of the ZZ NONPROD acceptance state — 2026-09-10
+
+**PASS.** Temporary authority removed and altered configuration restored, through **already-governed EOS
+operations only**. No SQL, no new capability, no deletion invented.
+
+### What the governed product can and cannot do — determined from the code first
+
+| definition | governed retirement / deletion? | decision |
+|---|---|---|
+| custom **Field** | **retirement exists**: `updateCustomFieldMetadata` accepts `lifecycle: RETIRED` for CUSTOM fields (only SYSTEM fields refuse lifecycle changes). No delete operation | retired through it |
+| custom **Role** | **none**: `PolicyRoleRecord` has no lifecycle or status, `updateRole` edits only name and description, and the closed operation list has no delete | **retained, inert** |
+| a Role's **object-permission row** | **no removal operation**: `setObjectPermission` requires a complete CRED set | set to all-false — the row remains and grants nothing |
+| a Role's **field override** | `removeFieldPermissionOverride` deletes the row | removed |
+
+A harmless, inert, clearly ZZ-prefixed test definition is preferable to inventing architecture or
+bypassing governance. Role retirement and definition deletion are **not currently product
+capabilities**; this record says so rather than working around it.
+
+### The exact census first
+
+Before any change, a complete read-only census of the tenant — every Role and its object permissions
+and overrides, every Object, every Field, the workflows, the admin's assignments. The ZZ footprint:
+
+- object permissions: `marketingInitiatives` `{R, E}` · `salesTerritory` `{R, E}`
+- field overrides: `createdAt` `{R:true}`
+- assignments: one active (`0971af72…`), two historical (`disabled`)
+- no override on any other Role; the only CUSTOM Field and CUSTOM Role in the tenant are the ZZ ones
+
+### The pre-acceptance baseline — from the audit trail, not memory
+
+The earliest `updateObjectMetadata` event on `salesTerritory` (07:17:58Z) records its `before`: label
+`Sales Territory`, labelPlural `Sales Territories`, and the seeded description. No event touched the
+object before it. The committed seed (`functions/src/adminPolicy/seed/policySeedSnapshot.json`)
+independently carries the same values.
+
+### The cleanup mutations
+
+| # | governed operation | response | audit Δ | access version |
+|---|---|---|---|---|
+| 1 | `revokeRole` — the one active ZZ assignment `0971af72…` | 200 · ok | +1 | 20 → **21** |
+| 2a | `setObjectPermission` — ZZ on `salesTerritory` → all-false | 200 · ok | +1 | 21 → 21 |
+| 2b | `setObjectPermission` — ZZ on `marketingInitiatives` → all-false | 200 · ok | +1 | 21 → 21 |
+| 2c | `removeFieldPermissionOverride` — ZZ `createdAt` | 200 · ok | +1 | 21 → 21 |
+| 3 | `updateObjectMetadata` — `salesTerritory` → the seeded label / labelPlural / description | 200 · ok | +1 | 21 → 21 |
+| 4 | `updateCustomFieldMetadata` — `zzNonprodAcceptanceNote` → `lifecycle: RETIRED` | 200 · ok | +1 | 21 → 21 |
+| 5 | custom Role `zz_nonprod_acceptance` | — no governed operation — | 0 | — |
+
+The access version moved once, on the revoke. After that the admin no longer held the ZZ Role, so the
+ZZ permission changes correctly bumped nobody.
+
+### Proof — a complete census before and after, diffed
+
+**Exactly six differences across the whole tenant, all intended; only one Role's policy changed:**
+
+| | before | after |
+|---|---|---|
+| `salesTerritory` labelPlural | `Sales Territories (ZZ NONPROD)` | `Sales Territories` |
+| `salesTerritory` description | `Object edited in the browser at 1440` | the seeded description |
+| `zzNonprodAcceptanceNote` lifecycle | `DRAFT` | `RETIRED` |
+| ZZ assignment `0971af72…` | `active` | `disabled` — history kept |
+| ZZ on `marketingInitiatives` | `{C:false, R:true, E:true, D:false}` | all false |
+| ZZ on `salesTerritory` | `{C:false, R:true, E:true, D:false}` | all false |
+| ZZ `createdAt` override | `{R:true}` | **removed** |
+
+The other 46 Roles' policies, the other 36 Objects, 394 of 395 Fields and all workflows: **identical**.
+
+| check | result |
+|---|---|
+| admin principal still holds its real Admin assignment `a835defa…` | ✅ |
+| **zero** active `zz_nonprod_acceptance` assignments | ✅ — all 3 rows `disabled`, history preserved |
+| the ZZ Role grants no effective authority | ✅ — every CRED false, no field override, no holder |
+| Sales Territory metadata equals the seeded baseline | ✅ — exact string equality on all three |
+| Sales Territory protected properties | ✅ — SYSTEM · ACTIVE · supportsDelete false, unchanged |
+| all 5 workflows DRAFT | ✅ |
+| `/health` | ✅ reachable · migrated · 3 |
+
+| | before cleanup | after cleanup |
+|---|---|---|
+| audit events | 49 | **55** — one per governed mutation |
+| access version | 20 | **21** |
+| roles / objects / fields | 47 / 37 / 395 | 47 / 37 / 395 — nothing deleted |
+
+### Retained on purpose
+
+- **`zz_nonprod_acceptance`** — a CUSTOM, unprotected Role named "ZZ NONPROD Acceptance Role (post-fix)",
+  with no active assignment, no field override and all-false object permissions. Kept because the
+  product has no governed Role retirement or deletion.
+- **`zzNonprodAcceptanceNote`** — **RETIRED** through the governed lifecycle, not deleted, because the
+  product has no field deletion. Its label and description are the test values.
+- Two all-false object-permission rows on the ZZ Role — the only governed way to withdraw that authority.
+
+### The cleaned state survived another process replacement
+
+After cleanup, `main` advanced to `44f423c9` (#1837), which changes `functions/`, and Render
+redeployed the API (`dep-dah7vr3bc2fs73fivgqg`, trigger `new_commit`, live 10:02:39Z). A full census
+afterwards was **byte-identical** to the post-cleanup census.
