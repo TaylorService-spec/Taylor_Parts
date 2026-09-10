@@ -138,11 +138,11 @@ export function createWarehouseBindings(deps = {}) {
      */
     async [WAREHOUSE_INTENT.CYCLE_COUNT_SUBMIT](intent) {
       try {
-        const data = await cycleCount.submitCycleCount(intent.payload);
+        const data = await cycleCount.submitCycleCountLine(intent.payload);
         return {
           ok: true,
           replayed: data?.outcome === "replayed",
-          serverIds: { cycleCountId: intent.payload.cycleCountId, status: data?.status ?? null },
+          serverIds: { sheetId: intent.payload.sheetId, partId: intent.payload.partId, status: data?.status ?? null },
         };
       } catch (err) { return failureFrom(err); }
     },
@@ -200,14 +200,15 @@ export function createWarehouseBindings(deps = {}) {
 
     /** A count that somebody else already submitted, or that has moved past counting. */
     async [WAREHOUSE_INTENT.CYCLE_COUNT_SUBMIT](intent) {
-      const c = await readCycleCount(intent.payload.cycleCountId);
+      // The LINE's current server state (injected read; A4 getCycleCountSheet in production).
+      const c = await readCycleCount(intent.payload);
       if (!c) return { proceed: true };
       if (c.status === "CANCELLED") {
         return { proceed: false, code: "failed-precondition", details: "CYCLE_COUNT_CANCELLED" };
       }
       // Already reconciled means the decision has been made on numbers this observation is not part
       // of. Submitting into it would be arguing with a closed book.
-      if (c.status === "RECONCILED" || c.status === "CLOSED") {
+      if (c.status === "RECONCILED" || c.status === "REJECTED" || c.status === "CLOSED") {
         return { proceed: false, code: "failed-precondition", details: "CYCLE_COUNT_ALREADY_RECONCILED" };
       }
       return { proceed: true };

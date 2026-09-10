@@ -1,24 +1,34 @@
-// Enterprise Inventory -- Cycle Count operating authority: thin httpsCallable transport for the
-// cycle count command family. Mirrors services/transferCommandClient.js exactly: builds nothing
-// itself (request shaping lives in domain/cycleCountCommandRequest.js), just invokes the named onCall
-// export. Every inventory.cycleCount.* capability is registered `active: false` and granted to NO
-// Role, so today every real call resolves `permission-denied` server-side -- this client does not
-// hide that; the hook layer surfaces it as an honest status, never a fabricated success.
+// Cycle Count -- thin httpsCallable transport for the A1 SHEET / LINE command family and the A4 durable
+// reads (functions/src/cycleCount/cycleCountSheetCallables.ts, Decision #179). Builds nothing and decides
+// nothing: request shaping is domain/cycleCountCommandRequest.js, and every call is re-authorized server-side.
+//
+// The v1 single-part callables (createCycleCount / submitCycleCount / ...) are gone from the backend; this
+// client does not name them.
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 
 export const CYCLE_COUNT_CALLABLES = Object.freeze({
-  create: "createCycleCount",
-  submit: "submitCycleCount",
-  reconcile: "reconcileCycleCount",
-  cancel: "cancelCycleCount",
+  createSheet: "createCycleCountSheet",
+  openLine: "openCycleCountLine",
+  submitLine: "submitCycleCountLine",
+  reconcileLine: "reconcileCycleCountLine",
+  cancelLine: "cancelCycleCountLine",
+  cancelSheet: "cancelCycleCountSheet",
+  closeSheet: "closeCycleCountSheet",
+  listSheets: "listCycleCountSheets",
+  getSheet: "getCycleCountSheet",
 });
 
 const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
 
 export const cycleCountCommandClient = Object.freeze({
-  createCycleCount: (request) => call(CYCLE_COUNT_CALLABLES.create, request),
-  submitCycleCount: (request) => call(CYCLE_COUNT_CALLABLES.submit, request),
-  reconcileCycleCount: (request) => call(CYCLE_COUNT_CALLABLES.reconcile, request),
-  cancelCycleCount: (request) => call(CYCLE_COUNT_CALLABLES.cancel, request),
+  createCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.createSheet, request),
+  openCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.openLine, request),
+  submitCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.submitLine, request),
+  reconcileCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.reconcileLine, request),
+  cancelCycleCountLine: (request) => call(CYCLE_COUNT_CALLABLES.cancelLine, request),
+  cancelCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.cancelSheet, request),
+  closeCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.closeSheet, request),
+  listCycleCountSheets: (request = {}) => call(CYCLE_COUNT_CALLABLES.listSheets, request),
+  getCycleCountSheet: (request) => call(CYCLE_COUNT_CALLABLES.getSheet, request),
 });

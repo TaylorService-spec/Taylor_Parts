@@ -24,7 +24,31 @@ import {
   type CycleCountSheet,
   type CycleCountLine,
 } from "./cycleCountSheetRepository.js";
-import { CycleCountSheetNotFoundError } from "./cycleCountTypes.js";
+import { CycleCountSheetNotFoundError, type CycleCountLocationRef } from "./cycleCountTypes.js";
+import { BINS_COLLECTION } from "../inventoryLocation/binCommands.js";
+import { WAREHOUSES_COLLECTION } from "../constants/collections.js";
+import { MOBILE_LOCATIONS_COLLECTION } from "../truckRegistry/truckRegistryRepository.js";
+
+/**
+ * A human label for each counted location -- the Bin's code, the Warehouse's name, the truck's label --
+ * read from the governed documents at READ time (a renamed bin shows its current code). Falls back to the
+ * id: a location that no longer resolves is still a real fact about the count.
+ */
+export async function resolveLocationLabels(db: Firestore, locations: readonly CycleCountLocationRef[]): Promise<Map<string, string>> {
+  const key = (l: CycleCountLocationRef) => `${l.type}:${l.locationId}`;
+  const unique = [...new Map(locations.map((l) => [key(l), l])).values()];
+  const coll = { BIN: BINS_COLLECTION, WAREHOUSE: WAREHOUSES_COLLECTION, MOBILE: MOBILE_LOCATIONS_COLLECTION } as const;
+  const refs = unique.map((l) => db.collection(coll[l.type]).doc(l.locationId));
+  const snaps = refs.length ? await db.getAll(...refs) : [];
+  const out = new Map<string, string>();
+  unique.forEach((l, i) => {
+    const d = snaps[i]?.exists ? snaps[i].data() ?? {} : {};
+    const label = l.type === "BIN" ? d.code : l.type === "WAREHOUSE" ? d.name : (d.displayLabel ?? d.label);
+    out.set(key(l), typeof label === "string" && label.trim() !== "" ? label : l.locationId);
+  });
+  return out;
+}
+const labelKey = (l: CycleCountLocationRef) => `${l.type}:${l.locationId}`;
 
 export const SHEET_PAGE_MAX = 50;
 export const LINE_PAGE_MAX = 200;
@@ -32,9 +56,9 @@ const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export class CycleCountReadInvalidError extends Error {}
 
-export function sheetSummary(s: CycleCountSheet) {
+export function sheetSummary(s: CycleCountSheet, labels?: Map<string, string>) {
   return {
-    sheetId: s.sheetId, location: s.location, status: s.status,
+    sheetId: s.sheetId, location: s.location, locationLabel: labels?.get(labelKey(s.location)) ?? s.location.locationId, status: s.status,
     createdAt: s.createdAt, createdBy: s.createdBy, updatedAt: s.updatedAt,
     ...(s.closedAt === undefined ? {} : { closedAt: s.closedAt, closedBy: s.closedBy }),
   };
@@ -86,9 +110,10 @@ export async function listCycleCountSheets(request: unknown, db: Firestore) {
   if (cursor) q = q.startAfter(cursor);
   const snap = await q.get();
   const docs = snap.docs.slice(0, limit);
-  const sheets = docs.map((d) => deserializeSheet(d.id, d.data())) // fails closed on a malformed sheet
-    .filter((s) => data.status === undefined || s.status === data.status)
-    .map(sheetSummary);
+  const kept = docs.map((d) => deserializeSheet(d.id, d.data())) // fails closed on a malformed sheet
+    .filter((s) => data.status === undefined || s.status === data.status);
+  const labels = await resolveLocationLabels(db, kept.map((s) => s.location));
+  const sheets = kept.map((s) => sheetSummary(s, labels));
   // The status filter is applied after the page is read, so a page may hold fewer sheets than `limit`:
   // nextCursor is the only statement about whether more exist, and it is always given.
   return { sheets, nextCursor: snap.docs.length > limit ? docs[docs.length - 1].id : null };
@@ -112,5 +137,6 @@ export async function getCycleCountSheet(request: unknown, db: Firestore) {
   const lineSnap = await q.get();
   const docs = lineSnap.docs.slice(0, limit);
   const lines = docs.map((d) => lineProjection(deserializeLine(sheet.sheetId, d.id, d.data())));
-  return { sheet: sheetSummary(sheet), lines, nextCursor: lineSnap.docs.length > limit ? docs[docs.length - 1].id : null };
+  const labels = await resolveLocationLabels(db, [sheet.location]);
+  return { sheet: sheetSummary(sheet, labels), lines, nextCursor: lineSnap.docs.length > limit ? docs[docs.length - 1].id : null };
 }

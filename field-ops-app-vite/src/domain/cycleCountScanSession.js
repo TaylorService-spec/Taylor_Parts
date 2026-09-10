@@ -1,160 +1,105 @@
-// CYCLE COUNT BY SCAN — turning scans into a counted figure. PURE: no I/O, no JSX, no transport.
+// CYCLE COUNT BY SCAN -- the multi-part counting session (BIN-P8 / Cycle Count A2). PURE: no I/O, no JSX.
+//
+// A sheet is locked to ONE location (usually a scanned Bin). Every scan is an observation in the SAME
+// queue Receiving and Move stock use (domain/scanObservationQueue.js) -- no third queue. This module turns
+// those observations, plus what the server has said about each line, into the lines a counter reviews.
 //
 // ============================ THE COUNT IS BLIND ============================
 //
-// DECISIONS #111: cycle counts are blind, and a counter cannot approve their own material variance.
-// The server snapshots the expected quantity at CREATE time and does not return it; the first
-// response that carries it is the SUBMIT response, by which point the counted value has already been
-// recorded and there is nothing left to anchor.
-//
-// So nothing in this module accepts, stores, derives or displays an expected figure. A counting
-// session knows only what was scanned. That is not an oversight to work around — anchoring is the
-// exact failure a blind count exists to prevent, and a helpful "expected: 12" on the scanning screen
-// would defeat the control entirely.
+// DECISIONS #111 / A1 Revision 2. A line's expected value exists on the server from the moment the line
+// opens, and crosses the wire only in THAT line's submit response. So nothing here accepts, derives or
+// displays an expected figure for a line that has not been submitted -- not as a number, not as an
+// "over/short" hint, not as a per-serial "was this expected?" tell. After a line is submitted, its own
+// expected value (from its own response or the durable read) may be shown; its siblings stay blind.
 //
 // ============================ OBSERVATION IS NOT ADJUSTMENT ============================
 //
-// Submitting a count records WHAT WAS SEEN. It moves no stock and changes no balance. The ledger
-// correction happens only when a manager RECONCILES, which is a separate capability
-// (`inventory.cycleCount.reconcile`) and a separate screen. This module has no reconcile path and no
-// notion of approval, so a counter cannot reach one from here.
+// Submitting records what was seen and moves no stock. Reconciliation is a separate capability and a
+// separate screen. There is no reconcile path in this module.
 //
-// ============================ NO SECOND COUNT ENGINE ============================
+// ============================ SERIALS STAY UNITS ============================
 //
-// Variance is derived server-side from the snapshot the server took. Nothing here subtracts
-// anything. The submitted payload is exactly what the existing `buildSubmitCycleCountRequest`
-// expects: a counted quantity, or a list of counted serials.
+// A serial is one unit and one observation; the same serial twice on one line is refused at scan time.
+// NONE-tracked scans aggregate: each scan is +1, and a keyed quantity is the same thing.
 
-import { SCAN_RESOLUTION, resolveScannedIdentity } from "./scannedIdentity.js";
-
-/** What one scan contributed to the count. */
-export const COUNT_OBSERVATION = Object.freeze({
-  COUNTED: "COUNTED",             // a unit of the part being counted
-  DUPLICATE_SERIAL: "DUPLICATE_SERIAL", // this exact serial is already on the sheet
-  WRONG_PART: "WRONG_PART",       // a different part — found here, but not what is being counted
-  UNREADABLE: "UNREADABLE",       // not a usable code
+/** Where a line stands, from the counter's point of view. */
+export const COUNT_LINE_STATE = Object.freeze({
+  COUNTING: "COUNTING",     // open on the server; this device holds an unsubmitted count (possibly zero)
+  NOT_COUNTED: "NOT_COUNTED", // open on the server; nothing counted here yet (e.g. resumed on another device)
+  SUBMITTED: "SUBMITTED",   // COUNTED on the server -- its own expected value may now be shown
+  DECIDED: "DECIDED",       // RECONCILED or REJECTED by a reviewer
+  REMOVED: "REMOVED",       // cancelled before it was counted
 });
 
-export const COUNT_OBSERVATION_TEXT = Object.freeze({
-  [COUNT_OBSERVATION.DUPLICATE_SERIAL]: "Already counted.",
-  [COUNT_OBSERVATION.WRONG_PART]: "That is a different part. Count it separately.",
-  [COUNT_OBSERVATION.UNREADABLE]: "That code could not be read.",
-});
+const SUBMITTED_STATUSES = new Set(["COUNTED", "RECONCILED", "REJECTED"]);
 
-/** Why a count cannot be submitted yet. */
-export const SUBMIT_BLOCKED = Object.freeze({
-  NO_SESSION: "NO_SESSION",           // nothing has been created to count against
-  NOT_COUNTING: "NOT_COUNTING",       // the count is no longer open
-  UNRESOLVED_SCAN: "UNRESOLVED_SCAN", // something scanned is not part of this count
-});
-
-const BLOCKING = new Set([COUNT_OBSERVATION.WRONG_PART, COUNT_OBSERVATION.UNREADABLE]);
-
-/**
- * Classify one scan against the part being counted.
- *
- * A SERIAL count resolves to a UNIT; a quantity count resolves to the PART and adds one. Serials are
- * NOT validated against an expected list — the whole point of a blind count is that the counter does
- * not know what was expected, so an "unexpected" serial is simply counted and the server decides what
- * that means at submit.
- */
-export function classifyCountScan(raw, { partId, trackingMode }, alreadyCounted = []) {
-  const identity = resolveScannedIdentity(raw, {
-    parts: [{ partId, sku: partId }],
-    // Every serial already counted is offered as a candidate so a repeat resolves as a unit rather
-    // than falling through to "wrong part".
-    serializedAssets: alreadyCounted.map((serialNo) => ({ serialNo, partId })),
-  });
-  const token = identity.token ?? (typeof raw === "string" ? raw.trim() : "");
-
-  if (identity.resolutionState === SCAN_RESOLUTION.INVALID) {
-    return Object.freeze({ token, state: COUNT_OBSERVATION.UNREADABLE, serialNo: null });
-  }
-
-  if (trackingMode === "SERIAL") {
-    if (identity.resolutionState === SCAN_RESOLUTION.RESOLVED && identity.entityType === "SERIALIZED_ASSET") {
-      return Object.freeze({ token, state: COUNT_OBSERVATION.DUPLICATE_SERIAL, serialNo: identity.entityId });
-    }
-    if (identity.resolutionState === SCAN_RESOLUTION.RESOLVED && identity.entityType === "PART") {
-      // The part code identifies the kind, not a unit. A serialized count needs the serial off the
-      // unit itself, or the sheet would say "one of these" without saying which.
-      return Object.freeze({ token, state: COUNT_OBSERVATION.WRONG_PART, serialNo: null });
-    }
-    // NOT_FOUND against a candidate set of only already-counted serials. On a BLIND count that is
-    // the normal case: an uncounted unit of this part is exactly what we came to find. It is counted
-    // as-is, and whether it was expected is the server's judgement, not this screen's.
-    return Object.freeze({ token, state: COUNT_OBSERVATION.COUNTED, serialNo: token });
-  }
-
-  if (identity.resolutionState === SCAN_RESOLUTION.RESOLVED && identity.entityType === "PART") {
-    return Object.freeze({ token, state: COUNT_OBSERVATION.COUNTED, serialNo: null });
-  }
-  return Object.freeze({ token, state: COUNT_OBSERVATION.WRONG_PART, serialNo: null });
+/** Is this exact serial already an observation on this part's line? Case-insensitive, trimmed. */
+export function isDuplicateSerial(observations, partId, serialNo) {
+  const want = String(serialNo ?? "").trim().toLowerCase();
+  return want !== "" && observations.some((o) => o.partId === partId && o.serialNo && o.serialNo.toLowerCase() === want);
 }
 
 /**
- * Add a scan to a session, threading duplicates correctly.
+ * Build the lines a counter reviews.
  *
- * Returns a NEW observation list; the input is never mutated.
+ * @param observations  the shared queue's observations for this sheet
+ * @param parts         partId -> { trackingMode, label } for every Part resolved this session
+ * @param serverLines   partId -> the durable line projection (or a submit response), when known
+ * @param zeroed        partIds the counter explicitly marked "none here" -- a real count of zero
  */
-export function addCountScan(observations, raw, session) {
-  const counted = observations
-    .filter((o) => o.state === COUNT_OBSERVATION.COUNTED && o.serialNo)
-    .map((o) => o.serialNo);
-  return Object.freeze([...observations, classifyCountScan(raw, session, counted)]);
+export function buildCountLines({ observations = [], parts = new Map(), serverLines = new Map(), zeroed = new Set() } = {}) {
+  const ids = new Set([...observations.map((o) => o.partId), ...serverLines.keys(), ...zeroed]);
+  const lines = [];
+  for (const partId of ids) {
+    const info = parts.get(partId) ?? {};
+    const server = serverLines.get(partId) ?? null;
+    const trackingMode = server?.trackingMode ?? info.trackingMode ?? "NONE";
+    const own = observations.filter((o) => o.partId === partId);
+    const serials = trackingMode === "SERIAL" ? own.filter((o) => o.serialNo).map((o) => o.serialNo) : [];
+    const quantity = trackingMode === "SERIAL" ? serials.length : own.reduce((n, o) => n + (o.quantity ?? 1), 0);
+    const status = server?.status ?? "OPEN";
+    const submitted = SUBMITTED_STATUSES.has(status);
+    const state = status === "CANCELLED" ? COUNT_LINE_STATE.REMOVED
+      : status === "RECONCILED" || status === "REJECTED" ? COUNT_LINE_STATE.DECIDED
+      : submitted ? COUNT_LINE_STATE.SUBMITTED
+      : own.length > 0 || zeroed.has(partId) ? COUNT_LINE_STATE.COUNTING
+      : COUNT_LINE_STATE.NOT_COUNTED;
+    lines.push(Object.freeze({
+      partId,
+      label: info.label ?? partId,
+      trackingMode,
+      state,
+      serverStatus: status,
+      countedQuantity: submitted ? (server.countedQuantity ?? server.countedSerialNumbers?.length ?? 0) : quantity,
+      countedSerialNumbers: Object.freeze(submitted ? [...(server.countedSerialNumbers ?? [])] : serials),
+      entryIds: Object.freeze(own.map((o) => o.entryId)),
+      // ONLY a submitted line carries these, and only from the server.
+      ...(submitted ? {
+        expectedQuantity: server.expectedQuantity,
+        variance: server.variance,
+        serialVariance: server.serialVariance,
+      } : {}),
+    }));
+  }
+  return Object.freeze(lines.sort((a, b) => a.label.localeCompare(b.label)));
+}
+
+/** Lines ready to submit: counted here (a zero included) and not yet on the server as counted. */
+export function linesToSubmit(lines) {
+  return lines.filter((l) => l.state === COUNT_LINE_STATE.COUNTING);
+}
+
+/** The submit draft for one line, in the shape buildSubmitLineRequest expects. Serials stay a LIST. */
+export function lineDraft(line) {
+  return line.trackingMode === "SERIAL"
+    ? { countedSerialNumbers: [...line.countedSerialNumbers] }
+    : { countedQuantity: line.countedQuantity };
 }
 
 /**
- * The state of a counting session.
- *
- * NOTE what is absent: no expected quantity, no variance, no "over"/"short". Those exist only after
- * submit, in the server's response.
+ * Unsubmitted work the screen must protect from an accidental exit, counted in SCANS ("discard 3 scans"
+ * is a different sentence from "discard your work"). An explicit "none here" zero counts as one.
  */
-export function buildCountSession({ session, observations = [] } = {}) {
-  const trackingMode = session?.trackingMode ?? null;
-  const serialTracked = trackingMode === "SERIAL";
-
-  const counted = observations.filter((o) => o.state === COUNT_OBSERVATION.COUNTED);
-  const unresolved = observations.filter((o) => BLOCKING.has(o.state));
-
-  // Serials are de-duplicated here as a second guard: classifyCountScan already refuses a repeat,
-  // but a submitted list with a duplicate would be rejected by the request builder, and failing at
-  // the last step is a worse experience than never assembling one.
-  const countedSerialNumbers = serialTracked
-    ? [...new Map(counted.filter((o) => o.serialNo).map((o) => [o.serialNo.trim().toLowerCase(), o.serialNo])).values()]
-    : [];
-
-  const countedQuantity = serialTracked ? countedSerialNumbers.length : counted.length;
-
-  const blockers = [];
-  if (!session?.cycleCountId) blockers.push(SUBMIT_BLOCKED.NO_SESSION);
-  else if (session.status !== "COUNTING") blockers.push(SUBMIT_BLOCKED.NOT_COUNTING);
-  if (unresolved.length > 0) blockers.push(SUBMIT_BLOCKED.UNRESOLVED_SCAN);
-
-  return Object.freeze({
-    serialTracked,
-    countedQuantity,
-    countedSerialNumbers: Object.freeze(countedSerialNumbers),
-    unresolved: Object.freeze(unresolved),
-    blockers: Object.freeze(blockers),
-    /**
-     * A count of ZERO is a legitimate, submittable result — "there are none here" is exactly the
-     * finding a cycle count exists to surface, and requiring a scan before submitting would make an
-     * empty shelf unreportable.
-     */
-    canSubmit: blockers.length === 0,
-  });
-}
-
-/**
- * The submit draft, in the shape `buildSubmitCycleCountRequest` already expects.
- *
- * SERIAL counts stay an explicit LIST. Collapsing them to a number would lose which units were
- * found, and the server's reconciliation reports missing and unexpected serials separately for
- * exactly that reason.
- */
-export function toSubmitDraft(state) {
-  return state.serialTracked
-    ? { countedSerialNumbers: [...state.countedSerialNumbers] }
-    : { countedQuantity: state.countedQuantity };
+export function pendingWorkCount(lines) {
+  return linesToSubmit(lines).reduce((n, l) => n + Math.max(l.entryIds.length, 1), 0);
 }

@@ -351,6 +351,18 @@ await check("A4: pagination is explicit, never a silent truncation; resume reads
   assert.deepEqual([...p1.lines, ...p2.lines].map((l) => l.partId).sort(), [...ps].sort());
   assert.equal(await codeOf(R.getCycleCountSheet({ sheetId: s, where: "x" }, db).catch((e) => { throw Object.assign(e, { code: "INVALID" }); })), "INVALID");
 });
+await check("A4: locationLabel is the governed document's CURRENT label, falling back to the id", async () => {
+  const w = await seedWarehouse({ name: "Phoenix Parts Room" });
+  const b = await seedBin(w);
+  const labels = await R.resolveLocationLabels(db, [WH(w), { type: "BIN", locationId: b }, { type: "BIN", locationId: "bin_gone" }]);
+  assert.equal(labels.get(`WAREHOUSE:${w}`), "Phoenix Parts Room");
+  assert.match(labels.get(`BIN:${b}`), /^A01-\d{3}$/);
+  assert.equal(labels.get("BIN:bin_gone"), "bin_gone");
+  const s = await sheetAt(WH(w));
+  let cursor = null; let found;
+  do { const page = await R.listCycleCountSheets({ limit: 50, ...(cursor ? { cursor } : {}) }, db); found ??= page.sheets.find((x) => x.sheetId === s); cursor = page.nextCursor; } while (cursor && !found);
+  assert.equal(found?.locationLabel, "Phoenix Parts Room");
+});
 await check("A4 callable: authenticated + a Cycle Count capability required; production-inactive", async () => {
   const uid = `cc-read-${runId}`;
   await db.collection("users").doc(uid).set({ accessVersion: 1 });

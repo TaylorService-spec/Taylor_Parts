@@ -258,19 +258,21 @@ export function captureTruckHandoff({ principalUid, transferOrderId, action = "d
  * construction here — there is nowhere in this payload for an expected quantity to hide.
  */
 export function captureCycleCountSubmit({
-  principalUid, cycleCountId, countedQuantity = null, countedSerials = null,
-  partId = null, locationId = null, captureKey, at = 0, offline = false,
+  principalUid, sheetId, partId, countedQuantity = null, countedSerialNumbers = null,
+  locationId = null, captureKey, at = 0, offline = false,
 }) {
+  // A1 sheet/line model: ONE line of ONE sheet. The payload is exactly submitCycleCountLine's request --
+  // including the serial key the server actually reads (countedSerialNumbers).
   return warehouseIntent({
     type: WAREHOUSE_INTENT.CYCLE_COUNT_SUBMIT,
-    scopeId: cycleCountId, principalUid, captureKey, at, offline,
+    scopeId: `${sheetId}/${partId}`, principalUid, captureKey, at, offline,
     payload: {
-      cycleCountId,
-      ...(Array.isArray(countedSerials) ? { countedSerials: [...countedSerials] } : { countedQuantity }),
+      sheetId, partId,
+      ...(Array.isArray(countedSerialNumbers) ? { countedSerialNumbers: [...countedSerialNumbers] } : { countedQuantity }),
     },
     references: {
-      "Cycle count": cycleCountId, Part: partId, Location: locationId,
-      Quantity: Array.isArray(countedSerials) ? countedSerials.length : countedQuantity,
+      "Count sheet": sheetId, Part: partId, Location: locationId,
+      Quantity: Array.isArray(countedSerialNumbers) ? countedSerialNumbers.length : countedQuantity,
     },
   });
 }

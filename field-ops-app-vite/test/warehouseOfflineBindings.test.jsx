@@ -37,7 +37,7 @@ const allCommands = (fn) => Object.fromEntries(WAREHOUSE_INTENT_TYPES.map((t) =>
 const DISPATCH = () => captureTransferDispatch({ ...base, transferOrderId: "TR-1042", sourceId: "wh-main", destinationId: "truck-12", captureKey: "d1" });
 const RECEIVE_T = () => captureTransferReceive({ ...base, transferOrderId: "TR-1042", destinationId: "truck-12", captureKey: "tr1" });
 const PUTAWAY = () => capturePutAway({ ...base, partId: "P", destinationBinId: "BIN-A1", quantity: 4, captureKey: "p1" });
-const COUNT = () => captureCycleCountSubmit({ ...base, cycleCountId: "CC-9", countedQuantity: 12, captureKey: "c1" });
+const COUNT = () => captureCycleCountSubmit({ ...base, sheetId: "ccs_9", partId: "P", countedQuantity: 12, captureKey: "c1" });
 
 // ═══════════════════════════════════════════ every type is bound
 
@@ -119,7 +119,7 @@ describe("stale server state", () => {
 
   it("A COUNT ALREADY RECONCILED REFUSES — arguing with a closed book", async () => {
     const cmd = recorder();
-    const { prechecks } = createWarehouseBindings({ readCycleCount: async () => ({ id: "CC-9", status: "RECONCILED" }) });
+    const { prechecks } = createWarehouseBindings({ readCycleCount: async () => ({ partId: "P", status: "RECONCILED" }) });
     const r = await runSyncPass(queueOf(COUNT()), { principalUid: UID, deps: { session: okSession, commands: allCommands(cmd), prechecks } });
     expect(cmd.calls).toHaveLength(0);
     expect(r.queue[0].lastServerError.details).toBe("CYCLE_COUNT_ALREADY_RECONCILED");

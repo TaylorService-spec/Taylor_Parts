@@ -1,104 +1,154 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { fetchMobileLocationDocs } from "../../services/truckRegistryQueries";
-import { useCycleCountActions } from "../../hooks/useCycleCountActions";
+import { cycleCountCommandClient } from "../../services/cycleCountCommandClient";
+import {
+  buildCreateSheetRequest, buildSubmitLineRequest, buildReconcileLineRequest,
+} from "../../domain/cycleCountCommandRequest";
+import { mapCycleCountActionError, describeCycleCountOutcome } from "../../domain/cycleCountActionResult";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
-import { normalizeScanToken, resolveScannedIdentity, SCAN_RESOLUTION } from "../../domain/scannedIdentity";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import { Button } from "../../shared/ui/primitives/index.js";
 
-// Enterprise Inventory -- Cycle Count operating authority: the Cycle Counts workspace
-// (functions/src/cycleCount/*). Create a count against an active WAREHOUSE/MOBILE(truck) location +
-// Part, record the counted quantity/serials, review variance, and let a manager APPROVE (stage the
-// ADJUSTED ledger correction) or REJECT (record the count as disputed, no ledger effect) it -- a reason
-// is required either way on any non-zero variance. Mirrors modules/inventory/Transfers.jsx's honest-
-// posture convention: every inventory.cycleCount.* capability is registered `active: false` and
-// granted to NO Role today, so every real action attempt resolves `permission-denied` server-side. The
-// controls render (so the workspace is reviewable and ready for the day the grant lands) but every call
-// is re-authorized by the trusted backend regardless of what this UI shows.
+// CYCLE COUNTS -- the durable workspace over count SHEETS (Cycle Count A1 + A4, Decision #179).
 //
-// M23 BLIND-COUNT REMEDIATION (Owner ruling, 2026-08-18): a count exists to catch discrepancy
-// independently, so this workspace hides the expected quantity/serial count from the counter for as
-// long as the count is OPEN -- NoneCountEntry/SerialCountEntry below never render it, and (more than a
-// UI choice) createCycleCount's own response no longer carries it over the network at all
-// (cycleCountCallableWiring/cycleCountCallables.ts) -- a determined user reading the raw response in
-// devtools would not find it either. It first appears once the count is COUNTED, sourced from
-// submitCycleCount's OWN response (after the counted value already left the counter's hands in that
-// same request), and separately, the disposing manager review step (ManagerReviewForm) is a SEPARATE
-// action from counting -- reconcileCycleCount's `decision` field -- with its own server-side separation-
-// of-duties check: the actor who submitted a count cannot approve or reject that count's own MATERIAL
-// variance (functions/src/cycleCount/cycleCountCommand.ts). This UI does not attempt to model "who is
-// the manager" (there is no role split in this session-scoped prototype) -- it always renders both the
-// Approve and Reject controls, and lets the trusted backend be the actual enforcement point; a self-
-// approval attempt surfaces as an honest, specific error (see cycleCountActionResult.js) rather than a
-// silently-hidden button, since hiding the button would not itself be a guarantee of anything.
+// A sheet is one governed location; each Part counted there is a line. Counters mostly work from
+// Scan → Cycle count (bin first, many parts). This workspace is where counts are FOUND again -- from any
+// device, through the governed read (listCycleCountSheets / getCycleCountSheet), never a client
+// `cycle_counts` read -- and where a reviewer disposes of each counted line.
 //
-// NO LIVE READ: cycle_counts is Rules-denied to every client (Admin-SDK-only, same posture as
-// receiving_orders). The list below is SESSION state built entirely from callable responses (see
-// useCycleCountActions.js) -- "history" here means "what this tab did this session," not a durable
-// cross-session view. That is a deliberate, documented boundary, not an oversight -- and it means a
-// manager reviewing on a DIFFERENT device/session cannot yet browse pending COUNTED records from here;
-// that would need a new read capability, which is out of this remediation's scope.
+// BLIND, PER LINE. A line's expected value and variance are shown only once THAT line is submitted; the
+// server does not even send them for an open line, so there is nothing here to hide.
 //
-// SERIAL scan entry REUSES the existing scan identity boundary (domain/scannedIdentity.js) against
-// this count's own expected-serial snapshot as the candidate set -- it does NOT stand up a second
-// scanner. A token that resolves is added as an expected hit; a token that does not resolve is still
-// offered as an "unexpected" find (the count's job is to capture what is physically there, not to
-// silently reject it). The candidate set itself is only available once expectedSerialNumbers has
-// arrived (post-submit) -- see SerialCountEntry's own note on scanning blind.
+// OBSERVATION IS NOT ADJUSTMENT. Approving a counted line with a variance is what stages the ledger
+// adjustment -- for that line, at that exact location, in one transaction. Rejecting records a dispute
+// and moves nothing. A reason is required either way when the count differs. A reviewer cannot approve
+// or reject a MATERIAL variance on a line they counted themselves; the server refuses it and the reason
+// is shown on that line.
 
-// A count's location was rendered as its raw warehouse/truck document id. The same labels the
-// picker already offers are used here, so the count reads as the place an operator knows. An id with
-// no label resolves to the id rather than to nothing -- a location that no longer exists is still a
-// real fact about this count, and hiding it would be worse than showing the key.
-function LocationLabel({ location, labels }) {
-  if (!location) return <span className="fo-muted">—</span>;
+const FILTERS = [
+  { value: "OPEN", label: "Open" },
+  { value: "CLOSED", label: "Closed" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "", label: "All" },
+];
+const TYPE_LABEL = { BIN: "Bin", WAREHOUSE: "Warehouse", MOBILE: "Truck" };
+const STATUS_TEXT = { OPEN: "Not counted", COUNTED: "Counted -- awaiting review", RECONCILED: "Approved", REJECTED: "Rejected", CANCELLED: "Removed" };
+
+export default function CycleCounts({ deps }) {
+  const client = deps?.cycleCountClient ?? cycleCountCommandClient;
+  const [filter, setFilter] = useState("OPEN");
+  const [sheets, setSheets] = useState({ loading: true, rows: [], nextCursor: null, error: null });
+  const [selected, setSelected] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [status, setStatus] = useState(null);
+
+  const load = useCallback(async (cursor = null) => {
+    setSheets((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const page = await client.listCycleCountSheets({ ...(filter ? { status: filter } : {}), ...(cursor ? { cursor } : {}) });
+      setSheets((s) => ({ loading: false, rows: cursor ? [...s.rows, ...(page.sheets ?? [])] : (page.sheets ?? []), nextCursor: page.nextCursor ?? null, error: null }));
+    } catch (err) {
+      setSheets({ loading: false, rows: [], nextCursor: null, error: mapCycleCountActionError(err) });
+    }
+  }, [client, filter]);
+  useEffect(() => { load(); }, [load]);
+
   return (
-    <span>
-      {labels?.get(location.locationId) ?? location.locationId}
-      {location.type === "MOBILE" && <span className="fo-transfer-endpoint-type"> truck</span>}
-    </span>
+    <div className="fo-panel">
+      <WorkspaceHeader title="Cycle Counts">
+        {!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>New count</Button>}
+      </WorkspaceHeader>
+      <p className="fo-muted">
+        Counts are kept on the server: open one to continue counting or to review it. Bins are counted from
+        Scan → Cycle count. An expected quantity appears only after that part has been counted.
+      </p>
+      {status && (
+        <p className={status.kind === "error" ? "fo-warning" : "fo-muted"} role={status.kind === "error" ? "alert" : "status"}>
+          {status.message} <button type="button" className="fo-transfer-dismiss" onClick={() => setStatus(null)}>Dismiss</button>
+        </p>
+      )}
+
+      {showCreate && (
+        <CreateSheetForm client={client} onCancel={() => setShowCreate(false)} onCreated={(sheet) => {
+          setShowCreate(false); setStatus({ kind: "ok", message: describeCycleCountOutcome("createSheet", "applied") });
+          setSelected(sheet.sheetId); load();
+        }} />
+      )}
+
+      {selected ? (
+        <SheetDetail client={client} sheetId={selected} onBack={() => { setSelected(null); load(); }} onStatus={setStatus} />
+      ) : (
+        <>
+          <label className="fo-inline-form">
+            Show{" "}
+            <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Show counts">
+              {FILTERS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
+            </select>
+          </label>
+          {sheets.error && <p className="fo-warning" role="alert">{sheets.error}</p>}
+          {sheets.loading && sheets.rows.length === 0 ? <LoadingState>Loading counts…</LoadingState> : null}
+          {!sheets.loading && !sheets.error && sheets.rows.length === 0 && (
+            <EmptyState variant="database" title="No counts here" message="Start a count, or scan a bin from Scan → Cycle count." />
+          )}
+          {sheets.rows.length > 0 && (
+            <ul className="fo-list" aria-label="Count sheets">
+              {sheets.rows.map((s) => (
+                <li key={s.sheetId}>
+                  <button type="button" className="fo-link-btn" onClick={() => setSelected(s.sheetId)}>
+                    {TYPE_LABEL[s.location?.type] ?? "Location"} {s.locationLabel ?? s.location?.locationId}
+                  </button>{" "}
+                  <span className="fo-muted">· {s.status} · started {new Date(s.createdAt).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {sheets.nextCursor && <Button variant="secondary" onClick={() => load(sheets.nextCursor)} disabled={sheets.loading}>Load more</Button>}
+        </>
+      )}
+    </div>
   );
 }
 
-function statusTone(status) {
-  switch (status) {
-    case "OPEN": return "pending";
-    case "COUNTED": return "active";
-    case "RECONCILED": return "done";
-    case "REJECTED": return "muted";
-    case "CANCELLED": return "muted";
-    default: return "muted";
-  }
-}
-
-function CreateCycleCountForm({ warehouseOptions, truckOptions, warehousesError, trucksError, submitting, onCancel, onSubmit }) {
-  const [partId, setPartId] = useState("");
+function CreateSheetForm({ client, onCancel, onCreated }) {
   const [locationType, setLocationType] = useState("WAREHOUSE");
   const [locationId, setLocationId] = useState("");
-  const [errors, setErrors] = useState({});
-  const options = locationType === "MOBILE" ? truckOptions : warehouseOptions;
-  const optionsError = locationType === "MOBILE" ? trucksError : warehousesError;
-  const locationNoun = locationType === "MOBILE" ? "trucks" : "warehouses";
+  const [options, setOptions] = useState({ loading: true, warehouses: [], trucks: [], warehousesError: null, trucksError: null });
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    Promise.allSettled([fetchWarehouses(), fetchMobileLocationDocs()]).then(([w, t]) => {
+      if (!live) return;
+      setOptions({
+        loading: false,
+        warehousesError: w.status === "rejected" ? w.reason : null,
+        trucksError: t.status === "rejected" ? t.reason : null,
+        warehouses: (w.status === "fulfilled" && Array.isArray(w.value) ? w.value : []).map((x) => ({ id: x.id, label: x.name || x.id })),
+        trucks: (t.status === "fulfilled" && Array.isArray(t.value) ? t.value : []).filter((d) => d?.data?.active !== false).map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId })),
+      });
+    });
+    return () => { live = false; };
+  }, []);
+
+  const list = locationType === "MOBILE" ? options.trucks : options.warehouses;
+  const listError = locationType === "MOBILE" ? options.trucksError : options.warehousesError;
 
   return (
-    <form
-      className="fo-form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const result = await onSubmit({ partId, locationType, locationId });
-        if (!result.ok) setErrors(result.errors || {});
-      }}
-    >
+    <form className="fo-form" onSubmit={async (e) => {
+      e.preventDefault();
+      const built = buildCreateSheetRequest({ locationType, locationId });
+      if (!built.ok) { setError(Object.values(built.errors)[0]); return; }
+      setBusy(true); setError(null);
+      try { onCreated(await client.createCycleCountSheet(built.value)); }
+      catch (err) { setError(mapCycleCountActionError(err)); }
+      finally { setBusy(false); }
+    }}>
       <label>
-        Part
-        <input value={partId} onChange={(e) => setPartId(e.target.value)} placeholder="Part ID" />
-        {errors.partId && <span className="fo-form-error">{errors.partId}</span>}
-      </label>
-      <label>
-        Location type
+        Where
         <select value={locationType} onChange={(e) => { setLocationType(e.target.value); setLocationId(""); }}>
           <option value="WAREHOUSE">Warehouse</option>
           <option value="MOBILE">Truck</option>
@@ -106,375 +156,166 @@ function CreateCycleCountForm({ warehouseOptions, truckOptions, warehousesError,
       </label>
       <label>
         Location
-        <select
-          value={locationId}
-          onChange={(e) => setLocationId(e.target.value)}
-          disabled={options.length === 0}
-        >
-          <option value="">
-            {optionsError ? "Unavailable" : options.length === 0 ? `No ${locationNoun} available` : "Select…"}
-          </option>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>{o.label}</option>
-          ))}
-        </select>
-        {/* THREE DIFFERENT FACTS, THREE DIFFERENT MESSAGES. An empty dropdown previously meant
-            "denied", "the read failed" or "none are configured" indistinguishably, and the operator
-            could only guess which. A failure says so and stays actionable; a genuine zero says the
-            system needs configuring, which is a different person's job. */}
-        {optionsError ? (
-          <span className="fo-form-error" role="alert">
-            {loadErrorMessage(optionsError, { entity: locationNoun })}
-          </span>
-        ) : options.length === 0 ? (
-          <span className="fo-muted">
-            No {locationNoun} are set up yet, so a count cannot be started against one.
-          </span>
-        ) : null}
-        {errors.locationId && <span className="fo-form-error">{errors.locationId}</span>}
+        {options.loading ? <span className="fo-muted"> Loading…</span> : (
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={list.length === 0}>
+            <option value="">{listError ? "Unavailable" : list.length === 0 ? "None available" : "Select…"}</option>
+            {list.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        )}
+        {listError && <span className="fo-form-error" role="alert">{loadErrorMessage(listError, { entity: locationType === "MOBILE" ? "trucks" : "warehouses" })}</span>}
       </label>
+      {error && <p className="fo-form-error" role="alert">{error}</p>}
       <div className="fo-form-actions">
-        <Button type="submit" variant="primary" disabled={submitting}>
-          {submitting ? "Starting…" : "Start count"}
-        </Button>
-        <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={submitting}>
-          Cancel
-        </button>
+        <Button type="submit" variant="primary" disabled={busy}>{busy ? "Starting…" : "Start count"}</Button>
+        <button type="button" className="fo-btn-secondary" onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
     </form>
   );
 }
 
-function NoneCountEntry({ count, busy, onSubmit }) {
-  const [value, setValue] = useState("");
-  return (
-    <form
-      className="fo-inline-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit({ countedQuantity: Number(value) });
-      }}
-    >
-      {/* M23: no expected-quantity hint here on purpose -- the count is blind until it is recorded.
-          The server never even sends this count's expectedQuantity in this state (see this file's
-          header note); it first appears in the row's variance summary once status is COUNTED. */}
-      <input
-        type="number"
-        min="0"
-        step="1"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Counted quantity"
-        aria-label="Counted quantity"
-      />
-      <button type="submit" className="fo-transfer-action-btn" disabled={busy || value === ""}>
-        {busy ? "Recording…" : "Record count"}
-      </button>
-    </form>
-  );
-}
+function SheetDetail({ client, sheetId, onBack, onStatus }) {
+  const [state, setState] = useState({ loading: true, sheet: null, lines: [], error: null });
+  const [busy, setBusy] = useState(null); // partId | "sheet"
+  const [lineErrors, setLineErrors] = useState({});
 
-function SerialCountEntry({ count, busy, onSubmit }) {
-  const [scanInput, setScanInput] = useState("");
-  const [counted, setCounted] = useState([]);
-  const [feedback, setFeedback] = useState(null);
-  // M23: NO candidate set here on purpose. This count's expected serials are not sent to the client
-  // while it is OPEN (see this file's header note), so resolveScannedIdentity below is deliberately
-  // called with an empty candidate list -- it still validates a scan's SHAPE (SCAN_RESOLUTION.INVALID
-  // for garbage input), but can never tell the counter, scan by scan, whether a unit was expected. That
-  // per-scan tell would be exactly the same anchoring problem this remediation removes, just leaked one
-  // unit at a time instead of as a single number. The real missing/unexpected breakdown is computed
-  // server-side at submit and shown afterward in this count's variance summary.
-  const candidates = useMemo(() => ({ serializedAssets: [] }), []);
+  const reload = useCallback(async () => {
+    try {
+      let cursor = null; const lines = []; let sheet = null;
+      do { // every page: a review must never quietly show only its first lines
+        const page = await client.getCycleCountSheet({ sheetId, ...(cursor ? { cursor } : {}) });
+        sheet = page.sheet; lines.push(...(page.lines ?? [])); cursor = page.nextCursor ?? null;
+      } while (cursor);
+      setState({ loading: false, sheet, lines, error: null });
+    } catch (err) {
+      setState({ loading: false, sheet: null, lines: [], error: mapCycleCountActionError(err) });
+    }
+  }, [client, sheetId]);
+  useEffect(() => { reload(); }, [reload]);
 
-  const addToken = (raw) => {
-    const identity = resolveScannedIdentity(raw, candidates);
-    if (identity.resolutionState === SCAN_RESOLUTION.INVALID) {
-      setFeedback({ kind: "error", message: "That doesn't look like a usable serial number." });
-      return;
-    }
-    const token = normalizeScanToken(raw);
-    if (counted.includes(token)) {
-      setFeedback({ kind: "info", message: `${token} was already added.` });
-      return;
-    }
-    setCounted((prev) => [...prev, token]);
-    setFeedback({ kind: "success", message: `${token} added to this count.` });
-    setScanInput("");
+  const act = async (key, fn, label, decision) => {
+    setBusy(key); setLineErrors((e) => ({ ...e, [key]: null }));
+    try {
+      const out = await fn();
+      onStatus({ kind: "ok", message: describeCycleCountOutcome(label, out?.outcome, decision) });
+      await reload();
+    } catch (err) {
+      setLineErrors((e) => ({ ...e, [key]: mapCycleCountActionError(err) }));
+    } finally { setBusy(null); }
   };
 
+  if (state.loading) return <LoadingState>Loading count…</LoadingState>;
+  if (state.error) return <><p className="fo-warning" role="alert">{state.error}</p><Button variant="secondary" onClick={onBack}>Back to counts</Button></>;
+  const { sheet, lines } = state;
+  const open = sheet.status === "OPEN";
+  const live = lines.filter((l) => l.status !== "CANCELLED");
+  const canClose = open && live.length > 0 && live.every((l) => l.status === "RECONCILED" || l.status === "REJECTED");
+  const canCancel = open && !lines.some((l) => ["COUNTED", "RECONCILED", "REJECTED"].includes(l.status));
+
   return (
-    <div className="fo-inline-form fo-inline-form--stacked">
-      {/* M23: no "Expected units" hint here on purpose -- see this file's header note. */}
-      <div className="fo-inline-form">
-        <input
-          value={scanInput}
-          onChange={(e) => setScanInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); if (scanInput.trim()) addToken(scanInput); }
-          }}
-          placeholder="Scan or type a serial number"
-          aria-label="Scan or type a serial number"
-        />
-        <button type="button" className="fo-transfer-action-btn" onClick={() => scanInput.trim() && addToken(scanInput)}>
-          Add
-        </button>
-      </div>
-      {feedback && <p className={feedback.kind === "error" ? "fo-warning" : "fo-muted"} role="status">{feedback.message}</p>}
-      {counted.length > 0 && (
-        <ul className="fo-chip-list">
-          {counted.map((sn) => (
-            <li key={sn} className="fo-chip">
-              {sn}
-              <button type="button" aria-label={`Remove ${sn}`} onClick={() => setCounted((prev) => prev.filter((s) => s !== sn))}>×</button>
+    <section aria-label="Count sheet">
+      <Button variant="tertiary" onClick={onBack}>← All counts</Button>
+      <h3>{TYPE_LABEL[sheet.location?.type] ?? "Location"} {sheet.locationLabel ?? sheet.location?.locationId} <span className="fo-muted">· {sheet.status}</span></h3>
+
+      {open && sheet.location?.type !== "BIN" && <AddPartLine onAdd={(partId) => act("add", () => client.openCycleCountLine({ sheetId, partId }), "openLine")} busy={busy !== null} />}
+      {lineErrors.add && <p className="fo-warning" role="alert">{lineErrors.add}</p>}
+
+      {lines.length === 0 ? <p className="fo-muted">No parts counted yet.</p> : (
+        <ul className="fo-list" aria-label="Lines">
+          {lines.map((l) => (
+            <li key={l.partId}>
+              <strong>{l.partId}</strong> <span className="fo-muted">· {STATUS_TEXT[l.status] ?? l.status}</span>
+              <LineFigures line={l} />
+              {l.reconciliationReason && <p className="fo-muted">Reason: {l.reconciliationReason}</p>}
+              {open && l.status === "OPEN" && (
+                <CountEntry line={l} busy={busy === l.partId} onSubmit={(draft) => {
+                  const built = buildSubmitLineRequest(sheetId, l.partId, l.trackingMode, draft);
+                  if (!built.ok) { setLineErrors((e) => ({ ...e, [l.partId]: Object.values(built.errors)[0] })); return; }
+                  act(l.partId, () => client.submitCycleCountLine(built.value), "submit");
+                }} onRemove={() => act(l.partId, () => client.cancelCycleCountLine({ sheetId, partId: l.partId }), "cancelLine")} />
+              )}
+              {open && l.status === "COUNTED" && (
+                <ReviewLine line={l} busy={busy === l.partId} onDecide={(reason, decision) => {
+                  const built = buildReconcileLineRequest(sheetId, l.partId, reason, decision);
+                  if (built.ok) act(l.partId, () => client.reconcileCycleCountLine(built.value), "reconcile", decision);
+                }} />
+              )}
+              {lineErrors[l.partId] && <p className="fo-warning" role="alert">{lineErrors[l.partId]}</p>}
             </li>
           ))}
         </ul>
       )}
-      <Button
-        variant="primary"
-        disabled={busy}
-        onClick={() => onSubmit({ countedSerialNumbers: counted })}
-      >
-        {busy ? "Recording…" : "Record count"}
-      </Button>
-    </div>
+
+      <div className="fo-form-actions">
+        {canClose && <Button variant="primary" disabled={busy !== null} onClick={() => act("sheet", () => client.closeCycleCountSheet({ sheetId }), "closeSheet")}>Close this count</Button>}
+        {canCancel && <button type="button" className="fo-btn-secondary" disabled={busy !== null} onClick={() => act("sheet", () => client.cancelCycleCountSheet({ sheetId }), "cancelSheet")}>Cancel this count</button>}
+      </div>
+      {lineErrors.sheet && <p className="fo-warning" role="alert">{lineErrors.sheet}</p>}
+    </section>
   );
 }
 
-// Renders expected vs. counted vs. variance -- ONLY ever called for a count that has been submitted
-// (status COUNTED or later), so expectedQuantity/expectedSerialNumbers are safe to show here: this is
-// the manager review data, not the pre-submission blind-count entry (see NoneCountEntry/SerialCountEntry
-// above, which never render an expected value).
-function VarianceSummary({ count }) {
-  if (count.trackingMode === "SERIAL") {
-    const sv = count.serialVariance;
-    if (!sv) return null;
-    const expectedCount = count.expectedSerialNumbers?.length;
-    const header = expectedCount === undefined ? null : (
-      <p className="fo-muted">{count.countedSerialNumbers?.length ?? 0} counted vs {expectedCount} expected</p>
-    );
-    if (sv.missing.length === 0 && sv.unexpected.length === 0) {
-      return (
-        <div>
-          {header}
-          <p className="fo-muted">No variance — every expected unit was counted.</p>
-        </div>
-      );
-    }
+/** Figures only for a SUBMITTED line -- the server sends nothing else, and nothing else is shown. */
+function LineFigures({ line }) {
+  if (!["COUNTED", "RECONCILED", "REJECTED"].includes(line.status)) return null;
+  if (line.trackingMode === "SERIAL") {
+    const sv = line.serialVariance ?? {};
     return (
-      <div>
-        {header}
-        {sv.missing.length > 0 && (
-          <p className="fo-warning">Missing ({sv.missing.length}): {sv.missing.join(", ")}</p>
-        )}
-        {sv.unexpected.length > 0 && (
-          <p className="fo-warning">Unexpected ({sv.unexpected.length}): {sv.unexpected.join(", ")}</p>
-        )}
-      </div>
+      <ul className="fo-list">
+        <li>Counted: {line.countedSerialNumbers?.length ?? 0} of {line.expectedQuantity} expected</li>
+        <li>Expected but not found: {sv.missing?.length ? sv.missing.join(", ") : "none"}</li>
+        <li>Found but not expected: {sv.unexpected?.length ? sv.unexpected.join(", ") : "none"}</li>
+      </ul>
     );
   }
-  if (count.variance === undefined) return null;
-  if (count.variance === 0) return <p className="fo-muted">No variance — {count.countedQuantity} counted matches {count.expectedQuantity} expected.</p>;
-  const sign = count.variance > 0 ? "+" : "";
-  return <p className="fo-warning">Variance: {sign}{count.variance} ({count.countedQuantity} counted vs {count.expectedQuantity} expected)</p>;
+  return (
+    <p>
+      Counted {line.countedQuantity} · expected {line.expectedQuantity} ·{" "}
+      {line.variance === 0 ? "matches" : `variance ${line.variance > 0 ? "+" : ""}${line.variance}`}
+    </p>
+  );
 }
 
-// M23: the manager review step, separate from counting. `decision` is "APPROVE" (stage the ADJUSTED
-// ledger correction) or "REJECT" (record the count as disputed, no ledger effect) -- reconcileCycleCount
-// requires a reason on any non-zero variance regardless of which way it goes. The SERVER independently
-// enforces that the disposing actor cannot be the same principal who submitted this count when the
-// variance is material; this form does not attempt to guess or pre-empt that, it just offers both
-// actions and surfaces whatever the server decides (see cycleCountActionResult.js's error mapping).
-function ManagerReviewForm({ count, busy, onSubmit }) {
-  const [reason, setReason] = useState("");
-  const hasVariance =
-    count.trackingMode === "SERIAL"
-      ? (count.serialVariance?.missing.length ?? 0) > 0 || (count.serialVariance?.unexpected.length ?? 0) > 0
-      : (count.variance ?? 0) !== 0;
-  const reasonMissing = hasVariance && reason.trim() === "";
+function AddPartLine({ onAdd, busy }) {
+  const [partId, setPartId] = useState("");
   return (
-    <form
-      className="fo-inline-form fo-inline-form--stacked"
-      onSubmit={(e) => e.preventDefault()}
-    >
-      {hasVariance && (
-        <label>
-          Review reason (required for a non-zero variance, either decision)
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
-        </label>
-      )}
-      <div className="fo-form-actions">
-        <Button type="button" variant="primary" disabled={busy || reasonMissing} loading={busy} onClick={() => onSubmit(reason, "APPROVE")}>
-          Approve
-        </Button>
-        <Button type="button" variant="secondary" disabled={busy || reasonMissing} loading={busy} onClick={() => onSubmit(reason, "REJECT")}>
-          Reject
-        </Button>
-      </div>
+    <form className="fo-inline-form" onSubmit={(e) => { e.preventDefault(); if (partId.trim()) { onAdd(partId.trim()); setPartId(""); } }}>
+      <input value={partId} onChange={(e) => setPartId(e.target.value)} placeholder="Part ID" aria-label="Part to count" />
+      <button type="submit" className="fo-transfer-action-btn" disabled={busy || partId.trim() === ""}>Add part</button>
     </form>
   );
 }
 
-function CycleCountRow({ count, busy, locationLabels, onSubmitCount, onReconcile, onCancel }) {
+function CountEntry({ line, busy, onSubmit, onRemove }) {
+  const [value, setValue] = useState("");
+  const serial = line.trackingMode === "SERIAL";
   return (
-    <li className="fo-panel fo-panel--nested">
-      <div className="fo-transfer-status-row">
-        <strong>{count.partId ?? count.cycleCountId}</strong>
-        <span className={`fo-transfer-status fo-transfer-status--${statusTone(count.status)}`}>{count.status}</span>
-      </div>
-      <p className="fo-muted">
-        Location: <LocationLabel location={count.location} labels={locationLabels} /> · Mode: {count.trackingMode ?? "…"}
-      </p>
-
-      {count.status === "OPEN" && (
-        <>
-          {count.trackingMode === "SERIAL" ? (
-            <SerialCountEntry count={count} busy={busy} onSubmit={(draft) => onSubmitCount(count.cycleCountId, draft)} />
-          ) : (
-            <NoneCountEntry count={count} busy={busy} onSubmit={(draft) => onSubmitCount(count.cycleCountId, draft)} />
-          )}
-          <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy} onClick={() => onCancel(count.cycleCountId)}>
-            Cancel count
-          </button>
-        </>
-      )}
-
-      {count.status === "COUNTED" && (
-        <>
-          <VarianceSummary count={count} />
-          <ManagerReviewForm count={count} busy={busy} onSubmit={(reason, decision) => onReconcile(count.cycleCountId, reason, decision)} />
-        </>
-      )}
-
-      {count.status === "RECONCILED" && (
-        <>
-          <VarianceSummary count={count} />
-          {count.reconciliationReason && <p className="fo-muted">Reason: {count.reconciliationReason}</p>}
-          <p className="fo-muted">
-            Approved. {count.ledgerEventIds?.length ? `${count.ledgerEventIds.length} ledger adjustment(s) recorded.` : "No adjustment needed — exact match."}
-          </p>
-        </>
-      )}
-
-      {count.status === "REJECTED" && (
-        <>
-          <VarianceSummary count={count} />
-          {count.reconciliationReason && <p className="fo-muted">Reason: {count.reconciliationReason}</p>}
-          <p className="fo-muted">Rejected — the count was disputed. No ledger effect; the expected quantity is unchanged.</p>
-        </>
-      )}
-
-      {count.status === "CANCELLED" && <p className="fo-muted">Cancelled — no ledger effect.</p>}
-    </li>
+    <form className="fo-inline-form" onSubmit={(e) => {
+      e.preventDefault();
+      onSubmit(serial ? { countedSerialNumbers: value.split(/[\s,]+/).filter(Boolean) } : { countedQuantity: Number(value) });
+    }}>
+      {/* Blind: no expected figure here, and the server never sent one for this open line. */}
+      {serial
+        ? <textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Serial numbers found (one per line)" aria-label="Serial numbers counted" />
+        : <input type="number" min="0" step="1" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Counted quantity" aria-label="Counted quantity" />}
+      <button type="submit" className="fo-transfer-action-btn" disabled={busy || (!serial && value === "")}>{busy ? "Recording…" : "Record count"}</button>
+      <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy} onClick={onRemove}>Remove part</button>
+    </form>
   );
 }
 
-export default function CycleCounts() {
-  const [showForm, setShowForm] = useState(false);
-  const { status, clearStatus, busyId, counts, createCount, submitCount, reconcileCount, cancelCount } = useCycleCountActions();
-
-  // A FAILED LOCATION READ IS NOT AN EMPTY WAREHOUSE LIST. This used to `.catch()` into
-  // `{ warehouses: [], trucks: [] }`, so a permission denial, a dropped connection and a genuinely
-  // unconfigured system all produced the same silent, empty dropdown -- and the operator was left to
-  // conclude no locations existed. The error is now kept and reported.
-  //
-  // allSettled, not all: the warehouse and truck reads hit different collections and fail
-  // independently. Promise.all discarded BOTH lists when either rejected, so a truck-read failure
-  // hid every warehouse. This mirrors Dispatch.jsx, which already treats its technicians read as
-  // independently failable for exactly this reason.
-  const [locations, setLocations] = useState({
-    loading: true, warehouses: [], trucks: [], warehousesError: null, trucksError: null,
-  });
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled([fetchWarehouses(), fetchMobileLocationDocs()])
-      .then(([warehouseResult, truckResult]) => {
-        if (cancelled) return;
-        const warehouses = warehouseResult.status === "fulfilled" ? warehouseResult.value : [];
-        const truckDocs = truckResult.status === "fulfilled" ? truckResult.value : [];
-        setLocations({
-          loading: false,
-          warehousesError: warehouseResult.status === "rejected" ? warehouseResult.reason : null,
-          trucksError: truckResult.status === "rejected" ? truckResult.reason : null,
-          warehouses: (Array.isArray(warehouses) ? warehouses : []).map((w) => ({ id: w.id, label: w.name || w.id })),
-          trucks: (Array.isArray(truckDocs) ? truckDocs : [])
-            .filter((d) => d?.data?.active !== false)
-            .map((d) => ({ id: d.docId, label: d.data?.displayLabel || d.docId })),
-        });
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  // id -> human label, for rendering a count's location as something a reader recognizes.
-  const locationLabels = useMemo(() => {
-    const map = new Map();
-    for (const o of [...locations.warehouses, ...locations.trucks]) map.set(o.id, o.label);
-    return map;
-  }, [locations.warehouses, locations.trucks]);
-
-  const intro = (
-    <p className="fo-muted">
-      Count a Part's on-hand quantity or serialized units at a location against the governed ledger/registry
-      authority, review any variance, and reconcile with an auditable adjustment.
-    </p>
-  );
-
+function ReviewLine({ line, busy, onDecide }) {
+  const [reason, setReason] = useState("");
+  const differs = line.trackingMode === "SERIAL"
+    ? ((line.serialVariance?.missing?.length ?? 0) + (line.serialVariance?.unexpected?.length ?? 0)) > 0
+    : line.variance !== 0;
+  const needsReason = differs && reason.trim() === "";
   return (
-    <div className="fo-panel">
-      <WorkspaceHeader title="Cycle Counts">
-        {!showForm && (
-          <Button variant="primary" onClick={() => setShowForm(true)}>
-            New count
-          </Button>
-        )}
-      </WorkspaceHeader>
-      {intro}
-      {status && (
-        <p className={status.kind === "error" ? "fo-warning" : "fo-muted"} role={status.kind === "error" ? "alert" : "status"}>
-          {status.message}{" "}
-          <button type="button" className="fo-transfer-dismiss" onClick={clearStatus}>Dismiss</button>
-        </p>
-      )}
-
-      {showForm && locations.loading && <LoadingState>Loading locations…</LoadingState>}
-      {showForm && !locations.loading && (
-        <CreateCycleCountForm
-          warehouseOptions={locations.warehouses}
-          truckOptions={locations.trucks}
-          warehousesError={locations.warehousesError}
-          trucksError={locations.trucksError}
-          submitting={busyId === "create"}
-          onCancel={() => setShowForm(false)}
-          onSubmit={async (draft) => {
-            const result = await createCount(draft);
-            if (result.ok) setShowForm(false);
-            return result;
-          }}
-        />
-      )}
-
-      {counts.length === 0 ? (
-        <EmptyState
-          variant="database"
-          title="No cycle counts this session"
-          message="Counts you start appear here. History is session-scoped — there is no durable cross-session list yet."
-        />
-      ) : (
-        <ul className="fo-list">
-          {counts.map((count) => (
-            <CycleCountRow
-              key={count.cycleCountId}
-              count={count}
-              busy={busyId === count.cycleCountId}
-              locationLabels={locationLabels}
-              onSubmitCount={submitCount ? (id, draft) => submitCount(id, count.trackingMode, draft) : undefined}
-              onReconcile={reconcileCount}
-              onCancel={cancelCount}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
+    <form className="fo-inline-form" onSubmit={(e) => e.preventDefault()}>
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={differs ? "Reason (required)" : "Reason (optional)"} aria-label="Review reason" />
+      <button type="button" className="fo-transfer-action-btn" disabled={busy || needsReason} onClick={() => onDecide(reason, "APPROVE")}>
+        {differs ? "Approve and adjust" : "Approve"}
+      </button>
+      <button type="button" className="fo-transfer-action-btn fo-transfer-action-btn--muted" disabled={busy || needsReason} onClick={() => onDecide(reason, "REJECT")}>Reject</button>
+    </form>
   );
 }

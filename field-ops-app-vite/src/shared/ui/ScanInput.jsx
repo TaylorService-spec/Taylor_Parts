@@ -136,8 +136,18 @@ export default function ScanInput({ onScan, label = "Scan item", placeholder = "
     }
     lastRef.current = { value: verdict.value, at: now() };
     const outcome = onScan?.(verdict.value);
-    const feedback = typeof outcome === "string" ? outcome : outcome?.feedback;
-    announce(feedback ?? FEEDBACK.ACCEPTED, verdict.value, outcome?.detail ?? null);
+    const report = (o) => {
+      const feedback = typeof o === "string" ? o : o?.feedback;
+      announce(feedback ?? FEEDBACK.ACCEPTED, verdict.value, o?.detail ?? null);
+    };
+    // A workflow that must ask the server (a part lookup, a line open) answers with a PROMISE. Its
+    // verdict is announced when it arrives -- announcing "accepted" immediately would tell the
+    // operator a refused or duplicate scan went in. Focus returns at once so the next scan is not lost.
+    if (outcome && typeof outcome.then === "function") {
+      outcome.then((o) => { if (alive.current) report(o); }, () => { if (alive.current) report(FEEDBACK.REJECTED); });
+    } else {
+      report(outcome);
+    }
     refocus();
   }, [now, onScan, announce, refocus]);
 

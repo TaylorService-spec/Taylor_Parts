@@ -1,66 +1,43 @@
-// M23 blind-count remediation -- OFFLINE tests for the pure cycle count command request builders,
-// focused on buildReconcileCycleCountRequest's new `decision` field (functions/src/cycleCount/
-// cycleCountCallables.ts's RECONCILE_KEYS/validateReconcileRequest is the server-side mirror of this
-// same shape). No Firebase/network.
+// Cycle Count A1 -- pure request builders for the sheet/line callables.
+// Run: node --test test/cycleCountCommandRequest.test.mjs
 import assert from "node:assert/strict";
-import { buildReconcileCycleCountRequest, buildCreateCycleCountRequest, buildCycleCountIdOnlyRequest, makeIdempotencyKey } from "../src/domain/cycleCountCommandRequest.js";
+import test from "node:test";
+import {
+  buildCreateSheetRequest, buildSubmitLineRequest, buildReconcileLineRequest, buildLineRequest, buildSheetRequest, makeIdempotencyKey,
+} from "../src/domain/cycleCountCommandRequest.js";
 
-let passed = 0;
-function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
-console.log("cycleCountCommandRequest.test.mjs");
-
-check("buildReconcileCycleCountRequest defaults decision to APPROVE when omitted", () => {
-  const result = buildReconcileCycleCountRequest("cyc-1", "a reason");
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.value, { cycleCountId: "cyc-1", decision: "APPROVE", reason: "a reason" });
+test("a sheet names a location only -- WAREHOUSE, MOBILE or BIN -- and no Part", () => {
+  for (const type of ["WAREHOUSE", "MOBILE", "BIN"]) {
+    const r = buildCreateSheetRequest({ locationType: type, locationId: " L-1 " }, { idempotencyKey: "k1" });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.value, { location: { type, locationId: "L-1" }, idempotencyKey: "k1" });
+    assert.equal(r.value.partId, undefined);
+  }
+  assert.equal(buildCreateSheetRequest({ locationType: "VENDOR", locationId: "x" }).ok, false);
+  assert.equal(buildCreateSheetRequest({ locationType: "BIN", locationId: "" }).ok, false);
+  assert.match(makeIdempotencyKey(), /^ccs_/);
 });
 
-check("buildReconcileCycleCountRequest honors an explicit REJECT decision", () => {
-  const result = buildReconcileCycleCountRequest("cyc-1", "disputed", "REJECT");
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.value, { cycleCountId: "cyc-1", decision: "REJECT", reason: "disputed" });
+test("submit: a quantity (zero included) or a unique serial list -- never an expected value", () => {
+  assert.deepEqual(buildSubmitLineRequest("s1", "P1", "NONE", { countedQuantity: 0 }).value, { sheetId: "s1", partId: "P1", countedQuantity: 0 });
+  assert.deepEqual(buildSubmitLineRequest("s1", "P1", "NONE", { countedQuantity: "4" }).value.countedQuantity, 4);
+  assert.equal(buildSubmitLineRequest("s1", "P1", "NONE", { countedQuantity: -1 }).ok, false);
+  assert.equal(buildSubmitLineRequest("s1", "P1", "NONE", { countedQuantity: 1.5 }).ok, false);
+  assert.deepEqual(buildSubmitLineRequest("s1", "P1", "SERIAL", { countedSerialNumbers: [" A ", "B"] }).value.countedSerialNumbers, ["A", "B"]);
+  assert.equal(buildSubmitLineRequest("s1", "P1", "SERIAL", { countedSerialNumbers: ["A", "A"] }).ok, false);
+  assert.equal(buildSubmitLineRequest("", "P1", "NONE", { countedQuantity: 1 }).ok, false);
+  const v = buildSubmitLineRequest("s1", "P1", "NONE", { countedQuantity: 1, expectedQuantity: 9, variance: 3 }).value;
+  assert.equal(v.expectedQuantity, undefined); assert.equal(v.variance, undefined);
 });
 
-check("buildReconcileCycleCountRequest rejects an unknown decision value", () => {
-  const result = buildReconcileCycleCountRequest("cyc-1", "x", "MAYBE");
-  assert.equal(result.ok, false);
-  assert.equal(result.value, null);
+test("reconcile: decision APPROVE/REJECT, reason trimmed and optional", () => {
+  assert.deepEqual(buildReconcileLineRequest("s1", "P1", "  short  ").value, { sheetId: "s1", partId: "P1", decision: "APPROVE", reason: "short" });
+  assert.deepEqual(buildReconcileLineRequest("s1", "P1", "", "REJECT").value, { sheetId: "s1", partId: "P1", decision: "REJECT" });
+  assert.equal(buildReconcileLineRequest("s1", "P1", "x", "MAYBE").ok, false);
 });
 
-check("buildReconcileCycleCountRequest omits reason when blank/absent, but always carries decision", () => {
-  const result = buildReconcileCycleCountRequest("cyc-1", "");
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.value, { cycleCountId: "cyc-1", decision: "APPROVE" });
+test("line and sheet id requests", () => {
+  assert.deepEqual(buildLineRequest("s1", "P1").value, { sheetId: "s1", partId: "P1" });
+  assert.equal(buildLineRequest("s1", "").ok, false);
+  assert.deepEqual(buildSheetRequest("s1").value, { sheetId: "s1" });
 });
-
-check("buildReconcileCycleCountRequest: blank cycleCountId -> rejected", () => {
-  assert.equal(buildReconcileCycleCountRequest("", "reason").ok, false);
-  assert.equal(buildReconcileCycleCountRequest(undefined, "reason").ok, false);
-});
-
-check("buildCreateCycleCountRequest builds the exact createCycleCount shape (unchanged by M23)", () => {
-  const result = buildCreateCycleCountRequest(
-    { partId: "part-1", locationType: "WAREHOUSE", locationId: "wh-1" },
-    { idempotencyKey: "fixed-key" },
-  );
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.value, {
-    partId: "part-1",
-    location: { type: "WAREHOUSE", locationId: "wh-1" },
-    idempotencyKey: "fixed-key",
-  });
-});
-
-check("buildCycleCountIdOnlyRequest: valid id -> exact shape; blank -> rejected", () => {
-  assert.deepEqual(buildCycleCountIdOnlyRequest("c1"), { ok: true, value: { cycleCountId: "c1" } });
-  assert.equal(buildCycleCountIdOnlyRequest("").ok, false);
-});
-
-check("makeIdempotencyKey produces distinct, prefixed values", () => {
-  const a = makeIdempotencyKey();
-  const b = makeIdempotencyKey();
-  assert.notEqual(a, b);
-  assert.ok(a.startsWith("cyc_"));
-});
-
-console.log(`${passed} passed`);

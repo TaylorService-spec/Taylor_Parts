@@ -1,123 +1,82 @@
-// M23 blind-count remediation -- REGRESSION LOCK for the Cycle Counts workspace's UI-level guarantees:
-// (1) the expected quantity/serial count is never rendered while a count is OPEN (the counter is
-//     blind), and (2) once a count is COUNTED, the manager review step offers BOTH Approve and Reject,
-//     passing the chosen decision through to reconcileCount.
-//
-// This does not re-prove server-side separation of duties (functions/test/cycleCountCommand.test.mjs
-// covers that against the real emulator) -- it proves the UI never had the anchor to show in the first
-// place, and that the review step is a genuinely separate action from counting, not a relabeled button.
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+// CYCLE COUNTS workspace — durable, blind per line, reviewed per line (A1 + A4, Decision #179).
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
+import CycleCounts from "../src/modules/inventory/CycleCounts.jsx";
 
-const actionsState = {
-  status: null,
-  busyId: null,
-  counts: [],
-  createCount: vi.fn(),
-  submitCount: vi.fn(),
-  reconcileCount: vi.fn(),
-  cancelCount: vi.fn(),
-};
+vi.mock("../src/services/operationsQueries", () => ({ fetchWarehouses: vi.fn().mockResolvedValue([{ id: "WH-1", name: "Phoenix" }]) }));
+vi.mock("../src/services/truckRegistryQueries", () => ({ fetchMobileLocationDocs: vi.fn().mockResolvedValue([]) }));
 
-vi.mock("../src/hooks/useCycleCountActions", () => ({
-  useCycleCountActions: () => ({ ...actionsState, clearStatus: vi.fn() }),
-}));
-vi.mock("../src/services/operationsQueries", () => ({
-  fetchWarehouses: vi.fn(() => Promise.resolve([])),
-}));
-vi.mock("../src/services/truckRegistryQueries", () => ({
-  fetchMobileLocationDocs: vi.fn(() => Promise.resolve([])),
-}));
+afterEach(cleanup);
 
-const { default: CycleCounts } = await import("../src/modules/inventory/CycleCounts.jsx");
+const SHEET = { sheetId: "ccs_1", location: { type: "BIN", locationId: "bin_a" }, locationLabel: "A01-003", status: "OPEN", createdAt: 1_700_000_000_000 };
+const LINES = [
+  { partId: "PRT-OPEN", trackingMode: "NONE", status: "OPEN" },
+  { partId: "PRT-SHORT", trackingMode: "NONE", status: "COUNTED", countedQuantity: 3, expectedQuantity: 5, variance: -2, submittedBy: "u1" },
+  { partId: "PRT-DONE", trackingMode: "NONE", status: "RECONCILED", countedQuantity: 5, expectedQuantity: 5, variance: 0, reviewDecision: "APPROVE", ledgerEventIds: [] },
+];
+function client(over = {}) {
+  return {
+    listCycleCountSheets: vi.fn().mockResolvedValue({ sheets: [SHEET], nextCursor: null }),
+    getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: SHEET, lines: LINES, nextCursor: null }),
+    reconcileCycleCountLine: vi.fn().mockResolvedValue({ outcome: "applied", status: "RECONCILED" }),
+    closeCycleCountSheet: vi.fn(), cancelCycleCountSheet: vi.fn(), createCycleCountSheet: vi.fn(),
+    openCycleCountLine: vi.fn(), submitCycleCountLine: vi.fn(), cancelCycleCountLine: vi.fn(),
+    ...over,
+  };
+}
+async function openSheet(c = client()) {
+  render(<CycleCounts deps={{ cycleCountClient: c }} />);
+  const btn = await screen.findByRole("button", { name: /A01-003/ });
+  await act(async () => { fireEvent.click(btn); });
+  await screen.findByRole("region", { name: /count sheet/i });
+  return c;
+}
+const lineOf = (partId) => screen.getByText(partId).closest("li");
 
-const OPEN_NONE_COUNT = {
-  cycleCountId: "cyc-1",
-  partId: "part-1",
-  trackingMode: "NONE",
-  location: { type: "WAREHOUSE", locationId: "wh-1" },
-  status: "OPEN",
-  // A pre-M23 regression would have shipped expectedQuantity here too -- included deliberately so this
-  // test proves the UI does not render it even if it were present in state, not merely that the field is
-  // absent from the fixture.
-  expectedQuantity: 42,
-};
-
-const OPEN_SERIAL_COUNT = {
-  cycleCountId: "cyc-2",
-  partId: "part-2",
-  trackingMode: "SERIAL",
-  location: { type: "WAREHOUSE", locationId: "wh-1" },
-  status: "OPEN",
-  expectedSerialNumbers: ["SN-1", "SN-2", "SN-3"],
-};
-
-const COUNTED_COUNT = {
-  cycleCountId: "cyc-3",
-  partId: "part-3",
-  trackingMode: "NONE",
-  location: { type: "WAREHOUSE", locationId: "wh-1" },
-  status: "COUNTED",
-  countedQuantity: 8,
-  expectedQuantity: 10,
-  variance: -2,
-};
-
-describe("CycleCounts -- blind counting (OPEN)", () => {
-  beforeEach(() => {
-    actionsState.counts = [];
-    vi.clearAllMocks();
+describe("Cycle Counts workspace", () => {
+  it("lists sheets from the durable read, by location label", async () => {
+    const c = client();
+    render(<CycleCounts deps={{ cycleCountClient: c }} />);
+    expect(await screen.findByRole("button", { name: /Bin A01-003/ })).toBeTruthy();
+    expect(c.listCycleCountSheets).toHaveBeenCalledWith({ status: "OPEN" });
   });
 
-  it("never renders the expected quantity for a NONE-mode OPEN count", () => {
-    actionsState.counts = [OPEN_NONE_COUNT];
-    render(<CycleCounts />);
-    expect(screen.queryByText(/Expected/i)).toBeNull();
-    expect(screen.queryByText(/42/)).toBeNull();
+  it("BLIND PER LINE: an open line shows no expected figure; a counted one shows its own", async () => {
+    await openSheet();
+    expect(within(lineOf("PRT-OPEN")).queryByText(/expected/i)).toBeNull();
+    expect(within(lineOf("PRT-SHORT")).getByText(/expected 5/i)).toBeTruthy();
   });
 
-  it("never renders the expected serial count for a SERIAL-mode OPEN count", () => {
-    actionsState.counts = [OPEN_SERIAL_COUNT];
-    render(<CycleCounts />);
-    expect(screen.queryByText(/Expected/i)).toBeNull();
-    expect(screen.queryByText(/3/)).toBeNull(); // expected.length would have rendered as "3"
-  });
-});
-
-describe("CycleCounts -- manager review (COUNTED)", () => {
-  beforeEach(() => {
-    actionsState.counts = [COUNTED_COUNT];
-    vi.clearAllMocks();
+  it("a differing count needs a reason before it can be approved or rejected", async () => {
+    const c = await openSheet();
+    const row = lineOf("PRT-SHORT");
+    const approve = within(row).getByRole("button", { name: /approve and adjust/i });
+    expect(approve.disabled).toBe(true);
+    fireEvent.change(within(row).getByLabelText(/review reason/i), { target: { value: "two damaged" } });
+    await act(async () => { fireEvent.click(within(row).getByRole("button", { name: /approve and adjust/i })); });
+    expect(c.reconcileCycleCountLine).toHaveBeenCalledWith({ sheetId: "ccs_1", partId: "PRT-SHORT", decision: "APPROVE", reason: "two damaged" });
   });
 
-  it("shows expected vs counted vs variance once a count is submitted", () => {
-    render(<CycleCounts />);
-    expect(screen.getByText(/Variance: -2/)).toBeTruthy();
-    expect(screen.getByText(/8 counted vs 10 expected/)).toBeTruthy();
+  it("separation of duties: the server's refusal is shown on THAT line", async () => {
+    await openSheet(client({ reconcileCycleCountLine: vi.fn().mockRejectedValue({ code: "functions/permission-denied", details: { code: "SEPARATION_OF_DUTIES" } }) }));
+    const row = lineOf("PRT-SHORT");
+    fireEvent.change(within(row).getByLabelText(/review reason/i), { target: { value: "x" } });
+    await act(async () => { fireEvent.click(within(row).getByRole("button", { name: /^reject$/i })); });
+    expect(within(lineOf("PRT-SHORT")).getByRole("alert").textContent).toMatch(/cannot approve or reject its own material variance/);
   });
 
-  it("offers BOTH Approve and Reject, and passes the chosen decision through to reconcileCount", () => {
-    render(<CycleCounts />);
-    const reasonBox = screen.getByRole("textbox");
-    fireEvent.change(reasonBox, { target: { value: "shelf recount" } });
-
-    const approveBtn = screen.getByRole("button", { name: /approve/i });
-    const rejectBtn = screen.getByRole("button", { name: /reject/i });
-    expect(approveBtn).toBeTruthy();
-    expect(rejectBtn).toBeTruthy();
-
-    fireEvent.click(rejectBtn);
-    expect(actionsState.reconcileCount).toHaveBeenCalledWith("cyc-3", "shelf recount", "REJECT");
-
-    fireEvent.click(approveBtn);
-    expect(actionsState.reconcileCount).toHaveBeenCalledWith("cyc-3", "shelf recount", "APPROVE");
+  it("close is offered only when every live line is decided; cancel only while nothing is counted", async () => {
+    await openSheet();
+    expect(screen.queryByRole("button", { name: /close this count/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /cancel this count/i })).toBeNull();
+    cleanup();
+    await openSheet(client({ getCycleCountSheet: vi.fn().mockResolvedValue({ sheet: SHEET, lines: [LINES[2]], nextCursor: null }) }));
+    expect(screen.getByRole("button", { name: /close this count/i })).toBeTruthy();
   });
 
-  it("disables both Approve and Reject until a reason is supplied for a non-zero variance", () => {
-    render(<CycleCounts />);
-    const approveBtn = screen.getByRole("button", { name: /approve/i });
-    const rejectBtn = screen.getByRole("button", { name: /reject/i });
-    expect(approveBtn.disabled).toBe(true);
-    expect(rejectBtn.disabled).toBe(true);
+  it("a failed list read is a refusal, not an empty workspace", async () => {
+    render(<CycleCounts deps={{ cycleCountClient: client({ listCycleCountSheets: vi.fn().mockRejectedValue({ code: "functions/permission-denied" }) }) }} />);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/not authorized/i);
+    expect(screen.queryByText(/no counts here/i)).toBeNull();
   });
 });
