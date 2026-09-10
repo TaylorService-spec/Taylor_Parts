@@ -146,4 +146,4 @@ async function expectAllowed(scenario, persona, name, data, assertFn = null, not
   return record(scenario, persona, "ALLOWED", "ALLOWED", true, note);
 }
 
-export { callAs, expectRefused, expectAllowed, record, results };
+export { callAs, idTokenFor, expectRefused, expectAllowed, record, results };
