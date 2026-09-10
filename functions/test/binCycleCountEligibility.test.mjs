@@ -176,5 +176,35 @@ await check("an unknown bin id is refused", async () => {
   assert.equal(await codeOf(createCount(P, BIN("bin_does_not_exist"))), "LOCATION_INVALID");
 });
 
+// ---------------------------------------------------------------- the completion script itself
+await check("SCRIPT: completeBinConversion writes nothing on a stale hash, writes once on the reviewed one, and is idempotent", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const wh = await seedWarehouse(); const bin = await seedBin(wh);
+  const partId = nextId("part"); await receive(partId, wh, 6);
+  const start = new Date(Date.now() - 1).toISOString();
+  await move(partId, WH(wh), BIN(bin), 5);
+  const end = new Date(Date.now() + 1).toISOString();
+  const env = { ...process.env, FIRESTORE_EMULATOR_HOST: process.env.FIRESTORE_EMULATOR_HOST };
+  const run = (script, extra = []) => spawnSync(process.execPath, [`scripts/${script}`, "--warehouse", wh, "--start", start, "--end", end, ...extra], { encoding: "utf8", env });
+  const reviewed = run("binConversionReconciliation.mjs");
+  assert.equal(reviewed.status, 0, reviewed.stderr);
+  const sha = /report sha256: ([0-9a-f]{64})/.exec(reviewed.stdout)[1];
+
+  const stale = run("completeBinConversion.mjs", ["--expect-report", "0".repeat(64)]);
+  assert.equal(stale.status, 2);
+  assert.equal((await db.collection(WAREHOUSE_BIN_CONVERSIONS_COLLECTION).doc(wh).get()).exists, false, "a stale hash writes nothing");
+
+  const ok = run("completeBinConversion.mjs", ["--expect-report", sha]);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /CONVERSION_COMPLETE recorded/);
+  const again = run("completeBinConversion.mjs", ["--expect-report", sha]);
+  assert.equal(again.status, 0);
+  assert.match(again.stdout, /Already complete/);
+  assert.equal((await createCount(partId, BIN(bin))).expectedQuantity, 5, "the gate it wrote admits the Bin");
+
+  const missing = run("completeBinConversion.mjs");
+  assert.equal(missing.status, 1, "--expect-report is required");
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

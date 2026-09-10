@@ -78,10 +78,11 @@ Role, Rules or index change.
 
 ## 7. Evidence
 
-- `functions/test/binCycleCountEligibility.test.mjs` (11/11, emulator, production composition): shape
+- `functions/test/binCycleCountEligibility.test.mjs` (12/12, emulator, production composition): shape
   admitted; refused before conversion; conversion through `relocateStock` reconciled and recorded only from a
   balanced report; unbalanced and malformed-row reports refused; exact-Bin expected quantity (4 / 3 / direct 3
   of 10); serialized identity per Bin; reconciliation adjusts only the counted Bin; gate is per Warehouse;
-  inactive bin, malformed record and unknown bin refused.
+  inactive bin, malformed record and unknown bin refused; the completion SCRIPT writes nothing on a stale
+  report hash, writes once on the reviewed hash, is idempotent, and requires `--expect-report`.
 - Existing suites unchanged: `cycleCountCommand` 20/20, `scannerEndToEndContract` 17/17,
   `warehousePhysicalRootCompany` 17/17, `certificationCycleVariance` 27/27.
