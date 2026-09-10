@@ -1084,7 +1084,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Backend-resolved scope; no client-direct manufacturers read (Rules stay deny-all).
   Object.freeze({
     id: "inventory.catalog.read",
-    description: "Read the minimal governed catalog/reference projection (Manufacturer identity/status) via the trusted getManufacturerCatalog read service. Backend-resolved scope; no client-direct manufacturers read.",
+    description: "Read the minimal governed catalog/reference projection via trusted read services: Manufacturer identity/status (getManufacturerCatalog), Part/Equipment-Model references (searchProductReferences), and the scanner's Part projection for the <=3 Parts a scan names (lookupScannedPart). Read-only; backend-resolved scope; no client-direct catalogue read.",
     resource: "inventory.catalog",
     action: "read",
     active: false,

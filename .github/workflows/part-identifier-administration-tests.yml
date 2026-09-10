@@ -22,6 +22,10 @@ on:
       - "functions/src/partMaster/normalization.ts"
       - "functions/src/partMaster/types.ts"
       - "functions/test/partAliasCallables.test.mjs"
+      # The scanner's governed reads (lookupScannedPart, listStockMovementLocations).
+      - "functions/src/partMaster/scannerPartLookup.ts"
+      - "functions/src/inventoryLocation/stockRelocationCallables.ts"
+      - "functions/test/scannerGovernedReads.test.mjs"
       - "functions/test/partAliasCommands.test.mjs"
       - "functions/src/index.ts"
       - "functions/package.json"
@@ -40,6 +44,10 @@ on:
     paths:
       - "functions/src/partMaster/partAlias**"
       - "functions/test/partAliasCallables.test.mjs"
+      # The scanner's governed reads (lookupScannedPart, listStockMovementLocations).
+      - "functions/src/partMaster/scannerPartLookup.ts"
+      - "functions/src/inventoryLocation/stockRelocationCallables.ts"
+      - "functions/test/scannerGovernedReads.test.mjs"
       - "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx"
       - "field-ops-app-vite/src/domain/partIdentifiers.js"
       - ".github/workflows/part-identifier-administration-tests.yml"
@@ -91,6 +99,12 @@ jobs:
 
       - name: Part identifier callables (build + run)
         run: npm run test:partIdentifiersEmulator
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Scanner governed reads (Parts Associate can resolve Parts and warehouses without client Firestore)
+        run: node test/scannerGovernedReads.test.mjs
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
