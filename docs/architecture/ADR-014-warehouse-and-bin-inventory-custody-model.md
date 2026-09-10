@@ -1,6 +1,6 @@
 # ADR-014 — Warehouse and Bin Inventory Custody Model
 
-**Status:** ACCEPTED. Owner decision, 2026-09-02 (Model A — warehouse roll-up). **Amended 2026-09-03 by Decision #169** (internal relocation authority and ledger vocabulary; see *Movement semantics*).
+**Status:** ACCEPTED. Owner decision, 2026-09-02 (Model A — warehouse roll-up). **Amended 2026-09-03 by Decision #170** (internal relocation authority and ledger vocabulary; see *Movement semantics*).
 **Amends:** Decision #116 (2026-08-20), for future BIN authority only. #116's ruling on the phase it governed stands as recorded.
 **Recorded as:** Decision #160.
 **Reconciliation:** `docs/implementation-plans/bin-location-authority-and-scanning.md`, `docs/assessments/inventory-location-registry-2026-08-20.md`.
@@ -73,7 +73,7 @@ Parentage is authoritative in the `bins` registry: a bin belongs to exactly one 
 
 **Cross-warehouse bin movement remains a governed Transfer.** There is no bin-to-bin shortcut across custody boundaries; crossing a warehouse boundary crosses a custody boundary and goes through the Transfer authority like any other.
 
-**Ledger vocabulary — RESOLVED by Decision #169 (2026-09-03).** This paragraph originally left the
+**Ledger vocabulary — RESOLVED by Decision #170 (2026-09-03).** This paragraph originally left the
 question open. The Owner has since ruled, and the answer is a **distinct vocabulary**:
 
 | Concern | Authority | Ledger types | Source object |
@@ -107,7 +107,7 @@ because every MOBILE endpoint crosses a custody boundary and belongs to Transfer
 read** over direct plus all child bins. A movement may never be authorized by aggregate sufficiency,
 and a parent `WAREHOUSE` row is never debited merely because stock exists somewhere in its children.
 
-**Consequence measured during the Decision #169 reconciliation:** three existing readers assume a
+**Consequence measured during the Decision #170 reconciliation:** three existing readers assume a
 location scalar is a Warehouse and silently drop BIN-located stock —
 `fulfillment/fulfillmentAvailability.ts:106`, `inventoryAnalyticsCallables.ts:85`, and
 `cycleCount/cycleCountExpectedQuantity.ts:70`. They are correct today because nothing is ever located

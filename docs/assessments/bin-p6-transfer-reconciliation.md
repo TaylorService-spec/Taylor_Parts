@@ -5,7 +5,7 @@ status: Complete
 date: 2026-09-03
 owner: Claude Code
 related_adrs: ["ADR-014"]
-related_decisions: ["#160", "#168", "#169"]
+related_decisions: ["#160", "#168", "#170"]
 ---
 
 # BIN-P6 — Ruling-8 Transfer reconciliation, and what measuring it exposed
@@ -13,7 +13,7 @@ related_decisions: ["#160", "#168", "#169"]
 **Source verified against** `origin/main` @ `0dd5e104e2c5fe65179c7eceeb2e9c0d0c1adab0` on 2026-09-03. Analysis only: this document
 changes no behaviour.
 
-Decision #169 Ruling 8 requires that, **before Transfer behaviour changes**, P6 reconcile how existing
+Decision #170 Ruling 8 requires that, **before Transfer behaviour changes**, P6 reconcile how existing
 Warehouse-level Transfer orders choose exact source stock under Model A — and **STOP** if Transfer
 cannot remain truthful without a new allocation/source-location contract.
 
@@ -53,7 +53,7 @@ remedy is to originate from the exact Bin, which is the correct answer rather th
 > *"Phase-4-scoped location reference: `{type, locationId}`, type restricted to `WAREHOUSE|MOBILE`. A
 > `CUSTOMER/BIN/VENDOR/VIRTUAL` endpoint (legal in the broader EI-P1a vocabulary) fails closed HERE."*
 
-So **every BIN-endpoint transfer that Decision #169 Rulings 5 and Part B assign to Transfer is refused
+So **every BIN-endpoint transfer that Decision #170 Rulings 5 and Part B assign to Transfer is refused
 today**: `BIN → MOBILE`, `MOBILE → BIN`, and `BIN in Warehouse A → Warehouse B`. Delivering the truck
 journeys requires widening `TRANSFER_ENDPOINT_TYPES` to admit `BIN`. That is **additive**, preserves
 the exact-location sufficiency above unchanged, and requires no allocation or source-selection
@@ -80,7 +80,7 @@ Every `BIN` row is skipped. Consider the ruling's own primary example once reloc
 | `RELOCATION_IN` +10 | `BIN/bin_x` | **no — skipped** |
 
 **Net effect: a purely internal shelf-to-shelf move destroys 10 units of warehouse on-hand.** That
-directly contradicts Decision #169 Ruling 4 ("Warehouse aggregate change: ZERO") and Ruling 7's
+directly contradicts Decision #170 Ruling 4 ("Warehouse aggregate change: ZERO") and Ruling 7's
 derived-read definition. It is the same class of error Decision #168 Ruling 7 pinned by test — a
 subtraction that "would drive the warehouse negative and erase stock still on the shelf" — reached by a
 new route.
@@ -94,7 +94,7 @@ if (typeof asset.currentLocationId !== "string" || !eligibleWarehouseIds.has(ass
 ```
 
 A serialized asset counts only while its `currentLocationId` is an **eligible warehouse id**. The
-moment P6 sets a serial's location to a bin — which Decision #169 Part B requires, without a parallel
+moment P6 sets a serial's location to a bin — which Decision #170 Part B requires, without a parallel
 serial-location table — that unit **vanishes from analytics on-hand**.
 
 ### 3. Cycle Count expected quantity
@@ -117,7 +117,7 @@ rather than found later by a warehouse manager whose on-hand dropped overnight.
 
 ### This is P6 scope, not a new Owner decision
 
-Decision #169 Ruling 7 **already states the correct behaviour** — the Warehouse aggregate is a derived
+Decision #170 Ruling 7 **already states the correct behaviour** — the Warehouse aggregate is a derived
 read over direct `WAREHOUSE` plus all child `BIN` locations. Making these readers bin-aware *executes*
 that ruling. No further authority is required.
 
@@ -138,7 +138,7 @@ Beyond the relocation command and vocabulary themselves:
 2. Widen `TRANSFER_ENDPOINT_TYPES` to admit `BIN`, preserving exact-location sufficiency.
 3. Define serialized bin custody on `serialized_assets.currentLocationId` while preserving warehouse
    parentage — no parallel table.
-4. Decide batch atomicity (Decision #169 Part C): all-or-nothing versus per-line results.
+4. ~~Decide batch atomicity (Decision #170 Part C)~~ **Resolved 2026-09-10:** per-line governed execution with replay-safe retry, approved by the Owner and recorded in [bin-stock-relocation-and-multi-scan.md §9.2](../specifications/bin-stock-relocation-and-multi-scan.md).
 
 ## What was NOT done
 

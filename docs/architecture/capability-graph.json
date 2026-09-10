@@ -3425,7 +3425,7 @@
       "id": "inventory.stock.relocate",
       "resource": "inventory.stock",
       "action": "relocate",
-      "description": "Move already-owned physical inventory between exact governed locations inside the same Warehouse custody parent (warehouse-direct to bin, bin to warehouse-direct, bin to bin). Authors internal relocation movement only: the Warehouse aggregate is unchanged, no custody boundary is crossed, and this grants nothing about transferring stock between warehouses or to a truck (DECISIONS #169).",
+      "description": "Move already-owned physical inventory between exact governed locations inside the same Warehouse custody parent (warehouse-direct to bin, bin to warehouse-direct, bin to bin). Authors internal relocation movement only: the Warehouse aggregate is unchanged, no custody boundary is crossed, and this grants nothing about transferring stock between warehouses or to a truck (DECISIONS #170).",
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
