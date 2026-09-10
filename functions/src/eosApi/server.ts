@@ -31,7 +31,7 @@ import {
 } from "../adminPolicy/policyDatabase";
 import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
-import { createAssistantHttpHandler } from "../assistant/assistantRoute";
+import { createAssistantHttpHandler, CATALOG_ACTIVE_CAPABILITIES } from "../assistant/assistantRoute";
 import { AssistantToolRegistry } from "../assistant/assistantToolRegistry";
 import { buildDashboardTools } from "../assistant/dashboardTools";
 import { resolveAssistantFirestoreClient } from "../assistant/firestoreAssistantAdapters";
@@ -40,6 +40,7 @@ import { resolveAssistantOperationalAuthoritySource } from "../assistant/assista
 import { buildAiProvider, resolveProviderPolicyConfig } from "../assistant/aiProviderConfig";
 import { selectAiProvider } from "../assistant/aiProviderPolicy";
 import type { AiProvider } from "../assistant/aiProvider";
+import { resolveRuntimeCapabilityOverrides } from "../access/environmentCapabilityOverrides";
 
 /**
  * The environment this service reads. Every one is injected; none is committed.
@@ -193,6 +194,15 @@ export async function startEosApi(
         })
       : null;
 
+  // The CANONICAL activation answer -- the same union every other runtime consumer in this repo reads
+  // through resolveRuntimeCapabilityOverrides(). A capability the catalog marks active:false (e.g.
+  // performance.goal.read) can still be live in THIS deployed project; answering from the catalog
+  // alone would make the assistant disagree with the rest of EOS about what is active.
+  const activeCapabilities: ReadonlySet<string> = new Set([
+    ...CATALOG_ACTIVE_CAPABILITIES,
+    ...resolveRuntimeCapabilityOverrides(),
+  ]);
+
   const assistantHandler = createAssistantHttpHandler(
     {
       policyReader: repo,
@@ -201,6 +211,7 @@ export async function startEosApi(
       provider: assistantProvider,
       businessDataReaderConfigured,
       operationalAuthoritySource,
+      activeCapabilities,
     },
     config.allowedOrigins,
   );

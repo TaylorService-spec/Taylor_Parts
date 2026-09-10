@@ -80,24 +80,14 @@ export const STARTER_QUESTIONS: readonly StarterQuestion[] = Object.freeze([
   // all. A starter here is offered only when the actor's effective authority already includes the
   // capability the module needs, which is what makes the offered set differ by role without any
   // starter here naming a role.
-  { id: "dash.attention", surface: "DASHBOARD", text: "What needs attention right now?",
-    requiresToolIds: ["dashboard.serviceAttention"], requiresCapabilities: ["workOrder.transition"] },
-  { id: "dash.pastDue", surface: "DASHBOARD", text: "Is anything past due?",
-    requiresToolIds: ["dashboard.serviceAttention"], requiresCapabilities: ["workOrder.transition"] },
-  { id: "dash.conflicts", surface: "DASHBOARD", text: "Are there any scheduling conflicts to resolve?",
-    requiresToolIds: ["dashboard.serviceAttention"], requiresCapabilities: ["workOrder.transition"] },
+  //
+  // ONLY TWO TOOLS ARE WIRED (owner review #1855 authority-parity correction) -- see dashboardTools.ts
+  // for why serviceAttention/workOrdersByStatus/myGoals moved to DASHBOARD_STARTER_GAPS instead of
+  // being offered here with an approximated capability.
   { id: "dash.reorderQueue", surface: "DASHBOARD", text: "What is waiting in the reorder queue?",
     requiresToolIds: ["dashboard.reorderQueue"], requiresCapabilities: ["reorder.request.read.queue"] },
   { id: "dash.reorderOldest", surface: "DASHBOARD", text: "What is the oldest pending reorder request?",
     requiresToolIds: ["dashboard.reorderQueue"], requiresCapabilities: ["reorder.request.read.queue"] },
-  { id: "dash.statusBreakdown", surface: "DASHBOARD", text: "How are my work orders distributed by status?",
-    requiresToolIds: ["dashboard.workOrdersByStatus"], requiresCapabilities: ["workOrder.transition"] },
-  { id: "dash.openWork", surface: "DASHBOARD", text: "How much work is still open?",
-    requiresToolIds: ["dashboard.workOrdersByStatus"], requiresCapabilities: ["workOrder.transition"] },
-  { id: "dash.myGoals", surface: "DASHBOARD", text: "How am I tracking against my goals?",
-    requiresToolIds: ["dashboard.myGoals"], requiresCapabilities: ["performance.goal.read"] },
-  { id: "dash.goalsAtRisk", surface: "DASHBOARD", text: "Which of my goals need attention?",
-    requiresToolIds: ["dashboard.myGoals"], requiresCapabilities: ["performance.goal.read"] },
   { id: "dash.accountPortfolio", surface: "DASHBOARD", text: "How many accounts do I have in my portfolio?",
     requiresToolIds: ["dashboard.accountPortfolio"], requiresCapabilities: ["customer.record.read"] },
   { id: "dash.accountStatusMix", surface: "DASHBOARD", text: "How many of my accounts are active versus prospects?",
@@ -112,6 +102,13 @@ export const STARTER_QUESTIONS: readonly StarterQuestion[] = Object.freeze([
  */
 export const DASHBOARD_STARTER_GAPS: readonly { readonly intendedToolId: string; readonly whatUsersWouldAsk: string; readonly blockedBy: string }[] =
   Object.freeze([
+    // MOVED HERE by owner review #1855, having previously been wired with an approximated authority.
+    { intendedToolId: "dashboard.serviceAttention", whatUsersWouldAsk: "What needs attention right now? / Is anything past due? / Are there scheduling conflicts?",
+      blockedBy: "MyDashboard gates this on isOperationsViewer (role === \"admin\" || \"dispatcher\"), a legacy Rules-based check with no capability id. workOrder.transition is also held by technician and would widen reach. No existing capability reproduces the admin/dispatcher check." },
+    { intendedToolId: "dashboard.workOrdersByStatus", whatUsersWouldAsk: "How are my work orders distributed by status? / How much work is still open?",
+      blockedBy: "Same isOperationsViewer gap as dashboard.serviceAttention -- no capability id represents the admin/dispatcher Rules check this read actually uses." },
+    { intendedToolId: "dashboard.myGoals", whatUsersWouldAsk: "What are my current goals?",
+      blockedBy: "performance.goal.read authorizes goal TARGETS only, never the metric actual (performanceGoalClient.js: \"transport moves targets, never actuals\"). MyDashboard scopes an individual goal by employeeId, which this route cannot honestly derive from the EOS principal uid without a new mapping this PR does not add." },
     { intendedToolId: "dashboard.technicianComparison", whatUsersWouldAsk: "How is my team doing, by technician?",
       blockedBy: "No AssistantBusinessDataReader method for per-technician comparison yet." },
     { intendedToolId: "dashboard.technicianAvailability", whatUsersWouldAsk: "Who's available today?",

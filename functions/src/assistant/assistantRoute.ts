@@ -62,8 +62,22 @@ export const assistantRoleResolver: RoleResolver = {
   },
 };
 
-/** Every capability the environment currently treats as live. A `active:false` id resolves to DENY. */
-export const ACTIVE_ASSISTANT_CAPABILITIES: ReadonlySet<PermissionId> = new Set(
+/**
+ * The catalog's OWN `active` flag, with no environment activation applied.
+ *
+ * This is HALF the answer, deliberately exported under a name that says so: a capability the catalog
+ * marks `active:false` may still be live in THIS environment through
+ * `resolveRuntimeCapabilityOverrides()` (functions/src/access/environmentCapabilityOverrides.ts) --
+ * the canonical per-environment activation seam every other runtime consumer in this repo already
+ * reads through. Recreating that logic here, or answering from the catalog alone, would let the
+ * assistant disagree with the rest of EOS about which capability is live -- `performance.goal.read`
+ * is a concrete case: catalog `active:false`, sandbox-activated.
+ *
+ * The composition root (eosApi/server.ts) is responsible for unioning this with
+ * `resolveRuntimeCapabilityOverrides()` and injecting the result as `AssistantHttpDeps.activeCapabilities`
+ * -- never this constant alone.
+ */
+export const CATALOG_ACTIVE_CAPABILITIES: ReadonlySet<PermissionId> = new Set(
   PERMISSION_CATALOG.filter((p) => p.active !== false).map((p) => p.id),
 );
 
@@ -82,6 +96,12 @@ export interface AssistantHttpDeps {
    * `assistantOperationalAuthoritySource.ts`. Never substitute the Postgres policy Role for this.
    */
   readonly operationalAuthoritySource: AssistantOperationalAuthoritySource | null;
+  /**
+   * The canonical active-capability set for THIS environment -- catalog `active:true` ids UNION
+   * `resolveRuntimeCapabilityOverrides()`. Injected rather than computed here so a test can supply an
+   * explicit set without depending on `process.env.GCLOUD_PROJECT`/the real environment registry.
+   */
+  readonly activeCapabilities: ReadonlySet<PermissionId>;
   readonly now?: () => number;
   readonly maxOutputTokens?: number;
 }
@@ -283,7 +303,7 @@ export async function handleAssistantHttpRequest(
       compatibilityRoleId: operationalRoleIds.compatibilityRoleId,
     },
     assistantRoleResolver,
-    ACTIVE_ASSISTANT_CAPABILITIES,
+    deps.activeCapabilities,
   );
 
   const correlationId =
