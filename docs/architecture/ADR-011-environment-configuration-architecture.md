@@ -22,7 +22,7 @@ That file already existed as the C3/D2 drift registry. It is **extended**, not d
 
 Each environment declares `id`, `role`, `deployment`, `status`, `firebase`, and `readiness`.
 
-**`role` (sandbox | integration | production) is independent of `deployment` (platform | customer).** Production-ness is determined by **role alone** — never by project name or deployment. A second customer is `role: production, deployment: <customer>` with no code change, and a test asserts no production environment belongs to `platform`. This is what prevents "production" silently meaning "Taylor Parts".
+**`role` (sandbox | integration | production) is independent of `deployment` (platform | customer).** Production-ness is determined by **role alone** — never by project name or deployment. A second customer is `role: production, deployment: <customer>` with no code change, and a test asserts no production environment belongs to `platform`. This is what prevents "production" silently meaning "Taylor Freezer of Arizona".
 
 ### 2. Build-time vs environment vs runtime
 
@@ -59,7 +59,7 @@ The registry holds **public Firebase Web client configuration only**. A Firebase
 
 ## Consequences
 
-**Positive.** One mechanism serves Sandbox, R-2 option B, and future customer deployments. The application can target a known non-production environment from source. Platform environments cannot inherit Taylor Parts identity (test-enforced). The remaining sandbox blocker is reduced to O-1/O-2 — creating the project and accepting its cost.
+**Positive.** One mechanism serves Sandbox, R-2 option B, and future customer deployments. The application can target a known non-production environment from source. Platform environments cannot inherit Taylor Freezer of Arizona identity (test-enforced). The remaining sandbox blocker is reduced to O-1/O-2 — creating the project and accepting its cost.
 
 **Negative / accepted.** Per-environment builds mean the deployed *bytes* differ by environment even when the revision is identical; RC identity is therefore the SHA, which is why D1/D2 mattered first. No governed runtime configuration exists, so changing readiness still requires a rebuild and redeploy — acceptable while readiness changes are rare and Owner-gated.
 
@@ -76,6 +76,6 @@ The registry holds **public Firebase Web client configuration only**. A Firebase
 7. Existing production guards remain hard.
 8. Production keyed on role, never on project/deployment name.
 9. No production environment belongs to the `platform` deployment.
-10. Platform environments do not inherit Taylor Parts identity.
+10. Platform environments do not inherit Taylor Freezer of Arizona identity.
 11. No credentials in the registry.
 12. The default environment reproduces the current production identity.
