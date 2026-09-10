@@ -21,6 +21,7 @@ import LookupScan from "./LookupScan.jsx";
 import TransferScan from "./TransferScan.jsx";
 import CycleCountScan from "./CycleCountScan.jsx";
 import PutAwayScan from "./PutAwayScan.jsx";
+import MoveStockScan from "./MoveStockScan.jsx";
 import PickScan from "./PickScan.jsx";
 import ReturnIntakeScan from "./ReturnIntakeScan.jsx";
 
@@ -246,6 +247,17 @@ function ScanWorkspaceBody({ deps }) {
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* Records WHERE, never WHAT: a stow changes no balance (DECISIONS #116). */}
         <PutAwayScan deps={deps?.putAwayDeps} />
+      </div>
+    );
+  }
+
+  if (active === SCAN_WORKFLOW.MOVE_STOCK) {
+    return (
+      <div className="fo-panel">
+        <WorkspaceHeader title="Scan · Move stock" />
+        <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
+        {/* Many items, one confirmation, one governed command per line (Decision #170). */}
+        <MoveStockScan deps={{ ...deps?.moveStockDeps, hasCapability: deps?.hasCapability, onPendingWorkChange: setPendingWork }} />
       </div>
     );
   }
