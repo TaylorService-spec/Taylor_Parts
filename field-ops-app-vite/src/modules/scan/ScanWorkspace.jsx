@@ -224,7 +224,17 @@ function ScanWorkspaceBody({ deps }) {
         <WorkspaceHeader title="Scan · Transfer" />
         <ScanBackControl pendingWork={pendingWork} onLeave={leave} />
         {/* The EXISTING transfer commands. Scanning verifies; it authors nothing. */}
-        <TransferScan deps={{ ...deps?.transferDeps, onPendingWorkChange: setPendingWork }} />
+        {/* Who holds the device decides which read lists the transfers (TransferScan.transferListSource):
+            a receive-only technician gets their own truck's incoming work from the server. */}
+        <TransferScan
+          deps={{
+            hasCapability: deps?.hasCapability,
+            technicianId,
+            technicianLoading: deps?.technicianId !== undefined ? false : liveTechnician.loading,
+            ...deps?.transferDeps,
+            onPendingWorkChange: setPendingWork,
+          }}
+        />
       </div>
     );
   }

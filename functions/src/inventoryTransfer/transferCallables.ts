@@ -18,6 +18,7 @@ import {
 } from "./transferCommandComposition.js";
 import { TransferCommandError, type TransferCommandFailureCode } from "./transferOrderTypes.js";
 import { makeResolveTransferPermissionThroughTxn, resolveTransferPartThroughTxn, stageTransferAuditEvent } from "./transferCallableWiring.js";
+import { listMyReceivableTransfers, ReceivableReadError, type ReceivableReadDeps, type ReceivableReadFailure } from "./transferReceivableRead.js";
 
 const REGION = { region: "us-central1" } as const;
 
@@ -197,6 +198,37 @@ export async function runCancelTransferOrder(request: CallableRequest<unknown>, 
   }
 }
 
+// -------- listMyReceivableTransfers: the command-scoped technician read (transferReceivableRead.ts) --------
+const RECEIVABLE_MESSAGES: Readonly<Record<ReceivableReadFailure, string>> = {
+  PERMISSION_DENIED: "You are not authorized to receive transfers.",
+  READ_INVALID: "The request has unknown or invalid fields.",
+  TECHNICIAN_IDENTITY_UNAVAILABLE: "This account is not linked to a technician.",
+  NO_TRUCK_ASSIGNMENT: "No active truck is assigned to you.",
+  TRUCK_ASSIGNMENT_AMBIGUOUS: "More than one truck is assigned to you, so none can be used until that is corrected.",
+  MALFORMED_STORED_RECORD: "A transfer order could not be read.",
+};
+function mapReceivableError(err: unknown): HttpsError {
+  if (err instanceof HttpsError) return err;
+  if (err instanceof ReceivableReadError) {
+    const code: FunctionsErrorCode = err.code === "PERMISSION_DENIED" ? "permission-denied"
+      : err.code === "READ_INVALID" ? "invalid-argument"
+      : "failed-precondition";
+    // The bounded failure class travels as the detail so the handheld can say "no truck" rather than
+    // "no transfers". A fixed code, never a stored value.
+    return new HttpsError(code, RECEIVABLE_MESSAGES[err.code], { code: err.code });
+  }
+  return new HttpsError("internal", "Transfers could not be loaded.");
+}
+
+export async function runListMyReceivableTransfers(request: CallableRequest<unknown>, deps: ReceivableReadDeps) {
+  const actorUid = requireAuth(request);
+  try {
+    return await listMyReceivableTransfers(actorUid, request.data, deps);
+  } catch (err) {
+    throw mapReceivableError(err);
+  }
+}
+
 function productionWiring(): TransferCallableWiring {
   const db = getFirestore();
   return {
@@ -215,3 +247,7 @@ export const createTransferOrderCallable = onCall(REGION, (request) => runCreate
 export const dispatchTransferOrderCallable = onCall(REGION, (request) => runDispatchTransferOrder(request, productionWiring()));
 export const receiveTransferOrderCallable = onCall(REGION, (request) => runReceiveTransferOrder(request, productionWiring()));
 export const cancelTransferOrderCallable = onCall(REGION, (request) => runCancelTransferOrder(request, productionWiring()));
+export const listMyReceivableTransfersCallable = onCall(REGION, (request) => {
+  const wiring = productionWiring();
+  return runListMyReceivableTransfers(request, { db: wiring.db, resolveReceivePermission: wiring.resolveReceivePermission });
+});

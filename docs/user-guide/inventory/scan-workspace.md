@@ -91,7 +91,20 @@ commit from the wrong end.
 A transfer to a **truck** works the same way and reads as a truck: the warehouse sends it, and the
 technician accepts it at their van.
 
-**You need:** authority to send or receive transfers.
+**If you are a technician who receives onto your truck**, the list is titled *Incoming to* your truck
+and shows only transfers already on their way to **your** truck — nothing else. Pick one, confirm you
+are at the truck, scan what arrived, and press **Receive this transfer**. If the screen says instead:
+
+- **No active truck is assigned to you** — a dispatcher needs to assign your truck before anything can
+  be received onto it.
+- **More than one truck is assigned to you** — nothing can be received until a dispatcher corrects it.
+- **You are offline** — incoming transfers need a connection to load. Reconnect and press **Try again**.
+  A receipt you already pressed while offline shows *pending sync*; it is not received until it syncs.
+- **Nothing is on its way to your truck right now** — the list loaded and there is genuinely nothing
+  incoming.
+
+**You need:** authority to send or receive transfers. A technician needs the *Inventory Transfer
+Receiver* Role and exactly one active truck assigned to them.
 
 ### Count what is on the shelf
 

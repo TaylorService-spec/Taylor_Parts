@@ -432,3 +432,18 @@ describe("Scan workspace (it remembers where you were)", () => {
     }
   });
 });
+
+// ────────────────────────────────────────────── transfers: the technician gets their own truck
+
+describe("Scan workspace (a receive-only technician is routed to their own truck read)", () => {
+  it("threads the technician link and the capability gate into Transfer, so it asks the server, not transfer_orders", async () => {
+    const listMyReceivableTransfers = vi.fn().mockResolvedValue({ truck: { locationId: "TRK-1", label: "Van 1" }, transfers: [], nextCursor: null });
+    render(<ScanWorkspace deps={technicianUser({
+      hasCapability: (id) => id === "inventory.transfer.receive",
+      initialWorkflow: "TRANSFER",
+      transferDeps: { transferClient: { listMyReceivableTransfers } },
+    })} />);
+    expect(await screen.findByText(/nothing is on its way to your truck/i)).toBeTruthy();
+    expect(listMyReceivableTransfers).toHaveBeenCalledWith(null);
+  });
+});

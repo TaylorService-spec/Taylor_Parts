@@ -296,6 +296,9 @@ export {
   dispatchTransferOrderCallable as dispatchTransferOrder,
   receiveTransferOrderCallable as receiveTransferOrder,
   cancelTransferOrderCallable as cancelTransferOrder,
+  // The technician's command-scoped read of IN_TRANSIT Transfers bound for their own truck
+  // (inventory.transfer.receive; no Rules change, no new capability).
+  listMyReceivableTransfersCallable as listMyReceivableTransfers,
 } from "./inventoryTransfer/transferCallables";
 
 // --- Enterprise Inventory -- Cycle Count: the A1 SHEET / LINE model (schema v2) + A4 durable reads ---

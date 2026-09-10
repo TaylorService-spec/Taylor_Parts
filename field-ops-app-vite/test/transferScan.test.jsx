@@ -7,10 +7,12 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import TransferScan from "../src/modules/scan/TransferScan.jsx";
 
-// The live hook reaches Firestore; every test injects orders through `deps` instead.
-vi.mock("../src/hooks/useTransferOrders", () => ({
-  useTransferOrders: () => ({ loading: false, error: null, transferOrderDocs: [], warehouses: [] }),
+// The live hook reaches Firestore; every test injects orders through `deps` instead. It is a spy so the
+// technician path can prove it never issues the client `transfer_orders` read at all.
+const { sharedRead } = vi.hoisted(() => ({
+  sharedRead: vi.fn(() => ({ loading: false, error: null, transferOrderDocs: [], warehouses: [] })),
 }));
+vi.mock("../src/hooks/useTransferOrders", () => ({ useTransferOrders: sharedRead }));
 
 afterEach(cleanup);
 
@@ -302,5 +304,167 @@ describe("Transfer scan (a handoff to a truck is a transfer, and reads like one)
     for (const invented of [/hand ?off/i, /load truck/i, /accept delivery/i]) {
       expect(screen.queryByRole("button", { name: invented })).toBeNull();
     }
+  });
+});
+
+// ────────────────────────────────────────────── the technician's own truck (trusted server read)
+
+describe("Transfer scan (a receive-only technician sees their OWN truck's incoming work, from the server)", () => {
+  const TRUCK = { type: "MOBILE", locationId: "TRK-LOC-7" };
+  const RECEIVE_ONLY = (cap) => cap === "inventory.transfer.receive";
+  const incoming = (over = {}) => ({
+    transferOrderId: "TO-1", transferOrderNumber: "TO-2026-000042", partId: "PRT-1001", trackingMode: "NONE",
+    quantity: 2, origin: WH1, destination: TRUCK, status: "IN_TRANSIT", ...over,
+  });
+  const page = (transfers, over = {}) => ({ truck: { locationId: TRUCK.locationId, label: "Van 7" }, transfers, nextCursor: null, ...over });
+  const failWith = (code, detail) => Object.assign(new Error(code), { code: `functions/${code}`, ...(detail ? { details: { code: detail } } : {}) });
+  const techClient = (listed, over = {}) => client({
+    listMyReceivableTransfers: typeof listed === "function" ? listed : vi.fn().mockResolvedValue(listed),
+    ...over,
+  });
+  const mountTech = (c, extra = {}) => render(
+    <TransferScan deps={{ technicianId: "TECH-7", hasCapability: RECEIVE_ONLY, transferClient: c, scanInputDeps, ...extra }} />,
+  );
+
+  it("21 never issues the client transfer_orders read; 22 lists the server projection for MY truck", async () => {
+    sharedRead.mockClear();
+    const c = techClient(page([incoming()]));
+    mountTech(c);
+    expect(await screen.findByRole("button", { name: "TO-2026-000042" })).toBeTruthy();
+    expect(screen.getByText(/incoming to van 7/i)).toBeTruthy();
+    expect(sharedRead).not.toHaveBeenCalled();
+  });
+
+  it("23 the request names no technician, truck or destination -- the server decides whose truck", async () => {
+    const c = techClient(page([]));
+    mountTech(c);
+    await screen.findByText(/nothing is on its way/i);
+    expect(c.listMyReceivableTransfers).toHaveBeenCalledWith(null);
+  });
+
+  it("follows every page, and a ceiling hit says more exists rather than implying the list is whole", async () => {
+    let n = 0;
+    const c = techClient(vi.fn(async () => { n += 1; return page([incoming({ transferOrderId: `TO-${n}`, transferOrderNumber: undefined })], { nextCursor: `TO-${n}` }); }));
+    mountTech(c);
+    expect(await screen.findByText(/more incoming transfers exist/i)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /^TO-\d+$/ }).length).toBe(10);
+  });
+
+  it("24 no truck assignment is its own sentence, not 'no transfers'", async () => {
+    mountTech(techClient(vi.fn().mockRejectedValue(failWith("failed-precondition", "NO_TRUCK_ASSIGNMENT"))));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/no active truck is assigned to you/i);
+    expect(document.body.textContent).not.toMatch(/nothing is on its way|no transfers are waiting/i);
+  });
+
+  it("two trucks and an unlinked account each say what is wrong", async () => {
+    mountTech(techClient(vi.fn().mockRejectedValue(failWith("failed-precondition", "TRUCK_ASSIGNMENT_AMBIGUOUS"))));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/more than one truck/i);
+    cleanup();
+    mountTech(techClient(vi.fn().mockRejectedValue(failWith("failed-precondition", "TECHNICIAN_IDENTITY_UNAVAILABLE"))));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/not linked to a technician/i);
+  });
+
+  it("25 denied renders denied, not empty", async () => {
+    mountTech(techClient(vi.fn().mockRejectedValue(failWith("permission-denied", "PERMISSION_DENIED"))));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/not authorized to receive transfers/i);
+    expect(document.body.textContent).not.toMatch(/nothing is on its way/i);
+  });
+
+  it("26 unavailable renders unavailable (offline says offline), with a retry that re-reads", async () => {
+    const list = vi.fn().mockRejectedValueOnce(failWith("unavailable")).mockResolvedValue(page([incoming()]));
+    mountTech(techClient(list));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/offline/i);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByRole("button", { name: "TO-2026-000042" })).toBeTruthy();
+    cleanup();
+    mountTech(techClient(vi.fn().mockRejectedValue(failWith("internal"))));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not be loaded/i);
+  });
+
+  it("27 an empty successful read says nothing is on its way", async () => {
+    mountTech(techClient(page([])));
+    expect(await screen.findByText(/nothing is on its way to your truck/i)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  const pick = async (c, o) => {
+    mountTech(c);
+    fireEvent.click(await screen.findByRole("button", { name: o.transferOrderNumber ?? o.transferOrderId }));
+  };
+
+  it("28-29, 32-33 a projected NONE order feeds the same verification and receives through receiveTransferOrder, id only", async () => {
+    const c = techClient(page([incoming()]));
+    await pick(c, incoming());
+    expect(screen.getByText(/are you at/i).closest("p").textContent).toMatch(/truck TRK-LOC-7/i);
+    confirmHere();
+    scan("PRT-1001");
+    const submit = screen.getByRole("button", { name: /receive this transfer/i });
+    expect(submit.disabled).toBe(true);
+    scan("PRT-1001");
+    fireEvent.click(submit);
+    await waitFor(() => expect(c.receiveTransferOrder).toHaveBeenCalledTimes(1));
+    expect(c.receiveTransferOrder).toHaveBeenCalledWith({ transferOrderId: "TO-1" });
+    expect(c.dispatchTransferOrder).not.toHaveBeenCalled();
+  });
+
+  it("30-31 SERIAL verification and duplicate handling are unchanged", async () => {
+    const o = incoming({ trackingMode: "SERIAL", quantity: 2, serialNumbers: ["SN-1", "SN-2"] });
+    const c = techClient(page([o]));
+    await pick(c, o);
+    confirmHere();
+    scan("SN-1");
+    scan("SN-1");
+    expect(screen.getByText(/still to scan: SN-2/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /receive this transfer/i }).disabled).toBe(true);
+    scan("SN-2");
+    expect(screen.getByRole("button", { name: /receive this transfer/i }).disabled).toBe(false);
+  });
+
+  it("34 a receipt queued offline says pending sync -- never received", async () => {
+    Object.defineProperty(window.navigator, "onLine", { value: false, configurable: true });
+    try {
+      const enqueued = [];
+      const offline = {
+        principalUid: "uid-tech-7",
+        enqueue: vi.fn(async (intent) => { enqueued.push(intent.value); return { queued: true, durable: true, intentId: intent.value?.intentId }; }),
+      };
+      const c = techClient(page([incoming()]));
+      mountTech(c, { offline });
+      fireEvent.click(await screen.findByRole("button", { name: "TO-2026-000042" }));
+      confirmHere();
+      scan("PRT-1001");
+      scan("PRT-1001");
+      fireEvent.click(screen.getByRole("button", { name: /receive this transfer/i }));
+      await waitFor(() => expect(document.body.textContent).toMatch(/pending sync/i));
+      expect(document.body.textContent).not.toMatch(/✓ Done/);
+      expect(c.receiveTransferOrder).not.toHaveBeenCalled();
+      expect(enqueued[0].payload.transferOrderId).toBe("TO-1");
+    } finally {
+      Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
+    }
+  });
+
+  it("a principal who DISPATCHES, or has no technician link, keeps the shared read unchanged -- no audience moves", () => {
+    sharedRead.mockClear();
+    const c = techClient(page([]));
+    render(<TransferScan deps={{ technicianId: "TECH-7", hasCapability: () => true, transferClient: c, scanInputDeps }} />);
+    expect(sharedRead).toHaveBeenCalled();
+    expect(c.listMyReceivableTransfers).not.toHaveBeenCalled();
+    cleanup();
+    sharedRead.mockClear();
+    render(<TransferScan deps={{ technicianId: null, hasCapability: RECEIVE_ONLY, transferClient: c, scanInputDeps }} />);
+    expect(sharedRead).toHaveBeenCalled();
+    expect(c.listMyReceivableTransfers).not.toHaveBeenCalled();
+  });
+
+  it("while the technician link is still resolving, neither read is issued", () => {
+    sharedRead.mockClear();
+    const c = techClient(page([]));
+    render(<TransferScan deps={{ technicianLoading: true, hasCapability: RECEIVE_ONLY, transferClient: c }} />);
+    expect(screen.getByRole("status").textContent).toMatch(/loading/i);
+    expect(sharedRead).not.toHaveBeenCalled();
+    expect(c.listMyReceivableTransfers).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// THE TWELVE SANDBOX SCANNER SCENARIOS -- run as real personas against the real deployed callables.
+// THE THIRTEEN SANDBOX SCANNER SCENARIOS -- run as real personas against the real deployed callables.
 //
 // Run: node scripts/runSandboxScannerScenarios.mjs
 //
@@ -258,6 +258,53 @@ for (const [name, data] of [
 ]) {
   await expectRefused("12 no warehouse ops inherited", "technician", name, data,
     "gate", "the shared Scan workspace confers nothing");
+}
+
+// ═════════ 13. Technician incoming transfers -- the governed read ═════════
+// The handheld lists a technician's receivable work through listMyReceivableTransfers (Rules deny the
+// client transfer_orders read to a technician). The truck is NOT assumed here: the read itself names the
+// technician's governed truck, and the scenario sends to exactly that.
+console.log("\n-- 13. Technician incoming transfers (governed read) --");
+const receivableIds = async () => {
+  const r = await callAs("technician", "listMyReceivableTransfers", {});
+  return r.ok ? r.result.transfers.map((t) => t.transferOrderId) : null;
+};
+await expectRefused("13 the caller cannot name a truck", "technician", "listMyReceivableTransfers",
+  { truckId: truck }, "validation", "the server derives the truck");
+await expectRefused("13 no receive authority, no list", "partsManager", "listMyReceivableTransfers", {},
+  "gate", "the read rides inventory.transfer.receive");
+const mine = await callAs("technician", "listMyReceivableTransfers", {});
+record("13 technician's own truck resolves", "technician", "truck named by the server",
+  mine.ok ? `truck ${mine.result.truck?.locationId}` : `${mine.code}: ${String(mine.message ?? "").slice(0, 80)}`, mine.ok,
+  mine.ok ? "" : "prerequisite: the technician persona needs exactly one ACTIVE truck in the Truck Registry");
+if (mine.ok) {
+  const myTruck = mine.result.truck.locationId;
+  const send = async (destinationId, tag) => {
+    const c = await callAs("warehouseManager", "createTransferOrder", {
+      partId: PART, quantity: 1, origin: { type: "WAREHOUSE", locationId: WH },
+      destination: { type: "MOBILE", locationId: destinationId }, idempotencyKey: `${tag}-${RUN}`,
+    });
+    if (!c.ok) return { ok: false, code: c.code };
+    const d = await callAs("warehouseManager", "dispatchTransferOrder", { transferOrderId: c.result.transferOrderId });
+    return d.ok ? { ok: true, id: c.result.transferOrderId } : { ok: false, code: d.code };
+  };
+  const toMe = await send(myTruck, "rcv13");
+  record("13 (setup) warehouse sends to the technician's truck", "warehouseManager", "IN_TRANSIT", toMe.ok ? "IN_TRANSIT" : toMe.code, toMe.ok);
+  const toOther = truck !== myTruck ? await send(truck, "rcv13x") : null;
+  if (toMe.ok) {
+    const seen = await receivableIds();
+    record("13 technician sees that exact incoming transfer", "technician", "listed", seen?.includes(toMe.id) ? "listed" : "ABSENT", Boolean(seen?.includes(toMe.id)));
+    if (toOther?.ok) {
+      record("13 another truck's transfer is not visible", "technician", "absent", seen?.includes(toOther.id) ? "VISIBLE" : "absent", Boolean(seen) && !seen.includes(toOther.id));
+    } else {
+      record("13 another truck's transfer is not visible", "technician", "absent", "not exercised", true, "no second truck distinct from the technician's (see the runner's `truck`)");
+    }
+    await expectAllowed("13 technician receives it through the existing command", "technician", "receiveTransferOrder", { transferOrderId: toMe.id });
+    const after = await receivableIds();
+    record("13 a completed transfer leaves the list", "technician", "absent", after?.includes(toMe.id) ? "STILL LISTED" : "absent", Boolean(after) && !after.includes(toMe.id));
+  }
+  // Put the other truck's stock where it was going, so no sandbox transfer is left in transit.
+  if (toOther?.ok) await callAs("admin", "receiveTransferOrder", { transferOrderId: toOther.id });
 }
 
 // ═════════ report ═════════
