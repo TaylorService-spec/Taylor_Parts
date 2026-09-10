@@ -190,28 +190,44 @@ await expectRefused("9 unknown truck destination", "warehouseManager", "createTr
   idempotencyKey: `handx-${RUN}`,
 }, "validation", "an unregistered destination fails closed");
 
-// ═════════ 10. Cycle count -- SoD ═════════
-console.log("\n-- 10. Cycle count (separation of duties) --");
-const cc = await callAs("partsAssociate", "createCycleCount", {
-  partId: PART, location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `cc-${RUN}`,
+// ═════════ 10. Cycle count -- sheets and lines (A1), SoD ═════════
+// The v1 single-part callables are retired (Decision #179). A count is a SHEET at a location with one
+// LINE per part; the counter submits a line blind, and a reviewer -- a different Role -- disposes of it.
+console.log("\n-- 10. Cycle count (sheet and line; separation of duties) --");
+const cc = await callAs("partsAssociate", "createCycleCountSheet", {
+  location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `cc-${RUN}`,
 });
-record("10 counter may open a count", "partsAssociate", "ALLOWED", cc.ok ? "created" : cc.code, cc.ok,
+record("10 counter may start a sheet", "partsAssociate", "ALLOWED", cc.ok ? "created" : cc.code, cc.ok,
   cc.ok ? "" : String(cc.message ?? "").slice(0, 90));
 if (cc.ok) {
+  const sheetId = cc.result.sheetId;
+  const opened = await callAs("partsAssociate", "openCycleCountLine", { sheetId, partId: PART });
+  record("10 a line opens BLIND", "partsAssociate", "no expected value in the response",
+    opened.ok ? (opened.result.expectedQuantity === undefined ? "blind" : "EXPECTED LEAKED") : opened.code,
+    opened.ok && opened.result.expectedQuantity === undefined);
   const beforeCount = await balanceOf("partsAssociate", PART);
-  const sub = await callAs("partsAssociate", "submitCycleCount", { cycleCountId: cc.result.cycleCountId, countedQuantity: 99 });
-  record("10 counter may submit", "partsAssociate", "ALLOWED", sub.ok ? "submitted" : sub.code, sub.ok,
+  const sub = await callAs("partsAssociate", "submitCycleCountLine", { sheetId, partId: PART, countedQuantity: 99 });
+  record("10 counter may submit a line", "partsAssociate", "ALLOWED", sub.ok ? "submitted" : sub.code, sub.ok,
     sub.ok ? "" : String(sub.message ?? "").slice(0, 90));
   const afterCount = await balanceOf("partsAssociate", PART);
   record("10 COUNTING IS NOT ADJUSTING", "partsAssociate", "balance unchanged",
     sameBalance(beforeCount, afterCount) ? "unchanged" : "CHANGED", sameBalance(beforeCount, afterCount),
     "a submitted count must move no stock");
+  await expectAllowed("10 the count is found again (A4)", "partsManager", "getCycleCountSheet", { sheetId },
+    (r) => (r.lines?.some((l) => l.partId === PART && l.status === "COUNTED") ? true : "line not visible"),
+    "a reviewer on another device sees the counted line");
+  await expectRefused("10 a counter cannot dispose of a line", "partsAssociate", "reconcileCycleCountLine",
+    { sheetId, partId: PART, decision: "REJECT", reason: "scenario" }, "gate", "reconcile is the reviewer's Role");
+  // The reviewer REJECTS: it proves the path without adjusting sandbox stock.
+  await expectAllowed("10 the reviewer disposes of the line (reject: no ledger effect)", "partsManager", "reconcileCycleCountLine",
+    { sheetId, partId: PART, decision: "REJECT", reason: "scanner scenario -- not a real count" },
+    (r) => (r.status === "REJECTED" && (r.ledgerEventIds ?? []).length === 0 ? true : `got ${r.status}`));
 }
-await expectRefused("10 whmgr has NO counter authority", "warehouseManager", "createCycleCount",
-  { partId: PART, location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `ccw-${RUN}` },
+await expectRefused("10 whmgr has NO counter authority", "warehouseManager", "createCycleCountSheet",
+  { location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `ccw-${RUN}` },
   "gate", "cycleCountCounter deliberately withheld -- #111");
-await expectRefused("10 reconciler cannot open a count", "partsManager", "createCycleCount",
-  { partId: PART, location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `ccp-${RUN}` },
+await expectRefused("10 reconciler cannot open a count", "partsManager", "createCycleCountSheet",
+  { location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `ccp-${RUN}` },
   "gate", "partsManager holds reconcile only");
 
 // ═════════ 11. Return intake ═════════
@@ -237,7 +253,7 @@ await expectAllowed("12 technician may look up", "technician", "getPartBalance",
   (r) => (r.partId === PART ? true : "wrong part"), "field lookup reaches the technician");
 for (const [name, data] of [
   ["recordPutAway", { warehouseId: WH, binCode: BIN, partId: PART, quantity: 1, idempotencyKey: `tp-${RUN}` }],
-  ["createCycleCount", { partId: PART, location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `tc-${RUN}` }],
+  ["createCycleCountSheet", { location: { type: "WAREHOUSE", locationId: WH }, idempotencyKey: `tc-${RUN}` }],
   ["dispatchTransferOrder", { transferOrderId: "to-none" }],
 ]) {
   await expectRefused("12 no warehouse ops inherited", "technician", name, data,
