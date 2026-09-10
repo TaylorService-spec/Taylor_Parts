@@ -6406,3 +6406,25 @@ unchanged.
 
 **B5 — Cycle Count A1/A2.** `claude/cycle-count-a1-spec` (head `f585125d`) is **not merged as-is**; it
 predates #170. It is preserved and reconciled against current main on a new branch.
+
+## #179 — OWNER RULINGS: M-1 Option A, Certification frozen, A1 Revision 2 approved, scanner reads governed (2026-09-10)
+
+**Context.** Continuation of #178. This records rulings; it rewrites no earlier decision.
+
+1. **M-1 = Option A.** The 25 persisted v1 `cycle_counts` (24 sandbox, 1 certification) are **not migrated**: no
+   v1→v2 transformation, no dual reader. Preserve, export, retire, and move forward with schema v2. The v2
+   operational population is `schemaVersion == 2`, selected by query; a v1 record is never deserialized as v2.
+   Evidence: `docs/assessments/cycle-count-m1-v1-export-manifest-2026-09-10.md`.
+2. **Certification is frozen.** Its v1 record is historical evidence: read/export only — never updated,
+   cancelled, closed, migrated, deleted, rewritten, or regenerated to fit A1.
+3. **A1 Revision 2 is approved** (`docs/specifications/cycle-count-multi-part-sheet.md`) as the implementation
+   authority. Revision 1 stays preserved at tag `archive/cycle-count-a1-spec-f585125d`.
+4. **Scanner reads move behind a governed server boundary — not wider Rules.** PR #1821 is a separate
+   strategic program and is not merged or cherry-picked here. The scanner's business-data reads go through
+   bounded trusted reads that are compatible with "Firebase authenticates, EOS authorizes".
+5. **`inventory.catalog.read` is added to `inventoryStockRelocationOperator`**, read-only, because a
+   movement operator must see which Part the scan resolved. `inventory.catalog.alias.read` stays for
+   identifier resolution. No scan-specific Part capability is minted. The Role still carries no catalog
+   write, no Transfer authority, no bin management, no Cycle Count and no adjustment authority.
+6. **Production** remains unauthorized for activation, grants, deployment, Rules, Functions, Hosting,
+   inventory conversion and Cycle Count migration.

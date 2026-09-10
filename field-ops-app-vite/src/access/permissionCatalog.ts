@@ -1090,7 +1090,7 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Backend-resolved scope; no client-direct manufacturers read (Rules stay deny-all).
   Object.freeze({
     id: "inventory.catalog.read",
-    description: "Read the minimal governed catalog/reference projection (Manufacturer identity/status) via the trusted getManufacturerCatalog read service. Backend-resolved scope; no client-direct manufacturers read.",
+    description: "Read the minimal governed catalog/reference projection via trusted read services: Manufacturer identity/status (getManufacturerCatalog), Part/Equipment-Model references (searchProductReferences), and the scanner's Part projection for the <=3 Parts a scan names (lookupScannedPart). Read-only; backend-resolved scope; no client-direct catalogue read.",
     resource: "inventory.catalog",
     action: "read",
     active: false,
@@ -1349,28 +1349,28 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // introduction.
   Object.freeze({
     id: "inventory.cycleCount.create",
-    description: "Create a governed Cycle Count at an active WAREHOUSE/MOBILE(truck) inventory location, snapshotting expected quantity/serials from the ledger/registry authority (trusted Cycle Count service).",
+    description: "Start a governed Cycle Count sheet at an eligible location (an active WAREHOUSE or truck, or a BIN whose Warehouse passed the Bin conversion gate) and open one line per Part, each snapshotting its expected quantity/serials from the ledger/registry authority without disclosing it (trusted Cycle Count service, schema v2).",
     resource: "inventory.cycleCount",
     action: "create",
     active: false,
   }),
   Object.freeze({
     id: "inventory.cycleCount.submit",
-    description: "Record the counted quantity/serials for an OPEN Cycle Count and compute variance evidence (OPEN -> COUNTED).",
+    description: "Record the counted quantity/serials for one OPEN line of a Cycle Count sheet and compute that line's variance evidence (OPEN -> COUNTED). Moves no stock.",
     resource: "inventory.cycleCount",
     action: "submit",
     active: false,
   }),
   Object.freeze({
     id: "inventory.cycleCount.reconcile",
-    description: "Reconcile a COUNTED Cycle Count's variance by staging ADJUSTED ledger evidence (COUNTED -> RECONCILED); requires a reason on non-zero variance.",
+    description: "Dispose of one COUNTED line: approve (staging that line's ADJUSTED ledger evidence at the counted location) or reject (no ledger effect); requires a reason on any variance, and never for the principal who submitted a material variance. Also closes a fully disposed sheet.",
     resource: "inventory.cycleCount",
     action: "reconcile",
     active: false,
   }),
   Object.freeze({
     id: "inventory.cycleCount.cancel",
-    description: "Cancel an OPEN Cycle Count before any count has been submitted (OPEN -> CANCELLED).",
+    description: "Cancel a Cycle Count line, or a whole sheet, before any count on it has been submitted (OPEN -> CANCELLED).",
     resource: "inventory.cycleCount",
     action: "cancel",
     active: false,

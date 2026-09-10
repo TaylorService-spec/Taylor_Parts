@@ -1398,6 +1398,27 @@
    ]
   },
   {
+   "roleId": "inventoryStockRelocationOperator",
+   "label": "Inventory Stock Relocation Operator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 4,
+   "operableCount": 0,
+   "blockedCount": 4,
+   "granted": [
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.stock.relocate"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.catalog.alias.read",
+    "inventory.catalog.read",
+    "inventory.location.bin.read",
+    "inventory.stock.relocate"
+   ]
+  },
+  {
    "roleId": "inventoryLookupReader",
    "label": "Inventory Lookup Reader",
    "composedFunctionalRoles": [],
@@ -1476,25 +1497,6 @@
     "inventory.cycleCount.cancel",
     "inventory.cycleCount.create",
     "inventory.cycleCount.submit"
-   ]
-  },
-  {
-   "roleId": "inventoryStockRelocationOperator",
-   "label": "Inventory Stock Relocation Operator",
-   "composedFunctionalRoles": [],
-   "grantedCount": 3,
-   "operableCount": 0,
-   "blockedCount": 3,
-   "granted": [
-    "inventory.catalog.alias.read",
-    "inventory.location.bin.read",
-    "inventory.stock.relocate"
-   ],
-   "operableNow": [],
-   "grantedButInactive": [
-    "inventory.catalog.alias.read",
-    "inventory.location.bin.read",
-    "inventory.stock.relocate"
    ]
   },
   {

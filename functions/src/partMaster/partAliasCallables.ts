@@ -59,6 +59,7 @@ import {
 import { MalformedStoredRecordError } from "./partMasterRepository.js";
 import { listPartAliases } from "./partAliasReadService.js";
 import { resolveScannedPartIdentifier } from "./partAliasScanResolver.js";
+import { lookupScannedPart, validateScannerPartLookup, ScannerPartLookupInvalidError } from "./scannerPartLookup.js";
 import { parsePartId } from "./validation.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
 import type { PartId } from "./types.js";
@@ -301,6 +302,40 @@ export const resolveScannedPartIdentifierCallable = onCall(REGION, async (reques
       rawValue: d.rawValue as string,
       ...(d.manufacturerId !== undefined ? { manufacturerId: d.manufacturerId as string } : {}),
     });
+  } catch (err) {
+    throw mapError(err);
+  }
+});
+
+const CAP_CATALOG_READ = "inventory.catalog.read";
+
+/**
+ * SCANNER PART LOOKUP. The governed replacement for the scanner's client-direct `parts` reads (see
+ * scannerPartLookup.ts). Requires inventory.catalog.read -- reading the Part record is exactly what that
+ * capability is for. Alias resolution runs only for a caller who also holds inventory.catalog.alias.read,
+ * through the same canonical resolver as resolveScannedPartIdentifier above.
+ */
+export const lookupScannedPartCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  let decisions: Record<string, boolean> = {};
+  try {
+    ({ decisions } = await resolveEffectiveAccess({ principalUid: actorUid, permissionIds: [CAP_CATALOG_READ, CAP_ALIAS_READ] }));
+  } catch (err) {
+    console.error("[lookupScannedPart] capability resolution failed", err);
+    decisions = {};
+  }
+  if (decisions[CAP_CATALOG_READ] !== true) {
+    throw new HttpsError("permission-denied", "You are not authorized to look up parts.", "DENIED");
+  }
+  let parsed;
+  try {
+    parsed = validateScannerPartLookup(request.data);
+  } catch (err) {
+    if (err instanceof ScannerPartLookupInvalidError) throw new HttpsError("invalid-argument", "The scan could not be read.", "INVALID");
+    throw err;
+  }
+  try {
+    return await lookupScannedPart(parsed, { db: getFirestore(), aliasAllowed: decisions[CAP_ALIAS_READ] === true });
   } catch (err) {
     throw mapError(err);
   }

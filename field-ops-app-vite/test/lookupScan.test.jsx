@@ -9,6 +9,25 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import LookupScan from "../src/modules/scan/LookupScan.jsx";
 
+// The screen now takes ONE governed read, `lookupPart(raw) -> { catalogResult, aliasOutcome }`
+// (services/partAliasCallableClient.lookupScannedPart). These tests keep describing the two halves
+// separately, so this composes them into that one seam exactly as the server answers: a thrown catalogue
+// read is a failed read, a thrown identifier read is an internal error, and no identifier transport at
+// all is the "not switched on" state.
+const asLookup = ({ fetchParts, resolveIdentifier, ...rest }) => ({
+  ...rest,
+  lookupPart: async (raw) => {
+    const [catalogResult, aliasOutcome] = await Promise.all([
+      Promise.resolve().then(() => fetchParts()).catch(() => ({ ok: false, code: "unavailable" })),
+      resolveIdentifier
+        ? Promise.resolve().then(() => resolveIdentifier({ rawValue: raw })).catch(() => ({ errorStatus: "internal", errorDetail: null }))
+        : Promise.resolve({ errorStatus: "transport-not-ready", errorDetail: null }),
+    ]);
+    return { catalogResult, aliasOutcome };
+  },
+});
+
+
 afterEach(cleanup);
 
 const PART = {
@@ -27,7 +46,7 @@ const identifier = (outcome) => vi.fn().mockResolvedValue(outcome);
 const noIdentifierMatch = () => identifier({ result: { result: "NOT_FOUND" } });
 
 const lookUp = (fetchParts, token = "PRT-1001", resolveIdentifier = noIdentifierMatch()) => {
-  render(<LookupScan deps={{ fetchParts, resolveIdentifier }} />);
+  render(<LookupScan deps={asLookup({ fetchParts, resolveIdentifier })} />);
   fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: token } });
   fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 };
@@ -94,7 +113,7 @@ describe("Lookup (every outcome has its own words)", () => {
 
   it("starts IDLE, having read nothing", () => {
     const fetchParts = readable(PART);
-    render(<LookupScan deps={{ fetchParts }} />);
+    render(<LookupScan deps={asLookup({ fetchParts })} />);
     expect(screen.getByText(/scan a part label or barcode/i)).toBeTruthy();
     expect(fetchParts).not.toHaveBeenCalled();
   });
@@ -102,7 +121,7 @@ describe("Lookup (every outcome has its own words)", () => {
   it("an empty submission asks NEITHER question and stays IDLE", () => {
     const fetchParts = readable(PART);
     const resolveIdentifier = noIdentifierMatch();
-    render(<LookupScan deps={{ fetchParts, resolveIdentifier }} />);
+    render(<LookupScan deps={asLookup({ fetchParts, resolveIdentifier })} />);
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
     expect(fetchParts).not.toHaveBeenCalled();
     expect(resolveIdentifier).not.toHaveBeenCalled();
@@ -122,7 +141,7 @@ describe("Lookup (a missing value is a statement, not a blank)", () => {
   };
 
   it("renders a refused inventory row with its reason instead of omitting it", async () => {
-    render(<LookupScan deps={{ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), ...deniedReads }} />);
+    render(<LookupScan deps={asLookup({ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), ...deniedReads })} />);
     fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 
@@ -134,7 +153,7 @@ describe("Lookup (a missing value is a statement, not a blank)", () => {
   });
 
   it("a refused balance is NEVER rendered as zero or blank", async () => {
-    render(<LookupScan deps={{ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), ...deniedReads }} />);
+    render(<LookupScan deps={asLookup({ fetchParts: readable(PART), resolveIdentifier: noIdentifierMatch(), ...deniedReads })} />);
     fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 
@@ -150,13 +169,13 @@ describe("Lookup (a missing value is a statement, not a blank)", () => {
     // The part card renders as soon as identity resolves. Saying "could not be read" at that moment
     // would be false and alarming: nothing had been attempted yet.
     let releaseBalance;
-    render(<LookupScan deps={{
+    render(<LookupScan deps={asLookup({
       fetchParts: readable(PART),
       resolveIdentifier: noIdentifierMatch(),
       fetchBalance: vi.fn(() => new Promise((r) => { releaseBalance = () => r({ errorStatus: "transport-not-ready" }); })),
       fetchSerialized: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }),
       fetchLocations: vi.fn().mockResolvedValue({ errorStatus: "permission-denied" }),
-    }} />);
+    })} />);
     fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: "PRT-1001" } });
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 
@@ -213,7 +232,7 @@ describe("Lookup (reads only)", () => {
   });
 
   it("says so on the screen, standing, not only in a tooltip", () => {
-    render(<LookupScan deps={{ fetchParts: readable(PART) }} />);
+    render(<LookupScan deps={asLookup({ fetchParts: readable(PART) })} />);
     expect(screen.getByText(/reads only.*nothing here moves/i)).toBeTruthy();
   });
 
@@ -232,8 +251,9 @@ describe("Lookup (reads only)", () => {
     for (const b of bindings) {
       expect(b).not.toMatch(/^(create|update|delete|submit|receive|adjust|transfer|deactivate|reactivate|post|save)/i);
     }
-    // and specifically: exactly ONE thing from the alias transport, the resolve-only read
+    // and specifically: exactly ONE thing from the alias transport -- the governed scanner Part read,
+    // which answers the Part-code and identifier halves together (lookupScannedPart).
     const aliasImport = src.match(/import\s*\{([^}]*)\}\s*from\s*"[^"]*partAliasCallableClient[^"]*"/);
-    expect(aliasImport?.[1].trim()).toBe("resolveScannedIdentifier");
+    expect(aliasImport?.[1].trim()).toBe("lookupScannedPart");
   });
 });

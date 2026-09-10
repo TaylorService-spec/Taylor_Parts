@@ -16,8 +16,6 @@ const PART = "PRT-1001";
 const PART_B = "PRT-1002";
 const SERIAL_PART = "PRT-2001";
 const RUN = `v${Date.now()}`;
-const BIN = `A14${RUN.slice(-5)}`;
-const STAGE_BIN = `ST${RUN.slice(-5)}`;
 const BARCODE = `BC-${RUN}`;
 
 const balanceOf = async (persona, partId) => {
@@ -32,12 +30,19 @@ console.log(`SANDBOX SCANNER SCENARIOS -- run ${RUN}\n`);
 
 // ═════════ setup, through governed commands only ═════════
 console.log("-- setup (governed commands, admin/partsManager) --");
-const binMade = await callAs("admin", "createBin", { warehouseId: WH, code: BIN, idempotencyKey: `bin-${RUN}` });
-console.log(`   createBin ${BIN} @ ${WH}:`, binMade.ok ? binMade.result?.outcome : `${binMade.code} ${binMade.message ?? ""}`.slice(0, 90));
-const stageMade = await callAs("admin", "createBin", { warehouseId: WH, code: STAGE_BIN, idempotencyKey: `bin2-${RUN}` });
-console.log(`   createBin ${STAGE_BIN} @ ${WH}:`, stageMade.ok ? stageMade.result?.outcome : `${stageMade.code}`.slice(0, 60));
-const otherBin = await callAs("admin", "createBin", { warehouseId: WH_OTHER, code: `NB${RUN.slice(-5)}`, idempotencyKey: `bin3-${RUN}` });
-console.log(`   createBin @ ${WH_OTHER}:`, otherBin.ok ? otherBin.result?.outcome : `${otherBin.code}`.slice(0, 60));
+// BIN-P1 contract: a bin is created from its STRUCTURED attributes (area/aisle/bay/position); the server
+// derives the canonical code and a stable binId. A caller-supplied `code` is refused (code_not_accepted).
+// The human code the put-away/pick scenarios type is therefore READ BACK from the result, never invented.
+const POSITION = (Number(RUN.slice(-4)) % 900) + 1;
+async function makeBin(warehouseId, bay, idempotencyKey) {
+  const r = await callAs("admin", "createBin", { warehouseId, area: "SCN", aisle: "S", bay, position: POSITION, idempotencyKey });
+  console.log(`   createBin SCN S${bay}-${POSITION} @ ${warehouseId}:`, r.ok ? `${r.result?.outcome} ${r.result?.code}` : `${r.code} ${r.message ?? ""}`.slice(0, 90));
+  return r.ok ? r.result.code : null;
+}
+const BIN = await makeBin(WH, 1, `bin-${RUN}`);
+const STAGE_BIN = await makeBin(WH, 2, `bin2-${RUN}`);
+await makeBin(WH_OTHER, 1, `bin3-${RUN}`);
+if (!BIN || !STAGE_BIN) { console.error("setup failed: bins could not be created"); process.exit(1); }
 console.log("");
 
 // ═════════ 1. Part-code lookup ═════════

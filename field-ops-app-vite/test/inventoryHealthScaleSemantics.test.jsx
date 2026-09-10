@@ -140,7 +140,6 @@ test("every existence-proving consumer still uses the WHOLE catalogue read", () 
   // Scanner, receiving, the Work Order parts plan and the name resolver each have to be able to
   // find ANY part, not the ones a list happens to have fetched.
   for (const rel of [
-    "src/modules/scan/LookupScan.jsx",
     "src/modules/receiving/ReceiveAgainstPurchaseOrder.jsx",
     "src/modules/workOrders/WorkOrderPartsPlanEditor.jsx",
     "src/hooks/useCanonicalPartNames.js",
@@ -250,4 +249,16 @@ test("a link inside a stacked card is a real tap target", () => {
   expectOk(start >= 0, "the stack breakpoint block must be findable");
   const stackBlock = lf.slice(start, lf.indexOf("}", lf.indexOf(".fo-table--stack td a")) + 1);
   expectMatch(stackBlock, /\.fo-table--stack td a \{/);
+});
+
+test("the SCANNER finds any part by an exact governed lookup -- never a page, never a client catalogue read", () => {
+  // Lookup and Move stock answer "what is this code" through lookupScannedPart: a document GET by the
+  // scanned Part code plus the canonical identifier resolver, server-side under inventory.catalog.read.
+  // Exact reads cannot miss part 51 the way a first page can, and they need no client `parts` read,
+  // which firestore.rules refuse to a Parts Associate.
+  for (const rel of ["src/modules/scan/LookupScan.jsx", "src/modules/scan/MoveStockScan.jsx"]) {
+    const src = read(rel);
+    expectMatch(src, /lookupScannedPart/, `${rel} must use the governed scanner Part read`);
+    expectEqual(/fetchPartMaster(List|Page|ByIds)/.test(src), false, `${rel} must not read parts from the client`);
+  }
 });

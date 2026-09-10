@@ -15,7 +15,7 @@
 //
 // Mounting a filter UI over an unbounded fetch would ship the fetch-all anti-pattern with a nicer
 // front end. Making this shared reader bounded so a list got paging for free would be worse.
-import { collection, doc, getDoc, getDocs, query } from "firebase/firestore";
+import { collection, getDocs, query } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { toPartListView } from "../domain/partMasterView";
 
@@ -58,24 +58,6 @@ export async function fetchPartMasterList() {
 }
 
 /**
- * A TARGETED read of specific Parts by id, returning the same `{ ok, parts, invalid }` shape as
- * fetchPartMasterList so every consumer of that shape (buildPartLookup) works unchanged.
- *
- * Added for the BIN-P6 movement scanner, which resolves one scanned code at a time and would otherwise
- * have become an eighth surface reading the whole catalogue below. A document that does not exist is
- * simply absent -- not an error -- because "no part has this id" is a real answer to a scan.
- */
-export async function fetchPartMasterByIds(partIds) {
-  const ids = [...new Set((Array.isArray(partIds) ? partIds : []).filter((id) => typeof id === "string" && id.trim() !== "" && !id.includes("/")))];
-  try {
-    const snaps = await Promise.all(ids.map((id) => getDoc(doc(db, PARTS_COLLECTION, id))));
-    return { ok: true, ...toPartListView(snaps.filter((snap) => snap.exists()).map((snap) => ({ id: snap.id, data: snap.data() }))) };
-  } catch (err) {
-    return { ok: false, code: err && err.code === "permission-denied" ? "permission-denied" : "unavailable" };
-  }
-}
-
-/**
  * The surfaces still reading the whole `parts` collection, named rather than left implicit.
  *
  * Recorded so the count can only go down deliberately. Each entry wants a targeted read, and until it
@@ -83,7 +65,6 @@ export async function fetchPartMasterByIds(partIds) {
  */
 export const PART_CATALOGUE_WHOLE_COLLECTION_READ = Object.freeze([
   "hooks/useCanonicalPartNames",
-  "modules/scan/LookupScan",
   "modules/receiving/ReceiveAgainstPurchaseOrder",
   "modules/workOrders/WorkOrderPartsPlanEditor",
   "modules/inventoryRole/WarehouseManagerHome",

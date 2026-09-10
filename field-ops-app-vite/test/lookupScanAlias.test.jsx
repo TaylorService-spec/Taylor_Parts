@@ -10,6 +10,25 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import LookupScan from "../src/modules/scan/LookupScan.jsx";
 
+// The screen now takes ONE governed read, `lookupPart(raw) -> { catalogResult, aliasOutcome }`
+// (services/partAliasCallableClient.lookupScannedPart). These tests keep describing the two halves
+// separately, so this composes them into that one seam exactly as the server answers: a thrown catalogue
+// read is a failed read, a thrown identifier read is an internal error, and no identifier transport at
+// all is the "not switched on" state.
+const asLookup = ({ fetchParts, resolveIdentifier, ...rest }) => ({
+  ...rest,
+  lookupPart: async (raw) => {
+    const [catalogResult, aliasOutcome] = await Promise.all([
+      Promise.resolve().then(() => fetchParts()).catch(() => ({ ok: false, code: "unavailable" })),
+      resolveIdentifier
+        ? Promise.resolve().then(() => resolveIdentifier({ rawValue: raw })).catch(() => ({ errorStatus: "internal", errorDetail: null }))
+        : Promise.resolve({ errorStatus: "transport-not-ready", errorDetail: null }),
+    ]);
+    return { catalogResult, aliasOutcome };
+  },
+});
+
+
 afterEach(cleanup);
 
 const PART = {
@@ -23,7 +42,7 @@ const readable = (...parts) => vi.fn().mockResolvedValue({ ok: true, parts, inva
 const idResult = (payload) => vi.fn().mockResolvedValue(payload);
 
 const scan = (resolveIdentifier, token = BARCODE, fetchParts = readable(PART)) => {
-  render(<LookupScan deps={{ fetchParts, resolveIdentifier }} />);
+  render(<LookupScan deps={asLookup({ fetchParts, resolveIdentifier })} />);
   fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: token } });
   fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 };
@@ -129,7 +148,7 @@ describe("Barcode lookup (a second question added no way to change anything)", (
   it("asks BOTH questions on one lookup, and neither is a write", async () => {
     const fetchParts = readable(PART);
     const resolveIdentifier = idResult({ result: { result: "NOT_FOUND" } });
-    render(<LookupScan deps={{ fetchParts, resolveIdentifier }} />);
+    render(<LookupScan deps={asLookup({ fetchParts, resolveIdentifier })} />);
     fireEvent.change(screen.getByLabelText(/part code or barcode/i), { target: { value: BARCODE } });
     fireEvent.click(screen.getByRole("button", { name: /look up/i }));
 
@@ -148,7 +167,7 @@ describe("Barcode lookup (a second question added no way to change anything)", (
   });
 
   it("keeps the standing reads-only assurance", () => {
-    render(<LookupScan deps={{ fetchParts: readable(PART), resolveIdentifier: idResult({ result: { result: "NOT_FOUND" } }) }} />);
+    render(<LookupScan deps={asLookup({ fetchParts: readable(PART), resolveIdentifier: idResult({ result: { result: "NOT_FOUND" } }) })} />);
     expect(screen.getByText(/reads only.*nothing here moves/i)).toBeTruthy();
   });
 
