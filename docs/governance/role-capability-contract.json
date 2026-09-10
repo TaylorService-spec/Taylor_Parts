@@ -42,6 +42,16 @@
    "composedInto": [],
    "why": "Moves custody between locations. Assigned to the people who actually run transfers, not to every warehouse employee."
   },
+  "inventoryStockRelocationOperator": {
+   "decision": "KEEP_STANDALONE",
+   "composedInto": [],
+   "why": "Moves quantity between locations of one warehouse. Assigned per employee; placement authority is not movement authority."
+  },
+  "inventoryTransferReceiver": {
+   "decision": "KEEP_STANDALONE",
+   "composedInto": [],
+   "why": "Receive-only Transfer acceptance (e.g. a technician's truck). Functional grant, never implied by a technician title."
+  },
   "inventoryReturnsIntakeClerk": {
    "decision": "KEEP_STANDALONE",
    "composedInto": [],

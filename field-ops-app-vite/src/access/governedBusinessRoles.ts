@@ -1236,11 +1236,17 @@ export const INVENTORY_CYCLE_COUNT_RECONCILER_ROLE: Role = Object.freeze({
 // company's custody and recording where it was put are different authorities, and Decision #116 is
 // what makes that separation possible. A placement writes no ledger event, changes no quantity and
 // touches no balance, which is precisely why this Role is safe to hand out widely.
+//
+// SINCE BIN-P6 (Decision #170) A BIN IS A CUSTODY LOCATION, so this Role alone no longer completes an
+// AUTHORITATIVE put-away: moving quantity from the warehouse floor into a bin is a relocation, and that
+// authority lives in INVENTORY_STOCK_RELOCATION_OPERATOR_ROLE below (Owner ruling B1, 2026-09-10).
+// The person doing authoritative put-away holds BOTH Roles. placement.record still implies nothing
+// about movement -- placement authority is not movement authority.
 export const INVENTORY_PUT_AWAY_OPERATOR_ROLE: Role = Object.freeze({
   id: "inventoryPutAwayOperator",
   name: "Inventory Put-Away Operator",
   description:
-    "Durable least-privilege Role for stowing and staging stock: confirming a bin exists and recording that stock was placed in it. Carries exactly inventory.location.bin.read and inventory.placement.record. It confers NO authority to create or retire racking, no receiving authority, and no ability to change any quantity -- a placement records where stock is, never what there is (Decision #116). Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+    "Durable least-privilege Role for stowing and staging stock: confirming a bin exists and recording that stock was placed in it. Carries exactly inventory.location.bin.read and inventory.placement.record. It confers NO authority to create or retire racking, no receiving authority, and no ability to change any quantity or move stock between locations -- a placement records where stock was put, never what there is. Authoritative put-away into bin custody (Decision #170) additionally requires the Inventory Stock Relocation Operator Role. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
   systemSeed: true,
   compatibility: false,
   privileged: false,
@@ -1260,7 +1266,7 @@ export const INVENTORY_BIN_ADMINISTRATOR_ROLE: Role = Object.freeze({
   id: "inventoryBinAdministrator",
   name: "Inventory Bin Administrator",
   description:
-    "Durable least-privilege Role for maintaining the physical bin registry: creating, deactivating and reactivating bins within a warehouse. Carries exactly inventory.location.bin.manage and inventory.location.bin.read. A bin is a DESCRIPTIVE sub-location -- the warehouse remains the custody authority (Decision #116) -- so this Role moves no stock and changes no balance. It carries no authority to place stock into a bin. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+    "Durable least-privilege Role for maintaining the physical bin registry: creating, deactivating and reactivating bins within a warehouse. Carries exactly inventory.location.bin.manage and inventory.location.bin.read. A bin is a custody location inside its warehouse (Decision #160/#170), but administering one moves no stock and changes no balance. It carries no authority to place or relocate stock into a bin. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
   systemSeed: true,
   compatibility: false,
   privileged: false,
@@ -1268,6 +1274,51 @@ export const INVENTORY_BIN_ADMINISTRATOR_ROLE: Role = Object.freeze({
     "inventory.location.bin.manage",
     "inventory.location.bin.read",
   ],
+}) as Role;
+
+// Stock relocation operator -- moving stock WITHIN one warehouse's custody (Owner ruling B1,
+// 2026-09-10; Decision #170): warehouse floor -> bin, bin -> bin, bin -> floor, through the governed
+// relocateStock command (Scan -> Move stock).
+//
+// WHY NOT inventoryTransferOperator: Transfer is CROSS-CUSTODY authority (create/dispatch/receive/
+// cancel between warehouses and trucks). Granting it to someone so they can shelve stock would be
+// excessive, so same-warehouse relocation is its own authority and its own Role.
+//
+// Carries exactly what the Move stock scanner needs: bin.read to resolve a scanned bin label,
+// catalog.alias.read because the scanner resolves barcodes and aliases through the governed
+// resolveScannedPartIdentifier read, and stock.relocate -- the act itself. NOT placement.record
+// (put-away holds both Roles), NOT bin.manage, NOT inventory.transfer.*, NOT stock.receive, NOT
+// cycle count. `privileged: false`: it administers no access policy and cannot suppress the audit
+// event its relocation writes. DECLARING THIS OBJECT GRANTS NOTHING.
+export const INVENTORY_STOCK_RELOCATION_OPERATOR_ROLE: Role = Object.freeze({
+  id: "inventoryStockRelocationOperator",
+  name: "Inventory Stock Relocation Operator",
+  description:
+    "Durable least-privilege Role for moving stock between locations of the SAME warehouse (floor to bin, bin to bin, bin to floor) through the governed relocateStock command. Carries exactly inventory.location.bin.read, inventory.catalog.alias.read and inventory.stock.relocate. It confers NO Transfer authority (no cross-warehouse or truck movement), no placement recording, no racking administration, no receiving and no cycle-count authority, and it creates or destroys no quantity -- a relocation conserves the warehouse total. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: [
+    "inventory.location.bin.read",
+    "inventory.catalog.alias.read",
+    "inventory.stock.relocate",
+  ],
+}) as Role;
+
+// Transfer receiver -- accepting a Transfer that has arrived, and nothing else (Owner ruling B1,
+// 2026-09-10). Closes the technician over-grant: the only Role carrying inventory.transfer.receive was
+// inventoryTransferOperator, which also creates, dispatches and cancels. A technician accepting stock
+// onto their truck needs the receive step alone. A functional Role, not a technician-title grant: a
+// person holds it alongside their position Role. DECLARING THIS OBJECT GRANTS NOTHING.
+export const INVENTORY_TRANSFER_RECEIVER_ROLE: Role = Object.freeze({
+  id: "inventoryTransferReceiver",
+  name: "Inventory Transfer Receiver",
+  description:
+    "Durable least-privilege Role for accepting an in-transit Transfer at its destination (a warehouse or a technician's truck). Carries exactly inventory.transfer.receive. It confers NO authority to create, dispatch or cancel a Transfer, and no receiving, relocation or stock-adjustment authority. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: false,
+  permissions: ["inventory.transfer.receive"],
 }) as Role;
 
 // Returns intake clerk -- recording that something came back.
@@ -1662,6 +1713,8 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   inventoryCycleCountReconciler: INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
   inventoryPutAwayOperator: INVENTORY_PUT_AWAY_OPERATOR_ROLE,
   inventoryBinAdministrator: INVENTORY_BIN_ADMINISTRATOR_ROLE,
+  inventoryStockRelocationOperator: INVENTORY_STOCK_RELOCATION_OPERATOR_ROLE,
+  inventoryTransferReceiver: INVENTORY_TRANSFER_RECEIVER_ROLE,
   inventoryReturnsIntakeClerk: INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
   inventoryLookupReader: INVENTORY_LOOKUP_READER_ROLE,
   reportViewer: REPORT_VIEWER_ROLE,

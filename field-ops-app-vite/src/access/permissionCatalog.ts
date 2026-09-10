@@ -1155,8 +1155,10 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // move touching MOBILE). Reusing it for an internal shelf-to-shelf move would make every relocation
   // look like stock leaving the building.
   //
-  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role. BIN-P4 owns
-  // activation and grants; the relocation command itself is BIN-P6 work and does not exist yet.
+  // `active: false` IN THE CATALOG, and it stays so: BIN-P4 (Owner ruling B1, 2026-09-10) activates it
+  // per environment -- platform-sandbox ONLY, via config/environments.json -- and grants it through
+  // inventoryStockRelocationOperator alone. Production neither activates nor grants it. The command
+  // is relocateStock (BIN-P6, functions/src/inventoryLocation/stockRelocationCommand.ts).
   Object.freeze({
     id: "inventory.stock.relocate",
     description:

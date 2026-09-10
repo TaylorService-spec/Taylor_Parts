@@ -62,6 +62,9 @@ const DECIDED = {
   "inventory.catalog.manage": "OWNER-2026-08-21 (restored; MATRIX_OWNER_CONFLICT resolved to the decision)",
   "crm.activity.read": "OWNER-2026-08-19", "crm.activity.create": "OWNER-2026-08-19",
   "inventory.stock.receive": "EI Phase-2 grant gate",
+  // BIN-P4. The Owner fixed the carrier: inventoryStockRelocationOperator alone (plus admin/owner by
+  // derivation), deliberately NOT the Transfer operator.
+  "inventory.stock.relocate": "#178",
   // Slice 4. Granted to exactly the three roles that already hold opportunity.createSalesOrder,
   // because that capability became UNREACHABLE without these: a Sales Order is now created only
   // from an ACCEPTED Sales Agreement, so a role that can create the order but not the commitment it

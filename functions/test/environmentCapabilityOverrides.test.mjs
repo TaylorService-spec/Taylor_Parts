@@ -121,6 +121,8 @@ const SPINE_11 = [
   "inventory.location.bin.manage",
   "inventory.location.bin.read",
   "inventory.placement.record",
+  // BIN-P4 (Decision #178): same-warehouse relocation, platform-sandbox only.
+  "inventory.stock.relocate",
   "inventory.returns.intake",
   // Serialized equipment forward lifecycle, Owner-authorized 2026-08-23 for the sandbox and the
   // certification emulator. Listed separately from each other on purpose: an eligibility entry that
@@ -165,9 +167,9 @@ const SPINE_11 = [
 
 const sorted = (set) => [...set].sort();
 
-test("eligible allow-list is exactly the 91 eligible capability ids", () => {
+test("eligible allow-list is exactly the 92 eligible capability ids", () => {
   assert.deepEqual(sorted(SPINE_OVERRIDE_ELIGIBLE_IDS), [...SPINE_11].sort());
-  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 91);
+  assert.equal(SPINE_OVERRIDE_ELIGIBLE_IDS.size, 92);
 });
 
 test("sandbox project resolves the full spine override set", () => {

@@ -29,8 +29,8 @@ things and this document never fuses them into one verdict.
 - **capabilities**: 147
 - **catalogActive**: 0
 - **catalogInactive**: 147
-- **eligibleForEnvironmentActivation**: 91
-- **activatedInSomeEnvironment**: 91
+- **eligibleForEnvironmentActivation**: 92
+- **activatedInSomeEnvironment**: 92
 - **callableExports**: 48
 - **destinations**: 93
 - **destinationsHidden**: 19
@@ -53,8 +53,8 @@ Evidence of reference. **Not** proof that a callable exists, except where stated
 
 ## Environment activation
 
-Eligible for activation (allow-list in the resolver): **91**.
-Activated by at least one environment: **91**.
+Eligible for activation (allow-list in the resolver): **92**.
+Activated by at least one environment: **92**.
 
 Production is hard-blocked by role in the resolver and carries no override declaration.
 

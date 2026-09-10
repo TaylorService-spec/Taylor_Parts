@@ -61,6 +61,19 @@ export const FUNCTIONAL_ROLE_DECISIONS = Object.freeze({
     composedInto: [],
     why: "Moves custody between locations. Assigned to the people who actually run transfers, not to every warehouse employee.",
   },
+  // BIN-P4, Owner ruling B1 (2026-09-10). Relocation is a movement authority, deliberately NOT
+  // composed into put-away or any position: the person doing authoritative put-away is assigned both
+  // Roles explicitly. The receiver is the narrow Role a technician holds to accept a truck handoff.
+  inventoryStockRelocationOperator: {
+    decision: COMPOSITION.KEEP_STANDALONE,
+    composedInto: [],
+    why: "Moves quantity between locations of one warehouse. Assigned per employee; placement authority is not movement authority.",
+  },
+  inventoryTransferReceiver: {
+    decision: COMPOSITION.KEEP_STANDALONE,
+    composedInto: [],
+    why: "Receive-only Transfer acceptance (e.g. a technician's truck). Functional grant, never implied by a technician title.",
+  },
   inventoryReturnsIntakeClerk: {
     decision: COMPOSITION.KEEP_STANDALONE,
     composedInto: [],

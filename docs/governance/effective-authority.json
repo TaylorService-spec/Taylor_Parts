@@ -6,9 +6,9 @@
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 22,
+  "total": 21,
   "byStatus": {
-   "UNCLASSIFIED": 3,
+   "UNCLASSIFIED": 2,
    "DELIBERATELY_PRIVILEGED_ONLY": 10,
    "RECORDED_GAP": 9
   },
@@ -119,12 +119,6 @@
     "active": false,
     "status": "DELIBERATELY_PRIVILEGED_ONLY",
     "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
-   },
-   {
-    "capability": "inventory.stock.relocate",
-    "active": false,
-    "status": "UNCLASSIFIED",
-    "why": "no recorded decision either way -- surface before PASS"
    },
    {
     "capability": "equipment.compatibility.view",
@@ -1485,6 +1479,25 @@
    ]
   },
   {
+   "roleId": "inventoryStockRelocationOperator",
+   "label": "Inventory Stock Relocation Operator",
+   "composedFunctionalRoles": [],
+   "grantedCount": 3,
+   "operableCount": 0,
+   "blockedCount": 3,
+   "granted": [
+    "inventory.catalog.alias.read",
+    "inventory.location.bin.read",
+    "inventory.stock.relocate"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.catalog.alias.read",
+    "inventory.location.bin.read",
+    "inventory.stock.relocate"
+   ]
+  },
+  {
    "roleId": "reportAuthor",
    "label": "Report Author",
    "composedFunctionalRoles": [],
@@ -1629,6 +1642,21 @@
    "operableNow": [],
    "grantedButInactive": [
     "inventory.cycleCount.reconcile"
+   ]
+  },
+  {
+   "roleId": "inventoryTransferReceiver",
+   "label": "Inventory Transfer Receiver",
+   "composedFunctionalRoles": [],
+   "grantedCount": 1,
+   "operableCount": 0,
+   "blockedCount": 1,
+   "granted": [
+    "inventory.transfer.receive"
+   ],
+   "operableNow": [],
+   "grantedButInactive": [
+    "inventory.transfer.receive"
    ]
   },
   {

@@ -74,6 +74,7 @@ const FUNCTIONAL = new Set([
   "inventoryCycleCountCounter", "inventoryCycleCountReconciler", "inventoryTransferOperator",
   "inventoryReturnsIntakeClerk", "inventoryCatalogAdministrator", "inventoryCreateExecutor",
   "workOrderPartsPlanner", "crmActivityContributor",
+  "inventoryStockRelocationOperator", "inventoryTransferReceiver",
 ]);
 
 /**

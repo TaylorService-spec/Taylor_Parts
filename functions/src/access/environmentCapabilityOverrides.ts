@@ -198,6 +198,10 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS: ReadonlySet<PermissionId> = new Set<Pe
   "inventory.location.bin.manage",
   "inventory.location.bin.read",
   "inventory.placement.record",
+  // BIN-P4 (Owner ruling B1, 2026-09-10; Decision #170): same-Warehouse stock relocation, eligible for
+  // the SAME sandbox environments as the bin capabilities it works with. Activation is not a grant:
+  // a principal still needs inventoryStockRelocationOperator (or admin/owner by derivation).
+  "inventory.stock.relocate",
   "inventory.returns.intake",
   // SERIALIZED EQUIPMENT FORWARD LIFECYCLE. Owner-authorized 2026-08-23. Without eligibility these
   // two are permanently denied everywhere -- they are registered active:false, and the resolver
@@ -518,6 +522,10 @@ export const ENVIRONMENT_ACTIVATION_REGISTRY: ActivationRegistry = Object.freeze
         "inventory.location.bin.manage",
         "inventory.location.bin.read",
         "inventory.placement.record",
+        // BIN-P4 (Owner ruling B1, 2026-09-10), platform-sandbox ONLY. Mirrors config/environments.json,
+        // which is canonical. ACTIVATION IS NOT A GRANT: a principal without
+        // inventoryStockRelocationOperator (or admin/owner by derivation) still resolves DENY.
+        "inventory.stock.relocate",
         "inventory.returns.intake",
         // SERIALIZED EQUIPMENT FORWARD LIFECYCLE. Owner-authorized 2026-08-23, sandbox and the
         // certification emulator only. Mirrors config/environments.json, which is canonical.

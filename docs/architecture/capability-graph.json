@@ -15,8 +15,8 @@
     "capabilities": 147,
     "catalogActive": 0,
     "catalogInactive": 147,
-    "eligibleForEnvironmentActivation": 91,
-    "activatedInSomeEnvironment": 91,
+    "eligibleForEnvironmentActivation": 92,
+    "activatedInSomeEnvironment": 92,
     "callableExports": 48,
     "destinations": 93,
     "destinationsHidden": 19,
@@ -3431,18 +3431,22 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
           "functions/src/inventoryLocation/stockRelocationCommand.ts"
         ],
         "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/scanWorkflows.js"
         ],
-        "serverReferenceCount": 1,
-        "clientReferenceCount": 1,
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
-        "eligible": false,
-        "environments": []
+        "eligible": true,
+        "environments": [
+          "platform-sandbox"
+        ]
       }
     },
     {
@@ -5887,6 +5891,7 @@
     "inventory.location.bin.manage",
     "inventory.location.bin.read",
     "inventory.placement.record",
+    "inventory.stock.relocate",
     "inventory.returns.intake",
     "inventory.serializedAsset.acquire",
     "equipment.install",

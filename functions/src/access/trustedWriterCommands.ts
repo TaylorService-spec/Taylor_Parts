@@ -60,6 +60,8 @@ import {
   INVENTORY_CYCLE_COUNT_RECONCILER_ROLE,
   INVENTORY_PUT_AWAY_OPERATOR_ROLE,
   INVENTORY_BIN_ADMINISTRATOR_ROLE,
+  INVENTORY_STOCK_RELOCATION_OPERATOR_ROLE,
+  INVENTORY_TRANSFER_RECEIVER_ROLE,
   INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
   INVENTORY_LOOKUP_READER_ROLE,
   GENERAL_EMPLOYEE_ROLE,
@@ -224,6 +226,11 @@ const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze(
   // NOTHING -- it only makes them reachable by the governed, audited grantRole path.
   inventoryPutAwayOperator: INVENTORY_PUT_AWAY_OPERATOR_ROLE,
   inventoryBinAdministrator: INVENTORY_BIN_ADMINISTRATOR_ROLE,
+  // BIN-P4, Owner ruling B1 (2026-09-10). Same-warehouse relocation, and receive-only Transfer
+  // acceptance for technicians. Listed here for the reason above: a Role the writer cannot name is a
+  // Role nobody can hold. Both non-privileged; adding them grants NOTHING.
+  inventoryStockRelocationOperator: INVENTORY_STOCK_RELOCATION_OPERATOR_ROLE,
+  inventoryTransferReceiver: INVENTORY_TRANSFER_RECEIVER_ROLE,
   inventoryReturnsIntakeClerk: INVENTORY_RETURNS_INTAKE_CLERK_ROLE,
   inventoryLookupReader: INVENTORY_LOOKUP_READER_ROLE,
   generalEmployee: GENERAL_EMPLOYEE_ROLE,

@@ -50,6 +50,11 @@ const ROLE_CAPABILITIES = Object.freeze({
     "inventory.cycleCount.create", "inventory.cycleCount.submit", "inventory.cycleCount.cancel",
   ],
   inventoryCycleCountReconciler: ["inventory.cycleCount.reconcile"],
+  // BIN-P4 (Decision #178). Not yet assigned to any persona below: a grant is an employee-level act.
+  inventoryStockRelocationOperator: [
+    "inventory.location.bin.read", "inventory.catalog.alias.read", "inventory.stock.relocate",
+  ],
+  inventoryTransferReceiver: ["inventory.transfer.receive"],
 });
 
 /**
@@ -71,10 +76,10 @@ const PERSONA_ROLES = Object.freeze({
   admin: ["__adminCompatibility"],
   dispatcher: ["__dispatcherCompatibility"],
 
-  // A technician gets the read bundle and nothing else. NOTE A REAL GAP: accepting a truck handoff
-  // needs `inventory.transfer.receive`, and the only Role carrying it is inventoryTransferOperator,
-  // which also confers create/dispatch/cancel — far too much for a van. A receive-only Role is
-  // required before a technician can take a handoff, and inventing one here was out of scope.
+  // A technician gets the read bundle and nothing else. Accepting a truck handoff needs
+  // `inventory.transfer.receive`; since BIN-P4 (Decision #178) that comes from the receive-only
+  // inventoryTransferReceiver Role, granted per employee -- never from the technician title, and no
+  // longer by over-granting inventoryTransferOperator's create/dispatch/cancel.
   technician: ["inventoryLookupReader"],
 
   // The floor: look things up, stow them, count them.

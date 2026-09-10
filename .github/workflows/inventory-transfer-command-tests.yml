@@ -29,6 +29,11 @@ on:
       - "functions/test/locationOnHandAuthority.test.mjs"
       - "functions/test/binConversionReconciliation.test.mjs"
       - "functions/scripts/binConversionReconciliation.mjs"
+      # BIN-P4 (Decision #178): relocation activation and the two functional Roles.
+      - "functions/test/binP4RelocationRoles.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-transfer-command-tests.yml"
@@ -56,6 +61,11 @@ on:
       - "functions/test/locationOnHandAuthority.test.mjs"
       - "functions/test/binConversionReconciliation.test.mjs"
       - "functions/scripts/binConversionReconciliation.mjs"
+      # BIN-P4 (Decision #178): relocation activation and the two functional Roles.
+      - "functions/test/binP4RelocationRoles.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "config/environments.json"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-transfer-command-tests.yml"
@@ -126,6 +136,12 @@ jobs:
 
       - name: Bin conversion reconciliation (before = after per part; read-only script refuses production)
         run: node test/binConversionReconciliation.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: BIN-P4 relocation activation + Roles (real resolver, real registry, real command)
+        run: node test/binP4RelocationRoles.test.mjs
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
