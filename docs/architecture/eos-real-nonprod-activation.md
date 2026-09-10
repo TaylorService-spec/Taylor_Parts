@@ -24,7 +24,8 @@ What is true **now**. Everything below this section that describes an earlier mo
 | canonical frontend | **`https://verenwardeos.vercel.app`** |
 | old frontend domain | `https://taylor-parts-preview.vercel.app` — **REMOVED** from the Vercel project by the Owner |
 | EOS API | **`https://eos-api-nonprod.onrender.com`** |
-| PostgreSQL | `eos-policy-nonprod` — PostgreSQL 16, migrations `001` `002` `003` |
+| PostgreSQL | `eos-policy-nonprod` — PostgreSQL 16, `basic_256mb`, 15 GB, HA false, 0 read replicas, disk autoscaling false · migrations `001` `002` `003` |
+| Render API | `eos-api-nonprod` — `starter`, 1 instance · deploy `dep-dah5rnhsrm7s7395kgn0` at `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
 | deployed `main` | **`c1d691337c8d87bcee1a0b8b692e13a6b0081c69`** — frontend and API on the same commit |
 | tenant | `taylor-nonprod` · `tenant-6ce59be1-1979-45cd-9d17-a4969037fb25` |
 | first administrator | EOS principal `639c1970-dbdb-4bc0-af7c-118559151e2f` ← Firebase subject `ZVu3lHTP1NQhj0Am04zTAGou0dx1` |
@@ -421,11 +422,19 @@ The paid `starter` service must not be described as having the Free web-service 
 behaviour. Render's idle spin-down limitation applies to Free web services; this Blueprint does not
 select the Free plan.
 
-Both resources exist. **Their tier, disk, HA status and instance count are DECLARED here, not
-measured** — the Blueprint on `main` declares `basic-256mb`, PostgreSQL 16, `starter`, no
-`numInstances` (one), no workers, no cron; a Blueprint deploy creates exactly what it declares, but
-this session cannot open the Render dashboard to confirm nobody changed a plan by hand, and the
-database disk size is not stated in the Blueprint at all. **Actual billed amounts are not recorded here**, because
+Both resources exist, and their live configuration was **reported by the Owner from Render** on
+2026-09-10 (this session's Render MCP could not be used without a confirmed workspace, so these are
+recorded as reported, not independently read):
+
+| | live |
+|---|---|
+| PostgreSQL `eos-policy-nonprod` | PostgreSQL 16 · `basic_256mb` · **15 GB** · HA **false** · read replicas **0** · disk autoscaling **false** |
+| API `eos-api-nonprod` | `starter` · **1 instance** |
+| current deploy | `dep-dah5rnhsrm7s7395kgn0` at `c1d691337c8d87bcee1a0b8b692e13a6b0081c69` |
+| workers / cron | **0** / **0** |
+
+These match the Blueprint's declarations exactly; the 15 GB disk is the one value the Blueprint does
+not state. **Actual billed amounts are not recorded here**, because
 this session cannot read the Render account and quoting a price nobody has shown me would be a
 guess. What is recorded is the shape, which is what the Blueprint controls and what a later bill
 has to be explained by: one database, one web service, **zero** workers, **zero** cron jobs,
@@ -490,9 +499,12 @@ GET /health
 
 **Every result in this section was measured against the deployed API** at
 `https://eos-api-nonprod.onrender.com`, through the governed `POST /admin/policy` path, authenticated
-as the sandbox administrator. No SQL touched the Render database — it is unreachable from outside
-Render by design (`ipAllowList: []`). Where a proof needed a database directly, it was run on an
-isolated PostgreSQL 16 carrying the **same three migration files**, and says so.
+as the sandbox administrator. No SQL touched the Render database from this session. **Direct Render
+MCP SQL inspection currently fails because the query connector does not negotiate the TLS the
+database requires; the EOS API itself reaches PostgreSQL successfully** (`/health`: `reachable true`,
+and every result below). An earlier draft of this record called the database "unreachable by
+design" — that overstated it and is corrected. Where a proof needed a database directly, it was run
+on an isolated PostgreSQL 16 carrying the **same three migration files**, and says so.
 
 **How the session was obtained.** A real Firebase ID token for `admin@sandbox.invalid` was minted
 server-side through the repository's governed persona loader (`scripts/sandboxCredentials.mjs`) and
@@ -591,7 +603,8 @@ principal_id)`; the one-active index: `(tenant_id, principal_id, role_id, scope_
 COALESCE(scope_value, ''))` `WHERE status = 'active'`.
 
 **The second tenant was not created on Render**: tenant bootstrap is a database-side command, not an
-API operation, and this session has no access to the Render database or shell (§14). I2–I4 prove the
+API operation, and direct SQL against the Render database is not currently available (the Render MCP
+query connector does not negotiate the required TLS — §14). I2–I4 prove the
 isolation property that matters through the live API — a stated tenant the caller is not a member of
 is refused, whether or not it exists — and the registered PostgreSQL suite proves it again with two
 real tenants.
@@ -673,13 +686,68 @@ other 2 are over-reach guards that pass both before and after by design.
 
 | # | item | status | what unblocks it |
 |---|---|---|---|
-| 1 | **rendered UI acceptance** at 1440 / 1024 / 375 — the doorway label, the Delete dash, Inherit/Allow/Deny controls, forms, responsive layout | **NOT RUN** | **one human sign-in** as `admin@sandbox.invalid` in the Browser pane on `verenwardeos.vercel.app`; the rest can be driven from there |
-| 2 | second tenant `eos-isolation-proof` **on Render** | not created | Render shell or database access — tenant bootstrap is not an API operation |
+| 1 | **rendered UI acceptance** — the interactive half (mutations through the UI, reload persistence, 1024 and 375) | **PARTIAL — see §15** | the Claude window brought to the front: the Browser pane's clicks time out while it is covered |
+| 2 | second tenant `eos-isolation-proof` **on Render** | not created | a working SQL/shell path to the Render database — tenant bootstrap is not an API operation, and the Render MCP query connector does not negotiate the required TLS |
 | 3 | composite-FK SQLSTATE **on the Render database** | proved on isolated PG 16 with the same migrations instead | same |
-| 4 | a **no-code** Render restart | not performed — a code-change deploy replaced the process instead (§12.7) | Render dashboard access, if that exact form is still wanted |
+| 4 | a **no-code** Render restart | **deferred by the Owner** — a code-change deploy replaced the process instead (§12.7) | Owner authorization |
 | 5 | role bindings = 112 | not measurable | no read operation returns bindings — a read-surface gap, not a data finding |
-| 6 | actual Render tiers, disk, HA, instance count | declared, not measured (§9) | Render dashboard |
+| 6 | actual Render tiers, disk, HA, instance count | **recorded** from the Owner's Render report (§9) | — |
+| 7 | deep links on the Vercel frontend | **FINDING** — `/administration/roles-permissions` returns HTTP 404; no `vercel.json` SPA rewrite exists (Firebase Hosting has `** → /index.html`). Any full reload on a route other than `/` 404s | a one-file `vercel.json` rewrite — not made, out of this run's scope |
 
 Everything the server does has been accepted. What remains is the part only a rendered screen can
 show, and the parts only the Render account can reach.
 
+
+## 15. Rendered browser acceptance — 2026-09-10
+
+Against `https://verenwardeos.vercel.app` → `https://eos-api-nonprod.onrender.com` → Render
+PostgreSQL, signed in by the Owner. Read from the live page, not from source.
+
+### Identity and wiring — measured in the page
+
+| | |
+|---|---|
+| signed-in subject | `admin@sandbox.invalid` · uid `ZVu3lHTP1NQhj0Am04zTAGou0dx1` · the `eos-platform-sandbox` API key (read from the browser's own Firebase session store, read-only) |
+| hosts the page talked to | `verenwardeos.vercel.app`, `identitytoolkit.googleapis.com`, `eos-api-nonprod.onrender.com`, plus `firestore.googleapis.com` and `us-central1-eos-platform-sandbox.cloudfunctions.net` for the rest of the app shell (dashboard and business surfaces, not the policy panel) |
+| localhost / emulator | **none** — no such request, no `?emulator` flag |
+
+### What rendered correctly at 1440
+
+| proof | observed |
+|---|---|
+| the surface is the stored policy, not the measured reference | heading "Roles & permissions · this tenant's stored policy"; the measured model sits below it, labelled as reference |
+| roles | 47 role selectors, including **ZZ NONPROD Acceptance Role (post-fix)** — the name the API run left |
+| every Object | selecting the ZZ role renders **37** object rows under `Object / field · Create · Read · Edit · Delete` |
+| Object CRED matches the database | Sales Territory: Create ☐ · Read ☑ · Edit ☑ · Delete **—** — exactly the stored `C✗ R✓ E✓` |
+| unavailable verb | Delete renders **"—"** with no control on all 37 objects, and on every field beneath them |
+| Object expands into Fields | Sales Territory expands to **7** field rows: its 6 SYSTEM fields and the custom **ZZ NONPROD Acceptance Note (edited)** |
+| the four field facts | Created · Create → **Inherited · Deny** (object C ✗) · Created · Read → **Allow** (the stored explicit override) · Created · Edit → **Inherited · Allow** (object E ✓) · every field · Delete → **—** |
+| three-state control | every governable field cell is an Inherit / Allow / Deny select, not a checkbox |
+
+### What did NOT run, and exactly why
+
+**The interactive half — changing a value through the UI, reloading, and re-reading it — and the
+1024 and 375 passes did not complete.** Two separate things stopped it, and neither is an EOS
+defect:
+
+- **The Browser pane stopped delivering input.** Clicks timed out three times in a row with the
+  pane reporting that Claude's window may be covered by another window, and before that the
+  click-coordinate scale changed between consecutive clicks with nothing resized (×13.7, then ×1.25,
+  then ×1.0). Keyboard input (`Enter`, `Space` on a focused control) did not reach the page at all.
+  Evidence gathered through an input channel that unreliable would not be evidence.
+- **`form_input` does not reach React on a checkbox.** It set the Sales Territory Create box to
+  checked in the DOM but fired no request, because React's checkbox `onChange` is driven by the
+  click event. That was a desync caused by the tool, not a save; the page was fully reloaded
+  immediately afterwards and the stored value never changed (still `C✗`).
+
+The server-side semantics behind every one of those interactive proofs were accepted against the
+live API in §12. What remains unproven is specifically that the **rendered controls** issue those
+calls — and that the layout holds at 1024 and 375.
+
+### A finding from the attempt
+
+**Deep links 404 on the Vercel frontend.** `GET /administration/roles-permissions` → HTTP **404**.
+There is no `vercel.json`; Firebase Hosting carries an SPA rewrite (`** → /index.html`) and the
+Vercel project has no equivalent, so a full browser reload on any route other than `/` fails, and
+bookmarked or shared links do not open. In-app navigation is unaffected. Not fixed here: it is a
+frontend deployment-config change outside this run's scope.
