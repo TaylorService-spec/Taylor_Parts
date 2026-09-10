@@ -26,6 +26,10 @@ on:
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
       - "functions/test/cycleCountCommand.test.mjs"
+      # BIN-P7 (Decision #178 B4): the conversion gate and BIN eligibility.
+      - "functions/test/binCycleCountEligibility.test.mjs"
+      - "functions/src/inventoryLocation/binConversionGate.ts"
+      - "functions/src/inventoryLocation/stockRelocationCommand.ts"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-cycle-count-command-tests.yml"
@@ -44,6 +48,10 @@ on:
       - "functions/scripts/certificationWorld/executionTarget.mjs"
       - "functions/test/certificationCycleVariance.test.mjs"
       - "functions/test/cycleCountCommand.test.mjs"
+      # BIN-P7 (Decision #178 B4): the conversion gate and BIN eligibility.
+      - "functions/test/binCycleCountEligibility.test.mjs"
+      - "functions/src/inventoryLocation/binConversionGate.ts"
+      - "functions/src/inventoryLocation/stockRelocationCommand.ts"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-cycle-count-command-tests.yml"
@@ -109,6 +117,12 @@ jobs:
       - name: Cycle count command tests (create/submit/reconcile/cancel; NONE + SERIAL; WAREHOUSE + MOBILE)
         run: npm run test:cycleCountCommand
         working-directory: functions
+
+      - name: BIN-P7 Bin cycle count eligibility (conversion gate, exact-Bin expected quantity)
+        run: node test/binCycleCountEligibility.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
 
       - name: Upload emulator debug logs
         if: always()

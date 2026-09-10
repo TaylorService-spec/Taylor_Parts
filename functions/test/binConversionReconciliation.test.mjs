@@ -123,16 +123,14 @@ await check("the script refuses production by name", async () => {
   assert.match(String(threw.stderr), /production project\. Refused by name/);
 });
 
-// Gate E. P6 taught the shared location resolver BIN, and Cycle Count reuses that resolver. The count
-// fence must therefore hold at Cycle Count's OWN validation until BIN-P7 lands under an O-4 ruling --
-// counting a bin before its warehouse is converted books a positive variance for stock that is really
-// still direct, and an ADJUSTED +N would double it.
-await check("GATE E: Cycle Count still refuses a BIN location (BIN-P7 not admitted)", async () => {
-  const { validateCycleCountLocationRef } = await import("../lib/cycleCount/cycleCountValidation.js");
+// Gate E moved from SHAPE to POLICY in BIN-P7 (Decision #178 B4): Cycle Count accepts a BIN location
+// shape, and its command-time eligibility refuses a Bin whose Warehouse has not passed the conversion
+// gate -- counting before conversion books stock still recorded direct as a positive variance, and an
+// ADJUSTED +N would double it. The refusal and everything after the gate are proved in
+// test/binCycleCountEligibility.test.mjs against the production composition.
+await check("GATE E (P7): BIN is an admitted SHAPE; eligibility is the conversion-gated policy", async () => {
   const { CYCLE_COUNT_LOCATION_TYPES } = await import("../lib/cycleCount/cycleCountTypes.js");
-  assert.deepEqual([...CYCLE_COUNT_LOCATION_TYPES], ["WAREHOUSE", "MOBILE"]);
-  assert.equal(validateCycleCountLocationRef({ type: "BIN", locationId: "bin_x" }), null);
-  assert.ok(validateCycleCountLocationRef({ type: "WAREHOUSE", locationId: "WH" }));
+  assert.deepEqual([...CYCLE_COUNT_LOCATION_TYPES], ["WAREHOUSE", "MOBILE", "BIN"]);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

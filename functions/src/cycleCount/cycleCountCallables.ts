@@ -45,7 +45,8 @@ const CREATE_KEYS: ReadonlySet<string> = new Set(["partId", "location", "idempot
 const LOCATION_KEYS: ReadonlySet<string> = new Set(["type", "locationId"]);
 function validateLocationShape(loc: unknown, field: string): void {
   if (!isPlainObject(loc) || !noUnknownKeys(loc, LOCATION_KEYS)) throw invalidArg(`${field} is missing or has unknown fields.`);
-  if (loc.type !== "WAREHOUSE" && loc.type !== "MOBILE") throw invalidArg(`${field}.type is invalid.`);
+  // BIN since BIN-P7: shape only. Eligibility (active, parent resolves, Warehouse converted) is the command's.
+  if (loc.type !== "WAREHOUSE" && loc.type !== "MOBILE" && loc.type !== "BIN") throw invalidArg(`${field}.type is invalid.`);
   if (!isNonBlankString(loc.locationId)) throw invalidArg(`${field}.locationId is invalid.`);
 }
 function validateCreateRequest(data: unknown): Record<string, unknown> {

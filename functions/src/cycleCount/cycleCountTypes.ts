@@ -46,7 +46,10 @@ export const CYCLE_COUNT_SCHEMA_VERSION = 1;
 
 // Same endpoint fence as Transfer Phase 4: WAREHOUSE + MOBILE(truck) only. A cycle count at a BIN/VENDOR/
 // CUSTOMER/VIRTUAL location is out of scope (matches the reused location-resolver's own fence).
-export const CYCLE_COUNT_LOCATION_TYPES = ["WAREHOUSE", "MOBILE"] as const;
+// BIN admitted by BIN-P7 (Decision #178 B4). Admitting the TYPE is shape only: whether a particular
+// Bin may be counted is the command-time eligibility policy (cycleCountLocationEligibility.ts), which
+// fails closed until the Bin's Warehouse has passed the Bin conversion gate.
+export const CYCLE_COUNT_LOCATION_TYPES = ["WAREHOUSE", "MOBILE", "BIN"] as const;
 export type CycleCountLocationType = (typeof CYCLE_COUNT_LOCATION_TYPES)[number];
 
 // NONE + SERIAL only (LOT deferred, same posture as Receiving/Transfer).

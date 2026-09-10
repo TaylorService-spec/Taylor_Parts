@@ -14,7 +14,7 @@ import {
   type ResolvedCycleCountPart,
   type CycleCountAuditInput,
 } from "./cycleCountCommand.js";
-import { makeResolveTransferLocationActive } from "../inventoryTransfer/transferLocationResolver.js";
+import { makeResolveCycleCountLocationEligible } from "./cycleCountLocationEligibility.js";
 import {
   CycleCountCommandError,
   CycleCountIntegrityError,
@@ -38,9 +38,10 @@ function buildDeps(input: CycleCountCommandCompositionInput): CycleCountCommandD
     actor: input.actor,
     authorize: input.authorize,
     resolvePart: input.resolvePart,
-    // makeResolveTransferLocationActive resolves WAREHOUSE/MOBILE refs; its parameter type is
-    // structurally identical to CycleCountLocationRef ({ type: "WAREHOUSE" | "MOBILE", locationId }).
-    resolveLocationActive: makeResolveTransferLocationActive(input.db) as CycleCountCommandDeps["resolveLocationActive"],
+    // The governed eligibility policy: the shared WAREHOUSE/MOBILE/BIN resolver, plus -- for a BIN --
+    // the parent Warehouse's Bin conversion gate (BIN-P7). Pinned here so no caller can substitute a
+    // permissive resolver.
+    resolveLocationActive: makeResolveCycleCountLocationEligible(input.db),
     stageAudit: input.stageAudit,
     now: input.now,
   };

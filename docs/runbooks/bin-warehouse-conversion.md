@@ -71,9 +71,18 @@ state, and the reconciliation report shows it as `direct` quantity still to put 
 5. **Declare the warehouse converted** only when the report is `BALANCED` **and** `direct` is 0 for every
    part that physically lives in bins (stock deliberately kept unbinned — oversize, floor stock — stays
    `direct` and is listed by name in the completion record).
-6. **Completion record:** attach the final report output, the start/end times, the operators, and the list
-   of deliberately-unbinned and not-supported parts to the program record. That record is the evidence gate
-   E requires before BIN Cycle Count may be admitted at this warehouse.
+6. **Pass the Bin conversion gate** (BIN-P7) with the report you reviewed — note its `report sha256`:
+
+   ```bash
+   node scripts/completeBinConversion.mjs --projectId eos-platform-sandbox --warehouse <warehouseId> --start <start> --end <end> --expect-report <sha256>
+   ```
+
+   It re-runs the reconciliation and writes `warehouse_bin_conversions/<warehouseId>` = `CONVERSION_COMPLETE`
+   **only** if that exact report balances. If anything moved since, the hash differs and nothing is written —
+   reconcile and review again. Only after this may that warehouse's Bins be cycle counted
+   ([spec](../specifications/bin-cycle-count-eligibility.md)).
+7. **Completion record:** attach the final report output, the start/end times, the operators, and the list
+   of deliberately-unbinned and not-supported parts to the program record.
 
 ## Why the report is trustworthy
 
@@ -84,5 +93,6 @@ state, and the reconciliation report shows it as `direct` quantity still to put 
 
 ## Current status
 
-**REPOSITORY COMPLETE / SANDBOX READY TOOLING / PHYSICAL CONVERSION PENDING.** Blocked on preconditions
-2–6: deployment authorization, BIN-P4 activation and grants, and the onsite layout facts.
+**REPOSITORY COMPLETE / SANDBOX READY TOOLING / PHYSICAL CONVERSION PENDING.** BIN-P4 (activation + Roles) is
+merged (#1838). Still pending: the operator-run sandbox deployment, per-employee Role grants, and the onsite
+facts for the pilot aisle ([pilot worksheet](bin-phoenix-pilot-worksheet.md)).
