@@ -391,6 +391,8 @@ export {
   // lookup and alias administration have different audiences, and the read capability is registered
   // INERT and granted to nobody, so this denies for every principal until separately authorized.
   resolveScannedPartIdentifierCallable as resolveScannedPartIdentifier,
+  // The scanner's ONE governed Part read (Lookup + Move stock), replacing client-direct `parts` reads.
+  lookupScannedPartCallable as lookupScannedPart,
 } from "./partMaster/partAliasCallables";
 
 // --- Returns INTAKE (Scanner Phase Q; DECISIONS #118) ---
@@ -507,7 +509,7 @@ export {
 } from "./inventoryLocation/binCallables";
 // BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN).
 // Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation.
-export { relocateStockCallable as relocateStock } from "./inventoryLocation/stockRelocationCallables.js";
+export { relocateStockCallable as relocateStock, listStockMovementLocationsCallable as listStockMovementLocations } from "./inventoryLocation/stockRelocationCallables.js";
 
 // --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---
 // Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every

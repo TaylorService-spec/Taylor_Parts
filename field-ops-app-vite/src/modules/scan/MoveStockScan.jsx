@@ -17,9 +17,7 @@ import {
 import { binCommandClient } from "../../services/binCommandClient.js";
 import { stockMovementClient } from "../../services/stockMovementClient.js";
 import { transferCommandClient } from "../../services/transferCommandClient.js";
-import { fetchPartMasterByIds } from "../../services/partMasterQueries";
-import { resolveScannedIdentifier } from "../../services/partAliasCallableClient.js";
-import { fetchWarehouses } from "../../services/operationsQueries";
+import { lookupScannedPart } from "../../services/partAliasCallableClient.js";
 
 // SCAN · MOVE STOCK — warehouse multi-scan (BIN-P6, Decision #170).
 // Spec: docs/specifications/bin-stock-relocation-and-multi-scan.md §9.
@@ -97,12 +95,13 @@ export default function MoveStockScan({ deps }) {
   const canPlace = holds("inventory.placement.record");
   const canSendToTruck = holds("inventory.transfer.create") && holds("inventory.transfer.dispatch");
 
-  const loadWarehouses = deps?.fetchWarehouses ?? fetchWarehouses;
+  // Warehouses come from the server (listStockMovementLocations, relocate + bin.read), not a client
+  // `warehouses` read -- firestore.rules admit that only for managers, and this screen is for associates.
+  const loadWarehouses = deps?.fetchWarehouses ?? stockMovementClient.listWarehouses;
   const binClient = deps?.binClient ?? binCommandClient;
-  // TARGETED reads by id, never the whole catalogue: a warehouse scanning dozens of items must not pull
-  // every Part on every session (see PART_CATALOGUE_WHOLE_COLLECTION_READ, which this screen is not on).
-  const readParts = deps?.fetchParts ?? fetchPartMasterByIds;
-  const resolveIdentifier = deps?.resolveIdentifier ?? resolveScannedIdentifier;
+  // The scanner's ONE governed Part read (shared with Lookup): the <=3 Parts a scan names, never the
+  // whole catalogue, and never a client-direct `parts` read.
+  const lookupPart = deps?.lookupPart ?? lookupScannedPart;
   const relocate = deps?.relocate ?? stockMovementClient.relocateStock;
   const transfer = deps?.transferClient ?? transferCommandClient;
   const loadTrucks = deps?.fetchTrucks ?? null;
@@ -191,17 +190,11 @@ export default function MoveStockScan({ deps }) {
       return FEEDBACK.ACCEPTED;
     }
     try {
-      // The alias resolver answers "which part does this code belong to"; then only that part, and the
-      // code itself as a part id, are read. Both halves go into the SAME buildPartLookup Lookup uses.
-      const aliasOutcome = await Promise.resolve().then(() => resolveIdentifier({ rawValue: raw })).catch(() => ({ errorStatus: "internal" }));
-      // The transport nests its answer: { result: { result: "FOUND", partId } }. Only a FOUND alias names
-      // a part worth reading; an inactive or ambiguous one is reported by buildPartLookup as it is.
-      const aliasPartId = aliasOutcome?.result?.result === "FOUND" && typeof aliasOutcome.result.partId === "string"
-        ? aliasOutcome.result.partId
-        : null;
-      const catalogResult = await Promise.resolve()
-        .then(() => readParts([raw.trim(), ...(aliasPartId ? [aliasPartId] : [])]))
-        .catch(() => ({ ok: false, code: "unavailable" }));
+      // One governed read answers both halves (Part code + registered identifier); both go into the SAME
+      // buildPartLookup Lookup uses.
+      const { catalogResult, aliasOutcome } = await Promise.resolve()
+        .then(() => lookupPart(raw))
+        .catch(() => ({ catalogResult: { ok: false, code: "unavailable" }, aliasOutcome: null }));
       if (!alive.current) return FEEDBACK.NEUTRAL;
       const lookup = buildPartLookup({ catalogResult, aliasOutcome, token: raw });
       if (lookup.state !== LOOKUP_STATE.RESOLVED || !lookup.part) {
@@ -222,7 +215,7 @@ export default function MoveStockScan({ deps }) {
       setNotice("That scan could not be checked. Try again.");
       return FEEDBACK.REJECTED;
     }
-  }, [readParts, resolveIdentifier, setExpecting]);
+  }, [lookupPart, setExpecting]);
 
   const scanItem = useCallback((raw) => {
     const next = chain.current.then(() => processItem(raw));

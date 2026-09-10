@@ -15,6 +15,8 @@ import { stageAuditEvent } from "../access/auditEventWriter.js";
 import { makeResolveTransferPermissionThroughTxn, resolveTransferPartThroughTxn } from "../inventoryTransfer/transferCallableWiring.js";
 import { relocateStock, RelocationError } from "./stockRelocationCommand.js";
 import type { RelocationAuditInput, RelocationDeps } from "./stockRelocationCommand.js";
+import { listEligibleReceivingLocationOptions, ReceivingLocationOptionsError } from "../warehouseGovernance/receivingLocationOptionsService.js";
+import { WAREHOUSES_COLLECTION } from "../constants/collections.js";
 
 const REGION = { region: "us-central1" } as const;
 
@@ -94,5 +96,39 @@ export const relocateStockCallable = onCall(REGION, async (request) => {
     }
     console.error("[relocateStock] unexpected failure", err);
     throw new HttpsError("internal", "The move could not be completed.", { code: "RETRYABLE_TECHNICAL_FAILURE" });
+  }
+});
+
+/**
+ * STOCK MOVEMENT LOCATIONS -- the warehouses a relocation operator may choose between, from the server.
+ *
+ * Replaces Move stock's client-direct `warehouses` read, which firestore.rules admit only for
+ * admin/dispatcher and an assigned warehouse manager. REUSES the governed option builder Receiving uses
+ * (listEligibleReceivingLocationOptions): governed + ACTIVE warehouses only, sanitized to {value, label},
+ * never a raw document. Only the authorizer differs -- the caller must hold inventory.stock.relocate AND
+ * inventory.location.bin.read, the two capabilities Move stock itself needs. Relocation authority is
+ * global-scope, so this returns exactly the warehouses the command would accept. Bins stay on the
+ * existing bin.read callables (resolveBin / resolveBinToken / listBins).
+ */
+export const listStockMovementLocationsCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  const db = getFirestore();
+  try {
+    const options = await listEligibleReceivingLocationOptions(request.data ?? {}, {
+      actor: { kind: "USER", id: actorUid },
+      authorize: async (txn, actorId) =>
+        (await authorizeThroughTxn(txn, db, actorId, "inventory.stock.relocate"))
+        && (await authorizeThroughTxn(txn, db, actorId, "inventory.location.bin.read")),
+      readCandidateWarehouses: async (txn) =>
+        (await txn.get(db.collection(WAREHOUSES_COLLECTION))).docs.map((d) => ({ warehouseId: d.id, data: d.data() })),
+      runRead: (fn) => db.runTransaction(fn, { readOnly: true }),
+    });
+    return { warehouses: options.map((o) => ({ warehouseId: o.value, name: o.label })) };
+  } catch (err) {
+    if (err instanceof ReceivingLocationOptionsError) {
+      if (err.code === "PERMISSION_DENIED") throw new HttpsError("permission-denied", "You are not authorized to move stock.", { code: "DENIED" });
+      if (err.code === "INVALID_REQUEST") throw new HttpsError("invalid-argument", "That request could not be accepted.", { code: "INVALID" });
+    }
+    throw new HttpsError("unavailable", "Warehouses could not be read right now.", { code: "RETRYABLE_TECHNICAL_FAILURE" });
   }
 });

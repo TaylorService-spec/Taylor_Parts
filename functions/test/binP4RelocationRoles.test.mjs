@@ -65,9 +65,11 @@ await check("no production registry entry declares relocate", () => {
 });
 
 // ---------------------------------------------------------------- Role content
-await check("relocation Role carries exactly bin.read + alias.read + relocate", () => {
+await check("relocation Role carries exactly bin.read + catalog.read + alias.read + relocate", () => {
+  // catalog.read added by Owner ruling 2026-09-10: a movement operator must see WHICH Part the scan
+  // resolved (the governed lookupScannedPart read). Read-only.
   assert.deepEqual([...GOVERNED_BUSINESS_ROLES.inventoryStockRelocationOperator.permissions].sort(),
-    ["inventory.catalog.alias.read", "inventory.location.bin.read", RELOCATE].sort());
+    ["inventory.catalog.alias.read", "inventory.catalog.read", "inventory.location.bin.read", RELOCATE].sort());
   assert.equal(GOVERNED_BUSINESS_ROLES.inventoryStockRelocationOperator.privileged, false);
 });
 await check("receiver Role carries exactly inventory.transfer.receive", () => {
@@ -97,6 +99,11 @@ await check("relocation Role grants relocate but no Transfer create/dispatch/can
   assert.equal(decide("inventory.location.bin.manage", r), "DENY");
   assert.equal(decide("inventory.stock.receive", r), "DENY");
   assert.equal(decide("inventory.cycleCount.create", r), "DENY");
+  // Owner's negative list for the catalog.read addition: no catalog write, no adjustment authority.
+  for (const cap of ["inventory.catalog.manage", "inventory.catalog.activate", "inventory.cycleCount.submit", "inventory.cycleCount.reconcile", "inventory.cycleCount.cancel"]) {
+    assert.equal(decide(cap, r), "DENY", cap);
+  }
+  assert.equal(decide("inventory.catalog.read", r), "ALLOW", "the scanner's Part read");
 });
 await check("Put-away Role alone cannot relocate", () => {
   assert.equal(decide(RELOCATE, ["inventoryPutAwayOperator"]), "DENY");

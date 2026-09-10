@@ -1280,7 +1280,9 @@ export const INVENTORY_BIN_ADMINISTRATOR_ROLE: Role = Object.freeze({
 //
 // Carries exactly what the Move stock scanner needs: bin.read to resolve a scanned bin label,
 // catalog.alias.read because the scanner resolves barcodes and aliases through the governed
-// resolveScannedPartIdentifier read, and stock.relocate -- the act itself. NOT placement.record
+// resolveScannedPartIdentifier read, catalog.read because a movement operator must see WHICH Part the
+// scan resolved (the governed lookupScannedPart projection -- read-only, never a catalog write; Owner
+// ruling 2026-09-10), and stock.relocate -- the act itself. NOT placement.record
 // (put-away holds both Roles), NOT bin.manage, NOT inventory.transfer.*, NOT stock.receive, NOT
 // cycle count. `privileged: false`: it administers no access policy and cannot suppress the audit
 // event its relocation writes. DECLARING THIS OBJECT GRANTS NOTHING.
@@ -1288,12 +1290,13 @@ export const INVENTORY_STOCK_RELOCATION_OPERATOR_ROLE: Role = Object.freeze({
   id: "inventoryStockRelocationOperator",
   name: "Inventory Stock Relocation Operator",
   description:
-    "Durable least-privilege Role for moving stock between locations of the SAME warehouse (floor to bin, bin to bin, bin to floor) through the governed relocateStock command. Carries exactly inventory.location.bin.read, inventory.catalog.alias.read and inventory.stock.relocate. It confers NO Transfer authority (no cross-warehouse or truck movement), no placement recording, no racking administration, no receiving and no cycle-count authority, and it creates or destroys no quantity -- a relocation conserves the warehouse total. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
+    "Durable least-privilege Role for moving stock between locations of the SAME warehouse (floor to bin, bin to bin, bin to floor) through the governed relocateStock command. Carries exactly inventory.location.bin.read, inventory.catalog.read, inventory.catalog.alias.read and inventory.stock.relocate -- the two catalog reads are read-only, so a movement operator can see which Part a scan resolved. It confers NO Transfer authority (no cross-warehouse or truck movement), no placement recording, no racking administration, no receiving and no cycle-count authority, and it creates or destroys no quantity -- a relocation conserves the warehouse total. Declaring it grants nothing; a principal holds it only via a governed, audited roleAssignment.",
   systemSeed: true,
   compatibility: false,
   privileged: false,
   permissions: [
     "inventory.location.bin.read",
+    "inventory.catalog.read",
     "inventory.catalog.alias.read",
     "inventory.stock.relocate",
   ],

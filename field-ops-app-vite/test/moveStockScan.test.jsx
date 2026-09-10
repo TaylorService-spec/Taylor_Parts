@@ -27,9 +27,12 @@ function makeDeps(over = {}) {
     sessionId: "sess-test",
     scanInputDeps,
     fetchWarehouses: vi.fn().mockResolvedValue(WAREHOUSES),
-    // The targeted read: only the ids asked for come back, in the list-read shape.
-    fetchParts: vi.fn().mockImplementation(async (ids) => ({ ok: true, parts: PARTS.filter((p) => ids.includes(p.partId)), invalid: [] })),
-    resolveIdentifier: vi.fn().mockResolvedValue({ result: { result: "NOT_FOUND" } }),
+    // The governed scanner read (lookupScannedPart): only the Part the scan names, in the shapes
+    // buildPartLookup takes. The code is not a registered identifier here.
+    lookupPart: vi.fn().mockImplementation(async (raw) => ({
+      catalogResult: { ok: true, parts: PARTS.filter((p) => p.partId.toLowerCase() === String(raw).trim().toLowerCase()), invalid: [] },
+      aliasOutcome: { result: { result: "NOT_FOUND" } },
+    })),
     binClient: {
       resolveBinToken: vi.fn().mockImplementation(async ({ token }) => ({ result: "FOUND", binId: token, warehouseId: "WH-1", code: "A01-003" })),
       resolveBin: vi.fn().mockImplementation(async ({ code }) => (code === "A01-001"

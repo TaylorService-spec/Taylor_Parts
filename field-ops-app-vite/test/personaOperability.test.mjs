@@ -52,7 +52,7 @@ const ROLE_CAPABILITIES = Object.freeze({
   inventoryCycleCountReconciler: ["inventory.cycleCount.reconcile"],
   // BIN-P4 (Decision #178). Not yet assigned to any persona below: a grant is an employee-level act.
   inventoryStockRelocationOperator: [
-    "inventory.location.bin.read", "inventory.catalog.alias.read", "inventory.stock.relocate",
+    "inventory.location.bin.read", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.stock.relocate",
   ],
   inventoryTransferReceiver: ["inventory.transfer.receive"],
 });
