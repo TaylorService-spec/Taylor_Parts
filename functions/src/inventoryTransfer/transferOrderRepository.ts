@@ -24,6 +24,7 @@ import {
 } from "./transferOrderTypes.js";
 import { validateTransferLocationRef } from "./transferOrderValidation.js";
 import { isNonEmptyString, isPlainObject } from "../inventoryLedger/operationalMovementValidation.js";
+import { isOperatingCompanyIdShape } from "../ownership/operatingCompanyAuthority.js";
 
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -87,6 +88,10 @@ const STORED_KEYS = new Set([
   "schemaVersion", "partId", "trackingMode", "quantity", "origin", "destination", "serialNumbers",
   "fromWarehouseId", "toWarehouseId", "status", "version", "idempotencyKey", "actor",
   "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint", "transferOrderNumber",
+// Ownership Model v1: `operatingCompanyId` is the governed owner field (ownershipMatrix.ts), written by the
+// Owner-authorized sandbox ownership backfill of 2026-08-30. Optional and SHAPE-checked; a reader that
+// rejected it made every backfilled record "malformed", and on-hand readers skip malformed rows.
+  "sourceOperatingCompanyId", "destinationOperatingCompanyId",
 ]);
 // TO-YYYY-###### — six-digit zero-padded sequence, but not truncated once the sequence outgrows six
 // digits (see transferOrderNumbering.ts's formatTransferOrderNumber), so this stays a floor, not a cap.
@@ -98,6 +103,11 @@ export function deserializeTransferOrder(docId: string, data: unknown): Deserial
   if (!isPlainObject(data)) throw new TransferMalformedStoredRecordError("stored transfer order is not an object");
   if (data.schemaVersion !== TRANSFER_SCHEMA_VERSION) throw new TransferMalformedStoredRecordError("stored schemaVersion invalid");
   if (Object.keys(data).some((k) => !STORED_KEYS.has(k))) throw new TransferMalformedStoredRecordError("stored record has unknown field");
+  // PARTICIPATING_COMPANIES: both or neither, never a scalar owner (ownershipBackfillRules.ts).
+  const src = data.sourceOperatingCompanyId, dst = data.destinationOperatingCompanyId;
+  if ((src === undefined) !== (dst === undefined) || (src !== undefined && (!isOperatingCompanyIdShape(src) || !isOperatingCompanyIdShape(dst)))) {
+    throw new TransferMalformedStoredRecordError("stored participating companies invalid");
+  }
 
   if (!isNonEmptyString(data.partId)) throw new TransferMalformedStoredRecordError("stored partId invalid");
   if (typeof data.trackingMode !== "string" || !(TRANSFER_SUPPORTED_TRACKING_MODES as readonly string[]).includes(data.trackingMode)) {
