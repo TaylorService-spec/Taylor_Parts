@@ -77,7 +77,10 @@ nothing to change. Contact support.
 
 Open **Administration ▸ Roles & Permissions**. In the **Roles & permissions** panel you will see one
 button per Role. A Role marked **· protected** (Administrator, Owner) is part of the platform's own
-safety net — see *Warnings* below.
+safety net. Protected means three things: no other Role can be created with its key; the last person
+holding an administering Role cannot have it removed (see *Warnings*); and the power to administer comes
+from holding the Role itself, not from its grid. It does **not** lock the grid — you can change a
+protected Role's permissions like any other, and doing so never removes its ability to administer EOS.
 
 ## Step 1 — Choose a Role
 
@@ -219,8 +222,10 @@ In the expanded Object, use **Add a custom field**:
 
 The form says: *"The key … and the type … are not editable."* There is no box for either.
 
-**Retiring a field.** Set **Lifecycle** to **RETIRED** and save. EOS has no way to delete a field —
-retiring is how you take one out of use.
+**Retiring a field.** EOS has no way to delete a field. Set **Lifecycle** to **RETIRED** and save to mark
+one as no longer in use. In this release that is a label and nothing more: a RETIRED field stays listed
+on Objects with *RETIRED* in its **Lifecycle** column, still appears in the Roles & Permissions grid, and
+can be set back to **DRAFT** or **ACTIVE** at any time. It is not hidden, and no data is removed.
 
 ---
 
@@ -306,6 +311,23 @@ scrolls back to the left.
 can be left with no permissions and no holders — it then grants nothing. A custom field can be
 **RETIRED**.
 
+## Safe administration practices
+
+- **Make one change at a time, then reload to confirm it.** Grid choices save the moment you make them
+  and there is no Undo — reversing a change is a second change, and both are recorded.
+- **Remember a Role is shared.** Changing a Role changes it for everyone who holds it. To give one
+  person more, give them another Role rather than widening a Role others hold.
+- **Prefer Inherit. Use an explicit Deny only on purpose** — it stays denied even if you later open the
+  Object, which is easy to forget.
+- **Keep more than one person able to administer EOS.** EOS stops you removing the last administering
+  assignment, but it cannot help if the only administrator is unavailable.
+- **Retire rather than repurpose.** A field's Key and Type are permanent; if a field is wrong, create a
+  new one and retire the old one rather than giving the old one a new meaning.
+- **Name temporary Roles clearly, and clear them afterwards** — remove their holders and untick their
+  permissions. A Role cannot be deleted, but one with no holders and no permissions grants nothing.
+- **Never** change access by sharing a login, acting on someone else's behalf, or working around a
+  refusal.
+
 ## If something looks wrong
 
 **A person can still (or still cannot) do something in Work Orders, Inventory, Purchasing or another
@@ -318,9 +340,6 @@ EOS has stored. If it still looks wrong, note the Role, Object, field and what y
 
 **A field is Allowed but still out of reach.** Check its Object row — you will see
 **Allow · blocked by object**. Allow the action on the Object row too.
-
-**Never** try to change access by sharing a login, asking someone to act on your behalf, or working
-around a refusal.
 
 ## Support and escalation
 
@@ -372,3 +391,34 @@ permissions; renaming Objects; creating, changing and retiring custom fields; gi
   cut-over, workflow publishing, deletion, the pending workspace-label change) are named only as not
   available.
 - Training status: `COMPLETE`
+
+## Deployment close record
+
+The training-impact record required by `docs/training/README.md`.
+
+```text
+DEPLOYMENT:            EOS stored access policy — non-production (verenwardeos.vercel.app,
+                       tenant taylor-nonprod)
+AFFECTED ROLES:        Taylor EOS Administrator; Owner and General Manager (Role assignment only)
+AFFECTED WORKFLOWS:    Role and permission configuration; Object and field configuration;
+                       Role assignment and removal; viewing Workflow definitions (read-only)
+TRAINING GUIDES:       docs/training/administration-policy-and-access.md
+TRAINING REPRESENTS:   frontend 0c733704 · EOS API 44f423c9
+EFFECTIVE DATE:        2026-09-10
+MATERIAL CHANGES:      Roles, Object/field permissions, Objects, custom fields and Role
+                       assignments are now configured and stored centrally in EOS
+NEW USER ACTIONS:      create/rename Roles; set Object and Inherit/Allow/Deny field permissions;
+                       rename Objects; create, change and retire custom fields; give and remove Roles
+ACCESS BEHAVIOR:       the stored policy governs who may change the policy. It does NOT yet decide
+                       access in Work Orders, Inventory, Purchasing, Sales or any other business
+                       area; those follow the existing Security Role model until each is cut over
+LIMITATIONS:           no delete for Roles, fields or Objects; RETIRED is a label only; Workflows
+                       read-only, all five Draft; on a phone the grid returns to its left edge after
+                       each change; saving Role details collapses an expanded Object
+SUPPORT:               Taylor EOS Administrator → Verenward (formal procedure pending C1-SUPPORT-01)
+TRAINING:              COMPLETE
+VERIFIED:              2026-09-10 — Parts 1–3 performed through the deployed UI at 375 / 1024 /
+                       1440 during browser acceptance; labels, messages and authority rules checked
+                       against the source at 0c733704
+DEPLOYMENT STATE:      TECHNICALLY ACCEPTED — becomes CLOSED when the Owner merges this guide
+```
