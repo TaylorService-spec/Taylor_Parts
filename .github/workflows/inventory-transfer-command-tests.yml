@@ -22,9 +22,13 @@ on:
       - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/src/cycleCount/cycleCountExpectedQuantity.ts"
+      - "functions/src/cycleCount/cycleCountTypes.ts"
+      - "functions/src/cycleCount/cycleCountValidation.ts"
       - "functions/src/inventoryAnalyticsCallables.ts"
       - "functions/test/stockRelocationCommand.test.mjs"
       - "functions/test/locationOnHandAuthority.test.mjs"
+      - "functions/test/binConversionReconciliation.test.mjs"
+      - "functions/scripts/binConversionReconciliation.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-transfer-command-tests.yml"
@@ -45,9 +49,13 @@ on:
       - "functions/src/inventoryLocation/putAwayCommand.ts"
       - "functions/src/fulfillment/fulfillmentAvailability.ts"
       - "functions/src/cycleCount/cycleCountExpectedQuantity.ts"
+      - "functions/src/cycleCount/cycleCountTypes.ts"
+      - "functions/src/cycleCount/cycleCountValidation.ts"
       - "functions/src/inventoryAnalyticsCallables.ts"
       - "functions/test/stockRelocationCommand.test.mjs"
       - "functions/test/locationOnHandAuthority.test.mjs"
+      - "functions/test/binConversionReconciliation.test.mjs"
+      - "functions/scripts/binConversionReconciliation.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/inventory-transfer-command-tests.yml"
@@ -112,6 +120,12 @@ jobs:
 
       - name: Stock relocation (conservation, exact source, replay, serialized custody, Transfer bin endpoints)
         run: node test/stockRelocationCommand.test.mjs
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Bin conversion reconciliation (before = after per part; read-only script refuses production)
+        run: node test/binConversionReconciliation.test.mjs
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
