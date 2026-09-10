@@ -8,10 +8,16 @@
 #
 # ════════════════════ WHAT IS DELIBERATELY NOT HERE ════════════════════
 #
-# NO SECRETS, AND NO WAY TO ADD ONE BY ACCIDENT. Every value that is a credential carries
-# `sync: false`, which means Render prompts for it in the dashboard and never reads it from this
-# file. A connection string or a service-account key committed here would be in git history, which
-# outlives every rotation.
+# NO SECRETS -- AND, AS IT TURNS OUT, NO SECRET IS NEEDED. This Blueprint declares no
+# `sync: false` value at all: the environment stands up from this file alone, with nothing to paste
+# into a dashboard and nothing to remember to rotate.
+#
+# That is not a shortcut. It is what is left after asking what each value actually is. An allowed
+# ORIGIN is public. A Firebase PROJECT ID is public. Verifying an ID token needs neither a
+# service-account key nor any other credential -- see the identity block below, which records the
+# measurement. The one genuinely secret value, the database connection string, is never written
+# here by anybody: Render injects it. A connection string or a service-account key committed to
+# this file would be in git history, which outlives every rotation.
 #
 # `DATABASE_URL` is the one exception and it is not a secret in this file: it is wired
 # `fromDatabase`, so Render substitutes the INTERNAL connection string of the database declared
@@ -77,11 +83,35 @@ services:
       # The browser origins permitted to call this API. EXPLICIT, comma-separated, and never "*":
       # the API answers with one tenant's policy configuration, and a wildcard would let any page a
       # signed-in administrator visits read it. `readServiceConfig` refuses a "*" outright.
+      #
+      # Declared here rather than prompted, because an origin is not a credential. Measured from the
+      # running preview rather than assumed: taylor-parts-preview.vercel.app serves /version.json
+      # reporting environmentId `platform-sandbox`. A per-deployment Vercel URL is a DIFFERENT
+      # origin and is deliberately not allowed -- acceptance runs against this stable domain.
       - key: EOS_ALLOWED_ORIGINS
-        sync: false
-      # Identity verification. Firebase answers exactly one question -- which subject authenticated
-      # -- and no claim it returns is read as EOS authority. Supplied as a secret in the dashboard.
-      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
-        sync: false
+        value: https://taylor-parts-preview.vercel.app
+      # ════════════════════ IDENTITY: NO SERVICE-ACCOUNT KEY IS NEEDED ════════════════════
+      #
+      # Firebase answers exactly one question -- which subject authenticated -- and no claim it
+      # returns is read as EOS authority. Verifying an ID token needs the PROJECT ID and Google's
+      # PUBLIC signing certificates, fetched over HTTPS. It does not need a credential.
+      #
+      # Measured, not assumed. With GOOGLE_CLOUD_PROJECT set and no credential of any kind present,
+      # `admin.initializeApp()` succeeds and `verifyIdToken` proceeds all the way to checking the
+      # token's `kid` against the live public keys. With the variable absent it refuses outright:
+      # "Must initialize app with a cert credential or set your Firebase project ID as the
+      # GOOGLE_CLOUD_PROJECT environment variable to call verifyIdToken()."
+      #
+      # This file previously also declared GOOGLE_APPLICATION_CREDENTIALS_JSON. NOTHING READ IT.
+      # `firebase-admin` reads GOOGLE_APPLICATION_CREDENTIALS -- a FILE PATH -- and has no `_JSON`
+      # inline variant; a search of the repository finds that key in this file and in the one
+      # sentence of documentation describing this file, and nowhere else. Keeping it would have had
+      # a service-account private key pasted into an environment that never opens it: a real
+      # credential, with a real blast radius, in exchange for nothing.
+      #
+      # NON-PRODUCTION project. `eos-platform-sandbox` is the Firebase identity the deployed
+      # preview frontend actually signs into, read from config/environments.json -- the one registry
+      # the Vite build injects from. `taylor-parts` (production) and `eos-platform-certification`
+      # (Certification) must never appear here.
       - key: GOOGLE_CLOUD_PROJECT
-        sync: false
+        value: eos-platform-sandbox

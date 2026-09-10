@@ -253,7 +253,7 @@ sign-off, and this tranche is neither.
 | `PORT` | supplied by Render; `EOS_API_PORT` overrides locally. |
 | `EOS_ALLOWED_ORIGINS` | the frontend origin, comma-separated. `*` is refused. |
 | `EOS_IDENTITY_PROVIDER` | `firebase` (default). |
-| `GOOGLE_APPLICATION_CREDENTIALS` / service-account config | so `firebase-admin` can verify ID tokens. |
+| `GOOGLE_CLOUD_PROJECT` | the Firebase project whose ID tokens are accepted. **This is all identity needs.** Verifying a token requires the project id and Google's public signing certificates, fetched over HTTPS — not a service-account key. Measured: with this set and no credential present, `verifyIdToken` runs as far as checking the token's `kid`; with it absent the SDK refuses outright. |
 
 Build `npm --prefix functions ci && npm --prefix functions run build`; start
 `npm start` in `functions/` (`scripts/serveEosApi.mjs`). Migrations are handled by
