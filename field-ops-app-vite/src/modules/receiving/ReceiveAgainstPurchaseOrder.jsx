@@ -73,7 +73,10 @@ export default function ReceiveAgainstPurchaseOrder({ initialPartId = null, init
   const mountedRef = useRef(true);
   const locationRequestGenerationRef = useRef(0);
   const serialInputRefs = useRef([]);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // StrictMode note: a phantom cleanup-then-remount at initial mount must restore true here, or
+  // this flag lies "dead" for the component's whole real lifetime and silently discards every
+  // later async result (a live, reproduced bug -- see the Cycle Count North Star P1 PR history).
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   // Auto-select the queue's candidate ONCE, and only while the picker step is still showing —
   // a restart() deliberately returns to the full candidate list rather than re-looping here.
