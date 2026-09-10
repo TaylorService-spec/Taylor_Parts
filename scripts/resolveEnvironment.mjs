@@ -139,6 +139,8 @@ export const SPINE_OVERRIDE_ELIGIBLE_IDS = Object.freeze([
   'inventory.location.bin.manage',
   'inventory.location.bin.read',
   'inventory.placement.record',
+  // BIN-P4 (Decision #178), platform-sandbox only -- mirrors environmentCapabilityOverrides.ts.
+  'inventory.stock.relocate',
   'inventory.returns.intake',
   // SERIALIZED EQUIPMENT FORWARD LIFECYCLE -- mirrors environmentCapabilityOverrides.ts, whose
   // comment carries the full reasoning. Present here because the frontend bakes THIS list into the

@@ -123,6 +123,7 @@
         "inventory.location.bin.manage",
         "inventory.location.bin.read",
         "inventory.placement.record",
+        "inventory.stock.relocate",
         "inventory.returns.intake",
         "inventory.serializedAsset.acquire",
         "equipment.install",

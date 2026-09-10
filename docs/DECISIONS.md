@@ -6361,3 +6361,48 @@ A real Microsoft 365 or Google Workspace tenant binding (an administrator outsid
 the application and consents; documented in `docs/deployment/email-provider-setup.md`), any deploy, the
 `roles/secretmanager.admin` IAM grant that credential custody needs at runtime, production retention
 policy, malware scanning, and outbound reply-from-EOS.
+
+## #178 — OWNER RULING: BIN-P4 relocation activation, two functional Roles, sandbox release, P7 eligibility (2026-09-10)
+
+**Context.** BIN-P6 (#170) merged the relocation authority, one on-hand calculation and the Move stock
+multi-scan (#1833, #1835, #1836, #1837) with `inventory.stock.relocate` inert and held only by admin/owner
+by derivation. The Owner ruled the blockers that run returned (B1, B2, B4, B5). This records them; it
+rewrites no earlier decision.
+
+**B1 — activation and Roles.**
+- `inventory.stock.relocate` is activated in **platform-sandbox only**, through the per-environment
+  override (`config/environments.json` + its embedded snapshot). The catalog entry stays `active: false`.
+  **No production activation, no production grant.**
+- New functional Role **`inventoryStockRelocationOperator`** ("Inventory Stock Relocation Operator"):
+  `inventory.location.bin.read`, `inventory.catalog.alias.read` (the Move stock scanner resolves barcodes
+  and aliases through the governed `resolveScannedPartIdentifier` read), `inventory.stock.relocate`.
+  No `inventory.transfer.*`, no `inventory.stock.receive`, no `bin.manage`, no `placement.record`, no
+  cycle-count authority.
+- It is **not** added to `inventoryTransferOperator`: Transfer is cross-custody authority, and granting it
+  so someone can shelve stock is excessive.
+- `inventoryPutAwayOperator` is unchanged in content. Authoritative put-away into bin custody requires
+  **both** Roles; `placement.record` implies no movement. Stale descriptions claiming a bin is only
+  descriptive were corrected (the history that said so, #116, is not rewritten).
+- New functional Role **`inventoryTransferReceiver`**: exactly `inventory.transfer.receive`. Closes the
+  technician over-grant (receiving a truck handoff previously needed create/dispatch/cancel as well).
+- Both are functional Roles held alongside a position; a job title confers neither. Both are
+  KEEP_STANDALONE (composed into no position by default) and non-privileged.
+
+**B2 — sandbox release.** Authorized: deploy the exact main SHA containing #1833/#1835/#1836/#1837 and
+this change to `eos-platform-sandbox`, in bounded named batches with verification after each. Sandbox only.
+
+**B3 — Phoenix.** Pilot-first on one representative aisle; the full layout is not invented. Physical
+conversion waits for field facts and a passed sandbox gate.
+
+**B4 — P7 eligibility (Option A).** A warehouse's Bins become countable only after that warehouse has
+passed the governed Bin conversion gate — an established operational fact proved by reconciliation
+(`relocationNet == 0` and `aggregateAfter - aggregateBefore == explained other activity`), never an
+Administration checkbox. Reuse an existing warehouse authority if suitable; otherwise the smallest
+server-owned state (`NOT_CONVERTED` / `CONVERSION_COMPLETE`). BIN is admitted only when the Bin is valid
+and active, its parent Warehouse resolves, the parent has passed the gate, and the caller holds the
+existing Cycle Count authority. Expected quantity for a BIN is the exact Bin quantity, never the roll-up.
+Counting stays observation; reconciliation stays the only adjustment authority; blind count and SoD are
+unchanged.
+
+**B5 — Cycle Count A1/A2.** `claude/cycle-count-a1-spec` (head `f585125d`) is **not merged as-is**; it
+predates #170. It is preserved and reconciled against current main on a new branch.
