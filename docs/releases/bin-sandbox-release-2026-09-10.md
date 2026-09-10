@@ -10,11 +10,16 @@ target: eos-platform-sandbox — never taylor-parts
 
 ## 1. What the release carries
 
-**Pinned SHA: `308efd8aa62212c5135c1baedc7db459f5b7e504`** (`origin/main` after #1852). This is one coherent release: every PR below is in it, and
-nothing is deployed from a branch. If `main` moves before the deploy, anything after `308efd8aa62212c5135c1baedc7db459f5b7e504` must be docs-only
-(`git diff --stat 308efd8aa62212c5135c1baedc7db459f5b7e504 origin/main` touches only `docs/`); otherwise re-pin. `/version.json` is the evidence
+**Pinned SHA: `96f9a66a995942fe3f671feea772e1094e0badc3`** (`origin/main` after #1854). This is one coherent release: every PR below is in it, and
+nothing is deployed from a branch. If `main` moves before the deploy, anything after `96f9a66a995942fe3f671feea772e1094e0badc3` must be docs-only
+(`git diff --stat 96f9a66a995942fe3f671feea772e1094e0badc3 origin/main` touches only `docs/`); otherwise re-pin. `/version.json` is the evidence
 afterwards.
 
+> **SUPERSEDED — DO NOT DEPLOY: `308efd8aa62212c5135c1baedc7db459f5b7e504`** (the #1852 pin). It lacks #1854, so
+> `CycleCountScan`'s async start/resume discarded a genuine server result behind a React 18/19 StrictMode
+> phantom-remount bug (shared by every scan workflow), and there was no governed technician-to-truck Cycle Count
+> MOBILE read. Deploy only the pin above.
+>
 > **SUPERSEDED — DO NOT DEPLOY: `72c111b33a147ace91702e61602267b14cff8a9d`** (the #1851 pin). It lacks #1852, so a
 > technician holding the receiver Role could receive a Transfer but not see it on the handheld. Deploy only the pin above.
 
@@ -35,18 +40,21 @@ afterwards.
 | #1850 | Scanner runner scenarios 10/12 on the v2 callables | scripts |
 | #1851 | This record, first pin (superseded) | docs |
 | #1852 | Technician Transfer discovery: `listMyReceivableTransfers` (IN_TRANSIT to the caller's own truck, `inventory.transfer.receive`); TransferScan adopts it; scanner scenario 13 | Functions + Hosting + scripts |
+| #1854 | Cycle Counts North Star P1: fixes the React 18/19 StrictMode async-remount bug across every scan workflow (a real, live-reproduced defect, not a design gap); confirms handheld already reaches Cycle Counts through `WarehouseShell`/`ScanWorkspace` at 320/375/390/414 (no routing change needed); adds `getCycleCountAssignedMobileLocation` — a governed technician→truck MOBILE read reusing the existing `inventory.cycleCount.create`/`.submit` capability pair and the existing `readAssignedMobileLocation` truck resolver (no new capability, no new Role, no Rules change) | Functions + Hosting |
 
 **Live sandbox before this release:** `5ddb9e4a` (buildTime 2026-09-07T16:51:52Z).
 
-**Rules and indexes: no change.** `git diff 5ddb9e4a 308efd8aa62212c5135c1baedc7db459f5b7e504 -- firestore.rules field-ops-app-vite/firestore.rules firestore.indexes.json firebase.json`
+**Rules and indexes: no change.** `git diff 5ddb9e4a 96f9a66a995942fe3f671feea772e1094e0badc3 -- firestore.rules field-ops-app-vite/firestore.rules firestore.indexes.json firebase.json`
 is empty. The release is **Functions + Hosting only**; no Rules or index deploy is needed or authorized by this record.
 `listCycleCountSheets` is one equality (`schemaVersion == 2`) ordered by document id — served by the automatic
 single-field index. `listMyReceivableTransfers` is three equalities (`destination.type`, `destination.locationId`,
 `status`) ordered by document id — also served by automatic single-field indexes; no composite index is added.
+`getCycleCountAssignedMobileLocation` performs no query of its own — it reads one `users/{uid}` document and calls
+the existing `readAssignedMobileLocation` resolver (already indexed for #1852) — no new index is needed.
 
 **Release order.** Functions first, then Hosting (the governed script's own order). The new client calls the v2
-callables, `lookupScannedPart` and `listMyReceivableTransfers`; Hosting first would show screens whose callables do
-not exist yet.
+callables, `lookupScannedPart`, `listMyReceivableTransfers` and `getCycleCountAssignedMobileLocation`; Hosting first
+would show screens whose callables do not exist yet.
 
 ## 2. Operator commands
 
@@ -56,10 +64,10 @@ check out over it. Use a clean release worktree instead:
 ```powershell
 cd D:\Taylor_Parts
 git fetch origin
-git worktree add D:\Taylor_Parts-release 308efd8aa62212c5135c1baedc7db459f5b7e504
+git worktree add D:\Taylor_Parts-release 96f9a66a995942fe3f671feea772e1094e0badc3
 cd D:\Taylor_Parts-release
 git status --short        # must be empty
-git rev-parse HEAD        # must equal 308efd8aa62212c5135c1baedc7db459f5b7e504
+git rev-parse HEAD        # must equal 96f9a66a995942fe3f671feea772e1094e0badc3
 ```
 
 Then run the governed sandbox refresh from that worktree (Functions + Hosting). Verify (read-only):
@@ -68,7 +76,7 @@ Then run the governed sandbox refresh from that worktree (Functions + Hosting). 
 curl -s https://eos-platform-sandbox.web.app/version.json
 ```
 
-`commit` must equal `308efd8aa62212c5135c1baedc7db459f5b7e504`.
+`commit` must equal `96f9a66a995942fe3f671feea772e1094e0badc3`.
 
 ```bash
 npx firebase functions:list --project eos-platform-sandbox --json
@@ -77,7 +85,8 @@ npx firebase functions:list --project eos-platform-sandbox --json
 **Must be present:** `relocateStock`, `lookupScannedPart`, `listStockMovementLocations`, `createCycleCountSheet`,
 `openCycleCountLine`, `submitCycleCountLine`, `reconcileCycleCountLine`, `cancelCycleCountLine`,
 `cancelCycleCountSheet`, `closeCycleCountSheet`, `listCycleCountSheets`, `getCycleCountSheet`,
-`createTransferOrder`, `receiveTransferOrder`, `listMyReceivableTransfers` and the bin callables.
+`getCycleCountAssignedMobileLocation`, `createTransferOrder`, `receiveTransferOrder`, `listMyReceivableTransfers`
+and the bin callables.
 
 **Retire the v1 functions.** #1848 no longer exports `createCycleCount`, `submitCycleCount`, `reconcileCycleCount`,
 `cancelCycleCount`. A Functions deploy does not delete a function that is merely unexported, so the operator deletes
@@ -97,6 +106,7 @@ them (distinct `ccs_` prefix and `schemaVersion == 2`). Certification is frozen 
 |---|---|---|---|
 | `partsAssociate` | `inventoryStockRelocationOperator` | Move stock + scanner catalogue read (catalog.read now in the Role); already holds `inventoryPutAwayOperator` | *record* |
 | `technician` | `inventoryTransferReceiver` | receive-only truck handoff; also authorizes listing the IN_TRANSIT Transfers bound for their own truck | *record* |
+| `technician` | `inventoryCycleCountCounter` (only if this persona is also exercising Cycle Count MOBILE acceptance) | grants exactly `inventory.cycleCount.create`/`.submit`/`.cancel` — the same pair `getCycleCountAssignedMobileLocation` requires; carries no reconcile authority | *record* |
 | `partsManager` | nothing | stays put-away-only; holds Cycle Count reconcile (reviewer) | — |
 | `warehouseManager` | nothing | `inventoryTransferOperator` → custody-boundary persona; no counter authority (#111) | — |
 
@@ -108,7 +118,10 @@ functional Role, never by job title.
 persona's `users/{uid}.technicianId`, and exactly one ACTIVE `trucks` document whose `assignedDriverEmployeeId`
 equals it. Scanner scenario 13 reports the truck it resolved; if it reports "No active truck is assigned", the
 Truck Registry assignment is the missing input — record it rather than working around it. Record the technician
-id and the truck's `locationId` in §7.
+id and the truck's `locationId` in §7. **The same truck resolution now also gates Cycle Count MOBILE** (#1854): a
+technician with `inventoryCycleCountCounter` but no active truck sees a truthful "No active truck is assigned to
+you" state, never a company-wide truck picker; more than one active assignment fails closed (visible error, never
+picks one) rather than silently choosing a truck.
 
 ## 4. Quick Gate
 
@@ -136,6 +149,15 @@ node scripts/runSandboxScannerScenarios.mjs
   increment, serial identity and duplicate refusal, zero quantity, one failed line not erasing the others, retry
   idempotent, exact bin lineage, line-level discrepancy after submit — each proved in `cycleCountScan.test.jsx` /
   `cycleCountsBlindReview.jsx` and checked on the device.
+- **Cycle Count North Star P1 (#1854).** `cycleCountAssignedMobileLocation.test.mjs` (12/12, Firestore emulator):
+  counter authority and truck assignment are two independent facts — no counter authority + assigned truck →
+  `PERMISSION_DENIED`; counter authority + no technician link → `TECHNICIAN_IDENTITY_UNAVAILABLE`; counter
+  authority + zero active trucks → `NO_TRUCK_ASSIGNMENT`; counter authority + more than one active truck →
+  `TRUCK_ASSIGNMENT_AMBIGUOUS` (fails closed, never picks one); counter authority + exactly one active truck →
+  returns that truck only. Static fence assertions in the same file confirm no new Firestore Rule, no new client
+  trucks-collection browse, and no capability id beyond the existing `CYCLE_COUNT_CAPABILITY.create`/`.submit`
+  pair. Separately, `cycleCountScan.test.jsx`'s new "async result survives StrictMode's phantom
+  mount/unmount/remount" group (3 tests) proves the async start/resume fix: reverting it reproduces 2/2 failures.
 
 ## 5. Handheld pass (320 / 375 / 390 / 414)
 
@@ -166,19 +188,55 @@ node scripts/runSandboxScannerScenarios.mjs
 - [ ] submit → per-line outcomes; a refused line keeps its reason and the others stay submitted; "Try again" only for technical failures;
 - [ ] offline (airplane mode) → the count queues; back online → it submits once;
 - [ ] reload mid-count → the sheet resumes from the server (A4), counted lines shown as counted;
+- [ ] start a sheet, leave the screen mid-count, come back → the workspace reaches ACTIVE again with the prior
+      submitted lines intact (the async start/resume result is not silently discarded — #1854's StrictMode fix);
 - [ ] as `partsManager`, Inventory → Cycle Counts lists the sheet; the line shows expected / counted / variance; approve or reject with a reason; the counter cannot approve their own material variance;
 - [ ] the review workspace and sheet detail fit without the page scrolling horizontally.
+
+**Cycle Count North Star P1 — MOBILE technician flow (#1854)** — signed in as `technician` holding
+`inventoryCycleCountCounter`, Scan → Cycle count, at each width:
+
+- [ ] with exactly one ACTIVE truck assigned: the counter workspace shows only that truck (no company-wide truck
+      picker), Start reaches an active sheet, sticky header + "Scanner ready" line are visible, unsubmitted lines
+      read "Hidden until submitted" with no expected/variance number anywhere in the DOM before their own submit;
+- [ ] with no active truck assigned: a truthful "No active truck is assigned to you" state, no Start control;
+- [ ] with more than one active truck assigned (seed a second `trucks` doc for the same `assignedDriverEmployeeId`):
+      a visible fail-closed message, never a truck picker and never a silently-chosen truck;
+- [ ] as `partsAssociate`/warehouse persona: the existing manual BIN/Warehouse Start/Resume form is unchanged —
+      the MOBILE truck path is additive, not a replacement;
+- [ ] manager review reached live at 390: Approve/Reject reachable without horizontal scroll, SoD disabled state
+      shown on a self-submitted variance, next-unresolved-variance scroll-into-view after a decision.
 
 ## 6. Recorded, not changed
 
 - **Technician receive — closed by #1852.** The handheld no longer depends on the Rules-gated client
   `transfer_orders` read for a receive-only technician; it uses the governed `listMyReceivableTransfers` read. Rules
   are unchanged, and principals who dispatch keep the existing shared read.
+- **Technician Cycle Count MOBILE authority — closed by #1854.** A prior draft of this PR's own body claimed no
+  governed technician-to-truck assignment existed anywhere in the codebase. That claim was stale/wrong: #1852's
+  `readAssignedMobileLocation` resolver already existed and is reused unchanged by
+  `getCycleCountAssignedMobileLocation`, composed with the existing Cycle Count counter capability pair. No new
+  authority, no new Rules, no client-side all-truck browse.
+  Corrected in the PR body and here.
+- **Async start/resume — closed by #1854.** React 18/19 StrictMode's development-only phantom
+  mount→unmount→remount at initial mount permanently zeroed the `alive` ref used by every scan workflow's
+  stale-response guard, silently discarding real server results (create/get Cycle Count sheet included). Fixed in
+  the shared pattern across `CycleCountScan.jsx`, `LookupScan.jsx`, `MoveStockScan.jsx`, `PickScan.jsx`,
+  `PutAwayScan.jsx`, `ReturnIntakeScan.jsx`, `TransferScan.jsx` and `ReceiveAgainstPurchaseOrder.jsx` — not a
+  Cycle-Count-only patch. Real unmounts still discard in-flight results; only the StrictMode phantom cycle no
+  longer does.
+- **Handheld routing — corrected, not changed.** A prior draft of this PR's own body claimed <640px routes to a
+  `WarehouseShell` that does not compose Cycle Counts, and that the handheld path was unreachable. Live browser
+  verification at 320/375/390/414 found `WarehouseShell` already composes `CycleCountScan` via `ScanWorkspace`;
+  no routing code changed. Corrected in the PR body and here.
 - **Phoenix.** The Phoenix bin conversion needs on-site facts (bin layout, labels, counts) that are not in the
   repository; nothing here invents them. Tooling and runbook: #1837.
 
 ## 7. Result
 
-*To be filled in after the operator deploy:* `/version.json` commit, `functions:list` evidence (v2 present, v1 four
-gone, `listMyReceivableTransfers` present), grant idempotency keys and employee ids, the technician's id and truck
-`locationId`, both runners' output, handheld notes. Training follows only after the gate passes.
+*To be filled in after the operator deploy:* `/version.json` commit (must read
+`96f9a66a995942fe3f671feea772e1094e0badc3`), `functions:list` evidence (v2 present, v1 four gone,
+`listMyReceivableTransfers` present, `getCycleCountAssignedMobileLocation` present), grant idempotency keys and
+employee ids, the technician's id and truck `locationId` (and, if Cycle Count MOBILE is exercised, confirmation of
+exactly one ACTIVE truck assignment for that technician), both runners' output, handheld notes including the
+Cycle Count MOBILE technician checklist above. Training follows only after the gate passes.
