@@ -125,10 +125,15 @@ test("verifyIdToken needs the project id and NO credential — measured, not ass
 
 // ============================ the rest of the contract ============================
 
-test("no wildcard origin, and the allowed origin is the real preview domain", () => {
+test("no wildcard origin, and the allowed origin is the stable non-production domain", () => {
+  // Renamed 2026-09-10 from taylor-parts-preview.vercel.app. This assertion is pinned to the exact
+  // string on purpose: the API compares a browser's Origin header against it, so a value that has
+  // drifted from the Vercel project's real hostname does not degrade gracefully -- it refuses
+  // every call the application makes, with a CORS error that names neither side of the mismatch.
   const v = envOf("EOS_ALLOWED_ORIGINS");
-  assert.equal(v.value, "https://taylor-parts-preview.vercel.app");
+  assert.equal(v.value, "https://verenwardeos.vercel.app");
   assert.doesNotMatch(v.value, /\*/, "readServiceConfig refuses a '*' anyway; do not send one");
+  assert.doesNotMatch(v.value, /,/, "one stable origin, not a list that has quietly grown");
 });
 
 test("this environment is non-production, and says so in the process, not just in names", () => {

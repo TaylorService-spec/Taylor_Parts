@@ -36,8 +36,8 @@ No deployable content differs from `056743d4`.
 
 | | |
 |---|---|
-| project | `taylor-parts-preview` (team `verenward`) |
-| domain | `https://taylor-parts-preview.vercel.app` |
+| project | team `verenward` |
+| domain | `https://verenwardeos.vercel.app` — **renamed 2026-09-10** from `taylor-parts-preview.vercel.app` |
 | deployed identity | `/version.json` → `commit 226a321`, `environmentId platform-sandbox`, `environmentRole sandbox`, built `2026-09-10T02:09:52Z` |
 
 Read from the running site, not from a dashboard screenshot. The build tracked `main` on its own:
@@ -47,6 +47,16 @@ happen *after* the environment variable is set, because Vite inlines `VITE_*` at
 
 **`VITE_EOS_API_BASE_URL` is still not set in this build.** Every Administration policy surface
 therefore reports NOT CONFIGURED, which is the honest state while no API exists.
+
+> **The renamed hostname does not serve the application yet.** Measured 2026-09-10:
+> `https://verenwardeos.vercel.app` answers `404` with `DEPLOYMENT_NOT_FOUND`, while
+> `https://taylor-parts-preview.vercel.app` still answers `200`. The governed configuration in this
+> repository has been moved to the new name because that is the declared intent, and the allowlist
+> is the one place a stale origin causes a total, silent failure rather than a partial one — but
+> **until the new hostname is attached to a deployment, an application served from the old domain
+> will be refused by CORS.** The two must cut over together. `EOS_ALLOWED_ORIGINS` is
+> comma-separated and could carry both across the transition; that widens a security boundary, so
+> it is not done here without being asked for.
 
 ### Render — DOES NOT EXIST, and could not be created from here
 
@@ -104,8 +114,8 @@ the **project id**. So:
 - `GOOGLE_CLOUD_PROJECT` — **declared with its value**, `eos-platform-sandbox`, rather than
   prompted. A Firebase project id is public, and this is the one value identity cannot run without;
   leaving it to be typed into a dashboard invites a typo in exactly the wrong place.
-- `EOS_ALLOWED_ORIGINS` — **declared with its value**, `https://taylor-parts-preview.vercel.app`,
-  for the same reason. An origin is not a credential.
+- `EOS_ALLOWED_ORIGINS` — **declared with its value**, `https://verenwardeos.vercel.app`, for the
+  same reason. An origin is not a credential.
 
 The Blueprint now declares **no `sync: false` value at all**. The environment stands up from the
 file alone: nothing to paste, nothing to remember to rotate. The one genuinely secret value — the
@@ -182,7 +192,7 @@ $ curl /health
 |---|---|
 | `npm start` — the Blueprint's `startCommand` | starts, binds `PORT` |
 | health separates PROCESS / REACHABLE / MIGRATED | `reachable: true`, `migrated: true`, `migrations: 3` |
-| CORS, real Vercel origin `https://taylor-parts-preview.vercel.app` | echoed, with `Vary: Origin` and `Cache-Control: no-store` |
+| CORS, the then-current Vercel origin `https://taylor-parts-preview.vercel.app` | echoed, with `Vary: Origin` and `Cache-Control: no-store` |
 | CORS, unlisted origin `https://evil.example` | **no** `Access-Control-Allow-Origin` — refused |
 | wildcard | never emitted; `readServiceConfig` refuses a `*` outright |
 | unauthenticated `POST /admin/policy` | `401 UNAUTHENTICATED` before any policy read |
