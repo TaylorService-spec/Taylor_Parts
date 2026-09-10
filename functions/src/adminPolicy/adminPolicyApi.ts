@@ -566,6 +566,11 @@ async function updateRoleMetadata(
   if (name === null && description === undefined) {
     throw new PolicyValidationError("nothing to update");
   }
+  // An identical rename is not a mutation: no write, no audit event. See policyCommands.ts,
+  // "A CHANGE THAT CHANGES NOTHING IS NOT A MUTATION".
+  if ((name ?? role.name) === role.name && (description === undefined ? role.description : description) === role.description) {
+    return role;
+  }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const updated = await tx.updateRole(role.id, {

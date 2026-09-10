@@ -99,6 +99,31 @@ function validCredOverride(value: unknown): CredOverride {
   return Object.freeze(out);
 }
 
+// ════════════════════ A CHANGE THAT CHANGES NOTHING IS NOT A MUTATION ════════════════════
+//
+// Every command below used to open a transaction, write, bump access versions and append an audit
+// event whether or not anything had changed. Measured against the deployed non-production API: an
+// identical `updateRole`, `updateObjectMetadata`, `updateCustomFieldMetadata`, `setObjectPermission`
+// and `setFieldPermissionOverride` EACH wrote an audit event whose only difference was `updatedAt`.
+// The two permission commands also bumped the access version of every holder of the Role, forcing
+// each of them to re-resolve authority that had not moved.
+//
+// An audit trail that records edits nobody made cannot be trusted about the ones they did, and the
+// rule was already decided: Ruling C made an identical role assignment idempotent, and acceptance
+// requires that an identical no-op write no mutation event. `assignRole` was the only command that
+// honoured it. Now they all do -- by returning the current record BEFORE any transaction opens, so
+// there is nothing to roll back and nothing to audit.
+
+/** Do two CRED shapes -- complete sets or partial overrides -- say the same thing about every verb? */
+const sameVerbs = (a: CredOverride | CredSet | null | undefined, b: CredOverride | CredSet): boolean =>
+  CRED_VERBS.every(
+    (verb) => (a as Partial<Record<CredVerb, boolean>> | null | undefined)?.[verb] === (b as Partial<Record<CredVerb, boolean>>)[verb],
+  );
+
+/** Would applying this patch leave every named value exactly as it is? Patches here are flat scalars. */
+const patchChangesNothing = (current: object, patch: object): boolean =>
+  Object.entries(patch).every(([key, value]) => (current as Record<string, unknown>)[key] === value);
+
 const auditBase = (actor: AdminActor, action: string, targetKind: string, targetId: string, reason: string | null) => ({
   action,
   actorUid: actor.uid,
@@ -279,6 +304,12 @@ export async function updateFieldDefinition(
   if (input.reportable !== undefined) patch.reportable = input.reportable === true;
   if (input.sensitivity !== undefined) patch.sensitivity = input.sensitivity;
   if (input.lifecycle !== undefined) patch.lifecycle = input.lifecycle;
+  // A request that names only what this command cannot express -- `key`, `dataType` -- used to reach
+  // the transaction with an empty patch, answer 200, and audit an "update" whose only change was
+  // `updatedAt`. The caller was told their key change succeeded. `updateRole` and
+  // `updateObjectMetadata` already refused this; now all three say the same thing.
+  if (Object.keys(patch).length === 0) throw new PolicyValidationError("nothing to update");
+  if (patchChangesNothing(current, patch)) return current;
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const updated = await tx.updateField(fieldId, patch);
@@ -341,6 +372,7 @@ export async function updateObjectMetadata(
   if (input.labelPlural !== undefined) patch.labelPlural = input.labelPlural;
   if (input.description !== undefined) patch.description = input.description;
   if (Object.keys(patch).length === 0) throw new PolicyValidationError("nothing to update");
+  if (patchChangesNothing(object, patch)) return object;
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const updated = await tx.updateObject(object.id, patch);
@@ -424,6 +456,9 @@ export async function setObjectPermission(
 
   const before = (await repo.listObjectPermissions(actor.tenantId, [roleId]))
     .find((p) => p.objectId === object.id) ?? null;
+  // Only an EXISTING row can be re-stated. An absent row and an explicit all-false row resolve alike
+  // today but are different stored facts, so writing the first time is a real change.
+  if (before && sameVerbs(before.cred, cred)) return before;
   const holders = await principalsHolding(repo, actor.tenantId, roleId);
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
@@ -457,6 +492,9 @@ export async function setFieldPermissionOverride(
   const override = validCredOverride(input.override);
 
   const before = (await repo.listFieldOverrides(actor.tenantId, [roleId])).find((o) => o.fieldId === fieldId) ?? null;
+  // Removing a row that is not there, or re-stating the one that is, changes nothing.
+  const removing = Object.keys(override).length === 0;
+  if (removing ? before === null : before !== null && sameVerbs(before.override, override)) return;
   const holders = await principalsHolding(repo, actor.tenantId, roleId);
 
   await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
