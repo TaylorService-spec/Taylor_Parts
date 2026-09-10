@@ -7618,10 +7618,10 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 }
 
 .fin-scorecard-section { padding: var(--space-4) 0 var(--space-2); }
-.fin-scorecard { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 2px solid var(--color-text-primary); }
-.fin-scorecard--aging { grid-template-columns: repeat(5, 1fr); }
-.fin-scorecard--customer { grid-template-columns: repeat(4, 1fr); }
-.fin-scorecard__slot { padding: 12px 18px; border-right: 1px solid var(--color-border); }
+.fin-scorecard { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 2px solid var(--color-text-primary); }
+.fin-scorecard--aging { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.fin-scorecard--customer { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fin-scorecard__slot { padding: 12px 18px; border-right: 1px solid var(--color-border); min-width: 0; container-type: inline-size; }
 
 .fin-scorecard__slot:last-child { border-right: none; }
 
@@ -7732,13 +7732,23 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 /* 375 recomposition: scorecards become 2-up grids; the rail stacks under the work column. */
 @media (max-width: 640px) {
-  .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer { grid-template-columns: 1fr 1fr; }
+  .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fin-scorecard__slot { padding: 12px; }
   /* minmax(0, 1fr), not 1fr: a bare 1fr track cannot shrink below its content's
      intrinsic width (min-width:auto), so a wide table forced the WHOLE DOCUMENT to
      scroll sideways at 375 instead of scrolling inside .ns-table-wrap. */
   .fin-overview-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
-  .fin-figure__value { font-size: 22px; }
+  /* .fin-figure__value's size now comes from the container-query clamp below, which
+     already accounts for this narrower card — a fixed override here would just fight it. */
+}
+
+/* Between 640 and 1024, six columns no longer leaves enough width per card for the
+   container-query clamp to reach a readable size before its floor — three columns
+   (two rows) keeps each card wide enough that the clamp still does the scaling. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .fin-scorecard, .fin-scorecard--aging, .fin-scorecard--customer, .fin-scorecard--five {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* Financials Wave UX-2: gated primary action slot (design: dark action button; disabled
@@ -7830,7 +7840,7 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 /* F8. Page 07's five-figure summary — one row of five, the same ribbon shape the A/R
    aging strip already uses at this width. (A three-column grid wrapped 3+2 and left a
    ruled empty cell, which reads as a missing sixth figure.) */
-.fin-scorecard--five { grid-template-columns: repeat(5, 1fr); }
+.fin-scorecard--five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 /* F11. Dimension vocabulary that is NOT a control: the basis chip, quieted. No hover, no
    pointer, no selected state — nothing that reads as clickable. */
@@ -7943,8 +7953,15 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fin-scorecard__slot { padding-block: 16px; }
 .fin-figure__value {
   color: var(--color-brand-secondary);
-  font-size: 32px;
+  width: 100%;
+  min-width: 0;
+  /* Scales to the card's own width (via container-type: inline-size on .fin-scorecard__slot),
+     not just the viewport — 2rem matches the previous fixed 32px so 1440 is unchanged. */
+  font-size: clamp(0.95rem, 23cqi, 2rem);
   line-height: 1.15;
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Controls must read as controls on white. */
@@ -7955,7 +7972,8 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 
 @media (max-width: 640px) {
   .fin-scorecard__slot { padding: 14px 10px; }
-  .fin-figure__value { font-size: 24px; }
+  /* Font size comes from the container-query clamp above; the reduced padding here
+     just gives the card more room, which the clamp then scales into automatically. */
 }
 
 /* ==========================================================================
