@@ -31,6 +31,7 @@ import {
   LEGACY_SOURCE_TYPE,
 } from "./receivingTypes.js";
 import { validateReceivingOrderInput } from "./receivingValidation.js";
+import { isOperatingCompanyIdShape } from "../ownership/operatingCompanyAuthority.js";
 
 // The injected idempotency store is the ledger foundation's generic { read, create } doc seam.
 export type ReceivingIdempotencyStore = LedgerIdempotencyStore;
@@ -150,6 +151,10 @@ function isPositiveFiniteNumber(v: unknown): v is number {
 const STORED_KEYS = new Set([
   "schemaVersion", "receivingId", "source", "receivingLocation", "status", "version", "lines", "idempotencyKey",
   "actor", "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint", "receivingOrderNumber",
+// Ownership Model v1: `operatingCompanyId` is the governed owner field (ownershipMatrix.ts), written by the
+// Owner-authorized sandbox ownership backfill of 2026-08-30. Optional and SHAPE-checked; a reader that
+// rejected it made every backfilled record "malformed", and on-hand readers skip malformed rows.
+  "operatingCompanyId",
 ]);
 // Both namespaces. `rcvc_` (canonical, target-scoped) and `rcv_` (legacy, key-scoped) share this
 // one collection and are provably disjoint by prefix -- a canonical id can never equal a legacy one.
@@ -173,6 +178,7 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
   if (!isPlainObject(data)) throw new MalformedStoredRecordError("stored receiving order is not an object");
   if (data.schemaVersion !== RECEIVING_SCHEMA_VERSION) throw new MalformedStoredRecordError("stored schemaVersion invalid");
   if (Object.keys(data).some((k) => !STORED_KEYS.has(k))) throw new MalformedStoredRecordError("stored record has unknown field");
+  if (data.operatingCompanyId !== undefined && !isOperatingCompanyIdShape(data.operatingCompanyId)) throw new MalformedStoredRecordError("stored operatingCompanyId invalid");
 
   if (data.status !== "PUTAWAY_COMPLETE") throw new MalformedStoredRecordError("stored status invalid for first-slice order");
   if (data.version !== RECEIVING_INITIAL_VERSION) throw new MalformedStoredRecordError("stored version invalid for first-slice order");

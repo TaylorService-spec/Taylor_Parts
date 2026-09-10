@@ -11,6 +11,11 @@ on:
     paths:
       - "functions/src/inventoryLedger/**"
       - "functions/test/operationalMovementLedger.test.mjs"
+      # Ownership Model v1 fields on stored records (ledger, transfer, receiving strict readers).
+      - "functions/test/ownershipFieldStrictReaders.test.mjs"
+      - "functions/src/inventoryTransfer/transferOrderRepository.ts"
+      - "functions/src/inventoryReceiving/receivingRepository.ts"
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
       - "field-ops-app-vite/src/domain/inventoryLedgerEvent.js"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -20,6 +25,11 @@ on:
     paths:
       - "functions/src/inventoryLedger/**"
       - "functions/test/operationalMovementLedger.test.mjs"
+      # Ownership Model v1 fields on stored records (ledger, transfer, receiving strict readers).
+      - "functions/test/ownershipFieldStrictReaders.test.mjs"
+      - "functions/src/inventoryTransfer/transferOrderRepository.ts"
+      - "functions/src/inventoryReceiving/receivingRepository.ts"
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
       - "field-ops-app-vite/src/domain/inventoryLedgerEvent.js"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -60,4 +70,8 @@ jobs:
 
       - name: Inventory ledger foundation unit tests (offline, no emulator)
         run: npm run test:inventoryLedger
+        working-directory: functions
+
+      - name: Ownership fields on stored records (strict readers accept exactly the backfilled shapes)
+        run: node test/ownershipFieldStrictReaders.test.mjs
         working-directory: functions

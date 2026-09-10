@@ -36,6 +36,7 @@ import {
   isPlainObject,
   isTrackingMode,
 } from "./operationalMovementValidation.js";
+import { isOperatingCompanyIdShape } from "../ownership/operatingCompanyAuthority.js";
 
 // Deterministic, canonical JSON (sorted keys) so a fingerprint is stable regardless of key order.
 function canonicalJson(value: unknown): string {
@@ -120,7 +121,15 @@ export function deserializeOperationalMovement(data: unknown): DeserializedOpera
   if (mode === "SERIAL") allowed.add("serialNo");
   if (mode === "LOT") allowed.add("lotId");
   if (isTransfer) allowed.add("counterpartyLocation");
+// Ownership Model v1: `operatingCompanyId` is the governed owner field (ownershipMatrix.ts), written by the
+// Owner-authorized sandbox ownership backfill of 2026-08-30. Optional and SHAPE-checked; a reader that
+// rejected it made every backfilled record "malformed", and on-hand readers skip malformed rows.
+  // Two shapes, exactly as ownershipBackfillRules.ts writes them: a scalar owner, or -- on a two-location
+  // row whose ends resolve to different companies -- a participating PAIR. Never both.
+  allowed.add("operatingCompanyId");
+  if (isTransfer) { allowed.add("sourceOperatingCompanyId"); allowed.add("destinationOperatingCompanyId"); }
   if (Object.keys(d).some((k) => !allowed.has(k))) throw new MalformedStoredRecordError("stored record has unknown field");
+  assertStoredOwnership(d);
 
   if (d.direction !== direction) throw new MalformedStoredRecordError("stored direction inconsistent with type");
   if (!isNonEmptyString(d.partId)) throw new MalformedStoredRecordError("stored partId invalid");
@@ -230,4 +239,13 @@ export async function stageOperationalMovement(
   }
   store.create(docId, serializeOperationalMovement(value, deps.now, fp));
   return { outcome: "applied", docId, fingerprint: fp };
+}
+
+/** Ownership Model v1 fields on a stored ledger row: shape-checked; pair both-or-neither; never scalar + pair. */
+function assertStoredOwnership(d: Record<string, unknown>): void {
+  const scalar = d.operatingCompanyId, src = d.sourceOperatingCompanyId, dst = d.destinationOperatingCompanyId;
+  if (scalar !== undefined && !isOperatingCompanyIdShape(scalar)) throw new MalformedStoredRecordError("stored operatingCompanyId invalid");
+  if ((src === undefined) !== (dst === undefined)) throw new MalformedStoredRecordError("stored participating companies incomplete");
+  if (src !== undefined && (!isOperatingCompanyIdShape(src) || !isOperatingCompanyIdShape(dst))) throw new MalformedStoredRecordError("stored participating companies invalid");
+  if (scalar !== undefined && src !== undefined) throw new MalformedStoredRecordError("stored record carries both a scalar owner and a participating pair");
 }
