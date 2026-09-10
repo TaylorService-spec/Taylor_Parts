@@ -17,7 +17,7 @@
     "catalogInactive": 147,
     "eligibleForEnvironmentActivation": 91,
     "activatedInSomeEnvironment": 91,
-    "callableExports": 47,
+    "callableExports": 48,
     "destinations": 93,
     "destinationsHidden": 19,
     "guides": 0,
@@ -31,9 +31,9 @@
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 120,
+    "SERVER_REFERENCED": 121,
     "CLIENT_ONLY": 2,
-    "NO_IMPLEMENTATION_EVIDENCE": 4
+    "NO_IMPLEMENTATION_EVIDENCE": 3
   },
   "guideStatuses": {},
   "flows": [
@@ -3429,11 +3429,13 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
-        "serverReferences": [],
+        "serverReferences": [
+          "functions/src/inventoryLocation/stockRelocationCommand.ts"
+        ],
         "clientReferences": [],
-        "serverReferenceCount": 0,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 0,
-        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": false,
@@ -4828,6 +4830,14 @@
         "acquireCallableWiring.ts"
       ],
       "comment": "--- NON-PO SERIALIZED ASSET ACQUISITION (ND-33) ---  The other end of the same story the block above tells. Installing puts a unit the company already holds into a customer's hands; this brings a unit the company ALREADY OWNS onto the books without a purchase — an opening balance, a legacy migration"
+    },
+    {
+      "names": [
+        "relocateStockCallable as relocateStock"
+      ],
+      "module": "./inventoryLocation/stockRelocationCallables.js",
+      "capabilityHints": [],
+      "comment": "BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN). Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation."
     },
     {
       "names": [
