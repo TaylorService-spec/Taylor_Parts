@@ -1,3 +1,6 @@
+import { readBinParentage } from "./inventoryLocation/binParentage.js";
+import { binIdsReferenced } from "./inventoryLedger/locationOnHand.js";
+import type { BinParentage } from "./inventoryLedger/locationOnHand.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "./access/effectiveAccessFeed";
@@ -59,6 +62,8 @@ export function computeAnalyticsOnHandByPart(
   ledgerRows: readonly RawLedgerRow[],
   serializedAssets: readonly RawSerializedAsset[],
   eligibleWarehouseIds: ReadonlySet<string>,
+  // Model A: governed bin -> warehouse parentage for every bin these rows or assets name.
+  binParentage: BinParentage,
 ): Map<string, number> {
   const rowsByPart = new Map<string, RawLedgerRow[]>();
   for (const row of ledgerRows) {
@@ -73,6 +78,7 @@ export function computeAnalyticsOnHandByPart(
     const sum = sumLedgerEligibleOnHand(
       rows as Array<{ type: string; quantity: number; location?: { type?: string; locationId?: string }; trackingMode?: string }>,
       eligibleWarehouseIds as Set<string>,
+      binParentage,
     );
     // null means NO physical evidence at all. Omit the part rather than asserting a zero it has not
     // earned -- the same distinction the previous stock_locations contract drew.
@@ -82,7 +88,12 @@ export function computeAnalyticsOnHandByPart(
   for (const asset of serializedAssets) {
     if (typeof asset.partId !== "string" || asset.partId === "") continue;
     if (asset.inventoryState !== "AVAILABLE") continue;
-    if (typeof asset.currentLocationId !== "string" || !eligibleWarehouseIds.has(asset.currentLocationId)) continue;
+    // currentLocationId is a typeless scalar. A serial put away into a Bin carries the bin id, and its
+    // custody Warehouse is that bin's governed parent -- resolved from the bins document, never from
+    // the id's prefix (Decision #170 Part B; bin-stock-relocation-and-multi-scan.md sec6).
+    if (typeof asset.currentLocationId !== "string") continue;
+    const custody = binParentage.get(asset.currentLocationId) ?? asset.currentLocationId;
+    if (!eligibleWarehouseIds.has(custody)) continue;
     onHand.set(asset.partId, (onHand.get(asset.partId) ?? 0) + 1);
   }
 
@@ -181,11 +192,18 @@ export const getInventoryAnalytics = onCall({ region: "us-central1" }, async (re
   // drops `location` and `trackingMode`, which are exactly the two facts the warehouse fence and the
   // serial exclusion depend on.
   const eligibleWarehouseIds = new Set(warehouses.docs.map((d) => d.id));
-  const onHandByPart = computeAnalyticsOnHandByPart(
-    ledger.docs.map((d) => d.data() as RawLedgerRow),
-    serialized.docs.map((d) => d.data() as RawSerializedAsset),
-    eligibleWarehouseIds,
-  );
+  const rawRows = ledger.docs.map((d) => d.data() as RawLedgerRow);
+  const rawAssets = serialized.docs.map((d) => d.data() as RawSerializedAsset);
+  // Resolve only the bins actually referenced: ledger rows at a BIN, and serials whose scalar location
+  // is not an eligible warehouse id (a candidate bin). A non-bin id simply resolves to nothing.
+  const candidateBinIds = [
+    ...binIdsReferenced(rawRows as never),
+    ...rawAssets
+      .map((a) => a.currentLocationId)
+      .filter((id): id is string => typeof id === "string" && id !== "" && !eligibleWarehouseIds.has(id)),
+  ];
+  const binParentage = await readBinParentage(db, candidateBinIds);
+  const onHandByPart = computeAnalyticsOnHandByPart(rawRows, rawAssets, eligibleWarehouseIds, binParentage);
 
   // availableStock nets outstanding reservations off that baseline -- the same
   // "physical - (grossReserved - released)" definition every other availableStock consumer uses, so

@@ -32,6 +32,7 @@
 // automatic single-field (including nested map-field) indexes; no firestore.indexes.json entry is
 // required. All reads go through the caller's Transaction, so a concurrent write to either
 // collection conflicts the commit exactly like every other injected probe in this repository.
+import { signedQuantity } from "./locationOnHand.js";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import { classifyLedgerDoc, deserializeOperationalMovement } from "./operationalMovementRepository.js";
@@ -112,16 +113,9 @@ export async function probeNoneStockPresentAtLocation(
       if (v.location.type !== MOBILE || v.location.locationId !== locationId) continue; // defensive re-check
       if (v.trackingMode !== "NONE") continue; // SERIAL custody is authoritative via serialized_assets
       const prior = balanceByPart.get(v.partId) ?? 0;
-      if (v.type === "RECEIVED" || v.type === "RETURNED" || v.type === "TRANSFER_IN") {
-        balanceByPart.set(v.partId, prior + v.quantity);
-      } else if (v.type === "TRANSFER_OUT" || v.type === "SCRAPPED") {
-        balanceByPart.set(v.partId, prior - v.quantity);
-      } else if (v.type === "ADJUSTED") {
-        balanceByPart.set(v.partId, prior + v.quantity); // ADJUSTED is already signed (direction SIGNED)
-      }
-      // The branches above are an ALLOWLIST: a type this balance does not name contributes nothing.
-      // A stored COUNTED row (the type retired by CERT-LEDGER-COUNTED-08, never written by anything)
-      // is skipped by classifyLedgerDoc above, exactly as it previously matched no branch here.
+      // One sign rule, from locationOnHand.ts. A technician consuming from their truck (Decision #171)
+      // now reduces the truck's presence, which the previous hand-written branches missed.
+      balanceByPart.set(v.partId, prior + signedQuantity(v));
     }
     for (const balance of balanceByPart.values()) {
       if (balance > 0) return "PRESENT";

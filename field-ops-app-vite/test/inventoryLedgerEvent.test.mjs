@@ -14,6 +14,7 @@ import {
   MOVEMENT_DIRECTION,
   SOURCE_OBJECT_TYPES,
   MOVEMENT_SOURCE_TYPE,
+  COUNTERPARTY_MOVEMENT_TYPES,
   ACTOR_KINDS,
   SYSTEM_ACTOR_IDS,
   resolveTrackingModeFromControlType,
@@ -46,17 +47,23 @@ function ev(type, mode, over = {}) {
   };
   if (mode === "SERIAL") base.serialNo = "SN-9";
   if (mode === "LOT") base.lotId = "LOT-9";
-  if (type === "TRANSFER_OUT" || type === "TRANSFER_IN") base.counterpartyLocation = LOC("WH-2");
+  // Every two-endpoint movement names its other end: the Transfer pair, and the BIN-P6 relocation pair.
+  if (COUNTERPARTY_MOVEMENT_TYPES.includes(type)) base.counterpartyLocation = LOC("WH-2");
   return { ...base, ...over };
 }
 
 // --- constants / governance ---
-ok("operational movement types are the seven-member frozen subset", () => {
+ok("operational movement types are the nine-member frozen subset", () => {
   // WORK_ORDER_CONSUMPTION added by the Customer 1 physical-consumption ruling: stock that
   // permanently leaves custody because a Work Order used it. The list stays pinned exactly, so a
   // future addition is an argued change rather than a quiet one.
+  //
+  // RELOCATION_OUT / RELOCATION_IN added by BIN-P6 / Decision #170: movement between exact locations
+  // inside ONE Warehouse custody parent. Their own pair rather than TRANSFER_OUT/IN, which stay owned by
+  // TRANSFER_ORDER -- reusing them would make every shelf-to-shelf move read as stock leaving the building.
   assert.deepEqual(OPERATIONAL_MOVEMENT_TYPES, [
     "RECEIVED", "ADJUSTED", "TRANSFER_OUT", "TRANSFER_IN", "RETURNED", "SCRAPPED", "WORK_ORDER_CONSUMPTION",
+    "RELOCATION_OUT", "RELOCATION_IN",
   ]);
   assert.equal(Object.isFrozen(OPERATIONAL_MOVEMENT_TYPES), true);
   // The location-less COMMITMENT vocabulary stays out, and that is the whole point of the new name:
@@ -83,6 +90,7 @@ ok("direction metadata classifies each type (no sign inference)", () => {
   assert.deepEqual(MOVEMENT_DIRECTION, {
     RECEIVED: "IN", RETURNED: "IN", TRANSFER_IN: "IN",
     TRANSFER_OUT: "OUT", SCRAPPED: "OUT", ADJUSTED: "SIGNED", WORK_ORDER_CONSUMPTION: "SIGNED",
+    RELOCATION_OUT: "OUT", RELOCATION_IN: "IN",
   });
 });
 
@@ -95,7 +103,12 @@ ok("source taxonomy; WORK_ORDER now produces exactly ONE operational movement", 
   //
   // EXACTLY ONE is the point. If a second WORK_ORDER-sourced movement type ever appears, this fails,
   // and whoever added it has to say which physical fact it represents that consumption does not.
-  assert.deepEqual(SOURCE_OBJECT_TYPES, ["WORK_ORDER", "RECEIVING_ORDER", "TRANSFER_ORDER", "ADJUSTMENT", "RMA", "SCRAP"]);
+  assert.deepEqual(SOURCE_OBJECT_TYPES, ["WORK_ORDER", "RECEIVING_ORDER", "TRANSFER_ORDER", "ADJUSTMENT", "RMA", "SCRAP", "STOCK_RELOCATION"]);
+  // STOCK_RELOCATION produces exactly the relocation pair, and nothing produces that pair but it.
+  assert.deepEqual(
+    Object.entries(MOVEMENT_SOURCE_TYPE).filter(([, source]) => source === "STOCK_RELOCATION").map(([type]) => type),
+    ["RELOCATION_OUT", "RELOCATION_IN"],
+  );
   assert.deepEqual(
     Object.entries(MOVEMENT_SOURCE_TYPE).filter(([, source]) => source === "WORK_ORDER").map(([type]) => type),
     ["WORK_ORDER_CONSUMPTION"],
@@ -103,6 +116,7 @@ ok("source taxonomy; WORK_ORDER now produces exactly ONE operational movement", 
   assert.deepEqual(MOVEMENT_SOURCE_TYPE, {
     RECEIVED: "RECEIVING_ORDER", RETURNED: "RMA", TRANSFER_OUT: "TRANSFER_ORDER",
     TRANSFER_IN: "TRANSFER_ORDER", ADJUSTED: "ADJUSTMENT", SCRAPPED: "SCRAP", WORK_ORDER_CONSUMPTION: "WORK_ORDER",
+    RELOCATION_OUT: "STOCK_RELOCATION", RELOCATION_IN: "STOCK_RELOCATION",
   });
 });
 

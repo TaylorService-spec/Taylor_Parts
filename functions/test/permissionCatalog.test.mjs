@@ -405,7 +405,7 @@ check("no DISPOSITION capability exists, because no disposition policy has been 
 });
 
 check("inventory.stock.relocate is registered exactly once, active: false, resource/action match", () => {
-  // BIN-P6 / DECISIONS #169. Internal relocation inside one Warehouse custody parent. Registered
+  // BIN-P6 / DECISIONS #170. Internal relocation inside one Warehouse custody parent. Registered
   // ahead of its command deliberately -- the Owner ruling names it, BIN-P4 owns activation, and the
   // relocation command is BIN-P6 work that does not exist yet.
   const matches = PERMISSION_CATALOG.filter((p) => p.id === "inventory.stock.relocate");
@@ -417,7 +417,7 @@ check("inventory.stock.relocate is registered exactly once, active: false, resou
 });
 
 check("relocation is a DISTINCT authority from placement and from transfer", () => {
-  // The whole point of DECISIONS #169 rulings 2 and 5. If these ever collapse into one id, a
+  // The whole point of DECISIONS #170 rulings 2 and 5. If these ever collapse into one id, a
   // put-away that only records evidence would start authorizing quantity movement, and an internal
   // shelf-to-shelf move would start looking like stock leaving the building.
   const ids = PERMISSION_CATALOG.map((p) => p.id);

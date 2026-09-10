@@ -111,7 +111,7 @@ check("no unrelated capability changed: inventory.stock.receive is the only ACTI
   //
   // A compatibility role DERIVES its permission array from the catalog, so registering a new id
   // makes it appear here automatically, with no explicit grant written anywhere. BIN-P6 /
-  // DECISIONS #169 registered inventory.stock.relocate that way.
+  // DECISIONS #170 registered inventory.stock.relocate that way.
   //
   // So the assertion is STRENGTHENED rather than relaxed: membership alone is no longer the
   // interesting fact, and what matters is that exactly one of these ids is ACTIVE. An inert id
