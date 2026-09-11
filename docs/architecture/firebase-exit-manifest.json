@@ -13,7 +13,7 @@
 
   "classification": {
     "IDENTITY_ONLY": {
-      "description": "Firebase usage that establishes or verifies who the caller is (sign-in, ID token verification, custom-claims issuance) or correlates a Firebase UID to an EOS Principal/Employee. This is permanently permitted and is NOT part of the exit ratchet.",
+      "description": "Firebase usage that establishes or verifies who the caller is (sign-in, ID token verification, custom-claims issuance) or correlates a Firebase UID to an EOS Principal/Employee. This is outside the BUSINESS_RUNTIME ratchet for the current business-runtime exit phase; eventual identity/auth migration is a separate future Firebase-exit concern, not decided here.",
       "baselineKeys": [
         "frontend.firebase_auth",
         "server.firebase_auth",
@@ -42,7 +42,7 @@
   },
 
   "dispositions": {
-    "IDENTITY_ONLY": "This dependency is sign-in identity or UID correlation and is retained permanently; it does not migrate.",
+    "IDENTITY_ONLY": "This dependency is sign-in identity or UID correlation and is outside this business-runtime ratchet for the current exit phase; identity/auth migration, if any, is a separate future Firebase-exit concern.",
     "MIGRATE_TO_POSTGRES_RENDER": "This dependency has (or will have) a live EOS business equivalent and must be re-pointed to the Render EOS API / PostgreSQL.",
     "ARCHIVE": "This dependency serves data with no ongoing live business need; it is captured as read-only evidence/history rather than migrated forward.",
     "RETIRE": "This dependency has no ongoing purpose and is deleted rather than migrated."

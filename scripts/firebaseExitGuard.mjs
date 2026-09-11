@@ -14,9 +14,11 @@
 // ============================ WHAT THIS DOES NOT FENCE ============================
 //
 // firebase/auth, firebase-admin/auth, and firebase-admin/app are IDENTITY_ONLY: sign-in and UID
-// correlation to an EOS Principal/Employee. That is permanently permitted per the architecture
-// ruling and is deliberately absent from FORBIDDEN_CATEGORIES below. A file that imports only
-// identity modules never trips this guard, no matter how many of them it imports.
+// correlation to an EOS Principal/Employee. That is outside the BUSINESS_RUNTIME ratchet enforced
+// by this module and is deliberately absent from FORBIDDEN_CATEGORIES below -- eventual
+// identity/auth migration is a separate future Firebase-exit concern, not decided here. A file
+// that imports only identity modules never trips this guard, no matter how many of them it
+// imports.
 //
 // ============================ THE RATCHET ============================
 //
@@ -242,22 +244,20 @@ export function evaluateRatchet(previousBaseline, candidateBaseline) {
   return { additions, bootstrap: false };
 }
 
-function parsePreviousBaselinePath(argv) {
+export function parsePreviousBaselinePath(argv) {
   for (const arg of argv) {
     if (arg.startsWith("--previous-baseline=")) return arg.slice("--previous-baseline=".length);
   }
   return undefined;
 }
 
-/** Missing/unreadable previous-baseline path is bootstrap, not an error: the previous commit may
- * genuinely predate this baseline file. */
-function loadPreviousBaseline(path) {
+/** No --previous-baseline argument at all is bootstrap: there is genuinely nothing to ratchet
+ * against yet. But a SUPPLIED path that is missing, unreadable, or malformed JSON must fail
+ * closed -- silently treating that as bootstrap would let a ratchet bypass masquerade as a
+ * harmless missing-file condition (e.g. a CI misconfiguration that points at the wrong sha). */
+export function loadPreviousBaseline(path) {
   if (!path) return null;
-  try {
-    return loadBaselineFromPath(path);
-  } catch {
-    return null;
-  }
+  return loadBaselineFromPath(path);
 }
 
 if (import.meta.url === `file://${process.argv[1]?.split(sep).join("/")}` ||

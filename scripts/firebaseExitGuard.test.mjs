@@ -25,13 +25,19 @@
 //   * bootstrap (no previous baseline exists) is accepted only when the candidate baseline
 //     exactly matches the candidate scan;
 //
+//   * bootstrap is ONLY what happens when no --previous-baseline argument is supplied at all --
+//     a SUPPLIED path that is missing, unreadable, or malformed JSON must fail, never silently
+//     fall back to bootstrap;
+//
 //   * Firebase Auth identity-only usage (firebase/auth, firebase-admin/auth, firebase-admin/app)
 //     never trips the Firestore/Functions business-runtime fence, no matter how it is imported;
 //
 //   * the live repository, scanned today, passes against its own committed baseline.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -43,6 +49,7 @@ import {
   evaluateRatchet,
   extractImportSpecifiers,
   loadBaseline,
+  loadPreviousBaseline,
   scanTree,
 } from "./firebaseExitGuard.mjs";
 
@@ -368,6 +375,50 @@ test("scanTree walks into functions/src/coverage/ and finds its baselined server
   assert.ok(
     scanResults.get("server.firebase_admin_firestore").has("functions/src/coverage/coverageReadCallables.ts"),
     "functions/src/coverage/coverageReadCallables.ts must be scanned, not skipped by directory name");
+});
+
+// ---------------------------------------------------------------------------------------------
+// loadPreviousBaseline: a SUPPLIED --previous-baseline path must fail closed, never bootstrap
+// ---------------------------------------------------------------------------------------------
+
+test("no --previous-baseline argument (undefined path) allows bootstrap", () => {
+  assert.equal(loadPreviousBaseline(undefined), null);
+});
+
+test("a valid supplied previous baseline loads and parses successfully", () => {
+  const dir = mkdtempSync(join(tmpdir(), "firebase-exit-guard-test-"));
+  const path = join(dir, "previous-baseline.json");
+  try {
+    const baseline = makeBaseline({
+      frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
+    });
+    writeFileSync(path, JSON.stringify(baseline));
+    assert.deepEqual(loadPreviousBaseline(path), baseline);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a supplied but missing previous-baseline path fails -- never silently becomes bootstrap", () => {
+  const dir = mkdtempSync(join(tmpdir(), "firebase-exit-guard-test-"));
+  const path = join(dir, "does-not-exist.json");
+  try {
+    assert.throws(() => loadPreviousBaseline(path));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a supplied but malformed-JSON previous-baseline path fails -- never silently becomes " +
+  "bootstrap", () => {
+  const dir = mkdtempSync(join(tmpdir(), "firebase-exit-guard-test-"));
+  const path = join(dir, "malformed-baseline.json");
+  try {
+    writeFileSync(path, "{ not valid json");
+    assert.throws(() => loadPreviousBaseline(path));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // ---------------------------------------------------------------------------------------------
