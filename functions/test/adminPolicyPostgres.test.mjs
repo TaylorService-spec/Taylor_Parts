@@ -166,11 +166,11 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL FIVE, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL SIX, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "5", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "6", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +190,22 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 006 off: the P1A capability vocabulary rows go (13 new keys), the table and the five
+  // pre-existing Cycle Count rows stay -- migration 006 is catalog-only, no new table.
+  down(1);
+  const capabilityRowCount = await query(
+    "SELECT count(*)::int n FROM eos_policy.capabilities",
+  );
+  assert.equal(capabilityRowCount.rows[0].n, 5, "only the five pre-existing Cycle Count rows remain");
+  const capabilitiesTableStillExists = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy' AND table_name = 'capabilities'",
+  );
+  assert.equal(capabilitiesTableStillExists.rows[0].n, 1, "the capabilities table itself is migration 004's, not 006's");
+  const stillTwentyOneAfter006 = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(stillTwentyOneAfter006.rows[0].n, 21, "no table was added or removed by reversing 006");
 
   // 005 off: eos_ops (a SEPARATE schema) disappears entirely; eos_policy is untouched.
   down(1);
