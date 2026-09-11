@@ -1,0 +1,61 @@
+name: Firebase Exit Guard
+
+# Refuses a NEW Firebase business-runtime dependency (Firestore client, Firebase Functions
+# client, firebase-admin Firestore, firebase-functions server runtime) beyond the committed
+# baseline at docs/architecture/firebase-exit-baseline.json. The baseline may only shrink.
+#
+# See docs/architecture/firebase-exit-manifest.json for the IDENTITY_ONLY vs BUSINESS_RUNTIME
+# classification and docs/architecture/firebase-exit-ratchet.md for why this is a ratchet.
+#
+# Path-filtered: only runs when a change could plausibly move the fenced dependency sets --
+# the two scanned source trees, the baseline/manifest documents, the guard itself, or its tests.
+# A documentation-only ledger change elsewhere in docs/ does not trigger this workflow.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/**"
+      - "functions/src/**"
+      - "docs/architecture/firebase-exit-baseline.json"
+      - "docs/architecture/firebase-exit-manifest.json"
+      - "scripts/firebaseExitGuard.mjs"
+      - "scripts/firebaseExitGuard.test.mjs"
+      - ".github/workflows/firebase-exit-guard.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/**"
+      - "functions/src/**"
+      - "docs/architecture/firebase-exit-baseline.json"
+      - "docs/architecture/firebase-exit-manifest.json"
+      - "scripts/firebaseExitGuard.mjs"
+      - "scripts/firebaseExitGuard.test.mjs"
+      - ".github/workflows/firebase-exit-guard.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  firebase-exit-guard:
+    name: No new Firebase business-runtime dependencies beyond the baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Guard contract tests
+        run: node --test scripts/firebaseExitGuard.test.mjs
+
+      - name: Scan the tracked repository
+        run: node scripts/firebaseExitGuard.mjs
