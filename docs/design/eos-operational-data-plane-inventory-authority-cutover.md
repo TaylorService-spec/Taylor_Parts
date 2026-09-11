@@ -199,10 +199,25 @@ foreign keys for this reason — see migration `1757808000000_eos-ops-foundation
 ## 4. Migration / cutover sequence (future work — not this PR)
 
 1. **Schema ready.** This PR: `eos_ops` foundation tables, `eos_policy` capability extension.
-2. **Capability authority seeded/reconciled in Postgres.** Every Role that currently holds one of
-   the eight writers' Firestore-era capabilities gets the matching `eos_policy` capability grant,
-   proved by a parity harness (same shape as `adminPolicy/migration/firestorePolicyParityHarness.ts`
-   — read-only, deletable once every tenant is in parity).
+2. **Capability authority seeded/reconciled in Postgres.** ✅ **P1A shipped this step's tooling
+   (not its execution against any real tenant — see below).** Migration 006
+   (`1757894400000_operational-capability-vocabulary.sql`) catalogs the 13 additional capability
+   keys the other 7 writer families need (9 of them preserved exactly from the existing legacy
+   strings; 4 are genuinely new vocabulary — see the note below). A parity harness
+   (`functions/scripts/inventoryCapabilityParityHarness.js`, MIGRATION_ONLY, read-only, deletable
+   once every tenant reports `CAPABILITY_PARITY_READY`) compares each writer's legacy Firestore-era
+   authorization decision against `eos_policy`'s. An operator-run, dry-run-by-default reconciliation
+   tool (`functions/src/eosOps/migration/inventoryCapabilityGrantMigration.ts`, CLI in
+   `functions/scripts/inventoryCapabilityGrantMigrationCli.js`) grants the matching
+   `eos_policy.role_capabilities` row for every Role a nonprod tenant's own catalog already
+   declares. Full evidence: `docs/architecture/inventory-capability-parity-p1a-evidence.md`.
+   **Mechanical finding, not inferred from this document:** two of the eight writers — Work Order
+   physical consumption (`updateWorkOrderExecutionData.ts`) and the Work Order
+   reservation/commitment lifecycle (`transitionEngine.ts`'s `ACTION_PERMISSIONS` gating
+   `inventoryService.ts`'s triggers) — were never authorized through the capability catalog at all;
+   both hardcode a `users/{uid}.role` string check. Migration 006 catalogs a capability key for each
+   so the parity harness and grant tool have something to compare/reconcile against, without
+   changing either writer's actual runtime authorization (out of scope for this packet).
 3. **Reference data resolved.** Warehouses, BINs and the Truck Registry get their own authority
    decision (a separate ADR) before `eos_ops.location_id` can become a real foreign key. Not
    required to be Postgres-authoritative before step 4, but their identity must be STABLE across the
